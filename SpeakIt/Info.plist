@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Speak It</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.calvinwak.SpeakIt.capture</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>speakit</string>
+			</array>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>SpeakItAnalyticsHost</key>
+	<string>https://us.i.posthog.com</string>
+	<key>SpeakItAnalyticsKey</key>
+	<string>$(SPEAKIT_ANALYTICS_KEY)</string>
+	<key>SpeakItICloudSyncAvailable</key>
+	<string>$(SPEAKIT_ICLOUD_SYNC_AVAILABLE)</string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.calvinwak.SpeakIt.speakThought</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Start speaking</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Open directly into listening</string>
+			<key>UIApplicationShortcutItemIconType</key>
+			<string>UIApplicationShortcutIconTypeAudio</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.calvinwak.SpeakIt.typeThought</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Type a thought</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Capture without speaking</string>
+			<key>UIApplicationShortcutItemIconType</key>
+			<string>UIApplicationShortcutIconTypeCompose</string>
+		</dict>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Speak It uses your microphone only while you are actively capturing a thought.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Speak It creates alarms only when you explicitly ask it to set one.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speak It converts what you say into text so it can be saved.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Speak It uses your location only to set your Home and Work places and to remind you when you arrive at or leave a place you asked about. Your location stays on your device.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Speak It needs “Always” access so a place reminder can reach you when you arrive or leave while the app is closed. Your location stays on your device and is never uploaded.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.calvinwak.SpeakIt</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<false/>
+			<key>NSUbiquitousContainerName</key>
+			<string>Speak It</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>None</string>
+		</dict>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>

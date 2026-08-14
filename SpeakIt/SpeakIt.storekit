@@ -1,0 +1,83 @@
+{
+  "identifier" : "5F2A9C41",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21B4D7E9",
+      "localizations" : [
+
+      ],
+      "name" : "Speak It Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "7C3E8A15",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited captures every month.",
+              "displayName" : "Speak It Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.calvinwak.SpeakIt.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Speak It Pro Monthly",
+          "subscriptionGroupID" : "21B4D7E9",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "9D6F2B08",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited captures, billed once a year.",
+              "displayName" : "Speak It Pro Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.calvinwak.SpeakIt.pro.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Speak It Pro Annual",
+          "subscriptionGroupID" : "21B4D7E9",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

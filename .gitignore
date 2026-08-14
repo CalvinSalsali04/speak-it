@@ -1,0 +1,25 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Claude Code machine-local preferences
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Separate nested repository with its own history. Tracking it here would add a
+# bare gitlink with no .gitmodules entry and entangle two unrelated histories.
+FounderDashboard/
+
+# Large rendered demo video. Kept on disk, not in history — a 36 MB binary is
+# expensive to carry forever and awkward to remove once pushed. The Demo/
+# source frames and assets that produce it stay tracked.
+Demo/Speak-It-Product-Demo.mp4

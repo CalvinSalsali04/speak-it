@@ -1,0 +1,1112 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* SpeakItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* SpeakItApp.swift */; };
+		A10000000000000000000002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* RootView.swift */; };
+		A10000000000000000000003 /* DomainEnums.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* DomainEnums.swift */; };
+		A10000000000000000000004 /* CaptureSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* CaptureSession.swift */; };
+		A10000000000000000000005 /* CapturedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* CapturedItem.swift */; };
+		A1000000000000000000010B /* SchemaV1.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000010B /* SchemaV1.swift */; };
+		A100000000000000000000F2 /* LocationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F2 /* LocationIntent.swift */; };
+		A100000000000000000000F3 /* ReminderTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F3 /* ReminderTrigger.swift */; };
+		A100000000000000000000F4 /* SavedPlaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F4 /* SavedPlaceStore.swift */; };
+		A100000000000000000000F5 /* LocationIntentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F5 /* LocationIntentParser.swift */; };
+		A100000000000000000000F6 /* LocationReminderMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F6 /* LocationReminderMonitor.swift */; };
+		A1000000000000000000010A /* TemporalIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000010A /* TemporalIntent.swift */; };
+		A10000000000000000000006 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* UserPreferences.swift */; };
+		A10000000000000000000007 /* ThoughtRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* ThoughtRepository.swift */; };
+		A10000000000000000000008 /* SwiftDataThoughtRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* SwiftDataThoughtRepository.swift */; };
+		A10000000000000000000009 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* TodayView.swift */; };
+		A1000000000000000000000A /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* InboxView.swift */; };
+		A1000000000000000000000B /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* CaptureView.swift */; };
+		A1000000000000000000000C /* ItemEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* ItemEditorView.swift */; };
+		A1000000000000000000000D /* CapturedItemRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* CapturedItemRow.swift */; };
+		A1000000000000000000000E /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* EmptyStateView.swift */; };
+		A1000000000000000000000F /* View+ErrorAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000F /* View+ErrorAlert.swift */; };
+		A10000000000000000000010 /* PreviewData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* PreviewData.swift */; };
+		A10000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* Assets.xcassets */; };
+		A10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */; };
+		A100000000000000000000F7 /* LocationReminderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F7 /* LocationReminderTests.swift */; };
+		A100000000000000000000F1 /* TemporalFullPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F1 /* TemporalFullPathTests.swift */; };
+		A10000000000000000000013 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* PersistenceController.swift */; };
+		A10000000000000000000014 /* SpeakItTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* SpeakItTheme.swift */; };
+		A10000000000000000000015 /* ListeningOrb.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* ListeningOrb.swift */; };
+		A10000000000000000000016 /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* SpeechTranscriber.swift */; };
+		A10000000000000000000017 /* CaptureAnywhereSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* CaptureAnywhereSetupView.swift */; };
+		A10000000000000000000018 /* SaveThoughtIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* SaveThoughtIntent.swift */; };
+		A10000000000000000000019 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* LibraryView.swift */; };
+		A1000000000000000000001A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* WelcomeView.swift */; };
+		A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* ThoughtOrganizer.swift */; };
+		A1000000000000000000001C /* ReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ReminderScheduler.swift */; };
+		A1000000000000000000001D /* ThoughtExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* ThoughtExtractor.swift */; };
+		A1000000000000000000001E /* CaptureDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* CaptureDraftStore.swift */; };
+		A1000000000000000000001F /* CaptureSessionReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* CaptureSessionReviewView.swift */; };
+		AC0000000000000000000101 /* CurrentLocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000101 /* CurrentLocationProvider.swift */; };
+		AC0000000000000000000102 /* PlaceSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000102 /* PlaceSetupView.swift */; };
+		A10000000000000000000020 /* SpeechVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000028 /* SpeechVocabulary.swift */; };
+		A20000000000000000000001 /* CaptureActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* CaptureActivityAttributes.swift */; };
+		A20000000000000000000002 /* CaptureActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CaptureActivityManager.swift */; };
+		A20000000000000000000003 /* SpeakItLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* SpeakItLiveActivityBundle.swift */; };
+		A20000000000000000000004 /* SpeakItCaptureLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* SpeakItCaptureLiveActivity.swift */; };
+		A20000000000000000000005 /* CaptureActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* CaptureActivityAttributes.swift */; };
+		A20000000000000000000006 /* SpeakItLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* SpeakItLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A20000000000000000000007 /* SpeakItQuickCaptureWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* SpeakItQuickCaptureWidget.swift */; };
+		A30000000000000000000001 /* DemoVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000001 /* DemoVideoView.swift */; };
+		A40000000000000000000001 /* SharedCaptureInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000001 /* SharedCaptureInbox.swift */; };
+		A40000000000000000000002 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000002 /* ShareViewController.swift */; };
+		A40000000000000000000003 /* SharedCaptureInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000001 /* SharedCaptureInbox.swift */; };
+		A40000000000000000000004 /* SpeakItShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B40000000000000000000005 /* SpeakItShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A50000000000000000000001 /* SharedTodayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50000000000000000000001 /* SharedTodayStore.swift */; };
+		A50000000000000000000002 /* SharedTodayStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50000000000000000000001 /* SharedTodayStore.swift */; };
+		A50000000000000000000003 /* ICloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50000000000000000000003 /* ICloudSyncService.swift */; };
+		A60000000000000000000001 /* SampleDataLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60000000000000000000001 /* SampleDataLibrary.swift */; };
+		A70000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B70000000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		A80000000000000000000001 /* SubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80000000000000000000001 /* SubscriptionStore.swift */; };
+		A80000000000000000000002 /* SpeakItProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80000000000000000000002 /* SpeakItProView.swift */; };
+		A90000000000000000000001 /* AccountSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000001 /* AccountSettingsView.swift */; };
+		A90000000000000000000002 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000002 /* AnalyticsService.swift */; };
+		AA0000000000000000000001 /* SpeakItUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* SpeakItUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E10000000000000000000001;
+			remoteInfo = SpeakIt;
+		};
+		C20000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E20000000000000000000001;
+			remoteInfo = SpeakItLiveActivity;
+		};
+		C40000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E40000000000000000000001;
+			remoteInfo = SpeakItShareExtension;
+		};
+		AC0000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E10000000000000000000001;
+			remoteInfo = SpeakIt;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F20000000000000000000004 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A20000000000000000000006 /* SpeakItLiveActivity.appex in Embed Foundation Extensions */,
+				A40000000000000000000004 /* SpeakItShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		B10000000000000000000001 /* SpeakItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000002 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		B10000000000000000000003 /* DomainEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainEnums.swift; sourceTree = "<group>"; };
+		B10000000000000000000004 /* CaptureSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSession.swift; sourceTree = "<group>"; };
+		B10000000000000000000005 /* CapturedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedItem.swift; sourceTree = "<group>"; };
+		B1000000000000000000010B /* SchemaV1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaV1.swift; sourceTree = "<group>"; };
+		B100000000000000000000F2 /* LocationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationIntent.swift; sourceTree = "<group>"; };
+		B100000000000000000000F3 /* ReminderTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderTrigger.swift; sourceTree = "<group>"; };
+		B100000000000000000000F4 /* SavedPlaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlaceStore.swift; sourceTree = "<group>"; };
+		B100000000000000000000F5 /* LocationIntentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationIntentParser.swift; sourceTree = "<group>"; };
+		B100000000000000000000F6 /* LocationReminderMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationReminderMonitor.swift; sourceTree = "<group>"; };
+		B1000000000000000000010A /* TemporalIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalIntent.swift; sourceTree = "<group>"; };
+		B10000000000000000000006 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* ThoughtRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtRepository.swift; sourceTree = "<group>"; };
+		B10000000000000000000008 /* SwiftDataThoughtRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataThoughtRepository.swift; sourceTree = "<group>"; };
+		B10000000000000000000009 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000A /* InboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000B /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000C /* ItemEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditorView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000D /* CapturedItemRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedItemRow.swift; sourceTree = "<group>"; };
+		B1000000000000000000000E /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000F /* View+ErrorAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+ErrorAlert.swift"; sourceTree = "<group>"; };
+		B10000000000000000000010 /* PreviewData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewData.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataThoughtRepositoryTests.swift; sourceTree = "<group>"; };
+		B100000000000000000000F7 /* LocationReminderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationReminderTests.swift; sourceTree = "<group>"; };
+		B100000000000000000000F1 /* TemporalFullPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalFullPathTests.swift; sourceTree = "<group>"; };
+		B10000000000000000000013 /* SpeakIt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpeakIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000014 /* SpeakItTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpeakItTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000015 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		B10000000000000000000016 /* SpeakItTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItTheme.swift; sourceTree = "<group>"; };
+		B10000000000000000000017 /* ListeningOrb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningOrb.swift; sourceTree = "<group>"; };
+		B10000000000000000000018 /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
+		B10000000000000000000019 /* CaptureAnywhereSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnywhereSetupView.swift; sourceTree = "<group>"; };
+		B10000000000000000000020 /* SaveThoughtIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveThoughtIntent.swift; sourceTree = "<group>"; };
+		B10000000000000000000021 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		B10000000000000000000022 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		B10000000000000000000023 /* ThoughtOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtOrganizer.swift; sourceTree = "<group>"; };
+		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
+		B10000000000000000000025 /* ThoughtExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtExtractor.swift; sourceTree = "<group>"; };
+		B10000000000000000000026 /* CaptureDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDraftStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000027 /* CaptureSessionReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionReviewView.swift; sourceTree = "<group>"; };
+		BC0000000000000000000101 /* CurrentLocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrentLocationProvider.swift; sourceTree = "<group>"; };
+		BC0000000000000000000102 /* PlaceSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceSetupView.swift; sourceTree = "<group>"; };
+		B10000000000000000000028 /* SpeechVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechVocabulary.swift; sourceTree = "<group>"; };
+		B20000000000000000000001 /* CaptureActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityAttributes.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* CaptureActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureActivityManager.swift; sourceTree = "<group>"; };
+		B20000000000000000000003 /* SpeakItLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItLiveActivityBundle.swift; sourceTree = "<group>"; };
+		B20000000000000000000004 /* SpeakItCaptureLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItCaptureLiveActivity.swift; sourceTree = "<group>"; };
+		B20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B20000000000000000000006 /* SpeakItLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SpeakItLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000007 /* SpeakItQuickCaptureWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItQuickCaptureWidget.swift; sourceTree = "<group>"; };
+		B30000000000000000000001 /* DemoVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoVideoView.swift; sourceTree = "<group>"; };
+		B40000000000000000000001 /* SharedCaptureInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedCaptureInbox.swift; sourceTree = "<group>"; };
+		B40000000000000000000002 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		B40000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B40000000000000000000004 /* SpeakItShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpeakItShareExtension.entitlements; sourceTree = "<group>"; };
+		B40000000000000000000005 /* SpeakItShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SpeakItShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B40000000000000000000006 /* SpeakIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpeakIt.entitlements; sourceTree = "<group>"; };
+		B50000000000000000000001 /* SharedTodayStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTodayStore.swift; sourceTree = "<group>"; };
+		B50000000000000000000002 /* SpeakItLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpeakItLiveActivity.entitlements; sourceTree = "<group>"; };
+		B50000000000000000000003 /* ICloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSyncService.swift; sourceTree = "<group>"; };
+		B50000000000000000000004 /* SpeakItRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpeakItRelease.entitlements; sourceTree = "<group>"; };
+		B60000000000000000000001 /* SampleDataLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleDataLibrary.swift; sourceTree = "<group>"; };
+		B70000000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BA0000000000000000000001 /* SpeakIt.storekit */ = {isa = PBXFileReference; lastKnownFileType = text.json.storekit; path = SpeakIt.storekit; sourceTree = "<group>"; };
+		B80000000000000000000001 /* SubscriptionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionStore.swift; sourceTree = "<group>"; };
+		B80000000000000000000002 /* SpeakItProView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItProView.swift; sourceTree = "<group>"; };
+		B90000000000000000000001 /* AccountSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettingsView.swift; sourceTree = "<group>"; };
+		B90000000000000000000002 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
+		AB0000000000000000000001 /* SpeakItUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItUITests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000002 /* SpeakItUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpeakItUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F10000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F20000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF0000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D10000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000003 /* SpeakIt */,
+				D20000000000000000000002 /* SpeakItLiveActivity */,
+				D40000000000000000000001 /* Shared */,
+				D40000000000000000000002 /* SpeakItShareExtension */,
+				D1000000000000000000000E /* SpeakItTests */,
+				AD0000000000000000000001 /* SpeakItUITests */,
+				D1000000000000000000000F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D10000000000000000000003 /* SpeakIt */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000004 /* App */,
+				D10000000000000000000005 /* Models */,
+				D10000000000000000000006 /* Repositories */,
+				D10000000000000000000007 /* Features */,
+				D1000000000000000000000C /* Components */,
+				D1000000000000000000000D /* Preview Content */,
+				D10000000000000000000010 /* Intents */,
+				D20000000000000000000001 /* LiveActivity */,
+				D30000000000000000000001 /* Demo */,
+				B40000000000000000000006 /* SpeakIt.entitlements */,
+				B50000000000000000000004 /* SpeakItRelease.entitlements */,
+				B70000000000000000000001 /* PrivacyInfo.xcprivacy */,
+				BA0000000000000000000001 /* SpeakIt.storekit */,
+				B10000000000000000000011 /* Assets.xcassets */,
+			);
+			path = SpeakIt;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000001 /* SpeakItApp.swift */,
+				B10000000000000000000002 /* RootView.swift */,
+				B10000000000000000000015 /* PersistenceController.swift */,
+				B90000000000000000000002 /* AnalyticsService.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000005 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000003 /* DomainEnums.swift */,
+				B10000000000000000000004 /* CaptureSession.swift */,
+				B10000000000000000000005 /* CapturedItem.swift */,
+				B1000000000000000000010B /* SchemaV1.swift */,
+				B100000000000000000000F2 /* LocationIntent.swift */,
+				B100000000000000000000F3 /* ReminderTrigger.swift */,
+				B1000000000000000000010A /* TemporalIntent.swift */,
+				B10000000000000000000006 /* UserPreferences.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000006 /* Repositories */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000007 /* ThoughtRepository.swift */,
+				B10000000000000000000008 /* SwiftDataThoughtRepository.swift */,
+				B10000000000000000000023 /* ThoughtOrganizer.swift */,
+				B10000000000000000000025 /* ThoughtExtractor.swift */,
+				B100000000000000000000F4 /* SavedPlaceStore.swift */,
+				B100000000000000000000F5 /* LocationIntentParser.swift */,
+				B100000000000000000000F6 /* LocationReminderMonitor.swift */,
+				B10000000000000000000024 /* ReminderScheduler.swift */,
+				B50000000000000000000003 /* ICloudSyncService.swift */,
+			);
+			path = Repositories;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000007 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000008 /* Today */,
+				D10000000000000000000009 /* Inbox */,
+				D10000000000000000000012 /* Library */,
+				D1000000000000000000000A /* Capture */,
+				D1000000000000000000000B /* ItemEditor */,
+				D10000000000000000000011 /* Setup */,
+				DC0000000000000000000101 /* Places */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000008 /* Today */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000009 /* TodayView.swift */,
+			);
+			path = Today;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000009 /* Inbox */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000A /* InboxView.swift */,
+			);
+			path = Inbox;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000A /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000B /* CaptureView.swift */,
+				B10000000000000000000018 /* SpeechTranscriber.swift */,
+				B10000000000000000000026 /* CaptureDraftStore.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000B /* ItemEditor */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000C /* ItemEditorView.swift */,
+				B10000000000000000000027 /* CaptureSessionReviewView.swift */,
+			);
+			path = ItemEditor;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000C /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000D /* CapturedItemRow.swift */,
+				B1000000000000000000000E /* EmptyStateView.swift */,
+				B1000000000000000000000F /* View+ErrorAlert.swift */,
+				B10000000000000000000016 /* SpeakItTheme.swift */,
+				B10000000000000000000017 /* ListeningOrb.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000D /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000010 /* PreviewData.swift */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000E /* SpeakItTests */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */,
+				B100000000000000000000F7 /* LocationReminderTests.swift */,
+				B100000000000000000000F1 /* TemporalFullPathTests.swift */,
+			);
+			path = SpeakItTests;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000000F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000013 /* SpeakIt.app */,
+				B10000000000000000000014 /* SpeakItTests.xctest */,
+				B20000000000000000000006 /* SpeakItLiveActivity.appex */,
+				B40000000000000000000005 /* SpeakItShareExtension.appex */,
+				AB0000000000000000000002 /* SpeakItUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AD0000000000000000000001 /* SpeakItUITests */ = {
+			isa = PBXGroup;
+			children = (
+				AB0000000000000000000001 /* SpeakItUITests.swift */,
+			);
+			path = SpeakItUITests;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000010 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000020 /* SaveThoughtIntent.swift */,
+			);
+			path = Intents;
+			sourceTree = "<group>";
+		};
+		DC0000000000000000000101 /* Places */ = {
+			isa = PBXGroup;
+			children = (
+				BC0000000000000000000101 /* CurrentLocationProvider.swift */,
+				BC0000000000000000000102 /* PlaceSetupView.swift */,
+			);
+			path = Places;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000011 /* Setup */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000019 /* CaptureAnywhereSetupView.swift */,
+				B10000000000000000000022 /* WelcomeView.swift */,
+				B10000000000000000000028 /* SpeechVocabulary.swift */,
+				B80000000000000000000001 /* SubscriptionStore.swift */,
+				B80000000000000000000002 /* SpeakItProView.swift */,
+				B90000000000000000000001 /* AccountSettingsView.swift */,
+			);
+			path = Setup;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000012 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000021 /* LibraryView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		D20000000000000000000001 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000001 /* CaptureActivityAttributes.swift */,
+				B20000000000000000000002 /* CaptureActivityManager.swift */,
+			);
+			path = LiveActivity;
+			sourceTree = "<group>";
+		};
+		D20000000000000000000002 /* SpeakItLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000003 /* SpeakItLiveActivityBundle.swift */,
+				B20000000000000000000004 /* SpeakItCaptureLiveActivity.swift */,
+				B20000000000000000000007 /* SpeakItQuickCaptureWidget.swift */,
+				B20000000000000000000005 /* Info.plist */,
+				B50000000000000000000002 /* SpeakItLiveActivity.entitlements */,
+			);
+			path = SpeakItLiveActivity;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000001 /* Demo */ = {
+			isa = PBXGroup;
+			children = (
+				B30000000000000000000001 /* DemoVideoView.swift */,
+				B60000000000000000000001 /* SampleDataLibrary.swift */,
+			);
+			path = Demo;
+			sourceTree = "<group>";
+		};
+		D40000000000000000000001 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B40000000000000000000001 /* SharedCaptureInbox.swift */,
+				B50000000000000000000001 /* SharedTodayStore.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		D40000000000000000000002 /* SpeakItShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				B40000000000000000000002 /* ShareViewController.swift */,
+				B40000000000000000000003 /* Info.plist */,
+				B40000000000000000000004 /* SpeakItShareExtension.entitlements */,
+			);
+			path = SpeakItShareExtension;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E10000000000000000000001 /* SpeakIt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E10000000000000000000011 /* Build configuration list for PBXNativeTarget "SpeakIt" */;
+			buildPhases = (
+				F10000000000000000000003 /* Sources */,
+				F10000000000000000000001 /* Frameworks */,
+				F10000000000000000000005 /* Resources */,
+				F20000000000000000000004 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E20000000000000000000005 /* PBXTargetDependency */,
+				E40000000000000000000005 /* PBXTargetDependency */,
+			);
+			name = SpeakIt;
+			productName = SpeakIt;
+			productReference = B10000000000000000000013 /* SpeakIt.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E10000000000000000000002 /* SpeakItTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E10000000000000000000012 /* Build configuration list for PBXNativeTarget "SpeakItTests" */;
+			buildPhases = (
+				F10000000000000000000004 /* Sources */,
+				F10000000000000000000002 /* Frameworks */,
+				F10000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E10000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = SpeakItTests;
+			productName = SpeakItTests;
+			productReference = B10000000000000000000014 /* SpeakItTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E20000000000000000000001 /* SpeakItLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E20000000000000000000002 /* Build configuration list for PBXNativeTarget "SpeakItLiveActivity" */;
+			buildPhases = (
+				F20000000000000000000002 /* Sources */,
+				F20000000000000000000001 /* Frameworks */,
+				F20000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpeakItLiveActivity;
+			productName = SpeakItLiveActivity;
+			productReference = B20000000000000000000006 /* SpeakItLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E40000000000000000000001 /* SpeakItShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E40000000000000000000002 /* Build configuration list for PBXNativeTarget "SpeakItShareExtension" */;
+			buildPhases = (
+				F40000000000000000000002 /* Sources */,
+				F40000000000000000000001 /* Frameworks */,
+				F40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpeakItShareExtension;
+			productName = SpeakItShareExtension;
+			productReference = B40000000000000000000005 /* SpeakItShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AE0000000000000000000001 /* SpeakItUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AE0000000000000000000005 /* Build configuration list for PBXNativeTarget "SpeakItUITests" */;
+			buildPhases = (
+				AF0000000000000000000002 /* Sources */,
+				AF0000000000000000000001 /* Frameworks */,
+				AF0000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AE0000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = SpeakItUITests;
+			productName = SpeakItUITests;
+			productReference = AB0000000000000000000002 /* SpeakItUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					E10000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					E10000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = E10000000000000000000001;
+					};
+					E20000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					E40000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					AE0000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = E10000000000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = E10000000000000000000010 /* Build configuration list for PBXProject "SpeakIt" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D10000000000000000000002;
+			productRefGroup = D1000000000000000000000F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E10000000000000000000001 /* SpeakIt */,
+				E10000000000000000000002 /* SpeakItTests */,
+				E20000000000000000000001 /* SpeakItLiveActivity */,
+				E40000000000000000000001 /* SpeakItShareExtension */,
+				AE0000000000000000000001 /* SpeakItUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F10000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000011 /* Assets.xcassets in Resources */,
+				A70000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F20000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF0000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F10000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* SpeakItApp.swift in Sources */,
+				A10000000000000000000002 /* RootView.swift in Sources */,
+				A10000000000000000000003 /* DomainEnums.swift in Sources */,
+				A10000000000000000000004 /* CaptureSession.swift in Sources */,
+				A10000000000000000000005 /* CapturedItem.swift in Sources */,
+				A1000000000000000000010B /* SchemaV1.swift in Sources */,
+				A100000000000000000000F2 /* LocationIntent.swift in Sources */,
+				A100000000000000000000F3 /* ReminderTrigger.swift in Sources */,
+				A100000000000000000000F4 /* SavedPlaceStore.swift in Sources */,
+				A100000000000000000000F5 /* LocationIntentParser.swift in Sources */,
+				A100000000000000000000F6 /* LocationReminderMonitor.swift in Sources */,
+				A1000000000000000000010A /* TemporalIntent.swift in Sources */,
+				A10000000000000000000006 /* UserPreferences.swift in Sources */,
+				A10000000000000000000007 /* ThoughtRepository.swift in Sources */,
+				A10000000000000000000008 /* SwiftDataThoughtRepository.swift in Sources */,
+				A10000000000000000000009 /* TodayView.swift in Sources */,
+				A1000000000000000000000A /* InboxView.swift in Sources */,
+				A1000000000000000000000B /* CaptureView.swift in Sources */,
+				A1000000000000000000000C /* ItemEditorView.swift in Sources */,
+				A1000000000000000000000D /* CapturedItemRow.swift in Sources */,
+				A1000000000000000000000E /* EmptyStateView.swift in Sources */,
+				A1000000000000000000000F /* View+ErrorAlert.swift in Sources */,
+				A10000000000000000000010 /* PreviewData.swift in Sources */,
+				A10000000000000000000013 /* PersistenceController.swift in Sources */,
+				A10000000000000000000014 /* SpeakItTheme.swift in Sources */,
+				A10000000000000000000015 /* ListeningOrb.swift in Sources */,
+				A10000000000000000000016 /* SpeechTranscriber.swift in Sources */,
+				A10000000000000000000017 /* CaptureAnywhereSetupView.swift in Sources */,
+				A10000000000000000000018 /* SaveThoughtIntent.swift in Sources */,
+				A10000000000000000000019 /* LibraryView.swift in Sources */,
+				A1000000000000000000001A /* WelcomeView.swift in Sources */,
+				A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */,
+				A1000000000000000000001C /* ReminderScheduler.swift in Sources */,
+				A1000000000000000000001D /* ThoughtExtractor.swift in Sources */,
+				A1000000000000000000001E /* CaptureDraftStore.swift in Sources */,
+				A1000000000000000000001F /* CaptureSessionReviewView.swift in Sources */,
+				A10000000000000000000020 /* SpeechVocabulary.swift in Sources */,
+				AC0000000000000000000101 /* CurrentLocationProvider.swift in Sources */,
+				AC0000000000000000000102 /* PlaceSetupView.swift in Sources */,
+				A50000000000000000000003 /* ICloudSyncService.swift in Sources */,
+				A60000000000000000000001 /* SampleDataLibrary.swift in Sources */,
+				A80000000000000000000001 /* SubscriptionStore.swift in Sources */,
+				A80000000000000000000002 /* SpeakItProView.swift in Sources */,
+				A90000000000000000000001 /* AccountSettingsView.swift in Sources */,
+				A90000000000000000000002 /* AnalyticsService.swift in Sources */,
+				A20000000000000000000001 /* CaptureActivityAttributes.swift in Sources */,
+				A20000000000000000000002 /* CaptureActivityManager.swift in Sources */,
+				A30000000000000000000001 /* DemoVideoView.swift in Sources */,
+				A40000000000000000000001 /* SharedCaptureInbox.swift in Sources */,
+				A50000000000000000000001 /* SharedTodayStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift in Sources */,
+				A100000000000000000000F7 /* LocationReminderTests.swift in Sources */,
+				A100000000000000000000F1 /* TemporalFullPathTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F20000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A20000000000000000000003 /* SpeakItLiveActivityBundle.swift in Sources */,
+				A20000000000000000000004 /* SpeakItCaptureLiveActivity.swift in Sources */,
+				A20000000000000000000007 /* SpeakItQuickCaptureWidget.swift in Sources */,
+				A20000000000000000000005 /* CaptureActivityAttributes.swift in Sources */,
+				A50000000000000000000002 /* SharedTodayStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F40000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40000000000000000000002 /* ShareViewController.swift in Sources */,
+				A40000000000000000000003 /* SharedCaptureInbox.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AF0000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000001 /* SpeakItUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E10000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E10000000000000000000001 /* SpeakIt */;
+			targetProxy = C10000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		E20000000000000000000005 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E20000000000000000000001 /* SpeakItLiveActivity */;
+			targetProxy = C20000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		E40000000000000000000005 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E40000000000000000000001 /* SpeakItShareExtension */;
+			targetProxy = C40000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		AE0000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E10000000000000000000001 /* SpeakIt */;
+			targetProxy = AC0000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		E10000000000000000000020 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		E10000000000000000000021 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E10000000000000000000022 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = SpeakIt/SpeakIt.entitlements;
+				SPEAKIT_ANALYTICS_KEY = "";
+				SPEAKIT_ICLOUD_SYNC_AVAILABLE = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakIt/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Speak It";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Speak It uses your microphone only while you are actively capturing a thought.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speak It converts what you say into text so it can be saved.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "audio location";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E10000000000000000000023 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = SpeakIt/SpeakItRelease.entitlements;
+				SPEAKIT_ANALYTICS_KEY = "";
+				SPEAKIT_ICLOUD_SYNC_AVAILABLE = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakIt/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Speak It";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Speak It uses your microphone only while you are actively capturing a thought.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speak It converts what you say into text so it can be saved.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "audio location";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		E10000000000000000000024 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakItTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpeakIt.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SpeakIt";
+			};
+			name = Debug;
+		};
+		E10000000000000000000025 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakItTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpeakIt.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SpeakIt";
+			};
+			name = Release;
+		};
+		E20000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = SpeakItLiveActivity/SpeakItLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakItLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E20000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = SpeakItLiveActivity/SpeakItLiveActivity.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakItLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		E40000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = SpeakItShareExtension/SpeakItShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakItShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E40000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = SpeakItShareExtension/SpeakItShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = LZZT2A38SD;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SpeakItShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt.ShareExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		AE0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakItUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = SpeakIt;
+			};
+			name = Debug;
+		};
+		AE0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakItUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = SpeakIt;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E10000000000000000000010 /* Build configuration list for PBXProject "SpeakIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10000000000000000000020 /* Debug */,
+				E10000000000000000000021 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E10000000000000000000011 /* Build configuration list for PBXNativeTarget "SpeakIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10000000000000000000022 /* Debug */,
+				E10000000000000000000023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E10000000000000000000012 /* Build configuration list for PBXNativeTarget "SpeakItTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10000000000000000000024 /* Debug */,
+				E10000000000000000000025 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E20000000000000000000002 /* Build configuration list for PBXNativeTarget "SpeakItLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E20000000000000000000003 /* Debug */,
+				E20000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E40000000000000000000002 /* Build configuration list for PBXNativeTarget "SpeakItShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E40000000000000000000003 /* Debug */,
+				E40000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AE0000000000000000000005 /* Build configuration list for PBXNativeTarget "SpeakItUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AE0000000000000000000003 /* Debug */,
+				AE0000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D10000000000000000000001 /* Project object */;
+}

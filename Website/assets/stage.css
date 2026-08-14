@@ -1,0 +1,1593 @@
+/* ==========================================================================
+   Speak It — marketing site
+   -------------------------------------------------------------------------
+   The app's listening indicator sits in the gap in the headline, a day's worth
+   of spoken thoughts scatters out of it and is drawn back in on scroll, and
+   from there the page shows rather than tells: a capture demo you can talk to,
+   one phone that changes screen as you scroll past it, and the seven ways in.
+
+   The type, palette and component shapes are the app's: system sans throughout
+   (the app has no serif anywhere), the palette lifted verbatim from
+   SpeakIt/Components/SpeakItTheme.swift, and no brand accent — emphasis comes
+   from weight, scale and whitespace. Light only, because that is the app's
+   light appearance.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* speakBackground / speakSurface / speakInk / speakMuted / speakDivider */
+  --bg:       #F8F8F6;
+  --bg-rgb:   248 248 246;
+  --surface:  #FFFFFF;
+  --ink:      #0E0E0E;
+  --ink-rgb:  14 14 14;
+  --muted:    #6B6B6B;
+  --line:     #D6D6D6;
+
+  /* The app is SF and nothing else. No webfont, so no network request and no
+     silent fallback to a face the app never uses. */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+          "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+
+  /* the indicator's diameter drives the hero's gap */
+  --u: min(258px, 30vh, 54vw);
+
+  --page:   1280px;
+
+  /* One gutter for the whole page, so there is one place to make the safe area
+     count. On a notched iPhone in landscape the inset is on one side only;
+     taking the larger of the two keeps the page symmetrical rather than shunted
+     off centre, which is what a one-sided padding looks like. */
+  --gutter-base: clamp(20px, 4vw, 56px);
+  --gutter: max(var(--gutter-base), env(safe-area-inset-left), env(safe-area-inset-right));
+
+  /* The top bar's height, so anything that has to sit clear of it — the sticky
+     phone in the walk — can say so rather than guess. stage.js measures the bar
+     and overwrites this; the value here is what that measurement comes to at
+     the default type size, and is only used before the first frame. */
+  --bar: 76px;
+
+  --ease:   cubic-bezier(.22, .61, .36, 1);
+  --swift:  cubic-bezier(.32, .72, 0, 1);
+}
+
+/* ------------------------------------------------------------------ reset -- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.06; }
+p, blockquote, figure { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+
+/* Several components below set a `display`, which would otherwise beat the
+   user-agent rule for `hidden` and leave a "closed" panel on screen. */
+[hidden] { display: none !important; }
+
+:focus-visible {
+  outline: 1.5px solid var(--ink);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.u-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 60;
+  padding: 12px 18px;
+  background: var(--ink);
+  color: var(--bg);
+}
+.skip-link:focus { left: 0; }
+
+/* The app's own small-caps label, used for every section's eyebrow. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ================================ top bar ================================= */
+
+.topbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* Safari's own chrome already eats the top inset, so this is 18px in a tab and
+     the island's clearance when the page is installed to the Home Screen. */
+  padding: max(18px, env(safe-area-inset-top)) var(--gutter) 18px;
+  transition: background-color .4s var(--ease), border-color .4s var(--ease);
+  border-bottom: 1px solid transparent;
+}
+/* The opening supplies its own soft top edge; past it the page scrolls plainly
+   and the bar has to bring its own backdrop. */
+.is-past-opening .topbar {
+  background: rgb(var(--bg-rgb) / .86);
+  backdrop-filter: saturate(150%) blur(14px);
+  -webkit-backdrop-filter: saturate(150%) blur(14px);
+  border-bottom-color: var(--line);
+}
+
+/* Where you are in the page, as one hairline. */
+.topbar__progress {
+  position: absolute;
+  left: 0; bottom: -1px;
+  height: 1px;
+  width: calc(var(--sp, 0) * 100%);
+  background: var(--ink);
+  opacity: .3;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.wordmark__glyph { width: 17px; height: 17px; }
+
+.topbar__cta {
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity .22s var(--ease), transform .22s var(--swift);
+}
+.topbar__cta:active { transform: scale(.97); }
+
+/* ========================= the listening indicator ========================= */
+
+/* Fixed to the viewport, then moved so its centre lands on the gap in the
+   headline — the type decides where it goes, not the other way round. It
+   leaves as the last thought goes into it. */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  translate: 0 var(--gap-y, 0px);
+  opacity: calc(1 - var(--gone, 0));
+}
+
+.orb {
+  --spread: 0;      /* breath + energy, added to every ring */
+  --cs: 1;          /* core scale */
+  --level: 0;       /* 0…1, how much is going in */
+  --ring-a: .5;     /* opacity of the innermost ring */
+
+  position: relative;
+  width: var(--u);
+  height: var(--u);
+  display: grid;
+  place-items: center;
+}
+
+/* A disc of paper that travels with the indicator, so headline type can pass
+   close to it without ever colliding with it. */
+.orb__halo {
+  position: absolute;
+  width: calc(var(--u) * 1.34);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgb(var(--bg-rgb)) 0 32%,
+    rgb(var(--bg-rgb) / .9) 43%,
+    rgb(var(--bg-rgb) / 0) 55%);
+}
+
+.orb__ring {
+  position: absolute;
+  width: calc(var(--u) * .73);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgb(var(--ink-rgb) / calc(var(--ring-a) - var(--i) * .1));
+  transform: scale(calc(.84 + var(--i) * .13 + var(--spread) * (1 + var(--i) * .34)));
+  transition: border-color .8s var(--ease);
+}
+
+.orb__core {
+  position: relative;
+  width: calc(var(--u) * .313);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--ink);
+  /* kept inside the rings: a wider shadow spills past the halo and reads as a
+     visible disc against the page */
+  box-shadow: 0 12px 30px rgb(var(--ink-rgb) / .17);
+  display: grid;
+  place-items: center;
+  transform: scale(var(--cs));
+}
+
+.orb__wave {
+  width: 48%;
+  height: auto;
+  overflow: visible;
+  transform: scaleY(calc(.72 + var(--level) * .5));
+  transition: transform .3s var(--ease);
+}
+.orb__wave rect {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: bar var(--t) var(--d) ease-in-out infinite alternate;
+}
+@keyframes bar {
+  from { transform: scaleY(.4); }
+  to   { transform: scaleY(1); }
+}
+
+.orb[data-state="live"] { --ring-a: .5; }
+.orb[data-state="calm"] { --ring-a: .26; }
+
+/* ================================ the page ================================ */
+
+main { position: relative; z-index: 2; }
+
+/* ------------------------------------------------------------ opening ----- */
+
+/* A short scroll with one pinned frame. `--p` runs 0 → 1 across it and is set
+   by stage.js; the collapse, the fade, the hint and the download block all
+   derive from it, so the sequence is a single number and scrubs in both
+   directions.
+
+   The scrolling part is the height minus one viewport. 138svh is a little over
+   a third of a screen, and every part of the sequence is finished by the time
+   the frame lets go — there is no dead scroll to sit through afterwards. */
+.opening {
+  --p: 0;
+  --fade: 1;   /* the thoughts' own opacity, held until the very end */
+  --tell: 1;   /* the scroll hint */
+  --show: 0;   /* the download block, arriving as the thoughts leave */
+  position: relative;
+  height: 138svh;
+}
+
+.opening__pin {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  display: grid;
+  place-items: center;
+  padding-inline: var(--gutter);
+  text-align: center;
+  overflow: clip;
+}
+
+/* Every bubble is positioned by stage.js from one transform, so the entrance
+   scatter, the idle drift and the scroll collapse compose into a single write
+   per frame instead of fighting each other over separate properties. */
+.field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: var(--fade);
+}
+
+.bubble {
+  grid-area: 1 / 1;
+  /* stage.js owns `transform` and `opacity`; nothing else may touch them.
+     Hidden until it does, so a page whose script never runs shows the hero on
+     its own rather than a pile of bubbles stacked on the headline. */
+  opacity: 0;
+  will-change: transform;
+}
+
+.bubble span {
+  position: relative;
+  display: block;
+  padding: 8px 15px 9px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: nowrap;
+  box-shadow: 0 10px 26px rgb(var(--ink-rgb) / .055);
+}
+
+/* The tail. It is what turns a pill into something somebody said — a small
+   square of the same surface, rotated into the corner and given only the two
+   borders that fall outside the bubble. */
+.bubble span::after {
+  content: "";
+  position: absolute;
+  bottom: -5.5px;
+  left: 19px;
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-bottom-right-radius: 3px;
+  transform: rotate(52deg) skew(-8deg, -8deg);
+}
+/* every other one is a different speaker, talking from the other side */
+.bubble--r span::after {
+  left: auto; right: 19px;
+  transform: rotate(38deg) skew(8deg, 8deg);
+}
+
+/* The opening's own soft edges. They sit above the field and below the copy,
+   so a thought swinging past twelve or six dissolves into the page instead of
+   colliding with the eyebrow or the download block. */
+.opening__edge {
+  position: absolute;
+  left: 0; right: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.opening__edge--top {
+  top: 0;
+  height: 18svh;
+  background: linear-gradient(to bottom,
+    rgb(var(--bg-rgb)) 24%, rgb(var(--bg-rgb) / .84) 56%, rgb(var(--bg-rgb) / 0) 100%);
+}
+.opening__edge--bottom {
+  bottom: 0;
+  height: 22svh;
+  background: linear-gradient(to top,
+    rgb(var(--bg-rgb)) 30%, rgb(var(--bg-rgb) / .84) 60%, rgb(var(--bg-rgb) / 0) 100%);
+}
+
+.opening__eyebrow {
+  position: absolute;
+  /* proportional while there is height to be proportional with, and clear of
+     the bar once there is not */
+  top: max(9.5vh, calc(var(--bar) + 10px));
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+}
+
+/* One centred stack: headline, standfirst, and the slot the download block
+   arrives in. They are all in normal flow, so no amount of type or viewport
+   can make one overlap another — the indicator is what moves to meet the gap,
+   not the copy that moves to clear the indicator. */
+.hero {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+}
+
+.hero__title {
+  display: grid;
+  justify-items: center;
+  font-size: clamp(38px, 6.6vw, 82px);
+  font-weight: 600;
+  line-height: 1.0;
+  letter-spacing: -.035em;
+  text-wrap: balance;
+}
+/* the indicator is moved to sit in this gap */
+.hero__gap { height: calc(var(--u) * .98); }
+
+/* There is no arrangement of an ellipse that clears a full-width headline at
+   twelve and six o'clock and still clears the copy underneath. So the thoughts
+   are allowed to pass behind the words, and every block of type carries a disc
+   of paper that dissolves them as they cross — the same halo the indicator
+   uses, for the same reason. */
+.hero__line,
+.hero__foot {
+  position: relative;
+  isolation: isolate;
+}
+.hero__line::before,
+.hero__foot::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%; top: 50%;
+  translate: -50% -50%;
+  width: calc(100% + 15vw);
+  height: 215%;
+  background: radial-gradient(50% 50% at 50% 50%,
+    rgb(var(--bg-rgb)) 0 44%,
+    rgb(var(--bg-rgb) / .88) 64%,
+    rgb(var(--bg-rgb) / 0) 100%);
+}
+/* The foot is a wide, short block with a bubble able to cross it anywhere, so
+   its paper holds full strength further out than the headline's does. */
+.hero__foot::before {
+  width: calc(100% + 26vw);
+  height: 165%;
+  background: radial-gradient(50% 50% at 50% 50%,
+    rgb(var(--bg-rgb)) 0 58%,
+    rgb(var(--bg-rgb) / .94) 78%,
+    rgb(var(--bg-rgb) / 0) 100%);
+}
+
+.hero__foot {
+  margin-top: clamp(22px, 4vh, 42px);
+  width: min(680px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+
+.hero__sub {
+  max-width: 34ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-wrap: balance;
+}
+
+/* One slot, two occupants. Both are laid into the same grid cell so the
+   headline above never moves as they trade places. */
+.hero__slot {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  width: 100%;
+}
+.hero__slot > * { grid-area: 1 / 1; }
+
+.hint {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: var(--tell);
+  pointer-events: none;
+}
+.hint__rule {
+  width: 1px;
+  height: 34px;
+  background: linear-gradient(to bottom, var(--line), rgb(var(--bg-rgb) / 0));
+}
+
+.hero__get {
+  opacity: var(--show);
+  translate: 0 calc((1 - var(--show)) * 12px);
+  pointer-events: none;
+}
+.hero__get.is-ready { pointer-events: auto; }
+
+/* ------------------------------------------------------------------ get --- */
+
+.get {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 3vw, 32px);
+  flex-wrap: wrap;
+}
+
+.appstore {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px 12px 20px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  transition: opacity .22s var(--ease), transform .22s var(--swift);
+}
+.appstore:active { transform: scale(.98); }
+.appstore__glyph { width: 22px; height: 22px; }
+.appstore__text  { display: grid; text-align: left; }
+.appstore__small { font-size: 10px; letter-spacing: .06em; opacity: .74; }
+.appstore__big   { font-size: 16px; font-weight: 600; line-height: 1.2; }
+
+.qr {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.qr img {
+  width: 74px; height: 74px;
+  padding: 7px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+}
+.qr__label {
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  color: var(--muted);
+}
+.qr__label b { display: block; font-weight: 500; color: var(--ink); }
+
+/* ============================ shared sections ============================= */
+
+.shell {
+  width: 100%;
+  max-width: var(--page);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.section {
+  position: relative;
+  padding-block: clamp(76px, 12vh, 128px);
+}
+.section--tint {
+  background: var(--surface);
+  border-block: 1px solid var(--line);
+}
+
+.section__head {
+  display: grid;
+  gap: 12px;
+  max-width: 44ch;
+  margin-bottom: clamp(38px, 6vh, 60px);
+}
+.section__head--centre {
+  justify-items: center;
+  text-align: center;
+  margin-inline: auto;
+}
+.section__title {
+  font-size: clamp(28px, 3.6vw, 46px);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  text-wrap: balance;
+}
+.section__sub {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------- controls --- */
+
+.btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px 22px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: opacity .2s var(--ease), transform .2s var(--swift);
+}
+.btn--solid { background: var(--ink); color: var(--bg); }
+.btn--solid:active { transform: scale(.98); }
+
+/* The app's own quiet secondary action — a grey capsule, never an outline. */
+.ghost {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(var(--ink-rgb) / .06);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .2s var(--ease), transform .2s var(--swift);
+}
+.ghost:active { transform: scale(.98); }
+.ghost svg { width: 17px; height: 17px; }
+
+.chip {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 15px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .2s var(--ease), border-color .2s var(--ease), transform .2s var(--swift);
+}
+.chip:active { transform: scale(.97); }
+
+/* ============================== the demo ================================== */
+
+/* The app's capture screen, running in the page. Same indicator, same two
+   lines of copy, same "Type instead" escape hatch. */
+.demo {
+  display: grid;
+  gap: clamp(26px, 4vh, 40px);
+  justify-items: center;
+}
+
+.demo__stage {
+  width: 100%;
+  max-width: 640px;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+
+.mic {
+  --u: clamp(150px, 21vw, 186px);
+  display: grid;
+  place-items: center;
+  width: var(--u);
+  height: var(--u);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform .25s var(--swift);
+}
+.mic:active:not([disabled]) { transform: scale(.98); }
+
+/* Listening is the one place the page raises its voice, and it does it the way
+   the app does: the rings open up and the core holds a soft ring of ink. */
+.demo.is-listening .orb__core {
+  box-shadow: 0 12px 30px rgb(var(--ink-rgb) / .2),
+              0 0 0 6px rgb(var(--ink-rgb) / .07);
+}
+
+.demo__state {
+  font-size: clamp(22px, 2.6vw, 28px);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  text-align: center;
+}
+.demo__hint {
+  margin-top: -12px;
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* What is being heard, as it arrives. It holds its height so the buttons below
+   do not hop the moment the first word lands. */
+.demo__live {
+  min-height: 3.2em;
+  max-width: 32ch;
+  font-size: clamp(18px, 2vw, 22px);
+  line-height: 1.45;
+  letter-spacing: -.015em;
+  text-align: center;
+  text-wrap: balance;
+}
+.demo__live:empty { min-height: 0; }
+.demo__live .is-interim { color: var(--muted); }
+
+.demo__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.demo__form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+  max-width: 520px;
+}
+.demo__input {
+  font: inherit;
+  font-size: 15px;
+  flex: 1 1 18rem;
+  min-width: 0;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color .2s var(--ease);
+}
+.demo__input::placeholder { color: var(--muted); }
+.demo__input:focus { border-color: var(--ink); }
+
+.demo__chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.demo__note {
+  max-width: 52ch;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------- the verdict - */
+
+/* Where it landed, drawn as the app draws it: a real Today row or a real
+   Memory entry, beside the reason and the words that were kept. */
+.verdict {
+  width: 100%;
+  max-width: 900px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(24px, 4vw, 52px);
+  padding: clamp(22px, 3vw, 32px);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--bg);
+}
+
+.verdict.is-new { animation: land .5s var(--swift); }
+@keyframes land {
+  from { opacity: 0; translate: 0 14px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+
+.verdict__side { display: grid; gap: 8px; align-content: start; }
+
+.verdict__where {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.verdict__where b {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -.02em;
+}
+
+.verdict__why {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.verdict__said {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.verdict__block { display: grid; gap: 7px; }
+.verdict__block + .verdict__block {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* --------------------------------------------------------- the app pieces - */
+
+/* One Today section head and one row, at the app's own proportions. */
+.approw {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 13px 15px 15px;
+  display: grid;
+  gap: 11px;
+  box-shadow: 0 18px 40px rgb(var(--ink-rgb) / .05);
+}
+.approw__head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.approw__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.approw__check {
+  width: 20px; height: 20px;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+}
+.approw__mark {
+  width: 20px; height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+}
+.approw__mark svg { width: 11px; height: 11px; }
+.approw__body  { display: grid; gap: 3px; min-width: 0; }
+.approw__title {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.approw__meta  { font-size: 12px; color: var(--muted); }
+.approw__time  {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ================================ the walk ================================ */
+
+/* One phone, held still, changing screen as the steps scroll past it. There is
+   nothing to click: scroll position is the only control, and the dots are an
+   indicator rather than a set of buttons. */
+.walk {
+  position: relative;
+  padding-block: clamp(40px, 8vh, 90px);
+}
+.walk__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(40px, 8vw, 110px);
+  align-items: start;
+}
+
+/* The phone stays pinned for as long as this column is tall, so it carries a
+   little extra past the last step — otherwise the phone starts sliding out
+   from under the top bar while the last step is still being read. */
+.walk__steps {
+  grid-column: 1;
+  grid-row: 1;
+  padding-bottom: clamp(40px, 12vh, 130px);
+}
+.walk__device {
+  grid-column: 2;
+  grid-row: 1;
+  position: sticky;
+  top: max(14vh, 92px);
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+}
+
+.step {
+  min-height: 78vh;
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  max-width: 430px;
+  /* the step being shown on the phone is the one that is lit */
+  opacity: .3;
+  transition: opacity .55s var(--ease);
+}
+.step.is-on { opacity: 1; }
+.step .eyebrow, .step__title, .step__body { max-width: 32ch; }
+/* the worked example sits a little clear of the sentence that introduces it */
+.step .said, .step .approw { margin-top: 10px; }
+.step__title {
+  font-size: clamp(30px, 4vw, 50px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -.035em;
+}
+.step__body {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.phone {
+  /* published so a mark drawn over the screen can scale its corners with the
+     device instead of holding one pixel radius at every size */
+  --pw: clamp(210px, 23vw, 268px);
+  width: var(--pw);
+  padding: 9px;
+  border-radius: 44px;
+  background: #121212;
+  box-shadow: 0 32px 70px rgb(var(--ink-rgb) / .16);
+}
+.phone__screen {
+  position: relative;
+  aspect-ratio: 1260 / 2736;
+  border-radius: 36px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.shot {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .5s var(--ease);
+}
+.shot.is-active { opacity: 1; }
+.shot img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Draws the eye to the one row the step is about. It arrives a beat after the
+   screen has crossfaded, so the reader sees the screen first and then where to
+   look — the other order reads as a highlight that was already there. */
+.pin {
+  position: absolute;
+  top: var(--t);
+  left: var(--l);
+  width: var(--w);
+  height: var(--h);
+  border: 1.5px solid var(--ink);
+  border-radius: 11px;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity .45s var(--ease), transform .45s var(--swift);
+  box-shadow: 0 8px 22px rgb(var(--ink-rgb) / .16);
+}
+.shot.is-active .pin {
+  opacity: 1;
+  transform: scale(1);
+  /* Long enough to read as "screen first, then the mark", short enough that
+     somebody scrolling briskly still sees it arrive rather than finding it
+     already there — or, worse, scrolling past before it shows up. */
+  transition-delay: .16s;
+}
+
+/* The second mark on a screen: where the thing that was kept goes to live,
+   rather than the thing itself. Quieter than the row's ring and a beat behind
+   it, so the two are read in order instead of competing. */
+/* A dashed hairline disappears at this size — the phone is 268px wide at most,
+   so the second mark is a wash with a solid edge rather than a lighter line.
+   It is laid exactly over the collection card's own border box — box-sizing is
+   border-box, so the percentages put the two edges on top of each other and the
+   card reads as selected rather than as a card with a ring around it.
+
+   The radius is the card's own, taken from the app rather than measured off the
+   picture: the collection card in LibraryView.swift is
+   `RoundedRectangle(cornerRadius: 20, style: .continuous)`, and the screenshot
+   is a 420pt-wide device at @3x, so the radius is 20/420 of the screen's width
+   whatever size the phone is drawn at.
+
+   `.continuous` is Apple's squircle and `border-radius` is a circular arc, so
+   the two are not the same curve and cannot be made to be. `--squircle` is the
+   fudge that makes a circular arc read like the corner beside it; the nominal
+   ratio is exact and only that factor is taste. */
+.pin--soft {
+  --squircle: .84;
+  border-color: rgb(var(--ink-rgb) / .78);
+  border-radius: calc((var(--pw) - 18px) * (20 / 420) * var(--squircle));
+  background: rgb(var(--ink-rgb) / .07);
+  box-shadow: none;
+}
+.shot.is-active .pin--soft { transition-delay: .34s; }
+
+.walk__dots {
+  display: flex;
+  gap: 7px;
+}
+.walk__dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background-color .4s var(--ease), transform .4s var(--swift);
+}
+.walk__dot.is-on {
+  background: var(--ink);
+  transform: scale(1.25);
+}
+
+/* The two sentences the example follows, drawn as the opening's bubbles are so
+   the page keeps one idea of what "something you said" looks like. These are
+   static — the opening's are positioned frame by frame from JavaScript — so
+   they carry their own tail rather than sharing the class. */
+.said {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+.said__bubble--r { justify-self: end; }
+
+.said__bubble span {
+  position: relative;
+  display: block;
+  max-width: 30ch;
+  padding: 11px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  box-shadow: 0 10px 26px rgb(var(--ink-rgb) / .05);
+}
+.said__bubble span::after {
+  content: "";
+  position: absolute;
+  bottom: -5.5px;
+  left: 21px;
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-bottom-right-radius: 3px;
+  transform: rotate(52deg) skew(-8deg, -8deg);
+}
+.said__bubble--r span::after {
+  left: auto; right: 21px;
+  transform: rotate(38deg) skew(8deg, 8deg);
+}
+
+/* ------------------------------------------------------------- surfaces --- */
+
+/* Seven does not divide into a grid, and `auto-fit` leaves the remainder
+   stranded against the left edge. Flex with a fixed basis puts four on the
+   first row and centres the three that are left, so the odd number reads as
+   arranged rather than as a row that ran out. */
+.surfaces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.surface {
+  flex: 0 1 calc(25% - 9px);
+  min-width: 200px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 22px 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--bg);
+  transition: transform .35s var(--swift), border-color .35s var(--ease),
+              box-shadow .35s var(--ease);
+}
+.surface__icon {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--ink);
+}
+.surface__icon svg { width: 23px; height: 23px; }
+.surface__name { font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; }
+.surface__note { font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+
+/* --------------------------------------------------------------- pledge --- */
+
+.pledge {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: clamp(28px, 5vw, 64px);
+}
+.pledge__item {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.pledge__icon { margin-bottom: 8px; color: var(--ink); }
+.pledge__icon svg { width: 24px; height: 24px; }
+.pledge__name {
+  font-size: clamp(19px, 2vw, 23px);
+  font-weight: 600;
+  letter-spacing: -.025em;
+}
+.pledge__note { font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+
+/* --------------------------------------------------------------- finale --- */
+
+.finale {
+  position: relative;
+  z-index: 9;
+  padding: 12vh var(--gutter) 9vh;
+}
+.finale__inner {
+  max-width: 820px;
+  margin-inline: auto;
+  display: grid;
+  justify-items: center;
+  gap: 24px;
+  text-align: center;
+}
+.finale__title {
+  font-size: clamp(29px, 4.2vw, 50px);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  max-width: 19ch;
+  text-wrap: balance;
+}
+
+.plans {
+  width: 100%;
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(24px, 5vw, 64px);
+  text-align: left;
+}
+.plan {
+  display: grid;
+  gap: 11px;
+  align-content: start;
+  padding-top: 20px;
+  border-top: 1px solid var(--ink);
+}
+.plan__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+/* The one filled badge on the page. The sale is the only thing here that is
+   temporary, so it is the only thing that raises its voice. */
+.plan__tag {
+  padding: 4px 9px 5px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+}
+.plan__price {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.plan__was {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--muted);
+  text-decoration-thickness: 1.5px;
+}
+.plan__period { font-size: 15px; font-weight: 400; color: var(--muted); }
+.plan__note { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.plan__list {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.finale .get { margin-top: 26px; }
+
+.finale__foot {
+  margin-top: 22px;
+  max-width: 46ch;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------- footer --- */
+
+.footer {
+  position: relative;
+  z-index: 9;
+  max-width: var(--page);
+  margin-inline: auto;
+  padding: 38px var(--gutter) calc(44px + env(safe-area-inset-bottom));
+  display: grid;
+  justify-items: center;
+  gap: 17px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.footer__links {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.footer__legal { font-size: 11px; color: var(--muted); }
+
+/* ================================ reveals ================================= */
+
+.reveal {
+  opacity: 0;
+  translate: 0 20px;
+  filter: blur(6px);
+  transition: opacity .8s var(--ease), translate .8s var(--swift), filter .8s var(--ease);
+}
+.reveal.is-in {
+  opacity: 1;
+  translate: 0 0;
+  filter: blur(0);
+}
+
+/* ================================ pointer ================================= */
+
+/* Every hover state on the page lives here, behind a pointer that can actually
+   hover. A touch browser resolves `:hover` on tap and then leaves it resolved
+   until something else is tapped, so an unguarded hover reads on iPhone as a
+   card that stayed lifted, or a chip that stayed dark, after you scrolled on.
+   The `:active` states stay where their components are: those are the press
+   feedback, and they are right on both. */
+@media (hover: hover) {
+  .topbar__cta:hover { opacity: .84; }
+  .appstore:hover    { opacity: .86; }
+  .btn--solid:hover  { opacity: .86; }
+  .ghost:hover       { background: rgb(var(--ink-rgb) / .1); }
+  .chip:hover        { color: var(--ink); border-color: var(--ink); }
+  .mic:hover:not([disabled]) { transform: scale(1.02); }
+  .surface:hover {
+    transform: translateY(-3px);
+    border-color: rgb(var(--ink-rgb) / .28);
+    box-shadow: 0 18px 40px rgb(var(--ink-rgb) / .06);
+  }
+  .footer__links a:hover { color: var(--ink); }
+}
+
+/* A finger is not a cursor. Everything that can be tapped is brought up to
+   Apple's 44pt minimum, and the tap flash is dropped because every control here
+   already answers a press by scaling — the grey rectangle is a second, louder
+   answer to the same touch. Keyed on the pointer rather than the width, so a
+   touch laptop gets it and a narrow desktop window does not. */
+@media (pointer: coarse) {
+  a, button, input, .chip, .ghost { -webkit-tap-highlight-color: transparent; }
+
+  .topbar__cta { min-height: 44px; display: inline-flex; align-items: center; }
+  .wordmark    { padding-block: 11px; margin-block: -11px; }
+  .ghost       { min-height: 44px; }
+  .chip        { min-height: 44px; padding-inline: 17px; }
+  .btn         { min-height: 44px; }
+  .appstore    { min-height: 48px; }
+
+  /* iOS zooms the page in when a focused field is under 16px, and then leaves
+     the page zoomed — the section the reader was in is off to one side when
+     they look up. 16px is the whole fix. */
+  .demo__input { font-size: 16px; min-height: 44px; }
+
+  /* The links are set in a row of small type, so they are given their target in
+     padding and the row is closed back up with a negative margin — the footer
+     keeps its spacing and the taps stop landing between two of them. */
+  .footer__links { gap: 8px 14px; margin-block: -12px; }
+  .footer__links a { padding: 12px 8px; }
+}
+
+/* ============================ short viewports ============================= */
+
+/* The hero stacks a headline, an indicator, a standfirst and the download
+   block in one screen. Under about 800px of height it gives up the QR first
+   and then some of the indicator, rather than letting anything crowd. */
+@media (max-height: 800px) and (min-width: 901px) {
+  :root { --u: min(206px, 26vh); }
+  .hero__title { font-size: clamp(34px, 5vw, 58px); }
+  .opening__eyebrow { top: max(7vh, calc(var(--bar) + 8px)); }
+  .hero__foot { margin-top: 20px; gap: 13px; }
+  .hero__slot { min-height: 80px; }
+  /* Same correction the landscape tier makes, and for the same reason: once the
+     bar and the eyebrow are a real share of the height, centring the stack in
+     the whole frame puts the headline behind them. */
+  .hero { translate: 0 calc((var(--bar) + 34px) / 2); }
+}
+@media (max-height: 680px) and (min-width: 901px) {
+  .hero__foot .qr { display: none; }
+}
+
+/* ============================== narrow screens ============================ */
+
+@media (max-width: 900px) {
+  :root { --u: min(128px, 19vh); }
+
+  /* The halo stays. It used to be dropped here, on the grounds that the cloud
+     never came near the indicator on a phone — but the cloud is drawn close in
+     now, so a thought does pass the indicator, and the disc of paper is what
+     dissolves it as it goes by. It reaches barely past the rings, so it is only
+     ever the indicator it protects; the headline is well outside it. */
+
+  .opening { height: 132svh; }
+  .opening__eyebrow { top: max(7.5vh, calc(var(--bar) + 8px)); }
+  /* The long ones wrap here. A phone held upright is narrower than the
+     sentences on it, and a thought kept to one line has to be either half off
+     the screen or sitting on the indicator — there is no radius that avoids
+     both. Two lines cost nothing: the walk's bubbles are already set this way,
+     so the page keeps one idea of what something somebody said looks like, and
+     the cloud can come in close and still be read end to end. Sideways there is
+     width to spare, and that tier keeps them on one line. */
+  .bubble span {
+    font-size: 12px;
+    padding: 7px 12px 8px;
+    border-radius: 14px;
+    white-space: normal;
+    /* Tuned against both ends at once: wider and the longest thought pushes the
+       cloud out past the screen again, narrower and short thoughts start
+       breaking that had no need to. At 36vw three of the seven take a second
+       line and the widest ends 2px past the edge. */
+    max-width: 36vw;
+  }
+  .bubble span::after { width: 8px; height: 8px; bottom: -4.5px; left: 15px; }
+  .bubble--r span::after { left: auto; right: 15px; }
+  /* half as many, so what is left is still evenly spaced around the ring and a
+     375px screen is not wall-to-wall speech */
+  .bubble:nth-child(even) { display: none; }
+
+  /* the lines are short here and the cloud is close, so the paper behind each
+     one has to reach further past it */
+  .hero__line::before { width: calc(100% + 34vw); height: 300%; }
+  .hero__foot::before { width: calc(100% + 40vw); }
+
+  .hero__title { font-size: clamp(30px, 8.4vw, 44px); }
+  .hero__foot { margin-top: 22px; gap: 14px; }
+  .hero__sub { font-size: 15px; }
+  /* only the badge lands here — the QR is pointless on the phone that would be
+     scanning it */
+  .hero__slot { min-height: 76px; }
+  .hero__foot .qr { display: none; }
+  /* The hint is the only thing that says the opening is a sequence rather than
+     a picture, and a phone has no scrollbar to say it instead — so it stays,
+     with a shorter rule to suit the height it has. */
+  .hint { gap: 8px; font-size: 9.5px; }
+  .hint__rule { height: 22px; }
+
+  .demo__form .btn { width: 100%; }
+  .verdict { grid-template-columns: 1fr; gap: 22px; padding: 20px; }
+
+  /* A grid item's sticky positioning is confined to its own grid area, so the
+     phone could only ever stick for its own height. Dropping to block flow
+     gives it the whole column to stick through; it sits above the steps and
+     they pass underneath it. */
+  .walk__grid { display: block; }
+  .walk__device {
+    position: sticky;
+    /* under the bar, not behind it: the bar is opaque from the opening onwards,
+       so anything that sticks to the top of the screen has to stop below it or
+       lose its top edge to it */
+    top: calc(var(--bar) + 10px);
+    z-index: 3;
+    margin-inline: auto;
+    padding-bottom: 16px;
+    width: max-content;
+  }
+  /* The step text scrolls up into the phone, so the phone needs paper behind
+     it — otherwise a line of type crosses the bezel and reads as a bug rather
+     than as something passing behind. The plate reaches past both edges of the
+     screen and gives out below the phone, so type dissolves into the page. */
+  .walk__device::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    left: -50vw; right: -50vw;
+    top: -12vh; bottom: 0;
+    background: linear-gradient(to bottom,
+      rgb(var(--bg-rgb)) 0 80%, rgb(var(--bg-rgb) / 0) 100%);
+  }
+  /* Bounded by the height as well as the width. The phone and the step it is
+     illustrating have to share one screen here, and on a 667pt iPhone a device
+     sized only against the width leaves the text no room to land in. */
+  .phone { --pw: min(150px, 34vw, 20vh); }
+  .walk__steps { position: relative; z-index: 1; }
+  /* Centred rather than bottomed. stage.js lights the step whose middle is
+     nearest the reading line, and on this layout that line is the middle of the
+     band under the phone — so a centred step arrives with its text in that band
+     instead of still climbing into it from below the fold. */
+  .step {
+    min-height: 66vh;
+    max-width: none;
+    align-content: center;
+    padding-bottom: 0;
+  }
+  .said__bubble span { font-size: 13.5px; padding: 10px 14px 11px; max-width: 27ch; }
+  .step__title { font-size: clamp(27px, 8vw, 38px); }
+  .step__body { font-size: 16px; }
+
+  .surfaces { gap: 10px; }
+  .surface { flex-basis: calc(50% - 5px); min-width: 0; padding: 18px 16px 20px; }
+
+  .finale { padding: 10vh var(--gutter) 6vh; }
+  .finale__inner { justify-items: start; text-align: left; }
+  .finale__title { max-width: none; }
+  .plans { grid-template-columns: 1fr; gap: 28px; }
+  .finale .get { justify-content: flex-start; }
+}
+
+@media (max-width: 560px) {
+  .surface { flex-basis: 100%; }
+}
+
+@media (max-width: 480px) {
+  .finale .qr { display: none; }
+
+  /* Below this the time column squeezes the title into a column of single
+     words, so the row does what the app's own row does and puts the time on
+     its own line under the title. */
+  .approw__row { grid-template-columns: auto minmax(0, 1fr); }
+  .approw__time { grid-column: 2; grid-row: 2; justify-self: start; }
+}
+
+/* ============================== in between =============================== */
+
+/* A tablet standing up, and a desktop window dragged narrow. Both come through
+   the 900px tier above, which is written for a phone — so on a 768pt iPad the
+   page arrives correct but under-scaled, an indicator and a device drawn for a
+   screen half the size. The stacked arrangement is right here; only the sizes
+   are wrong, so only the sizes are restated. Held off landscape phones, which
+   share these widths and need the opposite, by asking for the height. */
+@media (min-width: 620px) and (max-width: 900px) and (min-height: 600px) {
+  :root { --u: min(196px, 23vh); }
+
+  .hero__title { font-size: clamp(40px, 6.6vw, 60px); }
+  .hero__sub { font-size: 17px; max-width: 40ch; }
+  .hero__slot { min-height: 88px; }
+
+  .surface { flex-basis: calc(33.333% - 7px); }
+
+  .phone { --pw: min(216px, 27vw, 23vh); }
+  .step__title { font-size: clamp(34px, 5vw, 44px); }
+
+  /* wide enough for the two plans to stand side by side again, which is the
+     comparison the section is for */
+  .finale__inner { justify-items: center; text-align: center; }
+  .finale__title { max-width: 19ch; }
+  .plans { grid-template-columns: 1fr 1fr; gap: clamp(28px, 5vw, 56px); }
+  .finale .get { justify-content: center; }
+}
+
+/* ============================ a phone on its side ========================= */
+
+/* Every iPhone turned sideways, and nothing else. Landscape is where the two
+   halves of the page pull in opposite directions: the widths run from 667 to
+   956 — straddling the 900px line the rest of the sheet is organised around —
+   while the height collapses to somewhere between 375 and 440. Asking for the
+   height alone catches all of them and no phone standing up, whose shortest
+   screen is still 667. It is last so that it wins over the width tiers above
+   for the widths they overlap on.
+
+   The whole job is the opening: a headline, the indicator, a standfirst and the
+   download block have to share about 280pt of height once the bar and the
+   eyebrow have taken theirs. Everything below scrolls and only needs to not be
+   absurd. */
+@media (max-height: 560px) {
+  :root { --u: min(78px, 20vh); }
+
+  .topbar { padding-block: 9px; }
+
+  .orb__halo { display: none; }
+
+  /* the same reduction the narrow tier makes, applied by height so that the
+     three landscape widths above 900px do not keep the desktop cloud */
+  .bubble span { font-size: 12px; padding: 7px 12px 8px; border-radius: 14px; }
+  .bubble span::after { width: 8px; height: 8px; bottom: -4.5px; left: 15px; }
+  .bubble--r span::after { left: auto; right: 15px; }
+  .bubble:nth-child(even) { display: none; }
+
+  /* Clear of the bar rather than a fraction of a height that no longer has the
+     room for one — at 390pt, 7.5vh put the eyebrow inside the bar and the
+     headline underneath both. */
+  .opening__eyebrow { top: calc(var(--bar) + 8px); }
+
+  /* The stack is centred in the frame, and at this height the frame's top is
+     already spoken for by the bar and the eyebrow — so centred meant the
+     headline started above them both. It is moved down by half the band they
+     occupy, which centres it in what is actually left. Half, because the frame
+     centres it: shifting the stack by x moves its top edge by x.
+
+     Done on the stack rather than as padding on the frame, because the frame's
+     padding box is what the cloud and the two soft edges are laid out in, and
+     they still want the whole screen. The indicator follows on its own — it is
+     placed by measuring the gap, which moves with this. */
+  .hero { translate: 0 calc((var(--bar) + 36px) / 2); }
+
+  .hero__title { font-size: clamp(24px, 6.8vh, 38px); }
+  .hero__foot { margin-top: 10px; gap: 8px; }
+  .hero__sub { font-size: 13.5px; line-height: 1.5; max-width: 48ch; }
+  .hero__slot { min-height: 48px; }
+  /* nothing to spare for a cue, and a screen this shape is obviously scrollable */
+  .hint { display: none; }
+  .get .qr { display: none; }
+
+  .section { padding-block: clamp(48px, 14vh, 90px); }
+  .section__head { margin-bottom: clamp(28px, 8vh, 48px); }
+  .mic { --u: clamp(112px, 30vh, 150px); }
+  .demo__live { min-height: 2.6em; }
+
+  /* Beside the text again. Stacking the phone above the steps costs more height
+     than this screen has; sideways there is width to spare instead, and the
+     desktop arrangement is the one that fits. */
+  .walk { padding-block: clamp(32px, 10vh, 70px); }
+  .walk__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: clamp(32px, 6vw, 80px);
+    align-items: start;
+  }
+  .walk__device {
+    top: calc(var(--bar) + 8px);
+    margin-inline: 0;
+    padding-bottom: 0;
+    width: auto;
+  }
+  .walk__device::before { display: none; }
+  /* sized so the device and its dots finish above the fold at every landscape
+     height, rather than running off the bottom of the screen */
+  .phone { --pw: min(150px, 31vh); }
+  .step {
+    min-height: 92vh;
+    max-width: 44ch;
+    align-content: center;
+    padding-bottom: 0;
+  }
+
+  .finale { padding: 8vh var(--gutter) 6vh; }
+  .footer { padding-block: 28px calc(30px + env(safe-area-inset-bottom)); }
+}
+
+/* ============================= reduced motion ============================= */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  /* No scatter and no collapse: the opening becomes a plain hero already in
+     its finished state, with the download block present rather than arriving.
+     stage.js sets the matching values. */
+  .opening { height: 100svh; }
+  .field { display: none; }
+  .hint { display: none; }
+
+  .orb__wave rect { animation: none; transform: scaleY(.72); }
+  .orb__ring, .orb__wave, .shot, .btn, .ghost, .chip, .mic, .stage,
+  .appstore, .topbar__cta, .surface, .step, .walk__dot { transition: none; }
+  /* the ring still marks the row, it just does not travel to get there */
+  .pin { transform: none; transition: opacity .01s; }
+  .verdict.is-new { animation: none; }
+
+  /* the phone still changes screen, it just does not fade between them */
+  .step { opacity: 1; }
+
+  .reveal {
+    opacity: 1;
+    translate: none;
+    filter: none;
+    transition: none;
+  }
+}
