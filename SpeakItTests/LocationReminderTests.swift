@@ -727,6 +727,153 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
+    // MARK: Fresh install → Home set → Always granted
+
+    private let unauthorized = LocationAuthorization(
+        status: .notDetermined,
+        isPrecise: true,
+        isRegionMonitoringAvailable: true
+    )
+    private let foregroundOnly = LocationAuthorization(
+        status: .whenInUse,
+        isPrecise: true,
+        isRegionMonitoringAvailable: true
+    )
+
+    /// The bug a fresh install exposed on device: "remind me when I get home"
+    /// landed under "When you have time" looking perfectly healthy, and only
+    /// admitted it was stuck once opened. The home screen read the stored
+    /// `needsClarification` while the editor computed the live blocker, so the
+    /// two disagreed.
+    func testUnconfiguredHomeReminderIsHeldForReviewNotShownAsActionable() throws {
+        // No Home, no permission — exactly a fresh install.
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home)
+        XCTAssertTrue(
+            item.requiresReview(authorization: unauthorized),
+            "an unconfigured Home reminder cannot act, so it belongs in review"
+        )
+        XCTAssertFalse(
+            item.belongsInToday(authorization: unauthorized),
+            "and must not also appear as a normal actionable task"
+        )
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "it must not quietly become a timed reminder either"
+        )
+    }
+
+    /// Precedence: the missing place is named before the missing permission,
+    /// because granting location access does not tell Speak It where home is.
+    func testMissingHomeOutranksMissingPermission() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(
+            item.locationBlocker(authorization: unauthorized),
+            .missingHome,
+            "with no Home and no permission, the actionable instruction is Set Home"
+        )
+    }
+
+    /// The three stages, on one unchanged stored intent.
+    func testHomeReminderProgressesFromMissingHomeToActive() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        let storedIntent = try XCTUnwrap(item.locationIntent)
+
+        // 1. Nothing configured.
+        XCTAssertEqual(item.locationBlocker(authorization: unauthorized), .missingHome)
+
+        // 2. Home saved — the next honest gap is background permission.
+        setHome()
+        XCTAssertEqual(
+            item.locationBlocker(authorization: foregroundOnly),
+            .alwaysPermissionRequired,
+            "with a real place to monitor, Always is now worth asking for"
+        )
+        XCTAssertTrue(item.requiresReview(authorization: foregroundOnly))
+
+        // 3. Always granted — nothing left in the way.
+        XCTAssertNil(item.locationBlocker(authorization: authorized))
+        XCTAssertFalse(
+            item.requiresReview(authorization: authorized),
+            "the item must leave review once it can actually fire"
+        )
+        XCTAssertTrue(item.belongsInToday(authorization: authorized))
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+
+        XCTAssertEqual(
+            item.locationIntent,
+            storedIntent,
+            "none of this edited the stored intent — only its resolution changed"
+        )
+    }
+
+    /// A `.home` reminder must never be described with the wording that belongs
+    /// to `"here"`. This was a real leak in the shipped copy.
+    func testBlockerCopyNamesThePlaceTheReminderIsAbout() {
+        let homePrompt = LocationReminderBlocker.permissionRequired.editorPrompt(for: .home)
+        XCTAssertTrue(homePrompt.contains("Home"))
+        XCTAssertFalse(
+            homePrompt.lowercased().contains("remind you here"),
+            "\"here\" means the captured coordinate, not Home"
+        )
+
+        let alwaysPrompt = LocationReminderBlocker.alwaysPermissionRequired.editorPrompt(for: .work)
+        XCTAssertTrue(alwaysPrompt.contains("Work"))
+    }
+
+    /// "here" is a different flow and must never be told to set Home.
+    func testHereIsNeverAskedToSetHome() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to grab my charger when I leave here",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .currentLocation)
+        let blocker = item.locationBlocker(authorization: authorized)
+        XCTAssertNotEqual(blocker, .missingHome)
+        XCTAssertNotEqual(blocker, .missingWork)
+        XCTAssertEqual(
+            blocker,
+            .locationUnavailable,
+            "an unfrozen snapshot is a location problem, not a setup problem"
+        )
+    }
+
+    /// Setting Home must not quietly satisfy a "here" reminder.
+    func testSettingHomeDoesNotResolveAHereReminder() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to grab my charger when I leave here",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        setHome()
+        XCTAssertNil(
+            item.locationIntent?.resolvedPlace,
+            "\"here\" is a snapshot and must never follow Home"
+        )
+        XCTAssertEqual(item.locationBlocker(authorization: authorized), .locationUnavailable)
+    }
+
     // MARK: A cached fix must be a *suitable* cached fix
 
     /// "Cached" cannot mean "present". A location object exists almost always,

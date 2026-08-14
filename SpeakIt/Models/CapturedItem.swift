@@ -165,6 +165,36 @@ final class CapturedItem: Identifiable {
         isLocationTriggered && (temporalKind ?? .none) != .none
     }
 
+    /// Whether this item is waiting on the person for anything at all.
+    ///
+    /// **The one predicate Today and the editor must both use.** They used to
+    /// disagree: the editor computed the live location blocker while the home
+    /// screen read only the stored `needsClarification`, so "remind me when I
+    /// get home" with no Home configured sat under "When you have time" looking
+    /// perfectly fine, and only confessed it was stuck once you opened it.
+    ///
+    /// The two halves are different in kind and that is why they must be joined
+    /// here rather than merged into one stored flag: `needsClarification` is
+    /// what the *sentence* left unresolved and is persisted, while a location
+    /// blocker is what the *device* currently lacks and must never be persisted
+    /// (see `LocationAuthorization`). Neither can be derived from the other, and
+    /// either one means the item cannot act yet.
+    @MainActor
+    func requiresReview(authorization: LocationAuthorization) -> Bool {
+        guard !isArchived, !isCompleted else { return false }
+        return needsClarification || locationBlocker(authorization: authorization) != nil
+    }
+
+    /// Today placement, judged against live device state.
+    ///
+    /// The counterpart of `requiresReview`: an item cannot be both waiting on
+    /// the person and ready to act, and computing the two from the same answer
+    /// is what stops it appearing in two sections at once.
+    @MainActor
+    func belongsInToday(authorization: LocationAuthorization) -> Bool {
+        belongsInToday && !requiresReview(authorization: authorization)
+    }
+
     /// What is stopping this place reminder from working, or `nil` when nothing
     /// is.
     ///

@@ -187,13 +187,22 @@ struct TodayView: View {
 #endif
     }
 
+    /// Read once per pass rather than per item: it is device state, identical
+    /// for every row, and querying it repeatedly inside a filter would be both
+    /// wasteful and capable of changing mid-partition.
+    private var locationAuthorization: LocationAuthorization {
+        LocationReminderMonitor.shared.authorization
+    }
+
     private var activeActions: [CapturedItem] {
-        allItems.filter(\.belongsInToday)
+        let authorization = locationAuthorization
+        return allItems.filter { $0.belongsInToday(authorization: authorization) }
     }
 
     private var needsReview: [CapturedItem] {
-        allItems
-            .filter { !$0.isArchived && !$0.isCompleted && $0.needsClarification }
+        let authorization = locationAuthorization
+        return allItems
+            .filter { $0.requiresReview(authorization: authorization) }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -765,7 +774,14 @@ struct TodayView: View {
     }
 
     private func reviewRequirementLabel(_ item: CapturedItem) -> String {
-        (item.clarificationRequirement ?? .confirmation).listLabel
+        // The live blocker wins when there is one. It knows which gap this
+        // actually is — "Set your Home location" rather than the generic "Place
+        // reminder" — and naming the wrong one sends the person looking in the
+        // wrong place.
+        if let blocker = item.locationBlocker(authorization: locationAuthorization) {
+            return blocker.listLabel
+        }
+        return (item.clarificationRequirement ?? .confirmation).listLabel
     }
 
     private func focusCard(_ item: CapturedItem) -> some View {

@@ -223,11 +223,28 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Shown in the editor, naming the place the reminder is actually about.
+    ///
+    /// Place-aware because the generic wording leaked: a `.home` reminder was
+    /// being told Speak It would "remind you here", which is the wording for
+    /// `.currentLocation` and means something different. The place is the one
+    /// thing the person already told us, so it belongs in every sentence.
+    func editorPrompt(for place: PlaceReference) -> String {
+        switch self {
+        case .permissionRequired:
+            "Allow location access so Speak It can remind you when you reach \(place.displayName)"
+        case .alwaysPermissionRequired:
+            "A place reminder has to reach you when Speak It is closed, so iOS needs location access set to “Always”. Speak It checks only whether you crossed \(place.displayName) — it does not track where you go, and nothing leaves your iPhone."
+        default:
+            editorPrompt
+        }
+    }
+
     /// Shown in the editor, above whatever the person has to supply.
     var editorPrompt: String {
         switch self {
         case .permissionRequired:
-            "Allow location access so Speak It can remind you here"
+            "Allow location access so Speak It can remind you at the place you named"
         case .permissionRevoked:
             "Location access was turned off — turn it back on to use this reminder"
         case .alwaysPermissionRequired:
@@ -296,14 +313,25 @@ enum LocationReminderResolver {
         title: String,
         authorization: LocationAuthorization
     ) -> Resolution {
-        // Permission first: it blocks every place equally, and telling someone
-        // to set a Home address they cannot use yet is the wrong instruction.
-        if let blocker = authorization.blocker {
-            return Resolution(blocker: blocker)
-        }
-
+        // Place semantics first, permission second.
+        //
+        // This order was originally the other way round, on the theory that
+        // permission blocks every place equally. That was wrong in practice, and
+        // the first fresh-install run showed it: "remind me when I get home"
+        // with no Home configured asked for *location access*, which does not
+        // tell Speak It where home is. Granting it would have changed nothing
+        // and the person would be back where they started.
+        //
+        // Setting a place is also the cheaper permission: choosing it by search
+        // needs no location access at all, and "use my current location" needs
+        // only When In Use. Always is worth asking for at the moment it is
+        // actually required — when there is a real place to monitor.
         guard let place = resolvedPlace(for: intent) else {
             return Resolution(blocker: missingPlaceBlocker(for: intent.place))
+        }
+
+        if let blocker = authorization.blocker {
+            return Resolution(blocker: blocker)
         }
 
         return Resolution(request: LocationMonitorRequest(

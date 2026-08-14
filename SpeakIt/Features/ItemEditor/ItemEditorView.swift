@@ -106,7 +106,11 @@ struct ItemEditorView: View {
                     Section {
                         locationFix(for: locationBlocker)
                     } footer: {
-                        Text(locationBlocker.editorPrompt)
+                        Text(
+                            locationBlocker.editorPrompt(
+                                for: item.locationIntent?.place ?? .currentLocation
+                            )
+                        )
                     }
                 }
 
