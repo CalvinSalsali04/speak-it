@@ -4,7 +4,21 @@
 
   ],
   "products" : [
-
+    {
+      "displayPrice" : "49.99",
+      "familyShareable" : false,
+      "internalID" : "A61F0C42",
+      "localizations" : [
+        {
+          "description" : "Permanent access to Speak It Pro, available only through a complimentary offer code.",
+          "displayName" : "Speak It Pro Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.calvinwak.SpeakIt.pro.lifetime",
+      "referenceName" : "Speak It Pro Lifetime (Code Only)",
+      "type" : "NonConsumable"
+    }
   ],
   "settings" : {
     "_applicationInternalID" : "",

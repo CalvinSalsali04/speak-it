@@ -3,6 +3,22 @@ import SwiftData
 import XCTest
 @testable import SpeakIt
 
+@MainActor
+private final class PlaceDeliveryGate {
+    private var continuation: CheckedContinuation<ReminderSchedulingResult, Never>?
+    private(set) var didStart = false
+
+    func wait() async -> ReminderSchedulingResult {
+        didStart = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func resume(with result: ReminderSchedulingResult) {
+        continuation?.resume(returning: result)
+        continuation = nil
+    }
+}
+
 /// Place reminders, from the sentence through to what CoreLocation is asked to
 /// monitor.
 ///
@@ -33,7 +49,11 @@ final class LocationReminderTests: XCTestCase {
             migrationPlan: SpeakItMigrationPlan.self,
             configurations: [configuration]
         )
-        repository = SwiftDataThoughtRepository(modelContext: container.mainContext)
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in .scheduled },
+            requestsReminderAuthorization: false
+        )
     }
 
     override func tearDownWithError() throws {
@@ -398,6 +418,34 @@ final class LocationReminderTests: XCTestCase {
             itemID,
             "a region must be traceable back to the reminder that wants it"
         )
+
+        let revised = LocationMonitorRequest(
+            itemID: itemID,
+            title: "x",
+            event: .arrive,
+            place: place,
+            repeats: false,
+            triggerRevision: 3
+        )
+        let identifier = LocationReminderMonitor.regionIdentifier(for: revised)
+        let details = LocationReminderMonitor.eventDetails(fromRegionIdentifier: identifier)
+        XCTAssertEqual(details?.itemID, itemID)
+        XCTAssertEqual(details?.event, .arrive)
+        XCTAssertEqual(details?.triggerRevision, 3)
+
+        let moved = LocationMonitorRequest(
+            itemID: itemID,
+            title: "x",
+            event: .arrive,
+            place: ResolvedPlace(latitude: 3, longitude: 4),
+            repeats: false,
+            triggerRevision: 3
+        )
+        XCTAssertNotEqual(
+            identifier,
+            LocationReminderMonitor.regionIdentifier(for: moved),
+            "a moved Home must not share an identifier with the old region"
+        )
     }
 
     func testForeignRegionsAreNotClaimed() {
@@ -544,6 +592,609 @@ final class LocationReminderTests: XCTestCase {
 
         XCTAssertNotNil(item.locationIntent)
         XCTAssertFalse(item.isCompleted)
+    }
+
+    // MARK: Firing exactly once
+
+    /// The failure this exists for: a one-shot fires, the app is later
+    /// foregrounded, and reconciliation re-arms the region for a reminder that
+    /// has already been delivered — so it fires again on the next arrival.
+    ///
+    /// Stopping monitoring at firing time is not enough on its own. The region
+    /// was rebuilt from the saved reminder, and the saved reminder said nothing
+    /// about having fired.
+    func testAFiredOneShotIsNotReArmedByTheNextReconcile() async throws {
+        setHome()
+        let oneShot = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let repeating = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertEqual(oneShot.locationIntent?.repeats, false)
+        XCTAssertEqual(repeating.locationIntent?.repeats, true)
+
+        await repository.handleLocationTrigger(itemID: oneShot.id, event: .arrive)
+        await repository.handleLocationTrigger(itemID: repeating.id, event: .arrive)
+
+        let reconciliation = repository.reconcileLocationReminders()
+        XCTAssertFalse(
+            reconciliation.monitored.contains(oneShot.id),
+            "a one-shot that has fired must not be monitored again"
+        )
+        XCTAssertNil(
+            reconciliation.blocked[oneShot.id],
+            "it is finished, not blocked — nothing is wrong with it and there is nothing to fix"
+        )
+        XCTAssertFalse(
+            reconciliation.blocked[repeating.id] == nil
+                && reconciliation.monitored.contains(repeating.id) == false,
+            "a repeating reminder is still accounted for after firing"
+        )
+    }
+
+    /// Firing must not damage the reminder. It stops being watched; it does not
+    /// stop being the thing the person asked for.
+    func testFiringRetiresTheTriggerWithoutTouchingTheRequest() async throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let original = item.locationIntent
+
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+
+        XCTAssertEqual(item.locationIntent?.place, original?.place)
+        XCTAssertEqual(item.locationIntent?.event, original?.event)
+        XCTAssertEqual(item.locationIntent?.repeats, original?.repeats)
+        XCTAssertFalse(item.isArchived)
+        XCTAssertFalse(
+            item.isCompleted,
+            "delivering the reminder is not the person doing the task"
+        )
+        XCTAssertNotNil(item.locationIntent?.firedAt)
+        XCTAssertEqual(item.locationIntent?.isRetired, true)
+    }
+
+    /// iOS may deliver the same region event more than once, and a cold launch
+    /// can run reconciliation and the delegate callback against each other. A
+    /// crossing that happened once must produce one reminder however many times
+    /// the app is told about it.
+    func testARepeatedRegionEventDeliversOnlyOnce() async throws {
+        setHome()
+        let oneShot = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let repeating = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        await repository.handleLocationTrigger(itemID: oneShot.id, event: .arrive)
+        let oneShotFiredAt = try XCTUnwrap(oneShot.locationIntent?.firedAt)
+        await repository.handleLocationTrigger(itemID: oneShot.id, event: .arrive)
+        XCTAssertEqual(
+            oneShot.locationIntent?.firedAt,
+            oneShotFiredAt,
+            "the second delivery of one crossing is ignored, not delivered again"
+        )
+
+        // A repeating reminder has no final firing to record, so the duplicate
+        // is suppressed by the debounce window instead.
+        await repository.handleLocationTrigger(itemID: repeating.id, event: .arrive)
+        let repeatingFiredAt = try XCTUnwrap(repeating.locationIntent?.firedAt)
+        await repository.handleLocationTrigger(itemID: repeating.id, event: .arrive)
+        XCTAssertEqual(
+            repeating.locationIntent?.firedAt,
+            repeatingFiredAt,
+            "a redelivered crossing must not re-fire a repeating reminder either"
+        )
+
+        // A noisy boundary can produce a real exit and second entry rather than
+        // a byte-for-byte duplicate callback. That second arrival is still too
+        // close to be useful, so the cooldown covers the whole bounce window.
+        var bounced = try XCTUnwrap(repeating.locationIntent)
+        bounced.firedAt = repeatingFiredAt.addingTimeInterval(-2 * 60)
+        repeating.locationIntent = bounced
+        await repository.handleLocationTrigger(itemID: repeating.id, event: .arrive)
+        XCTAssertEqual(
+            repeating.locationIntent?.firedAt,
+            bounced.firedAt,
+            "boundary bounce within five minutes must not notify again"
+        )
+
+        // ...but a genuine later crossing still does.
+        var aged = try XCTUnwrap(repeating.locationIntent)
+        aged.firedAt = repeatingFiredAt.addingTimeInterval(
+            -SwiftDataThoughtRepository.locationTriggerCooldown - 1
+        )
+        repeating.locationIntent = aged
+        await repository.handleLocationTrigger(itemID: repeating.id, event: .arrive)
+        XCTAssertNotEqual(
+            repeating.locationIntent?.firedAt,
+            aged.firedAt,
+            "a repeating reminder still fires on the next real crossing"
+        )
+    }
+
+    /// Two reminders at the same physical place are two reminders. Sharing a
+    /// coordinate must not make one of them swallow the other's event, and must
+    /// not make either fire twice.
+    func testTwoRemindersAtTheSamePlaceEachFireOnce() async throws {
+        setHome()
+        let bins = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let dog = try repository.createCapture(
+            text: "Remind me to feed the dog when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotEqual(bins.id, dog.id)
+
+        // Distinct regions, so one arrival is reported for each.
+        let binsRequest = try XCTUnwrap(bins.locationMonitorRequest(authorization: authorized))
+        let dogRequest = try XCTUnwrap(dog.locationMonitorRequest(authorization: authorized))
+        XCTAssertEqual(binsRequest.place, dogRequest.place, "same Home, same resolved place")
+        XCTAssertNotEqual(
+            LocationReminderMonitor.regionIdentifier(for: binsRequest),
+            LocationReminderMonitor.regionIdentifier(for: dogRequest),
+            "two reminders at one place must not collapse into one region"
+        )
+
+        await repository.handleLocationTrigger(itemID: bins.id, event: .arrive)
+        await repository.handleLocationTrigger(itemID: dog.id, event: .arrive)
+        XCTAssertNotNil(bins.locationIntent?.firedAt)
+        XCTAssertNotNil(dog.locationIntent?.firedAt)
+
+        // And the arrival is spent for both.
+        let binsFiredAt = bins.locationIntent?.firedAt
+        let dogFiredAt = dog.locationIntent?.firedAt
+        await repository.handleLocationTrigger(itemID: bins.id, event: .arrive)
+        await repository.handleLocationTrigger(itemID: dog.id, event: .arrive)
+        XCTAssertEqual(bins.locationIntent?.firedAt, binsFiredAt)
+        XCTAssertEqual(dog.locationIntent?.firedAt, dogFiredAt)
+    }
+
+    /// Sharing a coordinate must not fan an arrival out to a departure reminder
+    /// (or vice versa). The direction encoded in each region remains part of the
+    /// persisted trigger contract all the way through delivery.
+    func testSamePlaceRemindersFireOnlyForTheirOwnDirection() async throws {
+        setHome()
+        let bins = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let gas = try repository.createCapture(
+            text: "Remind me to buy gas when I leave home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        await repository.handleLocationTrigger(itemID: bins.id, event: .arrive)
+        await repository.handleLocationTrigger(itemID: gas.id, event: .arrive)
+        XCTAssertNotNil(bins.locationIntent?.firedAt)
+        XCTAssertNil(gas.locationIntent?.firedAt)
+
+        await repository.handleLocationTrigger(itemID: bins.id, event: .leave)
+        await repository.handleLocationTrigger(itemID: gas.id, event: .leave)
+        XCTAssertNotNil(gas.locationIntent?.firedAt)
+    }
+
+    /// Detecting a crossing is not the outcome — reaching the person is. A
+    /// denied notification must not permanently spend a one-shot reminder.
+    func testDeniedNotificationDeliveryDoesNotRetireOneShot() async throws {
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in .denied },
+            requestsReminderAuthorization: false
+        )
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+
+        XCTAssertNil(item.locationIntent?.firedAt)
+        XCTAssertFalse(item.locationIntent?.isRetired == true)
+    }
+
+    /// Completion can happen while UserNotifications is accepting the delivery.
+    /// The post-await read must see it and decline to consume the crossing.
+    func testCompletionDuringDeliveryDoesNotMarkReminderFired() async throws {
+        let gate = PlaceDeliveryGate()
+        var cancellationCount = 0
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in await gate.wait() },
+            placeReminderCancellation: { _ in cancellationCount += 1 },
+            requestsReminderAuthorization: false
+        )
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        let delivery = Task { @MainActor in
+            await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        }
+        while !gate.didStart { await Task.yield() }
+        try repository.setCompleted(item, completed: true)
+        gate.resume(with: .scheduled)
+        await delivery.value
+
+        XCTAssertTrue(item.isCompleted)
+        XCTAssertNil(item.locationIntent?.firedAt)
+        XCTAssertEqual(cancellationCount, 1)
+    }
+
+    /// Editing produces a new revision. A callback from the old region can finish
+    /// later, but it cannot deliver or write firing state into the new trigger.
+    func testEditDuringDeliveryRejectsOldTriggerRevision() async throws {
+        let gate = PlaceDeliveryGate()
+        var cancellationCount = 0
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in await gate.wait() },
+            placeReminderCancellation: { _ in cancellationCount += 1 },
+            requestsReminderAuthorization: false
+        )
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let oldRevision = try XCTUnwrap(item.locationIntent).triggerRevision
+
+        let delivery = Task { @MainActor in
+            await repository.handleLocationTrigger(
+                itemID: item.id,
+                event: .arrive,
+                triggerRevision: oldRevision
+            )
+        }
+        while !gate.didStart { await Task.yield() }
+
+        var editedIntent = try XCTUnwrap(item.locationIntent)
+        editedIntent.event = .leave
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: item.dueDate,
+                reminderDate: item.reminderDate,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: RecurrenceStore.rule(for: item.id),
+                locationIntent: .update(editedIntent)
+            )
+        )
+        gate.resume(with: .scheduled)
+        await delivery.value
+
+        XCTAssertEqual(item.locationIntent?.event, .leave)
+        XCTAssertEqual(item.locationIntent?.triggerRevision, oldRevision + 1)
+        XCTAssertNil(item.locationIntent?.firedAt)
+        XCTAssertEqual(cancellationCount, 1)
+    }
+
+    /// Home is a pointer, so changing it changes the region even though the
+    /// intent still says `.home`. The geometry fingerprint rejects a late event
+    /// from the old address.
+    func testOldHomeRegionCallbackIsRejectedAfterHomeMoves() async throws {
+        var deliveryCount = 0
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in
+                deliveryCount += 1
+                return .scheduled
+            },
+            requestsReminderAuthorization: false
+        )
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let oldRequest = try XCTUnwrap(item.locationMonitorRequest(authorization: authorized))
+        let oldIdentifier = LocationReminderMonitor.regionIdentifier(for: oldRequest)
+
+        SavedPlaceStore.set(
+            SavedPlace(latitude: 45.5019, longitude: -73.5674, label: "New Home"),
+            for: .home
+        )
+        let newRequest = try XCTUnwrap(item.locationMonitorRequest(authorization: authorized))
+        XCTAssertNotEqual(
+            LocationReminderMonitor.regionIdentifier(for: newRequest),
+            oldIdentifier
+        )
+
+        await repository.handleLocationTrigger(
+            itemID: item.id,
+            event: .arrive,
+            triggerRevision: oldRequest.triggerRevision,
+            regionIdentifier: oldIdentifier
+        )
+
+        XCTAssertEqual(deliveryCount, 0)
+        XCTAssertNil(item.locationIntent?.firedAt)
+    }
+
+    /// Registering a region while already standing inside it does not generate
+    /// an entry event — that is CoreLocation's documented behaviour, and it is
+    /// also what "remind me when I get home" means: the *next* time I get home.
+    ///
+    /// What this test defends is that Speak It does not undo it. Nothing in the
+    /// app may inspect the current position at arming time and deliver on the
+    /// strength of already being there.
+    func testArmingAReminderNeverDeliversOnItsOwn() async throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        // Arming, and every reconcile that re-arms it, in the place the reminder
+        // is about.
+        _ = repository.reconcileLocationReminders()
+        _ = repository.reconcileLocationReminders()
+
+        XCTAssertNil(
+            item.locationIntent?.firedAt,
+            "only a crossing fires a place reminder — never the act of watching for one"
+        )
+    }
+
+    /// A one-shot that has already been delivered must not be handed a second
+    /// life by re-reading the sentence it came from.
+    func testReorganizingDoesNotRefireASpentOneShot() async throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        let firedAt = try XCTUnwrap(item.locationIntent?.firedAt)
+
+        // Reorganizing re-reads the original words and reapplies the result to
+        // the same item, which is the path that could hand it a fresh intent.
+        try repository.reorganize(try XCTUnwrap(item.captureSession))
+
+        XCTAssertEqual(
+            item.locationIntent?.firedAt,
+            firedAt,
+            "re-reading the same sentence does not un-fire the reminder it already sent"
+        )
+        XCTAssertFalse(repository.reconcileLocationReminders().monitored.contains(item.id))
+    }
+
+    // MARK: Regions iOS refuses
+
+    /// `startMonitoring(for:)` cannot fail in place — it returns, and the
+    /// refusal arrives later on the delegate. A reminder iOS is not actually
+    /// watching must never be shown as active.
+    func testARefusedRegionIsReportedBlockedRatherThanMonitored() throws {
+        let request = LocationMonitorRequest(
+            itemID: UUID(),
+            title: "take out the garbage",
+            event: .arrive,
+            place: ResolvedPlace(latitude: 43.6532, longitude: -79.3832),
+            repeats: false
+        )
+        let identifier = LocationReminderMonitor.regionIdentifier(for: request)
+
+        XCTAssertTrue(
+            LocationReminderMonitor
+                .plan(for: [request], authorization: authorized)
+                .monitored
+                .contains(request.itemID)
+        )
+
+        let afterFailure = LocationReminderMonitor.plan(
+            for: [request],
+            authorization: authorized,
+            failedRegionIdentifiers: [identifier]
+        )
+        XCTAssertFalse(
+            afterFailure.monitored.contains(request.itemID),
+            "a region iOS refused is not monitored, whatever the app asked for"
+        )
+        XCTAssertEqual(afterFailure.blocked[request.itemID], .monitoringFailed)
+
+        // A foreground clears the recorded failures, which is the retry: the
+        // usual cause is a connection that may now be back.
+        let monitor = LocationReminderMonitor()
+        monitor.recordMonitoringFailure(regionIdentifier: identifier)
+        monitor.clearMonitoringFailures()
+        XCTAssertNotEqual(
+            monitor.reconcile([request]).blocked[request.itemID],
+            .monitoringFailed,
+            "a cleared failure is not still held against the reminder"
+        )
+    }
+
+    /// A refusal for something that is not ours must not block one of ours.
+    func testForeignRegionFailuresAreIgnored() {
+        let monitor = LocationReminderMonitor()
+        let request = LocationMonitorRequest(
+            itemID: UUID(),
+            title: "x",
+            event: .arrive,
+            place: ResolvedPlace(latitude: 1, longitude: 2),
+            repeats: false
+        )
+        monitor.recordMonitoringFailure(regionIdentifier: "SomeOtherApp.region")
+        XCTAssertNotEqual(monitor.reconcile([request]).blocked[request.itemID], .monitoringFailed)
+    }
+
+    /// A refused region must not consume one of the 18 slots. Blocking a
+    /// reminder that could have been watched, in favour of one that demonstrably
+    /// cannot be, is the wrong trade in every case.
+    func testARefusedRegionDoesNotConsumeBudget() throws {
+        let place = ResolvedPlace(latitude: 43.6532, longitude: -79.3832)
+        let requests = (0..<LocationReminderMonitor.regionBudget + 1).map { index in
+            LocationMonitorRequest(
+                itemID: UUID(),
+                title: "reminder \(index)",
+                event: .arrive,
+                place: place,
+                repeats: true
+            )
+        }
+
+        // One over budget: exactly one is turned away.
+        let before = LocationReminderMonitor.plan(for: requests, authorization: authorized)
+        XCTAssertEqual(before.monitored.count, LocationReminderMonitor.regionBudget)
+        let evicted = try XCTUnwrap(
+            before.blocked.first(where: { $0.value == .monitoringLimitReached })?.key
+        )
+
+        // Now one of the monitored ones is refused. Its slot must go to the
+        // reminder that was turned away, not stay held by the refusal.
+        let refused = try XCTUnwrap(requests.first { before.monitored.contains($0.itemID) })
+        let after = LocationReminderMonitor.plan(
+            for: requests,
+            authorization: authorized,
+            failedRegionIdentifiers: [LocationReminderMonitor.regionIdentifier(for: refused)]
+        )
+        XCTAssertEqual(after.blocked[refused.itemID], .monitoringFailed)
+        XCTAssertEqual(after.monitored.count, LocationReminderMonitor.regionBudget)
+        XCTAssertNil(
+            after.blocked[evicted],
+            "the freed slot is taken by the reminder the budget had turned away"
+        )
+    }
+
+    /// The budget is 18, it is chosen rather than discovered, and every reminder
+    /// past it is told why — never dropped, never left to fail at iOS's cap.
+    func testEveryReminderPastTheBudgetIsAccountedForAndOneShotsGoFirst() {
+        let place = ResolvedPlace(latitude: 43.6532, longitude: -79.3832)
+        let oneShots = (0..<25).map { index in
+            LocationMonitorRequest(
+                itemID: UUID(),
+                title: "one-shot \(index)",
+                event: .arrive,
+                place: place,
+                repeats: false
+            )
+        }
+        let repeating = (0..<3).map { index in
+            LocationMonitorRequest(
+                itemID: UUID(),
+                title: "repeating \(index)",
+                event: .arrive,
+                place: place,
+                repeats: true
+            )
+        }
+
+        let result = LocationReminderMonitor.plan(
+            for: oneShots + repeating,
+            authorization: authorized
+        )
+
+        XCTAssertEqual(
+            result.monitored.count,
+            LocationReminderMonitor.regionBudget,
+            "the app stays under iOS's 20 rather than discovering the cap by failing"
+        )
+        XCTAssertEqual(
+            Set(result.monitored).union(result.blocked.keys).count,
+            oneShots.count + repeating.count,
+            "28 reminders, 28 answers — nothing is silently dropped"
+        )
+        for request in repeating {
+            XCTAssertTrue(
+                result.monitored.contains(request.itemID),
+                "a repeating reminder that stops being watched is broken forever, so it is never the one evicted"
+            )
+        }
+        for (_, blocker) in result.blocked {
+            XCTAssertEqual(blocker, .monitoringLimitReached)
+        }
+    }
+
+    /// Losing a slot to the budget is not the same as being wrong, and freeing
+    /// one must let a waiting reminder in without anybody editing anything.
+    func testFreeingASlotAdmitsAPreviouslyBlockedReminder() throws {
+        let place = ResolvedPlace(latitude: 43.6532, longitude: -79.3832)
+        let requests = (0..<LocationReminderMonitor.regionBudget + 1).map { index in
+            LocationMonitorRequest(
+                itemID: UUID(),
+                title: "reminder \(index)",
+                event: .arrive,
+                place: place,
+                repeats: true
+            )
+        }
+        let before = LocationReminderMonitor.plan(for: requests, authorization: authorized)
+        let waiting = try XCTUnwrap(
+            before.blocked.first(where: { $0.value == .monitoringLimitReached })?.key
+        )
+
+        // One is completed, so it stops being a request at all.
+        let remaining = requests.filter { before.monitored.first != $0.itemID }
+        let after = LocationReminderMonitor.plan(for: remaining, authorization: authorized)
+
+        XCTAssertTrue(
+            after.monitored.contains(waiting),
+            "the freed slot is taken automatically, not on the next edit"
+        )
+        XCTAssertTrue(after.blocked.isEmpty)
+    }
+
+    /// A reminder stored before firing was recorded reads back as "never fired",
+    /// which is the correct answer for it — and needs no schema version to do so.
+    func testAnIntentStoredBeforeFiringWasRecordedStillDecodes() throws {
+        let legacy = """
+        {"event":"arrive","place":{"home":{}},"repeats":false,"isUserEdited":false}
+        """
+        let decoded = try JSONDecoder().decode(
+            LocationIntent.self,
+            from: try XCTUnwrap(legacy.data(using: .utf8))
+        )
+        XCTAssertNil(decoded.firedAt)
+        XCTAssertFalse(decoded.isRetired, "never fired is not retired")
+        XCTAssertEqual(decoded.triggerRevision, 0)
     }
 
     // MARK: Combined place and time

@@ -116,14 +116,38 @@ struct CapturedItemRow: View {
             memoryIndicators
 
             if let trailingText {
-                Text(trailingText)
-                    .lineLimit(1)
+                HStack(spacing: 3) {
+                    // A place reminder gets a glyph because its trailing text is
+                    // a place name, and "Home" alone reads like a category. The
+                    // pin is what makes it legible as a trigger.
+                    if isPlaceTriggered {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.caption2)
+                            .accessibilityHidden(true)
+                    }
+                    Text(trailingText)
+                        .lineLimit(1)
+                }
             }
         }
         .font(SpeakItTypography.metadata)
         .foregroundStyle(Color.speakMuted)
         .multilineTextAlignment(.trailing)
         .padding(.top, 2)
+    }
+
+    /// The one reading of this item every surface shares. Computed here rather
+    /// than passed in so no call site can render a row that silently omits a
+    /// trigger it did not know to ask about.
+    private var presentation: ItemPresentation {
+        ItemPresentation.make(
+            for: item,
+            authorization: LocationReminderMonitor.shared.authorization
+        )
+    }
+
+    private var isPlaceTriggered: Bool {
+        presentation.reminderState.locationIntent != nil
     }
 
     @ViewBuilder
@@ -149,20 +173,12 @@ struct CapturedItemRow: View {
     private var trailingText: String? {
         if let trailingDetail { return trailingDetail }
 
-        if let dueDate = item.dueDate {
-            // A day with no time of day shows no time. Rendering the start of
-            // that day would read as "12:00 AM", a precision the person never
-            // gave, on a row where "Today" is the whole answer.
-            if item.isDateOnly {
-                return Calendar.autoupdatingCurrent.isDateInToday(dueDate)
-                    ? "Today"
-                    : dueDate.formatted(date: .abbreviated, time: .omitted)
-            }
-            if Calendar.autoupdatingCurrent.isDateInToday(dueDate) {
-                return dueDate.formatted(date: .omitted, time: .shortened)
-            }
-            return dueDate.formatted(date: .abbreviated, time: .omitted)
-        }
+        // The shared reading answers this now. It is what puts the hour back on
+        // a future timed reminder — this used to drop the time for any date that
+        // was not today, so "call mom tomorrow at 5pm" and a date-only item
+        // rendered the same string — and what puts the place on a place
+        // reminder instead of leaving the slot empty.
+        if let timing = presentation.primaryTimingText { return timing }
 
         guard showsCreatedDate else { return nil }
 

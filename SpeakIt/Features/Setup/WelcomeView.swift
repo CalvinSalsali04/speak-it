@@ -30,11 +30,11 @@ struct WelcomeView: View {
                         .opacity(hasAppeared ? 1 : 0)
 
                     VStack(spacing: 10) {
-                        Text("Say it.\nIt’s remembered.")
+                        Text("Speak it.\nIt’s handled.")
                             .font(.largeTitle.weight(.semibold))
                             .multilineTextAlignment(.center)
 
-                        Text("Speak naturally. Speak It saves the words, separates multiple thoughts, and puts each one where it belongs.")
+                        Text("Say anything you need to do or remember. Speak It figures out where it belongs.")
                             .font(.body)
                             .foregroundStyle(Color.speakMuted)
                             .multilineTextAlignment(.center)
@@ -54,6 +54,11 @@ struct WelcomeView: View {
                     .background(.black, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Speak, organized, remembered")
+
+                    Text("Try “Buy toothpaste,” or use your own words.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color.speakMuted)
+                        .multilineTextAlignment(.center)
                 }
 
                 Spacer()
@@ -123,5 +128,132 @@ struct WelcomeView: View {
 struct WelcomeView_Previews: PreviewProvider {
     static var previews: some View {
         WelcomeView(onFirstCapture: {}, onSkip: {}, onLoadExamples: {})
+    }
+}
+
+/// The first capture is the onboarding: this one quiet hand-off explains the
+/// result the person just saw instead of front-loading another tutorial page.
+struct FirstCaptureGuideView: View {
+    let onDone: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.speakBackground.ignoresSafeArea()
+
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("SPEAK IT")
+                                .font(.caption.weight(.medium))
+                                .tracking(2.8)
+                            Spacer()
+                            Button("Done", action: onDone)
+                                .font(.subheadline.weight(.semibold))
+                                .buttonStyle(.speakIt)
+                                .accessibilityIdentifier("firstCaptureGuide.done")
+                        }
+
+                        Spacer(minLength: 24)
+
+                        VStack(spacing: 24) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 30, weight: .semibold))
+                                .foregroundStyle(Color.speakInverseInk)
+                                .frame(width: 76, height: 76)
+                                .background(Color.speakInverseSurface, in: Circle())
+
+                            VStack(spacing: 9) {
+                                Text("That’s the whole idea.")
+                                    .font(.title.weight(.semibold))
+                                    .multilineTextAlignment(.center)
+
+                                Text("Speak It keeps the original capture, then routes each thought to the place it belongs.")
+                                    .font(.body)
+                                    .foregroundStyle(Color.speakMuted)
+                                    .multilineTextAlignment(.center)
+                                    .frame(maxWidth: 340)
+                            }
+
+                            VStack(spacing: 12) {
+                                destinationCard(
+                                    symbol: "checkmark.circle",
+                                    title: "Today is for action",
+                                    detail: "Tasks, reminders, overdue work, and anything you plan to do."
+                                )
+                                destinationCard(
+                                    symbol: "books.vertical",
+                                    title: "Memory is for knowledge",
+                                    detail: "Ideas, people, notes, and useful context you want to find later."
+                                )
+                            }
+                            .frame(maxWidth: 390)
+                        }
+
+                        Spacer(minLength: 28)
+
+                        Button(action: onDone) {
+                            Text("Continue")
+                                .font(.headline)
+                                .foregroundStyle(Color.speakInverseInk)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.speakIt)
+                        .background(
+                            Color.speakInverseSurface,
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                        .accessibilityIdentifier("firstCaptureGuide.continue")
+                    }
+                    .frame(minHeight: max(0, geometry.size.height))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
+                    .foregroundStyle(Color.speakInk)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+            }
+        }
+    }
+
+    private func destinationCard(
+        symbol: String,
+        title: String,
+        detail: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(Color.speakInk.opacity(0.07), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.speakMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(
+            Color.speakSurface,
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.speakDivider, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct FirstCaptureGuideView_Previews: PreviewProvider {
+    static var previews: some View {
+        FirstCaptureGuideView(onDone: {})
     }
 }

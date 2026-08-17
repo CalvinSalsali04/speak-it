@@ -126,6 +126,8 @@ struct TodayView: View {
         sort: \CaptureSession.createdAt,
         order: .reverse
     ) private var captureSessions: [CaptureSession]
+    @Query(sort: \CaptureSession.createdAt, order: .reverse)
+    private var allCaptureSessions: [CaptureSession]
 
     let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
@@ -154,6 +156,8 @@ struct TodayView: View {
     @State private var referenceNow = Date.now
     @AppStorage("SpeakIt.shortcutSetupCompleted") private var shortcutSetupCompleted = false
     @AppStorage("SpeakIt.hasDismissedProDiscovery") private var hasDismissedProDiscovery = false
+    @AppStorage("SpeakIt.hasDismissedCaptureAnywhereDiscovery")
+    private var hasDismissedCaptureAnywhereDiscovery = false
 
     init(
         onCapture: @escaping () -> Void,
@@ -290,7 +294,7 @@ struct TodayView: View {
                     )
                 }
 
-                if !shortcutSetupCompleted {
+                if shouldShowCaptureAnywhereDiscovery {
                     doubleTapCard
                 }
 
@@ -346,9 +350,8 @@ struct TodayView: View {
             }
             .padding(.horizontal, 22)
             .padding(.top, 18)
-            .padding(.bottom, 40)
         }
-        .contentMargins(.bottom, 28, for: .scrollContent)
+        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
         .coordinateSpace(name: DockScroll.coordinateSpace)
         .scrollBounceBehavior(.basedOnSize)
         .modifier(DockScrollObserver(onScroll: handleDockScroll))
@@ -361,7 +364,7 @@ struct TodayView: View {
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
         }
-        .sheet(isPresented: $showsCaptureSetup) {
+        .sheet(isPresented: $showsCaptureSetup, onDismiss: dismissCaptureAnywhereDiscovery) {
             CaptureAnywhereSetupView()
         }
         .sheet(isPresented: $showsReminderSettings) {
@@ -506,6 +509,18 @@ struct TodayView: View {
             subscriptionStore.hasAvailablePlans &&
             !subscriptionStore.hasProAccess &&
             !hasDismissedProDiscovery
+    }
+
+    private var shouldShowCaptureAnywhereDiscovery: Bool {
+        !shortcutSetupCompleted &&
+            !hasDismissedCaptureAnywhereDiscovery &&
+            allCaptureSessions.lazy.filter { $0.processingStatus == .complete }.count >= 2
+    }
+
+    private func dismissCaptureAnywhereDiscovery() {
+        guard !shortcutSetupCompleted, !hasDismissedCaptureAnywhereDiscovery else { return }
+        hasDismissedCaptureAnywhereDiscovery = true
+        SpeakItAnalytics.track(.captureAnywhereDiscoveryDismissed)
     }
 
     private func loadTestExamples() {
@@ -662,41 +677,57 @@ struct TodayView: View {
     }
 
     private var doubleTapCard: some View {
-        Button {
-            showsCaptureSetup = true
-        } label: {
-            HStack(spacing: 15) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.speakInverseInk.opacity(0.16), lineWidth: 1)
-                        .frame(width: 48, height: 48)
+        ZStack(alignment: .topTrailing) {
+            Button {
+                showsCaptureSetup = true
+            } label: {
+                HStack(spacing: 15) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.speakInverseInk.opacity(0.16), lineWidth: 1)
+                            .frame(width: 48, height: 48)
 
-                    Image(systemName: shortcutSetupCompleted ? "checkmark" : "waveform")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.speakInverseInk)
+                        Image(systemName: shortcutSetupCompleted ? "checkmark" : "waveform")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Color.speakInverseInk)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(shortcutSetupCompleted ? "Quick capture is ready" : "Capture from anywhere")
+                            .font(.headline)
+                            .foregroundStyle(Color.speakInverseInk)
+
+                        Text(shortcutSetupCompleted ? "Use your chosen iPhone trigger to speak." : "Lock Screen, Action Button, or Back Tap. Pick one and test it.")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.speakInverseInk.opacity(0.62))
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.speakInverseInk.opacity(0.45))
                 }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(shortcutSetupCompleted ? "Quick capture is ready" : "Capture from anywhere")
-                        .font(.headline)
-                        .foregroundStyle(Color.speakInverseInk)
-
-                    Text(shortcutSetupCompleted ? "Use your chosen iPhone trigger to speak." : "Lock Screen, Action Button, or Back Tap. Pick one and test it.")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.speakInverseInk.opacity(0.62))
-                        .multilineTextAlignment(.leading)
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.speakInverseInk.opacity(0.45))
+                .padding(17)
+                .padding(.trailing, 28)
+                .contentShape(Rectangle())
             }
-            .padding(17)
-            .contentShape(Rectangle())
+            .buttonStyle(.speakIt)
+
+            Button(action: dismissCaptureAnywhereDiscovery) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.speakInverseInk.opacity(0.7))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+            .accessibilityLabel("Show capture anywhere later")
+            .accessibilityIdentifier("today.dismissCaptureAnywhere")
+            .padding(.top, 5)
+            .padding(.trailing, 4)
         }
-        .buttonStyle(.speakIt)
         .background(
             Color.speakInverseSurface,
             in: RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -711,6 +742,10 @@ struct TodayView: View {
                 .font(.title2.weight(.semibold))
             Text("Capture anything on your mind. Speak It will decide whether it belongs here or in Memory.")
                 .foregroundStyle(Color.speakMuted)
+
+            Text("Try saying “Buy toothpaste” or “Call Mom tomorrow at 5.”")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.speakInk)
 
             Button(action: onCapture) {
                 Label("Capture a thought", systemImage: "waveform")

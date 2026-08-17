@@ -113,10 +113,17 @@ final class SubscriptionStore: ObservableObject {
 
     static let monthlyProductID = "com.calvinwak.SpeakIt.pro.monthly"
     static let annualProductID = "com.calvinwak.SpeakIt.pro.annual"
+    /// A non-consumable used only for Apple-issued creator/complimentary offer
+    /// codes. It is deliberately excluded from `productIDs`, so Speak It never
+    /// merchandises a lifetime plan in the paywall or starts this purchase
+    /// directly. A verified App Store transaction is the only way it unlocks.
+    static let lifetimeProductID = "com.calvinwak.SpeakIt.pro.lifetime"
     static let productIDs = [annualProductID, monthlyProductID]
+    private static let entitlementProductIDs = Set(productIDs + [lifetimeProductID])
 
     @Published private(set) var products: [Product] = []
     @Published private(set) var accessLevel: AccessLevel = .checking
+    @Published private(set) var activeProProductIDs: Set<String> = []
     @Published private(set) var isLoadingProducts = false
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
@@ -192,6 +199,14 @@ final class SubscriptionStore: ObservableObject {
         }
 #endif
         return accessLevel == .pro
+    }
+
+    var hasLifetimeProAccess: Bool {
+        activeProProductIDs.contains(Self.lifetimeProductID)
+    }
+
+    var hasActiveSubscription: Bool {
+        !activeProProductIDs.isDisjoint(with: Self.productIDs)
     }
 
     var freeCapturesRemaining: Int {
@@ -385,10 +400,10 @@ final class SubscriptionStore: ObservableObject {
         }
 #endif
 
-        var foundActiveSubscription = false
+        var activeProductIDs: Set<String> = []
         for await result in StoreKit.Transaction.currentEntitlements {
             guard case .verified(let transaction) = result,
-                  Self.productIDs.contains(transaction.productID),
+                  Self.entitlementProductIDs.contains(transaction.productID),
                   transaction.revocationDate == nil,
                   !transaction.isUpgraded else {
                 continue
@@ -398,11 +413,12 @@ final class SubscriptionStore: ObservableObject {
                expirationDate <= .now {
                 continue
             }
-            foundActiveSubscription = true
-            break
+            activeProductIDs.insert(transaction.productID)
         }
-        accessLevel = foundActiveSubscription ? .pro : .free
-        UserDefaults.standard.set(foundActiveSubscription, forKey: Self.cachedProAccessKey)
+        activeProProductIDs = activeProductIDs
+        let foundProEntitlement = !activeProductIDs.isEmpty
+        accessLevel = foundProEntitlement ? .pro : .free
+        UserDefaults.standard.set(foundProEntitlement, forKey: Self.cachedProAccessKey)
     }
 
     private func observeTransactionUpdates() -> Task<Void, Never> {

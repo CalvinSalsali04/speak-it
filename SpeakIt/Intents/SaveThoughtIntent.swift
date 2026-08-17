@@ -16,10 +16,13 @@ enum CaptureActivationStore {
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: lastSuccessKey)
     }
 
-    static func markMicrophoneReady(startedAt: Date, at date: Date = .now) {
+    static func markMicrophoneReady(
+        at date: Date = .now,
+        startupDuration: Duration
+    ) {
         UserDefaults.standard.set(date.timeIntervalSince1970, forKey: lastMicrophoneReadyKey)
         UserDefaults.standard.set(
-            max(0, date.timeIntervalSince(startedAt)),
+            Double(CapturePerformanceClock.milliseconds(startupDuration)) / 1_000,
             forKey: lastStartupDurationKey
         )
     }
@@ -49,8 +52,13 @@ struct BeginListeningIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        CaptureActivationStore.markInvoked()
-        QuickActionRouter.shared.requestVoiceCapture()
+        let activatedAt = Date.now
+        let activationInstant = CapturePerformanceClock.now
+        CaptureActivationStore.markInvoked(at: activatedAt)
+        QuickActionRouter.shared.requestVoiceCapture(
+            activatedAt: activatedAt,
+            activationInstant: activationInstant
+        )
         return .result()
     }
 }
@@ -96,7 +104,7 @@ struct SaveThoughtIntent: LiveActivityIntent {
             normalizedThought,
             context: result.confirmationContext
         )
-        return .result(dialog: "Remembered.")
+        return .result(dialog: result.isDuplicate ? "Already captured." : "Remembered.")
     }
 }
 
@@ -552,6 +560,7 @@ private extension SpeechTranscriber.State {
 private enum ExternalCaptureWriter {
     struct Result: Sendable {
         let confirmationContext: String
+        let isDuplicate: Bool
     }
 
     static func save(_ thought: String, createdAt: Date = .now) async throws -> Result {
@@ -577,9 +586,14 @@ private enum ExternalCaptureWriter {
             // Avoid a second asynchronous scheduler racing the verified request.
             schedulesReminders: false
         )
-        SubscriptionStore.recordBackgroundCapture(now: createdAt)
+        if capture.createdNewCapture {
+            SubscriptionStore.recordBackgroundCapture(now: createdAt)
+        }
 
         let confirmationContext: String
+        if capture.isDuplicate {
+            return Result(confirmationContext: "Already captured", isDuplicate: true)
+        }
         let requests = capture.items.compactMap(ReminderScheduleRequest.init(item:))
         if !requests.isEmpty {
             let schedulingResults = await ReminderScheduler.synchronizeAndVerify(
@@ -604,7 +618,8 @@ private enum ExternalCaptureWriter {
         }
 
         return Result(
-            confirmationContext: confirmationContext
+            confirmationContext: confirmationContext,
+            isDuplicate: false
         )
     }
 

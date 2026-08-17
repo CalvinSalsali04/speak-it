@@ -328,18 +328,23 @@ enum MemoryCollection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// `@MainActor` because Memory membership depends on live location
+    /// authorization: an item blocked on a place belongs in review, not here.
+    @MainActor
     func contains(_ item: CapturedItem, pinnedIDs: Set<UUID>) -> Bool {
+        let authorization = LocationReminderMonitor.shared.authorization
+        let belongsInMemory = item.belongsInMemory(authorization: authorization)
         switch self {
         case .pinned:
-            item.belongsInMemory && pinnedIDs.contains(item.id)
+            return belongsInMemory && pinnedIDs.contains(item.id)
         case .ideas:
-            item.belongsInMemory && MemoryGroup.ideas.contains(item)
+            return belongsInMemory && MemoryGroup.ideas.contains(item)
         case .people:
-            item.belongsInMemory && MemoryGroup.people.contains(item)
+            return belongsInMemory && MemoryGroup.people.contains(item)
         case .reference:
-            item.belongsInMemory && MemoryGroup.notes.contains(item)
+            return belongsInMemory && MemoryGroup.notes.contains(item)
         case .archive:
-            item.isArchived
+            return item.isArchived
         }
     }
 }
@@ -431,6 +436,16 @@ struct DockScrollTopAnchorKey: PreferenceKey {
 
 enum DockScroll {
     static let coordinateSpace = "speakIt.dockScroll"
+
+    /// How much scroll content must reserve above the bottom safe area for the
+    /// floating dock and its offset.
+    ///
+    /// This belongs on the scroll containers themselves. An inset outside a
+    /// `NavigationStack` changes the region offered to the stack, but does not
+    /// reliably extend a nested `ScrollView` or `List`'s scrollable content.
+    /// That left the final row at the physical safe-area edge, underneath the
+    /// overlay, even though `RootView` appeared to reserve the same number.
+    static let clearance: CGFloat = 86
 
     /// iOS 18 reports scroll geometry directly. On iOS 17 the only continuous
     /// signal is the first row's position, and once that row is recycled the
@@ -524,7 +539,8 @@ struct LibraryView: View {
     }
 
     private var memoryItems: [CapturedItem] {
-        activeItems.filter(\.belongsInMemory)
+        let authorization = LocationReminderMonitor.shared.authorization
+        return activeItems.filter { $0.belongsInMemory(authorization: authorization) }
     }
 
     private var pinnedMemoryIDs: Set<UUID> {
@@ -588,7 +604,7 @@ struct LibraryView: View {
         .listStyle(.plain)
         .listSectionSpacing(0)
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 24, for: .scrollContent)
+        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
         .coordinateSpace(name: DockScroll.coordinateSpace)
         .scrollBounceBehavior(.basedOnSize)
         .modifier(DockScrollObserver(onScroll: handleDockScroll))
@@ -791,6 +807,9 @@ struct LibraryView: View {
                 .foregroundStyle(Color.speakInk)
             Text("Capture naturally. Speak It will keep actions in Today and place lasting details here.")
                 .foregroundStyle(Color.speakMuted)
+            Text("Try saying “Remember Catherine’s birthday is May 3.”")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.speakInk)
         }
         .padding(.top, 8)
     }
@@ -1669,7 +1688,9 @@ private struct MemoryPersonDetailView: View {
 
     private var memories: [CapturedItem] {
         let matches = allItems.filter { item in
-            guard item.belongsInMemory, MemoryGroup.people.contains(item) else { return false }
+            let authorization = LocationReminderMonitor.shared.authorization
+            guard item.belongsInMemory(authorization: authorization),
+                  MemoryGroup.people.contains(item) else { return false }
             if let resolvedName {
                 return MemoryPersonNameResolver.name(for: item)?.localizedCaseInsensitiveCompare(resolvedName) == .orderedSame
             }

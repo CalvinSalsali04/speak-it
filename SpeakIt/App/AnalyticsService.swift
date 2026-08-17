@@ -20,6 +20,7 @@ enum AnalyticsCaptureMode: String, Sendable {
 enum AnalyticsCaptureEntry: String, Sendable {
     case dock
     case onboarding
+    case exploreFirst = "explore_first"
     case quickAction = "quick_action"
     case deepLink = "deep_link"
     case testPrompt = "test_prompt"
@@ -55,13 +56,19 @@ enum SpeakItAnalyticsEvent: Sendable {
     case appInstalled
     case appOpened(plan: AnalyticsPlan)
     case screenViewed(AnalyticsScreen)
+    case onboardingStarted
+    case onboardingAbandoned
     case onboardingCompleted(path: AnalyticsCaptureEntry)
+    case firstCaptureGuideCompleted
+    case learnSpeakItOpened
+    case captureAnywhereDiscoveryDismissed
     /// The optional on-device profile was created for the first time. Carries
     /// no properties: the name and email never leave the phone.
     case profileCreated
     case captureStarted(mode: AnalyticsCaptureMode, entry: AnalyticsCaptureEntry)
     case captureSaved(source: AnalyticsCaptureSource, itemCount: Int, needsReviewCount: Int, plan: AnalyticsPlan)
     case captureFailed(source: AnalyticsCaptureSource, category: String)
+    case capturePerformance(CaptureLatencySample)
     case freeLimitReached(used: Int)
     case paywallViewed(context: AnalyticsPaywallContext)
     case planSelected(AnalyticsPlan)
@@ -80,11 +87,17 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .appInstalled: "app_installed"
         case .appOpened: "app_opened"
         case .screenViewed: "screen_viewed"
+        case .onboardingStarted: "onboarding_started"
+        case .onboardingAbandoned: "onboarding_abandoned"
         case .onboardingCompleted: "onboarding_completed"
+        case .firstCaptureGuideCompleted: "first_capture_guide_completed"
+        case .learnSpeakItOpened: "learn_speak_it_opened"
+        case .captureAnywhereDiscoveryDismissed: "capture_anywhere_discovery_dismissed"
         case .profileCreated: "profile_created"
         case .captureStarted: "capture_started"
         case .captureSaved: "capture_saved"
         case .captureFailed: "capture_failed"
+        case .capturePerformance: "capture_performance"
         case .freeLimitReached: "free_limit_reached"
         case .paywallViewed: "paywall_viewed"
         case .planSelected: "plan_selected"
@@ -111,6 +124,12 @@ enum SpeakItAnalyticsEvent: Sendable {
             ["plan": plan.rawValue]
         case .screenViewed(let screen):
             ["screen": screen.rawValue]
+        case .onboardingStarted,
+             .onboardingAbandoned,
+             .firstCaptureGuideCompleted,
+             .learnSpeakItOpened,
+             .captureAnywhereDiscoveryDismissed:
+            [:]
         case .onboardingCompleted(let path):
             ["entry": path.rawValue]
         case .profileCreated:
@@ -126,6 +145,8 @@ enum SpeakItAnalyticsEvent: Sendable {
             ]
         case .captureFailed(let source, let category):
             ["source": source.rawValue, "error_category": Self.safeCategory(category)]
+        case .capturePerformance(let sample):
+            Self.performanceProperties(sample)
         case .freeLimitReached(let used):
             ["free_captures_used": max(0, used)]
         case .paywallViewed(let context):
@@ -151,7 +172,11 @@ enum SpeakItAnalyticsEvent: Sendable {
     static let allowedPropertyKeys: Set<String> = [
         "plan", "screen", "entry", "mode", "source", "item_count",
         "needs_review_count", "error_category", "free_captures_used",
-        "context", "has_pro", "completed", "collection", "result_bucket"
+        "context", "has_pro", "completed", "collection", "result_bucket",
+        "capture_kind", "capture_ready_ms", "speech_end_detection_ms",
+        "transcription_ms", "semantic_parsing_ms", "temporal_resolution_ms",
+        "persistence_ms", "render_ms", "capture_total_ms", "pipeline_complete",
+        "requires_review"
     ]
 
     private static let allowedErrorCategories: Set<String> = [
@@ -168,6 +193,34 @@ enum SpeakItAnalyticsEvent: Sendable {
 
     private static func safeCollection(_ collection: String) -> String {
         allowedCollections.contains(collection) ? collection : "reference"
+    }
+
+    private static func performanceProperties(
+        _ sample: CaptureLatencySample
+    ) -> [String: Any] {
+        var properties: [String: Any] = [
+            "source": sample.source.rawValue,
+            "capture_kind": sample.kind.rawValue,
+            "semantic_parsing_ms": max(0, sample.semanticParsingMilliseconds),
+            "temporal_resolution_ms": max(0, sample.temporalResolutionMilliseconds),
+            "persistence_ms": max(0, sample.persistenceMilliseconds),
+            "render_ms": max(0, sample.renderMilliseconds),
+            "capture_total_ms": max(0, sample.captureToOrganizedMilliseconds),
+            // Pipeline completion is not semantic correctness. Device benchmark
+            // runs pair this telemetry with a human correctness assessment.
+            "pipeline_complete": sample.pipelineCompleted,
+            "requires_review": sample.requiresReview
+        ]
+        if let captureReadyMilliseconds = sample.captureReadyMilliseconds {
+            properties["capture_ready_ms"] = max(0, captureReadyMilliseconds)
+        }
+        if let speechEndDetectionMilliseconds = sample.speechEndDetectionMilliseconds {
+            properties["speech_end_detection_ms"] = max(0, speechEndDetectionMilliseconds)
+        }
+        if let transcriptionMilliseconds = sample.transcriptionMilliseconds {
+            properties["transcription_ms"] = max(0, transcriptionMilliseconds)
+        }
+        return properties
     }
 }
 

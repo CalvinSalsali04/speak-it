@@ -1,5 +1,24 @@
 import Foundation
 
+/// Debug-only hardware QA override. A launch argument pair such as
+/// `--location-qa-radius 200` lets the same device/build exercise the radius
+/// matrix without shipping a product setting that people should not have to
+/// understand. Release builds always use the saved/default value.
+private enum LocationQARadius {
+    static func resolve(_ proposed: Double) -> Double {
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flag = arguments.firstIndex(of: "--location-qa-radius"),
+           arguments.indices.contains(flag + 1),
+           let override = Double(arguments[flag + 1]),
+           (100...1_000).contains(override) {
+            return override
+        }
+#endif
+        return proposed
+    }
+}
+
 /// A place the person configures once and refers to by name.
 struct SavedPlace: Codable, Equatable, Sendable {
     var latitude: Double
@@ -19,7 +38,7 @@ struct SavedPlace: Codable, Equatable, Sendable {
     ) {
         self.latitude = latitude
         self.longitude = longitude
-        self.radius = max(radius, 100)
+        self.radius = max(LocationQARadius.resolve(radius), 100)
         self.label = label
         self.updatedAt = updatedAt
     }

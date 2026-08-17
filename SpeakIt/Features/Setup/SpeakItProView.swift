@@ -32,6 +32,8 @@ struct SpeakItProView: View {
 
     @State private var selectedProductID = SubscriptionStore.annualProductID
     @State private var showsPrivacy = false
+    @State private var showsCodeRedemption = false
+    @State private var hadProAccessBeforeRedemption = false
 #if DEBUG
     @State private var selectedDeveloperPlan = DeveloperTestPlan.annual
 #endif
@@ -61,11 +63,12 @@ struct SpeakItProView: View {
                         activeSubscriptionCard
                     } else {
                         valueSummary
-                        benefits
                         plans
                         purchaseControls
+                        benefits
                     }
 
+                    codeRedemptionCard
                     trustNote
                     legalControls
                 }
@@ -95,6 +98,9 @@ struct SpeakItProView: View {
         }
         .sheet(isPresented: $showsPrivacy) {
             SpeakItPrivacyView()
+        }
+        .offerCodeRedemption(isPresented: $showsCodeRedemption) { result in
+            handleCodeRedemptionCompletion(result)
         }
         .alert(
             "Speak It Pro",
@@ -147,7 +153,7 @@ struct SpeakItProView: View {
         if context == .freeLimit {
             return "Everything you saved is still yours. You’ve used all \(FreePlanAllowance.lifetimeCaptureLimit) free captures — upgrade for unlimited capture."
         }
-        return "Go beyond quick capture with deeper organization, advanced scheduling, and a library that becomes more useful over time."
+        return "Your first \(FreePlanAllowance.lifetimeCaptureLimit) captures include the complete experience. Pro removes the capture limit so every thought can keep moving."
     }
 
     @ViewBuilder
@@ -184,24 +190,19 @@ struct SpeakItProView: View {
     private var benefits: some View {
         VStack(alignment: .leading, spacing: 18) {
             benefit(
-                symbol: "textformat",
-                title: "Smarter cleanup",
-                detail: "Turn natural speech into clear, consistent writing while preserving what you meant."
+                symbol: "infinity",
+                title: "Unlimited capture",
+                detail: "Keep speaking or typing without a lifetime capture limit."
             )
             benefit(
                 symbol: "square.stack.3d.up",
-                title: "A deeper Memory",
-                detail: "Prioritize ideas, notes, and useful context so the important things rise first."
+                title: "The complete experience",
+                detail: "Keep natural cleanup, Today and Memory routing, reminders, and capture-anywhere workflows."
             )
             benefit(
-                symbol: "calendar.badge.clock",
-                title: "Advanced scheduling",
-                detail: "Use recurring timing and richer calendar and action workflows."
-            )
-            benefit(
-                symbol: "icloud",
-                title: "Continuity and recovery",
-                detail: "Keep your organized library available through Apple’s private iCloud services."
+                symbol: "text.quote",
+                title: "Your originals stay intact",
+                detail: "Every organized result remains connected to the words you originally captured."
             )
         }
     }
@@ -274,7 +275,7 @@ struct SpeakItProView: View {
                     .stroke(Color.speakDivider, lineWidth: 1)
             }
         } else {
-            VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(subscriptionStore.products, id: \.id) { product in
                     planButton(product)
                 }
@@ -316,32 +317,29 @@ struct SpeakItProView: View {
             selectedDeveloperPlan = plan
             SpeakItAnalytics.track(.planSelected(plan == .annual ? .annual : .monthly))
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21, weight: .medium))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(title).font(.body.weight(.semibold))
-                        if plan == .annual {
-                            Text("BEST VALUE")
-                                .font(.caption2.weight(.bold))
-                                .tracking(0.5)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
-                                .foregroundStyle(Color.speakInverseInk)
-                                .background(Color.speakInverseSurface, in: Capsule())
-                        }
+            VStack(alignment: .leading, spacing: 11) {
+                HStack(spacing: 10) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 21, weight: .medium))
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                    Spacer(minLength: 8)
+                    if plan == .annual {
+                        bestValueBadge
                     }
+                }
+
+                HStack(alignment: .bottom, spacing: 12) {
                     Text(detail)
                         .font(.footnote)
                         .foregroundStyle(Color.speakMuted)
-                }
-
-                Spacer()
-                Text(price)
-                    .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(price)
+                        .font(.subheadline.weight(.semibold))
                     .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
             }
             .foregroundStyle(Color.speakInk)
             .padding(16)
@@ -366,37 +364,31 @@ struct SpeakItProView: View {
             selectedProductID = product.id
             SpeakItAnalytics.track(.planSelected(isAnnual ? .annual : .monthly))
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21, weight: .medium))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(isAnnual ? "Annual" : "Monthly")
-                            .font(.body.weight(.semibold))
-                        if isAnnual {
-                            Text("BEST VALUE")
-                                .font(.caption2.weight(.bold))
-                                .tracking(0.5)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
-                                .foregroundStyle(Color.speakInverseInk)
-                                .background(Color.speakInverseSurface, in: Capsule())
-                        }
+            VStack(alignment: .leading, spacing: 11) {
+                HStack(spacing: 10) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 21, weight: .medium))
+                    Text(isAnnual ? "Annual" : "Monthly")
+                        .font(.body.weight(.semibold))
+                    Spacer(minLength: 8)
+                    if isAnnual {
+                        bestValueBadge
                     }
+                }
+
+                HStack(alignment: .bottom, spacing: 12) {
                     Text(isAnnual ? "One payment each year" : "Flexible monthly billing")
                         .font(.footnote)
                         .foregroundStyle(Color.speakMuted)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(product.displayPrice)
-                        .font(.body.weight(.semibold))
-                    Text(isAnnual ? "per year" : "per month")
-                        .font(.caption)
-                        .foregroundStyle(Color.speakMuted)
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(product.displayPrice)
+                            .font(.body.weight(.semibold))
+                        Text(isAnnual ? "per year" : "per month")
+                            .font(.caption)
+                            .foregroundStyle(Color.speakMuted)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .foregroundStyle(Color.speakInk)
@@ -411,7 +403,23 @@ struct SpeakItProView: View {
         .buttonStyle(.speakIt)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("pro.plan.\(isAnnual ? "annual" : "monthly")")
+        .accessibilityLabel(
+            "\(isAnnual ? "Annual" : "Monthly"), \(product.displayPrice) per \(isAnnual ? "year" : "month")"
+        )
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    private var bestValueBadge: some View {
+        Text("BEST VALUE")
+            .font(.caption2.weight(.bold))
+            .tracking(0.5)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .foregroundStyle(Color.speakInverseInk)
+            .background(Color.speakInverseSurface, in: Capsule())
+            .accessibilityIdentifier("pro.best-value")
     }
 
     @ViewBuilder
@@ -452,6 +460,15 @@ struct SpeakItProView: View {
             .disabled(selectedProduct == nil || subscriptionStore.isPurchasing)
             .opacity(selectedProduct == nil ? 0.45 : 1)
 
+            if let selectedProduct {
+                Text(
+                    "\(selectedProduct.displayPrice) per \(selectedProduct.id == SubscriptionStore.annualProductID ? "year" : "month"). Auto-renews until cancelled."
+                )
+                .font(.caption)
+                .foregroundStyle(Color.speakMuted)
+                .multilineTextAlignment(.center)
+            }
+
             Button {
                 Task { await subscriptionStore.restorePurchases() }
             } label: {
@@ -483,7 +500,9 @@ struct SpeakItProView: View {
                 SpeakItAnalytics.track(.purchaseCompleted(analyticsPlan))
             } label: {
                 VStack(spacing: 3) {
-                    Text("Start 7-day free trial")
+                    Text(selectedDeveloperPlan == .annual
+                         ? "Choose Annual · $14.99"
+                         : "Choose Monthly · $1.99")
                         .font(.headline)
                     Text("Developer test · no charge")
                         .font(.caption)
@@ -494,10 +513,11 @@ struct SpeakItProView: View {
                 .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.speakIt)
+            .accessibilityIdentifier("pro.purchase")
 
             Text(selectedDeveloperPlan == .annual
-                 ? "Then $14.99 per year. Cancel anytime."
-                 : "Then $1.99 per month. Cancel anytime.")
+                 ? "$14.99 per year. Auto-renews until cancelled."
+                 : "$1.99 per month. Auto-renews until cancelled.")
                 .font(.caption)
                 .foregroundStyle(Color.speakMuted)
 
@@ -532,11 +552,13 @@ struct SpeakItProView: View {
                subscriptionStore.developerAccessOverride == .pro {
                 Label("Developer test subscription · no charge", systemImage: "hammer")
                     .font(.subheadline.weight(.semibold))
-            } else {
+            } else if subscriptionStore.hasActiveSubscription {
                 manageSubscriptionLink
             }
 #else
-            manageSubscriptionLink
+            if subscriptionStore.hasActiveSubscription {
+                manageSubscriptionLink
+            }
 #endif
         }
         .padding(18)
@@ -554,6 +576,12 @@ struct SpeakItProView: View {
             return "This is the customer-facing Pro state. The developer purchase did not create an App Store receipt or charge."
         }
 #endif
+        if subscriptionStore.hasLifetimeProAccess {
+            if subscriptionStore.hasActiveSubscription {
+                return "Lifetime Pro is active on this Apple Account. An active subscription is also associated with the account and can be managed below."
+            }
+            return "Lifetime Pro is active permanently and is available on devices using this Apple Account."
+        }
         return "Your subscription is managed securely by Apple and is available on devices using this Apple Account."
     }
 
@@ -568,12 +596,67 @@ struct SpeakItProView: View {
 
     private var trustNote: some View {
         Label {
-            Text("No Speak It account is required. Payment and subscription status are handled by Apple. Your existing thoughts never become locked.")
+            Text("No Speak It account is required. Payment and Pro access are handled by Apple. Your existing thoughts never become locked.")
                 .font(.footnote)
                 .foregroundStyle(Color.speakMuted)
         } icon: {
             Image(systemName: "lock.shield")
                 .foregroundStyle(Color.speakMuted)
+        }
+    }
+
+    private var codeRedemptionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Have a code?")
+                .font(.headline)
+                .foregroundStyle(Color.speakInk)
+
+            Text("Redeem a Speak It offer code securely with the App Store.")
+                .font(.subheadline)
+                .foregroundStyle(Color.speakMuted)
+
+            Button {
+                hadProAccessBeforeRedemption = subscriptionStore.hasProAccess
+                showsCodeRedemption = true
+            } label: {
+                Label("Redeem Code", systemImage: "giftcard")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .foregroundStyle(Color.speakInk)
+                    .background(
+                        Color.speakSurface,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.speakDivider, lineWidth: 1)
+                    }
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+            .accessibilityIdentifier("pro.redeem-code")
+        }
+        .padding(18)
+        .background(
+            Color.speakSurface.opacity(0.45),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+    }
+
+    private func handleCodeRedemptionCompletion(_ result: Result<Void, Error>) {
+        switch result {
+        case .success:
+            Task {
+                await subscriptionStore.refreshEntitlements()
+                guard !hadProAccessBeforeRedemption,
+                      subscriptionStore.hasProAccess else { return }
+                subscriptionStore.customerMessage = subscriptionStore.hasLifetimeProAccess
+                    ? "Lifetime Speak It Pro is ready on this Apple Account."
+                    : "Speak It Pro is ready on this Apple Account."
+            }
+        case .failure(let error):
+            subscriptionStore.customerMessage =
+                "The App Store couldn’t open code redemption. \(error.localizedDescription)"
         }
     }
 

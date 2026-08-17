@@ -1,4 +1,5 @@
 import AppIntents
+import Foundation
 import SwiftData
 import SwiftUI
 import UIKit
@@ -15,20 +16,38 @@ final class QuickActionRouter: ObservableObject {
         let id = UUID()
         let initialMode: CaptureInitialMode
         let autoStartsVoiceCapture: Bool
+        let activatedAt: Date
+        let activationInstant: CapturePerformanceClock.Instant
     }
 
     static let shared = QuickActionRouter()
 
     @Published private(set) var pendingRequest: Request?
 
-    func requestTypedCapture() {
+    func requestTypedCapture(
+        activatedAt: Date = .now,
+        activationInstant: CapturePerformanceClock.Instant = CapturePerformanceClock.now
+    ) {
         guard pendingRequest?.initialMode != .text else { return }
-        pendingRequest = Request(initialMode: .text, autoStartsVoiceCapture: false)
+        pendingRequest = Request(
+            initialMode: .text,
+            autoStartsVoiceCapture: false,
+            activatedAt: activatedAt,
+            activationInstant: activationInstant
+        )
     }
 
-    func requestVoiceCapture() {
+    func requestVoiceCapture(
+        activatedAt: Date = .now,
+        activationInstant: CapturePerformanceClock.Instant = CapturePerformanceClock.now
+    ) {
         guard pendingRequest?.initialMode != .voice else { return }
-        pendingRequest = Request(initialMode: .voice, autoStartsVoiceCapture: true)
+        pendingRequest = Request(
+            initialMode: .voice,
+            autoStartsVoiceCapture: true,
+            activatedAt: activatedAt,
+            activationInstant: activationInstant
+        )
     }
 
     func consume(_ request: Request) {
@@ -69,12 +88,22 @@ final class SpeakItSceneDelegate: NSObject, UIWindowSceneDelegate {
     }
 
     private func handle(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+        let activatedAt = Date.now
+        let activationInstant = CapturePerformanceClock.now
         switch shortcutItem.type {
         case SpeakItQuickAction.speakThought:
-            QuickActionRouter.shared.requestVoiceCapture()
+            CaptureActivationStore.markInvoked(at: activatedAt)
+            QuickActionRouter.shared.requestVoiceCapture(
+                activatedAt: activatedAt,
+                activationInstant: activationInstant
+            )
             return true
         case SpeakItQuickAction.typeThought:
-            QuickActionRouter.shared.requestTypedCapture()
+            CaptureActivationStore.markInvoked(at: activatedAt)
+            QuickActionRouter.shared.requestTypedCapture(
+                activatedAt: activatedAt,
+                activationInstant: activationInstant
+            )
             return true
         default:
             return false

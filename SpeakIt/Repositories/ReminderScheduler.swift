@@ -195,7 +195,8 @@ enum ReminderScheduler {
     static func deliverPlaceReminder(
         itemID: UUID,
         title: String,
-        placeDescription: String
+        placeDescription: String,
+        notificationIdentifier: String
     ) async -> ReminderSchedulingResult {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
@@ -223,7 +224,7 @@ enum ReminderScheduler {
         }
 
         let request = UNNotificationRequest(
-            identifier: "SpeakIt.place.\(itemID.uuidString).\(Int(Date.now.timeIntervalSince1970))",
+            identifier: notificationIdentifier,
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
@@ -233,6 +234,15 @@ enum ReminderScheduler {
         } catch {
             return .failed
         }
+    }
+
+    /// Withdraws a just-scheduled place delivery when a post-scheduling
+    /// revalidation finds that the item was completed, deleted, or edited while
+    /// UserNotifications was accepting the request.
+    static func cancelPlaceDelivery(notificationIdentifier: String) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
+        center.removeDeliveredNotifications(withIdentifiers: [notificationIdentifier])
     }
 
     private struct NotificationGroup {
@@ -288,7 +298,8 @@ enum ReminderScheduler {
     static func synchronize(
         _ requests: [ReminderScheduleRequest],
         requestAuthorizationIfNeeded: Bool,
-        scope: ReminderSynchronizationScope? = nil
+        scope: ReminderSynchronizationScope? = nil,
+        onCompletion: (([ReminderSchedulingResult]) -> Void)? = nil
     ) {
         let predecessor = synchronizationTail
         synchronizationTail = Task {
@@ -296,11 +307,12 @@ enum ReminderScheduler {
             // grouped notification action). Preserve their order so an older
             // scheduling pass can never finish after and overwrite a newer one.
             await predecessor?.value
-            _ = await scheduleBatch(
+            let results = await scheduleBatch(
                 requests,
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
                 scope: scope
             )
+            onCompletion?(results)
         }
     }
 
@@ -462,33 +474,86 @@ enum ReminderScheduler {
         return !results.isEmpty && results.allSatisfy { $0 == .scheduled }
     }
 
+    /// What to tell the person their capture became, immediately after saving.
+    ///
+    /// This used to re-run `ThoughtOrganizer` over the original text and decide
+    /// a destination from that fresh parse, which made it a second opinion
+    /// rather than a report: it never looked at `locationIntent` or at the live
+    /// location blocker, so "take the bins out when I get home" with no Home
+    /// configured was announced as "Today · When you have time" while the item
+    /// it had just saved went to Needs review. The receipt now reads the same
+    /// derivation Today reads, so the two cannot disagree.
+    ///
+    /// The only thing still parsed is alarm-vs-notification wording, because
+    /// `ReminderDelivery` is not stored on the item — `ReminderScheduleRequest`
+    /// re-derives it the same way for the same reason.
+    @MainActor
     static func confirmationContext(for item: CapturedItem) -> String {
-        let originalText = item.originalTextSegment
-        let organization = ThoughtOrganizer.organize(
-            originalText,
-            referenceDate: item.createdAt
+        confirmationContext(
+            for: item,
+            authorization: LocationReminderMonitor.shared.authorization
+        )
+    }
+
+    /// The deterministic form used when a caller has already taken a snapshot
+    /// of device authorization. Passing the same snapshot to every presentation
+    /// surface prevents a permission change between reads from producing two
+    /// answers for one item, and keeps the contract directly testable.
+    @MainActor
+    static func confirmationContext(
+        for item: CapturedItem,
+        authorization: LocationAuthorization
+    ) -> String {
+        let presentation = ItemPresentation.make(
+            for: item,
+            authorization: authorization
         )
 
-        if let reminderDate = item.reminderDate {
-            let kind = organization.reminderDelivery == .alarm ? "Alarm" : "Reminder"
-            if let recurrence = RecurrenceStore.rule(for: item.id) {
-                return "\(kind) · \(friendlyDate(reminderDate)) · \(recurrence.displayName)"
+        // Review outranks every other description. An item that cannot act yet
+        // must say so here, where the person is still looking at the screen.
+        if presentation.requiresReview {
+            guard let requirement = presentation.reviewRequirement else {
+                return presentation.destination.announcement
             }
-            return "\(kind) · \(friendlyDate(reminderDate))"
+            return "\(presentation.destination.announcement) · \(requirement)"
         }
-        if let dueDate = item.dueDate {
-            if let recurrence = RecurrenceStore.rule(for: item.id) {
-                return "Timeline · \(friendlyDate(dueDate)) · \(recurrence.displayName)"
+
+        switch presentation.reminderState {
+        case .place:
+            guard let trigger = presentation.triggerSummary else {
+                return presentation.destination.announcement
             }
-            return "Timeline · \(friendlyDate(dueDate))"
+            return "Place reminder · \(trigger)"
+
+        case .blockedPlace:
+            // Unreachable in practice: a blocked place reminder requires review
+            // and is handled above. Kept explicit so a future change to the
+            // blocker rules cannot silently fall through to a timing string.
+            return presentation.destination.announcement
+
+        case let .time(date, _):
+            let kind = deliveryKindLabel(for: item)
+            if let recurrence = presentation.recurrenceSummary {
+                return "\(kind) · \(friendlyDate(date)) · \(recurrence)"
+            }
+            return "\(kind) · \(friendlyDate(date))"
+
+        case .none:
+            if presentation.destination == .memory {
+                return "Memory · \(item.category.displayName)"
+            }
+            return presentation.destination.announcement
         }
-        if organization.needsClarification {
-            return "Needs a time"
-        }
-        if item.itemType.isActionable {
-            return "Today · When you have time"
-        }
-        return "Memory · \(item.category.displayName)"
+    }
+
+    @MainActor
+    private static func deliveryKindLabel(for item: CapturedItem) -> String {
+        guard item.reminderDate != nil else { return "Timeline" }
+        let delivery = ThoughtOrganizer.organize(
+            item.originalTextSegment,
+            referenceDate: item.createdAt
+        ).reminderDelivery
+        return delivery == .alarm ? "Alarm" : "Reminder"
     }
 
     private static func schedule(

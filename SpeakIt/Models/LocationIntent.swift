@@ -113,6 +113,14 @@ struct LocationIntent: Codable, Equatable, Sendable {
     /// "every time I get to work" repeats; "next time I get to the gym" does
     /// not. A one-shot reminder stops being monitored once it fires.
     var repeats: Bool
+    /// Generation of the trigger definition carried by the monitored-region ID.
+    ///
+    /// Core Location can deliver a callback from a region that was stopped just
+    /// before an edit completed. The item ID alone cannot distinguish that stale
+    /// callback from the newly edited reminder, so every material trigger edit
+    /// advances this value. A callback whose revision no longer matches the
+    /// stored intent is discarded before it can schedule anything.
+    var triggerRevision: Int
     /// How the place currently resolves, when it has been resolved. Absent is a
     /// normal state, not an error: a named place may not have been searched
     /// yet, and a saved place may not have been configured yet.
@@ -123,6 +131,21 @@ struct LocationIntent: Codable, Equatable, Sendable {
     /// True once a person has set the place by hand, after which no reparse of
     /// the original sentence may overwrite it.
     var isUserEdited: Bool
+    /// When this trigger last delivered a reminder, or `nil` if it never has.
+    ///
+    /// The location counterpart of the temporal system's occurrence bookkeeping,
+    /// and it exists for the same reason: **the crossing has to be consumed, not
+    /// merely reacted to.** iOS may deliver the same region event more than
+    /// once, a reconcile can race the delegate callback, and a relaunch can
+    /// re-arm a region whose reminder has already been delivered. Without a
+    /// written-down record of the firing, each of those turns into a second
+    /// notification for a crossing that happened once.
+    ///
+    /// Stored inside the intent blob rather than as a new SwiftData property on
+    /// `CapturedItem`, so this needs no schema version: `LocationIntent` decodes
+    /// tolerantly and a row written before this field existed reads back as
+    /// "never fired", which is the correct answer for it.
+    var firedAt: Date?
 
     init(
         event: LocationEvent,
@@ -130,7 +153,9 @@ struct LocationIntent: Codable, Equatable, Sendable {
         repeats: Bool = false,
         resolvedPlace: ResolvedPlace? = nil,
         sourceText: String? = nil,
-        isUserEdited: Bool = false
+        isUserEdited: Bool = false,
+        firedAt: Date? = nil,
+        triggerRevision: Int = 0
     ) {
         self.event = event
         self.place = place
@@ -138,7 +163,15 @@ struct LocationIntent: Codable, Equatable, Sendable {
         self.resolvedPlace = resolvedPlace
         self.sourceText = sourceText
         self.isUserEdited = isUserEdited
+        self.firedAt = firedAt
+        self.triggerRevision = triggerRevision
     }
+
+    /// True when this trigger has already done its whole job.
+    ///
+    /// Only a one-shot retires. "Every time I get to work" has no final firing,
+    /// so it stays monitored until the item is completed, archived, or deleted.
+    var isRetired: Bool { !repeats && firedAt != nil }
 
     /// Tolerates intents written before a field existed, the same way
     /// `TemporalIntent` does, so adding one never orphans a stored row.
@@ -150,6 +183,8 @@ struct LocationIntent: Codable, Equatable, Sendable {
         resolvedPlace = try container.decodeIfPresent(ResolvedPlace.self, forKey: .resolvedPlace)
         sourceText = try container.decodeIfPresent(String.self, forKey: .sourceText)
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        firedAt = try container.decodeIfPresent(Date.self, forKey: .firedAt)
+        triggerRevision = try container.decodeIfPresent(Int.self, forKey: .triggerRevision) ?? 0
     }
 
     /// A short phrase for a row: "when you arrive at Home".
@@ -205,6 +240,15 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
     case monitoringUnavailable
     /// iOS caps how many regions one app may monitor, and the cap is reached.
     case monitoringLimitReached
+    /// iOS accepted the registration call and then rejected the region.
+    ///
+    /// Distinct from every other case here because it is the only one the app
+    /// cannot predict: `startMonitoring(for:)` returns without complaint and the
+    /// refusal arrives later, on the delegate. Region monitoring also needs
+    /// network reachability to report crossings promptly, so this is what a
+    /// reminder armed in Airplane Mode looks like. It exists so that a reminder
+    /// iOS is not actually watching is never displayed as active.
+    case monitoringFailed
 
     /// Shown on the review row. Names the actual gap, in the person's terms.
     var listLabel: String {
@@ -220,6 +264,7 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
         case .locationUnavailable: "Location unavailable"
         case .monitoringUnavailable: "Place reminders unavailable"
         case .monitoringLimitReached: "Too many place reminders"
+        case .monitoringFailed: "Couldn’t watch this place"
         }
     }
 
@@ -265,6 +310,8 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
             "This device can't monitor places"
         case .monitoringLimitReached:
             "Turn off another place reminder to make room for this one"
+        case .monitoringFailed:
+            "iOS couldn’t watch this place. Check your connection — Speak It tries again each time you open it"
         }
     }
 
@@ -275,7 +322,8 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
              .preciseLocationRequired:
             true
         case .missingHome, .missingWork, .ambiguousPlace, .placeNotFound,
-             .locationUnavailable, .monitoringUnavailable, .monitoringLimitReached:
+             .locationUnavailable, .monitoringUnavailable, .monitoringLimitReached,
+             .monitoringFailed:
             false
         }
     }
@@ -339,7 +387,8 @@ enum LocationReminderResolver {
             title: title,
             event: intent.event,
             place: place,
-            repeats: intent.repeats
+            repeats: intent.repeats,
+            triggerRevision: intent.triggerRevision
         ))
     }
 

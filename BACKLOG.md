@@ -11,13 +11,16 @@ Status values: **Done**, **Next**, **Later**.
 - **Done:** Edit, complete/undo, archive/restore, and confirmed deletion
 - **Done:** Empty and persistence-error states
 - **Done:** Accessibility labels and hints for interactive controls
+- **Done:** Durable first-capture onboarding, non-expiring accessible first receipt, and cancellation recovery
+- **Done:** Delayed and dismissible capture-anywhere discovery, educational empty states, and replayable Learn Speak It guide
 - **Done:** In-memory sample preview data
 - **Done:** Repository unit test source
 - **Done:** Device SDK build in Xcode 26.6
 - **Done:** Versioned SwiftData schema and protected storage-failure state
-- **Done:** 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests on an iPhone 17 Pro simulator
+- **Done:** 304 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests on an iPhone 17 simulator
 - **Done:** Final 1024×1024 production app icon (opaque PNG, no alpha)
 - **Next:** Real-device VoiceOver and large Dynamic Type review
+- **Next:** Moderated first-run usability test covering Welcome → first capture → receipt → Today/Memory guide
 
 ## Phase 2 — In-app voice capture
 
@@ -54,5 +57,10 @@ Status values: **Done**, **Next**, **Later**.
 - **Done:** Today prioritization and Memory search
 - **Done:** Optional record-level iCloud merge with deletion tombstones and metadata synchronization
 - **Done:** Approval-based Messages handoff and native Calendar event editor for timed tasks
+- **Later:** Server-backed referrals with stable user identity, verified App
+  Store redemption callbacks, one reward per new person, self-referral and
+  replay prevention, a referral credit ledger, and a 12-rewards-per-year cap.
+  Do not ship reward language until the end-to-end credit flow is live and
+  verified. Creator Offer Codes remain a separate Apple-backed system.
 - **Later:** Optional read-only Calendar context inside Today after dedicated privacy and overlap research
 - **Later:** Snooze/reschedule, morning notification, data export/delete-all, and optional integrations

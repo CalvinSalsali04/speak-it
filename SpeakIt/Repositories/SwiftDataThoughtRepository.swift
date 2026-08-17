@@ -6,13 +6,43 @@ import WidgetKit
 @MainActor
 final class SwiftDataThoughtRepository: ThoughtRepository {
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
+    private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
+
+    typealias PlaceReminderDelivery = @MainActor (
+        UUID,
+        String,
+        String,
+        String
+    ) async -> ReminderSchedulingResult
+    typealias PlaceReminderCancellation = @MainActor (String) -> Void
 
     private let modelContext: ModelContext
+    private let placeReminderDelivery: PlaceReminderDelivery
+    private let placeReminderCancellation: PlaceReminderCancellation
+    private let requestsReminderAuthorization: Bool
     private var isApplyingCloudSnapshot = false
     private var iCloudReconciliationTask: Task<Void, Never>?
+    private var locationDeliveriesInFlight: Set<String> = []
 
-    init(modelContext: ModelContext) {
+    init(
+        modelContext: ModelContext,
+        placeReminderDelivery: PlaceReminderDelivery? = nil,
+        placeReminderCancellation: PlaceReminderCancellation? = nil,
+        requestsReminderAuthorization: Bool = true
+    ) {
         self.modelContext = modelContext
+        self.requestsReminderAuthorization = requestsReminderAuthorization
+        self.placeReminderDelivery = placeReminderDelivery ?? { itemID, title, place, identifier in
+            await ReminderScheduler.deliverPlaceReminder(
+                itemID: itemID,
+                title: title,
+                placeDescription: place,
+                notificationIdentifier: identifier
+            )
+        }
+        self.placeReminderCancellation = placeReminderCancellation ?? { identifier in
+            ReminderScheduler.cancelPlaceDelivery(notificationIdentifier: identifier)
+        }
     }
 
     func recoverUnorganizedCaptures() {
@@ -161,9 +191,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // monitored. Watching the region alone would fire "when I get home
         // tonight" on a 2pm arrival, which is the half of the sentence the
         // person was most specific about. It waits in review instead.
+        // A one-shot that has already fired is excluded here rather than in
+        // `LocationReminderResolver`, so the reminder's *appearance* is
+        // untouched: the task is still outstanding, still in Today, still
+        // showing what it is waiting for. Only the region goes away. Retiring it
+        // in the resolver would have quietly reclassified a live task as
+        // non-actionable, which is a different and much larger change than
+        // "stop watching this place".
         let live = items.filter {
             !$0.isArchived && !$0.isCompleted
                 && $0.isLocationTriggered && !$0.constrainsBothPlaceAndTime
+                && $0.locationIntent?.isRetired != true
         }
         var reconciliation = monitor.reconcile(
             live.compactMap { $0.locationMonitorRequest(authorization: authorization) }
@@ -180,34 +218,115 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return reconciliation
     }
 
+    /// The shortest gap between two deliveries of a repeating place reminder.
+    ///
+    /// A repeating trigger has no final firing to record, so duplicate delivery
+    /// is suppressed by time instead. Five minutes absorbs both a redelivered
+    /// delegate event and GPS boundary bounce (inside/outside/inside around a
+    /// driveway) without turning a quick errand into several notifications.
+    static let locationTriggerCooldown: TimeInterval = 5 * 60
+
     /// A monitored region was crossed. Delivers the reminder, and retires the
     /// trigger when it was a one-shot.
     ///
     /// "Next time I get to the gym" stops being monitored once it has fired;
-    /// "every time I get to work" keeps its region. Retiring the one-shot here
-    /// rather than waiting for the person to complete the item is what stops it
-    /// firing again on the next arrival.
-    func handleLocationTrigger(itemID: UUID, event: LocationEvent) async {
+    /// "every time I get to work" keeps its region.
+    ///
+    /// A short-lived in-memory claim closes duplicate concurrent callbacks while
+    /// notification authorization and scheduling are awaited. `firedAt` is only
+    /// persisted after scheduling succeeds: denied notifications must never
+    /// retire a one-shot that the person did not receive.
+    func handleLocationTrigger(
+        itemID: UUID,
+        event: LocationEvent,
+        triggerRevision: Int? = nil,
+        regionIdentifier: String? = nil
+    ) async {
         // A combined place-and-time request is checked here as well as in
         // reconciliation, because a region left over from before the constraint
         // was recognised would otherwise still deliver at the wrong time.
         guard let item = try? findItem(withID: itemID),
               let intent = item.locationIntent,
               !item.isArchived, !item.isCompleted,
-              !item.constrainsBothPlaceAndTime,
-              intent.event == event else {
+              !item.constrainsBothPlaceAndTime else {
             // Nothing live wants this region. Reconciling removes it.
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
             return
         }
 
-        await ReminderScheduler.deliverPlaceReminder(
-            itemID: itemID,
-            title: item.displayTitle,
-            placeDescription: intent.displayDescription
-        )
+        // A different event or revision is a callback from the region an edit
+        // replaced. Do not stop by item ID here: that would also tear down the
+        // new region that should remain armed.
+        guard intent.event == event,
+              triggerRevision == nil || intent.triggerRevision == triggerRevision else { return }
 
-        if !intent.repeats {
+        if let regionIdentifier {
+            let authorization = LocationReminderMonitor.shared.authorization
+            guard let currentRequest = item.locationMonitorRequest(
+                authorization: authorization
+            ), LocationReminderMonitor.regionIdentifier(for: currentRequest) == regionIdentifier else {
+                // This is most commonly an event from the old Home region after
+                // Home was changed or removed. It is not an event for the current
+                // reminder, even though the item ID still exists.
+                return
+            }
+        }
+
+        let now = Date.now
+        if let firedAt = intent.firedAt {
+            guard intent.repeats else {
+                // Already delivered, and it only ever had one delivery to give.
+                // The region should not have survived to send this.
+                LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+                return
+            }
+            guard now.timeIntervalSince(firedAt) >= Self.locationTriggerCooldown else { return }
+        }
+
+        let deliveryKey = "\(itemID.uuidString).\(event.rawValue).r\(intent.triggerRevision)"
+        guard locationDeliveriesInFlight.insert(deliveryKey).inserted else { return }
+        defer { locationDeliveriesInFlight.remove(deliveryKey) }
+
+        let notificationIdentifier = "SpeakIt.place.\(itemID.uuidString).r\(intent.triggerRevision).\(UUID().uuidString)"
+        let result = await placeReminderDelivery(
+            itemID,
+            item.displayTitle,
+            intent.displayDescription,
+            notificationIdentifier
+        )
+        guard result == .scheduled else {
+            // The crossing was detected but nothing reached the person. Keep the
+            // trigger live so notification permission can be repaired and a
+            // later genuine crossing can still deliver it.
+            return
+        }
+
+        // Every await is an edit/completion/deletion window. Re-read the item and
+        // accept the delivery only if the callback still describes the current
+        // active trigger. A stale request that was already accepted by iOS is
+        // explicitly withdrawn before it can appear.
+        guard let current = try? findItem(withID: itemID),
+              var currentIntent = current.locationIntent,
+              !current.isArchived, !current.isCompleted,
+              !current.constrainsBothPlaceAndTime,
+              currentIntent.event == event,
+              currentIntent.triggerRevision == intent.triggerRevision,
+              regionIdentifier == nil || current.locationMonitorRequest(
+                authorization: LocationReminderMonitor.shared.authorization
+              ).map(LocationReminderMonitor.regionIdentifier(for:)) == regionIdentifier else {
+            placeReminderCancellation(notificationIdentifier)
+            return
+        }
+
+        currentIntent.firedAt = now
+        current.locationIntent = currentIntent
+        try? modelContext.save()
+
+        // Once scheduling has succeeded and the saved trigger still matches,
+        // retire a one-shot immediately. The persisted marker prevents a later
+        // launch from reconstructing it; the in-flight claim covered callbacks
+        // that arrived while scheduling was suspended.
+        if !currentIntent.repeats {
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
         }
     }
@@ -420,7 +539,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         schedulesReminder: Bool
     ) throws -> CapturedItem {
         let normalizedText = try normalizedCaptureText(text)
-        if let duplicate = try recentExternalDuplicate(
+        if let duplicate = try recentDuplicate(
             text: normalizedText,
             source: source,
             createdAt: createdAt
@@ -449,10 +568,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         text: String,
         source: CaptureSource,
         createdAt: Date,
-        schedulesReminders: Bool = true
+        schedulesReminders: Bool = true,
+        performance: CapturePerformanceTrace? = nil
     ) async throws -> CaptureCreationResult {
         let normalizedText = try normalizedCaptureText(text)
-        if let duplicate = try recentExternalDuplicate(
+        if let duplicate = try recentDuplicate(
             text: normalizedText,
             source: source,
             createdAt: createdAt
@@ -466,15 +586,24 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             createdAt: createdAt
         )
 
-        let extraction = await ThoughtExtractionEngine.extract(
-            normalizedText,
-            referenceDate: createdAt
-        )
+        performance?.beginSemanticParsing()
+        let extraction = await CapturePerformanceContext.$stageRecorder.withValue(
+            performance?.stageRecorder
+        ) {
+            await ThoughtExtractionEngine.extract(
+                normalizedText,
+                referenceDate: createdAt
+            )
+        }
+        performance?.finishSemanticParsing()
+        performance?.beginPersistence()
         let items = organizePersistedCapture(
             session: pending.session,
             extraction: extraction,
-            schedulesReminders: schedulesReminders
+            schedulesReminders: schedulesReminders,
+            performance: performance
         )
+        performance?.finishPersistence()
         let safeItems = items.isEmpty ? [pending.placeholder] : items
         return CaptureCreationResult(session: pending.session, items: safeItems)
     }
@@ -504,6 +633,37 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             calendar: .autoupdatingCurrent
         )
         RecurrenceStore.set(edits.recurrenceRule, for: item.id)
+
+        // The same rule the temporal half follows: an explicit edit outranks the
+        // sentence, and `isUserEdited` stops a later reparse from reverting it.
+        var locationChanged = false
+        switch edits.locationIntent {
+        case .unchanged:
+            break
+        case var .update(intent):
+            if let previous = item.locationIntent {
+                let triggerChanged = intent.event != previous.event
+                    || intent.place != previous.place
+                    || intent.repeats != previous.repeats
+                    || intent.resolvedPlace != previous.resolvedPlace
+                if triggerChanged {
+                    intent.triggerRevision = previous.triggerRevision + 1
+                    intent.firedAt = nil
+                } else {
+                    // Saving an editor that was opened before a crossing must not
+                    // resurrect a spent one-shot with its stale local copy.
+                    intent.triggerRevision = previous.triggerRevision
+                    intent.firedAt = previous.firedAt
+                }
+            }
+            intent.isUserEdited = true
+            item.locationIntent = intent
+            locationChanged = true
+        case .remove:
+            item.locationIntent = nil
+            locationChanged = true
+        }
+
         item.isReviewed = true
         item.lastModifiedAt = .now
         do {
@@ -513,6 +673,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             throw error
         }
         synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: true)
+        // Regions are registered from stored intents, so a trigger that was
+        // changed or removed has to be re-reconciled or iOS keeps watching the
+        // old one. Turning a place reminder off in the editor and still being
+        // notified at that place is exactly the failure this prevents.
+        if locationChanged {
+            reconcileLocationReminders()
+        }
     }
 
     func setCompleted(_ item: CapturedItem, completed: Bool) throws {
@@ -571,7 +738,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             IdeaStageStore.removeMetadata(for: [deletedGeneratedItemID])
         }
         if completed { ReminderScheduler.cancel(itemID: item.id) }
-        synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: true)
+        // Completing or reopening work is not the moment to interrupt with a
+        // permission prompt. Any reminder in this session was already created
+        // deliberately; reconcile it against the current permission and let
+        // the existing permission UI explain a missing grant.
+        synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
     }
 
     func setArchived(_ item: CapturedItem, archived: Bool) throws {
@@ -585,7 +756,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 MemoryPinStore.setPinned(false, for: item.id)
             }
         }
-        synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: true)
+        // Restoring an archived item can make an old reminder live again, but
+        // it must not surface a surprise system prompt from a fire-and-forget
+        // repository mutation.
+        synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
     }
 
     func markReviewed(_ item: CapturedItem) throws {
@@ -816,6 +990,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         // The raw words are committed before extraction so classification can
         // never cost somebody a capture.
+        let signpost = CapturePerformanceSignposts.begin("RawCapturePersistence")
+        defer { CapturePerformanceSignposts.end("RawCapturePersistence", signpost) }
         try persistChanges()
         return (session, placeholder)
     }
@@ -824,7 +1000,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private func organizePersistedCapture(
         session: CaptureSession,
         extraction: ThoughtExtractionResult,
-        schedulesReminders: Bool
+        schedulesReminders: Bool,
+        performance: CapturePerformanceTrace? = nil
     ) -> [CapturedItem] {
         let previousRecurrences = RecurrenceStore.snapshots()
         session.processingStatus = .organizing
@@ -872,7 +1049,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             MemoryPinStore.removeMetadata(for: extraIDs)
             IdeaStageStore.removeMetadata(for: extraIDs)
             if schedulesReminders {
-                synchronizeReminders(for: session, requestAuthorizationIfNeeded: true)
+                synchronizeReminders(
+                    for: session,
+                    requestAuthorizationIfNeeded: true,
+                    performance: performance
+                )
             }
             freezeCurrentLocationSnapshots(in: organized)
             return organized.sorted(by: itemOrder)
@@ -1013,7 +1194,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // A hand-set place outranks the sentence, exactly as a hand-set time
         // does. Reorganizing a capture must not revert it.
         if item.locationIntent?.isUserEdited != true {
-            item.locationIntent = organization.locationIntent
+            var reparsed = organization.locationIntent
+            // Reorganizing re-reads the same sentence, so it must not hand a
+            // spent one-shot a second life. The delivery already happened; it is
+            // a fact about this reminder, not a reading of the wording. Carried
+            // over only when the reparse still names the same crossing — a
+            // genuinely different place or direction is a different reminder and
+            // has not fired yet.
+            if let previous = item.locationIntent, previous.firedAt != nil,
+               reparsed?.event == previous.event, reparsed?.place == previous.place {
+                reparsed?.firedAt = previous.firedAt
+            }
+            item.locationIntent = reparsed
         }
         RecurrenceStore.set(organization.recurrenceRule, for: item.id)
     }
@@ -1305,7 +1497,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     private func synchronizeReminders(
         for session: CaptureSession?,
-        requestAuthorizationIfNeeded: Bool
+        requestAuthorizationIfNeeded: Bool,
+        performance: CapturePerformanceTrace? = nil
     ) {
         guard let session else { return }
         let requests = session.items
@@ -1313,11 +1506,16 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             .compactMap(ReminderScheduleRequest.init(item:))
         ReminderScheduler.synchronize(
             requests,
-            requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
+            requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
             scope: ReminderSynchronizationScope(
                 itemIDs: Set(session.items.map(\.id)),
                 captureSessionIDs: [session.id]
-            )
+            ),
+            onCompletion: requests.isEmpty ? nil : { results in
+                performance?.markNotificationSchedulingFinished(
+                    accepted: results.contains(.scheduled)
+                )
+            }
         )
     }
 
@@ -1330,7 +1528,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let requests = (try? modelContext.fetch(descriptor))?.compactMap(ReminderScheduleRequest.init(item:)) ?? []
         ReminderScheduler.synchronize(
             requests,
-            requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
+            requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
             scope: ReminderSynchronizationScope(
                 itemIDs: Set(requests.map(\.itemID)),
                 captureSessionIDs: Set(requests.compactMap(\.captureSessionID)),
@@ -1402,14 +1600,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return next
     }
 
-    private func recentExternalDuplicate(
+    private func recentDuplicate(
         text: String,
         source: CaptureSource,
         createdAt: Date
     ) throws -> CaptureCreationResult? {
-        guard source == .shortcut || source == .siri || source == .shareSheet else { return nil }
+        let window: TimeInterval
+        switch source {
+        case .shortcut, .siri, .shareSheet:
+            window = Self.externalCaptureDeduplicationWindow
+        case .inAppText, .inAppVoice:
+            window = Self.inAppCaptureDeduplicationWindow
+        case .sample:
+            return nil
+        }
 
-        let lowerBound = createdAt.addingTimeInterval(-Self.externalCaptureDeduplicationWindow)
+        let lowerBound = createdAt.addingTimeInterval(-window)
         let upperBound = createdAt.addingTimeInterval(0.5)
         let sourceRawValue = source.rawValue
         var descriptor = FetchDescriptor<CaptureSession>(
@@ -1427,7 +1633,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             guard session.originalTranscription.captureFingerprint == fingerprint else { return nil }
             let items = self.orderedItems(in: session)
             guard !items.isEmpty else { return nil }
-            return CaptureCreationResult(session: session, items: items)
+            return CaptureCreationResult(
+                session: session,
+                items: items,
+                createdNewCapture: false
+            )
         }.first
     }
 }
@@ -1436,9 +1646,10 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 
     var captureFingerprint: String {
-        components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+        folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
             .joined(separator: " ")
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 }

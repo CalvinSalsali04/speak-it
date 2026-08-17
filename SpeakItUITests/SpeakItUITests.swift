@@ -70,6 +70,39 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(waitForValue("Collapsed", on: comingUp, timeout: 4))
     }
 
+    /// The floating dock must not become a permanent mask over the last Today
+    /// row. This is deliberately exercised with both disclosure groups open:
+    /// that was the smallest layout where the final row reached its scroll
+    /// limit while still intersecting the dock.
+    func testTodayLastRowClearsFloatingDockAtScrollLimit() {
+        let app = launchApp(
+            "--ui-testing-skip-welcome",
+            "--load-today-examples",
+            "--expand-today-upcoming",
+            "--ui-testing-keep-dock-visible"
+        )
+
+        let lastRow = app.buttons["item.edit.Pack gym clothes"]
+        let captureButton = app.buttons["dock.capture"]
+        XCTAssertTrue(lastRow.waitForExistence(timeout: 6))
+        XCTAssertTrue(captureButton.waitForExistence(timeout: 3))
+
+        for _ in 0..<6 { app.swipeUp() }
+
+        XCTAssertTrue(
+            captureButton.isHittable,
+            "This regression must measure clearance while the floating dock is visible"
+        )
+        XCTAssertLessThanOrEqual(
+            lastRow.frame.maxY,
+            // Sixteen points cover the row's lower padding and separator; the
+            // remaining eight keep that chrome visibly clear of the dock.
+            captureButton.frame.minY - 24,
+            "The last Today row must scroll fully above the floating dock. " +
+                "row=\(lastRow.frame), dock=\(captureButton.frame)"
+        )
+    }
+
     func testTodayItemSeparatesCompletionFromFullWidthEditing() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
@@ -115,6 +148,180 @@ final class SpeakItUITests: XCTestCase {
         assertMinimumTouchTarget(save)
         save.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.staticTexts["The spare key is inside the blue kitchen drawer"]
+                .waitForExistence(timeout: 3),
+            "The confirmation must render the final organized row, not a placeholder"
+        )
+    }
+
+    func testClosingANonemptyCaptureRequiresAnExplicitChoice() {
+        let app = launchApp("--ui-testing-skip-welcome")
+
+        app.buttons["dock.capture"].tap()
+        let typeInstead = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
+        typeInstead.tap()
+
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 4))
+        editor.tap()
+        editor.typeText("Keep this draft safe")
+
+        app.buttons["capture.close"].tap()
+        XCTAssertTrue(app.buttons["Save & Close"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Discard"].exists)
+        XCTAssertTrue(app.buttons["Keep Editing"].exists)
+
+        app.buttons["Keep Editing"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertEqual(editor.value as? String, "Keep this draft safe")
+
+        app.buttons["capture.close"].tap()
+        app.buttons["Discard"].tap()
+        XCTAssertTrue(app.buttons["dock.capture"].waitForExistence(timeout: 4))
+    }
+
+    func testFirstSuccessfulCaptureExplainsTodayAndMemory() {
+        let app = launchApp()
+
+        app.buttons["welcome.tryItNow"].tap()
+        let typeInstead = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
+        typeInstead.tap()
+
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 4))
+        editor.tap()
+        editor.typeText("The spare key is in the blue drawer")
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+
+        XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+        let continueFromReceipt = app.buttons["capture.confirmationContinue"]
+        XCTAssertTrue(continueFromReceipt.waitForExistence(timeout: 3))
+        continueFromReceipt.tap()
+        XCTAssertTrue(app.staticTexts["That’s the whole idea."].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Today is for action"].exists)
+        XCTAssertTrue(app.staticTexts["Memory is for knowledge"].exists)
+        XCTAssertTrue(app.buttons["firstCaptureGuide.continue"].isHittable)
+        XCTAssertTrue(app.buttons["firstCaptureGuide.done"].isHittable)
+    }
+
+    func testAbandonedFirstCaptureReturnsToWelcomeAndDoesNotPersistCompletion() {
+        let app = launchApp()
+
+        app.buttons["welcome.tryItNow"].tap()
+        let close = app.buttons["capture.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        let discard = app.buttons["Discard"]
+        if discard.waitForExistence(timeout: 2) {
+            discard.tap()
+        }
+        XCTAssertTrue(app.buttons["welcome.tryItNow"].waitForExistence(timeout: 5))
+
+        app.terminate()
+        let relaunched = XCUIApplication()
+        relaunched.launchArguments = ["--ui-testing"]
+        relaunched.launch()
+
+        XCTAssertTrue(
+            relaunched.buttons["welcome.tryItNow"].waitForExistence(timeout: 5),
+            "Starting and abandoning capture must not permanently complete onboarding"
+        )
+    }
+
+    func testFirstSavePersistsOnboardingBeforeReceiptIsDismissed() {
+        let app = launchApp()
+
+        app.buttons["welcome.tryItNow"].tap()
+        let typeInstead = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
+        typeInstead.tap()
+
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 4))
+        editor.tap()
+        editor.typeText("Buy toothpaste")
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+
+        app.terminate()
+        let relaunched = XCUIApplication()
+        relaunched.launchArguments = ["--ui-testing"]
+        relaunched.launch()
+
+        XCTAssertTrue(relaunched.staticTexts["Today"].waitForExistence(timeout: 5))
+        XCTAssertFalse(relaunched.buttons["welcome.tryItNow"].exists)
+    }
+
+    func testExploreFirstDoesNotShowCaptureAnywhereBeforeProductValue() {
+        let app = launchApp()
+
+        app.buttons["welcome.exploreFirst"].tap()
+        XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["today.doubleTapSetup"].exists)
+        XCTAssertTrue(app.staticTexts["Try saying “Buy toothpaste” or “Call Mom tomorrow at 5.”"].exists)
+    }
+
+    func testLearnSpeakItIsAvailableFromSettings() {
+        let app = launchApp("--ui-testing-skip-welcome")
+
+        app.buttons["today.account"].tap()
+        let learn = app.buttons["settings.learn-speak-it"]
+        XCTAssertTrue(learn.waitForExistence(timeout: 4))
+        learn.tap()
+
+        XCTAssertTrue(app.navigationBars["Learn Speak It"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Getting started"].exists)
+        XCTAssertTrue(app.staticTexts["Multiple thoughts at once"].exists)
+        XCTAssertTrue(app.staticTexts["Review and correct"].exists)
+
+        let freeAndPro = app.buttons["learn.free-and-pro"]
+        for _ in 0..<5 where !freeAndPro.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(freeAndPro.waitForExistence(timeout: 3))
+        XCTAssertTrue(freeAndPro.isHittable)
+        freeAndPro.tap()
+        XCTAssertTrue(app.navigationBars["Free and Pro"].waitForExistence(timeout: 3))
+        let planExplanation = app.staticTexts.matching(
+            NSPredicate(
+                format: "label BEGINSWITH %@",
+                "Your first 10 captures include the full Speak It experience and never renew."
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            planExplanation.waitForExistence(timeout: 3)
+        )
+    }
+
+    func testShareInvitationLivesWithPlanWithoutRewardLanguage() {
+        let app = launchApp("--ui-testing-skip-welcome", "--show-account")
+
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Create your profile"].exists)
+        let share = app.buttons["settings.share-speak-it"]
+        for _ in 0..<3 where !share.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(share.waitForExistence(timeout: 4))
+        assertMinimumTouchTarget(share)
+        XCTAssertTrue(app.staticTexts["Share Speak It"].exists)
+        XCTAssertTrue(app.staticTexts["Send Speak It to someone who would find it useful."].exists)
+        XCTAssertFalse(app.staticTexts["Give a month. Get a month."].exists)
+    }
+
+    func testFirstInstallAppearanceDefaultsToLight() {
+        let app = launchApp("--ui-testing-skip-welcome")
+
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        let light = app.buttons["Light"]
+        XCTAssertTrue(light.waitForExistence(timeout: 3))
+        XCTAssertTrue(light.isSelected)
     }
 
     func testSettingsRowsRespondAtTheirFarEdges() {
@@ -124,6 +331,9 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
 
         let captureAnywhere = app.buttons["settings.capture-anywhere"]
+        for _ in 0..<3 where !captureAnywhere.exists {
+            app.swipeUp()
+        }
         XCTAssertTrue(captureAnywhere.waitForExistence(timeout: 4))
         assertMinimumTouchTarget(captureAnywhere)
         captureAnywhere.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
@@ -153,7 +363,7 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(waitForValue("0", on: toggle, timeout: 4))
     }
 
-    func testDeveloperPaywallShowsNewPriceAndEachPlanIsFullySelectable() {
+    func testDeveloperPaywallShowsLaunchPricingAndEachPlanIsFullySelectable() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
             "--ui-testing-pro-preview",
@@ -163,12 +373,24 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Speak It Pro"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.staticTexts["$1.99 / month"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["$14.99 / year"].exists)
+        XCTAssertTrue(app.staticTexts["BEST VALUE"].exists)
+        XCTAssertTrue(app.staticTexts["Choose Annual · $14.99"].exists)
+        XCTAssertFalse(app.staticTexts["SUMMER SALE"].exists)
+        XCTAssertFalse(app.staticTexts["50% OFF"].exists)
+        XCTAssertFalse(app.staticTexts["After summer $3.99 / month"].exists)
+        XCTAssertFalse(app.staticTexts["After summer $29.99 / year"].exists)
 
         let monthly = app.buttons["pro.plan.monthly"]
+        for _ in 0..<3 where !monthly.isHittable {
+            app.swipeUp()
+        }
         assertMinimumTouchTarget(monthly)
         monthly.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.5)).tap()
         app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Then $1.99 per month. Cancel anytime."].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts["$1.99 per month. Auto-renews until cancelled."]
+                .waitForExistence(timeout: 3)
+        )
 
         app.swipeDown()
         let annual = app.buttons["pro.plan.annual"]
@@ -176,7 +398,17 @@ final class SpeakItUITests: XCTestCase {
         assertMinimumTouchTarget(annual)
         annual.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Then $14.99 per year. Cancel anytime."].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts["$14.99 per year. Auto-renews until cancelled."]
+                .waitForExistence(timeout: 3)
+        )
+
+        let redeemCode = app.buttons["pro.redeem-code"]
+        for _ in 0..<6 where !redeemCode.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(redeemCode.waitForExistence(timeout: 3))
+        assertMinimumTouchTarget(redeemCode)
     }
 
     func testFirstRunRemainsUsableWithAccessibilityTextAndDarkAppearance() {

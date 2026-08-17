@@ -41,7 +41,10 @@ enum PersistenceController {
         do {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
-                let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+                let configuration = ModelConfiguration(
+                    isStoredInMemoryOnly: true,
+                    cloudKitDatabase: .none
+                )
                 let container = try ModelContainer(
                     for: schema,
                     configurations: [configuration]
@@ -49,14 +52,26 @@ enum PersistenceController {
                 return StoreBootstrap(container: container, initializationError: nil)
             }
 #endif
+            // Speak It syncs encoded library snapshots through
+            // `ICloudSyncService`. Keep SwiftData local-only so the presence
+            // of the Release iCloud entitlement does not also opt this schema
+            // into SwiftData's incompatible CloudKit integration.
+            let configuration = ModelConfiguration(
+                schema: schema,
+                cloudKitDatabase: .none
+            )
             let container = try ModelContainer(
                 for: schema,
-                migrationPlan: SpeakItMigrationPlan.self
+                migrationPlan: SpeakItMigrationPlan.self,
+                configurations: [configuration]
             )
             return StoreBootstrap(container: container, initializationError: nil)
         } catch {
             let initializationError = error.localizedDescription
-            let fallbackConfiguration = ModelConfiguration(isStoredInMemoryOnly: true)
+            let fallbackConfiguration = ModelConfiguration(
+                isStoredInMemoryOnly: true,
+                cloudKitDatabase: .none
+            )
 
             do {
                 let fallbackContainer = try ModelContainer(

@@ -46,6 +46,9 @@
 - Every edit can be checked against the unchanged original thought.
 - Permanent delete requires confirmation.
 - Empty states have a working capture action.
+- Learn Speak It lessons open with the lesson title in the navigation bar and return to the guide list in the expected direction.
+- Plan settings provide a simple Share Speak It action beside subscription status without advertising an unavailable referral reward.
+- The Pro screen shows plans and a purchase action before the longer benefit detail, never advertises an unconfigured free trial or unsupported price comparison, and keeps the annual Best Value badge untruncated.
 - Persistence errors leave the draft available.
 - Swiping a Today row reveals Done without interfering with vertical scrolling.
 - Swiping a Memory row reveals Archive; archived rows reveal Restore.

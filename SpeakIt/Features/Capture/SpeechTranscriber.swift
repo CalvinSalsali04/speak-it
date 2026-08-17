@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import Speech
 import SwiftUI
+import os
 
 @MainActor
 final class SpeechTranscriber: ObservableObject {
@@ -20,8 +21,15 @@ final class SpeechTranscriber: ObservableObject {
     @Published private(set) var transcript = ""
     @Published private(set) var audioLevel: CGFloat = 0
     @Published private(set) var hasDetectedAudioInput = false
+    private(set) var speechEndpointDetectedAt: CapturePerformanceClock.Instant?
+    private(set) var finalTranscriptAt: CapturePerformanceClock.Instant?
+
+    var lastVoiceActivityAt: CapturePerformanceClock.Instant? {
+        audioActivityTracker.lastVoiceActivityAt
+    }
 
     private let reportsAudioLevel: Bool
+    private let audioActivityTracker = AudioActivityTracker()
     private let audioEngine = AVAudioEngine()
     private let speechRecognizer = SFSpeechRecognizer(locale: .current)
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -58,6 +66,9 @@ final class SpeechTranscriber: ObservableObject {
         transcript = ""
         audioLevel = 0
         hasDetectedAudioInput = false
+        audioActivityTracker.reset()
+        speechEndpointDetectedAt = nil
+        finalTranscriptAt = nil
         automaticFinalization = onAutomaticFinalization
 
         let speechAuthorization = await requestSpeechAuthorization()
@@ -123,19 +134,28 @@ final class SpeechTranscriber: ObservableObject {
                 recoveryFile = nil
             }
             let levelGate = AudioLevelUpdateGate()
+            let activityTracker = audioActivityTracker
             let publishesAudioLevel = reportsAudioLevel
 
             inputNode.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
                 request.append(buffer)
                 try? recoveryFile?.write(from: buffer)
                 guard let level = Self.normalizedLevel(from: buffer) else { return }
+                if level > 0.012 {
+                    // Record directly on the audio callback, before the 12 Hz UI
+                    // throttle or a MainActor hop can shift the apparent final
+                    // voice frame later in time.
+                    activityTracker.recordVoiceActivity(at: CapturePerformanceClock.now)
+                }
                 guard levelGate.shouldPublish(
                     level: level,
                     publishesAudioLevel: publishesAudioLevel
                 ) else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    if level > 0.012 { hasDetectedAudioInput = true }
+                    if level > 0.012 {
+                        hasDetectedAudioInput = true
+                    }
                     if reportsAudioLevel {
                         audioLevel = audioLevel * 0.68 + level * 0.32
                     }
@@ -175,6 +195,9 @@ final class SpeechTranscriber: ObservableObject {
         transcript = ""
         audioLevel = 0
         hasDetectedAudioInput = false
+        audioActivityTracker.reset()
+        speechEndpointDetectedAt = nil
+        finalTranscriptAt = nil
         state = .idle
     }
 
@@ -219,6 +242,7 @@ final class SpeechTranscriber: ObservableObject {
                     completeFinalization()
                 } else if let automaticFinalization {
                     finalization = automaticFinalization
+                    markSpeechEndpointDetectedIfNeeded()
                     state = .finalizing
                     completeFinalization()
                 }
@@ -292,6 +316,7 @@ final class SpeechTranscriber: ObservableObject {
         guard state == .listening else { return }
 
         naturalPauseTask?.cancel()
+        markSpeechEndpointDetectedIfNeeded()
         state = .finalizing
         finalization = completion
         stopAudioInput()
@@ -308,6 +333,8 @@ final class SpeechTranscriber: ObservableObject {
     private func completeFinalization() {
         guard state == .finalizing else { return }
         finalizationTimeout?.cancel()
+        markSpeechEndpointDetectedIfNeeded()
+        finalTranscriptAt = CapturePerformanceClock.now
         let completion = finalization
         let finalText = transcript
         finalization = nil
@@ -315,6 +342,12 @@ final class SpeechTranscriber: ObservableObject {
         resetRecognitionResources()
         state = .idle
         completion?(finalText)
+    }
+
+    private func markSpeechEndpointDetectedIfNeeded() {
+        guard speechEndpointDetectedAt == nil else { return }
+        speechEndpointDetectedAt = CapturePerformanceClock.now
+        audioActivityTracker.finishEndpointDetection()
     }
 
     private func stopAudioInput() {
@@ -461,6 +494,43 @@ private final class AudioLevelUpdateGate: @unchecked Sendable {
         let levelRefreshIsDue = publishesAudioLevel && now - lastPublishTime >= 1.0 / 12.0
         if levelRefreshIsDue { lastPublishTime = now }
         return detectedForFirstTime || levelRefreshIsDue
+    }
+}
+
+private final class AudioActivityTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedLastVoiceActivityAt: CapturePerformanceClock.Instant?
+    private var endpointCandidateState: OSSignpostIntervalState?
+
+    var lastVoiceActivityAt: CapturePerformanceClock.Instant? {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedLastVoiceActivityAt
+    }
+
+    func recordVoiceActivity(at instant: CapturePerformanceClock.Instant) {
+        lock.lock()
+        CapturePerformanceSignposts.endSpeechEndpointCandidate(endpointCandidateState)
+        recordedLastVoiceActivityAt = instant
+        endpointCandidateState = CapturePerformanceSignposts.beginSpeechEndpointCandidate()
+        lock.unlock()
+    }
+
+    func finishEndpointDetection() {
+        lock.lock()
+        let candidate = endpointCandidateState
+        endpointCandidateState = nil
+        lock.unlock()
+        CapturePerformanceSignposts.endSpeechEndpointCandidate(candidate)
+    }
+
+    func reset() {
+        lock.lock()
+        let candidate = endpointCandidateState
+        recordedLastVoiceActivityAt = nil
+        endpointCandidateState = nil
+        lock.unlock()
+        CapturePerformanceSignposts.endSpeechEndpointCandidate(candidate)
     }
 }
 

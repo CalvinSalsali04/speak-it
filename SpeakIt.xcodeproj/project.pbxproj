@@ -14,6 +14,7 @@
 		A10000000000000000000005 /* CapturedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* CapturedItem.swift */; };
 		A1000000000000000000010B /* SchemaV1.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000010B /* SchemaV1.swift */; };
 		A100000000000000000000F2 /* LocationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F2 /* LocationIntent.swift */; };
+		A100000000000000000001A1 /* ItemPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A1 /* ItemPresentation.swift */; };
 		A100000000000000000000F3 /* ReminderTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F3 /* ReminderTrigger.swift */; };
 		A100000000000000000000F4 /* SavedPlaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F4 /* SavedPlaceStore.swift */; };
 		A100000000000000000000F5 /* LocationIntentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F5 /* LocationIntentParser.swift */; };
@@ -33,6 +34,7 @@
 		A10000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* Assets.xcassets */; };
 		A10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */; };
 		A100000000000000000000F7 /* LocationReminderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F7 /* LocationReminderTests.swift */; };
+		A100000000000000000001A2 /* ItemPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A2 /* ItemPresentationTests.swift */; };
 		A100000000000000000000F1 /* TemporalFullPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000F1 /* TemporalFullPathTests.swift */; };
 		A10000000000000000000013 /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000015 /* PersistenceController.swift */; };
 		A10000000000000000000014 /* SpeakItTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* SpeakItTheme.swift */; };
@@ -71,6 +73,7 @@
 		A80000000000000000000002 /* SpeakItProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B80000000000000000000002 /* SpeakItProView.swift */; };
 		A90000000000000000000001 /* AccountSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000001 /* AccountSettingsView.swift */; };
 		A90000000000000000000002 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000002 /* AnalyticsService.swift */; };
+		A90000000000000000000003 /* CapturePerformance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000003 /* CapturePerformance.swift */; };
 		AA0000000000000000000001 /* SpeakItUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* SpeakItUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -128,6 +131,7 @@
 		B10000000000000000000005 /* CapturedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedItem.swift; sourceTree = "<group>"; };
 		B1000000000000000000010B /* SchemaV1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaV1.swift; sourceTree = "<group>"; };
 		B100000000000000000000F2 /* LocationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationIntent.swift; sourceTree = "<group>"; };
+		B100000000000000000001A1 /* ItemPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPresentation.swift; sourceTree = "<group>"; };
 		B100000000000000000000F3 /* ReminderTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderTrigger.swift; sourceTree = "<group>"; };
 		B100000000000000000000F4 /* SavedPlaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlaceStore.swift; sourceTree = "<group>"; };
 		B100000000000000000000F5 /* LocationIntentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationIntentParser.swift; sourceTree = "<group>"; };
@@ -147,6 +151,7 @@
 		B10000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataThoughtRepositoryTests.swift; sourceTree = "<group>"; };
 		B100000000000000000000F7 /* LocationReminderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationReminderTests.swift; sourceTree = "<group>"; };
+		B100000000000000000001A2 /* ItemPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPresentationTests.swift; sourceTree = "<group>"; };
 		B100000000000000000000F1 /* TemporalFullPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporalFullPathTests.swift; sourceTree = "<group>"; };
 		B10000000000000000000013 /* SpeakIt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpeakIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000014 /* SpeakItTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpeakItTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -191,6 +196,7 @@
 		B80000000000000000000002 /* SpeakItProView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItProView.swift; sourceTree = "<group>"; };
 		B90000000000000000000001 /* AccountSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettingsView.swift; sourceTree = "<group>"; };
 		B90000000000000000000002 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
+		B90000000000000000000003 /* CapturePerformance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturePerformance.swift; sourceTree = "<group>"; };
 		AB0000000000000000000001 /* SpeakItUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItUITests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000002 /* SpeakItUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpeakItUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -275,6 +281,7 @@
 				B10000000000000000000002 /* RootView.swift */,
 				B10000000000000000000015 /* PersistenceController.swift */,
 				B90000000000000000000002 /* AnalyticsService.swift */,
+				B90000000000000000000003 /* CapturePerformance.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -287,6 +294,7 @@
 				B10000000000000000000005 /* CapturedItem.swift */,
 				B1000000000000000000010B /* SchemaV1.swift */,
 				B100000000000000000000F2 /* LocationIntent.swift */,
+				B100000000000000000001A1 /* ItemPresentation.swift */,
 				B100000000000000000000F3 /* ReminderTrigger.swift */,
 				B1000000000000000000010A /* TemporalIntent.swift */,
 				B10000000000000000000006 /* UserPreferences.swift */,
@@ -384,6 +392,7 @@
 			children = (
 				B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */,
 				B100000000000000000000F7 /* LocationReminderTests.swift */,
+				B100000000000000000001A2 /* ItemPresentationTests.swift */,
 				B100000000000000000000F1 /* TemporalFullPathTests.swift */,
 			);
 			path = SpeakItTests;
@@ -692,6 +701,7 @@
 				A10000000000000000000005 /* CapturedItem.swift in Sources */,
 				A1000000000000000000010B /* SchemaV1.swift in Sources */,
 				A100000000000000000000F2 /* LocationIntent.swift in Sources */,
+				A100000000000000000001A1 /* ItemPresentation.swift in Sources */,
 				A100000000000000000000F3 /* ReminderTrigger.swift in Sources */,
 				A100000000000000000000F4 /* SavedPlaceStore.swift in Sources */,
 				A100000000000000000000F5 /* LocationIntentParser.swift in Sources */,
@@ -730,6 +740,7 @@
 				A80000000000000000000002 /* SpeakItProView.swift in Sources */,
 				A90000000000000000000001 /* AccountSettingsView.swift in Sources */,
 				A90000000000000000000002 /* AnalyticsService.swift in Sources */,
+				A90000000000000000000003 /* CapturePerformance.swift in Sources */,
 				A20000000000000000000001 /* CaptureActivityAttributes.swift in Sources */,
 				A20000000000000000000002 /* CaptureActivityManager.swift in Sources */,
 				A30000000000000000000001 /* DemoVideoView.swift in Sources */,
@@ -744,6 +755,7 @@
 			files = (
 				A10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift in Sources */,
 				A100000000000000000000F7 /* LocationReminderTests.swift in Sources */,
+				A100000000000000000001A2 /* ItemPresentationTests.swift in Sources */,
 				A100000000000000000000F1 /* TemporalFullPathTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

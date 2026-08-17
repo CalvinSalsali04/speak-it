@@ -34,6 +34,8 @@ enum ThoughtExtractionEngine {
         calendar: Calendar = .autoupdatingCurrent,
         permitsOnDeviceIntelligence: Bool = true
     ) async -> ThoughtExtractionResult {
+        let signpost = CapturePerformanceSignposts.begin("SemanticParsing")
+        defer { CapturePerformanceSignposts.end("SemanticParsing", signpost) }
         let fallback = RuleBasedThoughtExtractor.extract(
             transcript,
             referenceDate: referenceDate,
@@ -61,7 +63,9 @@ enum ThoughtExtractionEngine {
         referenceDate: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
     ) -> ThoughtExtractionResult {
-        ThoughtExtractionResult(
+        let signpost = CapturePerformanceSignposts.begin("SemanticParsing")
+        defer { CapturePerformanceSignposts.end("SemanticParsing", signpost) }
+        return ThoughtExtractionResult(
             items: RuleBasedThoughtExtractor.extract(
                 transcript,
                 referenceDate: referenceDate,
@@ -143,10 +147,22 @@ enum RuleBasedThoughtExtractor {
         if let command = sharedCommand(in: transcript) {
             let bodyParts = splitClauses(command.body)
             if bodyParts.count > 1 {
-                return mergeDependentCommunication(bodyParts).map { part in
-                    Segment(
+                let mergedParts = mergeDependentCommunication(bodyParts)
+                let commandCarriesSharedTiming = containsExplicitTiming(command.prefix)
+                return mergedParts.enumerated().map { index, part in
+                    // “Remind me tomorrow at 9 to buy milk and call Mum”
+                    // carries one explicit trigger for every action. In
+                    // “Remind me to call Mum tomorrow, buy milk, and remember
+                    // she likes sushi”, the timing belongs only to the first
+                    // clause. Repeating a bare “remind me” prefix onto the later
+                    // clauses would turn an ordinary task and a fact into two
+                    // vague reminders waiting for review.
+                    let analysisText = commandCarriesSharedTiming || index == 0
+                        ? normalize("\(command.prefix) \(part)")
+                        : part
+                    return Segment(
                         quote: part,
-                        analysisText: normalize("\(command.prefix) \(part)"),
+                        analysisText: analysisText,
                         suggestedTitle: nil
                     )
                 }
@@ -335,7 +351,7 @@ enum RuleBasedThoughtExtractor {
         let originalPrefix = normalize(String(text[..<range.lowerBound]))
         var replacement = normalize(String(text[range.upperBound...]))
         replacement = replacement.replacingOccurrences(
-            of: #"(?i)^make\s+that\s+"#,
+            of: #"(?i)^make\s+(?:that|it)\s+"#,
             with: "",
             options: .regularExpression
         )
@@ -349,6 +365,21 @@ enum RuleBasedThoughtExtractor {
             options: .regularExpression
         ) != nil
         if replacementStartsWithTimeAndAction,
+           let oldTime = originalPrefix.range(
+               of: #"(?i)\#(timePattern)\s*$"#,
+               options: .regularExpression
+           ) {
+            return normalize(String(originalPrefix[..<oldTime.lowerBound]) + replacement)
+        }
+
+        // “Remind me at 3, actually make it 4” has no trailing action for the
+        // older branch above to anchor. It is still a correction of the final
+        // time token, not a new thought consisting only of “4”.
+        let replacementIsOnlyTime = replacement.range(
+            of: #"(?i)^\#(timePattern)$"#,
+            options: .regularExpression
+        ) != nil
+        if replacementIsOnlyTime,
            let oldTime = originalPrefix.range(
                of: #"(?i)\#(timePattern)\s*$"#,
                options: .regularExpression

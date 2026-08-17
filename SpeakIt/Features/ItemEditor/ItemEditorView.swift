@@ -2,8 +2,16 @@ import EventKit
 import EventKitUI
 import MessageUI
 import SwiftUI
+import UserNotifications
 
 struct ItemEditorView: View {
+    private enum NotificationDeliveryState: Equatable {
+        case checking
+        case ready
+        case needsPermission
+        case denied
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.thoughtRepository) private var repository
 
@@ -38,13 +46,23 @@ struct ItemEditorView: View {
     /// because it depends on live permission and on a Home the person may set
     /// without ever leaving this screen.
     @State private var locationBlocker: LocationReminderBlocker?
+    @State private var notificationDeliveryState = NotificationDeliveryState.checking
     @State private var isNamingPlace = false
     @State private var capturedPlaceName: String?
     @State private var placeNamingFailed = false
 
+    /// The trigger as the person is currently editing it. `nil` once they
+    /// remove it, which is why `hadLocationIntent` is kept separately — without
+    /// it, "removed" and "never had one" would be the same value and Save could
+    /// not tell whether to clear the stored trigger or leave it alone.
+    @State private var editedLocationIntent: LocationIntent?
+    private let hadLocationIntent: Bool
+
     init(item: CapturedItem) {
         self.item = item
         self.requirement = item.clarificationRequirement
+        self.hadLocationIntent = item.locationIntent != nil
+        _editedLocationIntent = State(initialValue: item.locationIntent)
         _title = State(initialValue: item.displayTitle)
         _itemType = State(initialValue: item.itemType)
         _category = State(initialValue: item.category)
@@ -111,6 +129,17 @@ struct ItemEditorView: View {
                                 for: item.locationIntent?.place ?? .currentLocation
                             )
                         )
+                    }
+                }
+
+                if editedLocationIntent != nil,
+                   editedLocationIntent?.isRetired != true,
+                   locationBlocker == nil,
+                   notificationDeliveryState != .ready {
+                    Section {
+                        notificationDeliveryFix
+                    } footer: {
+                        Text("Location can detect the crossing, but Speak It also needs notification access to show the reminder.")
                     }
                 }
 
@@ -219,6 +248,10 @@ struct ItemEditorView: View {
                             }
                         }
                     }
+                }
+
+                if let intent = editedLocationIntent {
+                    locationSection(intent)
                 }
 
                 Section("Details") {
@@ -335,7 +368,10 @@ struct ItemEditorView: View {
             }
             .navigationTitle("Edit Thought")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { refreshLocationBlocker() }
+            .task {
+                refreshLocationBlocker()
+                await refreshNotificationDeliveryState()
+            }
             // Both of the things a place reminder waits on can change while this
             // screen is open: Home can be set on the pushed picker, and access
             // can be granted from the system prompt. Either one re-reads.
@@ -343,6 +379,14 @@ struct ItemEditorView: View {
                 NotificationCenter.default.publisher(for: SavedPlaceStore.didChangeNotification)
             ) { _ in
                 refreshLocationBlocker()
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIApplication.didBecomeActiveNotification
+                )
+            ) { _ in
+                refreshLocationBlocker()
+                Task { await refreshNotificationDeliveryState() }
             }
             .onReceive(
                 NotificationCenter.default.publisher(
@@ -444,6 +488,135 @@ struct ItemEditorView: View {
         .accessibilityLabel(isRequired && !isRequirementResolved ? "\(text), required" : text)
     }
 
+    /// The place trigger, stated plainly and made editable.
+    ///
+    /// Before this existed the editor showed a live place reminder as
+    /// "Remind me: off" with no Location row anywhere, so the one screen meant
+    /// for managing an item was also the screen that denied the item had a
+    /// trigger at all. The person could not see which place, which crossing, or
+    /// whether it repeated, and the only way to stop it was to delete the whole
+    /// thought.
+    @ViewBuilder
+    private func locationSection(_ intent: LocationIntent) -> some View {
+        Section {
+            LabeledContent("Place", value: intent.place.displayName)
+
+            Picker("Trigger", selection: locationEventBinding) {
+                Text("When I arrive").tag(LocationEvent.arrive)
+                Text("When I leave").tag(LocationEvent.leave)
+            }
+
+            Toggle("Every time", isOn: locationRepeatsBinding)
+                .accessibilityHint(
+                    "On reminds you every time you cross this place. Off reminds you once."
+                )
+
+            LabeledContent("Status") {
+                Text(locationStatusText)
+                    .foregroundStyle(locationBlocker == nil ? Color.speakMuted : Color.speakWarning)
+            }
+
+            Button(role: .destructive) {
+                editedLocationIntent = nil
+            } label: {
+                Text("Remove place reminder")
+            }
+            .accessibilityHint("Keeps the thought and stops reminding you at this place")
+        } header: {
+            Text("Place")
+        } footer: {
+            Text(locationSectionFooter(intent))
+        }
+    }
+
+    private var locationEventBinding: Binding<LocationEvent> {
+        Binding(
+            get: { editedLocationIntent?.event ?? .arrive },
+            set: { editedLocationIntent?.event = $0 }
+        )
+    }
+
+    private var locationRepeatsBinding: Binding<Bool> {
+        Binding(
+            get: { editedLocationIntent?.repeats ?? false },
+            set: { editedLocationIntent?.repeats = $0 }
+        )
+    }
+
+    /// Never claims a reminder is active while something is blocking it — the
+    /// whole point of naming the blocker here is that "on" and "actually being
+    /// watched by iOS" are different states.
+    private var locationStatusText: String {
+        if let locationBlocker { return locationBlocker.listLabel }
+        if let firedAt = editedLocationIntent?.firedAt,
+           editedLocationIntent?.repeats == false {
+            return "Delivered \(firedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+        switch notificationDeliveryState {
+        case .checking: return "Checking notifications"
+        case .needsPermission: return "Needs notification permission"
+        case .denied: return "Notifications off"
+        case .ready: break
+        }
+        return "Active"
+    }
+
+    @ViewBuilder
+    private var notificationDeliveryFix: some View {
+        switch notificationDeliveryState {
+        case .checking:
+            HStack {
+                ProgressView()
+                Text("Checking notification access…")
+            }
+        case .needsPermission:
+            Button {
+                Task {
+                    _ = await ReminderScheduler.requestNotificationAuthorizationIfNeeded()
+                    await refreshNotificationDeliveryState()
+                }
+            } label: {
+                Label("Allow notifications", systemImage: "bell.badge")
+            }
+        case .denied:
+            Button {
+                guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else {
+                    return
+                }
+                UIApplication.shared.open(url)
+            } label: {
+                Label("Open Notification Settings", systemImage: "gear")
+            }
+        case .ready:
+            EmptyView()
+        }
+    }
+
+    @MainActor
+    private func refreshNotificationDeliveryState() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationDeliveryState = switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: .ready
+        case .notDetermined: .needsPermission
+        case .denied: .denied
+        @unknown default: .needsPermission
+        }
+    }
+
+    private func locationSectionFooter(_ intent: LocationIntent) -> String {
+        if intent.repeats {
+            return "Speak It reminds you every time you \(intent.event.verbPhrase) \(intent.place.displayName)."
+        }
+        return "Speak It reminds you the next time you \(intent.event.verbPhrase) \(intent.place.displayName), then stops."
+    }
+
+    /// What Save should do to the stored trigger.
+    private var locationIntentEdit: LocationIntentEdit {
+        guard hadLocationIntent else { return .unchanged }
+        guard let editedLocationIntent else { return .remove }
+        return .update(editedLocationIntent)
+    }
+
     /// True for a resolved "here" that has no name yet. A saved place already
     /// has one, and an unresolved snapshot has no coordinate to look up.
     private var canNameCapturedPlace: Bool {
@@ -537,7 +710,7 @@ struct ItemEditorView: View {
         // yet), "here" needed a coordinate at capture time, and the device
         // limits are the device's. The footer still names the reason.
         case .ambiguousPlace, .placeNotFound, .locationUnavailable,
-             .monitoringUnavailable, .monitoringLimitReached:
+             .monitoringUnavailable, .monitoringLimitReached, .monitoringFailed:
             EmptyView()
         }
     }
@@ -609,7 +782,8 @@ struct ItemEditorView: View {
                     priority: priority,
                     personName: personName,
                     needsClarification: needsClarification,
-                    recurrenceRule: editedRecurrenceRule
+                    recurrenceRule: editedRecurrenceRule,
+                    locationIntent: locationIntentEdit
                 )
             )
         }

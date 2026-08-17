@@ -262,12 +262,14 @@ enum ThoughtOrganizer {
         let recurrenceRule = RecurrenceIntentParser.parse(lowercase)
         let inferred = inferredType(from: actionText, originalText: lowercase)
         var type: ItemType = recurrenceRule != nil && inferred == .note ? .task : inferred
-        var timing = TemporalIntentParser.parse(
-            lowercase,
-            itemType: type,
-            referenceDate: referenceDate,
-            calendar: calendar
-        )
+        var timing = CapturePerformanceSignposts.measureTemporalResolution {
+            TemporalIntentParser.parse(
+                lowercase,
+                itemType: type,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+        }
 
         // A time commitment is what makes a thought actionable, whatever words
         // wrapped it. Without this, wording the type rules could not read
@@ -275,12 +277,14 @@ enum ThoughtOrganizer {
         // note is a Memory item that Today never shows and never schedules.
         if !type.isActionable, timing.delivery != .none || timing.reminderDate != nil {
             type = .task
-            timing = TemporalIntentParser.parse(
-                lowercase,
-                itemType: type,
-                referenceDate: referenceDate,
-                calendar: calendar
-            )
+            timing = CapturePerformanceSignposts.measureTemporalResolution {
+                TemporalIntentParser.parse(
+                    lowercase,
+                    itemType: type,
+                    referenceDate: referenceDate,
+                    calendar: calendar
+                )
+            }
         }
 
         let recurringDate = recurrenceRule.flatMap {
@@ -424,6 +428,7 @@ enum ThoughtOrganizer {
 
         if startsWithAny(text, [
             "ask ", "call ", "phone ", "text ", "email ", "message ", "tell ",
+            "wish ",
             "follow up with ", "send a message ", "send a text ",
             "schedule a message ", "schedule a text ", "schedule message ", "schedule text "
         ]) {
@@ -500,7 +505,7 @@ enum ThoughtOrganizer {
             "schedule message to ", "schedule text to ",
             "send a message to ", "send a text to ",
             "follow up with ", "message to ", "email to ", "text to ",
-            "message ", "email ", "text ", "call ", "phone ", "ask ", "tell "
+            "message ", "email ", "text ", "call ", "phone ", "ask ", "tell ", "wish "
         ]
         guard let match = prefixes.compactMap({ prefix -> (String, Range<String.Index>)? in
             guard let range = lowercase.range(
@@ -564,6 +569,14 @@ enum ThoughtOrganizer {
         var value = text
         value = value.replacingOccurrences(
             of: ReminderPhrasing.sentenceLeadThroughAction,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        // These frame an action but are not the action verb. Removing them lets
+        // “remember to call/wish Catherine” keep its person-follow-up semantics
+        // instead of falling into the generic task bucket.
+        value = value.replacingOccurrences(
+            of: #"^(?:remember\s+to|(?:i\s+)?need\s+to|i\s+have\s+to|i\s+should|don['’]t\s+forget\s+to|do\s+not\s+forget\s+to)\s+"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
@@ -958,7 +971,7 @@ private enum TemporalIntentParser {
         // A date-only day whose reminder was requested still needs a moment to
         // fire at. That moment belongs to the notification, not to the intent,
         // so the intent keeps saying "no time was expressed".
-        var intent = resolution.intent
+        var intent = splitTiming?.dueIntent ?? resolution.intent
         if locationIntent != nil {
             // A place trigger carries no clock of its own. The temporal intent
             // stays whatever the sentence said about time — "when I get home
@@ -973,12 +986,15 @@ private enum TemporalIntentParser {
         // Skipped for a combined request: inventing an alert hour for "when I
         // get home tomorrow" would reintroduce exactly the clock this is
         // refusing to schedule.
-        if intent.kind == .dateOnly, wantsReminder, !combinesPlaceAndTime, let dueDate {
+        if intent.kind == .dateOnly,
+           wantsReminder,
+           !combinesPlaceAndTime,
+           let reminderDay = splitTiming?.reminderDate ?? dueDate {
             let alert = calendar.date(
                 bySettingHour: TemporalResolver.dateOnlyAlertHour,
                 minute: 0,
                 second: 0,
-                of: dueDate,
+                of: reminderDay,
                 matchingPolicy: .nextTime,
                 repeatedTimePolicy: .first,
                 direction: .forward
@@ -1009,20 +1025,55 @@ private enum TemporalIntentParser {
         in text: String,
         referenceDate: Date,
         calendar: Calendar
-    ) -> (dueDate: Date, reminderDate: Date)? {
-        guard let connector = text.range(of: #"\s+to\s+"#, options: .regularExpression) else {
+    ) -> (dueDate: Date, reminderDate: Date, dueIntent: TemporalIntent)? {
+        let action: String
+        let command: String
+
+        // “Finish Friday, remind me Wednesday” states the action first.
+        if let reminderLead = text.range(
+            of: #"\s*[,;]\s*(?=(?:please\s+)?(?:remind|notify|alert|ping)\s+me\b)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) {
+            action = String(text[..<reminderLead.lowerBound])
+            command = String(text[reminderLead.upperBound...])
+        } else if let connector = text.range(
+            of: #"\s+to\s+"#,
+            options: .regularExpression
+        ) {
+            // “Remind me Wednesday to finish Friday” states the reminder first.
+            command = String(text[..<connector.lowerBound])
+            action = String(text[connector.upperBound...])
+        } else {
             return nil
         }
-        let command = String(text[..<connector.lowerBound])
-        let action = String(text[connector.upperBound...])
-        guard let reminderDate = relativeResolution(in: command, referenceDate: referenceDate).date
-                ?? absoluteDate(in: command, referenceDate: referenceDate, calendar: calendar),
-              let actionDate = relativeResolution(in: action, referenceDate: referenceDate).date
-                ?? absoluteDate(in: action, referenceDate: referenceDate, calendar: calendar),
+
+        let reminderResolution = timingResolution(
+            in: command,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let actionResolution = timingResolution(
+            in: action,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        guard let reminderDate = reminderResolution.date,
+              let actionDate = actionResolution.date,
               actionDate != reminderDate else {
             return nil
         }
-        return (actionDate, reminderDate)
+        return (actionDate, reminderDate, actionResolution.intent)
+    }
+
+    private static func timingResolution(
+        in text: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> TimingResolution {
+        let relative = relativeResolution(in: text, referenceDate: referenceDate)
+        return relative.date == nil
+            ? resolveAbsolute(in: text, referenceDate: referenceDate, calendar: calendar)
+            : relative
     }
 
     private static func semanticTimingText(_ original: String) -> String {
@@ -1151,7 +1202,7 @@ private enum TemporalIntentParser {
             // but it is still a time the person expressed. A bare day is not.
             let expressedTime = parsedTime ?? dayPartTime(in: text)
 
-            guard let time = expressedTime else {
+            guard let expressedTime else {
                 // Date only. This is the case that used to invent 9 AM, which
                 // made "buy milk tomorrow" read as overdue at 9:01 the next
                 // morning for a task that was never due at a time at all.
@@ -1164,6 +1215,7 @@ private enum TemporalIntentParser {
                     behavior: behavior
                 )
             }
+            let time = defaultedBareHourOnNamedDay(expressedTime)
 
             // `repeatedTimePolicy: .first` is stated rather than inherited: on a
             // fall-back day 1:30 AM happens twice, and the earlier occurrence is
@@ -1404,6 +1456,20 @@ private enum TemporalIntentParser {
         }
 
         return nil
+    }
+
+    /// A named future day removes the date ambiguity but spoken clock hours
+    /// can still omit AM/PM. For the early clock face, ordinary task wording
+    /// such as "call Catherine tomorrow at 5" means the afternoon/evening far
+    /// more often than before dawn. Keep morning defaults from 8 onward, and
+    /// never override an explicit meridiem or daypart.
+    private static func defaultedBareHourOnNamedDay(_ time: ParsedTime) -> ParsedTime {
+        guard !time.hasMeridiem, (1...7).contains(time.hour) else { return time }
+        return ParsedTime(
+            hour: time.hour + 12,
+            minute: time.minute,
+            hasMeridiem: false
+        )
     }
 
     /// The coarse time a daypart word expresses. Returns `nil` when the wording

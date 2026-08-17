@@ -15,11 +15,16 @@ struct CaptureView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     let onSaved: () -> Void
     private let startsInTextMode: Bool
     private let autoStartsVoiceCapture: Bool
+    private let autoDismissesSingleItemConfirmation: Bool
+    private let performance: CapturePerformanceTrace?
+    private let onSaveSucceeded: () -> Void
+    private let onCancelled: () -> Void
 
     @StateObject private var transcriber = SpeechTranscriber()
     @State private var mode: CaptureMode
@@ -29,9 +34,13 @@ struct CaptureView: View {
     @State private var voiceNotice: String?
     @State private var isSaving = false
     @State private var showsSavedConfirmation = false
+    @State private var savedConfirmationTitle = "Remembered"
+    @State private var savedConfirmationSymbol = "checkmark"
     @State private var savedConfirmationDetail = "Memory"
     @State private var savedResult: CaptureCreationResult?
     @State private var showsCaptureReview = false
+    @State private var showsCloseOptions = false
+    @State private var closesAfterSave = false
     @State private var hasAutoStarted = false
     @State private var activeDraftID: UUID?
     @State private var captureStartedAt: Date?
@@ -50,37 +59,61 @@ struct CaptureView: View {
         initialMode: CaptureInitialMode = .voice,
         autoStartsVoiceCapture: Bool = false,
         initialText: String = "",
+        performance: CapturePerformanceTrace? = nil,
+        autoDismissesSingleItemConfirmation: Bool = true,
+        onSaveSucceeded: @escaping () -> Void = {},
+        onCancelled: @escaping () -> Void = {},
         onSaved: @escaping () -> Void
     ) {
         self.onSaved = onSaved
         startsInTextMode = initialMode == .text
         self.autoStartsVoiceCapture = autoStartsVoiceCapture && initialMode == .voice
+        self.autoDismissesSingleItemConfirmation = autoDismissesSingleItemConfirmation
+        self.performance = performance
+        self.onSaveSucceeded = onSaveSucceeded
+        self.onCancelled = onCancelled
         _mode = State(initialValue: initialMode == .text ? .text : .voice)
         _typedText = State(initialValue: initialText)
     }
 
     var body: some View {
-        ZStack {
-            Color.speakBackground.ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                Color.speakBackground.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                header
+                VStack(spacing: 0) {
+                    // The real header is overlaid on the fixed shell below. This
+                    // placeholder keeps content from sitting underneath it.
+                    Color.clear.frame(height: 68)
 
-                Group {
-                    if showsSavedConfirmation {
-                        savedView
-                            .transition(.scale(scale: 0.88).combined(with: .opacity))
-                    } else if mode == .voice {
-                        voiceView
-                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                    } else {
-                        typingView
-                            .transition(.opacity)
+                    Group {
+                        if showsSavedConfirmation {
+                            savedView
+                                .transition(.scale(scale: 0.88).combined(with: .opacity))
+                        } else if mode == .voice {
+                            voiceView
+                                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        } else {
+                            typingView
+                                .transition(.opacity)
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .foregroundStyle(Color.speakInk)
             }
-            .foregroundStyle(Color.speakInk)
+            // GeometryReader owns the proposed window size rather than taking
+            // the oversized editor's ideal size. That gives the overlay a real
+            // top edge even while the keyboard shortens the available height.
+            .frame(
+                width: max(0, geometry.size.width),
+                height: max(0, geometry.size.height),
+                alignment: .top
+            )
+            .overlay(alignment: .top) {
+                header
+                    .background(Color.speakBackground)
+            }
         }
         .interactiveDismissDisabled(
             transcriber.isListening || isSaving || isRecoveringAudio || activeDraftID != nil
@@ -108,6 +141,17 @@ struct CaptureView: View {
         .sheet(isPresented: $showsFreeLimit) {
             SpeakItProView(context: .freeLimit)
         }
+        .confirmationDialog(
+            "Keep this thought?",
+            isPresented: $showsCloseOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Save & Close") { saveAndClose() }
+            Button("Discard", role: .destructive) { discardAndClose() }
+            Button("Keep Editing") {}
+        } message: {
+            Text("Your words are still a draft. Save them before closing, or discard them deliberately.")
+        }
         .onDisappear {
             confirmationDismissTask?.cancel()
             noSpeechTimeoutTask?.cancel()
@@ -120,8 +164,14 @@ struct CaptureView: View {
         .onChange(of: transcriber.state) { _, newState in
             switch newState {
             case .listening:
+                performance?.markMicrophoneReady()
                 armNoSpeechTimeout()
                 Task { await CaptureActivityManager.beginListening() }
+            case .finalizing:
+                performance?.markEndOfSpeechDetected(
+                    lastSpeechAt: transcriber.lastVoiceActivityAt,
+                    at: transcriber.speechEndpointDetectedAt ?? CapturePerformanceClock.now
+                )
             case .unavailable:
                 noSpeechTimeoutTask?.cancel()
                 Task { await CaptureActivityManager.cancelListening() }
@@ -177,13 +227,7 @@ struct CaptureView: View {
 
     private var header: some View {
         HStack {
-            Button {
-                draftCheckpointTask?.cancel()
-                draftCheckpointTask = nil
-                discardActiveDraft()
-                transcriber.cancel()
-                dismiss()
-            } label: {
+            Button(action: requestClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .medium))
                     .frame(width: 44, height: 44)
@@ -191,6 +235,7 @@ struct CaptureView: View {
             }
             .buttonStyle(.speakIt)
             .foregroundStyle(Color.speakInk)
+            .disabled(isCaptureTransitionBusy)
             .accessibilityLabel("Close capture")
             .accessibilityIdentifier("capture.close")
 
@@ -404,14 +449,42 @@ struct CaptureView: View {
                     .fill(Color.speakInverseSurface)
                     .frame(width: 104, height: 104)
                     .shadow(color: Color.speakInk.opacity(0.18), radius: 28)
-                Image(systemName: "checkmark")
+                Image(systemName: savedConfirmationSymbol)
                     .font(.system(size: 42, weight: .medium))
                     .foregroundStyle(Color.speakInverseInk)
             }
-            Text("Remembered")
+            Text(savedConfirmationTitle)
                 .font(.largeTitle.weight(.semibold))
             Text(savedConfirmationDetail)
                 .foregroundStyle(Color.speakMuted)
+
+            if let savedResult {
+                CapturedItemRow(
+                    item: savedResult.primaryItem,
+                    showsCompletionControl: false,
+                    showsCreatedDate: false,
+                    onToggleCompleted: {},
+                    onEdit: {
+                        confirmationDismissTask?.cancel()
+                        showsCaptureReview = true
+                    }
+                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 350)
+                .background(
+                    Color.speakSurface,
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.speakDivider, lineWidth: 1)
+                }
+                .accessibilityHint("Shows the final organized item")
+                .onAppear {
+                    performance?.markOrganizedRowVisible(result: savedResult)
+                }
+            }
 
             if let savedResult,
                savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
@@ -439,6 +512,17 @@ struct CaptureView: View {
                 }
                 .padding(.top, 8)
                 .frame(maxWidth: 330)
+            } else if savedResult != nil, requiresExplicitSavedConfirmation {
+                Button("Continue", action: finishSavedCapture)
+                    .font(.headline)
+                    .foregroundStyle(Color.speakInverseInk)
+                    .frame(maxWidth: 330, minHeight: 54)
+                    .buttonStyle(.speakIt)
+                    .background(
+                        Color.speakInverseSurface,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .accessibilityIdentifier("capture.confirmationContinue")
             }
 
             Spacer()
@@ -625,6 +709,7 @@ struct CaptureView: View {
 
     private func saveTypedThought() {
         isTextFocused = false
+        performance?.beginTextSave()
         save(trimmedTypedText, source: .inAppText)
     }
 
@@ -641,6 +726,15 @@ struct CaptureView: View {
             ))
             errorMessage = "Local storage is unavailable."
             return
+        }
+        if source == .inAppVoice {
+            performance?.updateSource(.voice)
+            let finalizedAt = transcriber.finalTranscriptAt ?? CapturePerformanceClock.now
+            performance?.markEndOfSpeechDetected(
+                lastSpeechAt: transcriber.lastVoiceActivityAt,
+                at: transcriber.speechEndpointDetectedAt ?? finalizedAt
+            )
+            performance?.markTranscriptFinalized(at: finalizedAt)
         }
         subscriptionStore.refreshFreeAllowance()
         guard subscriptionStore.canCreateCapture else {
@@ -663,20 +757,31 @@ struct CaptureView: View {
                     text: normalizedText,
                     source: source,
                     createdAt: captureStartedAt ?? .now,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: performance
                 )
-                subscriptionStore.recordSuccessfulCapture()
-                SpeakItAnalytics.track(.captureSaved(
-                    source: source == .inAppVoice ? .voice : .text,
-                    itemCount: result.itemCount,
-                    needsReviewCount: result.needsReviewCount,
-                    plan: subscriptionStore.hasProAccess ? .pro : .free
-                ))
+                if result.createdNewCapture {
+                    subscriptionStore.recordSuccessfulCapture()
+                    SpeakItAnalytics.track(.captureSaved(
+                        source: source == .inAppVoice ? .voice : .text,
+                        itemCount: result.itemCount,
+                        needsReviewCount: result.needsReviewCount,
+                        plan: subscriptionStore.hasProAccess ? .pro : .free
+                    ))
+                }
+                isSaving = false
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
+                onSaveSucceeded()
+                savedConfirmationTitle = result.isDuplicate ? "Already captured" : "Remembered"
+                savedConfirmationSymbol = result.isDuplicate ? "equal" : "checkmark"
                 savedConfirmationDetail = confirmationDetail(for: result)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                if result.isDuplicate {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
                     showsSavedConfirmation = true
                 }
@@ -687,7 +792,15 @@ struct CaptureView: View {
                     )
                 }
 
-                if result.itemCount == 1, result.needsReviewCount == 0 {
+                if closesAfterSave {
+                    closesAfterSave = false
+                    finishSavedCapture()
+                    return
+                }
+
+                if result.itemCount == 1,
+                   result.needsReviewCount == 0,
+                   !requiresExplicitSavedConfirmation {
                     confirmationDismissTask?.cancel()
                     confirmationDismissTask = Task { @MainActor in
                         try? await Task.sleep(for: .seconds(3.6))
@@ -697,6 +810,7 @@ struct CaptureView: View {
                 }
             } catch {
                 isSaving = false
+                closesAfterSave = false
                 SpeakItAnalytics.track(.captureFailed(
                     source: source == .inAppVoice ? .voice : .text,
                     category: "organization"
@@ -707,7 +821,84 @@ struct CaptureView: View {
     }
 
     private func confirmationDetail(for result: CaptureCreationResult) -> String {
-        result.receiptContext
+        guard result.createdNewCapture else {
+            return "No duplicate was added"
+        }
+
+        let context = result.receiptContext
+        guard !subscriptionStore.hasProAccess else { return context }
+        switch subscriptionStore.freeCapturesRemaining {
+        case 2:
+            return "\(context)\n2 free captures left"
+        case 1:
+            return "\(context)\n1 free capture left"
+        case 0:
+            return "\(context)\nLast free capture used"
+        default:
+            return context
+        }
+    }
+
+    private var isCaptureTransitionBusy: Bool {
+        isSaving || isRecoveringAudio || transcriber.state == .requestingPermission
+            || transcriber.state == .finalizing
+    }
+
+    private var requiresExplicitSavedConfirmation: Bool {
+        !autoDismissesSingleItemConfirmation || accessibilityVoiceOverEnabled
+    }
+
+    private var hasUnsavedCaptureContent: Bool {
+        !trimmedTypedText.isEmpty
+            || !transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || hasRecoverableActiveAudio
+    }
+
+    private func requestClose() {
+        if showsSavedConfirmation {
+            finishSavedCapture()
+        } else if hasUnsavedCaptureContent {
+            isTextFocused = false
+            showsCloseOptions = true
+        } else {
+            discardAndClose()
+        }
+    }
+
+    private func saveAndClose() {
+        closesAfterSave = true
+        isTextFocused = false
+
+        if mode == .text {
+            save(trimmedTypedText, source: .inAppText)
+        } else if transcriber.isListening {
+            let partial = transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !partial.isEmpty {
+                transcriber.stopAndFinalize { finalText in
+                    save(finalText, source: .inAppVoice)
+                }
+            } else if hasRecoverableActiveAudio {
+                transcriber.cancel()
+                recoverActiveAudio()
+            }
+        } else {
+            let transcript = transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !transcript.isEmpty {
+                save(transcript, source: .inAppVoice)
+            } else if hasRecoverableActiveAudio {
+                recoverActiveAudio()
+            }
+        }
+    }
+
+    private func discardAndClose() {
+        closesAfterSave = false
+        draftCheckpointTask?.cancel()
+        draftCheckpointTask = nil
+        discardActiveDraft()
+        transcriber.cancel()
+        onCancelled()
+        dismiss()
     }
 
     private func checkpoint(_ text: String, source: CaptureSource) {

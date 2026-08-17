@@ -21,12 +21,18 @@ Working document for the first Speak It release. Status values: **Done**,
   `group.com.calvinwak.SpeakIt`, and iCloud container
   `iCloud.com.calvinwak.SpeakIt`.
 - **Todo:** Create both products in one subscription group:
-  - `com.calvinwak.SpeakIt.pro.monthly` — $1.99 / month
-  - `com.calvinwak.SpeakIt.pro.annual` — $14.99 / year
+  - `com.calvinwak.SpeakIt.pro.monthly` — launch price $1.99 / month
+  - `com.calvinwak.SpeakIt.pro.annual` — launch price $14.99 / year
   App Store Connect is the source of truth for live localized prices. The app
   renders `product.displayPrice`, so whatever is configured there is shown.
   Each subscription also needs a localized display name, description, and a
   review screenshot before it can be submitted.
+- **Todo:** Create `com.calvinwak.SpeakIt.pro.lifetime` as a non-consumable
+  purchase for complimentary creator codes only. Do not merchandise it in the
+  app. Configure free custom Offer Codes such as `CALVINVIP` in App Store
+  Connect; the app recognizes only Apple's verified transaction and contains no
+  hardcoded entitlement bypass. Add temporary creator codes such as `CALVIN30`
+  to the appropriate subscription offer rather than to the lifetime product.
 
 ## 2. Build configuration — done
 
@@ -38,7 +44,8 @@ Working document for the first Speak It release. Status values: **Done**,
   so uploads no longer stall on the export-compliance question. Verified correct:
   the app uses only HTTPS and Apple data protection. There is no CryptoKit,
   CommonCrypto, or custom cryptography anywhere in the source.
-- **Done:** `SpeakIt/SpeakIt.storekit` defines both subscriptions and is wired
+- **Done:** `SpeakIt/SpeakIt.storekit` defines both subscriptions plus the
+  code-only lifetime non-consumable and is wired
   into the shared scheme's Run action. It is a project file reference only, in
   no build phase, and was confirmed absent from the built `.app` bundle.
 - **Done:** `SPEAKIT_ANALYTICS_KEY` defaults to empty in Debug and Release, so
@@ -48,7 +55,7 @@ Working document for the first Speak It release. Status values: **Done**,
   the Save Thought App Intent, and the shared-inbox import.
 - **Done:** Security sweep of the shipping binary — no secrets, no debug
   logging, no developer paywall override, no ATS exceptions, no WebView.
-- **Done:** 104 unit tests and 9 UI tests passing; Release build clean.
+- **Done:** 304 unit tests and 19 UI tests passing; Release build clean.
 
 ## 3. Analytics — connected, decision made
 
@@ -133,16 +140,12 @@ use advertising SDKs.
 
 ---
 
-## 5. Open decision: the word "account"
+## 5. Profile naming — done
 
-`AccountSettingsView` says "Create your account" / "Create Account" in four
-places, but Speak It has no accounts — the profile is a name and email in
-`UserDefaults` that never leaves the device.
-
-Apple's Guideline 5.1.1(v) requires in-app account **deletion** for apps that
-support account creation. "Remove profile from this iPhone" almost certainly
-satisfies a reviewer, so this is a low risk rather than a blocker. Renaming the
-four strings to "profile" removes the ambiguity entirely and costs nothing.
+The optional name and email stored locally in `UserDefaults` are consistently
+called a profile. Speak It no longer offers to “Create account,” so the UI
+matches the no-account product and avoids implying server-side account creation
+or deletion requirements that do not apply.
 
 ## 6. Store listing — todo
 
@@ -169,6 +172,30 @@ four strings to "profile" removes the ambiguity entirely and costs nothing.
 >
 > Speech transcription uses Apple's Speech framework and requires microphone and
 > speech recognition permission, both requested in context with explanation.
+>
+> **Why the app requests Always location access.** Speak It supports place
+> reminders: a user can say "remind me to take the bins out when I get home" and
+> be reminded on arrival. This is region monitoring for places the user chose
+> themselves, and a reminder that only worked while the app was open would not
+> be a reminder at all — which is why Always is needed rather than While Using.
+>
+> The permission is requested only at the moment a user creates a place reminder,
+> never at launch and never during onboarding, and it is asked for in two steps:
+> While Using first, then Always with an in-app explanation of why a reminder has
+> to reach the user when the app is closed. Declining leaves the reminder intact
+> and simply marked as not currently active — nothing is deleted or disabled. A
+> user who never creates a place reminder is never asked for Always at all, and
+> setting a Home or Work address needs only While Using.
+>
+> Speak It does not track the user's movement. It registers a geofence per
+> reminder (at most 18 at once) and reacts to crossings; it never requests
+> continuous location updates, `allowsBackgroundLocationUpdates` is off, and no
+> location history is recorded. Location is processed entirely on device and no
+> coordinate, address, or place name is ever transmitted to us or to analytics.
+>
+> To test: Settings → Capture & reminders → Places → set Home, then capture
+> "remind me to take the bins out when I get home". The reminder appears with the
+> permission it still needs; granting Always arms it.
 
 ## 7. Device QA before submitting — todo
 

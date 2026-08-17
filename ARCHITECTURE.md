@@ -36,6 +36,20 @@ Views may query models with `@Query` for presentation, but they do not insert, m
 
 Voice data flows through `SpeechTranscriber`: permission request → audio engine → partial Speech results → adaptive natural-pause detection → final transcript → repository. Outside the app, partial text is mirrored into a Live Activity. During an unfinished voice capture, `CaptureDraftStore` also holds an encrypted-at-rest, backup-excluded temporary recording so recognizer or process interruption cannot silently lose the person’s words. It is deleted immediately after a successful save or intentional discard. Failed recordings remain recoverable or deletable in Capture history.
 
+`CapturePerformanceTrace` follows the in-app path from activation to microphone
+readiness and from the last detected voice activity to a real
+`CapturedItemRow` rendered from the final persisted model. OSSignposter stages
+separate transcript finalization, semantic parsing, temporal resolution, raw
+durability, final persistence, rendering, and later notification acceptance.
+All elapsed values use `ContinuousClock`; wall-clock `Date` values never enter
+latency arithmetic. Voice activity is timestamped on the audio callback before
+UI throttling, and the endpoint decision and final transcript are separate
+milestones. Recoverable or asynchronously enriched rows are excluded until they
+are stable.
+Only closed enums and integer durations may enter performance analytics; the
+trace never retains or logs user-authored content. See
+`PERFORMANCE_BENCHMARKING.md`.
+
 One `CaptureSession` always keeps the complete untouched transcript. Extraction produces up to twelve linked `CapturedItem` records. Rules run immediately on every supported iPhone; Apple Intelligence can refine complex captures locally when Foundation Models are available. Model output is accepted only when every quote is grounded in the original transcript, and deterministic code—not the model—controls dates and reminders.
 
 ## Boundaries

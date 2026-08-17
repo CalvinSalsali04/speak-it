@@ -234,7 +234,7 @@ what the app can currently do about it, and the reminder reports
 
 ## 2026-08-14 — Location failures are distinguished, not pooled
 
-`LocationReminderBlocker` has eleven cases and a test asserting that no two of
+`LocationReminderBlocker` has twelve cases and a test asserting that no two of
 them produce the same sentence. "When I get home" with no Home configured says
 *Set your Home location*, never *What did you mean?* — the same principle that
 made "unsupported" distinct from "ambiguous" in the first place, applied to a
@@ -330,7 +330,7 @@ that cannot says "Open Settings" rather than pretending otherwise.
 
 Making the settings screen the only route would have meant leaving the thought,
 finding a setting, and coming back to it — for a gap the app had just named on
-screen. The blocker enum already distinguishes eleven reasons; this makes each
+screen. The blocker enum already distinguishes twelve reasons; this makes each
 one's answer reachable from where the person actually is.
 
 Note the asymmetry that stays: setting Home changes a *resolution*, so it is
@@ -385,3 +385,141 @@ inside CoreData on launch.
 Version 2 now carries its own frozen snapshot, exactly as version 1 does. The
 rule the V1 file already stated turns out to apply to every version and not just
 the first: a schema version can only describe the past if it owns a copy of it.
+
+## 2026-08-14 — A crossing is consumed, not merely reacted to
+
+A place reminder had no record that it had ever fired. Stopping the region at
+delivery time looked sufficient and was not, because the region is not the
+record — it is rebuilt from the saved reminder on every foreground, and the saved
+reminder said nothing. "Next time I get to the gym" therefore fired again on the
+next visit, and would have failed device QA §3.5 while passing every test.
+
+`LocationIntent.firedAt` is now written only after UserNotifications accepts the
+delivery. Recording it before checking notification authorization retired a
+one-shot that the person never received when notifications were off. Duplicate
+callbacks during that await are closed by a short-lived main-actor in-flight
+claim; after the await, the item is re-read and must still be active, incomplete,
+present, and on the same trigger revision. If it changed while scheduling, the
+just-added notification is withdrawn. A repeating reminder has no final firing
+to record, so it uses the same marker with a five-minute cooldown that also
+absorbs GPS boundary bounce.
+
+This is the location counterpart of the temporal system's occurrence bookkeeping,
+and it needed **no schema version**: `LocationIntent` is stored as a JSON blob in
+`locationIntentData`, decodes tolerantly, and a row written before the field
+existed reads back as "never fired" — which is the correct answer for it. The
+V3-freeze rule in `SchemaV1.swift` is untouched and still stands: nothing here
+adds a persisted property to a `@Model`.
+
+Reconciliation excludes a spent one-shot rather than the resolver doing so. The
+task is still outstanding, still in Today, still showing what it was waiting for;
+only the region goes away. Retiring it in the resolver would have quietly
+reclassified a live task as non-actionable, which is a much larger change than
+"stop watching this place".
+
+## 2026-08-14 — A region iOS refused is not a region being watched
+
+`startMonitoring(for:)` cannot fail in place. It returns, and the refusal — no
+network reachability, a radius above the device ceiling, a limit hit — arrives
+later on `monitoringDidFailFor`. The reconciliation that registered the region
+has by then already reported it as monitored, so the person is looking at a
+reminder iOS is not watching. `monitoringFailed` is the twelfth blocker for
+exactly that gap, and radii are clamped to
+`maximumRegionMonitoringDistance` so one cause is removed rather than reported.
+
+Failures are remembered for the run of the app and cleared on foreground and on
+authorization change — never on the reconcile the failure itself triggers, which
+would spin failure into retry into failure. A refused region is also excluded
+*before* the 18-region budget is counted: letting it hold a slot would block a
+reminder that could have been watched in favour of one that demonstrably cannot.
+
+Deduplicating reminders that share a place was considered and rejected. It would
+need a region identifier naming a coordinate rather than a reminder, and the
+event would then have to be fanned back out to several items at delivery — from a
+cold launch, before SwiftData has been read. Prioritising the budget and
+reporting the overflow is honest at every size and needs no mapping to survive a
+relaunch.
+
+## 2026-08-14 — Reconciling must not re-arm a region iOS is already watching
+
+Re-registering an identical region counts as a fresh registration, and a fresh
+registration made while inside the region produces no entry event — that is
+CoreLocation's documented behaviour, and it happens to be exactly what "remind me
+when I get home" means: the *next* time. Since reconciliation runs on every
+foreground, blindly re-registering would have reset the arrival for any reminder
+about the place the person was standing in, every time they opened the app.
+
+Regions are therefore compared by geometry before being replaced. Their
+identifier carries the item, direction, trigger revision, and a compact resolved
+geometry fingerprint. The revision rejects a callback that finishes after an
+editor change; the fingerprint does the same for a Home/Work pointer that moved
+without changing the stored wording. Legacy identifiers and stored intents both
+read as revision zero, so the upgrade does not orphan an in-flight reminder.
+
+## 2026-08-16 — Semantic near-neighbours are executable contracts
+
+Semantic correctness is independent of temporal and location reliability. The
+regression set therefore pairs phrases whose vocabulary is almost identical but
+whose intent is not: “Catherine called me at 3” stays a fact while “Call Catherine
+at 3” is an action; a negated reminder never schedules; a spoken correction keeps
+only the final hour; a birthday fact stays in Memory while “wish Catherine happy
+birthday” is a person follow-up; and “Finish Friday, remind me Wednesday” stores
+Friday as the deadline and Wednesday as the notification.
+
+Two implementation rules fell out of those contrasts. Conversational action
+wrappers such as “remember to” are removed before type inference so the real verb
+can establish a person follow-up. Separately, an action deadline and an earlier
+reminder are parsed from their own clauses; they are never two candidates for a
+single date. Date-only precision remains intact: the Friday deadline is stored as
+a day, while the notification derives its standing 9 AM delivery without writing
+that invented hour back into the intent.
+
+## 2026-08-17 — First-run learning follows the first saved thought
+
+The app now opens in Light appearance when no preference exists. This is a
+default, not a migration: a stored System or Dark selection continues to win.
+Onboarding still begins with capture, then uses the real saved receipt to show
+where the thought went. Only after that success does one short screen explain
+the product boundary — Today is for action; Memory is for knowledge — and offer
+capture-anywhere setup as an optional next step.
+
+Capture dismissal follows the durability rule. X closes an empty surface at
+once, presents Save & Close / Discard / Keep Editing once words exist, and closes
+an already-processed capture without risking the item. The header is laid out
+against the keyboard-reduced window rather than the editor's ideal height, so X
+cannot be translated offscreen while typing.
+
+## 2026-08-17 — Only an obvious accidental duplicate is suppressed
+
+In-app voice and text captures reuse an existing result only when the same
+source repeats the same normalized wording within 15 seconds. External capture
+keeps its stricter five-second retransmission window. Normalization ignores
+case, accents, whitespace, and punctuation for matching while the original
+transcript remains untouched. A reused capture returns explicit result metadata
+so every entry point can say **Already captured** and avoid consuming the
+lifetime allowance. Anything outside the narrow window is saved independently;
+possible intentional repetition is never silently merged.
+
+Shared reminder wording is propagated to every split clause only when the
+command itself carries the shared time. This lets “Remind me tomorrow at 9 to
+buy milk and call Mum” schedule both actions, while “Remind me to call Mum
+tomorrow, buy milk, and remember Catherine likes sushi” becomes a reminder, an
+unscheduled task, and a Memory fact instead of three vague reminders.
+
+## 2026-08-17 — First value must be durable, perceivable, and replayable
+
+Opening the first capture is not onboarding success. The completion flag is now
+written only after the repository returns a saved result; cancelling an empty or
+permission-blocked attempt returns to Welcome. The first **Remembered** receipt
+does not disappear on a timer, and VoiceOver turns every single-item receipt
+into an explicit confirmation. This keeps the evidence of trust onscreen long
+enough to understand or inspect it, while still making a relaunch from that
+receipt land in the product instead of restarting onboarding.
+
+Capture-anywhere setup is useful expansion, not part of the first-value path. It
+is offered as a dismissible Today card only after two successful capture
+sessions. Account & Settings now owns a permanent **Learn Speak It** guide so a
+person can revisit routing, examples, reminders, places, external capture,
+privacy, and recovery without replaying onboarding. Empty states use concrete
+phrases to teach by doing, without implying that those are the only supported
+commands.

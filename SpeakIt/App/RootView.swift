@@ -10,6 +10,7 @@ private enum FullScreenDestination: String, Equatable, Identifiable {
     case welcome
     case captureVoice
     case captureText
+    case firstCaptureGuide
     case captureAnywhereSetup
 
     var id: String { rawValue }
@@ -29,9 +30,23 @@ struct RootView: View {
                     item.itemTypeRawValue == "unclear")
         }
     ) private var openMemoryItems: [CapturedItem]
+
+    /// The `@Query` predicate above is a coarse database pre-filter and nothing
+    /// more. `#Predicate` cannot call the authorization-aware membership check,
+    /// so it re-states Memory membership in raw type strings and cannot know
+    /// that a place-blocked item belongs in review instead. Narrowing the result
+    /// here is what keeps this badge agreeing with the Memory tab it labels —
+    /// without it the dock advertised "Memory 1" over an empty Memory screen.
+    private var memoryBadgeCount: Int {
+        let authorization = LocationReminderMonitor.shared.authorization
+        return openMemoryItems.filter {
+            $0.belongsInMemory(authorization: authorization)
+        }.count
+    }
+
     @StateObject private var quickActionRouter = QuickActionRouter.shared
     @AppStorage("SpeakIt.hasCompletedWelcome") private var hasCompletedWelcome = false
-    @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.system.rawValue
+    @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
 
     @State private var selectedDestination: AppDestination = RootView.initialDestination
     @State private var isDockVisible = true
@@ -39,6 +54,7 @@ struct RootView: View {
     @State private var captureAutoStartsVoice = false
     @State private var captureOpenedFromExternalSource = false
     @State private var captureInitialText = ""
+    @State private var capturePerformance: CapturePerformanceTrace?
     @State private var showsFreeLimit = false
     @State private var returnsToSetupAfterExternalCapture = false
     @State private var hasPerformedMaintenance = false
@@ -48,7 +64,7 @@ struct RootView: View {
     @State private var hasTrackedInitialScreen = false
 
     private var appearance: SpeakItAppearance {
-        SpeakItAppearance(rawValue: appearanceRawValue) ?? .system
+        SpeakItAppearance(rawValue: appearanceRawValue) ?? .firstInstallDefault
     }
 
     private static var initialDestination: AppDestination {
@@ -94,11 +110,6 @@ struct RootView: View {
             // each stack an explicit identity so SwiftUI never reuses a Today
             // row, swipe-action layer, or scroll offset while showing Memory.
             .id(selectedDestination)
-            .safeAreaInset(edge: .bottom) {
-                // Keep the scroll viewport stable while the dock moves. Changing
-                // this inset during a drag made long lists visibly jump.
-                Color.clear.frame(height: 86)
-            }
 
             captureDock
                 .offset(y: isDockVisible ? 0 : 116)
@@ -127,13 +138,17 @@ struct RootView: View {
             case .welcome:
                 WelcomeView(
                     onFirstCapture: beginFirstCapture,
-                    onSkip: { completeWelcome() },
+                    onSkip: { completeWelcome(analyticsPath: .exploreFirst) },
                     onLoadExamples: loadTestExamples
                 )
             case .captureVoice:
                 captureView(initialMode: .voice)
             case .captureText:
                 captureView(initialMode: .text)
+            case .firstCaptureGuide:
+                FirstCaptureGuideView(
+                    onDone: finishFirstCaptureGuide
+                )
             case .captureAnywhereSetup:
                 CaptureAnywhereSetupView(showsOnboardingProgress: true)
             }
@@ -198,9 +213,15 @@ struct RootView: View {
             // Regions are crossed while the app is in the background, so the
             // handler has to be installed before monitoring resumes rather than
             // when a view happens to appear.
-            LocationReminderMonitor.shared.onRegionEvent = { itemID, event in
+            LocationReminderMonitor.shared.onRegionEvent = {
+                itemID, event, triggerRevision, regionIdentifier in
                 Task { @MainActor in
-                    await repository?.handleLocationTrigger(itemID: itemID, event: event)
+                    await repository?.handleLocationTrigger(
+                        itemID: itemID,
+                        event: event,
+                        triggerRevision: triggerRevision,
+                        regionIdentifier: regionIdentifier
+                    )
                 }
             }
             repository?.reconcileLocationReminders()
@@ -230,6 +251,13 @@ struct RootView: View {
             // regions can be orphaned by an edit, stranded by a delete that
             // happened while the app was closed, invalidated by a changed Home
             // address, or stopped by a permission revoked in Settings.
+            //
+            // A foreground is also the retry point for regions iOS refused. The
+            // usual cause is no network reachability, which is exactly the kind
+            // of thing that has often fixed itself by the next time the app is
+            // opened, so the failures are forgotten first and the reminders get
+            // a genuine second attempt rather than being told again.
+            LocationReminderMonitor.shared.clearMonitoringFailures()
             repository?.reconcileLocationReminders()
             Task {
                 _ = await repository?.reconcileICloudSync()
@@ -242,6 +270,20 @@ struct RootView: View {
         .onReceive(
             NotificationCenter.default.publisher(
                 for: LocationReminderMonitor.authorizationDidChangeNotification
+            )
+        ) { _ in
+            // New access is a new chance for a region that was refused under the
+            // old access, so those are retried too.
+            LocationReminderMonitor.shared.clearMonitoringFailures()
+            repository?.reconcileLocationReminders()
+        }
+        // iOS refused a region after accepting the call to monitor it. What the
+        // app believes it is watching is now wrong, so the monitored set is
+        // rebuilt — this one *without* clearing the failures, since retrying
+        // here would only produce the same refusal and the same notification.
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: LocationReminderMonitor.monitoringDidFailNotification
             )
         ) { _ in
             repository?.reconcileLocationReminders()
@@ -295,7 +337,7 @@ struct RootView: View {
             destinationButton(
                 title: "Memory",
                 destination: .library,
-                badgeCount: openMemoryItems.count
+                badgeCount: memoryBadgeCount
             )
         }
         .padding(.horizontal, 10)
@@ -354,7 +396,11 @@ struct RootView: View {
 
     private func beginFirstCapture() {
         showsSetupAfterFirstCapture = true
-        completeWelcome(analyticsPath: .onboarding)
+        SpeakItAnalytics.track(.onboardingStarted)
+        // Entering the capture surface is not a completed onboarding. Persist
+        // success only after the first thought is actually saved so cancelling
+        // permission or closing an empty capture can return to Welcome.
+        fullScreenDestination = nil
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
             presentCapture(entry: .onboarding)
@@ -362,9 +408,14 @@ struct RootView: View {
     }
 
     private func completeWelcome(analyticsPath: AnalyticsCaptureEntry = .dock) {
+        markWelcomeComplete(analyticsPath: analyticsPath)
+        fullScreenDestination = nil
+    }
+
+    private func markWelcomeComplete(analyticsPath: AnalyticsCaptureEntry) {
+        guard !hasCompletedWelcome else { return }
         SpeakItAnalytics.track(.onboardingCompleted(path: analyticsPath))
         hasCompletedWelcome = true
-        fullScreenDestination = nil
     }
 
     private func loadTestExamples() {
@@ -426,10 +477,25 @@ struct RootView: View {
         captureAutoStartsVoice = autoStartsVoiceCapture
         captureOpenedFromExternalSource = fromExternalSource
         captureInitialText = initialText
+        let source: AnalyticsCaptureSource = initialMode == .text ? .text : .voice
+        capturePerformance = CapturePerformanceTrace(
+            source: source,
+            activatedAt: CapturePerformanceClock.now,
+            recordsExternalActivation: fromExternalSource
+        )
         fullScreenDestination = initialMode == .text ? .captureText : .captureVoice
     }
 
     private func setDockVisibility(_ visible: Bool) {
+#if DEBUG
+        // Layout UI tests need to exercise the bottom scroll limit with the
+        // overlay present. Normal full swipes hide it before that state can be
+        // measured, so this launch-only switch freezes visibility without
+        // changing any production behavior.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-keep-dock-visible") {
+            return
+        }
+#endif
         guard isDockVisible != visible else { return }
         withAnimation(.easeOut(duration: 0.22)) {
             isDockVisible = visible
@@ -441,17 +507,21 @@ struct RootView: View {
         CaptureView(
             initialMode: initialMode,
             autoStartsVoiceCapture: captureAutoStartsVoice,
-            initialText: captureInitialText
+            initialText: captureInitialText,
+            performance: capturePerformance,
+            autoDismissesSingleItemConfirmation: !showsSetupAfterFirstCapture,
+            onSaveSucceeded: markFirstCaptureSucceeded,
+            onCancelled: handleCaptureCancelled
         ) {
             if captureOpenedFromExternalSource {
                 CaptureActivationStore.markSucceeded()
             }
             selectedDestination = .today
             isDockVisible = true
-            fullScreenDestination = nil
             captureAutoStartsVoice = false
             captureOpenedFromExternalSource = false
             captureInitialText = ""
+            capturePerformance = nil
 
             if returnsToSetupAfterExternalCapture {
                 returnsToSetupAfterExternalCapture = false
@@ -462,13 +532,43 @@ struct RootView: View {
                 return
             }
 
-            guard showsSetupAfterFirstCapture else { return }
+            guard showsSetupAfterFirstCapture else {
+                fullScreenDestination = nil
+                return
+            }
             showsSetupAfterFirstCapture = false
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(450))
-                fullScreenDestination = .captureAnywhereSetup
+                fullScreenDestination = .firstCaptureGuide
             }
         }
+    }
+
+    private func markFirstCaptureSucceeded() {
+        guard showsSetupAfterFirstCapture else { return }
+        // The durable save is the success boundary. Keep the receipt onscreen,
+        // but make sure relaunching from it never restarts onboarding.
+        markWelcomeComplete(analyticsPath: .onboarding)
+    }
+
+    private func handleCaptureCancelled() {
+        guard showsSetupAfterFirstCapture else { return }
+        showsSetupAfterFirstCapture = false
+        hasCompletedWelcome = false
+        SpeakItAnalytics.track(.onboardingAbandoned)
+        Task { @MainActor in
+            // Let the full-screen capture finish its dismissal before asking
+            // SwiftUI to present Welcome again. Presenting during the outgoing
+            // animation can be dropped by the presentation coordinator.
+            try? await Task.sleep(for: .milliseconds(520))
+            guard !hasCompletedWelcome, fullScreenDestination == nil else { return }
+            fullScreenDestination = .welcome
+        }
+    }
+
+    private func finishFirstCaptureGuide() {
+        SpeakItAnalytics.track(.firstCaptureGuideCompleted)
+        fullScreenDestination = nil
     }
 
     private func handleQuickAction(_ request: QuickActionRouter.Request?) {
@@ -492,6 +592,11 @@ struct RootView: View {
         isDockVisible = true
         captureAutoStartsVoice = request.autoStartsVoiceCapture
         captureOpenedFromExternalSource = true
+        capturePerformance = CapturePerformanceTrace(
+            source: request.initialMode == .text ? .text : .voice,
+            activatedAt: request.activationInstant,
+            recordsExternalActivation: true
+        )
         SpeakItAnalytics.track(.captureStarted(
             mode: request.initialMode == .text ? .text : .voice,
             entry: .quickAction
@@ -529,7 +634,9 @@ struct RootView: View {
             return
         }
 
-        CaptureActivationStore.markInvoked()
+        let activatedAt = Date.now
+        let activationInstant = CapturePerformanceClock.now
+        CaptureActivationStore.markInvoked(at: activatedAt)
         let isReturningFromSetup = fullScreenDestination == .captureAnywhereSetup
 
         hasCompletedWelcome = true
@@ -539,6 +646,11 @@ struct RootView: View {
         isDockVisible = true
         captureAutoStartsVoice = true
         captureOpenedFromExternalSource = true
+        capturePerformance = CapturePerformanceTrace(
+            source: .voice,
+            activatedAt: activationInstant,
+            recordsExternalActivation: true
+        )
         SpeakItAnalytics.track(.captureStarted(mode: .voice, entry: .deepLink))
         fullScreenDestination = .captureVoice
     }
@@ -571,14 +683,16 @@ struct RootView: View {
                     schedulesReminders: true
                 )
                 SharedCaptureInbox.remove(at: pending.url)
-                subscriptionStore.recordSuccessfulCapture()
-                SpeakItAnalytics.track(.captureSaved(
-                    source: .shareSheet,
-                    itemCount: result.itemCount,
-                    needsReviewCount: result.needsReviewCount,
-                    plan: subscriptionStore.hasProAccess ? .pro : .free
-                ))
-                importedCount += 1
+                if result.createdNewCapture {
+                    subscriptionStore.recordSuccessfulCapture()
+                    SpeakItAnalytics.track(.captureSaved(
+                        source: .shareSheet,
+                        itemCount: result.itemCount,
+                        needsReviewCount: result.needsReviewCount,
+                        plan: subscriptionStore.hasProAccess ? .pro : .free
+                    ))
+                    importedCount += 1
+                }
             } catch {
                 // Leave this and later files in the shared inbox. The next
                 // activation retries them without duplicating completed work.
@@ -614,14 +728,16 @@ struct RootView: View {
                     schedulesReminders: true
                 )
                 CaptureDraftStore.clear(id: draft.id)
-                subscriptionStore.recordSuccessfulCapture()
-                SpeakItAnalytics.track(.captureSaved(
-                    source: .recovery,
-                    itemCount: result.itemCount,
-                    needsReviewCount: result.needsReviewCount,
-                    plan: subscriptionStore.hasProAccess ? .pro : .free
-                ))
-                recoveredCount += 1
+                if result.createdNewCapture {
+                    subscriptionStore.recordSuccessfulCapture()
+                    SpeakItAnalytics.track(.captureSaved(
+                        source: .recovery,
+                        itemCount: result.itemCount,
+                        needsReviewCount: result.needsReviewCount,
+                        plan: subscriptionStore.hasProAccess ? .pro : .free
+                    ))
+                    recoveredCount += 1
+                }
             } catch {
                 CaptureDraftStore.markFailed(
                     id: draft.id,

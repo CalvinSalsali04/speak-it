@@ -51,7 +51,10 @@ final class TemporalFullPathTests: XCTestCase {
             migrationPlan: SpeakItMigrationPlan.self,
             configurations: [configuration]
         )
-        repository = SwiftDataThoughtRepository(modelContext: container.mainContext)
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            requestsReminderAuthorization: false
+        )
     }
 
     /// The closest a test process can get to the app being killed and launched
@@ -943,6 +946,8 @@ final class TemporalFullPathTests: XCTestCase {
             text: "Remind me to call the pharmacy in 3 hours",
             source: .inAppText,
             createdAt: .now,
+            // The test repository suppresses only the system prompt; scheduling
+            // still observes the simulator's unauthorized notification state.
             schedulesReminder: true
         )
         let itemID = item.id
@@ -950,6 +955,7 @@ final class TemporalFullPathTests: XCTestCase {
 
         // The launch reconcile is the path that runs after permission changes.
         try relaunch()
+        await drainScheduler()
 
         let reloaded = try loadItem(withID: itemID)
         XCTAssertEqual(

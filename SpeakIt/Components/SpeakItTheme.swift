@@ -6,6 +6,11 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
     case light
     case dark
 
+    /// A first install starts in Speak It's intentionally designed appearance.
+    /// `@AppStorage` only uses this while no preference exists, so an existing
+    /// System or Dark selection is never overwritten on upgrade.
+    static let firstInstallDefault: SpeakItAppearance = .light
+
     var id: String { rawValue }
 
     var title: String {

@@ -195,6 +195,23 @@ final class CapturedItem: Identifiable {
         belongsInToday && !requiresReview(authorization: authorization)
     }
 
+    /// Memory placement, judged against live device state.
+    ///
+    /// The authorization-aware counterpart of `belongsInMemory`, and it exists
+    /// because the stored form was not the exact complement of `requiresReview`
+    /// that this file claims it is. `isLiveThought` excludes `needsClarification`
+    /// but knows nothing about a location blocker, so a `.note`-typed place
+    /// reminder waiting on a Work address satisfied `belongsInMemory` *and*
+    /// `requiresReview` at the same time, and appeared in Today's "Needs review"
+    /// and in Memory's "Reference" simultaneously — one item, two destinations.
+    ///
+    /// Every Memory surface must use this rather than the stored property, for
+    /// the same reason Today does.
+    @MainActor
+    func belongsInMemory(authorization: LocationAuthorization) -> Bool {
+        belongsInMemory && !requiresReview(authorization: authorization)
+    }
+
     /// What is stopping this place reminder from working, or `nil` when nothing
     /// is.
     ///

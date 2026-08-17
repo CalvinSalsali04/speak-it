@@ -22,7 +22,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             migrationPlan: SpeakItMigrationPlan.self,
             configurations: [configuration]
         )
-        repository = SwiftDataThoughtRepository(modelContext: container.mainContext)
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            requestsReminderAuthorization: false
+        )
     }
 
     override func tearDownWithError() throws {
@@ -285,17 +288,40 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(items.count, 2)
     }
 
-    func testRepeatedInAppCaptureIsNeverAutomaticallyDeduplicated() throws {
+    func testRepeatedInAppCaptureWithinFifteenSecondsIsAnObviousDuplicate() async throws {
+        let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = try await repository.createCaptureResult(
+            text: "Call Mum at 5.",
+            source: .inAppVoice,
+            createdAt: firstDate,
+            schedulesReminders: false
+        )
+        let duplicate = try await repository.createCaptureResult(
+            text: "  CALL Mum at 5  ",
+            source: .inAppVoice,
+            createdAt: firstDate.addingTimeInterval(8),
+            schedulesReminders: false
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertTrue(first.createdNewCapture)
+        XCTAssertFalse(duplicate.createdNewCapture)
+        XCTAssertTrue(duplicate.isDuplicate)
+        XCTAssertEqual(duplicate.primaryItem.id, first.primaryItem.id)
+        XCTAssertEqual(items.count, 1)
+    }
+
+    func testRepeatedInAppCaptureAfterFifteenSecondsIsKept() throws {
         let firstDate = Date(timeIntervalSince1970: 1_700_000_000)
         _ = try repository.createCapture(
-            text: "A thought I mean to repeat",
+            text: "A thought I may mean to repeat",
             source: .inAppVoice,
             createdAt: firstDate
         )
         _ = try repository.createCapture(
-            text: "A thought I mean to repeat",
+            text: "A thought I may mean to repeat",
             source: .inAppVoice,
-            createdAt: firstDate.addingTimeInterval(1)
+            createdAt: firstDate.addingTimeInterval(16)
         )
 
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
@@ -488,9 +514,50 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         XCTAssertEqual(
             result.reminderDate,
-            makeDate(year: 2026, month: 8, day: 4, hour: 6, calendar: calendar)
+            makeDate(year: 2026, month: 8, day: 4, hour: 18, calendar: calendar)
         )
         XCTAssertFalse(result.needsClarification)
+    }
+
+    func testBareFiveOnANamedDayDefaultsToFivePM() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+
+        let result = ThoughtOrganizer.organize(
+            "Call Catherine tomorrow at 5",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        let expected = makeDate(year: 2026, month: 8, day: 4, hour: 17, calendar: calendar)
+        XCTAssertEqual(result.dueDate, expected)
+        XCTAssertEqual(result.temporalIntent.time, WallClockTime(hour: 17, minute: 0))
+        XCTAssertFalse(result.needsClarification)
+    }
+
+    func testExplicitMeridiemOverridesTheBareHourDefault() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+
+        let morning = ThoughtOrganizer.organize(
+            "Call Catherine tomorrow at 5 AM",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let evening = ThoughtOrganizer.organize(
+            "Call Catherine tomorrow at 5 PM",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            morning.dueDate,
+            makeDate(year: 2026, month: 8, day: 4, hour: 5, calendar: calendar)
+        )
+        XCTAssertEqual(
+            evening.dueDate,
+            makeDate(year: 2026, month: 8, day: 4, hour: 17, calendar: calendar)
+        )
     }
 
     func testVagueReminderIsSavedButNeedsClarification() {
@@ -558,6 +625,34 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertTrue(result.items.allSatisfy { $0.organization.reminderDelivery == .notification })
     }
 
+    func testMixedReminderTaskAndMemoryRouteIndependently() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Remind me to call Mom tomorrow, buy milk, and remember Catherine likes sushi",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.items.count, 3)
+
+        let call = result.items[0].organization
+        XCTAssertEqual(call.itemType, .personFollowUp)
+        XCTAssertEqual(call.reminderDelivery, .notification)
+        XCTAssertNotNil(call.reminderDate)
+
+        let milk = result.items[1].organization
+        XCTAssertEqual(milk.itemType, .shopping)
+        XCTAssertEqual(milk.reminderDelivery, .none)
+        XCTAssertNil(milk.reminderDate)
+
+        let memory = result.items[2].organization
+        XCTAssertFalse(memory.itemType.isActionable)
+        XCTAssertEqual(memory.reminderDelivery, .none)
+        XCTAssertNil(memory.dueDate)
+        XCTAssertNil(memory.reminderDate)
+    }
+
     func testCorrectionKeepsOnlyTheFinalIntent() {
         let result = ThoughtExtractionEngine.extractWithRules(
             "Remind me tomorrow to call Sam—no, actually call Alex"
@@ -583,7 +678,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(extraction.items[0].organization.itemType, .personFollowUp)
         XCTAssertEqual(
             extraction.items[0].organization.reminderDate,
-            makeDate(year: 2026, month: 8, day: 11, hour: 5, calendar: calendar)
+            makeDate(year: 2026, month: 8, day: 11, hour: 17, calendar: calendar)
         )
 
         let item = try repository.createCapture(
@@ -708,6 +803,156 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             XCTAssertNil(result.reminderDate, text)
             XCTAssertEqual(result.reminderDelivery, .none, text)
         }
+    }
+
+    /// The semantic contrast set is deliberately made of near-neighbours. A
+    /// clock phrase must not turn reported history or a remembered fact into an
+    /// action, while the same words in an imperative must remain actionable.
+    func testSemanticContrastBetweenReportedHistoryActionsAndFacts() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 4, day: 20, hour: 10, calendar: calendar)
+
+        let reported = ThoughtOrganizer.organize(
+            "Catherine called me at 3",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(reported.itemType, .note)
+        XCTAssertNil(reported.dueDate)
+        XCTAssertNil(reported.reminderDate)
+
+        let action = ThoughtOrganizer.organize(
+            "Call Catherine at 3",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(action.itemType, .personFollowUp)
+        XCTAssertEqual(
+            action.dueDate,
+            makeDate(year: 2026, month: 4, day: 20, hour: 15, calendar: calendar)
+        )
+
+        let fact = ThoughtOrganizer.organize(
+            "Remember Catherine's birthday is May 3",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(fact.itemType, .note)
+        XCTAssertEqual(fact.category, .people)
+        XCTAssertEqual(fact.personName, "Catherine")
+        XCTAssertNil(fact.dueDate)
+        XCTAssertNil(fact.reminderDate)
+
+        let birthdayAction = ThoughtOrganizer.organize(
+            "Remember to wish Catherine happy birthday May 3",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(birthdayAction.itemType, .personFollowUp)
+        XCTAssertEqual(birthdayAction.personName, "Catherine")
+        XCTAssertNotNil(birthdayAction.dueDate)
+    }
+
+    func testNegatedAndCorrectedReminderMeaning() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 10, hour: 10, calendar: calendar)
+
+        let negated = ThoughtOrganizer.organize(
+            "Don't remind me to call Catherine",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertFalse(negated.itemType.isActionable)
+        XCTAssertNil(negated.reminderDate)
+        XCTAssertEqual(negated.reminderDelivery, .none)
+
+        let correctedExtraction = ThoughtExtractionEngine.extractWithRules(
+            "Remind me at 3, actually make it 4",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        let corrected = correctedExtraction.items[0].organization
+        XCTAssertEqual(correctedExtraction.items.count, 1)
+        XCTAssertEqual(
+            corrected.reminderDate,
+            makeDate(year: 2026, month: 8, day: 10, hour: 16, calendar: calendar)
+        )
+        XCTAssertNotEqual(
+            corrected.reminderDate,
+            makeDate(year: 2026, month: 8, day: 10, hour: 15, calendar: calendar)
+        )
+    }
+
+    /// An action date and its earlier interruption are two meanings, not two
+    /// competing guesses at one date.
+    func testActionDeadlineAndEarlierReminderRemainSeparate() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 10, hour: 10, calendar: calendar)
+        let extraction = ThoughtExtractionEngine.extractWithRules(
+            "Finish Friday, remind me Wednesday",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(extraction.items.count, 1)
+        let result = extraction.items[0].organization
+
+        XCTAssertEqual(
+            result.dueDate,
+            makeDate(year: 2026, month: 8, day: 14, hour: 0, calendar: calendar)
+        )
+        XCTAssertEqual(
+            result.reminderDate,
+            makeDate(year: 2026, month: 8, day: 12, hour: 9, calendar: calendar)
+        )
+        XCTAssertEqual(result.reminderDelivery, .notification)
+    }
+
+    func testSemanticCaptureCorpusHasASignpostedPerformanceRegressionGate() {
+        let corpus = [
+            "Call Catherine tomorrow at 5",
+            "Catherine's birthday is May 3",
+            "Remind me in one hour to message Catherine",
+            "Finish Friday, remind me Wednesday at 4",
+            "Call Mom tomorrow and email Alex Friday",
+            "The storage room code is 4821, and buy laundry detergent"
+        ]
+        let referenceDate = Date(timeIntervalSince1970: 1_786_332_600)
+        let metric = XCTOSSignpostMetric(
+            subsystem: CapturePerformanceSignposts.subsystem,
+            category: CapturePerformanceSignposts.category,
+            name: "SemanticParsing"
+        )
+        let options = XCTMeasureOptions()
+        options.iterationCount = 3
+
+        measure(metrics: [metric], options: options) {
+            for index in 0..<204 {
+                _ = ThoughtExtractionEngine.extractWithRules(
+                    corpus[index % corpus.count],
+                    referenceDate: referenceDate,
+                    calendar: utcCalendar
+                )
+            }
+        }
+
+        let clock = ContinuousClock()
+        var latencies: [Duration] = []
+        for index in 0..<204 {
+            let startedAt = clock.now
+            _ = ThoughtExtractionEngine.extractWithRules(
+                corpus[index % corpus.count],
+                referenceDate: referenceDate,
+                calendar: utcCalendar
+            )
+            latencies.append(startedAt.duration(to: clock.now))
+        }
+        let sorted = latencies.sorted()
+        let p95Index = min(sorted.count - 1, Int(Double(sorted.count) * 0.95))
+        XCTAssertLessThan(
+            sorted[p95Index],
+            .milliseconds(250),
+            "Rule-based semantic p95 exceeded the 250 ms capture budget"
+        )
     }
 
     /// A notification dated in the past is dropped by iOS without a sound, so
@@ -1233,10 +1478,17 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             router.consume(pending)
         }
 
-        router.requestTypedCapture()
+        let activatedAt = Date(timeIntervalSince1970: 1_800_000_010)
+        let activationInstant = CapturePerformanceClock.now
+        router.requestTypedCapture(
+            activatedAt: activatedAt,
+            activationInstant: activationInstant
+        )
         let request = try XCTUnwrap(router.pendingRequest)
         XCTAssertEqual(request.initialMode, .text)
         XCTAssertFalse(request.autoStartsVoiceCapture)
+        XCTAssertEqual(request.activatedAt, activatedAt)
+        XCTAssertEqual(request.activationInstant, activationInstant)
 
         router.consume(request)
         XCTAssertNil(router.pendingRequest)
@@ -1248,12 +1500,19 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             router.consume(pending)
         }
 
-        router.requestVoiceCapture()
+        let activatedAt = Date(timeIntervalSince1970: 1_800_000_020)
+        let activationInstant = CapturePerformanceClock.now
+        router.requestVoiceCapture(
+            activatedAt: activatedAt,
+            activationInstant: activationInstant
+        )
         let request = try XCTUnwrap(router.pendingRequest)
         router.requestVoiceCapture()
         let duplicate = try XCTUnwrap(router.pendingRequest)
         XCTAssertEqual(request.initialMode, .voice)
         XCTAssertTrue(request.autoStartsVoiceCapture)
+        XCTAssertEqual(request.activatedAt, activatedAt)
+        XCTAssertEqual(request.activationInstant, activationInstant)
         XCTAssertEqual(duplicate.id, request.id)
 
         router.consume(request)
@@ -1276,10 +1535,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
 
         let invokedAt = Date(timeIntervalSince1970: 1_800_000_001)
-        let readyAt = invokedAt.addingTimeInterval(0.42)
+        // Deliberately move the wall clock backwards. Startup latency must
+        // still come from the monotonic duration supplied by the capture path.
+        let readyAt = invokedAt.addingTimeInterval(-3_600)
         let succeededAt = invokedAt.addingTimeInterval(4)
         CaptureActivationStore.markInvoked(at: invokedAt)
-        CaptureActivationStore.markMicrophoneReady(startedAt: invokedAt, at: readyAt)
+        CaptureActivationStore.markMicrophoneReady(
+            at: readyAt,
+            startupDuration: .milliseconds(420)
+        )
         CaptureActivationStore.markSucceeded(at: succeededAt)
 
         XCTAssertEqual(
@@ -1299,6 +1563,77 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             defaults.double(forKey: CaptureActivationStore.lastSuccessKey),
             succeededAt.timeIntervalSince1970
         )
+    }
+
+    func testCapturePerformanceTraceUsesMonotonicStageBoundaries() throws {
+        let start = CapturePerformanceClock.now
+        let trace = CapturePerformanceTrace(source: .voice, activatedAt: start)
+        trace.markMicrophoneReady(
+            at: start.advanced(by: .milliseconds(150)),
+            wallDate: Date(timeIntervalSince1970: 1)
+        )
+        trace.markEndOfSpeechDetected(
+            lastSpeechAt: start.advanced(by: .milliseconds(1_000)),
+            at: start.advanced(by: .milliseconds(1_300))
+        )
+        trace.markTranscriptFinalized(at: start.advanced(by: .milliseconds(1_500)))
+        trace.beginSemanticParsing(at: start.advanced(by: .milliseconds(1_500)))
+        trace.stageRecorder.recordTemporalResolution(.milliseconds(10))
+        trace.finishSemanticParsing(at: start.advanced(by: .milliseconds(1_600)))
+        trace.beginPersistence(at: start.advanced(by: .milliseconds(1_600)))
+        trace.finishPersistence(at: start.advanced(by: .milliseconds(1_620)))
+
+        let session = CaptureSession(
+            originalTranscription: "Private benchmark fixture",
+            processingStatus: .complete
+        )
+        let item = CapturedItem(
+            originalTextSegment: "Private benchmark fixture",
+            displayTitle: "Private benchmark fixture",
+            itemType: .note,
+            captureSession: session
+        )
+        let result = CaptureCreationResult(session: session, items: [item])
+        trace.markOrganizedRowVisible(
+            result: result,
+            at: start.advanced(by: .milliseconds(1_650))
+        )
+
+        let sample = try XCTUnwrap(trace.reportedSample)
+        XCTAssertEqual(sample.captureReadyMilliseconds, 150)
+        XCTAssertEqual(sample.speechEndDetectionMilliseconds, 300)
+        XCTAssertEqual(sample.transcriptionMilliseconds, 200)
+        XCTAssertEqual(sample.semanticParsingMilliseconds, 90)
+        XCTAssertEqual(sample.temporalResolutionMilliseconds, 10)
+        XCTAssertEqual(sample.persistenceMilliseconds, 20)
+        XCTAssertEqual(sample.renderMilliseconds, 30)
+        XCTAssertEqual(sample.captureToOrganizedMilliseconds, 650)
+        XCTAssertTrue(sample.pipelineCompleted)
+        XCTAssertFalse(sample.requiresReview)
+    }
+
+    func testCapturePerformanceExcludesARowThatCanStillBeReorganized() {
+        let start = CapturePerformanceClock.now
+        let trace = CapturePerformanceTrace(source: .text, activatedAt: start)
+        trace.beginTextSave(at: start)
+        trace.beginPersistence(at: start)
+        trace.finishPersistence(at: start.advanced(by: .milliseconds(5)))
+
+        let session = CaptureSession(
+            originalTranscription: "Pending fixture",
+            processingStatus: .pending
+        )
+        let item = CapturedItem(
+            originalTextSegment: "Pending fixture",
+            displayTitle: "Pending fixture",
+            captureSession: session
+        )
+        trace.markOrganizedRowVisible(
+            result: CaptureCreationResult(session: session, items: [item]),
+            at: start.advanced(by: .milliseconds(10))
+        )
+
+        XCTAssertNil(trace.reportedSample)
     }
 
     func testEveryMemoryHasExactlyOnePredictableGroup() {
@@ -3535,10 +3870,29 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             .appInstalled,
             .appOpened(plan: .free),
             .screenViewed(.today),
+            .onboardingStarted,
+            .onboardingAbandoned,
             .onboardingCompleted(path: .onboarding),
+            .firstCaptureGuideCompleted,
+            .learnSpeakItOpened,
+            .captureAnywhereDiscoveryDismissed,
             .captureStarted(mode: .voice, entry: .dock),
             .captureSaved(source: .voice, itemCount: 2, needsReviewCount: 1, plan: .pro),
             .captureFailed(source: .text, category: "speech"),
+            .capturePerformance(CaptureLatencySample(
+                source: .voice,
+                kind: .reminder,
+                captureReadyMilliseconds: 180,
+                speechEndDetectionMilliseconds: 240,
+                transcriptionMilliseconds: 80,
+                semanticParsingMilliseconds: 42,
+                temporalResolutionMilliseconds: 11,
+                persistenceMilliseconds: 18,
+                renderMilliseconds: 16,
+                captureToOrganizedMilliseconds: 407,
+                pipelineCompleted: true,
+                requiresReview: false
+            )),
             .freeLimitReached(used: 10),
             .paywallViewed(context: .freeLimit),
             .planSelected(.annual),

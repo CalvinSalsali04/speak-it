@@ -225,15 +225,11 @@ background so step text dissolves as it passes behind.
       changing the app rather than the copy: `FreePlanAllowance` is a one-time
       `lifetimeCaptureLimit = 10` that never resets, matching the offer
       section's *ten captures to try*. `classic.html` has been updated too.
-- [ ] **Verify the sale against App Store Connect, and the reference price
-      against reality.** `$1.99/month` shown as 50% off `$3.99` is currently copy
-      only. Two things have to be true before it ships: the discount must
-      actually exist in App Store Connect (as a price change or an introductory
-      offer), and the `$3.99` must have genuinely been charged for a meaningful
-      period — advertising a struck-through price that was never the real price
-      is what the FTC and the UK ASA both treat as a deceptive reference price.
-      The app has no public listing yet, so `$3.99` has never been anyone's
-      price. Note also that half of `$3.99` is `$2.00`, not `$1.99`.
+- [ ] **Confirm launch pricing in App Store Connect.** Configure the live
+      products at `$1.99/month` and `$14.99/year`, then confirm the localized
+      StoreKit prices match the app and website. Do not publish comparison,
+      discount, or time-limited pricing claims unless App Store Connect is
+      configured to support the exact offer.
 - [ ] **Point "Privacy" at a real page.** The footer link currently jumps to the
       pledge section as a placeholder, and there is no Terms page yet.
 - [ ] **Confirm `hello@speakit.app`** is a real, monitored address.

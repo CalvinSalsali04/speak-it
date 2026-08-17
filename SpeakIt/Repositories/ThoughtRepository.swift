@@ -2,6 +2,18 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+/// What an edit does to a place trigger.
+///
+/// Three states rather than an optional, because "leave it alone" and "delete
+/// it" are different instructions and an `Optional<LocationIntent>` cannot say
+/// both. Every editor that does not present place controls sends `.unchanged`,
+/// so a screen that never showed the trigger can never silently drop it.
+enum LocationIntentEdit: Equatable, Sendable {
+    case unchanged
+    case update(LocationIntent)
+    case remove
+}
+
 struct ItemEdits {
     var title: String
     var itemType: ItemType
@@ -12,22 +24,71 @@ struct ItemEdits {
     var personName: String?
     var needsClarification: Bool
     var recurrenceRule: RecurrenceRule? = nil
+    var locationIntent: LocationIntentEdit = .unchanged
 }
 
 @MainActor
 struct CaptureCreationResult {
     let session: CaptureSession
     let items: [CapturedItem]
+    /// False when capture was an obvious near-immediate retransmission and the
+    /// existing durable result was returned instead of inserting another row.
+    let createdNewCapture: Bool
+
+    init(
+        session: CaptureSession,
+        items: [CapturedItem],
+        createdNewCapture: Bool = true
+    ) {
+        self.session = session
+        self.items = items
+        self.createdNewCapture = createdNewCapture
+    }
 
     var primaryItem: CapturedItem { items[0] }
     var itemCount: Int { items.count }
-    var reminderCount: Int { items.filter { $0.reminderDate != nil }.count }
-    var needsReviewCount: Int { items.filter(\.needsClarification).count }
-    var actionCount: Int {
-        items.filter { $0.belongsInToday && $0.reminderDate == nil }.count
+    var isDuplicate: Bool { !createdNewCapture }
+
+    /// One reading per saved item, computed against a single authorization
+    /// snapshot so every count in the receipt describes the same instant.
+    private var presentations: [ItemPresentation] {
+        let authorization = LocationReminderMonitor.shared.authorization
+        return items.map { ItemPresentation.make(for: $0, authorization: authorization) }
     }
+
+    /// Counted from the derived state rather than from `needsClarification`
+    /// alone. The stored flag only knows what the *sentence* left unresolved; a
+    /// place reminder waiting on a Home address is blocked by what the *device*
+    /// lacks, and reading only the flag is what let a blocked item be announced
+    /// as a ready action and be counted twice.
+    var needsReviewCount: Int {
+        presentations.filter(\.requiresReview).count
+    }
+
+    var reminderCount: Int {
+        presentations.filter { presentation in
+            switch presentation.reminderState {
+            case .time, .place: !presentation.requiresReview
+            case .none, .blockedPlace: false
+            }
+        }.count
+    }
+
+    var actionCount: Int {
+        presentations.filter { presentation in
+            switch presentation.destination {
+            case .overdue, .todayScheduled, .comingUp, .whenYouHaveTime:
+                // Reminders are counted on their own line; this is the
+                // "things to do" remainder, so the two never double-count.
+                return !presentation.reminderState.isArmed
+            case .needsReview, .memory:
+                return false
+            }
+        }.count
+    }
+
     var memoryCount: Int {
-        items.filter(\.belongsInMemory).count
+        presentations.filter { $0.destination == .memory }.count
     }
 
     var receiptContext: String {
@@ -62,7 +123,12 @@ protocol ThoughtRepository: AnyObject, Sendable {
     @discardableResult
     func reconcileLocationReminders() -> LocationMonitorReconciliation
     /// Delivers a place reminder whose region was just crossed.
-    func handleLocationTrigger(itemID: UUID, event: LocationEvent) async
+    func handleLocationTrigger(
+        itemID: UUID,
+        event: LocationEvent,
+        triggerRevision: Int?,
+        regionIdentifier: String?
+    ) async
     /// Looks up a name for a frozen "here", on explicit request only.
     ///
     /// Never called during capture. Reverse-geocoding sends a coordinate to
@@ -88,7 +154,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
         text: String,
         source: CaptureSource,
         createdAt: Date,
-        schedulesReminders: Bool
+        schedulesReminders: Bool,
+        performance: CapturePerformanceTrace?
     ) async throws -> CaptureCreationResult
 
     func update(_ item: CapturedItem, with edits: ItemEdits) throws
@@ -100,6 +167,23 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func merge(_ items: [CapturedItem]) throws
     func undoOrganization(_ session: CaptureSession) throws
     func reorganize(_ session: CaptureSession) throws
+}
+
+extension ThoughtRepository {
+    func createCaptureResult(
+        text: String,
+        source: CaptureSource,
+        createdAt: Date,
+        schedulesReminders: Bool
+    ) async throws -> CaptureCreationResult {
+        try await createCaptureResult(
+            text: text,
+            source: source,
+            createdAt: createdAt,
+            schedulesReminders: schedulesReminders,
+            performance: nil
+        )
+    }
 }
 
 enum RepositoryError: LocalizedError, Equatable {
