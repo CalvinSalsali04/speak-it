@@ -58,11 +58,55 @@ enum RecurrenceAnchor: String, Codable, Sendable {
 
 /// A small, deterministic recurrence model keeps repeating work predictable
 /// and lets the original capture remain the source of truth.
+/// An ordinal weekday within a month: "first Monday", "last Friday".
+struct OrdinalWeekday: Codable, Equatable, Sendable {
+    /// 1 through 4, or `-1` for "last". 5 is deliberately not representable:
+    /// most months have no fifth Monday, so a series built on one would skip
+    /// months without saying so.
+    let ordinal: Int
+    /// `Calendar` weekday numbering, where 1 is Sunday.
+    let weekday: Int
+
+    init(ordinal: Int, weekday: Int) {
+        self.ordinal = ordinal == -1 ? -1 : min(max(ordinal, 1), 4)
+        self.weekday = min(max(weekday, 1), 7)
+    }
+
+    /// This ordinal weekday inside the month `interval` months after `base`.
+    func date(monthsAfter base: Date, interval: Int, calendar: Calendar) -> Date? {
+        guard let moved = calendar.date(byAdding: .month, value: max(interval, 1), to: base) else {
+            return nil
+        }
+        return date(inMonthContaining: moved, calendar: calendar)
+    }
+
+    /// This ordinal weekday inside whatever month `date` falls in.
+    func date(inMonthContaining date: Date, calendar: Calendar) -> Date? {
+        guard let month = calendar.dateInterval(of: .month, for: date) else { return nil }
+        let days = stride(from: 0, to: 31, by: 1).compactMap { offset -> Date? in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: month.start),
+                  day < month.end,
+                  calendar.component(.weekday, from: day) == weekday else { return nil }
+            return day
+        }
+        return ordinal == -1 ? days.last : days[safe: ordinal - 1]
+    }
+}
+
 struct RecurrenceRule: Codable, Equatable, Sendable {
     let frequency: RecurrenceFrequency
     let interval: Int
     let weekdays: [Int]
     let anchor: RecurrenceAnchor
+
+    /// The "first Monday" in "first Monday every month".
+    ///
+    /// A monthly series is normally anchored to a day number, which is the
+    /// wrong shape for this one: the first Monday is the 3rd in one month and
+    /// the 7th in the next. Without this the rule degrades to either "the 3rd
+    /// of every month" or, worse, to a weekly Monday — 12 occurrences a year
+    /// turning into 52.
+    let ordinalWeekday: OrdinalWeekday?
 
     /// Set only for elapsed-time recurrence such as "every 24 hours".
     ///
@@ -81,12 +125,14 @@ struct RecurrenceRule: Codable, Equatable, Sendable {
         interval: Int = 1,
         weekdays: [Int] = [],
         anchor: RecurrenceAnchor = .scheduledDate,
+        ordinalWeekday: OrdinalWeekday? = nil,
         intervalSeconds: Double? = nil
     ) {
         self.frequency = frequency
         self.interval = max(interval, 1)
         self.weekdays = Array(Set(weekdays.filter { (1...7).contains($0) })).sorted()
         self.anchor = anchor
+        self.ordinalWeekday = ordinalWeekday
         self.intervalSeconds = intervalSeconds.map { max($0, 1) }
     }
 
@@ -99,6 +145,7 @@ struct RecurrenceRule: Codable, Equatable, Sendable {
         weekdays = try container.decodeIfPresent([Int].self, forKey: .weekdays) ?? []
         anchor = try container.decodeIfPresent(RecurrenceAnchor.self, forKey: .anchor)
             ?? .scheduledDate
+        ordinalWeekday = try container.decodeIfPresent(OrdinalWeekday.self, forKey: .ordinalWeekday)
         intervalSeconds = try container.decodeIfPresent(Double.self, forKey: .intervalSeconds)
     }
 
@@ -173,6 +220,18 @@ struct RecurrenceRule: Codable, Equatable, Sendable {
                 calendar: calendar
             )
         case .monthly:
+            if let ordinalWeekday {
+                return snappingToWallClock(
+                    ordinalWeekday.date(
+                        monthsAfter: base,
+                        interval: interval,
+                        calendar: calendar
+                    ),
+                    of: base,
+                    preferred: preferredWallClock,
+                    calendar: calendar
+                )
+            }
             return snappingToWallClock(
                 calendar.date(byAdding: .month, value: interval, to: base),
                 of: base,

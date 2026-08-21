@@ -75,6 +75,18 @@ Run every row after installing a release-like build. In Speak It, open
 | P-28 | Restart iPhone | First trigger after reboot | Setup remains connected and capture starts once |
 | P-29 | Install an app update | First trigger after update | Existing shortcut still resolves to Speak It Capture |
 | P-30 | Thirty normal captures in succession | Alternate short and multi-item thoughts | 30/30 start, save once, and leave no stuck Live Activity |
+| P-31 | Silent recording | Trigger capture, say nothing, stop it | Capture history shows **Couldn't recover** with Try Again, Type Instead and Delete Recording; nothing is deleted on its own |
+| P-32 | P-31's recording | Tap Try Again | Fails again with a specific message, never "Something went wrong"; the recording is still listed and still retryable |
+| P-33 | P-31's recording | Tap Type Instead, write the thought, Save | The typed thought is saved and the Today attention card clears |
+| P-34 | P-31's recording | Delete Recording, confirm | Row and Today attention card disappear immediately |
+| P-35 | After P-34 | Force-quit and relaunch | The deleted recording does not come back and the attention card stays gone |
+
+### Tester checklist note
+
+P-31 through P-35 are the TestFlight-reported recovery dead end. A beta tester
+who reaches an attention card they cannot resolve has no way out of it, so this
+sequence belongs on the tester checklist for every build, not only on the
+device matrix.
 
 ## Performance acceptance
 

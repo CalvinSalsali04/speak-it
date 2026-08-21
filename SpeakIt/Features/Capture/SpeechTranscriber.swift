@@ -685,7 +685,7 @@ private enum SpeechCaptureError: LocalizedError {
     }
 }
 
-private enum CaptureAudioRecoveryError: LocalizedError {
+private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDescribing {
     case missingRecording
     case permissionRequired
     case recognizerUnavailable
@@ -704,6 +704,16 @@ private enum CaptureAudioRecoveryError: LocalizedError {
             "Recovery took too long. Your recording is still safe."
         case .cancelled:
             "Recovery was cancelled."
+        }
+    }
+
+    var captureRecoveryFailureKind: CaptureRecoveryFailureKind {
+        switch self {
+        case .missingRecording: .missingRecording
+        case .permissionRequired: .permissionRequired
+        case .recognizerUnavailable: .recognizerUnavailable
+        case .timedOut: .timedOut
+        case .cancelled: .cancelled
         }
     }
 }

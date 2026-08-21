@@ -353,6 +353,39 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.priority, .normal)
     }
 
+    func testProposalLanguageCreatesIdeasWhileCommitmentsStayTasks() throws {
+        let ideas = [
+            "Let me create a feature in the future that lets people create events for their calendar automatically",
+            "Idea: add calendar integration",
+            "Idea for a quieter laundry basket",
+            "It would be cool to add calendar integration",
+            "Maybe I could add calendar integration",
+            "Maybe I should add calendar integration",
+        ]
+        for text in ideas {
+            let extracted = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(text).items.first)
+            XCTAssertFalse(
+                extracted.needsReview,
+                "\(text): type=\(extracted.organization.itemType), organizationReview=\(extracted.organization.needsClarification), analysis=\(extracted.analysisText)"
+            )
+            let item = try repository.createCapture(text: text)
+            XCTAssertEqual(item.itemType, .idea, text)
+            XCTAssertEqual(item.category, .ideas, text)
+            XCTAssertTrue(item.belongsInMemory, text)
+            XCTAssertFalse(item.belongsInToday, text)
+        }
+
+        for text in [
+            "I need to implement calendar integration tomorrow",
+            "Remind me to work on calendar integration Saturday",
+        ] {
+            let item = try repository.createCapture(text: text)
+            XCTAssertEqual(item.itemType, .task, text)
+            XCTAssertTrue(item.belongsInToday, text)
+            XCTAssertFalse(item.belongsInMemory, text)
+        }
+    }
+
     func testDateOnlyTaskGoesOnTimelineWithoutNotification() {
         let calendar = utcCalendar
         let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
@@ -1007,6 +1040,54 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
     }
 
+    /// The rule the Today/Memory split now rests on, stated at the layer that
+    /// used to break it.
+    ///
+    /// A date says *when something is true*. It does not by itself mean the
+    /// person has anything to do, and while `isTimeCommitted` counted any date,
+    /// every carefully-read fact was promoted straight back out of Memory the
+    /// moment the temporal parser found a day in it.
+    func testADateDoesNotMakeAKnowledgeStatementActionable() throws {
+        for text in [
+            "Priya's birthday is December 4",
+            "I want to remember that Priya's birthday is on December fourth",
+            "Our anniversary is June 12",
+            "Alex moved to Toronto in September",
+            "Catherine called me at five",
+        ] {
+            let item = try repository.createCapture(text: text)
+            XCTAssertTrue(item.belongsInMemory, "\(text) is knowledge, not a task")
+            XCTAssertFalse(item.belongsInToday, "\(text) must not appear on Today")
+            XCTAssertNil(item.reminderDate, "\(text) asked for no notification")
+        }
+    }
+
+    /// The other half of the same contract: a dated fact about somebody is
+    /// findable under them, and one naming nobody is findable in Reference.
+    func testDatedFactsRouteToPeopleOrReferenceByWhetherTheyNameSomebody() throws {
+        let named = try repository.createCapture(
+            text: "I want to remember that Priya's birthday is on December fourth"
+        )
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: named), "Priya")
+        XCTAssertTrue(MemoryGroup.people.contains(named))
+        XCTAssertFalse(MemoryGroup.notes.contains(named))
+
+        let unnamed = try repository.createCapture(text: "Our anniversary is June 12")
+        XCTAssertNil(MemoryPersonNameResolver.name(for: unnamed))
+        XCTAssertTrue(MemoryGroup.notes.contains(unnamed), "Reference, not People")
+    }
+
+    /// Asking for the interruption is what puts a birthday on Today.
+    func testAnExplicitReminderAboutAFactStillReachesToday() throws {
+        let item = try repository.createCapture(
+            text: "Remind me on December 4 that it's Priya's birthday"
+        )
+        XCTAssertTrue(item.belongsInToday)
+        XCTAssertFalse(item.belongsInMemory)
+        XCTAssertNotNil(item.reminderDate)
+        XCTAssertEqual(item.personName, "Priya")
+    }
+
     func testAThoughtCarryingATimeStaysInTodayEvenWhenTypedAsANote() throws {
         let item = try repository.createCapture(text: "The storage room code is 4821")
         XCTAssertTrue(item.belongsInMemory)
@@ -1178,10 +1259,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     }
 
     func testReportedReminderAndDestructiveSpeechRequireReview() {
+        // Speech *about* a reminder, and destructive commands with no broad
+        // scope word, still resolve to a single item held for review.
         let phrases = [
             "Jordan said remind me at five to call him",
-            "Delete all my reminders",
-            "Cancel every task",
             "Erase my memories"
         ]
 
@@ -1190,6 +1271,30 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             XCTAssertEqual(result.items.count, 1, phrase)
             XCTAssertTrue(result.items[0].needsReview, phrase)
             XCTAssertNil(result.items[0].organization.reminderDate, phrase)
+            XCTAssertTrue(result.operations.isEmpty, phrase)
+        }
+    }
+
+    /// Broad destructive requests became *operations* when `CaptureOperation`
+    /// landed, rather than items held for review.
+    ///
+    /// This is a deliberate contract change, not a regression. The protection
+    /// is unchanged and is now explicit: the request is marked broad and
+    /// needing review, and `SwiftDataThoughtRepository.applyCaptureOperation`
+    /// returns `.needsConfirmation` without touching a single row. Modelling it
+    /// as an operation is what lets the app say "that affects everything,
+    /// confirm first" instead of silently filing a puzzling row.
+    func testBroadDestructiveSpeechBecomesAnOperationThatIsNeverExecuted() {
+        let phrases = ["Delete all my reminders", "Cancel every task"]
+
+        for phrase in phrases {
+            let result = ThoughtExtractionEngine.extractWithRules(phrase)
+            XCTAssertTrue(result.items.isEmpty, phrase)
+            XCTAssertEqual(result.operations.count, 1, phrase)
+            let operation = result.operations[0]
+            XCTAssertTrue(operation.isBroad, phrase)
+            XCTAssertTrue(operation.needsReview, phrase)
+            XCTAssertNil(operation.target, phrase)
         }
     }
 
@@ -1980,18 +2085,41 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
     }
 
-    func testAnItemWithATimeIsNeverOfferedToMemory() throws {
+    /// Contract change, made deliberately: a **reminder** is what pulls a
+    /// thought out of Memory, not any date at all.
+    ///
+    /// This test previously asserted that a `dueDate` did it too. That was the
+    /// rule which put "Priya's birthday is December 4" on Today: the classifier
+    /// read the sentence correctly as a fact, the temporal parser resolved the
+    /// day it names, and this property then promoted it anyway. A date says
+    /// when something is *true*; a reminder is the person asking to be
+    /// interrupted, and only the second is a commitment.
+    ///
+    /// Nothing is lost by narrowing it. Every type that can carry a deadline is
+    /// already `isActionable`, so a task with a due date and no reminder still
+    /// reaches Today by the other half of the test — and a note the person
+    /// schedules by hand is promoted to a task by `ItemEditorView`, which is
+    /// where an explicitly typed date belongs.
+    func testAReminderOfferedToTodayButADateAloneDoesNotMoveAFact() throws {
         let item = try repository.createCapture(text: "The storage room code is 4821")
         XCTAssertTrue(item.belongsInMemory)
 
         item.dueDate = .now.addingTimeInterval(3600)
-        XCTAssertFalse(item.belongsInMemory)
-        XCTAssertTrue(item.belongsInToday)
+        XCTAssertTrue(item.belongsInMemory, "a date does not make a fact a task")
+        XCTAssertFalse(item.belongsInToday)
 
         item.dueDate = nil
         item.reminderDate = .now.addingTimeInterval(3600)
-        XCTAssertFalse(item.belongsInMemory)
+        XCTAssertFalse(item.belongsInMemory, "an asked-for interruption does")
         XCTAssertTrue(item.belongsInToday)
+
+        // The complement still holds in both directions: an actionable thought
+        // with a deadline and no reminder is on Today, as it always was.
+        let task = try repository.createCapture(text: "Buy laundry detergent")
+        task.dueDate = .now.addingTimeInterval(3600)
+        task.reminderDate = nil
+        XCTAssertTrue(task.belongsInToday)
+        XCTAssertFalse(task.belongsInMemory)
     }
 
     // MARK: Invariant 2 — time passing never converts an action into Memory
@@ -3394,6 +3522,47 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
         XCTAssertEqual(items.count, 1)
         XCTAssertFalse(item.isCompleted)
+    }
+
+    /// FINAL_RELEASE_AUDIT.md H-1/E-1: a monthly ordinal-weekday series
+    /// ("the first Monday of every month") cannot be expressed as a single
+    /// native repeating trigger, so it used to depend entirely on the person
+    /// completing the missed occurrence for the series to continue. This
+    /// pins that the self-healing reconciliation pass (`reconcilePendingReminders`,
+    /// run at every launch and foreground) now advances it on its own.
+    func testOverdueMonthlyOrdinalRecurrenceAdvancesWithoutCompletion() throws {
+        let calendar = utcCalendar
+        let reference = makeDate(year: 2026, month: 3, day: 1, hour: 8, calendar: calendar)
+        let item = try repository.createCapture(
+            text: "Remind me the first Monday of every month to file expenses",
+            source: .inAppText,
+            createdAt: reference
+        )
+        defer {
+            let items = (try? container.mainContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            items.forEach { RecurrenceStore.remove($0.id) }
+        }
+
+        let rule = try XCTUnwrap(RecurrenceStore.rule(for: item.id))
+        XCTAssertNotNil(rule.ordinalWeekday, "Precondition: this is the ordinal-weekday shape")
+        let originalFireDate = try XCTUnwrap(item.reminderDate)
+        XCTAssertLessThan(originalFireDate, .now, "Precondition: the occurrence has already gone overdue")
+
+        // No `setCompleted` call anywhere in this test — the point is that
+        // nothing needs to complete this for the series to move forward.
+        repository.reconcilePendingReminders()
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 2, "The missed occurrence must generate its successor on its own")
+        XCTAssertFalse(item.isCompleted, "Advancing past a miss is not the same as completing it")
+        let next = try XCTUnwrap(items.first { $0.id != item.id })
+        XCTAssertGreaterThan(try XCTUnwrap(next.reminderDate), Date.now)
+        XCTAssertNotNil(RecurrenceStore.rule(for: next.id))
+        XCTAssertEqual(RecurrenceStore.generatedNextItemID(for: item.id), next.id)
+
+        // Idempotent: reconciling again must not generate a second successor.
+        repository.reconcilePendingReminders()
+        XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).count, 2)
     }
 
     func testRecurringReminderCanUseMultipleWeekdays() {

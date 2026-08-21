@@ -341,12 +341,16 @@ final class SubscriptionStore: ObservableObject {
         defer { isPurchasing = false }
 
         do {
-            let result = try await product.purchase()
+            let result = try await product.purchase(options: [
+                .appAccountToken(ReferralClient.shared.appAccountToken)
+            ])
             switch result {
             case .success(let verification):
+                let signedTransaction = verification.jwsRepresentation
                 let transaction = try verified(verification)
                 await transaction.finish()
                 await refreshEntitlements()
+                await ReferralClient.shared.verifyTransaction(signedTransaction)
                 customerMessage = hasProAccess
                     ? "Speak It Pro is ready. Thank you for supporting the app."
                     : "Your purchase completed, but access is still updating. Try Restore Purchases if it does not appear shortly."
@@ -370,6 +374,69 @@ final class SubscriptionStore: ObservableObject {
         } catch {
             SpeakItAnalytics.track(.purchaseFailed(analyticsPlan))
             customerMessage = "The purchase couldn’t be completed. \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func purchaseReferralReward(_ offer: ReferralPromotionalOffer) async -> Bool {
+        guard Self.productIDs.contains(offer.productID),
+              let nonce = UUID(uuidString: offer.nonce.uuidString),
+              let signature = Data(base64Encoded: offer.signature),
+              !isPurchasing else {
+            customerMessage = "The App Store referral reward could not be prepared. Please try again."
+            return false
+        }
+
+        let product: Product
+        if let loaded = products.first(where: { $0.id == offer.productID }) {
+            product = loaded
+        } else {
+            do {
+                guard let loaded = try await Product.products(for: [offer.productID]).first else {
+                    customerMessage = "The reward plan is not available in this storefront."
+                    return false
+                }
+                product = loaded
+            } catch {
+                customerMessage = "The reward plan could not be loaded. \(error.localizedDescription)"
+                return false
+            }
+        }
+
+        isPurchasing = true
+        defer { isPurchasing = false }
+        do {
+            let result = try await product.purchase(options: [
+                .appAccountToken(ReferralClient.shared.appAccountToken),
+                .promotionalOffer(
+                    offerID: offer.offerID,
+                    keyID: offer.keyID,
+                    nonce: nonce,
+                    signature: signature,
+                    timestamp: offer.timestamp
+                )
+            ])
+            switch result {
+            case .success(let verification):
+                let signedTransaction = verification.jwsRepresentation
+                let transaction = try verified(verification)
+                await transaction.finish()
+                await refreshEntitlements()
+                await ReferralClient.shared.verifyTransaction(signedTransaction)
+                customerMessage = "Your referral month was verified by the App Store."
+                return true
+            case .pending:
+                customerMessage = "The referral reward is pending App Store approval."
+                return false
+            case .userCancelled:
+                return false
+            @unknown default:
+                customerMessage = "The App Store returned an unfamiliar reward state."
+                return false
+            }
+        } catch {
+            customerMessage = "The referral reward couldn’t be redeemed. \(error.localizedDescription)"
             return false
         }
     }
@@ -414,6 +481,7 @@ final class SubscriptionStore: ObservableObject {
                 continue
             }
             activeProductIDs.insert(transaction.productID)
+            await ReferralClient.shared.verifyTransaction(result.jwsRepresentation)
         }
         activeProProductIDs = activeProductIDs
         let foundProEntitlement = !activeProductIDs.isEmpty
@@ -426,8 +494,10 @@ final class SubscriptionStore: ObservableObject {
             for await update in StoreKit.Transaction.updates {
                 guard !Task.isCancelled else { return }
                 guard case .verified(let transaction) = update else { continue }
+                let signedTransaction = update.jwsRepresentation
                 await transaction.finish()
                 await self?.refreshEntitlements()
+                await ReferralClient.shared.verifyTransaction(signedTransaction)
             }
         }
     }

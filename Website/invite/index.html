@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Your Speak It invite</title>
+  <meta name="description" content="Redeem a verified Speak It referral invite through the App Store.">
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; color: #111; background: #f5f4ef; }
+    main { width: min(100%, 590px); padding: clamp(28px, 7vw, 52px); border: 1px solid #d6d6d6; border-radius: 30px; background: #fff; box-shadow: 0 24px 80px rgb(0 0 0 / .08); }
+    .mark { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; color: #fff; background: #111; font-size: 25px; }
+    h1 { margin: 28px 0 12px; font-size: clamp(38px, 8vw, 64px); line-height: .98; letter-spacing: -.055em; }
+    p { color: #696969; font-size: 17px; line-height: 1.55; }
+    .actions { display: grid; gap: 12px; margin-top: 28px; }
+    a { display: grid; place-items: center; min-height: 54px; border-radius: 17px; color: #111; font-weight: 650; text-decoration: none; border: 1px solid #d6d6d6; }
+    a.primary { color: #fff; background: #111; border-color: #111; }
+    .terms { margin-top: 22px; font-size: 12px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">✦</div>
+    <div data-valid hidden>
+      <h1>One month of Pro, from a friend.</h1>
+      <p>Open Speak It to accept the invite. Apple checks eligibility and shows the complete offer terms before anything starts.</p>
+      <div class="actions">
+        <a class="primary" data-open-app href="#">Open Speak It</a>
+        <a href="https://speakitapp.ca" rel="noopener">Get Speak It on the App Store</a>
+      </div>
+      <p class="terms">New referred subscribers only. One referral per person. Sharing or opening this page does not create a reward.</p>
+    </div>
+    <div data-invalid hidden>
+      <h1>This invite is incomplete.</h1>
+      <p>Ask your friend to share a new invite from Speak It.</p>
+      <div class="actions"><a href="https://speakitapp.ca">Visit Speak It</a></div>
+    </div>
+  </main>
+  <script>
+    (function () {
+      var code = new URLSearchParams(window.location.search).get('ref');
+      var valid = typeof code === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(code);
+      document.querySelector('[data-valid]').hidden = !valid;
+      document.querySelector('[data-invalid]').hidden = valid;
+      if (valid) {
+        document.querySelector('[data-open-app]').href =
+          'speakit://referral?code=' + encodeURIComponent(code);
+      }
+    }());
+  </script>
+</body>
+</html>

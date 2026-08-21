@@ -8,7 +8,8 @@
 - App Intents, AudioRecordingIntent, ActivityKit, and App Shortcuts for background capture
 - NaturalLanguage rules with optional Foundation Models refinement on supported devices
 - XCTest with in-memory SwiftData stores
-- No external dependencies or backend
+- The iOS target uses Apple frameworks only; the optional referral program uses
+  the separately deployed Node service in `ReferralService`
 
 ## Data flow
 
@@ -34,7 +35,7 @@ Views may query models with `@Query` for presentation, but they do not insert, m
 
 `PersistenceController.shared` owns the production `ModelContainer`. In-app and outside-the-app capture use the same repository path, so both follow the same extraction, validation, reminder, and durability rules.
 
-Voice data flows through `SpeechTranscriber`: permission request → audio engine → partial Speech results → adaptive natural-pause detection → final transcript → repository. Outside the app, partial text is mirrored into a Live Activity. During an unfinished voice capture, `CaptureDraftStore` also holds an encrypted-at-rest, backup-excluded temporary recording so recognizer or process interruption cannot silently lose the person’s words. It is deleted immediately after a successful save or intentional discard. Failed recordings remain recoverable or deletable in Capture history.
+Voice data flows through `SpeechTranscriber`: permission request → audio engine → partial Speech results → adaptive natural-pause detection → final transcript → repository. Outside the app, partial text is mirrored into a Live Activity. During an unfinished voice capture, `CaptureDraftStore` also holds an encrypted-at-rest, backup-excluded temporary recording so recognizer or process interruption cannot silently lose the person’s words. It is deleted immediately after a successful save or intentional discard. A recording whose recovery fails is never removed automatically: Capture history offers Try Again, Type Instead, and a confirmed Delete Recording, and deletion writes a tombstone in `CaptureDraftStore` so a checkpoint written elsewhere cannot resurrect it on the next launch. Failure copy comes from `CaptureRecoveryPresentation`, keyed on `CaptureRecoveryFailureKind` rather than the recognizer's own message.
 
 `CapturePerformanceTrace` follows the in-app path from activation to microphone
 readiness and from the last detected voice activity to a real
@@ -50,7 +51,59 @@ Only closed enums and integer durations may enter performance analytics; the
 trace never retains or logs user-authored content. See
 `PERFORMANCE_BENCHMARKING.md`.
 
+Inside rule-based extraction the order is: speech repair, then operation
+partitioning, then **intent consolidation**, then clause splitting, then
+organizing. Consolidation (`IntentConsolidator`) answers *how many things were
+said* before anything answers *what they are*. It can only ever collapse a
+capture to one item, never split one, and it fires only when the wording is
+positively narrative — so a paragraph elaborating on a single phone call becomes
+one row, while a list of three errands is left to the splitter untouched.
+
+Destination is decided by two independent readings that must agree.
+`ActionabilityReader` reads the wording; `CapturedItem.belongsInToday` /
+`belongsInMemory` read the stored item. Both follow one rule: **a date says when
+something is true, not that there is something to do.** A resolved date never
+moves a fact to Today; only a reminder — asked for out loud, or set by hand in
+the editor — does. Memory then splits People from Reference purely on whether
+the item names somebody.
+
+Semantic readers match grammatical evidence, never arbitrary substrings.
+Taxonomy uses whole words and explicit phrase frames; a bare clock is read only
+when the item or reminder context permits one; and motion-shaped words require
+a spatial complement before they create a place trigger. A fronted condition
+belongs to the instruction after its comma rather than becoming a second item.
+When that condition is clear but cannot be monitored (for example payday or
+another event completing), its temporal intent records an unsupported
+condition and Needs review says **Trigger not supported** instead of pretending
+the user omitted a time.
+
 One `CaptureSession` always keeps the complete untouched transcript. Extraction produces up to twelve linked `CapturedItem` records. Rules run immediately on every supported iPhone; Apple Intelligence can refine complex captures locally when Foundation Models are available. Model output is accepted only when every quote is grounded in the original transcript, and deterministic code—not the model—controls dates and reminders.
+
+## Referral boundary
+
+The core product does not depend on Speak It servers. When the production
+referral URL is configured, the app keeps a random UUID and credential in
+Keychain and uses the UUID as StoreKit's `appAccountToken`. Only that identifier,
+referral codes, and App Store-signed transaction data cross the boundary. The
+backend verifies Apple's JWS, prevents self-referral and replay, and records a
+minimal referral/reward ledger. It never receives thoughts, audio, tasks,
+memories, profile fields, contacts, places, or analytics events.
+
+```text
+Keychain UUID + credential
+    ↓ accept/share invite
+ReferralService ledger
+    ↓ redeem Apple offer code
+StoreKit signed transaction JWS
+    ↓ verify with Apple root certificates
+Qualified referral → one reward
+    ↓
+Apple one-time offer code or signed promotional offer
+```
+
+The Release configuration keeps the referral API URL empty by default. This is
+a truthfulness gate: reward language is not visible unless a deployment is
+explicitly connected.
 
 ## Boundaries
 

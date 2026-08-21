@@ -49,13 +49,16 @@ enum TimeZoneBehavior: String, Codable, Sendable {
 
 /// A trigger Speak It understands but cannot act on yet.
 ///
-/// This is deliberately not "ambiguous". "When I get home" is perfectly clear —
-/// the app knows exactly what was asked for and simply does not support that
-/// kind of trigger. The person should eventually be told "location reminders
-/// aren't supported yet", never "what did you mean?", and the two states have
-/// to be distinguishable in the data for that to be possible.
-enum UnsupportedTrigger: String, Codable, Sendable {
+/// This is deliberately not "ambiguous". "When I get paid" is perfectly clear;
+/// the app simply has no event source it can arm for payday. The person is told
+/// that the trigger is unsupported, never asked what they meant. `location` is
+/// retained for rows captured before place reminders became supported.
+enum UnsupportedTrigger: String, Codable, Equatable, Sendable {
     case location
+    /// A non-spatial event or state such as payday, readiness, or another task
+    /// completing. The wording is clear, but iOS has no monitor Speak It can
+    /// truthfully arm for it.
+    case condition
 }
 
 /// A calendar day with no time component. Deliberately not a `Date`, because a

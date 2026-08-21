@@ -56,11 +56,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
-                ensureFallbackItem(for: session)
                 let extraction = ThoughtExtractionEngine.extractWithRules(
                     session.originalTranscription,
                     referenceDate: session.createdAt
                 )
+                // A capture that asked to cancel, complete or withdraw must not
+                // be rebuilt into an item by recovery. Re-reading the operation
+                // is safe: the words have not changed, so the reading has not
+                // either.
+                if let request = extraction.operations.first {
+                    applyCaptureOperation(request, session: session)
+                    continue
+                }
+                ensureFallbackItem(for: session)
                 _ = organizePersistedCapture(
                     session: session,
                     extraction: extraction,
@@ -134,13 +142,26 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
     }
 
+    /// Replays the checkpoints left behind by captures that never finished.
+    ///
+    /// A checkpoint is released once the words have been acted on — whether that
+    /// produced a thought or carried out a cancellation that produced none.
+    /// Keeping it past that point is not caution, it is a repeat: the draft is
+    /// replayed at every launch, and for a cancel or a complete that means the
+    /// destructive half runs again each time, against whatever now matches. A
+    /// person who re-made the reminder they had cancelled would watch it be
+    /// cancelled again the next time they opened the app.
+    ///
+    /// Only a genuine persistence failure keeps the checkpoint, which is the
+    /// case it exists for.
     func recoverInterruptedCaptureDraft() {
         while let draft = CaptureDraftStore.recoverable() {
             do {
-                _ = try createCapture(
+                _ = try performSynchronousCapture(
                     text: draft.transcript,
                     source: draft.captureSource,
-                    createdAt: draft.startedAt
+                    createdAt: draft.startedAt,
+                    schedulesReminder: true
                 )
                 CaptureDraftStore.clear(id: draft.id)
             } catch {
@@ -152,7 +173,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     func reconcilePendingReminders() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
-        let requests = items
+        advanceOverdueRecurrences(items: items, now: .now)
+        guard let refreshedItems = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
+        let requests = refreshedItems
             .filter { !$0.isArchived && !$0.isCompleted }
             .compactMap(ReminderScheduleRequest.init(item:))
 
@@ -160,11 +183,74 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             requests,
             requestAuthorizationIfNeeded: false,
             scope: ReminderSynchronizationScope(
-                itemIDs: Set(items.map(\.id)),
-                captureSessionIDs: Set(items.compactMap { $0.captureSession?.id }),
+                itemIDs: Set(refreshedItems.map(\.id)),
+                captureSessionIDs: Set(refreshedItems.compactMap { $0.captureSession?.id }),
                 replacesAllSpeakItReminders: true
             )
         )
+    }
+
+    /// Advances a recurring reminder that has gone overdue without either a
+    /// native repeating trigger to keep it firing or the person completing
+    /// it — the "first Monday every month" family from
+    /// FINAL_RELEASE_AUDIT.md H-1/E-1 that `ReminderScheduleRequest`'s
+    /// `repeatingComponents` cannot express as a single static calendar
+    /// match (ordinal-weekday, multi-weekday, `interval` above 1,
+    /// elapsed-time). Run from the same self-healing pass as
+    /// `reconcilePendingReminders`, so a series like this keeps moving
+    /// forward simply by the app being opened again, the same way a missed
+    /// notification schedule repairs itself, without requiring the missed
+    /// occurrence to ever be marked done.
+    ///
+    /// Completion-anchored rules are deliberately excluded: their next date
+    /// is defined as "after this one is completed," so advancing one without
+    /// a completion would invent a date the person never asked for.
+    private func advanceOverdueRecurrences(items: [CapturedItem], now: Date) {
+        let previousRecurrences = RecurrenceStore.snapshots()
+        var advancedAny = false
+        for item in items {
+            guard !item.isArchived, !item.isCompleted,
+                  let rule = RecurrenceStore.rule(for: item.id),
+                  rule.anchor == .scheduledDate,
+                  RecurrenceStore.generatedNextItemID(for: item.id) == nil,
+                  let session = item.captureSession,
+                  let fireDate = item.reminderDate,
+                  fireDate <= now,
+                  ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fireDate) == nil,
+                  let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: now)
+            else { continue }
+
+            let reminderOffset = item.reminderDate.flatMap { reminder in
+                item.dueDate.map { reminder.timeIntervalSince($0) }
+            } ?? 0
+            let next = CapturedItem(
+                originalTextSegment: item.originalTextSegment,
+                displayTitle: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                createdAt: now,
+                dueDate: nextDate,
+                reminderDate: nextDate.addingTimeInterval(reminderOffset),
+                priority: item.priority,
+                personName: item.personName,
+                processingConfidence: item.processingConfidence,
+                needsClarification: false,
+                isReviewed: item.isReviewed,
+                lastModifiedAt: now,
+                temporalIntent: carriedIntent(from: item, toOccurrenceOn: nextDate),
+                captureSession: session
+            )
+            modelContext.insert(next)
+            RecurrenceStore.inherit(from: item.id, to: next.id)
+            RecurrenceStore.link(completed: item.id, to: next.id)
+            advancedAny = true
+        }
+        guard advancedAny else { return }
+        do {
+            try persistChanges()
+        } catch {
+            RecurrenceStore.restore(previousRecurrences)
+        }
     }
 
     /// Rebuilds CoreLocation's monitored regions from the saved place reminders.
@@ -531,6 +617,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
     }
 
+    /// What the synchronous capture path actually did.
+    ///
+    /// A cancellation or a retraction finishes successfully while leaving no row
+    /// to hand back. That is a *result*, not a failure, and the two must be
+    /// distinguishable: a caller that cannot tell them apart will treat a
+    /// completed operation as unfinished work and try it again.
+    private enum SynchronousCaptureOutcome {
+        case created(CapturedItem)
+        case operationHandled
+    }
+
     @discardableResult
     func createCapture(
         text: String,
@@ -538,13 +635,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         createdAt: Date,
         schedulesReminder: Bool
     ) throws -> CapturedItem {
+        switch try performSynchronousCapture(
+            text: text,
+            source: source,
+            createdAt: createdAt,
+            schedulesReminder: schedulesReminder
+        ) {
+        case let .created(item):
+            return item
+        case .operationHandled:
+            // This entry point must hand back a row, so callers that need to
+            // tell the difference use `createCaptureResult` instead.
+            throw RepositoryError.saveFailed("That request managed an existing item.")
+        }
+    }
+
+    private func performSynchronousCapture(
+        text: String,
+        source: CaptureSource,
+        createdAt: Date,
+        schedulesReminder: Bool
+    ) throws -> SynchronousCaptureOutcome {
         let normalizedText = try normalizedCaptureText(text)
         if let duplicate = try recentDuplicate(
             text: normalizedText,
             source: source,
             createdAt: createdAt
         ) {
-            return duplicate.primaryItem
+            return .created(duplicate.primaryItem)
         }
 
         let pending = try createPendingCapture(
@@ -556,12 +674,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             normalizedText,
             referenceDate: createdAt
         )
+        if let request = extraction.operations.first {
+            applyCaptureOperation(request, session: pending.session)
+            guard let survivor = orderedItems(in: pending.session).first else {
+                return .operationHandled
+            }
+            return .created(survivor)
+        }
         let items = organizePersistedCapture(
             session: pending.session,
             extraction: extraction,
             schedulesReminders: schedulesReminder
         )
-        return items.first ?? pending.placeholder
+        return .created(items.first ?? pending.placeholder)
     }
 
     func createCaptureResult(
@@ -597,6 +722,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         performance?.finishSemanticParsing()
         performance?.beginPersistence()
+
+        // A cancellation, completion or retraction acts on what exists instead
+        // of adding to it.
+        if let request = extraction.operations.first {
+            let outcome = applyCaptureOperation(request, session: pending.session)
+            performance?.finishPersistence()
+            return CaptureCreationResult(
+                session: pending.session,
+                items: orderedItems(in: pending.session),
+                operationOutcome: outcome
+            )
+        }
+
         let items = organizePersistedCapture(
             session: pending.session,
             extraction: extraction,
@@ -606,6 +744,164 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         performance?.finishPersistence()
         let safeItems = items.isEmpty ? [pending.placeholder] : items
         return CaptureCreationResult(session: pending.session, items: safeItems)
+    }
+
+    // MARK: - Capture operations
+
+    /// Applies a cancel, complete or retract request against what already
+    /// exists.
+    ///
+    /// The conservative rule throughout: act automatically only on exactly one
+    /// confident match. Zero matches reports nothing found rather than
+    /// inventing an item to satisfy the sentence; several matches, a vague
+    /// target, or a broad destructive request all keep the capture as a Needs
+    /// review row so the person decides. Guessing here deletes the wrong
+    /// reminder, and the person may not find out until it fails to arrive.
+    @discardableResult
+    func applyCaptureOperation(
+        _ request: CaptureOperationRequest,
+        session: CaptureSession
+    ) -> CaptureOperationOutcome {
+        // A retraction withdraws the capture outright.
+        if request.operation == .retract {
+            discardCaptureItems(for: session)
+            return .retracted
+        }
+
+        let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+        let searchable = existing.filter { $0.captureSession?.id != session.id }
+
+        // Broad destructive requests are never executed, at any confidence.
+        // The capture stays as a review row, which is where confirmation lives.
+        if request.isBroad {
+            let candidateIDs = CaptureTargetMatcher.activeItems(searchable).map(\.id)
+            closeSession(session)
+            // The review row itself is a generic placeholder (see
+            // `beginCapture`), so what it would do if confirmed has nowhere
+            // else to live. Recorded against it here so the editor can offer a
+            // real confirm control instead of the dead-end "confirm in Needs
+            // review" the receipt used to promise. See
+            // FINAL_RELEASE_AUDIT.md F-1.
+            if let placeholderID = session.items.first?.id {
+                PendingOperationStore.set(
+                    operation: request.operation,
+                    candidateIDs: candidateIDs,
+                    for: placeholderID
+                )
+            }
+            return .needsConfirmation(operation: request.operation, candidateIDs: candidateIDs)
+        }
+
+        // A pronoun target names nothing. Ask rather than guess.
+        guard let target = request.target, !target.isEmpty, !request.needsReview else {
+            closeSession(session)
+            return .ambiguous(
+                operation: request.operation,
+                candidateIDs: CaptureTargetMatcher.activeItems(searchable).map(\.id)
+            )
+        }
+
+        let candidates = CaptureTargetMatcher.candidates(for: target, in: searchable)
+
+        switch candidates.count {
+        case 0:
+            // Nothing to act on. No fake item stands in for the request.
+            discardCaptureItems(for: session)
+            return .notFound(operation: request.operation, target: target)
+
+        case 1:
+            let item = candidates[0]
+            let itemID = item.id
+            let title = item.displayTitle
+            do {
+                switch request.operation {
+                case .cancel:
+                    // `delete` already tears down notifications, recurrence and
+                    // pin metadata; the place monitor is stopped explicitly
+                    // because a region outlives the row that asked for it.
+                    LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+                    try delete(item)
+                case .complete:
+                    try setCompleted(item, completed: true)
+                    LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+                case .create, .retract:
+                    break
+                }
+            } catch {
+                // The operation could not be applied, so the capture stays for
+                // review rather than silently reporting success.
+                closeSession(session)
+                return .ambiguous(operation: request.operation, candidateIDs: [itemID])
+            }
+            discardCaptureItems(for: session)
+            return .performed(operation: request.operation, itemID: itemID, title: title)
+
+        default:
+            closeSession(session)
+            return .ambiguous(
+                operation: request.operation,
+                candidateIDs: candidates.map(\.id)
+            )
+        }
+    }
+
+    /// Carries out a held broad cancel or complete, once the person has
+    /// explicitly confirmed it from the review row.
+    ///
+    /// Applies the same per-item actions the exact-match single-target path
+    /// already uses — cancelling stops location monitoring and deletes,
+    /// completing marks done and stops monitoring — so a confirmed broad
+    /// request behaves exactly like the same operation performed one item at a
+    /// time. The review row itself was only ever the confirmation vehicle, so
+    /// it is removed once its request is resolved rather than left behind as
+    /// a permanent row with nothing left to say. See FINAL_RELEASE_AUDIT.md F-1.
+    func confirmPendingOperation(_ item: CapturedItem) throws {
+        guard let record = PendingOperationStore.record(for: item.id) else { return }
+        for candidateID in record.candidateIDs {
+            guard let candidate = try findItem(withID: candidateID) else { continue }
+            switch record.operation {
+            case .cancel:
+                LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
+                try delete(candidate)
+            case .complete:
+                try setCompleted(candidate, completed: true)
+                LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
+            case .create, .retract:
+                break
+            }
+        }
+        PendingOperationStore.remove(item.id)
+        try delete(item)
+    }
+
+    /// Declines a held broad cancel or complete. Nothing the request would
+    /// have touched is changed; the review row is removed the same way
+    /// confirming it removes the row, since a decline is also a resolution,
+    /// not something left to keep asking about.
+    func dismissPendingOperation(_ item: CapturedItem) throws {
+        PendingOperationStore.remove(item.id)
+        try delete(item)
+    }
+
+    /// Removes the rows a capture created and closes it.
+    ///
+    /// Closing matters as much as deleting: `recoverUnorganizedCaptures` rebuilds
+    /// a fallback item for any session that is not `.complete`, so a retraction
+    /// left open would reappear at the next launch.
+    private func discardCaptureItems(for session: CaptureSession) {
+        for item in session.items {
+            RecurrenceStore.remove(item.id)
+            LocationReminderMonitor.shared.stopMonitoring(itemID: item.id)
+            modelContext.delete(item)
+        }
+        closeSession(session)
+    }
+
+    /// Marks a capture finished so launch recovery leaves it alone. The
+    /// transcript itself is kept: the words are never what gets discarded.
+    private func closeSession(_ session: CaptureSession) {
+        session.processingStatus = .complete
+        try? persistChanges()
     }
 
     func update(_ item: CapturedItem, with edits: ItemEdits) throws {
@@ -1323,7 +1619,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
         } catch {
             ICloudDeletionStore.restore(previousDeletionRecords)
+            // Nothing reached the store, so the whole in-memory delta has to
+            // go — and it has to go for *readers*, not just for the context's
+            // own bookkeeping. `rollback()` alone does the latter: it clears the
+            // pending changes while leaving the objects registered, so a fetch,
+            // and therefore every `@Query` behind Today and Memory, keeps
+            // returning rows that were never written. The person would be shown
+            // an error and the thought at the same time, and the thought would
+            // be gone at the next launch — the silent disappearance this app
+            // exists to prevent.
+            //
+            // Re-reading the store is what makes the discard visible; the
+            // processing pass then settles it. `testAFailedSaveWritesNothingDurable`
+            // is what keeps this from quietly regressing.
             modelContext.rollback()
+            _ = try? modelContext.fetchCount(FetchDescriptor<CapturedItem>())
+            modelContext.processPendingChanges()
             throw RepositoryError.saveFailed(error.localizedDescription)
         }
     }

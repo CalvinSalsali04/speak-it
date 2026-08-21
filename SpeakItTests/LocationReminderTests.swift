@@ -81,6 +81,26 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(leave?.place, .home)
     }
 
+    /// TestFlight exposed the natural synonym the original grammar missed:
+    /// "go home" is an arrival just like "get home".
+    func testGoingHomeIsAnArrivalTriggerRatherThanAMissingTime() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "When I go home remind me to take out the garbage",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home)
+        XCTAssertEqual(item.locationIntent?.event, .arrive)
+        XCTAssertNil(item.reminderDate, "a place trigger has no clock")
+        XCTAssertFalse(item.needsClarification)
+        XCTAssertNil(item.clarificationRequirement)
+        XCTAssertFalse(item.requiresReview(authorization: authorized))
+        XCTAssertTrue(item.belongsInToday(authorization: authorized))
+    }
+
     func testWorkArrivalAndDeparture() {
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.place, .work)
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.event, .arrive)
@@ -146,6 +166,37 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertNil(LocationIntentParser.parse("Remind me to call the bank tomorrow at 3 PM"))
         XCTAssertNil(LocationIntentParser.parse("Buy milk every day at 9"))
         XCTAssertNil(LocationIntentParser.parse("Remind me on 4/5 to renew the insurance"))
+    }
+
+    /// Motion-shaped words do not necessarily describe motion. The parser
+    /// must require a spatial complement before it creates a geofence.
+    func testNonSpatialGetReachAndCopulaPhrasesAreNotPlaces() {
+        for text in [
+            "When I get paid, remind me to transfer money",
+            "When I get a chance, remind me to call Mom",
+            "When I get groceries, remind me to put them away",
+            "When I reach a decision, remind me to call Priya",
+            "When I am ready, remind me to start",
+            "When we are finished, remind me to lock up",
+        ] {
+            XCTAssertNil(LocationIntentParser.parse(text), text)
+        }
+    }
+
+    func testUnsupportedNonSpatialConditionNamesTheRealGap() throws {
+        let item = try repository.createCapture(
+            text: "When I get paid, remind me to transfer money",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        XCTAssertNil(item.locationIntent)
+        XCTAssertEqual(item.temporalIntent?.unsupportedTrigger, .condition)
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .unsupportedConditionTrigger)
+        XCTAssertEqual(item.clarificationRequirement?.listLabel, "Trigger not supported")
+        XCTAssertNotEqual(item.clarificationRequirement, .time)
     }
 
     // MARK: Capture stores the place, not the coordinates
@@ -268,6 +319,20 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertFalse(
             blocker.listLabel.contains("?"),
             "a perfectly clear sentence must never be answered with a question"
+        )
+
+        let goHome = try repository.createCapture(
+            text: "When I go home remind me to take out the garbage",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertEqual(goHome.locationBlocker(authorization: authorized), .missingHome)
+        XCTAssertNotEqual(goHome.clarificationRequirement, .time)
+        XCTAssertTrue(goHome.requiresReview(authorization: authorized))
+        XCTAssertEqual(
+            ItemPresentation.make(for: goHome, authorization: authorized).reviewRequirement,
+            "Set your Home location"
         )
     }
 

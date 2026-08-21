@@ -274,10 +274,22 @@ final class CapturedItem: Identifiable {
 
     var isCompleted: Bool { completedAt != nil }
 
-    /// A moment the person committed to. A thought carrying one is something to
-    /// do, whatever type extraction settled on, so it belongs in Today even if
-    /// its wording read like a note.
-    var isTimeCommitted: Bool { reminderDate != nil || dueDate != nil }
+    /// A moment the person asked to be interrupted at.
+    ///
+    /// Deliberately *not* "this item has a date". A date says when something is
+    /// true, and that is as much a property of a fact as of a task: "Priya's
+    /// birthday is December 4" and "Alex moved to Toronto in September" both
+    /// resolve a date, and neither is something to do. While any date counted,
+    /// every dated fact was promoted out of Memory and onto Today no matter how
+    /// carefully it had been read — `Actionability` draws the same line one
+    /// layer up, and this property was quietly undoing it.
+    ///
+    /// A reminder is different in kind. Nobody acquires one by accident: it is
+    /// either asked for out loud ("remind me on December 4 that it is Priya's
+    /// birthday") or set by hand in the editor, and both are the person saying
+    /// they want to be interrupted. A `dueDate` needs no such rescue, because
+    /// every type that can carry a deadline is already `isActionable`.
+    var isTimeCommitted: Bool { reminderDate != nil }
 
     /// Today is for action. Written as the exact complement of `belongsInMemory`
     /// so no live item can ever fall out of both destinations.
@@ -305,6 +317,13 @@ final class CapturedItem: Identifiable {
     var clarificationRequirement: ClarificationRequirement? {
         guard needsClarification else { return nil }
 
+        // A held broad cancel or complete is not a type/date/person gap at
+        // all — the review row exists purely to confirm or decline a
+        // destructive request, and every field below would ask the wrong
+        // question. Checked first because this placeholder also happens to
+        // satisfy `itemType == .unclear`. See FINAL_RELEASE_AUDIT.md F-1.
+        if PendingOperationStore.record(for: id) != nil { return .pendingOperation }
+
         // Checked ahead of the plain place trigger: a request that constrained
         // both a place and a time is not a place reminder waiting on setup, it
         // is a request Speak It cannot honour in full. Reporting it as an
@@ -321,6 +340,9 @@ final class CapturedItem: Identifiable {
         // "understood but unsupported" marker.
         if temporalIntent?.unsupportedTrigger == .location {
             return .unsupportedLocationTrigger
+        }
+        if temporalIntent?.unsupportedTrigger == .condition {
+            return .unsupportedConditionTrigger
         }
         if holdsWholeUnsplitTranscript { return .splitDecision }
         if itemType == .unclear { return .type }
@@ -372,6 +394,9 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// the time it was captured. Only reachable for rows older than place
     /// reminders. Deliberately not a form of ambiguity — nothing is unclear.
     case unsupportedLocationTrigger
+    /// A clear non-spatial condition (for example payday or another event
+    /// completing) that Speak It cannot monitor automatically.
+    case unsupportedConditionTrigger
     /// A place reminder that is waiting on something. Which thing is named by
     /// `CapturedItem.locationBlocker(authorization:)`, because the answer
     /// depends on live device state rather than on anything stored.
@@ -380,6 +405,10 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// tonight" — and Speak It enforces only one of them. Held for review
     /// rather than reduced to whichever half is easier to honour.
     case combinedTimeAndPlace
+    /// A broad cancel or complete request ("cancel everything") that Speak It
+    /// never executes automatically. The row exists to confirm or decline it,
+    /// not to classify anything. See `PendingOperationStore`.
+    case pendingOperation
 
     /// Shown on the review row. Names the gap in the person's own terms.
     var listLabel: String {
@@ -390,8 +419,10 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .splitDecision: "Might be 2 thoughts"
         case .confirmation: "Needs confirmation"
         case .unsupportedLocationTrigger: "Place reminders not supported yet"
+        case .unsupportedConditionTrigger: "Trigger not supported"
         case .locationTrigger: "Place reminder"
         case .combinedTimeAndPlace: "Needs review"
+        case .pendingOperation: "Confirm first"
         }
     }
 
@@ -404,9 +435,12 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .splitDecision: "Split this into separate items, or confirm it is one"
         case .confirmation: "Confirm this is right"
         case .unsupportedLocationTrigger: "Speak It can't remind you by place yet — set a time instead"
+        case .unsupportedConditionTrigger:
+            "Speak It can't detect that condition yet — choose a time instead"
         case .locationTrigger: "Finish setting up this place reminder"
         case .combinedTimeAndPlace:
             "Place and time conditions aren't supported together yet — choose one"
+        case .pendingOperation: "That affects everything — confirm or decline"
         }
     }
 }

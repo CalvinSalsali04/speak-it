@@ -1,0 +1,13 @@
+# Kept in the repo for reference, not served on the public site.
+assets/styles.css
+assets/site.js
+
+# The referral redemption page. Referrals are off — `REFERRALS_ENABLED` is
+# `false` in the app and the offer section's reward language is hidden — so
+# publishing /invite would put a live URL in front of a feature that cannot yet
+# verify an invite. Delete this line in the same change that flips the flag.
+invite/
+
+# Local tooling, not part of the deployed site.
+tools/
+README.md

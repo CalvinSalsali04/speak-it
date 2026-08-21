@@ -28,6 +28,33 @@ Archive is the normal removal path. Permanent deletion is available only in the 
 
 The first milestone uses only Apple frameworks. This limits setup, privacy exposure, and early architectural uncertainty.
 
+## 2026-08-17 — Referrals are isolated, verified, and launch-gated
+
+The iPhone app still has no third-party package and the user's library remains
+fully usable without a Speak It server. The optional referral program is a
+separate Node service because a credible “Give a month. Get a month.” promise
+needs a durable anti-replay ledger and Apple transaction verification.
+
+The app creates an accountless Keychain UUID and credential, uses the UUID as
+StoreKit's `appAccountToken`, and sends only referral identifiers and Apple's
+signed transaction JWS. Rewards come back exclusively as Apple offer codes or
+server-signed promotional offers; the app never edits an entitlement or an
+expiration date itself. One referral can create one reward, one original Apple
+transaction cannot be both parties, expired or revoked transactions fail, and
+the referrer is capped at 12 rewards per calendar year.
+
+Both public surfaces are configuration-gated. An empty referral API URL leaves
+the existing “Share Speak It” row in place, and the website switch remains off
+until the production service and Sandbox redemption flow are verified.
+
+## 2026-08-17 — Summer launch pricing ends on September 22, 2026
+
+Annual Pro is $14.99 during the launch window and is intended to move to $29.99
+at 12:00 a.m. America/Toronto on September 22, 2026 (`04:00:00Z`). That makes
+“50% off” a comparison with the genuine standard annual price, not with twelve
+monthly payments. Sale copy is build-gated and time-gated, and App Store Connect
+must have the matching future price scheduled before the gate is enabled.
+
 ## 2026-08-03 — Voice is the default capture mode
 
 The central waveform opens an immersive voice-first screen. Typing remains one visible action away and receives partial transcription whenever recognition fails.
@@ -523,3 +550,378 @@ person can revisit routing, examples, reminders, places, external capture,
 privacy, and recovery without replaying onboarding. Empty states use concrete
 phrases to teach by doing, without implying that those are the only supported
 commands.
+
+## 2026-08-18 — Actionability is read separately from item type
+
+`ItemType` was answering two different questions: *what kind of thing is this?*
+and *does the person still have to act on it?* Deriving the second from the
+first meant the weaker answer could veto the stronger one. "Get shampoo
+tomorrow" resolved `dateOnly(Aug 4)` correctly, the type rules did not
+recognise the verb "get", `note` is not actionable, and a correct date was
+discarded on the way out — the item lost its day and landed in Memory. Seven
+release-blocking misroutes shared that one mechanism.
+
+`Actionability` is now a deterministic intermediate reading — `actionable`,
+`outstanding`, `event`, `knowledge`, `ambiguous` — derived from wording alone
+and independent of the type taxonomy. It is the authority on which surface an
+item belongs to; the type is corrected to agree with it. Two invariants govern
+it, and both are tested rather than assumed:
+
+- Temporal information may corroborate actionability but can never create it.
+  "Catherine called me at five" names a clock and is still a memory.
+- A sentence that is actionable never loses an already-resolved `TemporalIntent`
+  because the secondary type guess was uncertain.
+
+The correction is deliberately one-way. `ambiguous` means the reader had no
+opinion, and no opinion never demotes a type that was read from the wording;
+nor does it overrule a type the person named themselves, which is why "Idea for
+tomorrow's team meeting" is still an idea and not a Wednesday commitment.
+
+Every rule is written as an intent family with a historical counterexample
+family beside it — `I forgot to call Catherine` is outstanding, `I called
+Catherine` is not, and `I didn't call Catherine because she cancelled` is
+closed rather than owed, which is why the rule cannot be a search for the
+string "didn't call".
+
+## 2026-08-18 — Temporal, recurrence and location contracts are stated, not inferred
+
+Five temporal phrasings had no defensible answer, so each now has one written
+down rather than emerging from whichever branch ran first:
+
+- **"tomorrow at this time"** is the same wall clock tomorrow, taken from the
+  capture instant. Not the capture plus 24 hours — those differ by an hour twice
+  a year, and the person meant the clock face.
+- **"on the 15th"** is the next 15th that has not happened, date-only. The
+  ordinal suffix is required, so "at 15" stays a clock and "15 eggs" stays a
+  quantity.
+- **"end of month"** is the last day the month actually has, rolling to next
+  month once it passes.
+- **"first thing"** is the app's one morning hour, deliberately the same 9 AM a
+  date-only reminder alerts at. Three private definitions of morning would be
+  three ways to be wrong; when this becomes configurable it becomes configurable
+  once.
+- **"next week"** stays Needs review. A week is seven days and none of them is
+  more defensible than the others, so picking Monday would look on the row
+  exactly like something the person had chosen.
+
+**"Next Friday" is Friday of the following calendar week**, and plain "Friday"
+is the nearest upcoming one. Speakers genuinely disagree about this, so the
+contract is deterministic and the resolved date is shown on the receipt, which
+makes a wrong reading one tap from right. Alternative readings are no longer
+treated as defects.
+
+Recurrence is now parsed as recurrence *before* anything resolves an instant.
+"Every day at nine" previously reached the one-off resolver first, which
+correctly answered "the next nine is 9 PM tonight" — a correct answer to a
+question nobody asked — and then built a daily series on top of it. A series
+owns its own clock, and its first occurrence is computed from the rule. Monthly
+series gained `OrdinalWeekday` so "first Monday every month" is 12 occurrences a
+year rather than 52 or a drifting day number; it decodes as absent on rules
+written before it, exactly like `intervalSeconds`.
+
+Location is read as grammar rather than as a list of place names. A place name
+ends where the action begins ("when I get to the store **buy** batteries"),
+using the same verb vocabulary `Actionability` owns so the two cannot drift.
+"Remind me at X to Y" asks what X is before deciding: a clock reading wins, so
+"remind me at five to call Mom" stays a time and "remind me at the pharmacy to
+pick up the prescription" becomes a place. Compound place-and-time triggers
+still go to Needs review; they are not being built for v1.
+
+## 2026-08-19 — One person resolver, and a missing target is a question
+
+"Who is this about?" was answered twice, by two rules that could not see each
+other: `ThoughtOrganizer.inferredPerson` read the object of a communication verb
+for Today, and `PersonNameInference.memoryName` read the subject of a fact for
+Memory. A sentence that was both a memory and about somebody — "Catherine
+called me at five" — fell between them and reached Memory's People collection
+under no name at all. The corpus scored `person` as metadata, so all nine of
+these sat green while the user-visible consequence was that a person they had
+told Speak It about could not be found again.
+
+`PersonMention` is now the single answer, read by both surfaces. It carries the
+label, the source range it came from, a confidence and a role, and it resolves
+three families: the object of a verb aimed at a human ("Call Catherine", "Send
+Catherine that thing", "I met Alex yesterday"), the actor of something done to
+the speaker ("Catherine called me at five"), and the subject of a human fact
+("Alex likes golf", "Alex's brother is visiting").
+
+**Evidence, not capitalization.** A capitalized word is not a person: "Finish
+the Alex report", "Read about Ada Lovelace", "Buy milk at Walmart", "Apple
+announced something" and "Meet the deadline Friday" all name nobody, and the
+phrase has to be functioning as a human participant before it becomes one. The
+same guard is what stops a name absorbing the words beside it — *Alex Friday*,
+*Catherine Tomorrow*, *Mom Five*, and *Wait Sam*, which was a person invented
+out of a self-correction and then used to address a message.
+
+**A missing target and a non-named target are different states.** "Call the
+dentist tomorrow" describes who to reach and needs no help. "Call them tomorrow"
+is a follow-up with nobody on the other end, and filing it as a healthy task
+hands the person a reminder later that cannot tell them who to call — so it goes
+to Needs review as `.person`, which already knew how to ask.
+
+Two supporting repairs made this reachable. A self-correction run is matched as
+a run — people stack "no wait", "sorry no" — because matching only its last word
+left the earlier ones in the repaired sentence. And Memory's People grouping
+moved out of the view body into `MemoryPeopleIndex`, so a test can prove the
+consequence the corpus was blind to: capture the sentence, then look under
+People for the human it named.
+
+## 2026-08-19 — An operation claims its clause, not the whole utterance
+
+The semantic corpus was expanded from 182 to 402 cases, and the largest cluster
+of failures had one cause: `CaptureOperationDetector` read the entire transcript
+at once. That is correct for "Don't buy milk" and destructive for any capture
+that manages one thing and states another — "Don't remind me about the dentist
+anymore, but remind me to call Mom at six" produced **no items at all**, and a
+cancel target consisting of the whole sentence.
+
+Losing a thought the person just spoke is the failure this app cannot have, so
+`partition(_:)` now reads clause by clause and returns the operations alongside
+the text that is still creating something.
+
+The split is deliberately allowed to be wrong. When no clause reads as an
+operation the **original text** is returned rather than the rejoined pieces, so
+an over-eager boundary can only fail to find something — it can never damage an
+ordinary capture.
+
+One older decision is preserved inside it. A bare "and" after a denial is
+genuinely ambiguous: "don't buy milk and call support" can negate one conjunct
+or both, and English does not say which. That ambiguity is owned on purpose by
+`hasMixedPolarity`, which holds the whole utterance for review, so a
+negation-led capture splits only on a comma or a contrastive "but".
+
+## 2026-08-19 — Three temporal contracts settled by the expanded corpus
+
+Each was genuinely two-sided, and each had to become one thing.
+
+**A named weekday that is today means the next one.** "The deadline is Monday",
+said on a Monday morning, resolved to that same day — showing a week-away
+deadline as due within hours. Somebody who meant today would have said today.
+
+**An alarm's bare hour is the morning.** Everywhere else a bare hour resolves to
+its next occurrence, which is the right general rule and reliably wrong here:
+"wake me at 6:30", said at 10 AM, resolved to 6:30 that evening. The window is
+4–11 rather than 1–11, because "set an alarm for the meeting at 3" names a 3 PM
+meeting and nobody sets a 3 AM alarm.
+
+**A person's birthday is knowledge, not an appointment.** A dated commitment
+stated with a copula — "the party is Saturday" — now belongs on Today, which is
+what stopped those sentences from losing their date entirely. Birthdays and
+anniversaries are explicitly excluded from that rule: an annual fact about
+somebody is filed under that person in Memory, which is where people look for it
+and what the repository tests already pinned.
+
+## 2026-08-19 — Exceptions to a repeat are asked about, never dropped
+
+"Every Friday at five, remind me to submit the report, except this Friday" built
+a correct weekly series and discarded the exclusion in silence. That is the
+worst available outcome: the reminder then fires on precisely the day the person
+excluded, and nothing on screen ever admitted a word had been ignored.
+
+Speak It has no way to store an exclusion, so a repeating request carrying one
+goes to Needs review. This is the same rule the temporal side already follows —
+never pretend to support semantics that are not being enforced.
+
+## 2026-08-21 — A date says when something is true, not that there is something to do
+
+Reported from TestFlight: "I want to remember that Priya's birthday is on
+December fourth" arrived on Today, under *When you have time*. The rules meant
+to prevent exactly this were already written — birthdays are deliberately
+excluded from the scheduled nouns, and `Actionability` opens by declaring that
+time never promotes history — and three separate mechanisms defeated them.
+
+The wording rule was anchored to the first word. `isRecordedFact` tested
+`^remember`, so the moment somebody framed it the way people speak, the sentence
+fell out of the fact family and into the obligation family — because *want to*
+is an obligation lead. A filing instruction was read as a commitment.
+
+The taxonomy rule then discarded the person. `category` became `.people` only
+for a `note`, so once the sentence was promoted to a task, Priya was resolved,
+stored, and never used to place the item. It reached neither People nor
+Reference.
+
+The model layer was undoing the other two anyway. `isTimeCommitted` counted any
+`dueDate` or `reminderDate`, so a fact that resolved a date was pulled onto
+Today no matter how carefully it had been read. This is the mechanism that
+mattered most, because it made the classifier's care irrelevant.
+
+The contract is now stated in one line and enforced at both layers:
+
+> **A date tells Speak It when something is true. It does not by itself mean the
+> person has something to do.**
+
+- A dated fact about a person Speak It can name → Memory, filed under them.
+- A dated fact naming nobody → Memory, under Reference.
+- Explicit reminder or action wording → Today, whatever it is about. "Remind me
+  on December 4 that it's Priya's birthday" is a reminder, and still about Priya.
+
+`isTimeCommitted` now means *a moment the person asked to be interrupted at* —
+`reminderDate` alone. Nothing is lost by narrowing it: every type that can carry
+a deadline is already actionable. The one path that relied on the old rule was a
+note scheduled by hand in the editor, and that is now promoted to a task at the
+point of editing, where an explicitly typed date is an explicit intention rather
+than an inferred one.
+
+Two smaller faults surfaced on the way and are fixed with it. A past report
+about somebody — "Alex moved to Toronto in September" — had no rule of its own,
+so the only signal left in the sentence was a month and it became an
+appointment; there is now a past-report family, and it yields to a scheduled
+noun so "the meeting was moved to Thursday" keeps its Thursday. And a month
+followed by a spoken ordinal ("December fourth") resolved no date at all, only
+the digit form did, which is why the original report landed with no date rather
+than with the wrong one.
+
+## 2026-08-21 — Clause count is not item count
+
+The second TestFlight report: a rambling paragraph that meant one thing became
+three rows, one of them a fabricated event. "I was thinking earlier today" has
+no verb and no intention in it, and it acquired a date and arrived on Today as
+an appointment nobody had made.
+
+The splitter breaks on commas and conjunctions, which is correct for list speech
+and wrong for narrative speech, where the same connectives join a person to
+their own train of thought. Nothing upstream of it was asking whether the
+clauses were separate intentions or one intention being talked towards.
+
+`IntentConsolidator` now runs after speech repair and before splitting. It is
+deliberately **a veto and never a splitter**: it can only collapse to one item,
+it fires only when the wording is positively narrative, and when unsure it does
+nothing and lets the existing splitter run untouched. Two conditions must both
+hold — at most one clause that could stand alone as something to do or keep, and
+an elaborative signal that is not itself the intention. That asymmetry is what
+keeps "Call Mom tomorrow and Alex Friday" at two items: its second clause is not
+substantive alone, but nothing about the sentence is elaborative either, so this
+stage has no opinion.
+
+The bias is chosen, not incidental. **Over-splitting costs more than
+under-splitting.** The original transcript survives on the `CaptureSession`
+either way, so a merged item leaves the person one row to read, while a split
+one leaves them junk to delete — and, as observed, junk that can carry a date.
+
+When it collapses, the row title becomes the head intention with its framing
+stripped ("call the dentist tomorrow"), the quote stays the entire capture, and
+the text handed to the organizer excludes trailing explanations — a reason can
+carry a date of its own, and "call the dentist because my appointment is
+Thursday" is a call with no day.
+
+## 2026-08-21 — A stated closure is a fact; the subject decides which
+
+The boundary case left open by the dated-fact work, now settled rather than
+left to whichever rule ran first. "The office closes December 24" resolved a
+date and reached Today, because a calendar cue with no recognised verb around
+it fell through to the calendar-commitment rule and became an appointment.
+
+The rule is the birthday rule, applied without an exception for one grammatical
+shape:
+
+> A statement that merely describes when something is true stays knowledge. A
+> date does not create an obligation.
+
+- "The office closes December 24" → Memory / Reference
+- "Remember the office closes December 24" → Memory / Reference
+- "Remind me before the office closes December 24" → Today
+- "I need to go to the office before it closes December 24" → Today
+
+Implemented as a narrow descriptive-verb family — a thing opening, closing,
+expiring, renewing or resuming — which is a property of the thing rather than
+an appointment. "Starts", "ends" and "begins" are deliberately excluded, since
+they are as often about something a person attends: "the movie starts at 8" is a
+plan.
+
+The corpus immediately produced the counterexample that completes the rule:
+**"Application closes Friday"** is the identical grammar and the opposite
+intent. An office closing is a fact about the office; an application closing is
+the last moment somebody can act. So the subject decides here exactly as it
+already does for the copular case, and `deadlineNoun` is the counterpart to
+`scheduledNoun` — application, registration, submission, ballot, entry, RSVP.
+Either kind of subject outranks the descriptive reading whatever the verb.
+
+## 2026-08-21 — A failed recovery always has a way out
+
+TestFlight found the dead end: a protected recording whose recovery returned
+"No speech detected" stayed listed under "Ready to recover", the only offered
+action was the retry that had just failed, and the Today card "One capture needs
+attention" could never be resolved. Retry was also the only thing the row could
+do, so the person had no way to say "these words are gone, let it go".
+
+Three rules now hold together:
+
+- **A failed attempt never costs the recording.** Retry can be attempted as
+  often as the person likes, and nothing is deleted on failure.
+- **Deletion always works.** `CaptureDraftStore.deleteRecording(id:)` does not
+  depend on the recognizer, the repository, or the audio file still existing,
+  and it records a tombstone so a checkpoint written before the deletion cannot
+  bring the recording back on the next launch.
+- **The interface stops promising what it cannot deliver.** Once the recognizer
+  has specifically found no words, the row reads "Couldn't recover" and the
+  section reads "Needs attention" rather than "Ready to recover", and the launch
+  auto-recovery pass stops re-running that recording every activation.
+
+Failure wording is keyed on `CaptureRecoveryFailureKind`, not on the
+recognizer's own string. "Something went wrong" and "The operation could not be
+completed" tell a person nothing about whether to retry, retype, or delete.
+
+## 2026-08-21 — Trigger, actionability, and person attribution are independent
+
+Three TestFlight captures exposed one repeated design error: one semantic axis
+was being allowed to answer a different question.
+
+- "When I go home remind me to take out the garbage" names a place trigger. It
+  never owes the temporal parser a clock. A configured Home arms an arrival
+  reminder; an unconfigured Home asks the person to set Home.
+- "Let me create a feature in the future…" is proposal language. The verb
+  *create* names the content of the idea, not a commitment to execute it.
+- "Sarah doesn't like sushi" is still a fact about Sarah. Negation changes the
+  fact's polarity, not its owner and not its destination.
+
+The product contract is therefore dimensional:
+
+- **Actionability** decides Today versus Memory.
+- **Item type** describes what was captured: task, idea, note, event, and so on.
+- **Person attribution** answers who a thought is about, independently of
+  whether the item is a `personFollowUp`.
+- **Trigger** answers what event should interrupt the person: a clock or a
+  location boundary.
+
+`People` already exists as a general Memory category; it is not an alias for
+`Person follow-up`. A person fact is a Note with a person and appears in People.
+A follow-up is an actionable type and appears in Today. Positive and negative
+preferences, allergies, and biographical facts follow the same person path.
+
+The audit also found the same axis leak inside time parsing. Duration grammar
+correctly reads the article in "in a minute" as one, but clock grammar reused
+that vocabulary and read "idea for a quieter basket" as "for one". Clock hours
+now have a narrower vocabulary that cannot consume articles in ordinary prose.
+
+## 2026-08-21 — Semantic evidence is grammatical, not substring-based
+
+A 37-case collision audit found that individually reasonable rules were still
+allowed to claim text on lexical coincidence:
+
+- `ideal` and `ideation` became Ideas because they contain `idea`;
+- `homework`, `workout`, and `network` became Work because they contain `work`;
+- `for two-factor` became two o'clock;
+- `get paid`, `reach a decision`, and `are ready` became named places;
+- a bare `no` was treated as self-correction and deleted everything before it;
+- `When I get home, remind me…` split the condition and action into two items.
+
+The repair is a set of boundaries rather than a larger phrase list. Taxonomy
+uses whole-word phrase matching; explicit Idea/Shopping/Event type wins where
+that type owns the category, while a person follow-up may still be Work or
+School. Bare clocks require actionable or reminder context. Arrival verbs
+require a saved-place word or spatial connector. `no` is a correction marker
+only after punctuation/dash or alongside a positive repair cue. A fronted
+conditional fragment is inherited by the action after it, while a complete
+conditional action remains its own item.
+
+Unsupported non-spatial conditions are neither locations nor missing times.
+They remain one actionable item in Needs review, retain
+`UnsupportedTrigger.condition` in the existing temporal-intent blob, and say
+**Trigger not supported**. No SwiftData schema change is required.
+
+The corpus route oracle now follows the production invariant: Today means an
+actionable type **or an explicit reminder**, not merely an actionable type.
+This closes a test blind spot where a reminder could be lost or invented while
+the type label made the expected route appear to pass. The corpus is now 439
+cases with 0 critical and 0 behavioral disagreements; the full suite reports
+451 passed, 5 skipped, and the unsigned Release build compiles cleanly.

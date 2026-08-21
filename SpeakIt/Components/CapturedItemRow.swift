@@ -89,6 +89,7 @@ struct CapturedItemRow: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityHint(alertAccessibilityHint ?? "")
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
 
             if let trailingDetail, let onTrailingDetailTap {
@@ -125,6 +126,17 @@ struct CapturedItemRow: View {
                             .font(.caption2)
                             .accessibilityHidden(true)
                     }
+                    // A dated task and an armed reminder used to render as the
+                    // identical row — same section, same date, same time, no
+                    // way to tell which one will actually alert. This glyph is
+                    // the persistent distinction; the receipt word that used to
+                    // carry it auto-dismissed in 3.6 seconds. See
+                    // FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
+                    if let alertGlyph {
+                        Image(systemName: alertGlyph)
+                            .font(.caption2)
+                            .accessibilityHidden(true)
+                    }
                     Text(trailingText)
                         .lineLimit(1)
                 }
@@ -148,6 +160,27 @@ struct CapturedItemRow: View {
 
     private var isPlaceTriggered: Bool {
         presentation.reminderState.locationIntent != nil
+    }
+
+    /// SF Symbol name for the row's persistent alert glyph, or `nil` for a
+    /// date with nothing armed on it. A bell for a notification, an alarm
+    /// clock for AlarmKit — the two things Speak It can actually deliver.
+    private var alertGlyph: String? {
+        switch presentation.reminderState.alertGlyph {
+        case .some(.notification): "bell.fill"
+        case .some(.alarm): "alarm.fill"
+        default: nil
+        }
+    }
+
+    /// VoiceOver has no way to see the glyph above, so it needs the same
+    /// distinction in words.
+    private var alertAccessibilityHint: String? {
+        switch presentation.reminderState.alertGlyph {
+        case .some(.notification): "Will send a reminder"
+        case .some(.alarm): "Will sound an alarm"
+        default: nil
+        }
     }
 
     @ViewBuilder

@@ -349,23 +349,6 @@ enum MemoryCollection: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-enum MemoryPersonNameResolver {
-    static func name(for item: CapturedItem) -> String? {
-        if let explicit = item.personName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !explicit.isEmpty {
-            return explicit
-        }
-        return PersonNameInference.memoryName(in: item.originalTextSegment)
-            ?? PersonNameInference.memoryName(in: item.displayTitle)
-    }
-
-    static func containsWholeName(_ name: String, in text: String) -> Bool {
-        let escaped = NSRegularExpression.escapedPattern(for: name)
-        let pattern = "(?i)(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
-        return text.range(of: pattern, options: .regularExpression) != nil
-    }
-}
-
 private struct LibraryUndo: Identifiable {
     let id = UUID()
     let item: CapturedItem
@@ -1174,11 +1157,9 @@ private struct MemoryCollectionView: View {
     }
 
     private var personProfiles: [MemoryPersonProfile] {
-        let grouped = Dictionary(grouping: collectionItems) { item in
-            MemoryPersonNameResolver.name(for: item)?.lowercased() ?? "__people_notes__"
-        }
+        let grouped = MemoryPeopleIndex.grouped(collectionItems)
         return grouped.map { key, items in
-            let resolvedName = items.compactMap(MemoryPersonNameResolver.name).first
+            let resolvedName = MemoryPeopleIndex.resolvedName(in: items)
             return MemoryPersonProfile(
                 id: key,
                 name: resolvedName ?? "People notes",

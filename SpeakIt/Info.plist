@@ -41,6 +41,10 @@
 	<string>https://us.i.posthog.com</string>
 	<key>SpeakItAnalyticsKey</key>
 	<string>$(SPEAKIT_ANALYTICS_KEY)</string>
+	<key>SpeakItReferralAPIURL</key>
+	<string>$(SPEAKIT_REFERRAL_API_URL)</string>
+	<key>SpeakItSummerSaleEnabled</key>
+	<string>$(SPEAKIT_SUMMER_SALE_ENABLED)</string>
 	<key>SpeakItICloudSyncAvailable</key>
 	<string>$(SPEAKIT_ICLOUD_SYNC_AVAILABLE)</string>
 	<key>UIApplicationShortcutItems</key>

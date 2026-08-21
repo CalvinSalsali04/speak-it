@@ -45,90 +45,6 @@ struct OrganizedThought: Equatable, Sendable {
     }
 }
 
-enum PersonNameInference {
-    private struct NameToken {
-        let value: String
-        let isPossessive: Bool
-
-        var isCapitalized: Bool { value.first?.isUppercase == true }
-    }
-
-    private static let genericLeads: Set<String> = [
-        "a", "an", "he", "her", "his", "i", "my", "note", "people", "person",
-        "remember", "she", "someone", "tell", "the", "they", "this", "we"
-    ]
-    private static let strongPeoplePredicates: Set<String> = [
-        "avoids", "drinks", "eats", "hates", "likes", "lives", "loves", "needs",
-        "plays", "prefers", "speaks", "takes", "uses", "wants", "works"
-    ]
-    private static let personalFactNouns: Set<String> = [
-        "address", "anniversary", "birthday", "email", "favorite", "favourite",
-        "number", "phone", "preference", "pronouns"
-    ]
-    private static let memoryLeadPattern = #"^(?:please\s+)?(?:remember(?:\s+that)?|note(?:\s+that)?|save\s+this(?:\s+note)?(?:\s+that)?)\s+"#
-
-    /// Extracts a person only when the wording reads like a human detail. This
-    /// keeps proper-noun facts such as “Toronto is cold” in Reference.
-    static func memoryName(in text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let hadMemoryLead = trimmed.range(
-            of: memoryLeadPattern,
-            options: [.regularExpression, .caseInsensitive]
-        ) != nil
-        let body = trimmed.replacingOccurrences(
-            of: memoryLeadPattern,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
-        let rawWords = body.split(whereSeparator: \.isWhitespace).map(String.init)
-        guard let first = nameToken(from: rawWords.first),
-              first.isCapitalized,
-              !genericLeads.contains(first.value.lowercased()) else { return nil }
-
-        var nameTokens = [first]
-        if !first.isPossessive,
-           rawWords.count > 1,
-           let second = nameToken(from: rawWords[1]),
-           second.isCapitalized,
-           !genericLeads.contains(second.value.lowercased()) {
-            nameTokens.append(second)
-        }
-
-        let predicateIndex = nameTokens.count
-        guard rawWords.indices.contains(predicateIndex) else { return nil }
-        let predicate = normalizedWord(rawWords[predicateIndex]).lowercased()
-        let hasPossessiveName = nameTokens.last?.isPossessive == true
-        let readsLikePeopleDetail = strongPeoplePredicates.contains(predicate)
-            || (hasPossessiveName && personalFactNouns.contains(predicate))
-            || (hadMemoryLead && ["has", "is", "was"].contains(predicate))
-        guard readsLikePeopleDetail else { return nil }
-
-        return nameTokens.map(\.value).joined(separator: " ")
-    }
-
-    private static func nameToken(from rawValue: String?) -> NameToken? {
-        guard let rawValue else { return nil }
-        var value = normalizedWord(rawValue)
-        let isPossessive = value.lowercased().hasSuffix("'s")
-            || value.lowercased().hasSuffix("’s")
-        if isPossessive { value.removeLast(2) }
-        guard value.count >= 2,
-              value.unicodeScalars.allSatisfy({
-                  CharacterSet.letters.contains($0) || $0 == "-" || $0 == "'" || $0 == "’"
-              }) else { return nil }
-        return NameToken(value: value, isPossessive: isPossessive)
-    }
-
-    private static func normalizedWord(_ rawValue: String) -> String {
-        rawValue.trimmingCharacters(
-            in: CharacterSet.punctuationCharacters.subtracting(
-                CharacterSet(charactersIn: "-'’")
-            )
-        )
-    }
-}
-
 /// People ask for the same thing two ways: the verb form ("remind me to call
 /// Ana") and the noun form ("give me a reminder to call Ana", "set a reminder
 /// for 5pm"). Only the verb form used to be recognized, so every noun-form
@@ -206,7 +122,14 @@ enum ThoughtTitleFormatter {
         } else if itemType == .idea {
             prefixPattern = #"^(?:(?:save\s+(?:my\s+)?)?idea(?:\s+for)?|my\s+idea\s+is)\s*[:—-]?\s*"#
         } else {
-            prefixPattern = #"^(?:please\s+)?(?:remember(?:\s+that)?|note(?:\s+that)?|save\s+this(?:\s+note)?(?:\s+that)?)\s+"#
+            // The framed forms too: a row reading "I want to remember that
+            // Priya's birthday is on December fourth" is showing the person
+            // their own throat-clearing back. `ActionabilityReader` owns the
+            // vocabulary, so the title and the routing agree about where the
+            // instruction ends and the fact begins.
+            prefixPattern = #"^(?:please\s+)?(?:save\s+this(?:\s+note)?(?:\s+that)?\s+"#
+                + #"|(?:\#(ActionabilityReader.recordingFrame))?"#
+                + #"\#(ActionabilityReader.recordingVerb)\s+(?:that\s+|about\s+)?)"#
         }
 
         if let prefixPattern {
@@ -258,10 +181,30 @@ enum ThoughtOrganizer {
     ) -> OrganizedThought {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()
-        let actionText = actionBody(in: lowercase)
+        let actionText = ActionabilityReader.actionBody(lowercase)
+        // Two independent readings of the same sentence: what kind of thing it
+        // is, and whether the person still owes something. Deriving the second
+        // from the first is what let a `note` verdict throw away a correctly
+        // parsed date, so they are read apart and reconciled below.
+        let actionability = ActionabilityReader.read(lowercase)
         let recurrenceRule = RecurrenceIntentParser.parse(lowercase)
-        let inferred = inferredType(from: actionText, originalText: lowercase)
+        let inferred = inferredType(from: actionText, originalText: lowercase, actionability: actionability)
         var type: ItemType = recurrenceRule != nil && inferred == .note ? .task : inferred
+
+        // Actionability is the authority on which surface this belongs to, and
+        // the type is corrected to agree with it rather than the other way
+        // round. The correction is deliberately one-way: `ambiguous` means the
+        // reader had no opinion, and no opinion must never demote a type that
+        // was read from the wording — otherwise "the meeting was moved to
+        // Thursday" loses its day to a rule that never looked at it.
+        // Only a *fallback* type is corrected. `note` and `unclear` are what
+        // the type rules return when they recognised nothing; `idea` is what
+        // they return when the person said "idea", and a reading that had to
+        // infer actionability does not get to overrule a word they actually
+        // used.
+        if actionability.belongsOnToday, !type.isActionable, type == .note || type == .unclear {
+            type = actionability == .event ? .event : .task
+        }
         var timing = CapturePerformanceSignposts.measureTemporalResolution {
             TemporalIntentParser.parse(
                 lowercase,
@@ -287,6 +230,42 @@ enum ThoughtOrganizer {
             }
         }
 
+        // "It's due Friday but remind me Wednesday" gives two different days
+        // two different jobs. One parse resolves a single instant and writes it
+        // to both fields, which silently drags the deadline onto the reminder —
+        // the deadline is then simply gone. Each clause is parsed on its own so
+        // neither can overwrite the other.
+        if recurrenceRule == nil,
+           let separated = DueAndReminderClauses.split(lowercase) {
+            let duePass = TemporalIntentParser.parse(
+                separated.due,
+                itemType: type,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            let reminderPass = TemporalIntentParser.parse(
+                separated.reminder,
+                itemType: type,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            if let due = duePass.dueDate,
+               let reminder = reminderPass.reminderDate,
+               due != reminder {
+                timing = ParsedTiming(
+                    dueDate: due,
+                    reminderDate: reminder,
+                    delivery: reminderPass.delivery == .none ? .notification : reminderPass.delivery,
+                    needsClarification: duePass.needsClarification || reminderPass.needsClarification,
+                    // The intent describes the deadline, which is what the item
+                    // is actually about; the reminder is how it gets announced.
+                    intent: duePass.intent,
+                    locationIntent: timing.locationIntent,
+                    wantsReminder: true
+                )
+            }
+        }
+
         let recurringDate = recurrenceRule.flatMap {
             RecurrenceIntentParser.initialDate(
                 for: $0,
@@ -297,14 +276,38 @@ enum ThoughtOrganizer {
             )
         }
         let dueDate = recurringDate ?? timing.dueDate
-        let reminderDate = timing.delivery == .none ? timing.reminderDate : (recurringDate ?? timing.reminderDate)
+        // "Remind me every morning" asks for a reminder but, on its own,
+        // resolves no clock — the one-off pass above correctly has nothing to
+        // hang a delivery on and reports `.none`. The recurrence rule is what
+        // supplies that clock (see `RecurrenceIntentParser.initialDate`), so a
+        // request that would otherwise be silently dropped is rescued here
+        // instead. See FINAL_RELEASE_AUDIT.md H-1.
+        let wantsRecurringReminder = timing.wantsReminder && timing.delivery == .none && recurringDate != nil
+        let reminderDate = wantsRecurringReminder
+            ? recurringDate
+            : (timing.delivery == .none ? timing.reminderDate : (recurringDate ?? timing.reminderDate))
+        let reminderDelivery: ReminderDelivery = wantsRecurringReminder ? .notification : timing.delivery
+        // One resolver answers "who is this about?" for every kind of thought,
+        // so a follow-up on Today and a fact in Memory cannot disagree about
+        // whether a sentence names somebody. See `PersonMention.swift`.
         let personName: String?
+        var missingFollowUpTarget = false
         if type == .personFollowUp {
-            personName = inferredPerson(from: normalized)
-        } else if type == .note {
-            personName = PersonNameInference.memoryName(in: normalized)
+            switch PersonMentionResolver.followUpTarget(in: normalized) {
+            case let .person(mention):
+                personName = mention.label
+            case .described:
+                // "Call the dentist tomorrow" names no person and needs none.
+                personName = nil
+            case .missing:
+                // "Call them tomorrow" is a follow-up with nobody on the other
+                // end. Keeping it as a healthy task hands the person a reminder
+                // that cannot tell them who to call.
+                personName = nil
+                missingFollowUpTarget = true
+            }
         } else {
-            personName = nil
+            personName = PersonMentionResolver.primary(in: normalized)?.label
         }
         let category = type == .note && personName != nil
             ? ItemCategory.people
@@ -317,9 +320,14 @@ enum ThoughtOrganizer {
             personName: personName,
             dueDate: dueDate,
             reminderDate: reminderDate,
-            reminderDelivery: timing.delivery,
+            reminderDelivery: reminderDelivery,
             recurrenceRule: recurrenceRule,
-            needsClarification: timing.needsClarification && recurringDate == nil,
+            needsClarification: (timing.needsClarification && recurringDate == nil)
+                || missingFollowUpTarget
+                || TemporalIntentParser.carriesUnsupportedException(
+                    in: lowercase,
+                    recurrence: recurrenceRule
+                ),
             temporalIntent: finalIntent(
                 timing: timing,
                 recurrenceRule: recurrenceRule,
@@ -413,16 +421,35 @@ enum ThoughtOrganizer {
         return .none
     }
 
-    private static func inferredType(from text: String, originalText: String) -> ItemType {
-        if isHistoricalStatement(originalText) {
+    private static func inferredType(
+        from text: String,
+        originalText: String,
+        actionability: Actionability
+    ) -> ItemType {
+        // History is read once, by the layer that owns the question.
+        if actionability == .knowledge {
             return .note
         }
 
-        if containsAny(text, ["buy ", "order ", "pick up ", "grocery", "shopping list"]) {
+        if matchesAny(text, [
+            #"^(?:buy|order)\b"#,
+            #"^(?:grocery|shopping)\s+list\b"#,
+            #"^groceries\b"#,
+        ]) {
             return .shopping
         }
 
-        if containsAny(text, ["idea", "what if", "could build", "maybe create", "concept for"]) {
+        // "Get shampoo" acquires goods; "get the dry cleaning" collects a thing
+        // that already belongs to you. The determiner is the whole difference,
+        // and it is why "pick up" is not a shopping verb on its own.
+        if text.range(
+            of: #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?(?!the\b|a\b|an\b|my\b|his\b|her\b|our\b|their\b|that\b|this\b)\w"#,
+            options: .regularExpression
+        ) != nil {
+            return .shopping
+        }
+
+        if readsLikeIdeaProposal(originalText) {
             return .idea
         }
 
@@ -432,10 +459,30 @@ enum ThoughtOrganizer {
             "follow up with ", "send a message ", "send a text ",
             "schedule a message ", "schedule a text ", "schedule message ", "schedule text "
         ]) {
+            // "Call the dentist" is an errand aimed at an office; "call Mom" is
+            // a person. A bare determiner after the verb is the difference, and
+            // filing an errand under People buries it where nobody looks for it.
+            if text.range(
+                of: #"^(?:ask|call|phone|text|email|message|tell)\s+the\s+"#,
+                options: .regularExpression
+            ) != nil {
+                return .task
+            }
             return .personFollowUp
         }
 
-        if containsAny(text, ["appointment", "meeting ", "dinner at", "event on", "reservation at"]) {
+        // "I owe Mom a call", "I still owe Alex a reply". The action is named by
+        // the noun rather than by the verb, so none of the verb heads above see
+        // it — and a person follow-up filed as a plain task loses the one
+        // grouping that makes it findable.
+        if text.range(
+            of: #"(?i)\bowes?\s+\S+\s+(?:an?\s+)?(?:call|ring|reply|response|answer|text|email|message|apology|visit)\b"#,
+            options: .regularExpression
+        ) != nil {
+            return .personFollowUp
+        }
+
+        if containsPhrases(text, ["appointment", "meeting", "dinner at", "event on", "reservation at"]) {
             return .event
         }
 
@@ -453,31 +500,84 @@ enum ThoughtOrganizer {
     }
 
     private static func inferredCategory(from text: String, type: ItemType) -> ItemCategory {
-        if containsAny(text, [
-            "project", "launch", "client", "deadline", "report", "presentation", "office", "work"
-        ]) {
-            return .work
-        }
-
-        if containsAny(text, [
-            "assignment", "exam", "class", "lecture", "professor", "course", "school", "study"
-        ]) {
-            return .school
-        }
-
         switch type {
         case .shopping:
             return .shopping
         case .idea:
             return .ideas
-        case .personFollowUp:
-            return .people
         case .event:
             return .events
-        case .task, .note, .unclear:
-            return containsAny(text, ["home", "family", "dentist", "doctor", "dinner", "weekend"])
-                ? .personal
-                : .general
+        case .personFollowUp, .task, .note, .unclear:
+            break
+        }
+
+        // Explicit taxonomy outranks incidental subject words. An idea that
+        // says it "could work" is still an Idea, and a calendar event at the
+        // office is still an Event. Context categories apply only after the
+        // kind of item has declined to answer the question itself.
+        if containsPhrases(text, [
+            "assignment", "exam", "class", "lecture", "professor", "course", "school", "study", "homework"
+        ]) {
+            return .school
+        }
+        if containsPhrases(text, [
+            "project", "launch", "client", "deadline", "report", "presentation", "office", "work"
+        ]) {
+            return .work
+        }
+        if type == .personFollowUp { return .people }
+        return containsPhrases(text, [
+            "home", "family", "dentist", "doctor", "dinner", "weekend", "workout"
+        ]) ? .personal : .general
+    }
+
+    /// Whether the speaker is considering something rather than committing to
+    /// do it.
+    ///
+    /// A verb cannot answer that question by itself. "Create calendar
+    /// integration" is an action, while "it would be cool to create calendar
+    /// integration" is a proposal and "remind me to create it Saturday" is an
+    /// explicit commitment. The proposal frame is therefore read as a whole,
+    /// before the ordinary verb-head rules get a vote.
+    private static func readsLikeIdeaProposal(_ text: String) -> Bool {
+        // A leading label is unambiguous, even when the idea itself is phrased
+        // as a question ("Idea: where should the button go?").
+        if matchesAny(text, [#"^(?:an?\s+)?idea\b"#, #"^concept\s+for\b"#]) {
+            return true
+        }
+
+        if containsPhrases(text, ["no idea", "any idea"]) {
+            return false
+        }
+
+        // Whole-word matching prevents `ideal` and `ideation` from entering
+        // Ideas. Epistemic uses of the noun ("I have no idea where…") are
+        // knowledge gaps, not proposals.
+        if matchesAny(text, [#"\bidea\b"#]) {
+            if matchesAny(text, [
+                #"\b(?:have|has|had|got)\s+no\s+idea\b"#,
+                #"\b(?:don'?t|doesn'?t|didn'?t|do\s+not|does\s+not|did\s+not)\s+have\s+an?\s+idea\b"#,
+                #"\bany\s+idea\b"#,
+                #"\bidea\s+(?:where|who|what|when|why|how|whether)\b"#,
+                #"\bnot\s+an?\s+idea\b"#,
+            ]) {
+                return false
+            }
+            return true
+        }
+
+        if matchesAny(text, [#"\bwhat\s+if\b"#, #"\bcould\s+build\b"#, #"\bmaybe\s+create\b"#, #"\bconcept\s+for\b"#]) {
+            return true
+        }
+
+        let proposalPatterns = [
+            #"^(?:it\s+)?would\s+be\s+(?:cool|nice|useful|helpful|interesting|great|better)\s+to\b"#,
+            #"^(?:maybe|perhaps)\s+(?:i|we)\s+(?:could|should|might)\b"#,
+            #"^(?:maybe|perhaps)\s+(?:create|build|make|add|design|develop|explore)\b"#,
+            #"^let\s+me\s+(?:create|build|make|add|design|develop|explore)\b.*\b(?:someday|one\s+day|in\s+the\s+future|for\s+the\s+future|eventually)\b"#,
+        ]
+        return proposalPatterns.contains { pattern in
+            text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
         }
     }
 
@@ -486,113 +586,90 @@ enum ThoughtOrganizer {
         dueDate: Date?,
         referenceDate: Date
     ) -> ItemPriority {
-        if containsAny(text, ["urgent", "asap", "immediately", "right now"]) {
+        let explicitlyNotUrgent = matchesAny(text, [
+            #"\b(?:not|isn'?t|aren'?t|wasn'?t|weren'?t|never)\s+(?:that\s+)?(?:urgent|important)\b"#,
+            #"\bno\s+(?:urgent|important)\s+need\b"#,
+        ])
+        if !explicitlyNotUrgent,
+           containsPhrases(text, ["urgent", "asap", "immediately", "right now"]) {
             return .urgent
         }
         if let dueDate, dueDate <= referenceDate.addingTimeInterval(24 * 60 * 60) {
             return .high
         }
-        if containsAny(text, ["today", "tomorrow", "before ", "deadline", "important"]) {
+        if containsPhrases(text, ["today", "tomorrow", "deadline"])
+            || (!explicitlyNotUrgent && containsPhrases(text, ["important"])) {
             return .high
         }
         return .normal
     }
 
-    private static func inferredPerson(from text: String) -> String? {
-        let lowercase = text.lowercased()
-        let prefixes = [
-            "schedule a message to ", "schedule a text to ",
-            "schedule message to ", "schedule text to ",
-            "send a message to ", "send a text to ",
-            "follow up with ", "message to ", "email to ", "text to ",
-            "message ", "email ", "text ", "call ", "phone ", "ask ", "tell ", "wish "
-        ]
-        guard let match = prefixes.compactMap({ prefix -> (String, Range<String.Index>)? in
-            guard let range = lowercase.range(
-                of: #"\b"# + NSRegularExpression.escapedPattern(for: prefix),
-                options: .regularExpression
-            ) else { return nil }
-            return (prefix, range)
-        }).min(by: {
-            if $0.1.lowerBound != $1.1.lowerBound {
-                return $0.1.lowerBound < $1.1.lowerBound
-            }
-            return $0.0.count > $1.0.count
-        }) else {
-            return nil
-        }
-
-        let startOffset = lowercase.distance(from: lowercase.startIndex, to: match.1.lowerBound) + match.0.count
-        let startIndex = text.index(text.startIndex, offsetBy: startOffset)
-        let remainder = String(text[startIndex...])
-        let candidates = remainder
-            .split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
-            .prefix(while: { !personNameStopWords.contains($0.lowercased()) })
-            .prefix(2)
-            .map(String.init)
-        guard let first = candidates.first else { return nil }
-
-        // Only take a second word as part of the name when the transcript
-        // capitalizes it too. "Message Catherine in one hour" must not become
-        // "Catherine In", and "call mum tomorrow" must not become "Mum
-        // Tomorrow", however the following word is spelled.
-        var nameWords = [first]
-        if let second = candidates.dropFirst().first,
-           first.first?.isUppercase != true || second.first?.isUppercase == true {
-            nameWords.append(second)
-        }
-
-        let name = nameWords.map { $0.capitalized }.joined(separator: " ")
-        return name.isEmpty ? nil : name
-    }
-
-    /// Words that end a spoken name. Anything that introduces timing, a topic,
-    /// or the next clause cannot be part of who the follow-up is about.
-    private static let personNameStopWords: Set<String> = [
-        "a", "about", "after", "afternoon", "again", "an", "and", "around", "as",
-        "asap", "at", "back", "because", "before", "by", "during", "evening",
-        "for", "from", "if", "in", "later", "morning", "next", "night", "now",
-        "on", "once", "or", "over", "please", "re", "regarding", "so", "soon",
-        "that", "the", "then", "this", "to", "today", "tomorrow", "tonight",
-        "until", "week", "weekend", "when", "whether", "while", "with"
-    ]
-
     private static func containsAny(_ text: String, _ candidates: [String]) -> Bool {
         candidates.contains(where: text.contains)
+    }
+
+    /// Finds complete words or phrases. Taxonomy and priority are semantic
+    /// decisions, so matching `work` inside `network` or `idea` inside `ideal`
+    /// is never acceptable evidence.
+    private static func containsPhrases(_ text: String, _ phrases: [String]) -> Bool {
+        phrases.contains { phrase in
+            let escaped = phrase
+                .split(whereSeparator: { $0.isWhitespace })
+                .map { NSRegularExpression.escapedPattern(for: String($0)) }
+                .joined(separator: #"\s+"#)
+            return text.range(
+                of: #"(?i)(?<![\p{L}\p{N}_])"# + escaped + #"(?![\p{L}\p{N}_])"#,
+                options: .regularExpression
+            ) != nil
+        }
+    }
+
+    private static func matchesAny(_ text: String, _ patterns: [String]) -> Bool {
+        patterns.contains {
+            text.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        }
     }
 
     private static func startsWithAny(_ text: String, _ prefixes: [String]) -> Bool {
         prefixes.contains(where: text.hasPrefix)
     }
+}
 
-    private static func actionBody(in text: String) -> String {
-        var value = text
-        value = value.replacingOccurrences(
-            of: ReminderPhrasing.sentenceLeadThroughAction,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
-        // These frame an action but are not the action verb. Removing them lets
-        // “remember to call/wish Catherine” keep its person-follow-up semantics
-        // instead of falling into the generic task bucket.
-        value = value.replacingOccurrences(
-            of: #"^(?:remember\s+to|(?:i\s+)?need\s+to|i\s+have\s+to|i\s+should|don['’]t\s+forget\s+to|do\s+not\s+forget\s+to)\s+"#,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
-        value = value.replacingOccurrences(
-            of: #"^(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s+"#,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
-        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+/// Which half of the clock face a daypart word points at.
+///
+/// Shared by the one-off resolver and the recurrence parser so "tomorrow
+/// morning at seven" and "every morning at seven" cannot disagree about which
+/// seven they mean.
+enum DaypartHint {
+    case morning
+    case afternoon
+    case evening
+
+    init?(in text: String) {
+        func names(_ pattern: String) -> Bool {
+            text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        if names(#"\bmorning\b"#) { self = .morning }
+        else if names(#"\bafternoon\b"#) { self = .afternoon }
+        else if names(#"\b(?:evening|tonight|night)\b"#) { self = .evening }
+        else { return nil }
     }
 
-    private static func isHistoricalStatement(_ text: String) -> Bool {
-        text.range(
-            of: #"^(?:i\s+)?(?:already\s+|just\s+)?(?:bought|called|texted|emailed|sent|submitted|finished|paid|booked|completed|did)\b"#,
-            options: .regularExpression
-        ) != nil
+    /// The default hour this daypart implies when no clock was stated.
+    var defaultHour: Int {
+        switch self {
+        case .morning: TemporalResolver.dateOnlyAlertHour
+        case .afternoon: 15
+        case .evening: 20
+        }
+    }
+
+    /// The 24-hour reading of a bare spoken hour said inside this daypart.
+    func hour(for spoken: Int) -> Int {
+        switch self {
+        case .morning: spoken == 12 ? 0 : spoken
+        case .afternoon, .evening: spoken >= 12 ? spoken : spoken + 12
+        }
     }
 }
 
@@ -639,6 +716,17 @@ private enum RecurrenceIntentParser {
             )
         }
 
+        // "The first Monday every month" is monthly, not weekly. It has to be
+        // read before the plain weekday rule below, which sees "monday" and
+        // "every" and would otherwise turn 12 occurrences a year into 52.
+        if let ordinal = ordinalWeekday(in: text) {
+            return RecurrenceRule(
+                frequency: .monthly,
+                anchor: anchor,
+                ordinalWeekday: ordinal
+            )
+        }
+
         if text.range(of: #"\b(?:every|each)\s+weekdays?\b"#, options: .regularExpression) != nil {
             return RecurrenceRule(frequency: .weekly, weekdays: [2, 3, 4, 5, 6], anchor: anchor)
         }
@@ -660,6 +748,17 @@ private enum RecurrenceIntentParser {
             )
         }
 
+        // "Every morning" is a daily series whose time of day is the daypart
+        // word itself. Without this it matched nothing at all and the repeat was
+        // simply lost — the quietest possible failure, since the first
+        // occurrence still looks correct.
+        if text.range(
+            of: #"\b(?:every|each)\s+(?:single\s+)?(?:morning|afternoon|evening|night)\b"#,
+            options: .regularExpression
+        ) != nil {
+            return RecurrenceRule(frequency: .daily, anchor: anchor)
+        }
+
         guard let match = match(
             in: text,
             pattern: #"\b(?:every|each)\s+(?:(other|\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+)?(days?|weeks?|months?|years?)\b"#
@@ -679,6 +778,23 @@ private enum RecurrenceIntentParser {
         referenceDate: Date,
         calendar: Calendar
     ) -> Date? {
+        // The series owns its clock, and the first occurrence is computed from
+        // the recurrence rule rather than from a single resolved instant.
+        //
+        // This is the whole repair. "Remind me every day at nine" used to reach
+        // the one-off resolver first, which correctly answered "the next nine is
+        // 9 PM tonight" — a correct answer to a question nobody asked. A daily
+        // series does not start at the next nine; it repeats at nine, and its
+        // first occurrence is the next time that clock comes round.
+        if let first = firstOccurrence(
+            of: rule,
+            wallClock: seriesWallClock(in: text),
+            after: referenceDate,
+            calendar: calendar
+        ) {
+            return first
+        }
+
         if rule.frequency == .weekly, !rule.weekdays.isEmpty, let parsedDate {
             return parsedDate
         }
@@ -707,6 +823,133 @@ private enum RecurrenceIntentParser {
             result = adjusted
         }
         return result
+    }
+
+    /// The ordinal weekday a monthly series lands on, if it names one.
+    private static func ordinalWeekday(in text: String) -> OrdinalWeekday? {
+        let ordinals: [(String, Int)] = [
+            ("first", 1), ("second", 2), ("third", 3), ("fourth", 4), ("last", -1)
+        ]
+        let names = weekdays.map(\.0).joined(separator: "|")
+        let ordinalNames = ordinals.map(\.0).joined(separator: "|")
+        guard let parts = match(
+            in: text,
+            pattern: #"\b(\#(ordinalNames))\s+(\#(names))\b"#
+        ), parts.count >= 3,
+              // Only monthly wording. "Every first Monday" without a period is
+              // not a rule anyone can schedule against.
+              text.range(
+                  of: #"\b(?:of\s+)?(?:every|each)\s+month\b|\bmonthly\b"#,
+                  options: .regularExpression
+              ) != nil,
+              let ordinal = ordinals.first(where: { $0.0 == parts[1] })?.1,
+              let weekday = weekdays.first(where: { $0.0 == parts[2] })?.1 else { return nil }
+        return OrdinalWeekday(ordinal: ordinal, weekday: weekday)
+    }
+
+    /// The time of day a series repeats at, read from the recurrence wording
+    /// rather than inherited from a resolved instant.
+    ///
+    /// A bare hour follows the same rule the rest of the app uses for a named
+    /// day — 1 through 7 are afternoon, 8 onward are morning — because "every
+    /// day at nine" and "call Catherine Tuesday at nine" mean the same nine.
+    private static func seriesWallClock(in text: String) -> WallClockTime? {
+        let number = #"(\d{1,2}|\#(numberWords.keys.sorted().joined(separator: "|")))"#
+
+        if let parts = match(in: text, pattern: #"\b\#(number)(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b"#),
+           parts.count >= 4, let raw = self.number(parts[1]), (1...12).contains(raw) {
+            let hour = (raw % 12) + (parts[3].hasPrefix("p") ? 12 : 0)
+            return WallClockTime(hour: hour, minute: Int(parts[2]) ?? 0)
+        }
+        if text.range(of: #"\bnoon\b"#, options: .regularExpression) != nil {
+            return WallClockTime(hour: 12, minute: 0)
+        }
+        if text.range(of: #"\bmidnight\b"#, options: .regularExpression) != nil {
+            return WallClockTime(hour: 0, minute: 0)
+        }
+        let daypart = DaypartHint(in: text)
+        if let parts = match(in: text, pattern: #"\bat\s+\#(number)(?::(\d{2}))?\b"#),
+           parts.count >= 3, let raw = self.number(parts[1]), (1...12).contains(raw) {
+            // "Every morning at seven" states the half of the day outright, so
+            // the 1-through-7-means-afternoon default does not get a vote.
+            let hour = daypart?.hour(for: raw) ?? ((1...7).contains(raw) ? raw + 12 : raw)
+            return WallClockTime(hour: hour, minute: Int(parts[2]) ?? 0)
+        }
+        // No clock and no daypart were stated at all — "every Friday", with
+        // nothing else. Falling through with no wall clock lands the series at
+        // midnight (`landing(_:)` above passes the bare start of the day
+        // through unchanged), which is not an hour anyone asked for and, worse,
+        // is a real fire time for a series that wants to alert. Every other
+        // bare-day case in this app already means 9 AM; a bare recurring day
+        // means the same thing. See FINAL_RELEASE_AUDIT.md H-1.
+        return WallClockTime(
+            hour: daypart?.defaultHour ?? TemporalResolver.dateOnlyAlertHour,
+            minute: 0
+        )
+    }
+
+    /// The first time the series comes round, at or after the capture.
+    ///
+    /// Returns `nil` for the shapes that carry no calendar landmark of their own
+    /// — an interval of weeks, a plain monthly or yearly repeat — which keep
+    /// their existing behaviour of counting forward from the capture.
+    private static func firstOccurrence(
+        of rule: RecurrenceRule,
+        wallClock: WallClockTime?,
+        after referenceDate: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard !rule.repeatsByElapsedTime else { return nil }
+
+        func landing(_ day: Date) -> Date {
+            guard let wallClock else { return day }
+            return calendar.date(
+                bySettingHour: wallClock.hour,
+                minute: wallClock.minute,
+                second: 0,
+                of: day,
+                matchingPolicy: .nextTime,
+                repeatedTimePolicy: .first,
+                direction: .forward
+            ) ?? day
+        }
+
+        let startOfToday = calendar.startOfDay(for: referenceDate)
+
+        if let ordinal = rule.ordinalWeekday {
+            let thisMonth = ordinal.date(inMonthContaining: referenceDate, calendar: calendar)
+            if let thisMonth, landing(thisMonth) > referenceDate { return landing(thisMonth) }
+            guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfToday) else {
+                return nil
+            }
+            return ordinal.date(inMonthContaining: nextMonth, calendar: calendar).map(landing)
+        }
+
+        if rule.frequency == .weekly, !rule.weekdays.isEmpty {
+            return rule.weekdays.compactMap { weekday -> Date? in
+                calendar.nextDate(
+                    after: referenceDate,
+                    matching: DateComponents(
+                        hour: wallClock?.hour,
+                        minute: wallClock?.minute,
+                        weekday: weekday
+                    ),
+                    matchingPolicy: .nextTime,
+                    direction: .forward
+                )
+            }.min()
+        }
+
+        if rule.frequency == .daily, rule.interval == 1 {
+            let today = landing(startOfToday)
+            if today > referenceDate { return today }
+            guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) else {
+                return nil
+            }
+            return landing(tomorrow)
+        }
+
+        return nil
     }
 
     private static func timeComponents(in text: String) -> DateComponents? {
@@ -756,6 +999,40 @@ private struct ParsedTiming: Equatable {
     let intent: TemporalIntent
     /// Set when the wording named a place rather than (or as well as) a time.
     var locationIntent: LocationIntent?
+    /// Whether the sentence asked for a reminder at all, independent of
+    /// whether this one-off pass found a clock to hang it on. A recurrence
+    /// rule can supply that clock even when this pass could not — see
+    /// `wantsRecurringReminder` in `organize(...)`.
+    var wantsReminder: Bool = false
+}
+
+/// Separates a deadline clause from a reminder clause.
+///
+/// Only splits when the wording actually names both roles: without the "due"
+/// or "by" marker, "remind me Wednesday" is a single reminder and must keep
+/// behaving as one.
+private enum DueAndReminderClauses {
+    static func split(_ text: String) -> (due: String, reminder: String)? {
+        guard let marker = text.range(
+            of: #"(?i)\b(?:remind|alert|notify)\s+me\b"#,
+            options: .regularExpression
+        ) else { return nil }
+
+        let due = String(text[..<marker.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+            .replacingOccurrences(
+                of: #"(?i)\s*\b(?:but|and)\s*$"#,
+                with: "",
+                options: .regularExpression
+            )
+        let reminder = String(text[marker.lowerBound...])
+
+        guard !due.isEmpty,
+              due.range(of: #"(?i)\b(?:due|by)\b"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        return (due, reminder)
+    }
 }
 
 private enum TemporalIntentParser {
@@ -862,6 +1139,12 @@ private enum TemporalIntentParser {
     // words ("two minutes"). Treat both as first-class input.
     private static let spokenNumberPattern = #"(?:\d+|a|an|couple|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|thirty(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|forty(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|fifty(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|sixty)"#
 
+    /// An hour on a clock is never the article "a". Duration grammar needs
+    /// that article ("in a minute"), but reusing it for wall-clock parsing made
+    /// ordinary prose such as "idea for a quieter basket" look like an
+    /// ambiguous 1 o'clock expression and hold the idea for review.
+    private static let clockHourPattern = #"(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"#
+
     static func parse(
         _ text: String,
         itemType: ItemType,
@@ -902,7 +1185,12 @@ private enum TemporalIntentParser {
 
         let relative = relativeResolution(in: semanticText, referenceDate: referenceDate)
         let absolute = relative.date == nil
-            ? resolveAbsolute(in: semanticText, referenceDate: referenceDate, calendar: calendar)
+            ? resolveAbsolute(
+                in: semanticText,
+                referenceDate: referenceDate,
+                calendar: calendar,
+                allowsBareClock: itemType.isActionable || wantsReminder
+            )
             : TimingResolution.unresolved
         let resolution = relative.date == nil ? absolute : relative
         let parsedDate = resolution.date
@@ -917,7 +1205,7 @@ private enum TemporalIntentParser {
 
         let isActionable = itemType.isActionable || wantsReminder
         let dueDate = isActionable ? (splitTiming?.dueDate ?? parsedDate) : nil
-        let resolvedReminder = wantsReminder ? (splitTiming?.reminderDate ?? parsedDate) : nil
+        let statedReminder = wantsReminder ? (splitTiming?.reminderDate ?? parsedDate) : nil
 
         // A place is its own kind of trigger, read into its own intent. It is
         // never turned into an hour, and it is never treated as ambiguity — the
@@ -938,11 +1226,28 @@ private enum TemporalIntentParser {
         // side already follows: never pretend to support semantics that are not
         // being enforced.
         let combinesPlaceAndTime = locationIntent != nil && resolution.intent.kind != .none
+        let unsupportedCondition = locationIntent == nil
+            && resolution.intent.kind == .none
+            && (itemType.isActionable || wantsReminder)
+            && firstMatch(
+                in: semanticText,
+                pattern: #"\b(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b"#
+            ) != nil
 
         // Saying "tonight" at 11pm resolves to an evening that already ended.
         // iOS silently drops a notification dated in the past, so the person
         // would get nothing. Keep the day as context, drop the dead moment, and
         // ask for the time instead of pretending a reminder was set.
+        // "Call Catherine tomorrow at five and remind me an hour before" gives
+        // the reminder relative to the appointment rather than to the clock.
+        // Read literally, both fields landed on five, so the warning arrived at
+        // exactly the moment it was meant to precede.
+        let resolvedReminder = leadTimeReminder(
+            in: semanticText,
+            dueDate: dueDate,
+            fallback: statedReminder
+        )
+
         let reminderHasPassed = resolvedReminder.map { $0 <= referenceDate } ?? false
         // Dropped for a combined request too, so no notification is scheduled
         // against a clock the person also constrained by place.
@@ -966,6 +1271,7 @@ private enum TemporalIntentParser {
         let needsClarification = resolution.isAmbiguous
             || locationPlaceUnreadable
             || combinesPlaceAndTime
+            || unsupportedCondition
             || (locationIntent == nil && wantsReminder && (reminderDate == nil || vagueTime))
 
         // A date-only day whose reminder was requested still needs a moment to
@@ -979,6 +1285,8 @@ private enum TemporalIntentParser {
             // that fires the reminder, and it is not marked unsupported now that
             // places are supported.
             intent.unsupportedTrigger = nil
+        } else if unsupportedCondition {
+            intent.unsupportedTrigger = .condition
         }
         // Note this replaces whatever the day resolved to. A date-only day
         // resolves to its own start, and 00:00 is not an alert time anyone
@@ -1006,7 +1314,8 @@ private enum TemporalIntentParser {
                     delivery: delivery,
                     needsClarification: vagueTime,
                     intent: intent,
-                    locationIntent: locationIntent
+                    locationIntent: locationIntent,
+                    wantsReminder: wantsReminder
                 )
             }
         }
@@ -1017,8 +1326,57 @@ private enum TemporalIntentParser {
             delivery: reminderDate == nil ? .none : delivery,
             needsClarification: needsClarification,
             intent: intent,
-            locationIntent: locationIntent
+            locationIntent: locationIntent,
+            wantsReminder: wantsReminder
         )
+    }
+
+    /// A reminder stated as a span before the thing it is about.
+    ///
+    /// Returns the fallback untouched unless the sentence both names a lead
+    /// time *and* carries the date to measure it from — "remind me an hour
+    /// before the meeting", with no meeting on file, has no anchor and stays
+    /// unresolved so it can be asked about.
+    private static func leadTimeReminder(
+        in text: String,
+        dueDate: Date?,
+        fallback: Date?
+    ) -> Date? {
+        guard let dueDate else { return fallback }
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"(?i)\b(?:remind|notify|alert|ping)\s+me\s+("# + spokenNumberPattern
+                + #"|an?|half\s+an?)\s+(minutes?|mins?|hours?|days?|weeks?)\s+(?:before|ahead|earlier|prior|in\s+advance)\b"#
+        ), match.count >= 3 else { return fallback }
+
+        let amount = match[1].lowercased().hasPrefix("half") ? 0.5 : Double(number(from: match[1]) ?? 1)
+        let unitSeconds: Double
+        switch match[2].lowercased() {
+        case let unit where unit.hasPrefix("min"): unitSeconds = 60
+        case let unit where unit.hasPrefix("hour"): unitSeconds = 3600
+        case let unit where unit.hasPrefix("week"): unitSeconds = 7 * 24 * 3600
+        default: unitSeconds = 24 * 3600
+        }
+        return dueDate.addingTimeInterval(-amount * unitSeconds)
+    }
+
+    /// True when a repeating request carries an exclusion the app cannot store.
+    ///
+    /// "Every Friday at five … except this Friday" and "call Mom every Sunday,
+    /// except when I'm travelling" both build a correct series and then throw
+    /// the exclusion away. That is the worst available outcome: the reminder
+    /// fires on precisely the day the person said not to, and nothing on screen
+    /// ever admitted the word was ignored. Asking is the honest answer until
+    /// exceptions are modelled.
+    static func carriesUnsupportedException(
+        in text: String,
+        recurrence: RecurrenceRule?
+    ) -> Bool {
+        guard recurrence != nil else { return false }
+        return firstMatch(
+            in: text,
+            pattern: #"\b(?:except|apart\s+from|other\s+than|unless|besides|but\s+not)\b"#
+        ) != nil
     }
 
     private static func separateReminderAndActionDates(
@@ -1036,6 +1394,16 @@ private enum TemporalIntentParser {
         ) {
             action = String(text[..<reminderLead.lowerBound])
             command = String(text[reminderLead.upperBound...])
+        } else if let aboutLead = text.range(
+            of: #"(?i)\s+about\s+(?=(?:the\s+)?\S+\s+(?:deadline|due\s+date|cutoff))"#,
+            options: .regularExpression
+        ) {
+            // "Remind me Thursday about the Friday deadline" states the
+            // reminder first and the deadline second, with no "to" and no comma
+            // between them. Read as one span it collapsed to a single date, and
+            // the deadline showed a day early.
+            command = String(text[..<aboutLead.lowerBound])
+            action = String(text[aboutLead.upperBound...])
         } else if let connector = text.range(
             of: #"\s+to\s+"#,
             options: .regularExpression
@@ -1050,12 +1418,14 @@ private enum TemporalIntentParser {
         let reminderResolution = timingResolution(
             in: command,
             referenceDate: referenceDate,
-            calendar: calendar
+            calendar: calendar,
+            allowsBareClock: true
         )
         let actionResolution = timingResolution(
             in: action,
             referenceDate: referenceDate,
-            calendar: calendar
+            calendar: calendar,
+            allowsBareClock: true
         )
         guard let reminderDate = reminderResolution.date,
               let actionDate = actionResolution.date,
@@ -1068,11 +1438,17 @@ private enum TemporalIntentParser {
     private static func timingResolution(
         in text: String,
         referenceDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        allowsBareClock: Bool
     ) -> TimingResolution {
         let relative = relativeResolution(in: text, referenceDate: referenceDate)
         return relative.date == nil
-            ? resolveAbsolute(in: text, referenceDate: referenceDate, calendar: calendar)
+            ? resolveAbsolute(
+                in: text,
+                referenceDate: referenceDate,
+                calendar: calendar,
+                allowsBareClock: allowsBareClock
+            )
             : relative
     }
 
@@ -1114,7 +1490,11 @@ private enum TemporalIntentParser {
         let patterns = [
             #"\bin\s+("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?|days?|weeks?)\b"#,
             #"\b(?:set|start)\s+(?:a\s+)?timer\s+for\s+("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?)\b"#,
-            #"\btimer\s+for\s+("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?)\b"#
+            #"\btimer\s+for\s+("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?)\b"#,
+            // "45 minutes from now", "two hours from now" — the same span said
+            // from the other end.
+            #"\b("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?|days?|weeks?)\s+from\s+now\b"#,
+            #"\balarm\s+for\s+("# + spokenNumberPattern + #")\s+(seconds?|minutes?|hours?)\b"#,
         ]
 
         for pattern in patterns {
@@ -1155,7 +1535,12 @@ private enum TemporalIntentParser {
         referenceDate: Date,
         calendar: Calendar
     ) -> Date? {
-        resolveAbsolute(in: text, referenceDate: referenceDate, calendar: calendar).date
+        resolveAbsolute(
+            in: text,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            allowsBareClock: true
+        ).date
     }
 
     /// Resolves wall-clock wording into a single real instant, and reports when
@@ -1165,12 +1550,22 @@ private enum TemporalIntentParser {
     private static func resolveAbsolute(
         in text: String,
         referenceDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        allowsBareClock: Bool
     ) -> TimingResolution {
         // "4/5" is April 5 or May 4 depending on where you live, and the
         // expression cannot tell you which. Ask rather than pick.
         let numeric = ThoughtOrganizer.numericDate(in: text)
         if numeric == .ambiguous { return .ambiguous }
+
+        // "Next week" is seven days, not one of them. Picking Monday would be
+        // arbitrary and would look, on the row, exactly like something the
+        // person had chosen. A named day inside it ("next Wednesday") is a
+        // different sentence and is resolved below.
+        if firstMatch(in: text, pattern: #"\bnext\s+week\b"#) != nil,
+           !weekdays.contains(where: { containsWord(text, $0.name) }) {
+            return .ambiguous
+        }
 
         var calendar = calendar
         var namedZone: TimeZone?
@@ -1180,7 +1575,13 @@ private enum TemporalIntentParser {
             calendar.timeZone = zone
         }
 
-        let parsedTime = time(in: text)
+        // "Tomorrow at this time" means the same reading on the same clock face,
+        // which is not the same as 24 hours later: on a transition day those are
+        // an hour apart, and the person meant the clock, not the elapsed time.
+        // Taking it from the capture instant is also what keeps a capture
+        // started at 23:59 from resolving against the following day.
+        let parsedTime = time(in: text, allowsBareClock: allowsBareClock)
+            ?? captureWallClock(in: text, referenceDate: referenceDate, calendar: calendar)
         var day = namedDay(in: text, referenceDate: referenceDate, calendar: calendar)
         if day == nil {
             day = weekday(in: text, referenceDate: referenceDate, calendar: calendar)
@@ -1215,7 +1616,7 @@ private enum TemporalIntentParser {
                     behavior: behavior
                 )
             }
-            let time = defaultedBareHourOnNamedDay(expressedTime)
+            let time = defaultedBareHourOnNamedDay(expressedTime, in: text)
 
             // `repeatedTimePolicy: .first` is stated rather than inherited: on a
             // fall-back day 1:30 AM happens twice, and the earlier occurrence is
@@ -1338,14 +1739,110 @@ private enum TemporalIntentParser {
         if containsWord(text, "today") || containsWord(text, "tonight") {
             return start
         }
-        if firstMatch(in: text, pattern: #"\bnext\s+week\b"#) != nil {
-            return calendar.date(byAdding: .weekOfYear, value: 1, to: start)
+        // "This afternoon" is today plus a daypart. Without this the day never
+        // resolved, so the daypart had nothing to attach to and the reminder
+        // was dropped entirely.
+        if firstMatch(in: text, pattern: #"\bthis\s+(?:morning|afternoon|evening)\b"#) != nil {
+            return start
         }
         if firstMatch(in: text, pattern: #"\bthis\s+weekend\b"#) != nil {
             return nextWeekday(7, after: referenceDate, includeToday: true, calendar: calendar)
         }
-        return nil
+        if let endOfMonth = endOfMonth(in: text, referenceDate: referenceDate, calendar: calendar) {
+            return endOfMonth
+        }
+        return dayOfMonth(in: text, referenceDate: referenceDate, calendar: calendar)
     }
+
+    /// "The end of the month" is the last day the month actually has, which is
+    /// 28, 29, 30 or 31 depending on which month it is — so it is read off the
+    /// calendar rather than approximated. If the last day has already gone by,
+    /// the person means the next one.
+    private static func endOfMonth(
+        in text: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard firstMatch(
+            in: text,
+            pattern: #"\b(?:end|last\s+day)\s+of\s+(?:the\s+)?month\b"#
+        ) != nil else { return nil }
+
+        func lastDay(ofMonthContaining date: Date) -> Date? {
+            guard let interval = calendar.dateInterval(of: .month, for: date),
+                  let last = calendar.date(byAdding: .day, value: -1, to: interval.end) else {
+                return nil
+            }
+            return calendar.startOfDay(for: last)
+        }
+
+        guard let thisMonth = lastDay(ofMonthContaining: referenceDate) else { return nil }
+        if thisMonth >= calendar.startOfDay(for: referenceDate) { return thisMonth }
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: referenceDate) else {
+            return nil
+        }
+        return lastDay(ofMonthContaining: nextMonth)
+    }
+
+    /// "On the 15th" — a day of some month, and the person means the next one
+    /// that has not happened yet.
+    ///
+    /// The ordinal suffix is required. Without it "remind me at 15" is a clock
+    /// reading and "buy 15 eggs" is a quantity, and neither is a date.
+    private static func dayOfMonth(
+        in text: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard let day = dayNumber(in: text), (1...31).contains(day) else { return nil }
+
+        let start = calendar.startOfDay(for: referenceDate)
+        var components = calendar.dateComponents([.year, .month], from: start)
+        components.day = day
+        // `nextDate` walks forward to a month that actually has this day, so
+        // "the 31st" in February lands on March 31 instead of nowhere.
+        if let thisMonth = calendar.date(from: components), thisMonth >= start {
+            return thisMonth
+        }
+        return calendar.nextDate(
+            after: start,
+            matching: DateComponents(day: day),
+            matchingPolicy: .nextTime,
+            direction: .forward
+        ).map(calendar.startOfDay(for:))
+    }
+
+    /// The day number in "the 15th" or "the first".
+    ///
+    /// The word forms matter because "rent is due on the first" is how people
+    /// say it, and the digit form is how they type it. Both are excluded when a
+    /// weekday follows, because "the first Monday every month" is an ordinal
+    /// *weekday* — a monthly series, not the 1st of the month.
+    private static func dayNumber(in text: String) -> Int? {
+        let weekdayGuard = #"(?!\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|week|month|thing))"#
+        if let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b\#(weekdayGuard)"#
+        ), match.count >= 2, let day = Int(match[1]) {
+            return day
+        }
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:on\s+)?the\s+(\#(ActionabilityReader.ordinalWord))\b\#(weekdayGuard)"#
+        ), match.count >= 2 else { return nil }
+        return ordinalWords[match[1].lowercased().replacingOccurrences(of: "-", with: " ")]
+    }
+
+    private static let ordinalWords: [String: Int] = [
+        "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+        "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+        "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
+        "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
+        "nineteenth": 19, "twentieth": 20, "twenty first": 21, "twenty second": 22,
+        "twenty third": 23, "twenty fourth": 24, "twenty fifth": 25,
+        "twenty sixth": 26, "twenty seventh": 27, "twenty eighth": 28,
+        "twenty ninth": 29, "thirtieth": 30, "thirty first": 31,
+    ]
 
     private static func weekday(
         in text: String,
@@ -1357,14 +1854,32 @@ private enum TemporalIntentParser {
             in: text,
             pattern: #"\bnext\s+"# + NSRegularExpression.escapedPattern(for: weekday.name) + #"\b"#
         ) != nil
-        return nextWeekday(
+        guard let nearest = nextWeekday(
             weekday.value,
             after: referenceDate,
-            includeToday: !explicitlyNext,
+            includeToday: false,
             calendar: calendar
-        )
+        ) else { return nil }
+
+        // The contract, chosen because it has to be one thing: "Friday" is the
+        // nearest upcoming Friday, and "next Friday" is Friday of the following
+        // calendar week. Speakers genuinely differ here, so the resolved date is
+        // surfaced on the receipt and a wrong reading is one tap from correct —
+        // that is a better answer than a rule nobody can predict.
+        guard explicitlyNext,
+              calendar.isDate(nearest, equalTo: referenceDate, toGranularity: .weekOfYear) else {
+            return nearest
+        }
+        return calendar.date(byAdding: .weekOfYear, value: 1, to: nearest)
     }
 
+    /// - Parameter includeToday: Whether today counts as a match.
+    ///
+    ///   It does for "this weekend", which is a span the person may already be
+    ///   inside. It does **not** for a weekday named by name: somebody saying
+    ///   "the deadline is Monday" on a Monday morning means the Monday coming,
+    ///   because if they meant today they would have said today. Resolving it
+    ///   to the current day makes a week-away deadline look due within hours.
     private static func nextWeekday(
         _ weekday: Int,
         after referenceDate: Date,
@@ -1390,10 +1905,17 @@ private enum TemporalIntentParser {
     ) -> Date? {
         for month in months {
             let names = month.names.map(NSRegularExpression.escapedPattern).joined(separator: "|")
-            let pattern = #"\b(?:"# + names + #")\s+(\d{1,2})(?:st|nd|rd|th)?\b"#
+            // Dictation returns "December 4th" and "December fourth" for the
+            // same spoken words, and only the digit form used to resolve. The
+            // word form silently produced no date at all, so a capture that
+            // named a day landed with none.
+            let pattern = #"\b(?:"# + names + #")\s+"#
+                + #"(?:(\d{1,2})(?:st|nd|rd|th)?|(\#(ActionabilityReader.ordinalWord)))\b"#
             guard let match = firstMatch(in: text, pattern: pattern),
-                  match.count >= 2,
-                  let day = Int(match[1]) else { continue }
+                  match.count >= 3,
+                  let day = Int(match[1]) ?? ordinalWords[
+                      match[2].lowercased().replacingOccurrences(of: "-", with: " ")
+                  ] else { continue }
 
             return self.date(
                 month: month.value,
@@ -1424,7 +1946,35 @@ private enum TemporalIntentParser {
         return date
     }
 
-    private static func time(in text: String) -> ParsedTime? {
+    /// The wall clock the capture itself happened on, for wording that refers
+    /// back to it rather than naming an hour.
+    private static func captureWallClock(
+        in text: String,
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> ParsedTime? {
+        guard firstMatch(
+            in: text,
+            pattern: #"\bat\s+(?:this|the\s+same)\s+time\b"#
+        ) != nil else { return nil }
+        let components = calendar.dateComponents([.hour, .minute], from: referenceDate)
+        guard let hour = components.hour else { return nil }
+        return ParsedTime(hour: hour, minute: components.minute ?? 0, hasMeridiem: true)
+    }
+
+    private static func time(in text: String, allowsBareClock: Bool) -> ParsedTime? {
+        // "First thing" is the app's one morning policy, deliberately the same
+        // hour a date-only reminder alerts at. Speak It exposes one morning, so
+        // "first thing", "in the morning" and a bare day all mean 9 AM until
+        // the person can configure that in one place — three private
+        // definitions of morning would be three ways to be wrong.
+        if firstMatch(in: text, pattern: #"\bfirst\s+thing\b"#) != nil {
+            return ParsedTime(
+                hour: TemporalResolver.dateOnlyAlertHour,
+                minute: 0,
+                hasMeridiem: true
+            )
+        }
         if containsWord(text, "noon") {
             return ParsedTime(hour: 12, minute: 0, hasMeridiem: true)
         }
@@ -1437,7 +1987,7 @@ private enum TemporalIntentParser {
 
         if let match = firstMatch(
             in: text,
-            pattern: #"\b("# + spokenNumberPattern + #")(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b"#
+            pattern: #"\b("# + clockHourPattern + #")(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b"#
         ), match.count >= 4, let rawHour = number(from: match[1]) {
             let minute = Int(match[2]) ?? 0
             guard (1...12).contains(rawHour), (0...59).contains(minute) else { return nil }
@@ -1446,16 +1996,87 @@ private enum TemporalIntentParser {
             return ParsedTime(hour: hour, minute: minute, hasMeridiem: true)
         }
 
+        // "Half past two", "quarter past six", "ten to six". People say clock
+        // times this way constantly and none of them resolved at all, which
+        // means no reminder fired rather than one firing at the wrong minute.
+        if let spoken = spokenClockFace(in: text) { return spoken }
+
+        // "Four thirty" — the minute spoken as a word straight after the hour,
+        // with no colon to mark it. Read before the pattern below, which would
+        // otherwise take the hour and drop the minute on the floor.
         if let match = firstMatch(
             in: text,
-            pattern: #"\b(?:at|by|before|around)\s+("# + spokenNumberPattern + #")(?::(\d{2}))?\b"#
+            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern + #")\s+(fifteen|thirty|forty[\s-]?five|o'?clock)\b"#
+        ), match.count >= 3, let hour = number(from: match[1]), (1...12).contains(hour) {
+            let minutes = ["fifteen": 15, "thirty": 30, "fortyfive": 45, "forty five": 45, "forty-five": 45]
+            let minute = minutes[match[2].lowercased()] ?? 0
+            return committedAlarmHour(
+                ParsedTime(hour: hour, minute: minute, hasMeridiem: false),
+                in: text
+            )
+        }
+
+        if allowsBareClock, let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern + #")(?::(\d{2}))?\b"#
         ), match.count >= 3, let hour = number(from: match[1]) {
             let minute = Int(match[2]) ?? 0
             guard (1...12).contains(hour), (0...59).contains(minute) else { return nil }
-            return ParsedTime(hour: hour, minute: minute, hasMeridiem: false)
+            return committedAlarmHour(
+                ParsedTime(hour: hour, minute: minute, hasMeridiem: false),
+                in: text
+            )
         }
 
         return nil
+    }
+
+    /// Commits a bare hour inside an alarm request to the morning.
+    ///
+    /// Every other bare hour is genuinely two-way and is resolved by picking
+    /// the next one that has not passed. An alarm is not: "wake me at 6:30",
+    /// said at 10 AM, resolved to 6:30 *this evening* — twelve hours off, and
+    /// silent at the moment it was needed. Marking it as carrying a meridiem is
+    /// what makes the resolver roll forward to tomorrow morning instead.
+    private static func committedAlarmHour(_ time: ParsedTime, in text: String) -> ParsedTime {
+        // The window is deliberately not 1-11. "Set an alarm for the meeting at
+        // 3" names a 3 PM meeting, and nobody routinely sets a 3 AM alarm — so
+        // the rule starts where alarms actually start.
+        guard !time.hasMeridiem, (4...11).contains(time.hour) else { return time }
+        guard firstMatch(
+            in: text,
+            pattern: #"\b(?:set\s+an?\s+alarm|alarms?\s+(?:for|at)|wake\s+me)\b"#
+        ) != nil else { return time }
+        // A daypart in the same sentence was explicit, so it already decided.
+        guard DaypartHint(in: text) == nil else { return time }
+        return ParsedTime(hour: time.hour, minute: time.minute, hasMeridiem: true)
+    }
+
+    /// "Half past two", "quarter past six", "quarter to seven", "ten to six".
+    ///
+    /// The minute is spoken before the hour, which is why none of these matched
+    /// a pattern built around "hour optionally followed by minutes".
+    private static func spokenClockFace(in text: String) -> ParsedTime? {
+        let offsets = #"(?:half|quarter|five|ten|twenty|twenty[\s-]five|\d{1,2})"#
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"\b(\#(offsets))\s+(past|after|to|till|til|before)\s+("# + clockHourPattern + #")\b"#
+        ), match.count >= 4, let hour = number(from: match[3]) else { return nil }
+
+        let minuteWords: [String: Int] = [
+            "half": 30, "quarter": 15, "five": 5, "ten": 10,
+            "twenty": 20, "twenty five": 25, "twenty-five": 25,
+        ]
+        let key = match[1].lowercased()
+        guard let offset = minuteWords[key] ?? Int(key), (1...59).contains(offset),
+              (1...12).contains(hour) else { return nil }
+
+        let isBefore = ["to", "till", "til", "before"].contains(match[2].lowercased())
+        if isBefore {
+            let previous = hour == 1 ? 12 : hour - 1
+            return ParsedTime(hour: previous, minute: 60 - offset, hasMeridiem: false)
+        }
+        return ParsedTime(hour: hour, minute: offset, hasMeridiem: false)
     }
 
     /// A named future day removes the date ambiguity but spoken clock hours
@@ -1463,8 +2084,28 @@ private enum TemporalIntentParser {
     /// such as "call Catherine tomorrow at 5" means the afternoon/evening far
     /// more often than before dawn. Keep morning defaults from 8 onward, and
     /// never override an explicit meridiem or daypart.
-    private static func defaultedBareHourOnNamedDay(_ time: ParsedTime) -> ParsedTime {
-        guard !time.hasMeridiem, (1...7).contains(time.hour) else { return time }
+    ///
+    /// A daypart word in the same sentence outranks that default outright: "at
+    /// seven" is a guess, and "in the morning at seven" is not one.
+    private static func defaultedBareHourOnNamedDay(_ time: ParsedTime, in text: String) -> ParsedTime {
+        guard !time.hasMeridiem else { return time }
+        if let daypart = DaypartHint(in: text) {
+            return ParsedTime(
+                hour: daypart.hour(for: time.hour),
+                minute: time.minute,
+                hasMeridiem: false
+            )
+        }
+        // Some nouns name the evening as plainly as a daypart word
+        // does. "Dinner reservation at 8" is not breakfast.
+        if firstMatch(
+            in: text,
+            pattern: #"\b(?:dinner|supper|drinks|concert|movie|show|party|game|match)\b"#
+        ) != nil, (5...11).contains(time.hour) {
+            return ParsedTime(hour: time.hour + 12, minute: time.minute, hasMeridiem: false)
+        }
+
+        guard (1...7).contains(time.hour) else { return time }
         return ParsedTime(
             hour: time.hour + 12,
             minute: time.minute,
@@ -1476,7 +2117,8 @@ private enum TemporalIntentParser {
     /// names no time at all — that absence is the whole point, and it is what
     /// separates "tomorrow" (a day) from "tomorrow morning" (a day and a time).
     private static func dayPartTime(in text: String) -> ParsedTime? {
-        if containsWord(text, "tonight") || containsWord(text, "evening") {
+        if containsWord(text, "tonight") || containsWord(text, "evening")
+            || containsWord(text, "night") {
             return ParsedTime(hour: 20, minute: 0, hasMeridiem: true)
         }
         if containsWord(text, "afternoon") {

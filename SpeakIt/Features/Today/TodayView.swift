@@ -643,9 +643,7 @@ struct TodayView: View {
                     Text(recoveryCount == 1 ? "One capture needs attention" : "\(recoveryCount) captures need attention")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.speakInk)
-                    Text(recoveryAudioDrafts.isEmpty
-                         ? "Your original words are safe. Tap to organize again or keep them untouched."
-                         : "A protected recording is safe on this iPhone. Tap to recover it.")
+                    Text(CaptureRecoveryPresentation.attentionDetail(for: recoveryAudioDrafts))
                         .font(.caption)
                         .foregroundStyle(Color.speakMuted)
                         .multilineTextAlignment(.leading)
@@ -669,7 +667,7 @@ struct TodayView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.speakDivider, lineWidth: 1)
         }
-        .accessibilityHint("Opens the original capture and recovery actions")
+        .accessibilityHint("Opens capture history, where you can try again, type the thought, or delete the recording")
     }
 
     private func reloadRecoveryAudioDrafts() {
@@ -1127,9 +1125,25 @@ struct CaptureHistoryView: View {
 
     @State private var recoveryDrafts: [CaptureDraftStore.Draft] = []
     @State private var recoveringDraftID: UUID?
+    @State private var pendingDeletion: RecoverySelection?
+    @State private var typingSelection: RecoverySelection?
+    @State private var recoveryAlert: RecoveryAlert?
     @State private var selectedSession: CaptureSession?
     @State private var errorMessage: String?
     @State private var successNotice: String?
+
+    /// `CaptureDraftStore.Draft` is a value with no identity of its own, so
+    /// sheets and dialogs address it through its stable draft id.
+    fileprivate struct RecoverySelection: Identifiable {
+        let draft: CaptureDraftStore.Draft
+        var id: UUID { draft.id }
+    }
+
+    private struct RecoveryAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     var body: some View {
         NavigationStack {
@@ -1140,17 +1154,16 @@ struct CaptureHistoryView: View {
                             recoveryRow(draft)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
-                                        CaptureDraftStore.clear(id: draft.id)
-                                        reloadDrafts()
+                                        pendingDeletion = RecoverySelection(draft: draft)
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
                         }
                     } header: {
-                        Text("Ready to recover")
+                        Text(CaptureRecoveryPresentation.sectionTitle(for: recoveryDrafts))
                     } footer: {
-                        Text("These temporary recordings stay only on this iPhone and are deleted after a successful recovery.")
+                        Text(CaptureRecoveryPresentation.sectionFooter)
                     }
                 }
 
@@ -1212,19 +1225,60 @@ struct CaptureHistoryView: View {
                 reloadDrafts()
             }
         }
+        // The recovery presentations hang off the navigation stack rather than
+        // the list: a second `sheet(item:)` or `alert` on the same view is
+        // silently dropped by SwiftUI, which would leave these actions inert.
+        .alert(
+            recoveryAlert?.title ?? "",
+            isPresented: Binding(
+                get: { recoveryAlert != nil },
+                set: { if !$0 { recoveryAlert = nil } }
+            ),
+            presenting: recoveryAlert
+        ) { _ in
+            Button("OK", role: .cancel) { recoveryAlert = nil }
+        } message: { alert in
+            Text(alert.message)
+        }
+        .confirmationDialog(
+            "Delete this recording?",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDeletion
+        ) { selection in
+            Button("Delete Recording", role: .destructive) {
+                deleteRecording(selection.draft)
+            }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: { selection in
+            Text(deletionMessage(for: selection.draft))
+        }
+        .sheet(item: $typingSelection) { selection in
+            RecoveryTypeInsteadView(draft: selection.draft) { typedText in
+                await saveTypedRecovery(typedText, for: selection.draft)
+            }
+        }
         .preferredColorScheme(nil)
     }
 
+    /// Every protected recording carries its own way out: retry, reconstruct by
+    /// typing, or delete. Leaving retry as the only action is what let a
+    /// recording the recognizer found no words in sit on Today forever.
     private func recoveryRow(_ draft: CaptureDraftStore.Draft) -> some View {
-        Button {
-            recover(draft)
-        } label: {
-            HStack(spacing: 14) {
+        let presentation = CaptureRecoveryPresentation.row(for: draft)
+        let isRecovering = recoveringDraftID == draft.id
+        let isBusy = recoveringDraftID != nil
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
                 ZStack {
                     Circle()
                         .fill(Color.speakSurface)
                         .frame(width: 42, height: 42)
-                    if recoveringDraftID == draft.id {
+                    if isRecovering {
                         ProgressView()
                             .tint(Color.speakInk)
                     } else {
@@ -1235,32 +1289,120 @@ struct CaptureHistoryView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(recoveringDraftID == draft.id ? "Recovering your words…" : "Interrupted voice capture")
+                    Text(isRecovering ? "Recovering your words…" : presentation.title)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Color.speakInk)
                     Text("\(draft.captureSource.displayName) · \(draft.startedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(Color.speakMuted)
-                    if let message = draft.recoveryFailureMessage,
-                       draft.recoveryStatus == .failed {
-                        Text(message)
+                    if !isRecovering {
+                        Text(presentation.detail)
                             .font(.caption)
                             .foregroundStyle(Color.speakMuted)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
-                Spacer(minLength: 8)
-
-                Image(systemName: "arrow.clockwise")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.speakMuted)
+                Spacer(minLength: 0)
             }
-            .contentShape(Rectangle())
+
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    tryAgainAction(draft, fillsWidth: true)
+                    typeInsteadAction(draft, fillsWidth: true)
+                }
+                deleteAction(draft, fillsWidth: true)
+            }
+            .disabled(isBusy)
+            .opacity(isBusy ? 0.5 : 1)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(presentation.title). \(presentation.detail)")
+    }
+
+    private func tryAgainAction(
+        _ draft: CaptureDraftStore.Draft,
+        fillsWidth: Bool
+    ) -> some View {
+        recoveryAction(
+            "Try Again",
+            systemImage: "arrow.clockwise",
+            hint: "Transcribes the protected local recording again",
+            fillsWidth: fillsWidth
+        ) {
+            recover(draft)
+        }
+    }
+
+    private func typeInsteadAction(
+        _ draft: CaptureDraftStore.Draft,
+        fillsWidth: Bool
+    ) -> some View {
+        recoveryAction(
+            "Type Instead",
+            systemImage: "keyboard",
+            hint: "Writes this thought yourself and saves it",
+            fillsWidth: fillsWidth
+        ) {
+            typingSelection = RecoverySelection(draft: draft)
+        }
+    }
+
+    private func deleteAction(
+        _ draft: CaptureDraftStore.Draft,
+        fillsWidth: Bool
+    ) -> some View {
+        recoveryAction(
+            "Delete Recording",
+            systemImage: "trash",
+            hint: "Permanently removes this recording",
+            isDestructive: true,
+            fillsWidth: fillsWidth
+        ) {
+            pendingDeletion = RecoverySelection(draft: draft)
+        }
+    }
+
+    private func recoveryAction(
+        _ title: String,
+        systemImage: String,
+        hint: String,
+        isDestructive: Bool = false,
+        fillsWidth: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            // Spelled out rather than built with `Label`, which quietly drops
+            // its title when space is tight — an unlabelled trash icon is not
+            // an acceptable way to offer a permanent delete.
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                Text(title)
+                    .lineLimit(fillsWidth ? 2 : 1)
+                    .multilineTextAlignment(.center)
+            }
+                .font(.footnote.weight(.semibold))
+                // A natural-width candidate is what lets `ViewThatFits`
+                // measure the labels honestly and reject a row that would wrap.
+                .fixedSize(horizontal: !fillsWidth, vertical: true)
+                .foregroundStyle(isDestructive ? Color.red : Color.speakInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(minHeight: 44)
+                .frame(maxWidth: fillsWidth ? .infinity : nil)
+                .background(
+                    Color.speakSurface,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.speakDivider, lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.speakIt)
-        .disabled(recoveringDraftID != nil)
-        .accessibilityHint("Re-transcribes the protected local recording")
+        .accessibilityHint(hint)
     }
 
     private func sessionRow(_ session: CaptureSession) -> some View {
@@ -1299,7 +1441,7 @@ struct CaptureHistoryView: View {
     private func recover(_ draft: CaptureDraftStore.Draft) {
         guard recoveringDraftID == nil else { return }
         guard let repository else {
-            errorMessage = "Local storage is unavailable. Your recording is still safe."
+            present(.storageUnavailable)
             return
         }
 
@@ -1316,16 +1458,76 @@ struct CaptureHistoryView: View {
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 recoveringDraftID = nil
+                reloadDrafts()
                 showSuccess("Capture recovered")
             } catch {
-                CaptureDraftStore.markFailed(
-                    id: draft.id,
-                    message: error.localizedDescription
-                )
+                // A failed attempt never costs the person the recording. It is
+                // marked, described precisely, and left for another try, a
+                // typed reconstruction, or a deliberate delete.
+                CaptureDraftStore.markFailed(id: draft.id, error: error)
                 recoveringDraftID = nil
-                errorMessage = "Recovery didn’t finish, but the recording is still safe. \(error.localizedDescription)"
+                reloadDrafts()
+                present(CaptureRecoveryFailureKind(error: error))
             }
         }
+    }
+
+    /// The one action that must always work. It depends on neither the
+    /// recognizer nor the repository, and it survives a relaunch.
+    private func deleteRecording(_ draft: CaptureDraftStore.Draft) {
+        pendingDeletion = nil
+        CaptureDraftStore.deleteRecording(id: draft.id)
+        if recoveringDraftID == draft.id {
+            recoveringDraftID = nil
+        }
+        reloadDrafts()
+        showSuccess("Recording deleted")
+    }
+
+    private func deletionMessage(for draft: CaptureDraftStore.Draft) -> String {
+        CaptureRecoveryPresentation.row(for: draft).stopsPromisingRecovery
+            ? "This recording could not be recovered and will be permanently removed."
+            : "This recording will be permanently removed, and its words are not saved anywhere else."
+    }
+
+    /// Saves the person's own reconstruction. The recording is only released
+    /// once those words are durably stored.
+    private func saveTypedRecovery(
+        _ text: String,
+        for draft: CaptureDraftStore.Draft
+    ) async -> Bool {
+        let typed = CaptureTextLimit.clamp(
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        guard !typed.isEmpty else { return false }
+        guard let repository else {
+            present(.storageUnavailable)
+            return false
+        }
+
+        do {
+            _ = try await repository.createCaptureResult(
+                text: typed,
+                source: .inAppText,
+                createdAt: draft.startedAt,
+                schedulesReminders: true
+            )
+            CaptureDraftStore.deleteRecording(id: draft.id)
+            typingSelection = nil
+            reloadDrafts()
+            showSuccess("Thought saved")
+            return true
+        } catch {
+            errorMessage = "Your words weren’t saved, so nothing was removed. \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func present(_ kind: CaptureRecoveryFailureKind) {
+        recoveryAlert = RecoveryAlert(
+            title: CaptureRecoveryPresentation.alertTitle(for: kind),
+            message: CaptureRecoveryPresentation.alertMessage(for: kind)
+        )
     }
 
     private func reloadDrafts() {
@@ -1350,6 +1552,91 @@ struct CaptureHistoryView: View {
         case .pending: "clock"
         case .organizing: "arrow.triangle.2.circlepath"
         case .failed: "exclamationmark"
+        }
+    }
+}
+
+/// Reconstructing a thought the recognizer could not read. The recording stays
+/// exactly where it is until these words are saved, so a failed save costs
+/// nothing.
+private struct RecoveryTypeInsteadView: View {
+    let draft: CaptureDraftStore.Draft
+    let onSave: (String) async -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var typedText = ""
+    @State private var isSaving = false
+    @FocusState private var isTextFocused: Bool
+
+    private var trimmedText: String {
+        typedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(CaptureRecoveryPresentation.row(for: draft).detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.speakMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                TextEditor(text: $typedText)
+                    .focused($isTextFocused)
+                    .font(.body)
+                    .foregroundStyle(Color.speakInk)
+                    .scrollContentBackground(.hidden)
+                    .padding(10)
+                    .background(
+                        Color.speakSurface,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .overlay(alignment: .topLeading) {
+                        if typedText.isEmpty {
+                            Text("Write this thought in your own words")
+                                .font(.body)
+                                .foregroundStyle(Color.speakMuted)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 18)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .disabled(isSaving)
+
+                Text("Saving keeps your typed words and removes the recording.")
+                    .font(.caption)
+                    .foregroundStyle(Color.speakMuted)
+            }
+            .padding(16)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(Color.speakBackground)
+            .navigationTitle("Type instead")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(trimmedText.isEmpty || isSaving)
+                }
+            }
+            .onAppear {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(220))
+                    isTextFocused = true
+                }
+            }
+        }
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task { @MainActor in
+            let saved = await onSave(typedText)
+            isSaving = false
+            if saved { dismiss() }
         }
     }
 }
@@ -1812,6 +2099,11 @@ struct SpeakItPrivacyView: View {
                     symbol: "chart.bar.xaxis",
                     title: "Anonymous analytics are content-free",
                     detail: "If enabled in Settings, Speak It measures actions such as captures saved, tasks completed, and subscription steps. It never sends recordings, transcripts, task titles, memory text, names, email addresses, or search words. You can turn this off at any time."
+                )
+                privacyRow(
+                    symbol: "person.2",
+                    title: "Referrals use an anonymous ID",
+                    detail: "If you use Give a month. Get a month., Speak It sends a random referral ID and App Store-signed purchase identifiers to our referral service. We keep only the referral and reward ledger needed to verify rewards and prevent duplicate or self-referrals. Your thoughts, recordings, profile, and contact list are never included."
                 )
             }
             .navigationTitle("Privacy")

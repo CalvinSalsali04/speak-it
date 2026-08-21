@@ -8,7 +8,7 @@ Speak It is a local-first SwiftUI iPhone app for capturing thoughts before they 
 
 - macOS with Xcode 15 or newer
 - iOS 17 or newer simulator/device
-- No external packages or accounts
+- No account is required for the iPhone app
 
 ## Run the app
 
@@ -43,4 +43,4 @@ Use any installed iOS 17+ simulator name if `iPhone 16` is unavailable.
 3. Add the ready-made one-action **Speak It Capture** shortcut.
 4. In Speak It, open **Capture anywhere** and choose the recommended method for that iPhone: Lock Screen, Action Button, or Back Tap. The guide remains incomplete until a real outside-the-app capture has been saved successfully.
 
-To capture quickly from the Home Screen, touch and hold the Speak It icon and choose **Start speaking** or **Type a thought**. Speak It Capture is also available through Siri, Spotlight, the Action Button, Back Tap, the Lock Screen widget, and the iOS 18 Control Center control. No account, backend, or external package is required. Optional encrypted synchronization uses the user's Apple iCloud account in properly entitled Release builds.
+To capture quickly from the Home Screen, touch and hold the Speak It icon and choose **Start speaking** or **Type a thought**. Speak It Capture is also available through Siri, Spotlight, the Action Button, Back Tap, the Lock Screen widget, and the iOS 18 Control Center control. Capture, organization, reminders, and the user's library remain local-first and require no Speak It account or backend. Optional encrypted synchronization uses the user's Apple iCloud account in properly entitled Release builds. The separately deployed `ReferralService` handles only anonymous, Apple-verified referral and reward records.

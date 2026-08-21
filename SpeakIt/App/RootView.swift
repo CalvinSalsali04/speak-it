@@ -56,12 +56,20 @@ struct RootView: View {
     @State private var captureInitialText = ""
     @State private var capturePerformance: CapturePerformanceTrace?
     @State private var showsFreeLimit = false
+    @State private var activeReferralCode: String?
     @State private var returnsToSetupAfterExternalCapture = false
     @State private var hasPerformedMaintenance = false
     @State private var isImportingSharedCaptures = false
     @State private var sharedImportNotice: String?
     @State private var fullScreenDestination: FullScreenDestination? = RootView.initialFullScreenDestination
     @State private var hasTrackedInitialScreen = false
+    // A fresh identity per presentation. `.fullScreenCover(item:)` keys off
+    // FullScreenDestination's stable rawValue id, so dismissing and
+    // re-presenting the same capture case in quick succession can otherwise
+    // let SwiftUI reuse the outgoing CaptureView's @State (typed text,
+    // in-flight draft) instead of starting a clean session — see D-2 in
+    // FINAL_RELEASE_AUDIT.md.
+    @State private var captureSessionToken = UUID()
 
     private var appearance: SpeakItAppearance {
         SpeakItAppearance(rawValue: appearanceRawValue) ?? .firstInstallDefault
@@ -143,8 +151,10 @@ struct RootView: View {
                 )
             case .captureVoice:
                 captureView(initialMode: .voice)
+                    .id(captureSessionToken)
             case .captureText:
                 captureView(initialMode: .text)
+                    .id(captureSessionToken)
             case .firstCaptureGuide:
                 FirstCaptureGuideView(
                     onDone: finishFirstCaptureGuide
@@ -156,7 +166,23 @@ struct RootView: View {
         .sheet(isPresented: $showsFreeLimit) {
             SpeakItProView(context: .freeLimit)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { activeReferralCode != nil },
+                set: { if !$0 { activeReferralCode = nil } }
+            )
+        ) {
+            NavigationStack {
+                ReferralProgramView(initialReferralCode: activeReferralCode)
+            }
+            .environmentObject(subscriptionStore)
+        }
         .task {
+            if hasCompletedWelcome,
+               ReferralProgramConfiguration.isEnabled,
+               let pendingCode = PendingReferralStore.code {
+                activeReferralCode = pendingCode
+            }
             if !hasTrackedInitialScreen {
                 hasTrackedInitialScreen = true
                 SpeakItAnalytics.track(.screenViewed(
@@ -185,6 +211,42 @@ struct RootView: View {
                 }
                 UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMemoryQAExamples")
             }
+            if ProcessInfo.processInfo.arguments.contains("--load-marketing-examples"),
+               let repository,
+               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedMarketingExamples") {
+                // Home first. A "when I get home" capture with no Home configured
+                // is a blocked reminder, and a blocked reminder is exactly the
+                // Needs review row these fixtures exist to avoid.
+                if SavedPlaceStore.place(for: .home) == nil {
+                    SavedPlaceStore.set(
+                        SavedPlace(
+                            latitude: 43.6532,
+                            longitude: -79.3832,
+                            label: "Home"
+                        ),
+                        for: .home
+                    )
+                }
+                let referenceDate = Date.now
+                var pinnable: [String: UUID] = [:]
+                for (index, text) in (SampleDataLibrary.Marketing.today
+                    + SampleDataLibrary.Marketing.memory).enumerated() {
+                    let result = try? await repository.createCaptureResult(
+                        text: text,
+                        source: .sample,
+                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        schedulesReminders: false
+                    )
+                    if let item = result?.items.first {
+                        pinnable[text] = item.id
+                    }
+                }
+                for text in SampleDataLibrary.Marketing.pinned {
+                    guard let id = pinnable[text] else { continue }
+                    MemoryPinStore.setPinned(true, for: id)
+                }
+                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMarketingExamples")
+            }
             if ProcessInfo.processInfo.arguments.contains("--load-today-examples"),
                let repository,
                !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedTodayQAExamples") {
@@ -205,6 +267,7 @@ struct RootView: View {
             // with as little main-actor work as possible.
             await Task.yield()
             CaptureDraftStore.pruneEmptyTextDrafts()
+            CaptureDraftStore.pruneResolvedTombstones()
             await recoverInterruptedAudioDrafts()
             repository?.recoverUnorganizedCaptures()
             repository?.recoverInterruptedCaptureDraft()
@@ -410,6 +473,13 @@ struct RootView: View {
     private func completeWelcome(analyticsPath: AnalyticsCaptureEntry = .dock) {
         markWelcomeComplete(analyticsPath: analyticsPath)
         fullScreenDestination = nil
+        if ReferralProgramConfiguration.isEnabled,
+           let pendingCode = PendingReferralStore.code {
+            Task { @MainActor in
+                await Task.yield()
+                activeReferralCode = pendingCode
+            }
+        }
     }
 
     private func markWelcomeComplete(analyticsPath: AnalyticsCaptureEntry) {
@@ -483,6 +553,7 @@ struct RootView: View {
             activatedAt: CapturePerformanceClock.now,
             recordsExternalActivation: fromExternalSource
         )
+        captureSessionToken = UUID()
         fullScreenDestination = initialMode == .text ? .captureText : .captureVoice
     }
 
@@ -601,10 +672,19 @@ struct RootView: View {
             mode: request.initialMode == .text ? .text : .voice,
             entry: .quickAction
         ))
+        captureSessionToken = UUID()
         fullScreenDestination = request.initialMode == .text ? .captureText : .captureVoice
     }
 
     private func handleDeepLink(_ url: URL) {
+        if let referralCode = ReferralDeepLink.code(from: url) {
+            PendingReferralStore.code = referralCode
+            if hasCompletedWelcome, ReferralProgramConfiguration.isEnabled {
+                activeReferralCode = referralCode
+            }
+            return
+        }
+
         guard url.scheme?.lowercased() == "speakit" else { return }
 
         if url.host?.lowercased() == "setup" {
@@ -652,6 +732,7 @@ struct RootView: View {
             recordsExternalActivation: true
         )
         SpeakItAnalytics.track(.captureStarted(mode: .voice, entry: .deepLink))
+        captureSessionToken = UUID()
         fullScreenDestination = .captureVoice
     }
 
@@ -684,7 +765,12 @@ struct RootView: View {
                 )
                 SharedCaptureInbox.remove(at: pending.url)
                 if result.createdNewCapture {
-                    subscriptionStore.recordSuccessfulCapture()
+                    // Cancelling, completing or withdrawing manages existing
+                    // content rather than storing a new thought, so it does not
+                    // spend one of the ten free captures.
+                    if result.consumesFreeCapture {
+                        subscriptionStore.recordSuccessfulCapture()
+                    }
                     SpeakItAnalytics.track(.captureSaved(
                         source: .shareSheet,
                         itemCount: result.itemCount,
@@ -718,6 +804,11 @@ struct RootView: View {
         var recoveredCount = 0
 
         for draft in CaptureDraftStore.recoverableAudioDrafts() {
+            // A recording the recognizer has already read and found no words in
+            // will not read differently on the next launch. Re-running it every
+            // activation only churns the card's state; it stays listed, and a
+            // deliberate retry from capture history is still available.
+            guard !draft.recoveryFailureKind.stopsPromisingRecovery else { continue }
             CaptureDraftStore.markProcessing(id: draft.id)
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
@@ -729,7 +820,12 @@ struct RootView: View {
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 if result.createdNewCapture {
-                    subscriptionStore.recordSuccessfulCapture()
+                    // Cancelling, completing or withdrawing manages existing
+                    // content rather than storing a new thought, so it does not
+                    // spend one of the ten free captures.
+                    if result.consumesFreeCapture {
+                        subscriptionStore.recordSuccessfulCapture()
+                    }
                     SpeakItAnalytics.track(.captureSaved(
                         source: .recovery,
                         itemCount: result.itemCount,
@@ -739,10 +835,7 @@ struct RootView: View {
                     recoveredCount += 1
                 }
             } catch {
-                CaptureDraftStore.markFailed(
-                    id: draft.id,
-                    message: error.localizedDescription
-                )
+                CaptureDraftStore.markFailed(id: draft.id, error: error)
             }
         }
 

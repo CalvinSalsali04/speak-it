@@ -60,7 +60,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// perfectly healthy while nothing was monitoring it.
     enum ReminderState: Equatable, Sendable {
         case none
-        case time(Date, isDateOnly: Bool)
+        /// `delivery` is `.none` for a date the person never asked to be
+        /// reminded about — "buy milk tomorrow" carries a date but nothing
+        /// will alert on it. Carrying delivery here, rather than inferring
+        /// "has a date" as "will alert", is what lets a surface tell those two
+        /// rows apart. See FINAL_RELEASE_AUDIT.md B-1/C-1.
+        case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
         case place(LocationIntent)
         case blockedPlace(LocationIntent, LocationReminderBlocker)
 
@@ -70,7 +75,18 @@ struct ItemPresentation: Equatable, Sendable {
         var isArmed: Bool {
             switch self {
             case .none, .blockedPlace: false
-            case .time, .place: true
+            case let .time(_, _, delivery): delivery != .none
+            case .place: true
+            }
+        }
+
+        /// What a row's persistent glyph should show, or `nil` for a date with
+        /// nothing armed on it. A place trigger is its own glyph today
+        /// (`CapturedItemRow.isPlaceTriggered`), so it is not represented here.
+        var alertGlyph: ReminderDelivery? {
+            switch self {
+            case let .time(_, _, delivery) where delivery != .none: delivery
+            default: nil
             }
         }
 
@@ -144,9 +160,29 @@ struct ItemPresentation: Equatable, Sendable {
             return .place(locationIntent)
         }
         if let date = item.reminderDate ?? item.dueDate {
-            return .time(date, isDateOnly: item.isDateOnly)
+            return .time(date, isDateOnly: item.isDateOnly, delivery: reminderDelivery(for: item))
         }
         return .none
+    }
+
+    /// What will actually make a timed item fire. Delivery kind is derived
+    /// from the original wording, never persisted on the item, the same way
+    /// `ReminderScheduleRequest` and the editor's own `inferredReminderDelivery`
+    /// already read it — one fewer place a stored copy could disagree with the
+    /// transcript that is the source of truth for it.
+    private static func reminderDelivery(for item: CapturedItem) -> ReminderDelivery {
+        guard item.reminderDate != nil else { return .none }
+        let segmentDelivery = ThoughtOrganizer.organize(
+            item.originalTextSegment,
+            referenceDate: item.createdAt
+        ).reminderDelivery
+        guard segmentDelivery == .none, let session = item.captureSession else {
+            return segmentDelivery
+        }
+        return ThoughtOrganizer.organize(
+            session.originalTranscription,
+            referenceDate: session.createdAt
+        ).reminderDelivery
     }
 
     @MainActor
@@ -183,7 +219,7 @@ struct ItemPresentation: Equatable, Sendable {
             // report, and printing one would be a guess presented as a fact.
             return intent.place.displayName
 
-        case let .time(date, isDateOnly):
+        case let .time(date, isDateOnly, _):
             // A day with no time of day shows no time. Rendering the start of
             // that day would read as "12:00 AM", a precision the person never
             // gave.
@@ -233,7 +269,7 @@ struct ItemPresentation: Equatable, Sendable {
         case .none:
             return nil
 
-        case let .time(date, isDateOnly):
+        case let .time(date, isDateOnly, _):
             let stamp = isDateOnly
                 ? date.formatted(date: .abbreviated, time: .omitted)
                 : date.formatted(date: .abbreviated, time: .shortened)

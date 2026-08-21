@@ -22,6 +22,14 @@ struct ItemEditorView: View {
     /// edits — and hop to a different row mid-edit.
     private let requirement: ClarificationRequirement?
 
+    /// Set when this review row is standing in for a broad cancel or complete
+    /// the person asked for but that Speak It never executes automatically.
+    /// When present it replaces the ordinary edit form outright: there is
+    /// nothing to classify here, only a request to confirm or decline. See
+    /// FINAL_RELEASE_AUDIT.md F-1.
+    private let pendingOperation: PendingOperationStore.StoredPendingOperation?
+    @State private var showsPendingOperationConfirmation = false
+
     @State private var title: String
     @State private var itemType: ItemType
     @State private var category: ItemCategory
@@ -60,6 +68,7 @@ struct ItemEditorView: View {
 
     init(item: CapturedItem) {
         self.item = item
+        self.pendingOperation = PendingOperationStore.record(for: item.id)
         self.requirement = item.clarificationRequirement
         self.hadLocationIntent = item.locationIntent != nil
         _editedLocationIntent = State(initialValue: item.locationIntent)
@@ -81,6 +90,14 @@ struct ItemEditorView: View {
     }
 
     var body: some View {
+        if let pendingOperation {
+            pendingOperationConfirmationView(pendingOperation)
+        } else {
+            editorForm
+        }
+    }
+
+    private var editorForm: some View {
         NavigationStack {
             Form {
                 if let requirement {
@@ -448,6 +465,95 @@ struct ItemEditorView: View {
         }
     }
 
+    /// Stands in for the whole editor when this row exists only to confirm or
+    /// decline a held broad cancel or complete. There is no title, type, or
+    /// date to classify — offering those fields is what previously left the
+    /// person with no way to actually confirm the thing the receipt promised.
+    @ViewBuilder
+    private func pendingOperationConfirmationView(
+        _ pending: PendingOperationStore.StoredPendingOperation
+    ) -> some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Spacer()
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.speakWarning)
+                Text(pendingOperationTitle(pending))
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text(item.displayTitle)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.speakMuted)
+                    .multilineTextAlignment(.center)
+                Spacer()
+
+                Button(role: .destructive) {
+                    showsPendingOperationConfirmation = true
+                } label: {
+                    Text(pendingOperationActionLabel(pending))
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                }
+                .buttonStyle(.speakIt)
+
+                Button("Never mind") {
+                    perform(dismissAfterward: true) {
+                        try repository?.dismissPendingOperation(item)
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .buttonStyle(.speakIt)
+            }
+            .padding(24)
+            .navigationTitle("Confirm")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .confirmationDialog(
+                pendingOperationTitle(pending),
+                isPresented: $showsPendingOperationConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(pendingOperationActionLabel(pending), role: .destructive) {
+                    perform(dismissAfterward: true) {
+                        try repository?.confirmPendingOperation(item)
+                    }
+                }
+                Button("Never mind", role: .cancel) {}
+            } message: {
+                Text("This cannot be undone.")
+            }
+            .repositoryErrorAlert($errorMessage)
+        }
+    }
+
+    private func pendingOperationTitle(
+        _ pending: PendingOperationStore.StoredPendingOperation
+    ) -> String {
+        let count = pending.candidateIDs.count
+        let subject = count == 1 ? "1 item" : "\(count) items"
+        switch pending.operation {
+        case .cancel: return "Cancel \(subject)?"
+        case .complete: return "Mark \(subject) complete?"
+        case .create, .retract: return "Confirm this?"
+        }
+    }
+
+    private func pendingOperationActionLabel(
+        _ pending: PendingOperationStore.StoredPendingOperation
+    ) -> String {
+        switch pending.operation {
+        case .cancel: return "Cancel everything"
+        case .complete: return "Mark everything complete"
+        case .create, .retract: return "Confirm"
+        }
+    }
+
     private var calendarStartDate: Date? {
         guard itemType.isActionable else { return nil }
         if hasDueDate { return dueDate }
@@ -724,7 +830,7 @@ struct ItemEditorView: View {
         case .type: itemType != .unclear
         // Captured before place reminders existed, so the way out is still
         // giving it a time instead.
-        case .unsupportedLocationTrigger: hasReminder || hasDueDate
+        case .unsupportedLocationTrigger, .unsupportedConditionTrigger: hasReminder || hasDueDate
         // A place reminder is unblocked by granting permission or configuring
         // Home — neither of which happens on this form — so nothing here clears
         // it. Adding a time is still a legitimate way out.
@@ -736,7 +842,9 @@ struct ItemEditorView: View {
         case .combinedTimeAndPlace: hasReminder
         // Both are resolved elsewhere — on the split screen, or by the person
         // turning off "Needs clarification" — so neither clears from this form.
-        case .splitDecision, .confirmation, .none: false
+        // `.pendingOperation` never reaches this form at all: `body` renders
+        // `pendingOperationConfirmationView` for it instead.
+        case .splitDecision, .confirmation, .pendingOperation, .none: false
         }
     }
 
@@ -766,6 +874,18 @@ struct ItemEditorView: View {
         }
     }
 
+    /// The type this edit should be saved as.
+    ///
+    /// Scheduling a note by hand is the person saying it is something to do.
+    /// A date read out of a sentence never promotes a fact — see
+    /// `CapturedItem.isTimeCommitted` — but a date typed into this screen is
+    /// not inferred, it is asked for, and leaving the type alone would file the
+    /// item in Memory with a deadline nothing ever surfaces.
+    private var scheduledItemType: ItemType {
+        guard hasDueDate || hasReminder, !itemType.isActionable else { return itemType }
+        return .task
+    }
+
     private func save() {
         perform(dismissAfterward: true) {
             guard let repository else {
@@ -775,7 +895,7 @@ struct ItemEditorView: View {
                 item,
                 with: ItemEdits(
                     title: title,
-                    itemType: itemType,
+                    itemType: scheduledItemType,
                     category: category,
                     dueDate: hasDueDate ? dueDate : (hasReminder ? reminderDate : nil),
                     reminderDate: hasReminder ? reminderDate : nil,

@@ -1,0 +1,15 @@
+# Copy to `.dev.vars` and fill in. `.dev.vars` is gitignored — never commit real keys.
+#
+# Without these the dashboard renders clearly labelled preview data.
+# With them it renders real, anonymous product analytics.
+
+# PostHog project id. Numeric, from Project settings.
+POSTHOG_PROJECT_ID=
+
+# PostHog PERSONAL API key (starts with `phx_`), scoped to "Query: read".
+# This is NOT the `phc_` project key the iOS app ships with.
+POSTHOG_API_KEY=
+
+# Query API host. Note this differs from the ingestion host the app posts to
+# (`https://us.i.posthog.com`). Leave unset for US cloud.
+# POSTHOG_HOST=https://us.posthog.com

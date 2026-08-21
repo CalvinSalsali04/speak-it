@@ -314,6 +314,31 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Give a month. Get a month."].exists)
     }
 
+    func testVerifiedReferralProgramAppearsOnlyWhenConnected() {
+        let app = launchApp(
+            "--ui-testing-skip-welcome",
+            "--ui-testing-referrals",
+            "--show-account"
+        )
+
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 5))
+        let referrals = app.buttons["settings.referrals"]
+        for _ in 0..<3 where !referrals.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(referrals.waitForExistence(timeout: 4))
+        assertMinimumTouchTarget(referrals)
+        referrals.tap()
+
+        XCTAssertTrue(app.navigationBars["Invite a Friend"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Give a month. Get a month."].exists)
+        XCTAssertTrue(app.staticTexts["1 successful invite"].waitForExistence(timeout: 3))
+        let create = app.buttons["referral.create"]
+        XCTAssertTrue(create.exists)
+        create.tap()
+        XCTAssertTrue(app.buttons["referral.share"].waitForExistence(timeout: 3))
+    }
+
     func testFirstInstallAppearanceDefaultsToLight() {
         let app = launchApp("--ui-testing-skip-welcome")
 
@@ -363,7 +388,22 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(waitForValue("0", on: toggle, timeout: 4))
     }
 
-    func testDeveloperPaywallShowsLaunchPricingAndEachPlanIsFullySelectable() {
+    /// The Pro paywall, asserted against the plan buttons' accessibility labels
+    /// rather than against the individual price texts inside them.
+    ///
+    /// Rewritten for the current screen, which changed in two ways this test
+    /// had not caught up with. The scheme now carries a StoreKit configuration,
+    /// so the real product path renders instead of the developer preview; and
+    /// each plan is now one accessibility element with a combined label, so the
+    /// price no longer exists as a standalone `"$1.99 / month"` static text —
+    /// it is `"$1.99"` above `"per month"`, spoken as one phrase. The label is
+    /// also the contract that actually matters, because it is what a VoiceOver
+    /// user hears.
+    ///
+    /// Sale-specific copy is asserted only while the sale is running. The
+    /// launch sale has an end date, and a test that hard-codes it silently
+    /// becomes a scheduled failure.
+    func testProPaywallShowsLaunchPricingAndEachPlanIsFullySelectable() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
             "--ui-testing-pro-preview",
@@ -371,16 +411,32 @@ final class SpeakItUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.navigationBars["Speak It Pro"].waitForExistence(timeout: 6))
-        XCTAssertTrue(app.staticTexts["$1.99 / month"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["$14.99 / year"].exists)
-        XCTAssertTrue(app.staticTexts["BEST VALUE"].exists)
-        XCTAssertTrue(app.staticTexts["Choose Annual · $14.99"].exists)
-        XCTAssertFalse(app.staticTexts["SUMMER SALE"].exists)
-        XCTAssertFalse(app.staticTexts["50% OFF"].exists)
-        XCTAssertFalse(app.staticTexts["After summer $3.99 / month"].exists)
-        XCTAssertFalse(app.staticTexts["After summer $29.99 / year"].exists)
 
+        let annual = app.buttons["pro.plan.annual"]
         let monthly = app.buttons["pro.plan.monthly"]
+        XCTAssertTrue(annual.waitForExistence(timeout: 4))
+        XCTAssertTrue(monthly.exists)
+
+        XCTAssertEqual(monthly.label, "Monthly, $1.99 per month")
+        XCTAssertEqual(annual.value as? String, "Selected", "annual is the default plan")
+        XCTAssertEqual(monthly.value as? String, "Not selected")
+
+        let saleIsRunning = app.staticTexts
+            .containing(NSPredicate(format: "label CONTAINS 'SUMMER LAUNCH SALE'"))
+            .firstMatch
+            .exists
+        if saleIsRunning {
+            XCTAssertEqual(
+                annual.label,
+                "Annual, summer launch price $14.99 per year, regularly $29.99, 50 percent off, best value"
+            )
+            XCTAssertEqual(app.buttons["pro.purchase"].label, "Choose Annual · $14.99")
+        } else {
+            XCTAssertEqual(annual.label, "Annual, $29.99 per year")
+            XCTAssertEqual(app.buttons["pro.purchase"].label, "Choose Annual · $29.99")
+        }
+
+        // Both plans are selectable across their whole visible shape.
         for _ in 0..<3 where !monthly.isHittable {
             app.swipeUp()
         }
@@ -391,17 +447,18 @@ final class SpeakItUITests: XCTestCase {
             app.staticTexts["$1.99 per month. Auto-renews until cancelled."]
                 .waitForExistence(timeout: 3)
         )
+        XCTAssertEqual(monthly.value as? String, "Selected")
 
         app.swipeDown()
-        let annual = app.buttons["pro.plan.annual"]
         XCTAssertTrue(annual.waitForExistence(timeout: 3))
         assertMinimumTouchTarget(annual)
         annual.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         app.swipeUp()
-        XCTAssertTrue(
-            app.staticTexts["$14.99 per year. Auto-renews until cancelled."]
-                .waitForExistence(timeout: 3)
-        )
+        let annualFootnote = saleIsRunning
+            ? "Summer launch price · $14.99 per year until September 22, 2026. Auto-renews until cancelled."
+            : "$29.99 per year. Auto-renews until cancelled."
+        XCTAssertTrue(app.staticTexts[annualFootnote].waitForExistence(timeout: 3))
+        XCTAssertEqual(annual.value as? String, "Selected")
 
         let redeemCode = app.buttons["pro.redeem-code"]
         for _ in 0..<6 where !redeemCode.exists {

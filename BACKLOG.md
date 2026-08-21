@@ -57,10 +57,25 @@ Status values: **Done**, **Next**, **Later**.
 - **Done:** Today prioritization and Memory search
 - **Done:** Optional record-level iCloud merge with deletion tombstones and metadata synchronization
 - **Done:** Approval-based Messages handoff and native Calendar event editor for timed tasks
-- **Later:** Server-backed referrals with stable user identity, verified App
-  Store redemption callbacks, one reward per new person, self-referral and
-  replay prevention, a referral credit ledger, and a 12-rewards-per-year cap.
-  Do not ship reward language until the end-to-end credit flow is live and
-  verified. Creator Offer Codes remain a separate Apple-backed system.
+- **Connected, launch-gated:** Server-backed referrals now use a Keychain UUID,
+  StoreKit `appAccountToken`, Apple-signed transaction verification, a durable
+  reward ledger, self/duplicate/expired-offer protection, and a 12-rewards-per-
+  year cap. The app and website switches remain off until Apple offers, code
+  inventory, hosting, and Sandbox end-to-end redemption have passed. Creator
+  Offer Codes remain a separate Apple-backed system.
+- **Later:** Consider whether capture deduplication should span capture sources.
+  It is currently per-source, so the same words arriving by Siri and the in-app
+  button at the same moment produce two rows. Pinned by
+  `testTheSameWordsArrivingByTwoRoutesAtOnce`; see
+  [DURABILITY_FINDINGS.md](DURABILITY_FINDINGS.md).
 - **Later:** Optional read-only Calendar context inside Today after dedicated privacy and overlap research
 - **Later:** Snooze/reschedule, morning notification, data export/delete-all, and optional integrations
+- **Later:** Give a knowledge item a structured fact date of its own —
+  a `knowledgeDate`, distinct from `dueDate` and `reminderDate`. Today a dated
+  fact routes correctly to Memory and keeps the person's original wording, but
+  the date it named is not retained in structured form, because the only date
+  fields available mean "deadline" and "interrupt me" and neither is true of
+  "Priya's birthday is December 4". Accepted for v1: the wording survives and
+  the routing is right. What it would unlock is showing the date on the Memory
+  row, sorting people by upcoming dates, and offering to turn a remembered date
+  into a reminder later. Needs a versioned schema change and migration.

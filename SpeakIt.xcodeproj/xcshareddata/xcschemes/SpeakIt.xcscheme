@@ -68,7 +68,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../../SpeakIt/SpeakIt.storekit">
+         identifier = "SpeakIt/SpeakIt.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction

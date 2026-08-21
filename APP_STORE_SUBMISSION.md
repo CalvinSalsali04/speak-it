@@ -22,17 +22,35 @@ Working document for the first Speak It release. Status values: **Done**,
   `iCloud.com.calvinwak.SpeakIt`.
 - **Todo:** Create both products in one subscription group:
   - `com.calvinwak.SpeakIt.pro.monthly` — launch price $1.99 / month
-  - `com.calvinwak.SpeakIt.pro.annual` — launch price $14.99 / year
+  - `com.calvinwak.SpeakIt.pro.annual` — summer launch price $14.99 / year
   App Store Connect is the source of truth for live localized prices. The app
   renders `product.displayPrice`, so whatever is configured there is shown.
   Each subscription also needs a localized display name, description, and a
   review screenshot before it can be submitted.
+- **Todo — exact summer price schedule:** Use the United States storefront as
+  the reference price, then schedule the annual product to move from $14.99 to
+  $29.99 at the start of **September 22, 2026**. Preserve the $14.99 price for
+  existing subscribers; $29.99 applies to subscriptions begun after the cutoff.
+  Configure equivalent localized tiers in every territory before enabling any
+  sale copy. The app cutoff is `2026-09-22T04:00:00Z`, which is midnight in
+  Toronto while EDT is active.
+- **Launch gate:** Only after that schedule is visible in App Store Connect,
+  build Release with `SPEAKIT_SUMMER_SALE_ENABLED=YES` and set
+  `SUMMER_SALE_ENABLED = true` in `Website/assets/stage.js`. Before the cutoff,
+  the USD storefront then truthfully shows $14.99, regularly $29.99, 50% off,
+  and Best Value. The time gate removes sale language automatically at cutoff.
 - **Todo:** Create `com.calvinwak.SpeakIt.pro.lifetime` as a non-consumable
-  purchase for complimentary creator codes only. Do not merchandise it in the
-  app. Configure free custom Offer Codes such as `CALVINVIP` in App Store
-  Connect; the app recognizes only Apple's verified transaction and contains no
-  hardcoded entitlement bypass. Add temporary creator codes such as `CALVIN30`
-  to the appropriate subscription offer rather than to the lifetime product.
+  purchase for complimentary permanent Pro only. Do not merchandise it in the
+  app. Keep permanent grants separate from subscription referrals; the app
+  recognizes only Apple's verified transaction and contains no hardcoded
+  entitlement bypass.
+- **Todo — founder subscription codes:** Create two free subscription Offer Code
+  configurations and their custom codes:
+  - `CALVINMONTH` — one month free, with only the intended new/existing/expired
+    subscriber eligibility enabled.
+  - `CALVINYEAR` — one year free, with only the intended eligibility enabled.
+  Both use the existing App Store redemption sheet reached from Account &
+  Settings → Speak It Pro → Redeem Code. Do not add either string to app source.
 
 ## 2. Build configuration — done
 
@@ -42,8 +60,10 @@ Working document for the first Speak It release. Status values: **Done**,
   all report `1.0`. Build number stays at `10`.
 - **Done:** `ITSAppUsesNonExemptEncryption` is `false` in `SpeakIt/Info.plist`,
   so uploads no longer stall on the export-compliance question. Verified correct:
-  the app uses only HTTPS and Apple data protection. There is no CryptoKit,
-  CommonCrypto, or custom cryptography anywhere in the source.
+  the iOS binary uses only HTTPS and Apple data protection. It contains no
+  CryptoKit, CommonCrypto, or custom cryptography. The separately deployed
+  referral server uses standard Node AES-256-GCM to protect one-time Apple code
+  inventory at rest; that code is not part of the app binary.
 - **Done:** `SpeakIt/SpeakIt.storekit` defines both subscriptions plus the
   code-only lifetime non-consumable and is wired
   into the shared scheme's Run action. It is a project file reference only, in
@@ -55,7 +75,44 @@ Working document for the first Speak It release. Status values: **Done**,
   the Save Thought App Intent, and the shared-inbox import.
 - **Done:** Security sweep of the shipping binary — no secrets, no debug
   logging, no developer paywall override, no ATS exceptions, no WebView.
-- **Done:** 304 unit tests and 19 UI tests passing; Release build clean.
+- **Done (Aug 17, 2026):** 307 unit tests passing with one environment-specific
+  notification case skipped, all 20 UI tests passing, 8 referral-service tests
+  passing, and the unsigned Release simulator build clean.
+
+## 2A. Verified referral program — implemented, externally gated
+
+The iOS client and `ReferralService` now implement the complete reward path.
+The public promise remains off until the following account/hosting work passes:
+
+1. Create Offer Code `speakit_referral_friend_month`, one month free, new
+   subscribers only, with custom code `SPEAKITFRIEND`.
+2. Create Offer Code `speakit_referral_reward_month`, one month free for new,
+   existing, and expired subscribers. Generate a pool of one-time-use codes and
+   import them through the service's private admin endpoint.
+3. Create one-month-free Promotional Offers
+   `speakit_referral_reward_monthly` and
+   `speakit_referral_reward_annual` on their matching products.
+4. Create the Apple In-App Purchase signing key and mount its `.p8` file plus
+   Apple's current root certificates into the service. Never add them to the
+   app, repository, container image, or website.
+5. Deploy `ReferralService` behind TLS on a single instance with an encrypted,
+   backed-up persistent volume. Follow `ReferralService/README.md`, including
+   host-level rate limits and code-inventory monitoring.
+6. Run the Sandbox journey on a physical iPhone: accept invite → redeem friend
+   month → open app → Apple transaction verifies → referrer sees one reward →
+   redeem reward → kill/relaunch → entitlement and ledger persist. Repeat the
+   cancelled, pending, revoked, duplicate, self-referral, reinstall, and Restore
+   Purchases cases.
+7. Inject the verified base URL as `SPEAKIT_REFERRAL_API_URL` in Release, then
+   set `REFERRALS_ENABLED = true` on the website. With no URL, the app keeps the
+   honest non-reward “Share Speak It” row.
+
+The backend binds purchases with StoreKit `appAccountToken`, verifies Apple's
+signed transaction JWS, and records the referrer, referred identity, referral,
+transaction, and reward in a replay-resistant ledger. It rejects revoked,
+expired, wrong-offer, pre-invite, self-owned, and duplicate transactions and
+caps rewards at 12 per calendar year. Rewards are Apple one-time offer codes or
+server-signed Apple promotional offers; no local expiration date is edited.
 
 ## 3. Analytics — connected, decision made
 
@@ -80,7 +137,8 @@ Your App Privacy answers must match
 | --- | --- | --- | --- |
 | Product Interaction | No | No | Analytics |
 | Device ID | No | No | Analytics |
-| Purchase History | No | No | Analytics |
+| Purchase History | Yes | No | Analytics; App Functionality |
+| User ID | Yes | No | App Functionality |
 
 Answer **No** to "Do you or your third-party partners use data for tracking?"
 The client sets `$geoip_disable` and `$process_person_profile: false`, and the
@@ -88,15 +146,18 @@ identifier is a locally generated install UUID, not IDFA.
 
 ## 4. Privacy policy — draft
 
-**Todo:** host this at a public URL and enter it in App Store Connect. A support
-URL is required too; a single page can carry both. Replace the contact address
-before publishing.
+**Todo:** deploy `Website/privacy/` at
+`https://speakitapp.ca/privacy/` and `Website/support/` at
+`https://speakitapp.ca/support/`, confirm that `support@speakitapp.ca` is a real
+monitored mailbox, and enter those URLs in App Store Connect. The canonical
+policy copy lives in `Website/privacy/index.html`; the draft below must remain
+consistent with it.
 
 ---
 
 ### Speak It Privacy Policy
 
-_Last updated: [DATE]_
+_Last updated: August 17, 2026_
 
 Speak It is designed to keep what you say on your iPhone.
 
@@ -129,14 +190,29 @@ own words to be attached to an event. Analytics can be turned off at any time in
 Settings. Analytics data is processed by PostHog in the United States.
 
 **Purchases.** Subscriptions are handled entirely by Apple. Speak It never sees
-your payment details.
+your payment details. The app receives Apple-signed entitlement information so
+it can unlock Pro.
+
+**Referrals.** If you choose Give a month. Get a month., Speak It creates a
+random referral identifier and credential. The referral service stores that
+identifier, referral codes, Apple transaction identifiers and status, product
+and offer identifiers, and the minimum reward ledger required to verify rewards
+and prevent self-referral, replay, or duplicate claims. It never receives your
+thoughts, recordings, tasks, memories, profile fields, contacts, places, or
+analytics events. One-time Apple reward codes are encrypted at rest.
+
+Referral records are kept while the program operates and as reasonably needed
+to restore rewards, prevent duplicate claims, meet accounting obligations, and
+resolve support. A deletion request can be sent to `support@speakitapp.ca`; the
+minimum transaction or anti-fraud record needed to prevent the same reward from
+being claimed again may be retained.
 
 **Tracking.** We do not track you across apps or websites, sell your data, or
 use advertising SDKs.
 
 **Children.** Speak It is not directed to children under 13.
 
-**Contact.** [YOUR SUPPORT EMAIL]
+**Contact.** support@speakitapp.ca
 
 ---
 
@@ -164,6 +240,13 @@ or deletion requirements that do not apply.
 >
 > To test the free tier, capture by tapping the microphone on the Today screen.
 > The tenth capture on the account triggers the Pro paywall. The free allowance is a one-time total, not a monthly one.
+>
+> **Referral testing.** The “Give a month. Get a month.” row is present only in
+> the connected Release build. The friend receives Apple's one-month Offer
+> Code. Speak It's server awards the referrer only after verifying the App
+> Store-signed transaction; sharing or cancelling does not create a reward. No
+> entitlement is granted locally. Use the review invite/code supplied in the
+> submission notes and the attached Sandbox test account.
 >
 > Back Tap is an optional convenience, not a requirement. iOS does not allow an
 > app to assign Back Tap itself, so the app guides the user to add the included
@@ -205,4 +288,5 @@ automated and remain outstanding (see `CAPTURE_STRESS_TEST_PLAN.md`):
 - Microphone quality, speech accuracy, call interruptions, AirPods, locked device
 - Back Tap end to end — iOS does not expose the gesture to automated tests
 - VoiceOver and the largest Dynamic Type sizes; full dark-mode pass
-- Sandbox purchase of both plans, plus Restore Purchases on a second device
+- Sandbox purchase of both plans, Restore Purchases on a second device, and the
+  complete friend/referrer offer flow described in section 2A

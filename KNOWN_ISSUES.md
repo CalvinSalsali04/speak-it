@@ -125,3 +125,11 @@ The specifics:
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.
+
+## Intent consolidation reads English discourse markers only
+
+`IntentConsolidator` decides that a capture is narrative from a closed list of
+English phrases ("anyway", "the main thing is", "I've been meaning to"). A
+capture in another language, or one that rambles without any of these markers,
+falls through to clause splitting as before. The failure mode is the old one —
+over-splitting — not a new one, and the raw transcript is preserved either way.

@@ -35,17 +35,43 @@ struct CaptureCreationResult {
     /// existing durable result was returned instead of inserting another row.
     let createdNewCapture: Bool
 
+    /// Set when the capture asked the app to act on something that already
+    /// exists rather than to store a new thought. `items` is then empty for
+    /// every outcome except the ones that deliberately keep a review row.
+    let operationOutcome: CaptureOperationOutcome?
+
     init(
         session: CaptureSession,
         items: [CapturedItem],
-        createdNewCapture: Bool = true
+        createdNewCapture: Bool = true,
+        operationOutcome: CaptureOperationOutcome? = nil
     ) {
         self.session = session
         self.items = items
         self.createdNewCapture = createdNewCapture
+        self.operationOutcome = operationOutcome
     }
 
+    /// Whether this capture should spend one of the ten free captures.
+    ///
+    /// Managing existing content is not creating a thought, so cancel, complete
+    /// and retract are free. A request that produced a review row still counts
+    /// as a stored thought, because that row is real and the person can act on
+    /// it.
+    var consumesFreeCapture: Bool {
+        guard let operationOutcome else { return true }
+        switch operationOutcome {
+        case .performed, .notFound, .retracted:
+            return false
+        case .ambiguous, .needsConfirmation:
+            return !items.isEmpty
+        }
+    }
+
+    /// Only meaningful when the capture created something. Callers that can
+    /// receive an operation must check `operationOutcome` first.
     var primaryItem: CapturedItem { items[0] }
+    var hasItems: Bool { !items.isEmpty }
     var itemCount: Int { items.count }
     var isDuplicate: Bool { !createdNewCapture }
 
@@ -163,6 +189,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func setArchived(_ item: CapturedItem, archived: Bool) throws
     func markReviewed(_ item: CapturedItem) throws
     func delete(_ item: CapturedItem) throws
+    func confirmPendingOperation(_ item: CapturedItem) throws
+    func dismissPendingOperation(_ item: CapturedItem) throws
     func split(_ item: CapturedItem, into parts: [String]) throws
     func merge(_ items: [CapturedItem]) throws
     func undoOrganization(_ session: CaptureSession) throws

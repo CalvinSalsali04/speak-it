@@ -15,11 +15,16 @@ xcuserdata/
 CLAUDE.local.md
 .claude/settings.local.json
 
-# Separate nested repository with its own history. Tracking it here would add a
-# bare gitlink with no .gitmodules entry and entangle two unrelated histories.
-FounderDashboard/
-
 # Large rendered demo video. Kept on disk, not in history — a 36 MB binary is
 # expensive to carry forever and awkward to remove once pushed. The Demo/
 # source frames and assets that produce it stay tracked.
 Demo/Speak-It-Product-Demo.mp4
+
+# Deterministic marketing renders and their redundant delivery archive.
+Marketing/TikTokSlideshows/output/
+Marketing/SpeakIt-TikTok-UGC-Slideshows.zip
+
+# Signing material and local credentials.
+*.p8
+*.pem
+*.mobileprovision

@@ -51,6 +51,26 @@ enum SpeakItTypography {
     // semantic text style, it continues to follow Dynamic Type and Bold Text.
     static let itemTitle = Font.body.weight(.medium)
     static let metadata = Font.footnote
+    /// The wordmark, set the way speakitapp.ca sets it: title case, semibold,
+    /// tracked slightly *in*. It used to be `SPEAK IT` at `.tracking(2.2)` here
+    /// and `Speak It` on the site, which meant the product and the page selling
+    /// it did not spell the name the same way.
+    static let wordmark = Font.caption.weight(.semibold)
+}
+
+/// The name, wherever a screen has to say it.
+///
+/// One view rather than six copies of a `Text` with its own tracking, because
+/// the previous six had drifted to two different tracking values and would drift
+/// again. `Font.caption` keeps it on Dynamic Type.
+struct SpeakItWordmark: View {
+    var body: some View {
+        Text("Speak It")
+            .font(SpeakItTypography.wordmark)
+            .tracking(-0.1)
+            .foregroundStyle(Color.speakMuted)
+            .accessibilityAddTraits(.isHeader)
+    }
 }
 
 /// The shared interaction style for custom Speak It controls. It keeps even

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+.env
+*.p8
+*.cer
+*.der

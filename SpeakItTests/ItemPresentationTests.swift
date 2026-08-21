@@ -273,4 +273,39 @@ final class ItemPresentationTests: XCTestCase {
             )
         }
     }
+
+    func testSummerLaunchSaleEndsAtThePublishedCutoff() {
+        XCTAssertTrue(
+            SummerLaunchSale.isWithinSaleWindow(
+                at: SummerLaunchSale.endsAt.addingTimeInterval(-1)
+            )
+        )
+        XCTAssertFalse(SummerLaunchSale.isWithinSaleWindow(at: SummerLaunchSale.endsAt))
+        XCTAssertEqual(SummerLaunchSale.endDateText, "September 22, 2026")
+    }
+
+    func testReferralDeepLinksAcceptOnlySpeakItsSupportedRoutes() {
+        XCTAssertEqual(
+            ReferralDeepLink.code(
+                from: URL(string: "speakit://referral?code=friend-123")!
+            ),
+            "friend-123"
+        )
+        XCTAssertEqual(
+            ReferralDeepLink.code(
+                from: URL(string: "https://speakitapp.ca/invite/?ref=friend-456")!
+            ),
+            "friend-456"
+        )
+        XCTAssertNil(
+            ReferralDeepLink.code(
+                from: URL(string: "https://example.com/invite/?ref=friend-456")!
+            )
+        )
+        XCTAssertNil(
+            ReferralDeepLink.code(
+                from: URL(string: "speakit://referral?code=%3Cscript%3Ebad%3C/script%3E")!
+            )
+        )
+    }
 }

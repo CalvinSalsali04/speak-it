@@ -117,27 +117,46 @@ struct AccountSettingsView: View {
                         .padding(.vertical, 4)
                     }
 
-                    ShareLink(
-                        item: SpeakItSharing.message,
-                        subject: Text("Speak It")
-                    ) {
-                        HStack(spacing: 14) {
-                            settingsSymbol("square.and.arrow.up")
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Share Speak It")
-                                    .foregroundStyle(Color.speakInk)
-                                Text("Send Speak It to someone who would find it useful.")
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.speakMuted)
-                                    .fixedSize(horizontal: false, vertical: true)
+                    if ReferralProgramConfiguration.isEnabled {
+                        NavigationLink {
+                            ReferralProgramView()
+                        } label: {
+                            HStack(spacing: 14) {
+                                settingsSymbol("gift")
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Give a month. Get a month.")
+                                        .foregroundStyle(Color.speakInk)
+                                    Text("Invite a friend and earn verified App Store rewards")
+                                        .font(.footnote)
+                                        .foregroundStyle(Color.speakMuted)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
-                            Spacer(minLength: 0)
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.speakMuted)
                         }
+                        .accessibilityIdentifier("settings.referrals")
+                    } else {
+                        ShareLink(
+                            item: SpeakItSharing.message,
+                            subject: Text("Speak It")
+                        ) {
+                            HStack(spacing: 14) {
+                                settingsSymbol("square.and.arrow.up")
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Share Speak It")
+                                        .foregroundStyle(Color.speakInk)
+                                    Text("Send Speak It to someone who would find it useful.")
+                                        .font(.footnote)
+                                        .foregroundStyle(Color.speakMuted)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color.speakMuted)
+                            }
+                        }
+                        .accessibilityIdentifier("settings.share-speak-it")
                     }
-                    .accessibilityIdentifier("settings.share-speak-it")
                 }
 
                 Section("Appearance") {

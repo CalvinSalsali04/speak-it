@@ -10,6 +10,12 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     let title: String
     let fireDate: Date
     let delivery: ReminderDelivery
+    /// Calendar components that let iOS re-fire this reminder on its own
+    /// schedule, without the app ever running again to generate the next
+    /// occurrence. `nil` for shapes a single `DateComponents` match cannot
+    /// express, which keep the existing one-shot-then-regenerate-on-completion
+    /// path (see `SwiftDataThoughtRepository.setCompleted`).
+    let repeatingComponents: DateComponents?
 
     @MainActor
     init?(item: CapturedItem) {
@@ -35,6 +41,45 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         delivery = segmentDelivery == .alarm || (segmentDelivery == .none && sessionDelivery == .alarm)
             ? .alarm
             : .notification
+        repeatingComponents = Self.repeatingComponents(
+            rule: item.temporalIntent?.recurrence,
+            fireDate: fireDate
+        )
+    }
+
+    /// Only daily and single-weekday weekly series, anchored to the
+    /// scheduled date rather than to completion, reduce to one recurring
+    /// `hour`/`minute`[/`weekday`] match. Elapsed-time rules ("every 3
+    /// hours"), multi-weekday rules ("every weekday"), ordinal-monthly rules
+    /// ("the first Monday every month"), an `interval` above 1, and
+    /// completion-anchored rules all depend on state a static calendar match
+    /// cannot express, so they are left on the existing path. Internal rather
+    /// than private so `SwiftDataThoughtRepository`'s self-healing
+    /// reconciliation pass can tell which shapes still need its help — see
+    /// `advanceOverdueRecurrences`.
+    static func repeatingComponents(
+        rule: RecurrenceRule?,
+        fireDate: Date
+    ) -> DateComponents? {
+        guard let rule,
+              rule.anchor == .scheduledDate,
+              rule.interval == 1,
+              !rule.repeatsByElapsedTime,
+              rule.ordinalWeekday == nil else { return nil }
+
+        var components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+        components.timeZone = TimeZone.current
+
+        switch rule.frequency {
+        case .daily:
+            return components
+        case .weekly:
+            guard rule.weekdays.count == 1 else { return nil }
+            components.weekday = rule.weekdays[0]
+            return components
+        case .monthly, .yearly:
+            return nil
+        }
     }
 }
 
@@ -157,8 +202,57 @@ enum ReminderSchedulingResult: Equatable, Sendable {
     case failed
 }
 
-@MainActor
+/// The external systems a reminder actually lives in, behind a substitutable
+/// seam.
+///
+/// Cancellation became a user-facing feature the moment "cancel my dentist
+/// reminder" started working, and a passing `delete(_:)` test only proves the
+/// SwiftData row went away. What a person actually notices is whether the
+/// notification still fires and whether the alarm still goes off, so those two
+/// effects need to be observable in a test.
+///
+/// Production uses `.live`, which is the same `UNUserNotificationCenter` and
+/// `AlarmManager` work as before. Tests substitute a recorder and assert on
+/// exact identifiers.
+///
+/// Deliberately **not** `@MainActor`. It holds no main-actor state — both
+/// `UNUserNotificationCenter.current()` and `AlarmManager.shared` are their own
+/// thread-safe singletons — and isolating it only meant `live` could not be
+/// read from the nonisolated `delivery` property below. That mismatch is a
+/// warning today and an error under the Swift 6 language mode, on the one code
+/// path that tears a reminder down; leaving it in place would mean the next
+/// toolchain bump breaks reminder cancellation at compile time.
+struct ReminderDeliverySink: Sendable {
+    var removeNotifications: @Sendable ([String]) -> Void
+    var cancelAlarm: @Sendable (UUID) -> Void
+    /// What is currently armed. Reconciliation is defined as "remove everything
+    /// pending that no live row asks for", so the pending set has to be readable
+    /// through the same seam that the removals go through — otherwise a test can
+    /// only observe teardown that was already targeted by id, which is the half
+    /// that was never in doubt.
+    var pendingIdentifiers: @Sendable () async -> [String]
+
+    static let live = ReminderDeliverySink(
+        removeNotifications: { identifiers in
+            let center = UNUserNotificationCenter.current()
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        },
+        cancelAlarm: { itemID in
+            if #available(iOS 26.0, *) {
+                try? AlarmManager.shared.cancel(id: itemID)
+            }
+        },
+        pendingIdentifiers: {
+            await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier)
+        }
+    )
+}
+
 enum ReminderScheduler {
+    /// Swapped by tests to observe teardown. Never reassigned in production.
+    nonisolated(unsafe) static var delivery: ReminderDeliverySink = .live
+
     static let reminderCategoryIdentifier = "SpeakIt.reminder-actions"
     static let completeActionIdentifier = "SpeakIt.reminder.complete"
     static let snoozeActionIdentifier = "SpeakIt.reminder.snooze-ten"
@@ -387,25 +481,16 @@ enum ReminderScheduler {
     }
 
     static func cancel(itemID: UUID) {
-        let identifier = notificationIdentifier(for: itemID)
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
-        center.removeDeliveredNotifications(withIdentifiers: [identifier])
-
-        if #available(iOS 26.0, *) {
-            try? AlarmManager.shared.cancel(id: itemID)
-        }
+        delivery.removeNotifications([notificationIdentifier(for: itemID)])
+        delivery.cancelAlarm(itemID)
     }
 
     static func cancel(captureSessionID: UUID) {
         Task {
-            let center = UNUserNotificationCenter.current()
             let prefix = notificationGroupPrefix(for: captureSessionID)
-            let identifiers = await center.pendingNotificationRequests()
-                .map(\.identifier)
+            let identifiers = await delivery.pendingIdentifiers()
                 .filter { $0.hasPrefix(prefix) }
-            center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+            delivery.removeNotifications(identifiers)
         }
     }
 
@@ -531,7 +616,7 @@ enum ReminderScheduler {
             // blocker rules cannot silently fall through to a timing string.
             return presentation.destination.announcement
 
-        case let .time(date, _):
+        case let .time(date, _, _):
             let kind = deliveryKindLabel(for: item)
             if let recurrence = presentation.recurrenceSummary {
                 return "\(kind) · \(friendlyDate(date)) · \(recurrence)"
@@ -676,7 +761,19 @@ enum ReminderScheduler {
 
         let secondsUntilFire = group.fireDate.timeIntervalSinceNow
         let trigger: UNNotificationTrigger
-        if secondsUntilFire <= 60 {
+        if secondsUntilFire > 60,
+           group.requests.count == 1,
+           let repeatingComponents = group.requests[0].repeatingComponents {
+            // A recurring reminder that only ever schedules its next single
+            // occurrence stops firing the moment the person misses one — see
+            // FINAL_RELEASE_AUDIT.md H-1/E-1. Handing iOS the recurring
+            // components instead means the series keeps firing on its own
+            // schedule even if the app never runs again to regenerate it; the
+            // next `CapturedItem` occurrence, once the app does process a
+            // completion, gets its own such trigger and this one is cancelled
+            // the normal way `setCompleted` already cancels any reminder.
+            trigger = UNCalendarNotificationTrigger(dateMatching: repeatingComponents, repeats: true)
+        } else if secondsUntilFire <= 60 {
             // Relative reminders such as “in 10 seconds” should count down
             // from the moment the thought is saved. A time-interval trigger
             // also avoids missing the requested calendar second while iOS is
@@ -783,16 +880,17 @@ enum ReminderScheduler {
     }
 
     private static func clearExistingNotifications(scope: ReminderSynchronizationScope) async {
-        let center = UNUserNotificationCenter.current()
         let identifiers = notificationIdentifiersToRemove(
-            from: await center.pendingNotificationRequests().map(\.identifier),
+            from: await delivery.pendingIdentifiers(),
             scope: scope
         )
-        center.removePendingNotificationRequests(withIdentifiers: identifiers)
-        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        guard !identifiers.isEmpty else { return }
+        delivery.removeNotifications(identifiers)
     }
 
-    private static func notificationIdentifier(for itemID: UUID) -> String {
+    /// Internal rather than private so tests can assert that the *exact*
+    /// pending request for an item is what gets removed.
+    static func notificationIdentifier(for itemID: UUID) -> String {
         "SpeakIt.reminder.\(itemID.uuidString)"
     }
 

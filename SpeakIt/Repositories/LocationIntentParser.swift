@@ -25,12 +25,33 @@ enum LocationIntentParser {
         let repeats: Bool
     }
 
-    private static let arriveVerbs = #"(?:get|getting|arrive|arriving|reach|reaching|am|'m|are|'re)"#
+    // Returning to a place is expressed just as often as motion toward it:
+    // "when I go home" and "when I come home" describe the same boundary
+    // crossing as "when I get home". Keeping those verbs out of this grammar
+    // made the temporal parser see a reminder request with no clock and ask for
+    // a time even though the place was the trigger.
+    // These words are not motion on their own: people also "get paid", "reach
+    // a decision", and "are ready". Require either a saved-place word or a
+    // spatial connector before treating them as arrival. Named places still
+    // work through ordinary grammar ("get to Costco", "arrive at the gym").
+    private static let arriveVerbs = #"(?:(?:get|getting|arrive|arriving|reach|reaching|am|'m|are|'re|go|going|come|coming|return|returning)(?=\s+(?:back\s+)?(?:(?:home|here|work)\b|(?:to|at|in|into)\b)))"#
     private static let leaveVerbs = #"(?:leave|leaving|exit|exiting|get\s+out\s+of|head\s+out\s+of)"#
+
+    /// A clock reading, for the one piece of grammar where a place and a time
+    /// are introduced by the same word.
+    ///
+    /// "Remind me at five to call Mom" and "remind me at the pharmacy to pick up
+    /// the prescription" are the same sentence shape; only the object differs.
+    /// So the object is asked what it is, and a time answers first — reading
+    /// "five" as a place would break an ordinary reminder to fix a rarer one.
+    private static let clockPhrase = #"^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"#
+        + #"|noon|midnight|half\s+past|quarter\s+(?:past|to)"#
+        + #"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"#
+        + #"|this\s+time|the\s+same\s+time)\b"#
 
     private static let leads: [Lead] = [
         Lead(
-            pattern: #"\bevery\s+time\s+(?:i|we)\s+"# + arriveVerbs + #"\s+"#,
+            pattern: #"\bevery\s+time\s+(?:i|we)\s*"# + arriveVerbs + #"\s+"#,
             event: .arrive,
             repeats: true
         ),
@@ -40,14 +61,22 @@ enum LocationIntentParser {
             repeats: true
         ),
         Lead(
-            pattern: #"\b(?:next\s+time|when|whenever|once|as\s+soon\s+as)\s+(?:i|we)\s+"#
+            pattern: #"\b(?:next\s+time|when|whenever|once|as\s+soon\s+as)\s+(?:i|we)\s*"#
                 + leaveVerbs + #"\s+"#,
             event: .leave,
             repeats: false
         ),
         Lead(
-            pattern: #"\b(?:next\s+time|when|whenever|once|as\s+soon\s+as)\s+(?:i|we)\s+"#
+            pattern: #"\b(?:next\s+time|when|whenever|once|as\s+soon\s+as)\s+(?:i|we)\s*"#
                 + arriveVerbs + #"\s+"#,
+            event: .arrive,
+            repeats: false
+        ),
+        // "Remind me at the pharmacy to pick up the prescription." No arrival
+        // verb at all — the preposition is carrying the whole trigger. Read
+        // last, so every explicit arrival phrasing above wins first.
+        Lead(
+            pattern: #"\b(?:remind|tell|ping|alert)\s+(?:me|us)\s+at\s+"#,
             event: .arrive,
             repeats: false
         )
@@ -79,6 +108,11 @@ enum LocationIntentParser {
     private static let placeTerminator =
         #"(?:\s*[,;.!?]"#
         + #"|\s+(?:remind|tell|let|and\s+then|then|so\s+that|to\s+)\b"#
+        // "When I get to the store buy batteries" is three parts — trigger,
+        // place, action — and only the middle one is the place. Without this
+        // the name greedily swallowed the action and became a place called
+        // "store buy batteries", which matches nowhere on earth.
+        + #"|\s+"# + ActionabilityReader.actionVerb + #"\b"#
         + #"|\s+(?:tonight|today|tomorrow|later|this\s+(?:morning|afternoon|evening)"#
         + #"|in\s+the\s+(?:morning|afternoon|evening)|at\s+\d|after\s+\b|before\s+\b"#
         + #"|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b"#
@@ -96,6 +130,13 @@ enum LocationIntentParser {
             ) else { continue }
 
             let remainder = String(lowercase[leadRange.upperBound...])
+
+            // The one lead that a time can also follow. If what comes next
+            // reads as a clock, this sentence was never about a place.
+            if remainder.range(of: clockPhrase, options: [.regularExpression]) != nil {
+                return nil
+            }
+
             guard let place = placeReference(in: remainder) else {
                 // A recognised lead with an unreadable place is still a place
                 // request. Returning nil here would send it back to the temporal

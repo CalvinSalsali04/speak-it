@@ -241,10 +241,7 @@ struct CaptureView: View {
 
             Spacer()
 
-            Text("SPEAK IT")
-                .font(.caption.weight(.medium))
-                .tracking(2.2)
-                .foregroundStyle(Color.speakMuted)
+            SpeakItWordmark()
 
             Spacer()
 
@@ -458,7 +455,7 @@ struct CaptureView: View {
             Text(savedConfirmationDetail)
                 .foregroundStyle(Color.speakMuted)
 
-            if let savedResult {
+            if let savedResult, savedResult.hasItems {
                 CapturedItemRow(
                     item: savedResult.primaryItem,
                     showsCompletionControl: false,
@@ -634,10 +631,7 @@ struct CaptureView: View {
                 save(recoveredText, source: .inAppVoice)
             } catch {
                 isRecoveringAudio = false
-                CaptureDraftStore.markFailed(
-                    id: draft.id,
-                    message: error.localizedDescription
-                )
+                CaptureDraftStore.markFailed(id: draft.id, error: error)
                 continueByTyping(
                     notice: "Your recording is safe. Type this thought now, or recover it later from Today."
                 )
@@ -761,7 +755,12 @@ struct CaptureView: View {
                     performance: performance
                 )
                 if result.createdNewCapture {
-                    subscriptionStore.recordSuccessfulCapture()
+                    // Cancelling, completing or withdrawing manages existing
+                    // content rather than storing a new thought, so it does not
+                    // spend one of the ten free captures.
+                    if result.consumesFreeCapture {
+                        subscriptionStore.recordSuccessfulCapture()
+                    }
                     SpeakItAnalytics.track(.captureSaved(
                         source: source == .inAppVoice ? .voice : .text,
                         itemCount: result.itemCount,
@@ -774,9 +773,18 @@ struct CaptureView: View {
                 typedText = ""
                 savedResult = result
                 onSaveSucceeded()
-                savedConfirmationTitle = result.isDuplicate ? "Already captured" : "Remembered"
-                savedConfirmationSymbol = result.isDuplicate ? "equal" : "checkmark"
-                savedConfirmationDetail = confirmationDetail(for: result)
+                // An operation reports what it did. Saying "Remembered" after
+                // cancelling something is the app describing the wrong action.
+                if let outcome = result.operationOutcome {
+                    let copy = CaptureOperationCopy.make(for: outcome)
+                    savedConfirmationTitle = copy.title
+                    savedConfirmationSymbol = copy.symbol
+                    savedConfirmationDetail = copy.detail
+                } else {
+                    savedConfirmationTitle = result.isDuplicate ? "Already captured" : "Remembered"
+                    savedConfirmationSymbol = result.isDuplicate ? "equal" : "checkmark"
+                    savedConfirmationDetail = confirmationDetail(for: result)
+                }
                 if result.isDuplicate {
                     UISelectionFeedbackGenerator().selectionChanged()
                 } else {

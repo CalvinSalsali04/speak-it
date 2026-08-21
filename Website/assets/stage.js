@@ -1,15 +1,37 @@
 /* ==========================================================================
    Speak It — marketing site behaviour
    Four jobs: scatter and collect the spoken thoughts, keep the indicator over
-   the gap in the headline, change the phone's screen as the steps go past, and
-   run the capture demo.
+   the gap in the headline, start the "what happens" sequence when it is
+   reached, and run the capture demo.
    No dependencies.
    ========================================================================== */
 
 (function () {
   'use strict';
 
-  var APP_STORE_URL = 'https://speakit.app';
+  /* Said before anything else can fail. The "what happens" section is authored
+     in its finished state and the sheet only holds it back for pages that can
+     run the sequence, so this class is what gives the stylesheet permission to
+     hide anything at all. A page whose script never loads keeps the assembled
+     composition. */
+  document.documentElement.classList.add('js');
+
+  /* Speak It's own domain, which is also the host the app trusts for invite
+     links (`ReferralService.swift`). It is what the QR encodes and what the
+     download buttons open until there is a public App Store listing to point
+     at — a QR that resolves to nothing is worse than one that resolves to the
+     page the reader is already on. Swap both this and `tools/make_qr.py`'s
+     output for the apps.apple.com URL the day the listing goes live. */
+  var APP_STORE_URL = 'https://speakitapp.ca';
+
+  /* The launch discount on Pro — half off both plans, $3.99 → $1.99 a month
+     and $29.99 → $14.99 a year. `SUMMER_SALE_ENABLED` must not be true unless
+     App Store Connect really is charging the sale prices — the page prints
+     the numbers, and a page that disagrees with the sheet is a refund. No end
+     date is published: the site states the discount, not a deadline, so the
+     offer can be ended or extended without the page having lied. */
+  var SUMMER_SALE_ENABLED = true;
+  var REFERRALS_ENABLED = false;
 
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   var RAD = Math.PI / 180;
@@ -41,6 +63,58 @@
   document.querySelectorAll('[data-appstore-url]').forEach(function (el) {
     el.textContent = APP_STORE_URL.replace(/^https?:\/\//, '');
   });
+  document.querySelectorAll('[data-sale-only]').forEach(function (el) {
+    el.hidden = !SUMMER_SALE_ENABLED;
+  });
+  document.querySelectorAll('[data-sale-price]').forEach(function (el) {
+    el.hidden = !SUMMER_SALE_ENABLED;
+  });
+  document.querySelectorAll('[data-after-sale]').forEach(function (el) {
+    el.hidden = SUMMER_SALE_ENABLED;
+  });
+  document.querySelectorAll('[data-referrals]').forEach(function (el) {
+    el.hidden = !REFERRALS_ENABLED;
+  });
+
+  /* ========================== the download sheet ========================== */
+
+  /* The bar's Download opens the sheet — QR on one side, App Store on the
+     other — instead of scrolling to the offer. The <dialog> does the modal
+     work itself (focus, Escape, inertness of the page); this only opens it,
+     closes it on a backdrop click, and keeps the page from scrolling under
+     it. A browser without showModal() keeps the link's own href. */
+  var dlSheet = document.querySelector('[data-download]');
+
+  if (dlSheet && typeof dlSheet.showModal === 'function') {
+    var dlOpen = function (event) {
+      event.preventDefault();
+      dlSheet.showModal();
+      document.documentElement.classList.add('is-dl-open');
+      window.requestAnimationFrame(function () { dlSheet.classList.add('is-in'); });
+    };
+    var dlSettle = function () {
+      dlSheet.classList.remove('is-in');
+      document.documentElement.classList.remove('is-dl-open');
+    };
+    var dlClose = function () {
+      dlSettle();
+      if (dlSheet.open) dlSheet.close();
+    };
+
+    document.querySelectorAll('[data-download-open]').forEach(function (el) {
+      el.addEventListener('click', dlOpen);
+    });
+    document.querySelectorAll('[data-download-close]').forEach(function (el) {
+      el.addEventListener('click', dlClose);
+    });
+    /* a click on the dimmed page, not on the sheet's own contents */
+    dlSheet.addEventListener('click', function (event) {
+      if (event.target === dlSheet) dlClose();
+    });
+    /* Escape arrives as `cancel` and then `close`; both end here */
+    dlSheet.addEventListener('cancel', dlSettle);
+    dlSheet.addEventListener('close', dlSettle);
+  }
 
   /* ========================== the spoken thoughts ========================= */
 
@@ -305,58 +379,78 @@
     }
   }
 
-  /* ================================ the walk ============================== */
+  /* ============================== what happens ============================ */
 
-  /* Whichever step is nearest the reading line owns the phone. It is measured
-     rather than observed so it is exact at any scroll position, including the
-     one the page happens to load at. */
-  var steps = Array.prototype.slice.call(document.querySelectorAll('[data-step]'));
-  var shots = Array.prototype.slice.call(document.querySelectorAll('[data-panel]'));
-  var dots  = Array.prototype.slice.call(document.querySelectorAll('.walk__dot'));
-  var walkGrid = document.querySelector('.walk__grid');
-  var walkDevice = document.querySelector('.walk__device');
-  var onStep = -1;
+  /* The sequence is entirely in the stylesheet — every element carries its own
+     animation, paused on its opening frame. All this does is let them run,
+     once, the first time the composition is on screen. Playing it on arrival
+     rather than on a scroll fraction means it is never half-finished: it either
+     has not started or it is telling its story at the pace it was authored at.
 
-  /* Where a step counts as "the one being read".
+     Nothing here re-runs it. A section that replays every time it is scrolled
+     past is a section that cannot be re-read. */
+  var scene = document.querySelector('[data-scene]');
 
-     Beside the text — a desktop, or a phone on its side — the phone takes none
-     of the reading space and the middle of the screen is right. Stacked, the
-     phone is stuck to the top and the text has only the band underneath it, so
-     the line is the middle of that band. It is measured off the device rather
-     than written as a fraction, so it is right at every screen the layout is
-     used on instead of at the one it was tuned on. The layout is read from the
-     grid's own `display`, which is the property the stylesheet switches. */
-  function readingLine() {
-    var h = window.innerHeight;
-    var stacked = walkGrid && walkDevice &&
-                  getComputedStyle(walkGrid).display === 'block';
-    if (!stacked) return h * 0.5;
-    var floor = clamp(walkDevice.getBoundingClientRect().bottom, 0, h);
-    return (floor + h) / 2;
+  if (scene) {
+    if (reduceMotion.matches || !('IntersectionObserver' in window)) {
+      scene.classList.add('is-live');
+    } else {
+      var sceneWatch = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('is-live');
+          sceneWatch.unobserve(entry.target);
+        });
+      }, { threshold: 0.28 });
+      sceneWatch.observe(scene);
+    }
   }
 
-  function paintWalk() {
-    if (!steps.length) return;
-
-    var line = readingLine();
-    var best = 0, bestGap = Infinity;
-
-    for (var n = 0; n < steps.length; n++) {
-      var r = steps[n].getBoundingClientRect();
-      var gap = Math.abs(r.top + r.height / 2 - line);
-      if (gap < bestGap) { bestGap = gap; best = n; }
-    }
-
-    if (best === onStep) return;
-    onStep = best;
-
-    steps.forEach(function (el, n) { el.classList.toggle('is-on', n === best); });
-    dots.forEach(function (el, n) { el.classList.toggle('is-on', n === best); });
-
-    var want = steps[best].dataset.step;
-    shots.forEach(function (el) {
-      el.classList.toggle('is-active', el.dataset.panel === want);
+  /* The two dates on the cards are the app's own formats, resolved against the
+     reader's clock and locale rather than written into the markup. A marketing
+     page showing a reminder for a date eight months ago is the one thing that
+     would make the composition read as a mock-up. The HTML carries a plausible
+     value so the cards are never empty if this does not run. */
+  function appDate(date, withTime) {
+    var day = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (!withTime) return day;
+    return day + ', ' + date.toLocaleTimeString(undefined, {
+      hour: 'numeric', minute: '2-digit'
     });
+  }
+
+  var tomorrowAtFive = new Date();
+  tomorrowAtFive.setDate(tomorrowAtFive.getDate() + 1);
+  tomorrowAtFive.setHours(17, 0, 0, 0);
+
+  document.querySelectorAll('[data-tomorrow]').forEach(function (el) {
+    el.textContent = appDate(tomorrowAtFive, true);
+  });
+  document.querySelectorAll('[data-today-date]').forEach(function (el) {
+    el.textContent = appDate(new Date(), false);
+  });
+
+  /* ============================== two screens ============================= */
+
+  /* A few pixels of drift between the two devices as the section passes, so the
+     pair has depth without anything appearing to move. The travel is small on
+     purpose: at more than about twenty pixels it stops reading as depth and
+     starts reading as the page being uneven. */
+  var floats = Array.prototype.slice.call(document.querySelectorAll('[data-parallax]'));
+
+  function paintFloats() {
+    if (!floats.length || reduceMotion.matches) return;
+    var mid = window.innerHeight / 2;
+
+    for (var n = 0; n < floats.length; n++) {
+      var el = floats[n];
+      var box = el.getBoundingClientRect();
+      if (box.bottom < 0 || box.top > window.innerHeight) continue;
+      /* -1 … 1 across the approach and the exit */
+      var t = clamp((box.top + box.height / 2 - mid) / (window.innerHeight), -1, 1);
+      el.style.setProperty('--py',
+        (t * 18 * parseFloat(el.dataset.parallax || 1)).toFixed(1) + 'px');
+    }
   }
 
   /* -------------------------------------------------- the indicator ------ */
@@ -425,7 +519,7 @@
        paused — a background tab, a throttled device — must not be the only
        thing that can place a bubble. */
     if (!reduceMotion.matches) paintField(performance.now());
-    paintWalk();
+    paintFloats();
   }
 
   window.addEventListener('scroll', sync, { passive: true });
@@ -461,17 +555,33 @@
   var DOING = /\b(call|book|buy|email|send|pay|renew|chase|collect|pick up|cancel|move|ask|tell|check|fix|order|return|post|drop off|reply|confirm|reschedule|remind me)\b/i;
   var IDEA = /\b(idea|what if|we should|pitch|concept|maybe we|it would be good if)\b/i;
   var REF = /(\+?\d[\d\s().-]{6,}\d|\b[\w.+-]+@[\w-]+\.[\w.]+\b|\bcode\b|\bcodes\b|\bpassword\b|\bfloor\b|\blevel \d|\brow [a-z]\b|\bterminal \d)/i;
-  var PERSON = /(\b[A-Z][a-z]+['’]s\b|\bDr\.?\s[A-Z]|\bhis\b|\bher\b|\btheir\b|\bthey\b|\bpartner\b|\bbirthday\b)/;
+  /* The last alternative is a plain fact about a named person — "Daniel prefers
+     oat milk" carries no possessive and no pronoun, and without it the demo
+     filed the page's own example as an uncategorised note. */
+  var PERSON = /(\b[A-Z][a-z]+['’]s\b|\bDr\.?\s[A-Z]|\bhis\b|\bher\b|\btheir\b|\bthey\b|\bpartner\b|\bbirthday\b|^[A-Z][a-z]+\s+(?:prefers|likes|loves|hates|avoids|drinks|works|lives|studies|is|was|has|used to)\b)/;
+
+  /* A place instead of a time. The app parses arrivals and departures against
+     the saved Home and Work places, so the demo has to answer "when I get
+     home" with a place trigger rather than filing it as an undated note —
+     which is what it used to do, and it is the one thing on the page most
+     likely to be typed in to test. */
+  var WHERE = new RegExp(
+    '\\bwhen (?:i|we) (?:get|getting|arrive|arriving|reach|am|\'m) ' +
+    '(?:to |at |in )?(home|the house|work|the office)\\b' +
+    '|\\bwhen (?:i|we) (?:leave|leaving|get out of) (?:the )?(home|house|work|office)\\b', 'i');
 
   var FILLER = /^(please\s+)?(remind me( to| that)?|remember( that| to)?|note to self[,:]?|make a note( that| of)?|i need to|i should|make sure( i| to)?|don'?t forget( to| that)?|jot down)\s+/i;
 
-  /* The app's own category · type pairs, picked the same way the rows read. */
+  /* The app's own category · type pairs, taken from `ItemCategory` and
+     `ItemType` — there is no Health, Travel or Errand in either, and a row that
+     prints one is describing an app the reader is not about to download. A row
+     whose category and type are the same word prints the word once, which is
+     what CapturedItemRow.secondaryText does. */
   var KINDS = [
-    { re: /\b(doctor|dentist|pharmacy|prescription|surgery|clinic|gp|appointment)\b/i, meta: 'Health · Errand' },
-    { re: /\b(buy|shop|shopping|milk|groceries|order|pick up|collect)\b/i,             meta: 'Shopping · Errand' },
+    { re: /\b(buy|shop|shopping|milk|groceries|order|pick up|collect)\b/i,             meta: 'Shopping' },
     { re: /\b(call|text|email|reply|message|ask|tell)\b/i,                             meta: 'People · Person follow-up' },
-    { re: /\b(flight|train|hotel|passport|airport|terminal|parking|gate)\b/i,          meta: 'Travel · Errand' },
-    { re: /\b(invoice|deck|q[1-4]|meeting|standup|client|report|deadline)\b/i,         meta: 'Work · Task' }
+    { re: /\b(invoice|deck|q[1-4]|meeting|standup|client|report|deadline)\b/i,         meta: 'Work · Task' },
+    { re: /\b(doctor|dentist|pharmacy|prescription|surgery|clinic|gp|appointment)\b/i, meta: 'Personal · Task' }
   ];
 
   function kindFor(said) {
@@ -519,14 +629,39 @@
     else if (/\bafternoon\b/i.test(said)) parts.push('2:00 PM');
     else if (/\bevening\b/i.test(said)) parts.push('6:00 PM');
 
-    return parts.length ? parts.join(' ') : 'Today';
+    /* "Tomorrow, 5:00 PM" — the app's own row separates the day from the hour
+       with a comma, and the two halves run together without it. */
+    return parts.length ? parts.join(', ') : 'Today';
   }
 
   function shortDate() {
     return new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
+  /* "home" and "the house" are the same saved place; so are "work" and "the
+     office". The app resolves both to the one the person configured. */
+  function placeName(match) {
+    var word = (match[1] || match[2] || '').toLowerCase();
+    return /work|office/.test(word) ? 'Work' : 'Home';
+  }
+
   function classify(said) {
+    var where = said.match(WHERE);
+    if (where) {
+      var place = placeName(where);
+      var leaving = /\bleav|\bget out of\b/i.test(where[0]);
+      return {
+        today: true,
+        dest: 'Today',
+        section: 'Now',
+        meta: kindFor(said),
+        time: place,
+        why: 'You named a place rather than a time, so it waits for the place: '
+           + 'next time you ' + (leaving ? 'leave ' : 'arrive at ') + place
+           + '. Set Home and Work once and every reminder that mentions them follows.'
+      };
+    }
+
     if (WHEN.test(said) && (DOING.test(said) || !IDEA.test(said))) {
       return {
         today: true,
@@ -541,7 +676,7 @@
       return {
         today: true,
         dest: 'Today',
-        section: 'When there’s time',
+        section: 'When you have time',
         meta: kindFor(said),
         time: 'No date',
         why: 'It is something to do rather than something to know, so it waits in Today until you have a spare moment.'
@@ -557,7 +692,7 @@
     if (REF.test(said)) {
       return {
         today: false, dest: 'Memory · Reference', section: 'Recently added',
-        meta: 'Reference · Fact', time: shortDate(),
+        meta: 'Note', time: shortDate(),
         why: 'A detail you will want to look up rather than do: numbers, codes and places live in Reference.'
       };
     }
@@ -569,7 +704,7 @@
       };
     }
     return {
-      today: false, dest: 'Memory · Notes', section: 'Recently added',
+      today: false, dest: 'Memory', section: 'Recently added',
       meta: 'Note', time: shortDate(),
       why: 'No action and no date, so it is kept as a note and stays searchable by these exact words.'
     };
@@ -581,9 +716,13 @@
       .replace(/\s+/g, ' ')
       .replace(/[.\s]+$/, '');
 
-    /* the date belongs on the row's time, not in its title — every mention of
-       it, or “Thursday at six” leaves “at six” behind */
+    /* The date belongs on the row's time, not in its title — every mention of
+       it, or “Thursday at six” leaves “at six” behind. A named place is the
+       same: it is the trigger, it is already in the trailing column, and
+       leaving it in gives the row the title “Take the bins out when I get
+       home” beside a column reading “Home”. */
     title = title.replace(WHEN_ALL, '').replace(/\s+(about|for|at|on|by)\s*$/i, '').trim();
+    title = title.replace(WHERE, '').replace(/\s*,\s*$/, '').trim();
     title = title.replace(/\s{2,}/g, ' ').replace(/[,\s]+$/, '');
 
     if (!title) title = text.trim();
@@ -888,6 +1027,27 @@
     reveals.forEach(function (el) { el.classList.add('is-in'); });
     return;
   }
+
+  /* Titles that settle a word at a time. Only headings that are plain text
+     are split — one with markup inside is left whole rather than guessed at —
+     and the split happens here, after the reduced-motion exit, so a reader
+     who has asked for stillness gets the heading exactly as it was written.
+     The words are separated by ordinary spaces in the DOM, so nothing changes
+     for a screen reader or for find-in-page. */
+  document.querySelectorAll('[data-words]').forEach(function (el) {
+    if (el.children.length) return;
+    var words = el.textContent.trim().split(/\s+/);
+    if (words.length < 2) return;
+    el.textContent = '';
+    words.forEach(function (word, n) {
+      if (n) el.appendChild(document.createTextNode(' '));
+      var span = document.createElement('span');
+      span.className = 'w';
+      span.style.setProperty('--w', n);
+      span.textContent = word;
+      el.appendChild(span);
+    });
+  });
 
   var appear = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {

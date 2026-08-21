@@ -13,9 +13,7 @@ struct WelcomeView: View {
 
             VStack(spacing: 0) {
                 HStack {
-                    Text("SPEAK IT")
-                        .font(.caption.weight(.medium))
-                        .tracking(2.8)
+                    SpeakItWordmark()
                     Spacer()
                     Text("NO ACCOUNT")
                         .font(.caption)
@@ -144,9 +142,7 @@ struct FirstCaptureGuideView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         HStack {
-                            Text("SPEAK IT")
-                                .font(.caption.weight(.medium))
-                                .tracking(2.8)
+                            SpeakItWordmark()
                             Spacer()
                             Button("Done", action: onDone)
                                 .font(.subheadline.weight(.semibold))

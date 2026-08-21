@@ -142,9 +142,9 @@ private struct DemoTitleCard: View {
                     .opacity(appeared ? 1 : 0)
 
                 VStack(spacing: 12) {
-                    Text("SPEAK IT")
+                    Text("Speak It")
                         .font(.system(size: 42, weight: .semibold))
-                        .tracking(4)
+                        .tracking(-0.6)
                     Text("Say it. Save it. Let it go.")
                         .font(.title3)
                         .foregroundStyle(.white.opacity(0.58))
@@ -180,9 +180,9 @@ private struct DemoVoiceCaptureView: View {
                             .frame(width: 38, height: 38)
                             .background(.white.opacity(0.08), in: Circle())
                         Spacer()
-                        Text("SPEAK IT")
-                            .font(.caption.weight(.medium))
-                            .tracking(2.2)
+                        Text("Speak It")
+                            .font(.caption.weight(.semibold))
+                            .tracking(-0.1)
                             .foregroundStyle(.white.opacity(0.58))
                         Spacer()
                         Color.clear.frame(width: 38, height: 38)
@@ -491,9 +491,9 @@ private struct DemoFallbackView: View {
                         DemoPulseMark(size: 54, showsCheck: true)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("SPEAK IT")
+                            Text("Speak It")
                                 .font(.caption2.weight(.semibold))
-                                .tracking(1.8)
+                                .tracking(-0.1)
                                 .foregroundStyle(.white.opacity(0.48))
                             Text("Remembered")
                                 .font(.headline)

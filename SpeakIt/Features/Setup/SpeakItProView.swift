@@ -68,6 +68,9 @@ struct SpeakItProView: View {
                         benefits
                     }
 
+                    if ReferralProgramConfiguration.isEnabled {
+                        referralCard
+                    }
                     codeRedemptionCard
                     trustNote
                     legalControls
@@ -276,6 +279,9 @@ struct SpeakItProView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
+                if SummerLaunchSale.isActive() {
+                    summerSaleHeader
+                }
                 ForEach(subscriptionStore.products, id: \.id) { product in
                     planButton(product)
                 }
@@ -291,16 +297,22 @@ struct SpeakItProView: View {
                 .tracking(1.1)
                 .foregroundStyle(Color.speakMuted)
 
+            if SummerLaunchSale.isActive() {
+                summerSaleHeader
+            }
+
             developerPlanButton(
                 .annual,
                 title: "Annual",
                 price: "$14.99 / year",
-                detail: "$1.25 a month · save 37%"
+                regularPrice: "$29.99 / year",
+                detail: "$1.25 a month"
             )
             developerPlanButton(
                 .monthly,
                 title: "Monthly",
                 price: "$1.99 / month",
+                regularPrice: nil,
                 detail: "Flexible monthly billing"
             )
         }
@@ -310,6 +322,7 @@ struct SpeakItProView: View {
         _ plan: DeveloperTestPlan,
         title: String,
         price: String,
+        regularPrice: String?,
         detail: String
     ) -> some View {
         let isSelected = selectedDeveloperPlan == plan
@@ -335,8 +348,16 @@ struct SpeakItProView: View {
                         .foregroundStyle(Color.speakMuted)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
-                    Text(price)
-                        .font(.subheadline.weight(.semibold))
+                    VStack(alignment: .trailing, spacing: 3) {
+                        if let regularPrice, SummerLaunchSale.isActive() {
+                            Text("Regularly \(regularPrice)")
+                                .font(.caption)
+                                .foregroundStyle(Color.speakMuted)
+                                .strikethrough()
+                        }
+                        Text(price)
+                            .font(.subheadline.weight(.semibold))
+                    }
                     .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: true, vertical: false)
                 }
@@ -382,6 +403,14 @@ struct SpeakItProView: View {
                         .foregroundStyle(Color.speakMuted)
                     Spacer(minLength: 8)
                     VStack(alignment: .trailing, spacing: 3) {
+                        if isAnnual,
+                           SummerLaunchSale.isActive(),
+                           product.priceFormatStyle.currencyCode == "USD" {
+                            Text("Regularly \(SummerLaunchSale.regularAnnualUSPrice)")
+                                .font(.caption2)
+                                .foregroundStyle(Color.speakMuted)
+                                .strikethrough()
+                        }
                         Text(product.displayPrice)
                             .font(.body.weight(.semibold))
                         Text(isAnnual ? "per year" : "per month")
@@ -404,7 +433,7 @@ struct SpeakItProView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("pro.plan.\(isAnnual ? "annual" : "monthly")")
         .accessibilityLabel(
-            "\(isAnnual ? "Annual" : "Monthly"), \(product.displayPrice) per \(isAnnual ? "year" : "month")"
+            planAccessibilityLabel(product: product, isAnnual: isAnnual)
         )
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
@@ -420,6 +449,37 @@ struct SpeakItProView: View {
             .foregroundStyle(Color.speakInverseInk)
             .background(Color.speakInverseSurface, in: Capsule())
             .accessibilityIdentifier("pro.best-value")
+    }
+
+    private var summerSaleHeader: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text("SUMMER LAUNCH SALE")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.1)
+                Text("50% OFF ANNUAL")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.4)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(Color.speakInverseInk)
+                    .background(Color.speakInverseSurface, in: Capsule())
+            }
+            Text("Annual launch pricing ends \(SummerLaunchSale.endDateText).")
+                .font(.footnote)
+                .foregroundStyle(Color.speakMuted)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func planAccessibilityLabel(product: Product, isAnnual: Bool) -> String {
+        guard isAnnual, SummerLaunchSale.isActive() else {
+            return "\(isAnnual ? "Annual" : "Monthly"), \(product.displayPrice) per \(isAnnual ? "year" : "month")"
+        }
+        if product.priceFormatStyle.currencyCode == "USD" {
+            return "Annual, summer launch price \(product.displayPrice) per year, regularly \(SummerLaunchSale.regularAnnualUSPrice), 50 percent off, best value"
+        }
+        return "Annual, summer launch price \(product.displayPrice) per year, 50 percent off the regular annual price, best value"
     }
 
     @ViewBuilder
@@ -457,12 +517,17 @@ struct SpeakItProView: View {
                 .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.speakIt)
+            // The developer twin of this button already carries the identifier;
+            // the real one did not, so the screen's primary call to action was
+            // reachable in tests only by its visible copy — which is the thing
+            // most likely to change.
+            .accessibilityIdentifier("pro.purchase")
             .disabled(selectedProduct == nil || subscriptionStore.isPurchasing)
             .opacity(selectedProduct == nil ? 0.45 : 1)
 
             if let selectedProduct {
                 Text(
-                    "\(selectedProduct.displayPrice) per \(selectedProduct.id == SubscriptionStore.annualProductID ? "year" : "month"). Auto-renews until cancelled."
+                    purchaseDetail(for: selectedProduct)
                 )
                 .font(.caption)
                 .foregroundStyle(Color.speakMuted)
@@ -515,9 +580,7 @@ struct SpeakItProView: View {
             .buttonStyle(.speakIt)
             .accessibilityIdentifier("pro.purchase")
 
-            Text(selectedDeveloperPlan == .annual
-                 ? "$14.99 per year. Auto-renews until cancelled."
-                 : "$1.99 per month. Auto-renews until cancelled.")
+            Text(developerPurchaseDetail)
                 .font(.caption)
                 .foregroundStyle(Color.speakMuted)
 
@@ -528,6 +591,16 @@ struct SpeakItProView: View {
                 .buttonStyle(.speakIt)
         }
     }
+
+    private var developerPurchaseDetail: String {
+        guard selectedDeveloperPlan == .annual else {
+            return "$1.99 per month. Auto-renews until cancelled."
+        }
+        if SummerLaunchSale.isActive() {
+            return "Summer launch price · $14.99 per year until \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+        }
+        return "$29.99 per year. Auto-renews until cancelled."
+    }
 #endif
 
     private var purchaseButtonTitle: String {
@@ -535,6 +608,15 @@ struct SpeakItProView: View {
         return selectedProduct.id == SubscriptionStore.annualProductID
             ? "Choose Annual · \(selectedProduct.displayPrice)"
             : "Choose Monthly · \(selectedProduct.displayPrice)"
+    }
+
+    private func purchaseDetail(for product: Product) -> String {
+        let period = product.id == SubscriptionStore.annualProductID ? "year" : "month"
+        if product.id == SubscriptionStore.annualProductID,
+           SummerLaunchSale.isActive() {
+            return "Summer launch price · \(product.displayPrice) per year until \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+        }
+        return "\(product.displayPrice) per \(period). Auto-renews until cancelled."
     }
 
     private var activeSubscriptionCard: some View {
@@ -603,6 +685,35 @@ struct SpeakItProView: View {
             Image(systemName: "lock.shield")
                 .foregroundStyle(Color.speakMuted)
         }
+    }
+
+    private var referralCard: some View {
+        NavigationLink {
+            ReferralProgramView()
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Give a month. Get a month.", systemImage: "gift.fill")
+                    .font(.headline)
+                    .foregroundStyle(Color.speakInk)
+                Text("Your friend gets one month of Pro free. After Apple verifies that they joined, you get one too.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.speakMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Invite a Friend")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.speakInk)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.speakIt)
+        .padding(18)
+        .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 22))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.speakDivider, lineWidth: 1)
+        }
+        .accessibilityIdentifier("pro.referrals")
     }
 
     private var codeRedemptionCard: some View {
