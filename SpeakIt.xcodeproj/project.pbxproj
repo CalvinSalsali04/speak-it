@@ -29,6 +29,7 @@
 		A10000000000000000000014 /* SpeakItTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000016 /* SpeakItTheme.swift */; };
 		A10000000000000000000015 /* ListeningOrb.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000017 /* ListeningOrb.swift */; };
 		A10000000000000000000016 /* SpeechTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* SpeechTranscriber.swift */; };
+		A100000000000000000001D1 /* SpeechRecognitionBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001D1 /* SpeechRecognitionBackend.swift */; };
 		A10000000000000000000017 /* CaptureAnywhereSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* CaptureAnywhereSetupView.swift */; };
 		A10000000000000000000018 /* SaveThoughtIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000020 /* SaveThoughtIntent.swift */; };
 		A10000000000000000000019 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000021 /* LibraryView.swift */; };
@@ -64,6 +65,8 @@
 		A1000000000000000000010B /* SchemaV1.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000010B /* SchemaV1.swift */; };
 		A100000000000000000001A1 /* ItemPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A1 /* ItemPresentation.swift */; };
 		A100000000000000000001A2 /* ItemPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A2 /* ItemPresentationTests.swift */; };
+		A100000000000000000001B1 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001B1 /* ShoppingListView.swift */; };
+		A100000000000000000001B2 /* ShoppingGroups.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001B2 /* ShoppingGroups.swift */; };
 		A100000000000000000001D0 /* DurabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001D0 /* DurabilityTests.swift */; };
 		A1000000000000000000C4 /* SemanticCorpusDataC.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000C4 /* SemanticCorpusDataC.swift */; };
 		A1000000000000000000E2 /* SemanticCorpusDataE.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000E2 /* SemanticCorpusDataE.swift */; };
@@ -170,9 +173,12 @@
 		B10000000000000000000016 /* SpeakItTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItTheme.swift; sourceTree = "<group>"; };
 		B10000000000000000000017 /* ListeningOrb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningOrb.swift; sourceTree = "<group>"; };
 		B10000000000000000000018 /* SpeechTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriber.swift; sourceTree = "<group>"; };
+		B100000000000000000001D1 /* SpeechRecognitionBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionBackend.swift; sourceTree = "<group>"; };
 		B10000000000000000000019 /* CaptureAnywhereSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAnywhereSetupView.swift; sourceTree = "<group>"; };
 		B10000000000000000000020 /* SaveThoughtIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveThoughtIntent.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		B100000000000000000001B1 /* ShoppingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListView.swift; sourceTree = "<group>"; };
+		B100000000000000000001B2 /* ShoppingGroups.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingGroups.swift; sourceTree = "<group>"; };
 		B10000000000000000000022 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* ThoughtOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtOrganizer.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
@@ -377,6 +383,7 @@
 			isa = PBXGroup;
 			children = (
 				D10000000000000000000008 /* Today */,
+				D100000000000000000001B1 /* Shopping */,
 				D10000000000000000000009 /* Inbox */,
 				D10000000000000000000012 /* Library */,
 				D1000000000000000000000A /* Capture */,
@@ -395,6 +402,15 @@
 			path = Today;
 			sourceTree = "<group>";
 		};
+		D100000000000000000001B1 /* Shopping */ = {
+			isa = PBXGroup;
+			children = (
+				B100000000000000000001B1 /* ShoppingListView.swift */,
+				B100000000000000000001B2 /* ShoppingGroups.swift */,
+			);
+			path = Shopping;
+			sourceTree = "<group>";
+		};
 		D10000000000000000000009 /* Inbox */ = {
 			isa = PBXGroup;
 			children = (
@@ -408,6 +424,7 @@
 			children = (
 				B1000000000000000000000B /* CaptureView.swift */,
 				B10000000000000000000018 /* SpeechTranscriber.swift */,
+				B100000000000000000001D1 /* SpeechRecognitionBackend.swift */,
 				B10000000000000000000026 /* CaptureDraftStore.swift */,
 			);
 			path = Capture;
@@ -785,6 +802,8 @@
 				A10000000000000000000007 /* ThoughtRepository.swift in Sources */,
 				A10000000000000000000008 /* SwiftDataThoughtRepository.swift in Sources */,
 				A10000000000000000000009 /* TodayView.swift in Sources */,
+				A100000000000000000001B1 /* ShoppingListView.swift in Sources */,
+				A100000000000000000001B2 /* ShoppingGroups.swift in Sources */,
 				A1000000000000000000000A /* InboxView.swift in Sources */,
 				A1000000000000000000000B /* CaptureView.swift in Sources */,
 				A1000000000000000000000C /* ItemEditorView.swift in Sources */,
@@ -796,6 +815,7 @@
 				A10000000000000000000014 /* SpeakItTheme.swift in Sources */,
 				A10000000000000000000015 /* ListeningOrb.swift in Sources */,
 				A10000000000000000000016 /* SpeechTranscriber.swift in Sources */,
+				A100000000000000000001D1 /* SpeechRecognitionBackend.swift in Sources */,
 				A10000000000000000000017 /* CaptureAnywhereSetupView.swift in Sources */,
 				A10000000000000000000018 /* SaveThoughtIntent.swift in Sources */,
 				A10000000000000000000019 /* LibraryView.swift in Sources */,

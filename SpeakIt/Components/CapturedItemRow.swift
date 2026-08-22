@@ -35,6 +35,14 @@ struct CapturedItemRow: View {
     }
 
     var body: some View {
+        // A row consults the live device state once per render. Several child
+        // labels need the same answer, and rebuilding ItemPresentation for each
+        // of them multiplied Core Location and recurrence work on long lists.
+        let presentation = ItemPresentation.make(
+            for: item,
+            authorization: LocationReminderMonitor.shared.authorization
+        )
+
         HStack(alignment: .top, spacing: 13) {
             if showsCompletionControl {
                 Button(action: onToggleCompleted) {
@@ -79,7 +87,7 @@ struct CapturedItemRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if onTrailingDetailTap == nil {
-                        passiveTrailingContent
+                        passiveTrailingContent(presentation)
                     } else {
                         memoryIndicators
                     }
@@ -89,7 +97,7 @@ struct CapturedItemRow: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Edit \(item.displayTitle)")
-            .accessibilityHint(alertAccessibilityHint ?? "")
+            .accessibilityHint(alertAccessibilityHint(for: presentation) ?? "")
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
 
             if let trailingDetail, let onTrailingDetailTap {
@@ -112,16 +120,16 @@ struct CapturedItemRow: View {
         .padding(.vertical, 4)
     }
 
-    private var passiveTrailingContent: some View {
+    private func passiveTrailingContent(_ presentation: ItemPresentation) -> some View {
         HStack(spacing: 6) {
             memoryIndicators
 
-            if let trailingText {
+            if let trailingText = trailingText(for: presentation) {
                 HStack(spacing: 3) {
                     // A place reminder gets a glyph because its trailing text is
                     // a place name, and "Home" alone reads like a category. The
                     // pin is what makes it legible as a trigger.
-                    if isPlaceTriggered {
+                    if isPlaceTriggered(presentation) {
                         Image(systemName: "mappin.and.ellipse")
                             .font(.caption2)
                             .accessibilityHidden(true)
@@ -132,7 +140,7 @@ struct CapturedItemRow: View {
                     // the persistent distinction; the receipt word that used to
                     // carry it auto-dismissed in 3.6 seconds. See
                     // FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
-                    if let alertGlyph {
+                    if let alertGlyph = alertGlyph(for: presentation) {
                         Image(systemName: alertGlyph)
                             .font(.caption2)
                             .accessibilityHidden(true)
@@ -148,24 +156,14 @@ struct CapturedItemRow: View {
         .padding(.top, 2)
     }
 
-    /// The one reading of this item every surface shares. Computed here rather
-    /// than passed in so no call site can render a row that silently omits a
-    /// trigger it did not know to ask about.
-    private var presentation: ItemPresentation {
-        ItemPresentation.make(
-            for: item,
-            authorization: LocationReminderMonitor.shared.authorization
-        )
-    }
-
-    private var isPlaceTriggered: Bool {
+    private func isPlaceTriggered(_ presentation: ItemPresentation) -> Bool {
         presentation.reminderState.locationIntent != nil
     }
 
     /// SF Symbol name for the row's persistent alert glyph, or `nil` for a
     /// date with nothing armed on it. A bell for a notification, an alarm
     /// clock for AlarmKit — the two things Speak It can actually deliver.
-    private var alertGlyph: String? {
+    private func alertGlyph(for presentation: ItemPresentation) -> String? {
         switch presentation.reminderState.alertGlyph {
         case .some(.notification): "bell.fill"
         case .some(.alarm): "alarm.fill"
@@ -175,7 +173,7 @@ struct CapturedItemRow: View {
 
     /// VoiceOver has no way to see the glyph above, so it needs the same
     /// distinction in words.
-    private var alertAccessibilityHint: String? {
+    private func alertAccessibilityHint(for presentation: ItemPresentation) -> String? {
         switch presentation.reminderState.alertGlyph {
         case .some(.notification): "Will send a reminder"
         case .some(.alarm): "Will sound an alarm"
@@ -203,7 +201,7 @@ struct CapturedItemRow: View {
         }
     }
 
-    private var trailingText: String? {
+    private func trailingText(for presentation: ItemPresentation) -> String? {
         if let trailingDetail { return trailingDetail }
 
         // The shared reading answers this now. It is what puts the hour back on

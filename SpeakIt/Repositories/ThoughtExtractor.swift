@@ -12,6 +12,11 @@ struct ExtractedThought: Equatable, Sendable {
     let organization: OrganizedThought
     let confidence: Double
     let needsReview: Bool
+    /// Which named list a shopping thought belongs on — the store the person
+    /// said ("Costco"), or a classified default ("Groceries"). `nil` for
+    /// everything that is not a shopping row. Persisted beside the item in
+    /// `ShoppingGroupStore`, never in the schema.
+    var shoppingGroup: String? = nil
 }
 
 struct ThoughtExtractionResult: Equatable, Sendable {
@@ -84,7 +89,13 @@ enum ThoughtExtractionEngine {
                referenceDate: referenceDate,
                calendar: calendar
            ) {
-            return ThoughtExtractionResult(items: refined, method: .appleIntelligence)
+            return ThoughtExtractionResult(
+                items: RuleBasedThoughtExtractor.shapingShoppingLists(
+                    refined,
+                    capture: transcript
+                ),
+                method: .appleIntelligence
+            )
         }
 #endif
 
@@ -120,9 +131,23 @@ enum RuleBasedThoughtExtractor {
         let quote: String
         let analysisText: String
         let suggestedTitle: String?
+        let forcesReview: Bool
+
+        init(
+            quote: String,
+            analysisText: String,
+            suggestedTitle: String?,
+            forcesReview: Bool = false
+        ) {
+            self.quote = quote
+            self.analysisText = analysisText
+            self.suggestedTitle = suggestedTitle
+            self.forcesReview = forcesReview
+        }
     }
 
-    private static let actionLeadPattern = #"(?:buy|get|order|pick\s+up|call|phone|text|email|message|ask|tell|send|submit|finish|book|schedule|pay|renew|remember|save|note|write|add|make|go|get|return|check|start|set|wake|pack|bring|meet|contact|follow\s+up|cancel|delete|remind\s+me\s+to|again\s+in)\b"#
+    private static let actionLeadPattern = #"(?:buy|get|order|pick\s+up|call|phone|text|email|message|ask|tell|say|send|submit|finish|book|schedule|pay|renew|remember|save|note|write|add|make|go|get|return|check|start|set|wake|pack|bring|meet|contact|follow\s+up|cancel|delete|remind\s+me\s+to|again\s+in)\b"#
+    private static let triggerLeadPattern = #"(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\s+(?:i|we)\b"#
 
     static func extract(
         _ transcript: String,
@@ -147,7 +172,7 @@ enum RuleBasedThoughtExtractor {
         // Repair before understanding. See `SpeechRepair.swift` for why the
         // order matters.
         let cleaned = DisfluencyFilter.stripped(normalized)
-        let corrected = SelfCorrectionResolver.resolved(cleaned)
+        let corrected = ClockDigitRepair.repaired(SelfCorrectionResolver.resolved(cleaned))
 
         // Separate what the person wants *managed* from what they want
         // *created*. A capture can do both in one breath, and reading only the
@@ -173,7 +198,8 @@ enum RuleBasedThoughtExtractor {
             segments = [Segment(
                 quote: creating,
                 analysisText: consolidation.analysisText,
-                suggestedTitle: consolidation.title
+                suggestedTitle: consolidation.title,
+                forcesReview: consolidation.requiresReview
             )]
         } else {
             segments = segmentedThoughts(in: creating)
@@ -191,7 +217,8 @@ enum RuleBasedThoughtExtractor {
             )
 
             let safetyAmbiguity = shouldKeepAsOneSafetyItem(segment.analysisText)
-            if safetyAmbiguity {
+            let cannotIdentifyPoint = segment.forcesReview
+            if safetyAmbiguity || cannotIdentifyPoint {
                 organization = OrganizedThought(
                     itemType: .unclear,
                     category: .general,
@@ -206,6 +233,7 @@ enum RuleBasedThoughtExtractor {
             }
 
             let needsReview = safetyAmbiguity
+                || cannotIdentifyPoint
                 || organization.needsClarification
                 || organization.itemType == .unclear
             return ExtractedThought(
@@ -217,7 +245,241 @@ enum RuleBasedThoughtExtractor {
                 needsReview: needsReview
             )
         }
-        return (resolvingPronouns(in: Array(extracted), capture: corrected), partition.operations)
+        let shaped = shapingShoppingLists(Array(extracted), capture: corrected)
+        return (resolvingPronouns(in: shaped, capture: corrected), partition.operations)
+    }
+
+    /// The shopping post-pass shared by both extraction engines: a plain
+    /// spoken list becomes individually checkable rows, and the store the
+    /// person named becomes the list every row lands on. The refinement model
+    /// is instructed to keep a spoken list together, so this must run on its
+    /// output too — otherwise "get eggs, bread, and cheese at Sobeys" is one
+    /// row on an unnamed list on Apple Intelligence devices and three rows on
+    /// the Sobeys list everywhere else.
+    static func shapingShoppingLists(
+        _ items: [ExtractedThought],
+        capture: String
+    ) -> [ExtractedThought] {
+        assigningShoppingGroups(
+            expandingPlainShoppingLists(items, limit: 12),
+            capture: capture
+        )
+    }
+
+    /// Names the list each shopping row belongs on, and folds a bare
+    /// "go to Costco" companion clause into that name.
+    ///
+    /// "Go to Costco and buy eggs, milk, and cheese" wants one list called
+    /// Costco holding three checkable rows — not a Costco errand task plus
+    /// three rows on an anonymous list. The store comes from the whole capture
+    /// because segmentation may have split the trip clause away from the
+    /// products. Without a store, the products vote once, as one capture, for
+    /// Groceries or the fallback group.
+    ///
+    /// The trip clause is only dropped when the list already says everything
+    /// it says: no place trigger, no recurrence, nothing needing review, and
+    /// any fire moment it carries also lives on the shopping rows — "remind me
+    /// in one hour to go to Sobeys and get milk" wants a timed Sobeys list,
+    /// not a "Go to Sobeys" task beside it. The full wording still lives on
+    /// the session transcript either way.
+    private static func assigningShoppingGroups(
+        _ items: [ExtractedThought],
+        capture: String
+    ) -> [ExtractedThought] {
+        let shoppingIndices = items.indices.filter {
+            items[$0].organization.itemType == .shopping && !items[$0].needsReview
+        }
+        guard !shoppingIndices.isEmpty else { return items }
+
+        let store = ShoppingGroupParser.storeName(in: capture)
+        let group = store ?? ShoppingGroupParser.defaultGroup(
+            forProducts: shoppingIndices.map { items[$0].sourceQuote }
+        )
+
+        var result = items
+        for index in shoppingIndices {
+            result[index].shoppingGroup = group
+        }
+
+        if let store {
+            let rowFireMoments = shoppingIndices.flatMap { index -> [Date] in
+                let organization = items[index].organization
+                return [organization.reminderDate, organization.dueDate].compactMap { $0 }
+            }
+            result.removeAll { thought in
+                guard thought.organization.itemType != .shopping,
+                      !thought.needsReview,
+                      thought.organization.locationIntent == nil,
+                      thought.organization.recurrenceRule == nil else { return false }
+
+                // "Remind me in one hour to go to Sobeys" is still a bare trip
+                // phrase once the reminder wording is set aside; the command
+                // and the timing belong to the reminder, not the errand.
+                let bare = ReminderCopy.withoutTrailingTiming(
+                    ReminderCopy.action(from: thought.analysisText)
+                )
+                guard ShoppingGroupParser.isBareTripPhrase(bare, store: store) else {
+                    return false
+                }
+
+                // Folding must never lose a fire moment. A dated trip clause
+                // disappears only when the rows carry the same moment, so the
+                // list card keeps the time and the one notification still
+                // fires; otherwise the trip stays a task.
+                guard let tripDate = thought.organization.reminderDate
+                    ?? thought.organization.dueDate else { return true }
+                return rowFireMoments.contains {
+                    abs($0.timeIntervalSince(tripDate)) < 1
+                }
+            }
+        }
+        return result
+    }
+
+    /// Turns a plain spoken grocery list into rows that can be checked off one
+    /// at a time. Lists carrying a time, place, reminder, or recurrence stay as
+    /// one thought: copying that trigger onto every grocery would create a burst
+    /// of notifications and several identical monitored regions.
+    ///
+    /// A comma is one signal that the person dictated a list; a comma-less
+    /// body made entirely of recognized groceries is the other, because speech
+    /// transcription often drops the commas the person spoke. Anything with an
+    /// unrecognized word stays whole rather than guessing at boundaries. The
+    /// complete capture still lives on `CaptureSession`; each row keeps the
+    /// words for its own entry as its source quote.
+    private static func expandingPlainShoppingLists(
+        _ items: [ExtractedThought],
+        limit: Int
+    ) -> [ExtractedThought] {
+        var result: [ExtractedThought] = []
+
+        for item in items {
+            guard result.count < limit else { break }
+            let entries = plainShoppingEntries(in: item)
+            let remainingCapacity = limit - result.count
+
+            // Never save only the first part of a long list. If the expansion
+            // cannot fit safely, the original combined thought is still more
+            // useful—and the untouched session transcript remains available.
+            guard entries.count > 1, entries.count <= remainingCapacity else {
+                result.append(item)
+                continue
+            }
+
+            result.append(contentsOf: entries.map { entry in
+                let analysisText = "\(entry.verb) \(entry.product)"
+                return ExtractedThought(
+                    sourceQuote: entry.product,
+                    analysisText: analysisText,
+                    suggestedTitle: analysisText,
+                    organization: item.organization,
+                    confidence: min(item.confidence, 0.94),
+                    needsReview: item.needsReview
+                )
+            })
+        }
+
+        return result
+    }
+
+    private static func plainShoppingEntries(
+        in item: ExtractedThought
+    ) -> [(verb: String, product: String)] {
+        let organization = item.organization
+        // A timed list splits like a plain one: every row carries the same
+        // fire moment from the same capture, and the scheduler already
+        // coalesces those into one notification, so the person gets separate
+        // checkable things and a single alert. A recurring or place-triggered
+        // list stays whole — splitting one would register several identical
+        // repeating series or monitored regions, which nothing coalesces.
+        guard organization.itemType == .shopping,
+              organization.recurrenceRule == nil,
+              organization.locationIntent == nil else { return [] }
+
+        // "Go to Costco and buy milk, eggs" sometimes survives segmentation as
+        // one thought. The trip prefix is list naming, not a product, so strip
+        // it here; the store itself is read from the whole capture by
+        // `assigningShoppingGroups`.
+        var title = ThoughtTitleFormatter.polished(item.analysisText, itemType: .shopping)
+            .replacingOccurrences(
+                of: #"(?i)^(?:please\s+)?(?:go(?:ing)?\s+to|head(?:ing)?\s+(?:over\s+)?to|stop(?:ping)?\s+(?:by|at)|swing(?:ing)?\s+by|run(?:ning)?\s+to|drive\s+to|driving\s+to)\s+(?:the\s+)?[\w'&.-]+(?:\s+[\w'&.-]+){0,2}?\s+(?:and\s+)?(?=(?:buy|order|get|grab|pick)\b)"#,
+                with: "",
+                options: .regularExpression
+            )
+        // "Remind me to get eggs, milk, and cheese in one hour": the command
+        // lead and the trailing timing are the reminder's words, not products.
+        // `ReminderCopy.action` already strips both; the parsed dates survive
+        // on the organization either way.
+        if organization.reminderDate != nil || organization.dueDate != nil {
+            title = ReminderCopy.withoutTrailingTiming(ReminderCopy.action(from: title))
+        }
+        guard let regex = NSRegularExpression.speakItCached(
+            #"^(buy|order|get|grab|pick\s+up)\s+(.+)$"#,
+            options: [.caseInsensitive]
+        ) else { return [] }
+        let range = NSRange(title.startIndex..., in: title)
+        guard let match = regex.firstMatch(in: title, range: range),
+              let verbRange = Range(match.range(at: 1), in: title),
+              let bodyRange = Range(match.range(at: 2), in: title) else { return [] }
+
+        let verb = normalize(String(title[verbRange])).lowercased()
+        let body = normalize(String(title[bodyRange]))
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
+        guard body.contains(",") else {
+            // Speech transcription often drops the commas the person spoke.
+            // A comma-less body still splits when every word is a recognized
+            // grocery — "chicken eggs and milk" — and stays whole otherwise.
+            guard let recognized = ShoppingGroupParser.recognizedProducts(in: body) else {
+                return []
+            }
+            return recognized.map { (verb, $0) }
+        }
+
+        var products = body
+            .split(separator: ",", omittingEmptySubsequences: false)
+            .map { shoppingProduct(String($0)) }
+
+        // Speech punctuation commonly omits the Oxford comma: "milk, eggs and
+        // toothpaste". Only examine the final comma group, and preserve common
+        // compound product names that use `and` as part of the noun.
+        if let last = products.last,
+           let pair = finalShoppingPair(in: last) {
+            products.removeLast()
+            products.append(contentsOf: pair)
+        }
+
+        products = products.map(shoppingProduct)
+        guard products.count > 1,
+              products.allSatisfy({ !$0.isEmpty && $0.count <= 100 }) else { return [] }
+        return products.map { (verb, $0) }
+    }
+
+    private static func shoppingProduct(_ value: String) -> String {
+        normalize(value)
+            .replacingOccurrences(
+                of: #"^(?:and|plus)\s+"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
+    }
+
+    private static func finalShoppingPair(in value: String) -> [String]? {
+        let compounds = [
+            "bread and butter", "fish and chips", "mac and cheese",
+            "macaroni and cheese", "peanut butter and jelly", "salt and pepper"
+        ]
+        let normalized = shoppingProduct(value)
+        guard !compounds.contains(normalized.lowercased()),
+              let range = normalized.range(
+                of: #"\s+(?:and|plus)\s+"#,
+                options: [.regularExpression, .caseInsensitive, .backwards]
+              ) else { return nil }
+
+        let left = shoppingProduct(String(normalized[..<range.lowerBound]))
+        let right = shoppingProduct(String(normalized[range.upperBound...]))
+        guard !left.isEmpty, !right.isEmpty else { return nil }
+        return [left, right]
     }
 
     /// Gives a name to an item that referred to a person by pronoun.
@@ -306,8 +568,13 @@ enum RuleBasedThoughtExtractor {
                     // and Catherine needs a copy" repeats a weekly series onto
                     // a note, which puts a memory on Today and re-fires it
                     // every week.
+                    let carriesOwnTrigger = containsExplicitTiming(part)
+                        || LocationIntentParser.parse(part) != nil
+                        || ReminderPhrasing.requestsReminder(part)
                     let inheritsCommand = index == 0
-                        || (commandCarriesSharedTiming && !isBareFact(part))
+                        || (commandCarriesSharedTiming
+                            && !isBareFact(part)
+                            && !carriesOwnTrigger)
                     let analysisText = inheritsCommand
                         ? normalize("\(command.prefix) \(part)")
                         : part
@@ -455,11 +722,11 @@ enum RuleBasedThoughtExtractor {
     /// against the same clauses the pipeline actually hands it.
     static func splitClauses(_ text: String) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
-        let pattern = #"(?:\n+|;\s*|,\s*(?=(?:and\s+)?\#(actionLeadPattern))|\s+(?:and|also|then|plus)\s+(?=\#(actionLeadPattern))|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern)))"#
+        let pattern = #"(?:\n+|;\s*|,\s*(?=(?:and\s+)?\#(actionLeadPattern))|\s+(?:and|also|then|plus)\s+(?=\#(actionLeadPattern))|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
 
         var parts: [String] = []
         for sentence in sentenceParts {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]) else {
                 parts.append(sentence)
                 continue
             }
@@ -752,31 +1019,61 @@ enum RuleBasedThoughtExtractor {
     }
 
     private static func sharedCommand(in text: String) -> (prefix: String, body: String)? {
-        let pattern = #"(?i)^(?<prefix>(?:please\s+)?(?:remind\s+me|notify\s+me|alert\s+me|don't\s+let\s+me\s+forget|do\s+not\s+let\s+me\s+forget)\b.*?\bto)\s+(?<body>.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let prefixRange = Range(match.range(withName: "prefix"), in: text),
-              let bodyRange = Range(match.range(withName: "body"), in: text) else {
-            return nil
+        let command = #"(?:remind\s+me|notify\s+me|alert\s+me|don't\s+let\s+me\s+forget|do\s+not\s+let\s+me\s+forget)"#
+        let patterns = [
+            #"(?i)^(?<prefix>(?:please\s+)?\#(command)\b.*?\bto)\s+(?<body>.+)$"#,
+            #"(?i)^(?<prefix>.*?\b\#(command)\b.*?\bto)\s+(?<body>.+)$"#,
+        ]
+        for pattern in patterns {
+            // The broader second form is only legal when the prelude is a
+            // real place trigger. This keeps reported speech containing
+            // "remind me to" from inheriting an invented command.
+            if pattern == patterns[1], LocationIntentParser.parse(text) == nil {
+                continue
+            }
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(
+                      in: text,
+                      range: NSRange(text.startIndex..., in: text)
+                  ),
+                  let prefixRange = Range(match.range(withName: "prefix"), in: text),
+                  let bodyRange = Range(match.range(withName: "body"), in: text) else {
+                continue
+            }
+            return (normalize(String(text[prefixRange])), normalize(String(text[bodyRange])))
         }
-        return (normalize(String(text[prefixRange])), normalize(String(text[bodyRange])))
+        return nil
     }
 
     private static func pluralAlarmSegments(in text: String) -> [Segment]? {
-        let pattern = #"(?i)^(?:please\s+)?set\s+(?:\w+\s+)?alarms?\s*(?:for|at|,)\s*(.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        // "Wake me up at 9:30, 9:35 and 9:45" asks for the same thing as "set
+        // alarms for…": one alarm per spoken time. Without the wake-me lead
+        // the sentence collapsed to a single 9:30 alarm and silently dropped
+        // the rest — the worst outcome for the one request that exists to get
+        // someone out of bed.
+        let pattern = #"(?i)^(?:please\s+)?(?:set\s+(?:\w+\s+)?alarms?\s*(?:for|at|,)|wake\s+me\s+(?:up\s+)?(?:at|for))\s*(.+)$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let timesRange = Range(match.range(at: 1), in: text) else {
             return nil
         }
         let timesText = String(text[timesRange])
-        guard let separator = try? NSRegularExpression(
-            pattern: #"(?i)\s*(?:,|\band\b)\s*"#
+        guard let separator = NSRegularExpression.speakItCached(
+            #"(?i)\s*(?:,|\band\b)\s*"#
         ) else { return nil }
         let times = timesText
             .components(separatedBy: separator)
-            .map(normalize)
+            // Dictation ends the sentence with a period and the last time
+            // inherits it; "9:45." must still read as a time.
+            .map { normalize($0).trimmingCharacters(in: CharacterSet(charactersIn: ".!?,;")) }
             .filter { !$0.isEmpty }
+            // Dictation also drops the commas between spoken times, leaving
+            // "9:30 9:35" as one component. A run of purely numeric clock
+            // tokens splits back apart; worded times keep their spaces.
+            .flatMap { component -> [String] in
+                if looksLikeTime(component) { return [component] }
+                return numericTimeTokens(in: component) ?? [component]
+            }
         guard times.count > 1, times.allSatisfy(looksLikeTime) else { return nil }
         return times.map { time in
             Segment(
@@ -787,9 +1084,50 @@ enum RuleBasedThoughtExtractor {
         }
     }
 
+    /// Splits "9:30 9:35 9:45" — numeric clock tokens dictation ran together
+    /// without commas — into its times, attaching a stray meridiem to the time
+    /// before it. Returns `nil` unless the whole run reads as times, so an
+    /// ordinary sentence is never carved up.
+    ///
+    /// Dictation also hears the pause in "9, 9:30" as the word "to", writing
+    /// "9 to 9:30". A "to" between clock tokens splits only when one side has
+    /// explicit minutes: "10 to 9" must keep its spoken meaning of 8:50, and
+    /// "7 AM to take my pills" has no clock token after the "to" at all.
+    private static func numericTimeTokens(in component: String) -> [String]? {
+        let tokens = component.split(separator: " ").map(String.init)
+        var result: [String] = []
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            if token.range(
+                of: #"(?i)^\d{1,2}(?::\d{2})?(?:a\.?m\.?|p\.?m\.?)?$"#,
+                options: .regularExpression
+            ) != nil {
+                result.append(token)
+            } else if token.range(
+                of: #"(?i)^(?:a\.?m\.?|p\.?m\.?)$"#,
+                options: .regularExpression
+            ) != nil, !result.isEmpty {
+                result[result.count - 1] += " " + token
+            } else if token.lowercased() == "to",
+                      let previous = result.last,
+                      index + 1 < tokens.count,
+                      previous.contains(":") || tokens[index + 1].contains(":") {
+                // Separator only; the surrounding clock tokens stand alone.
+            } else {
+                return nil
+            }
+            index += 1
+        }
+        return result.count > 1 ? result : nil
+    }
+
     private static func looksLikeTime(_ value: String) -> Bool {
-        value.range(
-            of: #"(?i)^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:\s+(?:a\.?m\.?|p\.?m\.?))?$"#,
+        // Spoken minutes — "nine thirty five" — are how dictation renders a
+        // clock as often as "9:35" is; both must read as one time.
+        let spokenMinutes = #"(?:\s+(?:o'?\s?clock|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|(?:twenty|thirty|forty|fifty)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine))?|five|ten|fifteen))?"#
+        return value.range(
+            of: #"(?i)^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\#(spokenMinutes))(?:\s+(?:a\.?m\.?|p\.?m\.?))?$"#,
             options: .regularExpression
         ) != nil
     }
@@ -818,7 +1156,13 @@ enum RuleBasedThoughtExtractor {
         // independent item ("When I leave work remind me to buy milk, and every
         // Sunday remind me to call Mom"). Only a dangling condition is context
         // to inherit; consuming a complete first item would erase it.
-        guard !ActionabilityReader.read(text).belongsOnToday else { return nil }
+        //
+        // An `.event` reading does not count as complete: "When I go to Costco
+        // today" reads as an event purely because of the date word, and taking
+        // that reading at face value turned the condition into a phantom event
+        // row while its shopping list drifted off to the "Other" list.
+        let reading = ActionabilityReader.read(text)
+        guard reading != .actionable, reading != .outstanding else { return nil }
         guard text.range(
             of: #"(?i)^(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b.+$"#,
             options: .regularExpression
@@ -851,7 +1195,7 @@ enum RuleBasedThoughtExtractor {
 
     private static func correctedText(in text: String) -> String {
         let pattern = #"(?i)(?:\s*[—–-]\s*|,\s*|\s+)(?:(?:no)\s*,?\s*)?(?:actually|rather|i\s+mean)\s*[:,]?\s*(?=\w)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
+        guard let regex = NSRegularExpression.speakItCached(pattern),
               let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
               let range = Range(last.range, in: text),
               range.lowerBound != text.startIndex else {
@@ -1094,7 +1438,9 @@ enum IntelligentThoughtExtractor {
                 reminderDate: kind.isActionable ? deterministic.reminderDate : nil,
                 reminderDelivery: kind.isActionable ? deterministic.reminderDelivery : .none,
                 recurrenceRule: kind.isActionable ? deterministic.recurrenceRule : nil,
-                needsClarification: deterministic.needsClarification || confidence < 0.82
+                needsClarification: deterministic.needsClarification || confidence < 0.82,
+                temporalIntent: deterministic.temporalIntent,
+                locationIntent: kind.isActionable ? deterministic.locationIntent : nil
             )
             let title = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
             output.append(ExtractedThought(

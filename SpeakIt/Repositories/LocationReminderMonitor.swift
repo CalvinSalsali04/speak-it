@@ -57,6 +57,13 @@ final class LocationReminderMonitor: NSObject {
     static let shared = LocationReminderMonitor()
 
     private let manager: CLLocationManager
+    /// Hardware support does not change while this process is running. Asking
+    /// Core Location for it from every SwiftUI row can exceed the framework's
+    /// supported call rate and stall the main thread on a long list.
+    private let isRegionMonitoringAvailable: Bool
+    /// Authorization changes arrive through the delegate below. Keeping the
+    /// latest snapshot makes presentation reads cheap while remaining current.
+    private var cachedAuthorization: LocationAuthorization
     private var lastReconciliation = LocationMonitorReconciliation()
 
     /// Regions iOS accepted and then refused, keyed by region identifier.
@@ -76,7 +83,16 @@ final class LocationReminderMonitor: NSObject {
     var onRegionEvent: ((UUID, LocationEvent, Int, String) -> Void)?
 
     override init() {
-        manager = CLLocationManager()
+        let manager = CLLocationManager()
+        let monitoringAvailable = CLLocationManager.isMonitoringAvailable(
+            for: CLCircularRegion.self
+        )
+        self.manager = manager
+        isRegionMonitoringAvailable = monitoringAvailable
+        cachedAuthorization = Self.authorizationSnapshot(
+            from: manager,
+            isRegionMonitoringAvailable: monitoringAvailable
+        )
         super.init()
         manager.delegate = self
         manager.allowsBackgroundLocationUpdates = false
@@ -84,9 +100,17 @@ final class LocationReminderMonitor: NSObject {
 
     // MARK: Authorization
 
-    /// The device's current ability to monitor places. Always queried, never
-    /// stored — see `LocationAuthorization`.
+    /// The device's current ability to monitor places. This is a live process
+    /// snapshot, refreshed by `locationManagerDidChangeAuthorization`, never
+    /// persisted with a thought.
     var authorization: LocationAuthorization {
+        cachedAuthorization
+    }
+
+    private static func authorizationSnapshot(
+        from manager: CLLocationManager,
+        isRegionMonitoringAvailable: Bool
+    ) -> LocationAuthorization {
         let status: LocationAuthorization.Status = switch manager.authorizationStatus {
         case .notDetermined: .notDetermined
         case .restricted: .restricted
@@ -98,9 +122,14 @@ final class LocationReminderMonitor: NSObject {
         return LocationAuthorization(
             status: status,
             isPrecise: manager.accuracyAuthorization == .fullAccuracy,
-            isRegionMonitoringAvailable: CLLocationManager.isMonitoringAvailable(
-                for: CLCircularRegion.self
-            )
+            isRegionMonitoringAvailable: isRegionMonitoringAvailable
+        )
+    }
+
+    private func refreshAuthorization() {
+        cachedAuthorization = Self.authorizationSnapshot(
+            from: manager,
+            isRegionMonitoringAvailable: isRegionMonitoringAvailable
         )
     }
 
@@ -112,9 +141,9 @@ final class LocationReminderMonitor: NSObject {
     /// the ask has happened is the only way to know to send the person to
     /// Settings instead.
     ///
-    /// This records what *the app asked*, not what the system granted — it is
-    /// not a cached permission, and `LocationAuthorization` is still queried
-    /// fresh every time.
+    /// This records what *the app asked*, not what the system granted. The live
+    /// authorization snapshot is refreshed independently by the manager's
+    /// delegate whenever the system state changes.
     private(set) var hasRequestedAlwaysAuthorization: Bool {
         get { UserDefaults.standard.bool(forKey: Self.alwaysRequestedKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.alwaysRequestedKey) }
@@ -137,12 +166,11 @@ final class LocationReminderMonitor: NSObject {
     }
 
     var authorizationStep: AuthorizationStep {
-        switch manager.authorizationStatus {
+        switch authorization.status {
         case .notDetermined: .requestWhenInUse
-        case .authorizedWhenInUse: hasRequestedAlwaysAuthorization ? .openSettings : .requestAlways
+        case .whenInUse: hasRequestedAlwaysAuthorization ? .openSettings : .requestAlways
         case .denied, .restricted: .openSettings
-        case .authorizedAlways: authorization.isPrecise ? .none : .openSettings
-        @unknown default: .openSettings
+        case .always: authorization.isPrecise ? .none : .openSettings
         }
     }
 
@@ -449,6 +477,7 @@ extension LocationReminderMonitor: CLLocationManagerDelegate {
         // Permission changed under us. The reminders have not changed meaning,
         // so nothing is deleted — the app is simply told to reconcile again.
         Task { @MainActor in
+            self.refreshAuthorization()
             NotificationCenter.default.post(
                 name: LocationReminderMonitor.authorizationDidChangeNotification,
                 object: nil

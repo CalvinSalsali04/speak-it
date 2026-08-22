@@ -10,12 +10,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     private var previousDeletionRecords: [ICloudDeletionRecord] = []
     private var previousPinRecords: [MemoryPinRecord] = []
     private var previousIdeaStageRecords: [IdeaStageRecord] = []
+    private var previousShoppingGroups: [String: String] = [:]
 
     override func setUpWithError() throws {
         previousRecurrences = RecurrenceStore.snapshots()
         previousDeletionRecords = ICloudDeletionStore.records()
         previousPinRecords = Array(MemoryPinStore.records().values)
         previousIdeaStageRecords = Array(IdeaStageStore.records().values)
+        previousShoppingGroups = ShoppingGroupStore.snapshot()
+        ShoppingGroupStore.restore([:])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(
             for: PersistenceController.schema,
@@ -33,8 +36,510 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         ICloudDeletionStore.restore(previousDeletionRecords)
         MemoryPinStore.restore(previousPinRecords)
         IdeaStageStore.restore(previousIdeaStageRecords)
+        ShoppingGroupStore.restore(previousShoppingGroups)
         repository = nil
         container = nil
+    }
+
+    // MARK: - Named shopping lists
+
+    /// "Go to Costco and buy…" is one list called Costco, not a Costco errand
+    /// plus rows on an anonymous list. The trip clause is represented by the
+    /// group header; the full wording still lives on the session transcript.
+    func testShoppingTripCaptureGroupsItemsUnderTheStore() throws {
+        try repository.createCapture(
+            text: "Go to Costco and buy eggs, milk, and cheese",
+            source: .inAppText,
+            createdAt: .now
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let shopping = items.filter { $0.itemType == .shopping }
+
+        XCTAssertEqual(
+            Set(shopping.map(\.displayTitle).map { $0.lowercased() }).count, 3,
+            "each product becomes its own checkable row, got \(items.map(\.displayTitle))"
+        )
+        for item in shopping {
+            XCTAssertEqual(
+                ShoppingGroupStore.group(for: item.id), "Costco",
+                "\(item.displayTitle) must be on the Costco list"
+            )
+        }
+        XCTAssertTrue(
+            items.allSatisfy { $0.itemType == .shopping },
+            "the bare trip clause must fold into the group header, got \(items.map(\.displayTitle))"
+        )
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(
+            sessions.first?.originalTranscription,
+            "Go to Costco and buy eggs, milk, and cheese",
+            "the person's full wording must survive on the session"
+        )
+    }
+
+    /// No store named, food products: the list is Groceries.
+    func testPlainShoppingListDefaultsToGroceries() throws {
+        try repository.createCapture(
+            text: "Buy eggs, milk, and toothpaste",
+            source: .inAppText,
+            createdAt: .now
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 3)
+        for item in items {
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Groceries")
+        }
+    }
+
+    /// No store, no food: the fallback group, never a blank header.
+    func testNonFoodShoppingListFallsBackToOther() throws {
+        try repository.createCapture(
+            text: "Buy a drill, sandpaper, and duct tape",
+            source: .inAppText,
+            createdAt: .now
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let shopping = items.filter { $0.itemType == .shopping }
+        XCTAssertFalse(shopping.isEmpty)
+        for item in shopping {
+            XCTAssertEqual(
+                ShoppingGroupStore.group(for: item.id),
+                ShoppingGroupStore.fallbackGroup
+            )
+        }
+    }
+
+    /// The long-press add path: typed entries land on the named list as
+    /// ordinary shopping rows with full capture provenance.
+    func testAddShoppingItemsCreatesGroupedRows() throws {
+        let added = try repository.addShoppingItems(
+            ["Olive oil", " paper towels ", ""],
+            group: "Costco"
+        )
+
+        XCTAssertEqual(added.count, 2)
+        for item in added {
+            XCTAssertEqual(item.itemType, .shopping)
+            XCTAssertFalse(item.needsClarification)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Costco")
+        }
+        XCTAssertEqual(
+            added.first?.captureSession?.originalTranscription,
+            "Olive oil, paper towels"
+        )
+        XCTAssertEqual(added.first?.captureSession?.processingStatus, .complete)
+    }
+
+    /// Deleting an item must not leak its list label.
+    func testDeletingShoppingItemRemovesItsGroupLabel() throws {
+        let added = try repository.addShoppingItems(["Milk"], group: "Groceries")
+        let item = try XCTUnwrap(added.first)
+        XCTAssertNotNil(ShoppingGroupStore.group(for: item.id))
+
+        try repository.delete(item)
+
+        XCTAssertNil(ShoppingGroupStore.group(for: item.id))
+    }
+
+    /// "Remind me to get eggs, milk, and cheese in one hour" wants both
+    /// halves: separate checkable rows AND one alert. Each row carries the
+    /// same fire moment from the same capture, and the scheduler coalesces
+    /// same-session same-moment requests into a single notification, so
+    /// splitting costs no notification burst.
+    func testTimedShoppingListSplitsAndSharesOneFireMoment() throws {
+        try repository.createCapture(
+            text: "Remind me to get eggs, milk, and cheese in one hour",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 3, "each product is checkable, got \(items.map(\.displayTitle))")
+
+        let fireDates = Set(items.compactMap { $0.reminderDate?.timeIntervalSince1970.rounded() })
+        XCTAssertEqual(fireDates.count, 1, "every row must share the one fire moment")
+        let sessions = Set(items.compactMap { $0.captureSession?.id })
+        XCTAssertEqual(sessions.count, 1, "one session, so the notifications coalesce")
+
+        for item in items {
+            XCTAssertEqual(item.itemType, .shopping)
+            XCTAssertNotNil(item.reminderDate)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Groceries")
+            XCTAssertFalse(
+                item.displayTitle.lowercased().contains("hour"),
+                "timing words are not products, got \(item.displayTitle)"
+            )
+        }
+    }
+
+    /// "Wake me up at 9:30, 9:35, and 9:45" asks for one alarm per time, the
+    /// same as "set alarms for…". It used to collapse to a single 9:30 alarm
+    /// and silently drop the rest — the worst failure for the one request
+    /// that exists to get someone out of bed. Both dictation forms count:
+    /// numerals and spoken words.
+    func testWakeMeUpWithSeveralTimesBecomesOneAlarmPerTime() throws {
+        let calendar = Calendar.current
+        for phrase in [
+            "Wake me up at 9:30, 9:35, and 9:45",
+            "Set alarms for 9:30, 9:35 and 9:45",
+            "Wake me up at nine thirty, nine thirty five, and nine forty five",
+            // Dictation drops the commas and adds a closing period; the
+            // times must still split apart.
+            "Wake me up at 9:30 9:35 and 9:45.",
+            "Wake me up at 9:30 9:35 9:45",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(phrase)
+            XCTAssertEqual(result.items.count, 3, phrase)
+            var minutes: [Int] = []
+            for item in result.items {
+                XCTAssertEqual(item.organization.reminderDelivery, .alarm, phrase)
+                XCTAssertFalse(item.needsReview, phrase)
+                let fire = try XCTUnwrap(item.organization.reminderDate, phrase)
+                XCTAssertEqual(
+                    calendar.component(.hour, from: fire), 9,
+                    "an alarm hour commits to the morning — \(phrase)"
+                )
+                minutes.append(calendar.component(.minute, from: fire))
+            }
+            XCTAssertEqual(minutes, [30, 35, 45], phrase)
+        }
+    }
+
+    /// A single spoken tens-and-units minute — "six twenty" — resolves to the
+    /// exact minute instead of the bare hour.
+    func testSpokenTensAndUnitsMinuteResolvesExactly() throws {
+        let result = ThoughtExtractionEngine.extractWithRules("Wake me up at six twenty")
+
+        XCTAssertEqual(result.items.count, 1)
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.organization.reminderDelivery, .alarm)
+        let fire = try XCTUnwrap(item.organization.reminderDate)
+        XCTAssertEqual(Calendar.current.component(.hour, from: fire), 6)
+        XCTAssertEqual(Calendar.current.component(.minute, from: fire), 20)
+    }
+
+    /// Speech transcription often drops spoken commas. When every word is a
+    /// recognized grocery, the comma-less list still splits — the same rows
+    /// the typed, comma'd sentence produces — and keeps its reminder.
+    func testTimedListWithoutCommasStillSplitsWhenEveryWordIsAKnownGrocery() throws {
+        try repository.createCapture(
+            text: "Remind me to get eggs milk and cheese in one hour",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext
+            .fetch(FetchDescriptor<CapturedItem>())
+            .sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(items.map(\.displayTitle), ["Get eggs", "Get milk", "Get cheese"])
+        for item in items {
+            XCTAssertEqual(item.itemType, .shopping)
+            XCTAssertNotNil(item.reminderDate, "the one-hour reminder must survive on every row")
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Groceries")
+        }
+    }
+
+    /// One unrecognized word — a quantity, a brand, a qualifier — refuses the
+    /// comma-less split rather than guessing at product boundaries.
+    func testCommalessListWithUnknownWordsStaysWhole() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to get two dozen eggs and milk in one hour",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 1, "got \(items.map(\.displayTitle))")
+        XCTAssertNotNil(item.reminderDate, "the reminder must survive")
+    }
+
+    /// The user-reported dictation, exactly as speech renders it — no commas —
+    /// still produces the three checkable rows on the Sobeys list with the
+    /// shared reminder, and no separate trip task.
+    func testCommalessSobeysDictationSplitsOntoTheList() throws {
+        let createdAt = Date.now
+        try repository.createCapture(
+            text: "Remind me in one hour to go to Sobeys and get chicken eggs and milk",
+            source: .inAppText,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext
+            .fetch(FetchDescriptor<CapturedItem>())
+            .sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(items.map(\.displayTitle), ["Get chicken", "Get eggs", "Get milk"])
+        for item in items {
+            XCTAssertEqual(item.itemType, .shopping)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
+            let reminder = try XCTUnwrap(item.reminderDate)
+            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+        }
+    }
+
+    /// Known multi-word products survive the comma-less split intact.
+    func testCommalessSplitKeepsCompoundProductsTogether() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Buy peanut butter and milk"
+        )
+
+        XCTAssertEqual(
+            result.items.map { $0.suggestedTitle ?? $0.analysisText },
+            ["buy peanut butter", "buy milk"]
+        )
+    }
+
+    /// A sentence naming a place and a time keeps the time — the constraint
+    /// the person made precise — instead of being parked in review over the
+    /// redundant place. The place name still labels the list.
+    func testPlaceAndTimeCapturePrioritizesTheTime() throws {
+        let createdAt = Date.now
+        try repository.createCapture(
+            text: "When I go to Sobeys, remind me to get cheese, eggs, and bread in one hour",
+            source: .inAppText,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 3, "the list still splits, got \(items.map(\.displayTitle))")
+        for item in items {
+            XCTAssertFalse(item.needsClarification, "\(item.displayTitle) must not sit in review")
+            XCTAssertNil(item.locationIntent, "the stated time wins; the place is dropped")
+            let reminder = try XCTUnwrap(item.reminderDate, "\(item.displayTitle) keeps the reminder")
+            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
+            XCTAssertFalse(item.displayTitle.lowercased().contains("hour"))
+            XCTAssertFalse(item.displayTitle.lowercased().contains("sobeys"))
+        }
+    }
+
+    /// The reminder-first trip phrasing — "remind me in one hour to go to
+    /// Sobeys and get chicken, eggs and milk" — produces only the checkable
+    /// rows on the Sobeys list, each carrying the one-hour reminder. The trip
+    /// clause folds into the list name: the list is the trip, so no separate
+    /// "Go to Sobeys" task appears beside it and no fire moment is lost.
+    func testReminderFirstTripPhraseFoldsTheTripIntoTheTimedList() throws {
+        let createdAt = Date.now
+        try repository.createCapture(
+            text: "Remind me in one hour to go to Sobeys and get chicken, eggs and milk",
+            source: .inAppText,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext
+            .fetch(FetchDescriptor<CapturedItem>())
+            .sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(
+            items.map(\.displayTitle),
+            ["Get chicken", "Get eggs", "Get milk"],
+            "the trip clause folds into the list; no Go to Sobeys task"
+        )
+        for item in items {
+            XCTAssertEqual(item.itemType, .shopping)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
+            XCTAssertFalse(item.needsClarification, "\(item.displayTitle) must not sit in review")
+            let reminder = try XCTUnwrap(item.reminderDate, "\(item.displayTitle) keeps the reminder")
+            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+        }
+    }
+
+    /// A trip clause whose fire moment the rows do not carry keeps its task:
+    /// folding it would silently drop the only reminder in the capture.
+    func testTimedTripWithUntimedListStaysATask() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Go to Sobeys at three and buy eggs, milk, and cheese"
+        )
+
+        let types = result.items.map(\.organization.itemType)
+        XCTAssertTrue(
+            types.contains { $0 != .shopping } || result.items.contains {
+                $0.organization.itemType == .shopping
+                    && ($0.organization.reminderDate ?? $0.organization.dueDate) != nil
+            },
+            "the stated time must survive somewhere, got \(result.items.map { ($0.suggestedTitle ?? $0.analysisText, $0.organization.itemType) })"
+        )
+    }
+
+    /// The delay spoken inside the place clause — "when I go to Sobeys in an
+    /// hour, remind me to…" — reads the same as the delay at the end: three
+    /// checkable rows on the Sobeys list, one shared fire moment, no review.
+    func testDelayInsideThePlaceClauseStillSplitsAndKeepsTheReminder() throws {
+        let createdAt = Date.now
+        try repository.createCapture(
+            text: "When I go to Sobeys in an hour, remind me to get eggs, bread, and cheese",
+            source: .inAppText,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count, 3, "each product is checkable, got \(items.map(\.displayTitle))")
+        for item in items {
+            XCTAssertNil(item.locationIntent, "the stated time wins; the place names the list")
+            XCTAssertFalse(item.needsClarification, "\(item.displayTitle) must not sit in review")
+            let reminder = try XCTUnwrap(item.reminderDate, "\(item.displayTitle) keeps the reminder")
+            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
+        }
+    }
+
+    /// The Apple Intelligence path returns the refinement model's items, and
+    /// used to skip the shopping post-pass entirely: on those devices a spoken
+    /// list stayed one row on an unnamed list while every other device split
+    /// it into checkable rows on the store's list. The shaping pass is shared
+    /// now. This drives it with the shape `IntelligentThoughtExtractor`
+    /// produces — one kept-together shopping row whose dates were re-derived
+    /// deterministically — and expects the same rows the rules path makes.
+    func testRefinedShoppingListStillSplitsAndNamesTheStore() {
+        let capture = "When I go to Sobeys in an hour, remind me to get eggs, bread, and cheese"
+        let deterministic = ThoughtOrganizer.organize(capture)
+        let refined = [ExtractedThought(
+            sourceQuote: capture,
+            analysisText: capture,
+            suggestedTitle: "Get eggs, bread, and cheese",
+            organization: OrganizedThought(
+                itemType: .shopping,
+                category: .shopping,
+                priority: deterministic.priority,
+                personName: nil,
+                dueDate: deterministic.dueDate,
+                reminderDate: deterministic.reminderDate,
+                reminderDelivery: deterministic.reminderDelivery,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: deterministic.temporalIntent
+            ),
+            confidence: 0.9,
+            needsReview: false
+        )]
+
+        let shaped = RuleBasedThoughtExtractor.shapingShoppingLists(refined, capture: capture)
+
+        XCTAssertEqual(
+            shaped.map { $0.suggestedTitle ?? $0.analysisText },
+            ["get eggs", "get bread", "get cheese"]
+        )
+        XCTAssertEqual(shaped.map(\.shoppingGroup), ["Sobeys", "Sobeys", "Sobeys"])
+        for row in shaped {
+            XCTAssertEqual(row.organization.itemType, .shopping)
+            XCTAssertNotNil(row.organization.reminderDate, "every row keeps the shared fire moment")
+        }
+    }
+
+    /// The same shared pass must still refuse to split what the rules path
+    /// refuses: a list held whole by a place trigger stays one row, because
+    /// splitting would need one monitored region per grocery.
+    func testRefinedPlaceTriggeredListStaysWhole() {
+        let capture = "When I get to Costco, remind me to buy milk, eggs, and cheese"
+        let deterministic = ThoughtOrganizer.organize(capture)
+        let refined = [ExtractedThought(
+            sourceQuote: capture,
+            analysisText: capture,
+            suggestedTitle: "Buy milk, eggs, and cheese",
+            organization: OrganizedThought(
+                itemType: .shopping,
+                category: .shopping,
+                priority: deterministic.priority,
+                personName: nil,
+                dueDate: deterministic.dueDate,
+                reminderDate: deterministic.reminderDate,
+                reminderDelivery: deterministic.reminderDelivery,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: deterministic.temporalIntent,
+                locationIntent: deterministic.locationIntent
+            ),
+            confidence: 0.9,
+            needsReview: false
+        )]
+        XCTAssertNotNil(
+            refined.first?.organization.locationIntent,
+            "fixture must carry the place trigger the rules path derives"
+        )
+
+        let shaped = RuleBasedThoughtExtractor.shapingShoppingLists(refined, capture: capture)
+
+        XCTAssertEqual(shaped.count, 1, "a place-triggered list stays one row")
+        XCTAssertEqual(shaped.first?.shoppingGroup, "Costco")
+    }
+
+    /// Items an older build parked in review for the place-and-time combo are
+    /// released on launch: the reparse restores the timed reading and drops
+    /// the redundant place.
+    func testLaunchReleasesLegacyPlaceAndTimeHoldouts() throws {
+        let createdAt = Date.now.addingTimeInterval(-120)
+        let stuck = CapturedItem(
+            originalTextSegment: "When I go to Sobeys, remind me to get bread in one hour",
+            displayTitle: "Get bread",
+            itemType: .shopping,
+            category: .shopping,
+            createdAt: createdAt,
+            processingConfidence: 0.58,
+            needsClarification: true,
+            isReviewed: false,
+            lastModifiedAt: createdAt,
+            temporalIntent: ThoughtOrganizer.organize(
+                "get bread in one hour",
+                referenceDate: createdAt
+            ).temporalIntent,
+            locationIntent: LocationIntentParser.parse("remind me when I get to Sobeys to get bread")
+        )
+        XCTAssertNotNil(stuck.locationIntent, "fixture must reproduce the stuck combined state")
+        XCTAssertTrue(stuck.constrainsBothPlaceAndTime)
+        container.mainContext.insert(stuck)
+        try container.mainContext.save()
+
+        // The pass runs inside launch recovery, which RootView invokes on
+        // every start.
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertNil(stuck.locationIntent, "the redundant place is dropped on launch")
+        XCTAssertFalse(stuck.needsClarification, "the item leaves review")
+        let reminder = try XCTUnwrap(stuck.reminderDate, "the suppressed reminder is restored")
+        XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+    }
+
+    /// The parser reads stores from natural phrasings and refuses generics.
+    func testShoppingGroupParserReadsStoreNames() {
+        XCTAssertEqual(
+            ShoppingGroupParser.storeName(in: "Go to Costco and buy eggs, milk, and cheese"),
+            "Costco"
+        )
+        XCTAssertEqual(
+            ShoppingGroupParser.storeName(in: "buy eggs and milk at walmart"),
+            "Walmart"
+        )
+        XCTAssertEqual(
+            ShoppingGroupParser.storeName(in: "stop by Home Depot and grab sandpaper"),
+            "Home Depot"
+        )
+        XCTAssertEqual(
+            ShoppingGroupParser.storeName(
+                in: "When I get to Costco, remind me to buy milk, eggs, and cheese"
+            ),
+            "Costco",
+            "the arrival phrasing names the list the same way the trip phrasing does"
+        )
+        XCTAssertNil(
+            ShoppingGroupParser.storeName(in: "go to the store and buy milk"),
+            "a generic place is not a list name"
+        )
+        XCTAssertNil(
+            ShoppingGroupParser.storeName(in: "buy eggs, milk, and cheese"),
+            "no place named, no store"
+        )
+        XCTAssertEqual(
+            ShoppingGroupParser.storeName(in: "go to the grocery store and buy milk"),
+            "Groceries"
+        )
     }
 
     func testCreatingCapturePersistsSessionAndItem() throws {
@@ -738,7 +1243,152 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(Set(result.items.compactMap(\.suggestedTitle)), ["Alarm for 7 AM", "Alarm for 8:30 AM"])
     }
 
-    func testAListAndDependentCommunicationStayTogether() {
+    func testPluralAlarmSurvivesDictationWritingToBetweenTimes() {
+        // Spoken "alarms for 9, 9:30 and 9:45" often reaches the extractor as
+        // "9 to 9:30 and 9:45" because dictation hears the pause as "to".
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 6, calendar: calendar)
+
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Set an alarm for 9 to 9:30 and 9:45",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.items.count, 3)
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.reminderDelivery == .alarm })
+        XCTAssertEqual(
+            Set(result.items.compactMap(\.suggestedTitle)),
+            ["Alarm for 9", "Alarm for 9:30", "Alarm for 9:45"]
+        )
+    }
+
+    func testSpokenMinutesBeforeHourAlarmStaysSingle() {
+        // "Wake me at 10 to 9" is the spoken clock 8:50; the bare hours on
+        // both sides of "to" must not be carved into two alarms.
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 6, calendar: calendar)
+
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Wake me up at 10 to 9",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.items.count, 1)
+    }
+
+    func testLateDayTodayReminderFallsBackToEveningInsteadOfReview() {
+        let calendar = utcCalendar
+
+        // Captured mid-afternoon: 9 AM is gone, the evening hour is not.
+        let afternoon = makeDate(year: 2026, month: 8, day: 3, hour: 15, calendar: calendar)
+        let eveningAlert = ThoughtOrganizer.organize(
+            "Remind me to call the bank today",
+            referenceDate: afternoon,
+            calendar: calendar
+        )
+        XCTAssertFalse(eveningAlert.needsClarification)
+        XCTAssertEqual(
+            eveningAlert.reminderDate,
+            makeDate(year: 2026, month: 8, day: 3, hour: 20, calendar: calendar)
+        )
+
+        // Captured at night: every default hour has passed. The item stays
+        // due today and acts without parking in review, with no invented
+        // reminder for a moment that no longer exists.
+        let night = makeDate(year: 2026, month: 8, day: 3, hour: 22, calendar: calendar)
+        let tooLate = ThoughtOrganizer.organize(
+            "Remind me to call the bank today",
+            referenceDate: night,
+            calendar: calendar
+        )
+        XCTAssertFalse(tooLate.needsClarification)
+        XCTAssertNil(tooLate.reminderDate)
+        XCTAssertNotNil(tooLate.dueDate)
+    }
+
+    func testWakeMeUpTitlesAsWakeUpNotTheLeftoverHour() {
+        // "At ten to nine" contains the word "to", which the title stripper
+        // used to take as the action connector, titling the row "Nine".
+        XCTAssertEqual(ReminderCopy.action(from: "Wake me up at ten to nine"), "Wake up")
+        XCTAssertEqual(ReminderCopy.action(from: "Wake me up at 10 to 9"), "Wake up")
+        XCTAssertEqual(ReminderCopy.action(from: "Set an alarm for 6:30"), "Alarm")
+    }
+
+    func testDueStatementTitleDropsTheTrailingReminderClause() {
+        XCTAssertEqual(
+            ReminderCopy.action(from: "The report is due Friday but remind me Wednesday"),
+            "The report is due Friday"
+        )
+    }
+
+    func testFrontedPlaceConditionWithCommaKeepsShoppingRowsOnTheStoreList() {
+        // Dictation writes the pause as a comma — "When I go to Costco today,
+        // remind me to get…" — and the condition alone reads as an event
+        // because of "today". It must stay context, not become a phantom
+        // event row while the list drifts to "Other".
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 15, calendar: calendar)
+
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "When I go to Costco today, remind me to get roast beef, bread for sandwiches, cheese, chicken thighs and bison meat",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.items.count, 5)
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .shopping })
+        XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == "Costco" })
+        XCTAssertTrue(result.items.allSatisfy { !$0.needsReview })
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate != nil })
+    }
+
+    func testCompactClockDigitsReadAsTheSpokenTime() {
+        // Dictation renders a spoken "six thirty" as "630", especially right
+        // after a correction. Both must land as one 6:30 alarm.
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 15, calendar: calendar)
+
+        for transcript in ["Set an alarm for seven, actually 630", "Set an alarm for 630"] {
+            let result = ThoughtExtractionEngine.extractWithRules(
+                transcript,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            XCTAssertEqual(result.items.count, 1, transcript)
+            XCTAssertEqual(result.items.first?.organization.reminderDelivery, .alarm, transcript)
+            XCTAssertEqual(
+                result.items.first?.organization.reminderDate,
+                makeDate(year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar),
+                transcript
+            )
+        }
+    }
+
+    func testPersonalFactNounSurvivesADroppedPossessive() {
+        // Dictation drops the apostrophe-s: "Priya birthday is December 4th"
+        // is how "Priya's birthday" arrives, and it still belongs to Priya.
+        let organized = ThoughtOrganizer.organize("Priya birthday is December 4th")
+        XCTAssertEqual(organized.personName, "Priya")
+        XCTAssertFalse(organized.itemType.isActionable)
+    }
+
+    func testAlarmWithPurposeClauseAfterToStaysSingle() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 6, calendar: calendar)
+
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Set an alarm for 7 AM to take my pills",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(result.items.first?.organization.reminderDelivery, .alarm)
+    }
+
+    func testShoppingListExpandsWhileDependentCommunicationStaysTogether() {
         let groceries = ThoughtExtractionEngine.extractWithRules(
             "Buy milk, bread, eggs, and bananas"
         )
@@ -746,8 +1396,8 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             "Call Sarah and tell her the launch moved"
         )
 
-        XCTAssertEqual(groceries.items.count, 1)
-        XCTAssertEqual(groceries.items[0].organization.itemType, .shopping)
+        XCTAssertEqual(groceries.items.count, 4)
+        XCTAssertTrue(groceries.items.allSatisfy { $0.organization.itemType == .shopping })
         XCTAssertEqual(communication.items.count, 1)
         XCTAssertEqual(communication.items[0].organization.itemType, .personFollowUp)
     }
@@ -1014,6 +1664,277 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         ] {
             XCTAssertEqual(ThoughtOrganizer.organize(text).personName, expected, text)
         }
+    }
+
+    func testFrontedBirthdayInstructionIsAPersonFollowUp() throws {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(
+            year: 2026,
+            month: 8,
+            day: 21,
+            hour: 10,
+            calendar: calendar
+        )
+        let text = "December 4th say happy birthday to my favourite cousin"
+        let organized = ThoughtOrganizer.organize(
+            text,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(ActionabilityReader.actionBody(text), "say happy birthday to my favourite cousin")
+        XCTAssertEqual(organized.itemType, .personFollowUp)
+        XCTAssertEqual(organized.category, .people)
+        XCTAssertNil(organized.personName, "a relationship is a usable target, not an invented proper name")
+        XCTAssertFalse(organized.needsClarification)
+        XCTAssertNil(organized.reminderDate, "a due day does not invent a notification")
+        XCTAssertEqual(
+            organized.dueDate.map { calendar.dateComponents([.month, .day], from: $0) },
+            DateComponents(month: 12, day: 4)
+        )
+    }
+
+    func testSpecificPersonEditReconcilesMeaningWithoutReparsingOriginalCapture() throws {
+        let calendar = utcCalendar
+        let createdAt = makeDate(
+            year: 2026,
+            month: 8,
+            day: 21,
+            hour: 10,
+            calendar: calendar
+        )
+        let transcript = "December 4th say happy birthday to my favourite cousin"
+        let item = try repository.createCapture(
+            text: transcript,
+            source: .inAppVoice,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+        let originalDueDate = try XCTUnwrap(item.dueDate)
+
+        let semantics = ItemEditSemanticReconciler.reconcile(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            personName: "Sarah",
+            originalTitle: item.displayTitle,
+            originalItemType: item.itemType,
+            originalCategory: item.category,
+            originalPersonName: item.personName
+        )
+        try repository.update(item, with: ItemEdits(
+            title: semantics.title,
+            itemType: semantics.itemType,
+            category: semantics.category,
+            dueDate: originalDueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: semantics.personName,
+            needsClarification: false,
+            dueDateHasTime: false
+        ))
+
+        XCTAssertEqual(item.displayTitle, "Say happy birthday to Sarah")
+        XCTAssertEqual(item.itemType, .personFollowUp)
+        XCTAssertEqual(item.category, .people)
+        XCTAssertEqual(item.personName, "Sarah")
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: item), "Sarah")
+        XCTAssertEqual(item.dueDate, originalDueDate)
+        XCTAssertEqual(item.temporalKind, .dateOnly)
+        XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
+    }
+
+    func testEditingTheTitleToNameSarahRefreshesThePersonField() {
+        let semantics = ItemEditSemanticReconciler.reconcile(
+            title: "December 4th say happy birthday to Sarah",
+            itemType: .personFollowUp,
+            category: .people,
+            personName: nil,
+            originalTitle: "December 4th say happy birthday to my favourite cousin",
+            originalItemType: .personFollowUp,
+            originalCategory: .people,
+            originalPersonName: nil
+        )
+
+        XCTAssertEqual(semantics.itemType, .personFollowUp)
+        XCTAssertEqual(semantics.category, .people)
+        XCTAssertEqual(semantics.personName, "Sarah")
+    }
+
+    func testSpecificPersonEditDoesNotOverrideExplicitPickerChanges() {
+        let semantics = ItemEditSemanticReconciler.reconcile(
+            title: "Say happy birthday to my favourite cousin",
+            itemType: .event,
+            category: .personal,
+            personName: "Sarah",
+            originalTitle: "Say happy birthday to my favourite cousin",
+            originalItemType: .task,
+            originalCategory: .general,
+            originalPersonName: nil
+        )
+
+        XCTAssertEqual(semantics.title, "Say happy birthday to Sarah")
+        XCTAssertEqual(semantics.itemType, .event)
+        XCTAssertEqual(semantics.category, .personal)
+        XCTAssertEqual(semantics.personName, "Sarah")
+    }
+
+    func testSaySocialFollowUpsDoNotPromoteReportedOrNonPersonSpeech() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(
+            year: 2026,
+            month: 8,
+            day: 21,
+            hour: 10,
+            calendar: calendar
+        )
+
+        let hello = ThoughtOrganizer.organize(
+            "Say hello to Sarah tomorrow",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(hello.itemType, .personFollowUp)
+        XCTAssertEqual(hello.personName, "Sarah")
+        XCTAssertNotNil(hello.dueDate)
+
+        let spokenOrdinal = ThoughtOrganizer.organize(
+            "December fourth say happy birthday to my cousin",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(spokenOrdinal.itemType, .personFollowUp)
+        XCTAssertFalse(spokenOrdinal.needsClarification)
+        XCTAssertEqual(
+            spokenOrdinal.dueDate.map { calendar.dateComponents([.month, .day], from: $0) },
+            DateComponents(month: 12, day: 4)
+        )
+
+        let nonPersonSpeech = ThoughtOrganizer.organize(
+            "Say the access code out loud tomorrow",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(nonPersonSpeech.itemType, .task)
+        XCTAssertNil(nonPersonSpeech.personName)
+
+        let reportedSpeech = ThoughtOrganizer.organize(
+            "Sarah said happy birthday to Alex"
+        )
+        XCTAssertEqual(reportedSpeech.itemType, .note)
+        XCTAssertEqual(reportedSpeech.personName, "Sarah")
+        XCTAssertNil(reportedSpeech.dueDate)
+    }
+
+    func testDatedPersonFollowUpLivesUnderPeopleBeforeEnteringToday() throws {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(
+            year: 2026,
+            month: 8,
+            day: 21,
+            hour: 10,
+            calendar: calendar
+        )
+        let item = try repository.createCapture(
+            text: "December 4th say happy birthday to Sarah",
+            source: .inAppText,
+            createdAt: referenceDate,
+            schedulesReminder: false
+        )
+        let authorization = LocationAuthorization(
+            status: .always,
+            isPrecise: true,
+            isRegionMonitoringAvailable: true
+        )
+
+        XCTAssertEqual(item.itemType, .personFollowUp)
+        XCTAssertEqual(item.personName, "Sarah")
+        XCTAssertTrue(
+            MemoryCollection.people.contains(item, pinnedIDs: []),
+            "Sarah must exist in People even when her only item is a future follow-up"
+        )
+        XCTAssertFalse(
+            item.belongsOnTodaySurface(
+                authorization: authorization,
+                relativeTo: referenceDate,
+                calendar: calendar
+            ),
+            "a December follow-up should not sit in Today during August"
+        )
+
+        let dayBefore = makeDate(
+            year: 2026,
+            month: 12,
+            day: 3,
+            hour: 8,
+            calendar: calendar
+        )
+        XCTAssertTrue(item.belongsOnTodaySurface(
+            authorization: authorization,
+            relativeTo: dayBefore,
+            calendar: calendar
+        ))
+        XCTAssertTrue(item.belongsOnTodaySurface(
+            authorization: authorization,
+            relativeTo: makeDate(
+                year: 2026,
+                month: 12,
+                day: 4,
+                hour: 8,
+                calendar: calendar
+            ),
+            calendar: calendar
+        ))
+        XCTAssertTrue(item.belongsOnTodaySurface(
+            authorization: authorization,
+            relativeTo: makeDate(
+                year: 2026,
+                month: 12,
+                day: 5,
+                hour: 8,
+                calendar: calendar
+            ),
+            calendar: calendar
+        ), "an overdue follow-up stays visible until completed")
+    }
+
+    func testPersonFollowUpHorizonDoesNotHideOtherFutureOrUndatedActions() throws {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(
+            year: 2026,
+            month: 8,
+            day: 21,
+            hour: 10,
+            calendar: calendar
+        )
+        let authorization = LocationAuthorization(
+            status: .always,
+            isPrecise: true,
+            isRegionMonitoringAvailable: true
+        )
+        let futureTask = try repository.createCapture(
+            text: "Submit the application December 4th",
+            source: .inAppText,
+            createdAt: referenceDate,
+            schedulesReminder: false
+        )
+        let undatedFollowUp = try repository.createCapture(
+            text: "Call Sarah",
+            source: .inAppText,
+            createdAt: referenceDate,
+            schedulesReminder: false
+        )
+
+        XCTAssertTrue(futureTask.belongsOnTodaySurface(
+            authorization: authorization,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+        XCTAssertTrue(undatedFollowUp.belongsOnTodaySurface(
+            authorization: authorization,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
     }
 
     // MARK: - Today / Memory membership
@@ -1306,6 +2227,181 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         XCTAssertEqual(session.items.count, 12)
         XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
+    func testRamblingWithoutAPointStaysSafeAndDoesNotBecomeAParagraphTitle() throws {
+        let transcript = "So I was thinking earlier today about the whole thing with the garage, "
+            + "and how it's been kind of a mess for a while now"
+
+        let item = try repository.createCapture(
+            text: transcript,
+            source: .inAppVoice,
+            createdAt: .now
+        )
+
+        XCTAssertEqual(item.displayTitle, "Review captured thought")
+        XCTAssertEqual(item.itemType, .unclear)
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
+    }
+
+    func testTheExactCostcoCaptureIsOneShoppingThought() throws {
+        let transcript = "When I go to Costco today remind me to get roast beef 20 things of bread "
+            + "for sandwiches and cheese and chicken thighs tray and bison meat"
+
+        let item = try repository.createCapture(
+            text: transcript,
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        XCTAssertEqual(item.captureSession?.items.count, 1)
+        XCTAssertEqual(item.itemType, .shopping)
+        XCTAssertEqual(item.category, .shopping)
+        XCTAssertNil(item.locationIntent, "the stated day outranks the place trigger")
+        XCTAssertEqual(item.temporalKind, .dateOnly)
+        XCTAssertNotNil(item.dueDate)
+        XCTAssertFalse(item.needsClarification, "the capture acts instead of parking in review")
+        XCTAssertNil(item.clarificationRequirement)
+        XCTAssertEqual(
+            ShoppingGroupStore.group(for: item.id), "Costco",
+            "the place still names the list"
+        )
+        XCTAssertTrue(item.displayTitle.hasPrefix("Get roast beef"))
+        XCTAssertFalse(item.displayTitle.lowercased().contains("when i go to costco"))
+        XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
+    }
+
+    func testPlainShoppingListBecomesIndividuallyCheckableItems() throws {
+        let transcript = "Buy milk, eggs, and toothpaste"
+        let first = try repository.createCapture(
+            text: transcript,
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let items = try XCTUnwrap(first.captureSession).items.sorted { $0.createdAt < $1.createdAt }
+
+        XCTAssertEqual(items.map(\.displayTitle), ["Buy milk", "Buy eggs", "Buy toothpaste"])
+        XCTAssertTrue(items.allSatisfy { $0.itemType == .shopping })
+        XCTAssertTrue(items.allSatisfy { $0.category == .shopping })
+        XCTAssertEqual(first.captureSession?.originalTranscription, transcript)
+
+        try repository.setCompleted(items[1], completed: true)
+        XCTAssertFalse(items[0].isCompleted)
+        XCTAssertTrue(items[1].isCompleted)
+        XCTAssertFalse(items[2].isCompleted)
+    }
+
+    func testShoppingListWithoutOxfordCommaStillExpands() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Get apples, bananas and coffee"
+        )
+
+        XCTAssertEqual(result.items.map(\.suggestedTitle), [
+            "get apples", "get bananas", "get coffee"
+        ])
+    }
+
+    func testCompoundShoppingProductStaysTogether() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Buy tomatoes, macaroni and cheese"
+        )
+
+        XCTAssertEqual(result.items.map(\.suggestedTitle), [
+            "buy tomatoes", "buy macaroni and cheese"
+        ])
+    }
+
+    func testQuantitiesAndLongShoppingListsStayOneThought() {
+        let captures = [
+            "When I get to Costco, remind me to buy roast beef, 20 loaves of bread for sandwiches, cheese, a tray of chicken thighs, and bison meat",
+            "When I get to Costco, remind me to buy 20 loaves of bread and 12 chicken thighs",
+            "When I get to Costco remind me to buy milk, eggs, bread, cheese, chicken, beef, rice, pasta, tomatoes, onions, lettuce, apples, bananas, and coffee",
+            "Remind me at Costco to buy roast beef, bread, cheese, chicken thighs, and bison meat",
+        ]
+
+        for capture in captures {
+            let result = ThoughtExtractionEngine.extractWithRules(capture)
+            XCTAssertEqual(result.items.count, 1, capture)
+            XCTAssertEqual(result.items.first?.organization.itemType, .shopping, capture)
+            XCTAssertEqual(result.items.first?.organization.category, .shopping, capture)
+            XCTAssertEqual(
+                result.items.first?.organization.locationIntent?.place,
+                .named("costco"),
+                capture
+            )
+        }
+    }
+
+    func testRealActionAndPlaceBoundariesStillSplit() {
+        let sharedPlace = ThoughtExtractionEngine.extractWithRules(
+            "When I get to Costco, remind me to buy milk and call Sarah"
+        )
+        XCTAssertEqual(sharedPlace.items.map(\.organization.itemType), [.shopping, .personFollowUp])
+        XCTAssertEqual(
+            sharedPlace.items.map(\.organization.locationIntent?.place),
+            [.named("costco"), .named("costco")]
+        )
+
+        let newPlace = ThoughtExtractionEngine.extractWithRules(
+            "When I get to Costco, remind me to buy milk, then when I get home remind me to put it away"
+        )
+        XCTAssertEqual(newPlace.items.map(\.organization.itemType), [.shopping, .task])
+        XCTAssertEqual(
+            newPlace.items.map(\.organization.locationIntent?.place),
+            [.named("costco"), .home]
+        )
+
+        let newTime = ThoughtExtractionEngine.extractWithRules(
+            "When I get to Costco, remind me to buy milk, and call Sarah tomorrow"
+        )
+        XCTAssertEqual(newTime.items.map(\.organization.itemType), [.shopping, .personFollowUp])
+        XCTAssertEqual(newTime.items.first?.organization.locationIntent?.place, .named("costco"))
+        XCTAssertNil(newTime.items.last?.organization.locationIntent)
+        XCTAssertNotNil(newTime.items.last?.organization.dueDate)
+
+        let twoStores = ThoughtExtractionEngine.extractWithRules(
+            "When I get to Costco buy beef, and when I get to Walmart buy bread"
+        )
+        XCTAssertEqual(twoStores.items.map(\.organization.itemType), [.shopping, .shopping])
+        XCTAssertEqual(
+            twoStores.items.map(\.organization.locationIntent?.place),
+            [.named("costco"), .named("walmart")]
+        )
+    }
+
+    func testExclusiveCorrectionReplacesTheWholeShoppingList() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "When I get to Costco remind me to buy milk and eggs, no wait, just eggs"
+        )
+
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(result.items.first?.organization.itemType, .shopping)
+        XCTAssertEqual(
+            result.items.first?.analysisText,
+            "When I get to Costco remind me to buy eggs"
+        )
+        XCTAssertFalse(result.items.first?.analysisText.lowercased().contains("milk") == true)
+    }
+
+    func testRamblingPreambleStillProducesOneConciseShoppingThought() throws {
+        let transcript = "I've been thinking about dinner for a while, but the main thing is "
+            + "when I get to Costco remind me to buy roast beef, bread, and cheese"
+        let item = try repository.createCapture(
+            text: transcript,
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        XCTAssertEqual(item.captureSession?.items.count, 1)
+        XCTAssertEqual(item.itemType, .shopping)
+        XCTAssertEqual(item.category, .shopping)
+        XCTAssertEqual(item.locationIntent?.place, .named("costco"))
+        XCTAssertEqual(item.displayTitle, "Buy roast beef, bread, and cheese")
+        XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
     }
 
     func testLeadingTemporalPrefixDoesNotBecomeAPhantomMemory() {
@@ -3354,6 +4450,35 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.temporalIntent?.day, CalendarDay(year: 2026, month: 8, day: 20))
         XCTAssertTrue(item.temporalIntent?.isUserEdited == true)
         XCTAssertFalse(item.isDateOnly)
+    }
+
+    func testSavingADateOnlyEditDoesNotInventMidnight() throws {
+        let item = try repository.createCapture(text: "Buy milk tomorrow")
+        let chosenDay = makeDate(
+            year: 2026,
+            month: 8,
+            day: 20,
+            hour: 0,
+            calendar: .autoupdatingCurrent
+        )
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: chosenDay,
+            reminderDate: nil,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            dueDateHasTime: false
+        ))
+
+        XCTAssertEqual(item.temporalKind, .dateOnly)
+        XCTAssertEqual(item.temporalIntent?.day, CalendarDay(year: 2026, month: 8, day: 20))
+        XCTAssertNil(item.temporalIntent?.time)
+        XCTAssertNil(item.reminderDate)
+        XCTAssertTrue(item.temporalIntent?.isUserEdited == true)
     }
 
     func testAnEditKeepsTheOriginalWordingAsProvenance() throws {

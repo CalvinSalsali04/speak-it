@@ -543,6 +543,35 @@ final class TemporalFullPathTests: XCTestCase {
         )
     }
 
+    /// A timed shopping list's one coalesced notification is titled by the
+    /// list and names the items in spoken order — "Sobeys: Chicken · Eggs ·
+    /// Milk" — instead of the generic "3 reminders" copy.
+    func testTimedListNotificationIsTitledByTheListAndNamesTheItems() async throws {
+        try await requireNotificationAuthorization()
+        let previousGroups = ShoppingGroupStore.snapshot()
+        defer { ShoppingGroupStore.restore(previousGroups) }
+
+        let first = try repository.createCapture(
+            text: "Remind me in one hour to go to Sobeys and get chicken, eggs and milk",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        await drainScheduler()
+
+        let items = try allItems().sorted { $0.createdAt < $1.createdAt }
+        defer {
+            for item in items { try? repository.delete(item) }
+        }
+        XCTAssertEqual(items.count, 3, "got \(items.map(\.displayTitle))")
+
+        let pending = await pendingRequests(for: first.id)
+        XCTAssertEqual(pending.count, 1, "the rows coalesce into one notification")
+        let request = try XCTUnwrap(pending.first)
+        XCTAssertEqual(request.content.title, "Sobeys")
+        XCTAssertEqual(request.content.body, "Chicken · Eggs · Milk")
+    }
+
     /// The reconcile pass is the app's self-healing step, and it must be
     /// idempotent: running it after a relaunch must not resurrect a withdrawn
     /// reminder or duplicate a live one.

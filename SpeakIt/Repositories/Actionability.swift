@@ -67,7 +67,7 @@ enum ActionabilityReader {
     /// Shared with `LocationIntentParser`, which needs the same list to know
     /// where a place name ends and the action begins in "when I get to the
     /// store buy batteries". One vocabulary, so the two cannot drift.
-    static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up)"#
+    static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|say|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up)"#
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.
@@ -497,6 +497,9 @@ enum ActionabilityReader {
     /// to expose the head verb.
     static func actionBody(_ text: String) -> String {
         var value = text
+        if let locationAction = LocationIntentParser.actionBody(in: value) {
+            value = locationAction
+        }
         value = replace(value, ReminderPhrasing.sentenceLeadThroughAction, "")
         value = replace(value, #"^(?:okay|ok|alright|well|so|like|um+|uh+)\b[\s,]*"#, "")
         // Priority labels frame the action; they are not its verb. Without
@@ -515,7 +518,7 @@ enum ActionabilityReader {
         // A fronted day is context for the action, not the action.
         value = replace(
             value,
-            #"^(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s*,?\s+"#,
+            #"^(?:(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))|(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ordinalWord)))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s*,?\s+"#,
             ""
         )
         // A second pass: "I need to, um, send Catherine…" leaves filler behind

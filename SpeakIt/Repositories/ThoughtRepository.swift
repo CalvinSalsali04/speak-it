@@ -25,6 +25,152 @@ struct ItemEdits {
     var needsClarification: Bool
     var recurrenceRule: RecurrenceRule? = nil
     var locationIntent: LocationIntentEdit = .unchanged
+    /// Whether the manually chosen due date includes an intentional clock
+    /// time. `false` keeps a spoken or edited day as a day instead of silently
+    /// converting its storage midnight into a real 12:00 AM deadline.
+    var dueDateHasTime: Bool = true
+}
+
+struct ReconciledItemSemantics: Equatable {
+    let title: String
+    let itemType: ItemType
+    let category: ItemCategory
+    let personName: String?
+}
+
+/// Refreshes fields that depend on a title/person edit without rerunning the
+/// original transcript. The edited value is the newest statement of intent;
+/// the capture remains untouched as provenance, and explicit picker changes
+/// still outrank anything inferred here.
+enum ItemEditSemanticReconciler {
+    static func reconcile(
+        title: String,
+        itemType: ItemType,
+        category: ItemCategory,
+        personName: String?,
+        originalTitle: String,
+        originalItemType: ItemType,
+        originalCategory: ItemCategory,
+        originalPersonName: String?
+    ) -> ReconciledItemSemantics {
+        let editedPerson = normalizedPerson(personName)
+        let previousPerson = normalizedPerson(originalPersonName)
+        let titleChanged = normalizedText(title) != normalizedText(originalTitle)
+        let personChanged: Bool
+        switch (editedPerson, previousPerson) {
+        case (nil, nil):
+            personChanged = false
+        case let (edited?, previous?):
+            personChanged = edited.localizedCaseInsensitiveCompare(previous) != .orderedSame
+        case (.some, nil), (nil, .some):
+            personChanged = true
+        }
+
+        var resolvedTitle = title
+        if personChanged, !titleChanged, let editedPerson {
+            resolvedTitle = replacingPersonTarget(
+                in: title,
+                previousPerson: previousPerson,
+                with: editedPerson
+            )
+        }
+
+        guard titleChanged || personChanged else {
+            return ReconciledItemSemantics(
+                title: resolvedTitle,
+                itemType: itemType,
+                category: category,
+                personName: editedPerson
+            )
+        }
+
+        let inferred = ThoughtOrganizer.organize(resolvedTitle)
+        let typeWasExplicitlyChanged = itemType != originalItemType
+        let categoryWasExplicitlyChanged = category != originalCategory
+
+        var resolvedType = itemType
+        if !typeWasExplicitlyChanged {
+            switch inferred.itemType {
+            case .personFollowUp, .shopping, .idea, .event:
+                resolvedType = inferred.itemType
+            case .task where originalItemType == .note || originalItemType == .unclear:
+                resolvedType = .task
+            case .note where originalItemType == .unclear:
+                resolvedType = .note
+            case .task, .note, .unclear:
+                break
+            }
+        }
+
+        var resolvedPerson = editedPerson
+        if !personChanged, titleChanged, let inferredPerson = inferred.personName {
+            resolvedPerson = inferredPerson
+        }
+
+        var resolvedCategory = category
+        if !categoryWasExplicitlyChanged {
+            if resolvedType == .personFollowUp || (resolvedType == .note && resolvedPerson != nil) {
+                resolvedCategory = .people
+            } else if resolvedType != itemType {
+                resolvedCategory = inferred.category
+            }
+        }
+
+        return ReconciledItemSemantics(
+            title: resolvedTitle,
+            itemType: resolvedType,
+            category: resolvedCategory,
+            personName: resolvedPerson
+        )
+    }
+
+    private static func normalizedPerson(_ value: String?) -> String? {
+        guard let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !normalized.isEmpty else { return nil }
+        return normalized
+    }
+
+    private static func normalizedText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func replacingPersonTarget(
+        in title: String,
+        previousPerson: String?,
+        with editedPerson: String
+    ) -> String {
+        if let previousPerson {
+            let pattern = "(?i)(?<![\\p{L}\\p{N}])"
+                + NSRegularExpression.escapedPattern(for: previousPerson)
+                + "(?![\\p{L}\\p{N}])"
+            if let range = title.range(of: pattern, options: .regularExpression) {
+                return conciseActionTitle(
+                    title.replacingCharacters(in: range, with: editedPerson)
+                )
+            }
+        }
+
+        let relation = #"(?:mom|mum|mother|dad|father|grandma|grandmother|grandpa|grandfather|sister|brother|aunt|uncle|cousin|nephew|niece|wife|husband|spouse|partner|son|daughter|friend|boss|manager|colleague|coworker|neighbour|neighbor|teacher|professor|doctor|dentist|therapist|trainer|roommate|landlord|supervisor)"#
+        let description = #"(?i)\b(?:my|the|our|his|her|their)\s+(?:(?:favorite|favourite|best|close|older|younger|oldest|youngest)\s+){0,2}"#
+            + relation + #"\b"#
+        guard let range = title.range(of: description, options: .regularExpression) else {
+            return title
+        }
+        return conciseActionTitle(
+            title.replacingCharacters(in: range, with: editedPerson)
+        )
+    }
+
+    /// The day is already structured timing. Once an edit makes the target
+    /// precise, keep the visible thought focused on the action instead of
+    /// repeating a fronted date in both the title and its due field.
+    private static func conciseActionTitle(_ title: String) -> String {
+        let body = ActionabilityReader.actionBody(title)
+        return body.isEmpty ? title : ThoughtTitleFormatter.polished(body, itemType: .task)
+    }
 }
 
 @MainActor
@@ -184,6 +330,17 @@ protocol ThoughtRepository: AnyObject, Sendable {
         performance: CapturePerformanceTrace?
     ) async throws -> CaptureCreationResult
 
+    /// Adds typed (or keyboard-dictated) entries straight onto a named
+    /// shopping list, bypassing semantic parsing: the person already said
+    /// which list and what the items are, and running "milk" through the
+    /// organizer would classify a one-word answer as unclear.
+    @discardableResult
+    func addShoppingItems(
+        _ entries: [String],
+        group: String,
+        createdAt: Date
+    ) throws -> [CapturedItem]
+
     func update(_ item: CapturedItem, with edits: ItemEdits) throws
     func setCompleted(_ item: CapturedItem, completed: Bool) throws
     func setArchived(_ item: CapturedItem, archived: Bool) throws
@@ -198,6 +355,14 @@ protocol ThoughtRepository: AnyObject, Sendable {
 }
 
 extension ThoughtRepository {
+    @discardableResult
+    func addShoppingItems(
+        _ entries: [String],
+        group: String
+    ) throws -> [CapturedItem] {
+        try addShoppingItems(entries, group: group, createdAt: .now)
+    }
+
     func createCaptureResult(
         text: String,
         source: CaptureSource,

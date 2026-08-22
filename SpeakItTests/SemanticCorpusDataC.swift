@@ -112,8 +112,9 @@ enum SemanticCorpusC {
         corpusCase(.corrections, "Remind me when I get home, actually when I get to work", count: 1,
                    place: [CorpusPlace(event: .arrive, place: .work, repeats: false)],
                    note: "A corrected place. Two geofences would fire twice."),
-        corpusCase(.corrections, "Buy milk, no wait, buy milk and eggs", count: 1, type: [.shopping],
-                   note: "The correction widens the same item rather than replacing it."),
+        corpusCase(.corrections, "Buy milk, no wait, buy milk and eggs", count: 2,
+                   type: [.shopping, .shopping],
+                   note: "The correction widens the list to milk and eggs; the corrected list then splits into checkable rows like any other."),
     ]
 
     // MARK: - Outstanding obligations

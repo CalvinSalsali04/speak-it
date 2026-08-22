@@ -78,6 +78,44 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
+        resolveCombinedPlaceAndTimeHoldouts()
+    }
+
+    /// Releases items that older builds held in review for naming a place and
+    /// a time together ("when I go to Sobeys, remind me … in one hour").
+    ///
+    /// The stated time now wins at capture, so these holdouts are re-derived
+    /// the same way: reparse the untouched original wording, keep the timed
+    /// reading, drop the redundant place trigger. A reminder whose moment has
+    /// already passed lands as an honest overdue row rather than staying
+    /// stuck. A place the person set by hand in the editor is never touched.
+    private func resolveCombinedPlaceAndTimeHoldouts() {
+        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
+        var changed = false
+
+        for item in items
+        where !item.isArchived
+            && !item.isCompleted
+            && item.locationIntent != nil
+            && item.locationIntent?.isUserEdited != true
+            && (item.temporalKind ?? TemporalKind.none) != TemporalKind.none {
+            let reparsed = ThoughtOrganizer.organize(
+                item.originalTextSegment,
+                referenceDate: item.createdAt
+            )
+            item.locationIntent = nil
+            if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
+            if item.dueDate == nil { item.dueDate = reparsed.dueDate }
+            item.temporalIntent = reparsed.temporalIntent
+            item.needsClarification = reparsed.needsClarification
+            item.lastModifiedAt = .now
+            changed = true
+        }
+
+        guard changed else { return }
+        // Best effort, idempotent: an interrupted pass leaves the rest for the
+        // next launch. Scheduling happens in `reconcilePendingReminders`.
+        try? modelContext.save()
     }
 
     /// Gives rows written before schema version 2 the temporal intent they were
@@ -483,13 +521,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     item.needsClarification == false
             }
         )
+        let now = Date.now
         let active = ((try? modelContext.fetch(descriptor)) ?? [])
-            .filter(\.belongsInToday)
+            .filter { $0.belongsInToday && $0.isWithinTodayHorizon(relativeTo: now) }
             .sorted(by: todayItemOrder)
 
         SharedTodayStore.save(
             SharedTodaySnapshot(
-                generatedAt: .now,
+                generatedAt: now,
                 openCount: active.count,
                 items: active.prefix(8).map {
                     SharedTodayItem(
@@ -687,6 +726,63 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             schedulesReminders: schedulesReminder
         )
         return .created(items.first ?? pending.placeholder)
+    }
+
+    @discardableResult
+    func addShoppingItems(
+        _ entries: [String],
+        group: String,
+        createdAt: Date
+    ) throws -> [CapturedItem] {
+        let names = entries
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let listName = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !names.isEmpty, !listName.isEmpty else { return [] }
+
+        // A real capture session, so the entry keeps the durability and
+        // provenance every other item has: the words as given, committed
+        // before anything else happens.
+        let pending = try createPendingCapture(
+            text: names.joined(separator: ", "),
+            source: .inAppText,
+            createdAt: createdAt
+        )
+
+        let organization = OrganizedThought(
+            itemType: .shopping,
+            category: .shopping,
+            priority: .normal,
+            personName: nil,
+            dueDate: nil,
+            reminderDate: nil,
+            reminderDelivery: .none,
+            recurrenceRule: nil,
+            needsClarification: false
+        )
+        let thoughts = names.map { name in
+            ExtractedThought(
+                sourceQuote: name,
+                analysisText: name,
+                suggestedTitle: name,
+                organization: organization,
+                confidence: 1,
+                needsReview: false,
+                shoppingGroup: listName
+            )
+        }
+
+        let items = organizePersistedCapture(
+            session: pending.session,
+            extraction: ThoughtExtractionResult(items: thoughts, method: .rules),
+            schedulesReminders: false
+        )
+        guard pending.session.processingStatus == .complete else {
+            throw RepositoryError.saveFailed(
+                pending.session.processingError ?? "Could not save the list items."
+            )
+        }
+        return items
     }
 
     func createCaptureResult(
@@ -926,7 +1022,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             reminderDate: edits.reminderDate,
             recurrence: edits.recurrenceRule,
             sourceText: item.temporalIntent?.sourceText ?? item.originalTextSegment,
-            calendar: .autoupdatingCurrent
+            calendar: .autoupdatingCurrent,
+            dueDateHasTime: edits.dueDateHasTime
         )
         RecurrenceStore.set(edits.recurrenceRule, for: item.id)
 
@@ -1031,6 +1128,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         if let deletedGeneratedItemID {
             MemoryPinStore.removeMetadata(for: [deletedGeneratedItemID])
+            ShoppingGroupStore.removeMetadata(for: [deletedGeneratedItemID])
             IdeaStageStore.removeMetadata(for: [deletedGeneratedItemID])
         }
         if completed { ReminderScheduler.cancel(itemID: item.id) }
@@ -1082,6 +1180,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         recurrenceIDs.forEach(RecurrenceStore.remove)
         MemoryPinStore.removeMetadata(for: recurrenceIDs)
+        ShoppingGroupStore.removeMetadata(for: recurrenceIDs)
         IdeaStageStore.removeMetadata(for: recurrenceIDs)
         ReminderScheduler.synchronize(
             [],
@@ -1188,6 +1287,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             ReminderScheduler.cancel(itemID: $0)
         }
         MemoryPinStore.removeMetadata(for: removedIDs)
+        ShoppingGroupStore.removeMetadata(for: removedIDs)
         IdeaStageStore.removeMetadata(for: removedIDs)
         synchronizeReminders(for: session, requestAuthorizationIfNeeded: true)
     }
@@ -1237,6 +1337,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             ReminderScheduler.cancel(itemID: $0)
         }
         MemoryPinStore.removeMetadata(for: removedIDs)
+        ShoppingGroupStore.removeMetadata(for: removedIDs)
         IdeaStageStore.removeMetadata(for: removedIDs)
         synchronizeReminders(for: session, requestAuthorizationIfNeeded: false)
     }
@@ -1343,6 +1444,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 ReminderScheduler.cancel(itemID: $0)
             }
             MemoryPinStore.removeMetadata(for: extraIDs)
+            ShoppingGroupStore.removeMetadata(for: extraIDs)
             IdeaStageStore.removeMetadata(for: extraIDs)
             if schedulesReminders {
                 synchronizeReminders(
@@ -1504,6 +1606,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             item.locationIntent = reparsed
         }
         RecurrenceStore.set(organization.recurrenceRule, for: item.id)
+        ShoppingGroupStore.set(
+            organization.itemType == .shopping ? candidate.shoppingGroup : nil,
+            for: item.id
+        )
     }
 
     private func makeItem(
@@ -1532,6 +1638,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             captureSession: session
         )
         RecurrenceStore.set(organization.recurrenceRule, for: item.id)
+        ShoppingGroupStore.set(
+            organization.itemType == .shopping ? candidate.shoppingGroup : nil,
+            for: item.id
+        )
         return item
     }
 
@@ -1787,6 +1897,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         MemoryPinStore.apply(snapshot.pinRecords ?? [])
         IdeaStageStore.apply(snapshot.ideaStageRecords ?? [])
         MemoryPinStore.removeMetadata(for: removedItemIDs)
+        ShoppingGroupStore.removeMetadata(for: removedItemIDs)
         IdeaStageStore.removeMetadata(for: removedItemIDs)
         ICloudDeletionStore.replace(with: snapshot.deletionRecords ?? [])
         reconcilePendingReminders()

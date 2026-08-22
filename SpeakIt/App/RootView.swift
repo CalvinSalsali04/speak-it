@@ -50,8 +50,13 @@ struct RootView: View {
 
     @State private var selectedDestination: AppDestination = RootView.initialDestination
     @State private var isDockVisible = true
+    /// Bumped when the dock button for the destination already on screen is
+    /// tapped again. The destination views watch it and pop their pushed
+    /// screens, so tapping "Today" from inside the List lands on Today.
+    @State private var popToRootSignal = 0
     @State private var showsSetupAfterFirstCapture = false
     @State private var captureAutoStartsVoice = false
+    @State private var captureShowsGuidedExamples = false
     @State private var captureOpenedFromExternalSource = false
     @State private var captureInitialText = ""
     @State private var capturePerformance: CapturePerformanceTrace?
@@ -102,14 +107,16 @@ struct RootView: View {
                     NavigationStack {
                         TodayView(
                             onCapture: { presentCapture() },
-                            onDockVisibilityChange: setDockVisibility
+                            onDockVisibilityChange: setDockVisibility,
+                            popToRootSignal: popToRootSignal
                         )
                     }
                 case .library:
                     NavigationStack {
                         LibraryView(
                             onCapture: { presentCapture() },
-                            onDockVisibilityChange: setDockVisibility
+                            onDockVisibilityChange: setDockVisibility,
+                            popToRootSignal: popToRootSignal
                         )
                     }
                 }
@@ -122,7 +129,10 @@ struct RootView: View {
             captureDock
                 .offset(y: isDockVisible ? 0 : 116)
                 .opacity(isDockVisible ? 1 : 0)
-                .allowsHitTesting(isDockVisible)
+                // The capture screen's Type instead control occupies the same
+                // bottom region as this dock. Keep the covered dock out of the
+                // hit-test tree so it cannot swallow that first tap.
+                .allowsHitTesting(isDockVisible && fullScreenDestination == nil)
                 .animation(.smooth(duration: 0.24), value: isDockVisible)
         }
         .tint(.speakInk)
@@ -421,7 +431,14 @@ struct RootView: View {
         badgeCount: Int? = nil
     ) -> some View {
         Button {
-            guard selectedDestination != destination else { return }
+            guard selectedDestination != destination else {
+                // Tapping the destination already on screen means "take me
+                // back to it": pop whatever it has pushed — the List, a
+                // Memory collection — instead of doing nothing.
+                popToRootSignal += 1
+                isDockVisible = true
+                return
+            }
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
             withTransaction(transaction) {
@@ -520,7 +537,6 @@ struct RootView: View {
     private func presentCapture(entry: AnalyticsCaptureEntry = .dock) {
         presentCapture(
             initialMode: .voice,
-            autoStartsVoiceCapture: true,
             entry: entry
         )
     }
@@ -545,6 +561,9 @@ struct RootView: View {
         ))
         isDockVisible = true
         captureAutoStartsVoice = autoStartsVoiceCapture
+        // The first capture is the tutorial: the person tapped "Try it now"
+        // and deserves something concrete to try.
+        captureShowsGuidedExamples = entry == .onboarding
         captureOpenedFromExternalSource = fromExternalSource
         captureInitialText = initialText
         let source: AnalyticsCaptureSource = initialMode == .text ? .text : .voice
@@ -581,6 +600,7 @@ struct RootView: View {
             initialText: captureInitialText,
             performance: capturePerformance,
             autoDismissesSingleItemConfirmation: !showsSetupAfterFirstCapture,
+            showsGuidedExamples: captureShowsGuidedExamples,
             onSaveSucceeded: markFirstCaptureSucceeded,
             onCancelled: handleCaptureCancelled
         ) {
@@ -590,6 +610,7 @@ struct RootView: View {
             selectedDestination = .today
             isDockVisible = true
             captureAutoStartsVoice = false
+            captureShowsGuidedExamples = false
             captureOpenedFromExternalSource = false
             captureInitialText = ""
             capturePerformance = nil

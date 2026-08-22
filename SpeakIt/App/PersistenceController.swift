@@ -30,6 +30,8 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
 
 @MainActor
 enum PersistenceController {
+    private static let applicationGroupIdentifier = "group.com.calvinwak.SpeakIt"
+
     private struct StoreBootstrap {
         let container: ModelContainer
         let initializationError: String?
@@ -52,6 +54,14 @@ enum PersistenceController {
                 return StoreBootstrap(container: container, initializationError: nil)
             }
 #endif
+            // On the first launch after a true uninstall, iOS has created the
+            // app-group container but may not yet have created its nested
+            // Application Support directory. SwiftData chooses that shared
+            // container for this target. Preparing the parent explicitly keeps
+            // the first store open on the normal path instead of relying on
+            // Core Data's noisy recovery attempt.
+            try preparePersistentStoreDirectory()
+
             // Speak It syncs encoded library snapshots through
             // `ICloudSyncService`. Keep SwiftData local-only so the presence
             // of the Release iCloud entitlement does not also opt this schema
@@ -87,6 +97,20 @@ enum PersistenceController {
             }
         }
     }()
+
+    private static func preparePersistentStoreDirectory() throws {
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: applicationGroupIdentifier
+        ) else {
+            return
+        }
+        try FileManager.default.createDirectory(
+            at: containerURL
+                .appendingPathComponent("Library", isDirectory: true)
+                .appendingPathComponent("Application Support", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+    }
 
     static var shared: ModelContainer { bootstrap.container }
     static var initializationError: String? { bootstrap.initializationError }

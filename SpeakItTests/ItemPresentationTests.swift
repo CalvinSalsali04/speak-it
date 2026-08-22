@@ -119,6 +119,39 @@ final class ItemPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: The memoized delivery reading must never go stale
+
+    /// Delivery is parsed from the original wording and memoized, because rows
+    /// re-read it while the person scrolls and the parse is the full capture
+    /// pipeline. The cache is only sound if it can never outlive the wording it
+    /// was computed from: re-splitting a combined capture rewrites
+    /// `originalTextSegment`, and a reading served from before that rewrite
+    /// would report the wrong alert kind.
+    func testDeliveryReadingFollowsARewrittenSegment() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to call mom tomorrow at 5pm",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+
+        XCTAssertEqual(
+            presentation(for: item).reminderState.alertGlyph, .notification,
+            "'remind me' wording must read as a notification"
+        )
+        // Read again to prove the memoized path reports the same answer.
+        XCTAssertEqual(presentation(for: item).reminderState.alertGlyph, .notification)
+
+        // The one mutation that changes the wording an item is read from.
+        item.originalTextSegment = "Set an alarm to call mom tomorrow at 5pm"
+        item.captureSession = nil
+
+        XCTAssertEqual(
+            presentation(for: item).reminderState.alertGlyph, .alarm,
+            "a rewritten segment must be re-parsed, not served from the cache"
+        )
+    }
+
     // MARK: A place reminder must say so
 
     /// The editor showed "Remind me: off" on an item with a live geofence, and
@@ -272,6 +305,64 @@ final class ItemPresentationTests: XCTestCase {
                 "\"\(sentence)\" landed in \(destinations) destinations (today: \(inToday), memory: \(inMemory), review: \(inReview))"
             )
         }
+    }
+
+    /// Shopping is still actionable in the model so reminders, widgets, and
+    /// completion keep working. The Today UI alone projects it behind one
+    /// Shopping entry instead of rendering another top-level row.
+    func testShoppingProjectionKeepsOpenItemsOutOfTopLevelTodayAndReview() {
+        let shopping = CapturedItem(
+            originalTextSegment: "Buy milk",
+            displayTitle: "Buy milk",
+            itemType: .shopping,
+            category: .shopping
+        )
+        let task = CapturedItem(
+            originalTextSegment: "Call Mom",
+            displayTitle: "Call Mom",
+            itemType: .task
+        )
+        let shoppingNeedingReview = CapturedItem(
+            originalTextSegment: "Buy groceries at Costco",
+            displayTitle: "Buy groceries at Costco",
+            itemType: .shopping,
+            category: .shopping,
+            needsClarification: true
+        )
+        let completedShopping = CapturedItem(
+            originalTextSegment: "Buy eggs",
+            displayTitle: "Buy eggs",
+            itemType: .shopping,
+            category: .shopping,
+            completedAt: .now
+        )
+
+        XCTAssertEqual(
+            ShoppingListProjection.openItems(
+                in: [shopping, task, shoppingNeedingReview, completedShopping]
+            ).map(\.id),
+            [shopping.id, shoppingNeedingReview.id]
+        )
+        XCTAssertFalse(
+            ShoppingListProjection.belongsOnTopLevelToday(
+                shopping,
+                authorization: authorized,
+                relativeTo: .now
+            )
+        )
+        XCTAssertTrue(
+            ShoppingListProjection.belongsOnTopLevelToday(
+                task,
+                authorization: authorized,
+                relativeTo: .now
+            )
+        )
+        XCTAssertFalse(
+            ShoppingListProjection.belongsInTopLevelReview(
+                shoppingNeedingReview,
+                authorization: authorized
+            )
+        )
     }
 
     func testSummerLaunchSaleEndsAtThePublishedCutoff() {

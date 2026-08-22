@@ -22,6 +22,7 @@ struct CaptureView: View {
     private let startsInTextMode: Bool
     private let autoStartsVoiceCapture: Bool
     private let autoDismissesSingleItemConfirmation: Bool
+    private let showsGuidedExamples: Bool
     private let performance: CapturePerformanceTrace?
     private let onSaveSucceeded: () -> Void
     private let onCancelled: () -> Void
@@ -61,6 +62,7 @@ struct CaptureView: View {
         initialText: String = "",
         performance: CapturePerformanceTrace? = nil,
         autoDismissesSingleItemConfirmation: Bool = true,
+        showsGuidedExamples: Bool = false,
         onSaveSucceeded: @escaping () -> Void = {},
         onCancelled: @escaping () -> Void = {},
         onSaved: @escaping () -> Void
@@ -69,6 +71,7 @@ struct CaptureView: View {
         startsInTextMode = initialMode == .text
         self.autoStartsVoiceCapture = autoStartsVoiceCapture && initialMode == .voice
         self.autoDismissesSingleItemConfirmation = autoDismissesSingleItemConfirmation
+        self.showsGuidedExamples = showsGuidedExamples
         self.performance = performance
         self.onSaveSucceeded = onSaveSucceeded
         self.onCancelled = onCancelled
@@ -220,6 +223,7 @@ struct CaptureView: View {
             } else if autoStartsVoiceCapture, !hasAutoStarted {
                 hasAutoStarted = true
                 try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled, mode == .voice else { return }
                 await startVoiceCapture()
             }
         }
@@ -294,6 +298,12 @@ struct CaptureView: View {
             .frame(maxHeight: 126)
             .accessibilityLabel("Live transcription")
             .accessibilityValue(transcriber.transcript)
+
+            if showsGuidedExamples,
+               transcriber.transcript.isEmpty,
+               !isRecoveringAudio {
+                guidedExamplesCard
+            }
 
             Spacer()
 
@@ -527,6 +537,42 @@ struct CaptureView: View {
         .padding(.horizontal, 24)
     }
 
+    /// Shown only for the guided first capture, and only until words arrive.
+    /// One example per destination, so the person's first attempt can be any
+    /// of the three things the app actually does with a thought.
+    private var guidedExamplesCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("TRY SAYING")
+                .font(.caption2.weight(.semibold))
+                .kerning(1.1)
+                .foregroundStyle(Color.speakMuted)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("“Remind me to call Mom tomorrow at 6”")
+                Text("“Buy milk, eggs, and toothpaste”")
+                Text("“Priya’s birthday is December 4th”")
+            }
+            .font(.subheadline)
+            .foregroundStyle(Color.speakInk.opacity(0.82))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            Color.speakSurface,
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.speakDivider, lineWidth: 1)
+        }
+        .frame(maxWidth: 330)
+        .transition(.opacity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Try saying: Remind me to call Mom tomorrow at 6. Buy milk, eggs, and toothpaste. Or, Priya's birthday is December 4th."
+        )
+    }
+
     private var orbPhase: ListeningOrb.Phase {
         if isRecoveringAudio { return .processing }
         return switch transcriber.state {
@@ -600,6 +646,7 @@ struct CaptureView: View {
     }
 
     private func startVoiceCapture() async {
+        guard mode == .voice else { return }
         ensureDraft(source: .inAppVoice)
         let recoveryURL = activeDraft.flatMap { try? CaptureDraftStore.prepareAudioURL(for: $0) }
         await transcriber.start(recoveryAudioURL: recoveryURL) { finalText in
@@ -663,12 +710,21 @@ struct CaptureView: View {
 
     private func switchToTyping() {
         captureNotice = nil
-        if transcriber.isListening {
-            typedText = transcriber.transcript
+        let partialTranscript = transcriber.transcript
+        if !partialTranscript.isEmpty {
+            typedText = partialTranscript
+        }
+
+        // `startVoiceCapture` may still be waiting on its launch delay or on a
+        // permission prompt. Cancelling here invalidates the transcriber's
+        // active start ID, so either path cannot begin listening behind the
+        // typing interface after the person has already changed modes.
+        let wasStartingOrListening = transcriber.state == .requestingPermission
+            || transcriber.isListening
+        if wasStartingOrListening {
             transcriber.cancel()
             Task { await CaptureActivityManager.cancelListening() }
-        } else if !transcriber.transcript.isEmpty {
-            typedText = transcriber.transcript
+        } else if transcriber.state != .idle {
             transcriber.resetAfterFailure()
         }
 

@@ -392,8 +392,8 @@ enum ThoughtOrganizer {
     }
 
     static func numericDate(in text: String) -> NumericDate {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"\b(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)\b"#
+        guard let regex = NSRegularExpression.speakItCached(
+            #"\b(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)\b"#
         ),
               let match = regex.firstMatch(
                   in: text,
@@ -468,6 +468,17 @@ enum ThoughtOrganizer {
             ) != nil {
                 return .task
             }
+            return .personFollowUp
+        }
+
+        // “Say happy birthday to my favourite cousin” is the prepositional
+        // form of “wish my cousin happy birthday”. The social phrase between
+        // `say` and `to` is content, not the target, so the ordinary direct-
+        // object rule cannot recognize it as a follow-up on its own.
+        if text.range(
+            of: #"^say\s+(?:happy\s+(?:birthday|anniversary)|congratulations|congrats|hello|hi|thank\s+you|thanks)\s+to\b"#,
+            options: .regularExpression
+        ) != nil {
             return .personFollowUp
         }
 
@@ -976,7 +987,7 @@ private enum RecurrenceIntentParser {
     }
 
     private static func match(in text: String, pattern: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]),
               let result = regex.firstMatch(
                   in: text,
                   range: NSRange(text.startIndex..., in: text)
@@ -1211,21 +1222,17 @@ private enum TemporalIntentParser {
         // never turned into an hour, and it is never treated as ambiguity — the
         // sentence is perfectly clear, and whether it can be acted on depends on
         // the device, not on the wording.
-        let locationIntent = LocationIntentParser.parse(text)
+        let parsedLocation = LocationIntentParser.parse(text)
 
-        // "Remind me to take out the garbage when I get home tonight" names a
-        // place *and* a time, and Speak It can currently enforce exactly one of
-        // them. Both ways of reducing it are wrong in a way the person would
-        // feel: keeping the time fires the reminder at 8pm whether or not they
-        // are home, and keeping the place fires it on a 2pm arrival that the
-        // word "tonight" explicitly ruled out. Worse, keeping both fires it
-        // twice.
-        //
-        // So the combination is held for review rather than silently reduced to
-        // whichever half is easier to honour. This is the same rule the temporal
-        // side already follows: never pretend to support semantics that are not
-        // being enforced.
-        let combinesPlaceAndTime = locationIntent != nil && resolution.intent.kind != .none
+        // "When I go to Sobeys, remind me to get cheese in one hour" names a
+        // place *and* a time, and Speak It enforces exactly one trigger. The
+        // stated time wins: it is the constraint the person made precise, it
+        // can always be honoured regardless of permissions or configured
+        // places, and holding the whole capture hostage in review over the
+        // redundant place read as a bug. The place words still live on the
+        // untouched transcript, and a sentence that names only a place keeps
+        // its place trigger exactly as before.
+        let locationIntent = resolution.intent.kind == .none ? parsedLocation : nil
         let unsupportedCondition = locationIntent == nil
             && resolution.intent.kind == .none
             && (itemType.isActionable || wantsReminder)
@@ -1249,9 +1256,7 @@ private enum TemporalIntentParser {
         )
 
         let reminderHasPassed = resolvedReminder.map { $0 <= referenceDate } ?? false
-        // Dropped for a combined request too, so no notification is scheduled
-        // against a clock the person also constrained by place.
-        let reminderDate = (reminderHasPassed || combinesPlaceAndTime) ? nil : resolvedReminder
+        let reminderDate = reminderHasPassed ? nil : resolvedReminder
 
         let vagueTime = containsAny(semanticText, [" later", "soon", "sometime", "when i can", "eventually"])
         // A place trigger is understood, so it is not review-worthy on its own.
@@ -1270,7 +1275,6 @@ private enum TemporalIntentParser {
         }
         let needsClarification = resolution.isAmbiguous
             || locationPlaceUnreadable
-            || combinesPlaceAndTime
             || unsupportedCondition
             || (locationIntent == nil && wantsReminder && (reminderDate == nil || vagueTime))
 
@@ -1291,27 +1295,49 @@ private enum TemporalIntentParser {
         // Note this replaces whatever the day resolved to. A date-only day
         // resolves to its own start, and 00:00 is not an alert time anyone
         // asked for — it is just where the day begins.
-        // Skipped for a combined request: inventing an alert hour for "when I
-        // get home tomorrow" would reintroduce exactly the clock this is
-        // refusing to schedule.
         if intent.kind == .dateOnly,
            wantsReminder,
-           !combinesPlaceAndTime,
            let reminderDay = splitTiming?.reminderDate ?? dueDate {
-            let alert = calendar.date(
-                bySettingHour: TemporalResolver.dateOnlyAlertHour,
-                minute: 0,
-                second: 0,
-                of: reminderDay,
-                matchingPolicy: .nextTime,
-                repeatedTimePolicy: .first,
-                direction: .forward
-            )
-            if let alert, alert > referenceDate {
+            // 9 AM first; when the capture itself arrives later than that on
+            // the stated day, the evening hour "tonight" already means. A day
+            // the person explicitly named is a resolved time at day
+            // granularity — capturing "remind me today" at 6 PM must not park
+            // the thought in review over the morning that already happened.
+            let candidateHours = [TemporalResolver.dateOnlyAlertHour, 20]
+            let alert = candidateHours.lazy
+                .compactMap { hour in
+                    calendar.date(
+                        bySettingHour: hour,
+                        minute: 0,
+                        second: 0,
+                        of: reminderDay,
+                        matchingPolicy: .nextTime,
+                        repeatedTimePolicy: .first,
+                        direction: .forward
+                    )
+                }
+                .first { $0 > referenceDate }
+            let dayHasEnded = calendar.startOfDay(for: reminderDay)
+                < calendar.startOfDay(for: referenceDate)
+            if let alert, calendar.isDate(alert, inSameDayAs: reminderDay) {
                 return ParsedTiming(
                     dueDate: dueDate,
                     reminderDate: alert,
                     delivery: delivery,
+                    needsClarification: vagueTime,
+                    intent: intent,
+                    locationIntent: locationIntent,
+                    wantsReminder: wantsReminder
+                )
+            }
+            if !dayHasEnded {
+                // Too late in the stated day for any default hour. The item is
+                // still due today and Today's "Now" section shows it; a review
+                // question about a day the person just named would be noise.
+                return ParsedTiming(
+                    dueDate: dueDate,
+                    reminderDate: nil,
+                    delivery: .none,
                     needsClarification: vagueTime,
                     intent: intent,
                     locationIntent: locationIntent,
@@ -2001,15 +2027,28 @@ private enum TemporalIntentParser {
         // means no reminder fired rather than one firing at the wrong minute.
         if let spoken = spokenClockFace(in: text) { return spoken }
 
-        // "Four thirty" — the minute spoken as a word straight after the hour,
-        // with no colon to mark it. Read before the pattern below, which would
-        // otherwise take the hour and drop the minute on the floor.
+        // "Four thirty", "nine thirty five", "ten oh five" — the minute spoken
+        // as words straight after the hour, with no colon to mark it. Read
+        // before the pattern below, which would otherwise take the hour and
+        // drop the minute on the floor. The whole tens-and-units vocabulary is
+        // accepted because dictation renders "9:35" this way as often as not,
+        // and "nine thirty five" resolving to 9:30 is an alarm firing at the
+        // wrong minute.
         if let match = firstMatch(
             in: text,
-            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern + #")\s+(fifteen|thirty|forty[\s-]?five|o'?clock)\b"#
+            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern
+                + #")\s+((?:twenty|thirty|forty|fifty)(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|o'?\s?clock|fifteen|five|ten)\b"#
         ), match.count >= 3, let hour = number(from: match[1]), (1...12).contains(hour) {
-            let minutes = ["fifteen": 15, "thirty": 30, "fortyfive": 45, "forty five": 45, "forty-five": 45]
-            let minute = minutes[match[2].lowercased()] ?? 0
+            let minuteWord = match[2].lowercased()
+            let minute: Int
+            if minuteWord.contains("clock") {
+                minute = 0
+            } else if minuteWord.hasPrefix("oh ") {
+                minute = number(from: String(minuteWord.dropFirst(3))) ?? 0
+            } else {
+                minute = number(from: minuteWord) ?? 0
+            }
+            guard (0...59).contains(minute) else { return nil }
             return committedAlarmHour(
                 ParsedTime(hour: hour, minute: minute, hasMeridiem: false),
                 in: text
@@ -2178,7 +2217,7 @@ private enum TemporalIntentParser {
     }
 
     private static func firstMatch(in text: String, pattern: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]) else {
             return nil
         }
         let range = NSRange(text.startIndex..., in: text)
@@ -2227,5 +2266,33 @@ private enum TemporalIntentParser {
 
     private static func containsAny(_ text: String, _ candidates: [String]) -> Bool {
         candidates.contains(where: text.contains)
+    }
+}
+
+extension NSRegularExpression {
+    private static let speakItCacheLock = NSLock()
+    nonisolated(unsafe) private static var speakItCache: [String: NSRegularExpression] = [:]
+
+    /// A compiled-pattern cache for the capture parsers. `ThoughtOrganizer`
+    /// and its neighbors run while list rows render, and recompiling the same
+    /// pattern on every call was a measurable share of scroll cost. The count
+    /// cap exists because some patterns interpolate user text (names, saved
+    /// places), so the key space is not closed.
+    static func speakItCached(
+        _ pattern: String,
+        options: NSRegularExpression.Options = []
+    ) -> NSRegularExpression? {
+        let key = options.isEmpty ? pattern : "\(options.rawValue)#\(pattern)"
+        speakItCacheLock.lock()
+        defer { speakItCacheLock.unlock() }
+        if let cached = speakItCache[key] { return cached }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else {
+            return nil
+        }
+        if speakItCache.count >= 512 {
+            speakItCache.removeAll(keepingCapacity: true)
+        }
+        speakItCache[key] = regex
+        return regex
     }
 }

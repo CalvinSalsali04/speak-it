@@ -16,21 +16,25 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// express, which keep the existing one-shot-then-regenerate-on-completion
     /// path (see `SwiftDataThoughtRepository.setCompleted`).
     let repeatingComponents: DateComponents?
+    /// The named list a shopping row belongs to ("Sobeys"), or `nil` for
+    /// everything else. A coalesced notification whose rows all share one
+    /// list is titled by that list, so the alert reads the way the person
+    /// spoke it: the store, then what to get there.
+    let listName: String?
+    /// When the item was created. A coalesced notification lists its rows in
+    /// spoken order, which creation order preserves; the identifier's own
+    /// ordering stays keyed by item ID so it remains stable across launches.
+    let createdAt: Date
 
     @MainActor
     init?(item: CapturedItem) {
         guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
         let originalText = item.originalTextSegment
-        let segmentDelivery = ThoughtOrganizer.organize(
-            originalText,
-            referenceDate: item.createdAt
-        ).reminderDelivery
-        let sessionDelivery = item.captureSession.map {
-            ThoughtOrganizer.organize(
-                $0.originalTranscription,
-                referenceDate: $0.createdAt
-            ).reminderDelivery
-        } ?? .none
+        // The same memoized reading the rows render from. Today rebuilds these
+        // requests on every render pass to keep its scheduling signature live,
+        // which made two fresh `ThoughtOrganizer` parses per reminder item here
+        // the single largest cost of scrolling that screen.
+        let wordedDelivery = ItemPresentation.effectiveReminderDelivery(for: item)
 
         itemID = item.id
         captureSessionID = item.captureSession?.id
@@ -38,13 +42,15 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             from: item.displayTitle == originalText ? originalText : item.displayTitle
         )
         self.fireDate = fireDate
-        delivery = segmentDelivery == .alarm || (segmentDelivery == .none && sessionDelivery == .alarm)
-            ? .alarm
-            : .notification
+        delivery = wordedDelivery == .alarm ? .alarm : .notification
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
             fireDate: fireDate
         )
+        listName = item.itemType == .shopping
+            ? ShoppingGroupStore.group(for: item.id)
+            : nil
+        createdAt = item.createdAt
     }
 
     /// Only daily and single-weekday weekly series, anchored to the
@@ -114,9 +120,55 @@ struct ReminderSynchronizationScope: Equatable, Sendable {
 /// The full transcript remains stored on the capture session; this copy is only
 /// used for the organized item and its reminder presentation.
 enum ReminderCopy {
+    /// A pure function of its input, memoized because Today rebuilds every
+    /// pending reminder request per render pass and this strips its title with
+    /// a stack of regex passes each time. The cap bounds growth across a long
+    /// session; the cache never needs invalidating because equal input always
+    /// yields equal output.
+    private static let actionCacheLock = NSLock()
+    nonisolated(unsafe) private static var actionCache: [String: String] = [:]
+
     static func action(from transcript: String) -> String {
+        actionCacheLock.lock()
+        let cached = actionCache[transcript]
+        actionCacheLock.unlock()
+        if let cached { return cached }
+
+        let result = strippedAction(from: transcript)
+        actionCacheLock.lock()
+        if actionCache.count >= 512 { actionCache.removeAll(keepingCapacity: true) }
+        actionCache[transcript] = result
+        actionCacheLock.unlock()
+        return result
+    }
+
+    private static func strippedAction(from transcript: String) -> String {
         let original = normalized(transcript)
         guard !original.isEmpty else { return "Your reminder" }
+
+        // "The report is due Friday but remind me Wednesday" is about the
+        // report, not about the reminding. The trailing reminder clause is
+        // machinery — the reminder date already captured it — so the title is
+        // the statement in front of it, with any trailing timing the statement
+        // itself carries stripped the usual way.
+        if let reminderClause = original.range(
+            of: #"(?i)\s*,?\s*(?:but|and)\s+(?:please\s+)?(?:remind\s+me|send\s+me\s+a\s+reminder)\b.*$"#,
+            options: .regularExpression
+        ), reminderClause.lowerBound != original.startIndex {
+            let statement = withoutTrailingTiming(
+                normalized(String(original[..<reminderClause.lowerBound]))
+            ).trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
+            if !statement.isEmpty {
+                return sentenceCased(statement)
+            }
+        }
+
+        // A place condition can sit in front of the reminder command. Strip
+        // both pieces so the title is the shopping/action content rather than
+        // the full "When I get to Costco…" sentence.
+        if let locationAction = LocationIntentParser.actionBody(in: original) {
+            return sentenceCased(locationAction)
+        }
 
         // Both the verb form ("remind me to …") and the noun form ("give me a
         // reminder to …") are requests for a reminder, so both must be stripped
@@ -146,20 +198,7 @@ enum ReminderCopy {
             )
         }
 
-        // Remove timing language when it appears after the action, as in
-        // “remind me to call Mum in ten minutes” or “...tomorrow at six”.
-        let trailingTimingPatterns = [
-            #"(?i)\s+in\s+(?:\d+|[a-z]+(?:[\s-][a-z]+)?)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\s*[.!?]*$"#,
-            #"(?i)\s+(?:today|tonight|tomorrow)(?:\s+at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))?\s*[.!?]*$"#,
-            #"(?i)\s+at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*[.!?]*$"#
-        ]
-        for pattern in trailingTimingPatterns {
-            candidate = candidate.replacingOccurrences(
-                of: pattern,
-                with: "",
-                options: .regularExpression
-            )
-        }
+        candidate = withoutTrailingTiming(candidate)
 
         // If no “to/about” connector was spoken, remove a leading interval.
         candidate = candidate.replacingOccurrences(
@@ -168,13 +207,54 @@ enum ReminderCopy {
             options: .regularExpression
         )
         candidate = candidate.replacingOccurrences(
-            of: #"(?i)^\s*(?:that\s+|to\s+|about\s+)"#,
+            of: #"(?i)^\s*(?:that\s+|to\s+|about\s+|for\s+|at\s+)"#,
             with: "",
             options: .regularExpression
         )
         candidate = normalized(candidate).trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
 
-        return candidate.isEmpty ? "Your reminder" : sentenceCased(candidate)
+        // "Wake me up at ten to nine" has no action beyond the waking — the
+        // "to" inside the spoken clock is not a connector, and titling the row
+        // with the leftover "nine" told the person nothing. When everything
+        // after the command is just the time, the command itself is the title.
+        let clockShape = #"(?i)^(?:\d{1,2}(?::\d{2})?|noon|midnight"#
+            + #"|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"#
+            + #"(?:\s+(?:o'?\s?clock|thirty|forty(?:[\s-]five)?|fifteen|twenty(?:[\s-]five)?|ten|five))?)"#
+            + #"(?:\s*(?:a\.?m\.?|p\.?m\.?))?$"#
+        if candidate.isEmpty || candidate.range(of: clockShape, options: .regularExpression) != nil {
+            if original.range(of: #"(?i)\bwake\s+me\b"#, options: .regularExpression) != nil {
+                return "Wake up"
+            }
+            if original.range(of: #"(?i)\balarm\b"#, options: .regularExpression) != nil {
+                return "Alarm"
+            }
+            if original.range(of: #"(?i)\btimer\b"#, options: .regularExpression) != nil {
+                return "Timer"
+            }
+            return "Your reminder"
+        }
+
+        return sentenceCased(candidate)
+    }
+
+    /// Removes timing language after the action, as in "remind me to call Mum
+    /// in ten minutes" or "…tomorrow at six". Shared with the shopping-list
+    /// splitter, which must not read "in one hour" as part of a product.
+    static func withoutTrailingTiming(_ value: String) -> String {
+        let trailingTimingPatterns = [
+            #"(?i)\s+in\s+(?:\d+|[a-z]+(?:[\s-][a-z]+)?)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\s*[.!?]*$"#,
+            #"(?i)\s+(?:today|tonight|tomorrow)(?:\s+at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))?\s*[.!?]*$"#,
+            #"(?i)\s+at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*[.!?]*$"#
+        ]
+        var result = value
+        for pattern in trailingTimingPatterns {
+            result = result.replacingOccurrences(
+                of: pattern,
+                with: "",
+                options: .regularExpression
+            )
+        }
+        return result
     }
 
     private static func normalized(_ value: String) -> String {
@@ -240,6 +320,12 @@ struct ReminderDeliverySink: Sendable {
         },
         cancelAlarm: { itemID in
             if #available(iOS 26.0, *) {
+                // `cancel` removes a *scheduled* alarm; one already alerting —
+                // or snoozing in its countdown — is only silenced by `stop`.
+                // Completing an item must shut its alarm down in every state,
+                // so both are issued; each throws harmlessly in the state the
+                // other one owns.
+                try? AlarmManager.shared.stop(id: itemID)
                 try? AlarmManager.shared.cancel(id: itemID)
             }
         },
@@ -344,13 +430,49 @@ enum ReminderScheduler {
         let requests: [ReminderScheduleRequest]
 
         var fireDate: Date { requests[0].fireDate }
-        var title: String { requests.count == 1 ? "Reminder" : "\(requests.count) reminders" }
+
+        /// The one named list every request belongs to, or `nil` when the
+        /// group mixes lists or contains anything that is not a list row.
+        private var sharedListName: String? {
+            guard let name = requests.first?.listName else { return nil }
+            return requests.allSatisfy { $0.listName == name } ? name : nil
+        }
+
+        /// A list's alert is titled by the list — "Sobeys" — because that is
+        /// how the person spoke it: the store, then what to get there.
+        var title: String {
+            if let sharedListName { return sharedListName }
+            return requests.count == 1 ? "Reminder" : "\(requests.count) reminders"
+        }
+
         var body: String {
+            // Spoken order, not identifier order: the identifier sort keeps
+            // the notification stable across launches, but the person said
+            // "chicken, eggs and milk" and the alert should read it back.
+            let spoken = requests.sorted { $0.createdAt < $1.createdAt }
+            if sharedListName != nil {
+                let names = spoken.prefix(3).map { Self.productName(from: $0.title) }
+                let joined = names.joined(separator: " · ")
+                return requests.count > 3 ? "\(joined) · +\(requests.count - 3) more" : joined
+            }
             guard requests.count > 1 else { return requests[0].title }
-            let titles = requests.prefix(3).map(\.title).joined(separator: " · ")
+            let titles = spoken.prefix(3).map(\.title).joined(separator: " · ")
             return requests.count > 3 ? "\(titles) · +\(requests.count - 3) more" : titles
         }
+
         var itemIDs: [UUID] { requests.map(\.itemID) }
+
+        /// "Get chicken" → "Chicken". Under a list title the verb is noise;
+        /// the row keeps its own full title everywhere else.
+        private static func productName(from title: String) -> String {
+            let stripped = title.replacingOccurrences(
+                of: #"^(?:buy|get|grab|order|pick\s+up)\s+"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            guard let first = stripped.first else { return title }
+            return first.uppercased() + stripped.dropFirst()
+        }
     }
 
     static func registerNotificationCategories() {
@@ -763,7 +885,11 @@ enum ReminderScheduler {
         let trigger: UNNotificationTrigger
         if secondsUntilFire > 60,
            group.requests.count == 1,
-           let repeatingComponents = group.requests[0].repeatingComponents {
+           let repeatingComponents = group.requests[0].repeatingComponents,
+           let repeatingNextFire = UNCalendarNotificationTrigger(
+               dateMatching: repeatingComponents, repeats: true
+           ).nextTriggerDate(),
+           abs(repeatingNextFire.timeIntervalSince(group.fireDate)) < 60 {
             // A recurring reminder that only ever schedules its next single
             // occurrence stops firing the moment the person misses one — see
             // FINAL_RELEASE_AUDIT.md H-1/E-1. Handing iOS the recurring
@@ -772,6 +898,13 @@ enum ReminderScheduler {
             // next `CapturedItem` occurrence, once the app does process a
             // completion, gets its own such trigger and this one is cancelled
             // the normal way `setCompleted` already cancels any reminder.
+            //
+            // Only when the repeating match's first fire IS this occurrence,
+            // though. A repeating hour/minute trigger fires every period from
+            // now, so an occurrence further out — a future-dated series, or a
+            // DST-shifted fire time the components no longer describe — would
+            // alert on the wrong days. Those schedule as an exact one-shot and
+            // rejoin the resilient path on the next generated occurrence.
             trigger = UNCalendarNotificationTrigger(dateMatching: repeatingComponents, repeats: true)
         } else if secondsUntilFire <= 60 {
             // Relative reminders such as “in 10 seconds” should count down

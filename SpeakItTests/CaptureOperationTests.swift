@@ -469,3 +469,32 @@ extension CaptureOperationTests {
         XCTAssertFalse(delivery.pendingNotifications.contains(identifier))
     }
 }
+
+/// The analyzer engine reports finalized segments and a volatile tail
+/// separately; the person must always see them stitched into one transcript.
+final class TranscriptAssemblyTests: XCTestCase {
+    func testVolatileTextFollowsFinalizedSegments() {
+        let assembly = TranscriptAssembly()
+        assembly.commit("Set an alarm for nine,")
+        assembly.replaceVolatile("nine thirty")
+        XCTAssertEqual(assembly.transcript, "Set an alarm for nine, nine thirty")
+    }
+
+    func testCommitReplacesVolatileGuess() {
+        let assembly = TranscriptAssembly()
+        assembly.replaceVolatile("by milk")
+        assembly.commit("Buy milk")
+        assembly.replaceVolatile("and bread")
+        XCTAssertEqual(assembly.transcript, "Buy milk and bread")
+    }
+
+    func testJoinedDoesNotDoubleSpaces() {
+        XCTAssertEqual(TranscriptAssembly.joined("Hello ", "there"), "Hello there")
+        XCTAssertEqual(TranscriptAssembly.joined("Hello", "there"), "Hello there")
+        XCTAssertEqual(TranscriptAssembly.joined("", "there"), "there")
+        XCTAssertEqual(TranscriptAssembly.joined("Hello", ""), "Hello")
+    }
+}
+
+
+

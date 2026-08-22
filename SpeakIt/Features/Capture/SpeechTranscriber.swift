@@ -31,9 +31,7 @@ final class SpeechTranscriber: ObservableObject {
     private let reportsAudioLevel: Bool
     private let audioActivityTracker = AudioActivityTracker()
     private let audioEngine = AVAudioEngine()
-    private let speechRecognizer = SFSpeechRecognizer(locale: .current)
-    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognitionBackend: (any SpeechRecognitionBackend)?
     private var naturalPauseTask: Task<Void, Never>?
     private var finalizationTimeout: Task<Void, Never>?
     private var audioSessionCancellables = Set<AnyCancellable>()
@@ -83,13 +81,6 @@ final class SpeechTranscriber: ObservableObject {
             return
         }
 
-        guard let speechRecognizer, speechRecognizer.isAvailable else {
-            activeStartID = nil
-            automaticFinalization = nil
-            state = .unavailable
-            return
-        }
-
         do {
             resetRecognitionResources()
 
@@ -100,27 +91,27 @@ final class SpeechTranscriber: ObservableObject {
             try audioSession.setCategory(.record, mode: .measurement, options: [])
             try audioSession.setActive(true)
 
-            let request = SFSpeechAudioBufferRecognitionRequest()
-            request.shouldReportPartialResults = true
-            request.taskHint = .dictation
-            request.contextualStrings = SpeechVocabularyStore.contextualPhrases
-            // Let iOS choose between its on-device and network recognizers.
-            // Hard-requiring the local model can fail when a locale's asset has
-            // not finished downloading, even though the recognizer reports support.
-            request.requiresOnDeviceRecognition = false
-            recognitionRequest = request
-
-            recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
-                Task { @MainActor [weak self] in
-                    self?.receive(result: result, error: error)
-                }
-            }
-
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
             guard format.sampleRate > 0, format.channelCount > 0 else {
                 throw SpeechCaptureError.invalidAudioInput
             }
+
+            let backend = try await Self.makeStartedBackend(
+                inputFormat: format,
+                onTranscript: { [weak self] text, isFinal in
+                    self?.receiveTranscript(text, isFinal: isFinal)
+                },
+                onError: { [weak self] error in
+                    self?.receiveError(error)
+                }
+            )
+            guard activeStartID == startID else {
+                backend.cancel()
+                resetRecognitionResources()
+                return
+            }
+            recognitionBackend = backend
 
             let recoveryFile: AVAudioFile?
             if let recoveryAudioURL {
@@ -138,7 +129,7 @@ final class SpeechTranscriber: ObservableObject {
             let publishesAudioLevel = reportsAudioLevel
 
             inputNode.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
-                request.append(buffer)
+                backend.append(buffer)
                 try? recoveryFile?.write(from: buffer)
                 guard let level = Self.normalizedLevel(from: buffer) else { return }
                 if level > 0.012 {
@@ -171,6 +162,12 @@ final class SpeechTranscriber: ObservableObject {
             }
             activeStartID = nil
             state = .listening
+        } catch SpeechRecognitionBackendError.recognizerUnavailable {
+            guard activeStartID == startID else { return }
+            activeStartID = nil
+            resetRecognitionResources()
+            automaticFinalization = nil
+            state = .unavailable
         } catch {
             guard activeStartID == startID else { return }
             activeStartID = nil
@@ -178,6 +175,32 @@ final class SpeechTranscriber: ObservableObject {
             automaticFinalization = nil
             state = .failed(error.localizedDescription)
         }
+    }
+
+    /// Prefers the higher-accuracy on-device SpeechAnalyzer engine when iOS 26
+    /// and its language model are available, falling back to the legacy
+    /// recognizer so capture always works — including while the analyzer's
+    /// model is still downloading in the background.
+    private static func makeStartedBackend(
+        inputFormat: AVAudioFormat,
+        onTranscript: @escaping @MainActor (String, Bool) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) async throws -> any SpeechRecognitionBackend {
+        if #available(iOS 26.0, *), await AnalyzerRecognitionSupport.isReady() {
+            let analyzerBackend = AnalyzerRecognitionBackend(inputFormat: inputFormat)
+            do {
+                try await analyzerBackend.start(onTranscript: onTranscript, onError: onError)
+                return analyzerBackend
+            } catch {
+                analyzerBackend.cancel()
+            }
+        }
+
+        guard let legacyBackend = LegacyRecognizerBackend() else {
+            throw SpeechRecognitionBackendError.recognizerUnavailable
+        }
+        try await legacyBackend.start(onTranscript: onTranscript, onError: onError)
+        return legacyBackend
     }
 
     func stopAndFinalize(_ completion: @escaping (String) -> Void) {
@@ -208,49 +231,47 @@ final class SpeechTranscriber: ObservableObject {
         state = .idle
     }
 
-    private func receive(result: SFSpeechRecognitionResult?, error: Error?) {
+    private func receiveTranscript(_ text: String, isFinal: Bool) {
         guard state == .listening || state == .finalizing else { return }
 
-        if let result {
-            transcript = SpeechVocabularyStore.apply(
-                to: result.bestTranscription.formattedString
-            )
-            let hasWords = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        transcript = SpeechVocabularyStore.apply(to: text)
+        let hasWords = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-            if result.isFinal {
-                if state == .finalizing {
-                    completeFinalization()
-                } else if hasWords, let automaticFinalization {
-                    beginFinalization(automaticFinalization)
-                }
-                return
+        if isFinal {
+            if state == .finalizing {
+                completeFinalization()
+            } else if hasWords, let automaticFinalization {
+                beginFinalization(automaticFinalization)
             }
-
-            if state == .listening, hasWords {
-                scheduleNaturalPauseFinish()
-            }
+            return
         }
 
-        if let error {
-            switch Self.failureResolution(
-                isFinalizing: state == .finalizing,
-                hasTranscript: !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                hasRecoveryRecording: recoveryAudioFile != nil && hasDetectedAudioInput
-            ) {
-            case .finalizeTranscript:
-                if state == .finalizing {
-                    completeFinalization()
-                } else if let automaticFinalization {
-                    finalization = automaticFinalization
-                    markSpeechEndpointDetectedIfNeeded()
-                    state = .finalizing
-                    completeFinalization()
-                }
-            case .recoverRecording, .reportFailure:
-                resetRecognitionResources()
-                automaticFinalization = nil
-                state = .failed(error.localizedDescription)
+        if state == .listening, hasWords {
+            scheduleNaturalPauseFinish()
+        }
+    }
+
+    private func receiveError(_ error: Error) {
+        guard state == .listening || state == .finalizing else { return }
+
+        switch Self.failureResolution(
+            isFinalizing: state == .finalizing,
+            hasTranscript: !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            hasRecoveryRecording: recoveryAudioFile != nil && hasDetectedAudioInput
+        ) {
+        case .finalizeTranscript:
+            if state == .finalizing {
+                completeFinalization()
+            } else if let automaticFinalization {
+                finalization = automaticFinalization
+                markSpeechEndpointDetectedIfNeeded()
+                state = .finalizing
+                completeFinalization()
             }
+        case .recoverRecording, .reportFailure:
+            resetRecognitionResources()
+            automaticFinalization = nil
+            state = .failed(error.localizedDescription)
         }
     }
 
@@ -320,7 +341,7 @@ final class SpeechTranscriber: ObservableObject {
         state = .finalizing
         finalization = completion
         stopAudioInput()
-        recognitionRequest?.endAudio()
+        recognitionBackend?.endAudio()
 
         finalizationTimeout?.cancel()
         finalizationTimeout = Task { @MainActor [weak self] in
@@ -366,10 +387,8 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseTask?.cancel()
         naturalPauseTask = nil
         stopAudioInput()
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionTask = nil
-        recognitionRequest = nil
+        recognitionBackend?.cancel()
+        recognitionBackend = nil
         // Don't automatically restart interrupted media after saving. The
         // person can resume it when they are ready, without it competing with
         // the Remembered confirmation.

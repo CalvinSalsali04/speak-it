@@ -131,6 +131,10 @@ struct TodayView: View {
 
     let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
+    /// Incremented by the dock when "Today" is tapped while Today is already
+    /// showing. Tapping the destination you are on means "take me back to it",
+    /// so any pushed screen — the List — pops instead of the tap doing nothing.
+    let popToRootSignal: Int
 
     @State private var selectedItem: CapturedItem?
     @State private var errorMessage: String?
@@ -146,13 +150,15 @@ struct TodayView: View {
     @State private var recoveryAudioDrafts: [CaptureDraftStore.Draft] = []
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
-    @State private var dockScrollPolicy = DockScrollPolicy()
+    @StateObject private var dockScrollTracker = DockScrollTracker()
     @State private var reportsDockVisible = true
     @State private var showsUpcoming = TodayView.initialShowsUpcoming
     @State private var showsNoDate = true
     @State private var showsSampleDataResult = false
     @State private var sampleDataResultMessage = ""
     @State private var showsAccountSettings = TodayView.initialShowsAccountSettings
+    @State private var showsShoppingList = false
+    @State private var shoppingListFocus: String?
     @State private var referenceNow = Date.now
     @AppStorage("SpeakIt.shortcutSetupCompleted") private var shortcutSetupCompleted = false
     @AppStorage("SpeakIt.hasDismissedProDiscovery") private var hasDismissedProDiscovery = false
@@ -161,10 +167,12 @@ struct TodayView: View {
 
     init(
         onCapture: @escaping () -> Void,
-        onDockVisibilityChange: @escaping (Bool) -> Void = { _ in }
+        onDockVisibilityChange: @escaping (Bool) -> Void = { _ in },
+        popToRootSignal: Int = 0
     ) {
         self.onCapture = onCapture
         self.onDockVisibilityChange = onDockVisibilityChange
+        self.popToRootSignal = popToRootSignal
     }
 
     private static var initialShowsUpcoming: Bool {
@@ -200,13 +208,24 @@ struct TodayView: View {
 
     private var activeActions: [CapturedItem] {
         let authorization = locationAuthorization
-        return allItems.filter { $0.belongsInToday(authorization: authorization) }
+        return allItems.filter {
+            ShoppingListProjection.belongsOnTopLevelToday(
+                $0,
+                authorization: authorization,
+                relativeTo: referenceNow
+            )
+        }
     }
 
     private var needsReview: [CapturedItem] {
         let authorization = locationAuthorization
         return allItems
-            .filter { $0.requiresReview(authorization: authorization) }
+            .filter {
+                ShoppingListProjection.belongsInTopLevelReview(
+                    $0,
+                    authorization: authorization
+                )
+            }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -244,7 +263,7 @@ struct TodayView: View {
     }
 
     private var isEmpty: Bool {
-        activeActions.isEmpty && needsReview.isEmpty
+        activeActions.isEmpty && needsReview.isEmpty && shoppingItems.isEmpty
     }
 
     private var completedToday: [CapturedItem] {
@@ -257,6 +276,77 @@ struct TodayView: View {
                 return Calendar.autoupdatingCurrent.isDate(completedAt, inSameDayAs: referenceNow)
             }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+    }
+
+    private var shoppingItems: [CapturedItem] {
+        ShoppingListProjection.openItems(in: allItems)
+    }
+
+    /// One named list, summarized for a Today card. The timing item is the
+    /// open entry with the earliest fire moment — the date that decides which
+    /// section the list belongs in, exactly the way a task's own date does.
+    private struct ShoppingGroupSummary: Identifiable {
+        let name: String
+        let count: Int
+        let timingItem: CapturedItem?
+        var id: String { name }
+    }
+
+    /// Derived per body pass from the already-loaded items plus the cached
+    /// group store — dictionary lookups, never a parse.
+    private var shoppingGroupSummaries: [ShoppingGroupSummary] {
+        var order: [String] = []
+        var buckets: [String: [CapturedItem]] = [:]
+        for item in shoppingItems {
+            let name = ShoppingGroupStore.group(for: item.id) ?? ShoppingGroupStore.fallbackGroup
+            if buckets[name] == nil { order.append(name) }
+            buckets[name, default: []].append(item)
+        }
+        return order.map { name in
+            let items = buckets[name] ?? []
+            let timed = items
+                .compactMap { item -> (item: CapturedItem, date: Date)? in
+                    guard let date = item.reminderDate ?? item.dueDate else { return nil }
+                    return (item, date)
+                }
+                .min { $0.date < $1.date }
+            return ShoppingGroupSummary(name: name, count: items.count, timingItem: timed?.item)
+        }
+    }
+
+    private func shoppingGroups(
+        where timing: (TodayActionTiming?) -> Bool
+    ) -> [ShoppingGroupSummary] {
+        shoppingGroupSummaries.filter { summary in
+            // The fire moment, not just `dueDate`: a list held by "remind me
+            // in an hour" carries a reminder date and must not read as
+            // undated.
+            let grouped = summary.timingItem.map { item in
+                TodayActionTiming.group(
+                    for: item.reminderDate ?? item.dueDate,
+                    isDateOnly: item.isDateOnly,
+                    calendarDay: item.isDateOnly ? item.temporalIntent?.day : nil,
+                    relativeTo: referenceNow
+                )
+            }
+            return timing(grouped)
+        }
+    }
+
+    /// Lists whose earliest entry is overdue or due today sit with today's
+    /// work; a dated list is a commitment like any dated task.
+    private var dueNowShoppingGroups: [ShoppingGroupSummary] {
+        shoppingGroups { $0 == .overdue || $0 == .today }
+    }
+
+    private var comingUpShoppingGroups: [ShoppingGroupSummary] {
+        shoppingGroups { $0 == .comingUp }
+    }
+
+    /// Undated lists are errands for a free moment, so they live under
+    /// "When you have time" with the other undated actions.
+    private var untimedShoppingGroups: [ShoppingGroupSummary] {
+        shoppingGroups { $0 == nil || $0 == .noDate }
     }
 
     private var pendingReminderRequests: [ReminderScheduleRequest] {
@@ -313,7 +403,7 @@ struct TodayView: View {
                 if isEmpty {
                     emptyState
                 } else {
-                    if !overdue.isEmpty || upNext != nil {
+                    if !overdue.isEmpty || upNext != nil || !dueNowShoppingGroups.isEmpty {
                         nowSection
                     }
 
@@ -325,21 +415,23 @@ struct TodayView: View {
                         )
                     }
 
-                    if !comingUp.isEmpty {
+                    if !comingUp.isEmpty || !comingUpShoppingGroups.isEmpty {
                         collapsibleThoughtSection(
                             title: "Coming up",
                             detail: "Scheduled tomorrow or later",
                             items: comingUp,
-                            isExpanded: $showsUpcoming
+                            isExpanded: $showsUpcoming,
+                            listCards: comingUpShoppingGroups
                         )
                     }
 
-                    if !noDate.isEmpty {
+                    if !noDate.isEmpty || !untimedShoppingGroups.isEmpty {
                         collapsibleThoughtSection(
                             title: "When you have time",
                             detail: "Ready to do · no date set",
                             items: noDate,
-                            isExpanded: $showsNoDate
+                            isExpanded: $showsNoDate,
+                            listCards: untimedShoppingGroups
                         )
                     }
                 }
@@ -361,6 +453,16 @@ struct TodayView: View {
         }
         .scrollIndicators(.hidden)
         .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showsShoppingList) {
+            ShoppingListView(
+                items: shoppingItems,
+                focusedGroup: $shoppingListFocus,
+                onCapture: onCapture
+            )
+        }
+        .onChange(of: popToRootSignal) {
+            showsShoppingList = false
+        }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
         }
@@ -806,6 +908,63 @@ struct TodayView: View {
         }
     }
 
+    /// One named list as a Today card, sitting in the section its earliest
+    /// fire moment earns — a dated list is a commitment like any dated task.
+    private func shoppingGroupCard(_ group: ShoppingGroupSummary) -> some View {
+        let countLabel = group.count == 1 ? "1 item" : "\(group.count) items"
+        let timing = group.timingItem.map {
+            ItemPresentation.make(for: $0, authorization: locationAuthorization)
+        }?.primaryTimingText
+
+        return Button {
+            shoppingListFocus = group.name
+            showsShoppingList = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.speakInk)
+                    .frame(width: 42, height: 42)
+                    .background(Color.speakBackground, in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                        .lineLimit(1)
+
+                    Text(timing.map { "\(countLabel) · \($0)" } ?? countLabel)
+                        .font(SpeakItTypography.metadata)
+                        .foregroundStyle(Color.speakMuted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("\(group.count)")
+                    .font(SpeakItTypography.sectionDetail.weight(.semibold))
+                    .foregroundStyle(Color.speakMuted)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.speakMuted)
+            }
+            .padding(15)
+            .frame(maxWidth: .infinity, minHeight: 72)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.speakIt)
+        .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18).stroke(Color.speakDivider, lineWidth: 1)
+        }
+        .accessibilityLabel(
+            timing.map { "\(group.name) list, \(countLabel), \($0)" }
+                ?? "\(group.name) list, \(countLabel)"
+        )
+        .accessibilityHint("Opens the checklist")
+        .accessibilityIdentifier("today.shoppingListCard.\(group.name)")
+    }
+
     private func reviewRequirementLabel(_ item: CapturedItem) -> String {
         // The live blocker wins when there is one. It knows which gap this
         // actually is — "Set your Home location" rather than the generic "Place
@@ -874,7 +1033,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(
                 "Now",
-                count: overdue.count + (upNext == nil ? 0 : 1),
+                count: overdue.count + (upNext == nil ? 0 : 1) + dueNowShoppingGroups.count,
                 detail: "Overdue and next scheduled"
             )
 
@@ -900,6 +1059,10 @@ struct TodayView: View {
                 swipeToComplete(upNext) {
                     focusCard(upNext)
                 }
+            }
+
+            ForEach(dueNowShoppingGroups) { group in
+                shoppingGroupCard(group)
             }
         }
     }
@@ -936,7 +1099,8 @@ struct TodayView: View {
         title: String,
         detail: String,
         items: [CapturedItem],
-        isExpanded: Binding<Bool>
+        isExpanded: Binding<Bool>,
+        listCards: [ShoppingGroupSummary] = []
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -962,7 +1126,7 @@ struct TodayView: View {
                             .font(SpeakItTypography.sectionDetail)
                     }
                     Spacer()
-                    Text("\(items.count)")
+                    Text("\(items.count + listCards.count)")
                         .font(SpeakItTypography.sectionDetail.weight(.medium))
                     Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.bold))
@@ -977,18 +1141,29 @@ struct TodayView: View {
 
             TodayDisclosureContent(isExpanded: isExpanded.wrappedValue) {
                 VStack(spacing: 0) {
-                    Divider().overlay(Color.speakDivider)
-                    ForEach(items) { item in
-                        swipeToComplete(item, isEnabled: isExpanded.wrappedValue) {
-                            CapturedItemRow(
-                                item: item,
-                                showsCreatedDate: false,
-                                onToggleCompleted: { toggleCompleted(item) },
-                                onEdit: { selectedItem = item }
-                            )
-                            .padding(.vertical, 12)
+                    if !listCards.isEmpty {
+                        VStack(spacing: 10) {
+                            ForEach(listCards) { group in
+                                shoppingGroupCard(group)
+                            }
                         }
+                        .padding(.bottom, items.isEmpty ? 0 : 10)
+                    }
+
+                    if !items.isEmpty {
                         Divider().overlay(Color.speakDivider)
+                        ForEach(items) { item in
+                            swipeToComplete(item, isEnabled: isExpanded.wrappedValue) {
+                                CapturedItemRow(
+                                    item: item,
+                                    showsCreatedDate: false,
+                                    onToggleCompleted: { toggleCompleted(item) },
+                                    onEdit: { selectedItem = item }
+                                )
+                                .padding(.vertical, 12)
+                            }
+                            Divider().overlay(Color.speakDivider)
+                        }
                     }
                 }
                 .padding(.top, 10)
@@ -1052,7 +1227,12 @@ struct TodayView: View {
     }
 
     private func handleDockScroll(_ scrolled: CGFloat) {
-        guard let visibility = dockScrollPolicy.update(scrolled: scrolled) else { return }
+        // A navigation push can briefly report large synthetic scroll deltas.
+        // Updating RootView's dock in response invalidates the NavigationStack
+        // while it is constructing this destination, so ignore those reports
+        // for the lifetime of the checklist.
+        guard !showsShoppingList else { return }
+        guard let visibility = dockScrollTracker.update(scrolled: scrolled) else { return }
         updateDockVisibility(visibility)
     }
 

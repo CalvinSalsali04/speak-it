@@ -51,6 +51,58 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
     }
 
+    func testShoppingListOpensAndRemainsResponsive() {
+        let app = launchApp(
+            "--ui-testing-skip-welcome",
+            "--load-today-examples"
+        )
+
+        XCTAssertFalse(app.buttons["today.shopping"].exists)
+
+        // One card per named list, placed in the Today section its timing
+        // earns; the identifier carries the list's name.
+        let list = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'today.shoppingListCard.'")
+        ).firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 6))
+        list.tap()
+
+        XCTAssertTrue(app.navigationBars["List"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["shopping.add"].isHittable)
+
+        let item = app.buttons["list.item.Buy milk after work"]
+        XCTAssertTrue(item.waitForExistence(timeout: 4))
+        XCTAssertTrue(item.isHittable)
+
+        let complete = app.buttons["list.complete.Buy milk after work"]
+        XCTAssertTrue(complete.isHittable)
+        complete.tap()
+        XCTAssertFalse(item.waitForExistence(timeout: 3))
+    }
+
+    /// Tapping the dock's "Today" from inside the List pops straight back to
+    /// Today — the tap on the destination already on screen must not be dead.
+    func testDockTodayTapPopsTheListBackToToday() {
+        let app = launchApp(
+            "--ui-testing-skip-welcome",
+            "--load-today-examples"
+        )
+
+        let list = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'today.shoppingListCard.'")
+        ).firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 6))
+        list.tap()
+        XCTAssertTrue(app.navigationBars["List"].waitForExistence(timeout: 4))
+
+        let todayButton = app.buttons["dock.today"]
+        XCTAssertTrue(todayButton.isHittable)
+        todayButton.tap()
+
+        XCTAssertFalse(app.navigationBars["List"].waitForExistence(timeout: 2))
+        XCTAssertTrue(list.waitForExistence(timeout: 4), "the Today root is back on screen")
+    }
+
     func testTodayDisclosureOpensAndClosesWithoutLeakingHiddenRows() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
@@ -109,13 +161,19 @@ final class SpeakItUITests: XCTestCase {
             "--load-today-examples"
         )
 
-        let edit = app.buttons["item.edit.Buy milk after work"]
+        // A plain task row: shopping fixtures now live on their list card, so
+        // the flat-row contract is asserted on a non-shopping item.
+        let edit = app.buttons["item.edit.Pack gym clothes"]
         XCTAssertTrue(edit.waitForExistence(timeout: 6))
         assertMinimumTouchTarget(edit)
 
-        let complete = app.buttons["item.complete.Buy milk after work"]
+        let complete = app.buttons["item.complete.Pack gym clothes"]
         assertMinimumTouchTarget(complete)
 
+        // The untimed row sits at the bottom of Today, under the floating
+        // dock; scroll it clear so the edge tap cannot land on the dock.
+        app.swipeUp()
+        XCTAssertTrue(edit.waitForExistence(timeout: 4))
         edit.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 4))
         app.navigationBars.buttons["Cancel"].tap()
@@ -128,6 +186,14 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(capture.waitForExistence(timeout: 5))
         assertMinimumTouchTarget(capture)
         capture.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+
+        let readyPrompt = app.staticTexts["Tap to speak"]
+        XCTAssertTrue(readyPrompt.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Listening"].waitForExistence(timeout: 0.6))
+        XCTAssertTrue(
+            readyPrompt.exists,
+            "Opening capture from inside the app must wait for an explicit voice or typing choice"
+        )
 
         let typeInstead = app.buttons["capture.typeInstead"]
         XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))

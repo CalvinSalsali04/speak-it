@@ -84,6 +84,22 @@ enum DisfluencyFilter {
     }
 }
 
+// MARK: - Compact clock digits
+
+/// Dictation writes a spoken "six thirty" as "630" often enough — especially
+/// right after a correction ("for seven, actually 630") — that the compact
+/// form has to read as the clock time it is. Only digits directly behind a
+/// time cue are rewritten, so "room 630" and "$630" stay what they are.
+enum ClockDigitRepair {
+    static func repaired(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"(?i)\b(at|for|by|around|until|till)\s+([1-9]|1[0-2])([0-5][0-9])\b"#,
+            with: "$1 $2:$3",
+            options: .regularExpression
+        )
+    }
+}
+
 // MARK: - Self-correction
 
 /// Resolves "X, actually Y" by replacing the *slot* Y belongs to, rather than
@@ -141,7 +157,7 @@ enum SelfCorrectionResolver {
     }
 
     static func resolved(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: correctionPattern),
+        guard let regex = NSRegularExpression.speakItCached(correctionPattern),
               let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
               let range = Range(last.range, in: text),
               range.lowerBound != text.startIndex else {
@@ -216,6 +232,21 @@ enum SelfCorrectionResolver {
         // exist, filed under People and used to address a message.
         if let repaired = repairPerson(prefix: prefix, replacement: replacement) {
             return repaired
+        }
+
+        // An exclusive correction replaces the whole object list, not merely
+        // its final word. "Buy milk and eggs, no wait, just eggs" means the
+        // milk was withdrawn; treating "just eggs" like the ordinary object
+        // repair below left the capture as "buy milk and just eggs".
+        if let exclusive = replacement.range(
+            of: #"(?i)^(?:just|only)\s+"#,
+            options: .regularExpression
+        ) {
+            let object = normalize(String(replacement[exclusive.upperBound...]))
+            if isBareObject(object),
+               let action = lastMatch(in: prefix, pattern: ActionabilityReader.actionVerb) {
+                return normalize(String(prefix[...action.upperBound]) + " " + object)
+            }
         }
 
         // An object repair: a short noun phrase with no verb, replacing the
@@ -307,7 +338,7 @@ enum SelfCorrectionResolver {
     }
 
     private static func lastMatch(in text: String, pattern: String) -> Range<String.Index>? {
-        guard let regex = try? NSRegularExpression(pattern: #"(?i)\b\#(pattern)\b"#) else { return nil }
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)\b\#(pattern)\b"#) else { return nil }
         let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
         guard let last = matches.last else { return nil }
         return Range(last.range, in: text)
@@ -407,7 +438,7 @@ enum CaptureOperationDetector {
         let pattern = deniesUpFront
             ? #"(?i)(?:\s*[;,]\s*(?:and\s+|but\s+|then\s+)?|\s+but\s+)"#
             : #"(?i)(?:\s*[;,]\s*(?:and\s+|but\s+|then\s+)?|\s+(?:and|but|then|also|plus)\s+)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [text] }
+        guard let regex = NSRegularExpression.speakItCached(pattern) else { return [text] }
 
         var pieces: [String] = []
         var lowerBound = text.startIndex
@@ -585,7 +616,7 @@ enum CaptureOperationDetector {
     }
 
     private static func capture(_ text: String, _ pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               match.numberOfRanges > 1,
               let range = Range(match.range(at: 1), in: text) else {

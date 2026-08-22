@@ -195,6 +195,46 @@ final class CapturedItem: Identifiable {
         belongsInToday && !requiresReview(authorization: authorization)
     }
 
+    /// Whether this action should be visible on the actual Today surface now.
+    ///
+    /// A dated person follow-up has a durable home under that person, so Today
+    /// does not need to carry it for months. It enters Today on the previous
+    /// local calendar day, remains there on its due day, and stays visible when
+    /// overdue. Undated follow-ups still belong in "When you have time".
+    func isWithinTodayHorizon(
+        relativeTo now: Date = .now,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        guard itemType == .personFollowUp, dueDate != nil else { return true }
+        guard let tomorrowDate = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: calendar.startOfDay(for: now)
+              ),
+              let tomorrow = CalendarDay(from: tomorrowDate, calendar: calendar),
+              let dueDay = isDateOnly
+                ? temporalIntent?.day ?? dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) })
+                : dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) })
+        else { return true }
+
+        let due = (dueDay.year, dueDay.month, dueDay.day)
+        let threshold = (tomorrow.year, tomorrow.month, tomorrow.day)
+        return due <= threshold
+    }
+
+    /// Today-screen membership, including live review blockers and the narrow
+    /// horizon used by person follow-ups. The underlying action is never moved
+    /// or duplicated; People and Today are two projections of the same item.
+    @MainActor
+    func belongsOnTodaySurface(
+        authorization: LocationAuthorization,
+        relativeTo now: Date = .now,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        belongsInToday(authorization: authorization)
+            && isWithinTodayHorizon(relativeTo: now, calendar: calendar)
+    }
+
     /// Memory placement, judged against live device state.
     ///
     /// The authorization-aware counterpart of `belongsInMemory`, and it exists

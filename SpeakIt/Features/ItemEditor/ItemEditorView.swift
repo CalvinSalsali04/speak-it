@@ -36,6 +36,7 @@ struct ItemEditorView: View {
     @State private var priority: ItemPriority
     @State private var hasDueDate: Bool
     @State private var dueDate: Date
+    @State private var dueDateHasTime: Bool
     @State private var hasReminder: Bool
     @State private var reminderDate: Date
     @State private var repeats: Bool
@@ -78,6 +79,7 @@ struct ItemEditorView: View {
         _priority = State(initialValue: item.priority)
         _hasDueDate = State(initialValue: item.dueDate != nil)
         _dueDate = State(initialValue: item.dueDate ?? .now)
+        _dueDateHasTime = State(initialValue: !item.isDateOnly)
         _hasReminder = State(initialValue: item.reminderDate != nil)
         _reminderDate = State(initialValue: item.reminderDate ?? item.dueDate ?? .now)
         let recurrence = RecurrenceStore.rule(for: item.id)
@@ -213,10 +215,15 @@ struct ItemEditorView: View {
                         .accessibilityHint("Turn off to keep this item unscheduled")
 
                     if hasDueDate {
+                        Toggle("Has a time", isOn: $dueDateHasTime)
+                            .accessibilityHint("Turn off when only the day matters")
+
                         DatePicker(
                             "Due",
                             selection: $dueDate,
-                            displayedComponents: [.date, .hourAndMinute]
+                            displayedComponents: dueDateHasTime
+                                ? [.date, .hourAndMinute]
+                                : [.date]
                         )
                     }
 
@@ -891,22 +898,51 @@ struct ItemEditorView: View {
             guard let repository else {
                 throw RepositoryError.saveFailed("Local storage is unavailable.")
             }
+            let semantics = ItemEditSemanticReconciler.reconcile(
+                title: title,
+                itemType: scheduledItemType,
+                category: category,
+                personName: personName,
+                originalTitle: item.displayTitle,
+                originalItemType: item.itemType,
+                originalCategory: item.category,
+                originalPersonName: item.personName
+            )
             try repository.update(
                 item,
                 with: ItemEdits(
-                    title: title,
-                    itemType: scheduledItemType,
-                    category: category,
-                    dueDate: hasDueDate ? dueDate : (hasReminder ? reminderDate : nil),
+                    title: semantics.title,
+                    itemType: semantics.itemType,
+                    category: semantics.category,
+                    dueDate: editedDueDate,
                     reminderDate: hasReminder ? reminderDate : nil,
                     priority: priority,
-                    personName: personName,
+                    personName: semantics.personName,
                     needsClarification: needsClarification,
                     recurrenceRule: editedRecurrenceRule,
-                    locationIntent: locationIntentEdit
+                    locationIntent: locationIntentEdit,
+                    dueDateHasTime: editedDueDateHasTime
                 )
             )
         }
+    }
+
+    /// A date-only picker still binds a `Date`, whose internal representation
+    /// contains an hour. Normalize that implementation detail before saving so
+    /// it cannot reappear as a user-requested midnight deadline.
+    private var editedDueDate: Date? {
+        if hasDueDate {
+            return dueDateHasTime
+                ? dueDate
+                : Calendar.autoupdatingCurrent.startOfDay(for: dueDate)
+        }
+        return hasReminder ? reminderDate : nil
+    }
+
+    private var editedDueDateHasTime: Bool {
+        // An explicit reminder always contributes a real clock time, even when
+        // the task's separate due value is only a day.
+        hasReminder || (hasDueDate && dueDateHasTime)
     }
 
     private var editedRecurrenceRule: RecurrenceRule? {

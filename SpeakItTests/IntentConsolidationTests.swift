@@ -33,6 +33,7 @@ final class IntentConsolidationTests: XCTestCase {
 
         XCTAssertNotNil(result, "three clauses, one phone call")
         XCTAssertEqual(result?.title, "call the dentist tomorrow")
+        XCTAssertEqual(result?.requiresReview, false)
         XCTAssertEqual(
             result?.analysisText,
             "I really need to remember to call the dentist tomorrow",
@@ -54,15 +55,16 @@ final class IntentConsolidationTests: XCTestCase {
         XCTAssertEqual(result?.title, "book the hotel")
     }
 
-    /// Rambling that never arrives anywhere still becomes one item. There is no
-    /// head to promote, so the whole capture is the most honest record of it.
-    func testRamblingWithNoIntentionKeepsEverythingInOneItem() {
-        let result = verdict(
-            "So I was thinking earlier today about the whole thing with the garage, "
-                + "and how it's been kind of a mess for a while now"
-        )
-        XCTAssertNotNil(result)
-        XCTAssertNil(result?.title, "nothing here deserves to be a title")
+    /// Rambling that never arrives anywhere still becomes one item, but the
+    /// paragraph itself must not become an enormous, confidently filed row.
+    func testRamblingWithNoIntentionBecomesAShortReviewItem() {
+        let text = "So I was thinking earlier today about the whole thing with the garage, "
+            + "and how it's been kind of a mess for a while now"
+        let result = verdict(text)
+
+        XCTAssertEqual(result?.analysisText, text)
+        XCTAssertEqual(result?.title, "Review captured thought")
+        XCTAssertEqual(result?.requiresReview, true)
     }
 
     // MARK: It stands aside for anything else

@@ -165,6 +165,84 @@ enum LocationIntentParser {
         parse(text) != nil
     }
 
+    /// The action governed by a leading place trigger.
+    ///
+    /// "When I get to Costco, remind me to buy milk" has the action head
+    /// `buy`, even though the sentence itself starts with `when`. The ordinary
+    /// action reader only strips reminder wording at the beginning of a
+    /// sentence, so without this bridge the same shopping list was filed as a
+    /// generic task and its entire transcript became the title.
+    ///
+    /// This deliberately returns only text that begins with a known action
+    /// verb after the place phrase. A location mention inside a fact therefore
+    /// cannot turn that fact into a task.
+    static func actionBody(in text: String) -> String? {
+        for lead in leads {
+            guard let leadRange = text.range(
+                of: lead.pattern,
+                options: [.regularExpression, .caseInsensitive]
+            ) else { continue }
+
+            let remainder = String(text[leadRange.upperBound...])
+            if remainder.range(
+                of: clockPhrase,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil {
+                continue
+            }
+
+            let stripped = remainder.replacingOccurrences(
+                of: connector,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            guard let endRange = stripped.range(
+                of: placeTerminator,
+                options: [.regularExpression, .caseInsensitive]
+            ) else { continue }
+
+            var tail = normalizeActionTail(String(stripped[endRange.lowerBound...]))
+            guard !tail.isEmpty else { continue }
+
+            // A day narrows the place trigger; it is not the action. Keep it in
+            // the full text for temporal parsing, but remove it from the phrase
+            // used to classify and title the item.
+            tail = tail.replacingOccurrences(
+                of: #"(?i)^(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|on\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\b\s*"#,
+                with: "",
+                options: .regularExpression
+            )
+            tail = normalizeActionTail(tail)
+
+            // The reminder command may follow the place and optional day.
+            tail = tail.replacingOccurrences(
+                of: #"(?i)^(?:please\s+)?(?:remind|notify|alert|ping|tell)\s+(?:me|us)\b.*?\bto\s+"#,
+                with: "",
+                options: .regularExpression
+            )
+            tail = tail.replacingOccurrences(
+                of: #"(?i)^(?:and\s+then|then|to)\s+"#,
+                with: "",
+                options: .regularExpression
+            )
+            tail = normalizeActionTail(tail)
+
+            guard tail.range(
+                of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                options: .regularExpression
+            ) != nil else { continue }
+            return tail
+        }
+        return nil
+    }
+
+    private static func normalizeActionTail(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: #"^[\s,;.!?]+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private static func placeReference(in remainder: String) -> PlaceReference? {
         // Strip the connector, then take the phrase up to whatever ends it.
         let stripped = remainder.replacingOccurrences(

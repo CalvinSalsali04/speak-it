@@ -36,10 +36,15 @@ enum IntentConsolidator {
         /// the organizer still reads its timing, its person and its wording
         /// from the words the person actually used.
         let analysisText: String
-        /// That clause with its framing removed, for the row title. `nil` when
-        /// the utterance had no identifiable head and the raw capture is the
-        /// most honest title available.
-        let title: String?
+        /// That clause with its framing removed, for the row title. When the
+        /// utterance never reaches an identifiable head, this is a short
+        /// review label rather than the full paragraph.
+        let title: String
+        /// A paragraph with no identifiable point must not be confidently
+        /// filed as a task or memory just because one fragment resembles one.
+        /// Its untouched transcript is kept, but the item waits for the person
+        /// to say what they meant.
+        let requiresReview: Bool
     }
 
     // MARK: Vocabulary
@@ -135,16 +140,31 @@ enum IntentConsolidator {
         guard elaborative else { return nil }
 
         guard let head = substantive.first else {
-            // Rambling that never reaches a point. One item holding everything
-            // the person said beats several holding fragments of it.
-            return Consolidation(analysisText: normalized(transcript), title: nil)
+            // "I keep meaning to call Mom" wears an elaborative frame, but the
+            // whole capture *is* the obligation. The substance rules see only
+            // the frame — the same words that, mid-paragraph, are commentary —
+            // so an utterance the reader already recognises as something still
+            // owed is left for the organizer instead of being parked in
+            // review as rambling.
+            if ActionabilityReader.read(normalized(transcript).lowercased()) == .outstanding {
+                return nil
+            }
+            // Rambling that never reaches a point. One review item holding the
+            // untouched capture beats several invented fragments, while the
+            // short label keeps the paragraph from becoming the row itself.
+            return Consolidation(
+                analysisText: normalized(transcript),
+                title: "Review captured thought",
+                requiresReview: true
+            )
         }
 
         let body = intention(in: replace(head, trailingExplanation, ""))
         let title = stripFraming(body)
         return Consolidation(
             analysisText: normalized(body),
-            title: title.isEmpty ? nil : title
+            title: title.isEmpty ? normalized(body) : title,
+            requiresReview: false
         )
     }
 
@@ -337,7 +357,7 @@ enum IntentConsolidator {
 
     /// The first capture group of `pattern`, or `nil` when it does not match.
     private static func capture(_ text: String, _ pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]) else {
             return nil
         }
         let range = NSRange(text.startIndex..., in: text)

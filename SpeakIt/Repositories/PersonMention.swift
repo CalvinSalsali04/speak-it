@@ -175,6 +175,31 @@ enum PersonMentionResolver {
             }
             return index + 1
         }
+        // “Say happy birthday to Sarah” carries a short social phrase between
+        // the verb and its connector. Scan only a few words so `say` cannot
+        // steal an unrelated `to` from later in a long sentence.
+        if verb == "say" {
+            let upperBound = min(list.count, index + 6)
+            if index + 1 < upperBound {
+                for connectorIndex in (index + 1)..<upperBound
+                where list[connectorIndex].lower == "to" {
+                    return connectorIndex + 1
+                }
+            }
+        }
+        // "Heard back from Catherine", "haven't heard from Alex". Hearing
+        // aims at a person only through "from", and a short filler — "back",
+        // "anything" — often sits between. Scanned like `say` above, and only
+        // a few words, so an unrelated "from" later on cannot be stolen.
+        if verb == "hear" || verb == "hears" || verb == "heard" {
+            let upperBound = min(list.count, index + 5)
+            if index + 1 < upperBound {
+                for connectorIndex in (index + 1)..<upperBound
+                where list[connectorIndex].lower == "from" {
+                    return connectorIndex + 1
+                }
+            }
+        }
         // "Follow up with", "get back to", "say hi to". These verbs mean
         // nothing on their own — "get milk" must never reach the name rules —
         // so they only count when their preposition is there too.
@@ -252,9 +277,15 @@ enum PersonMentionResolver {
         // so the participle behind it is what says this is about a human.
         let copulaDetail = hasHumanDetailAfterCopula(in: list, at: predicateIndex)
 
+        // A personal-fact noun right after the name does not require the
+        // possessive marker: dictation drops the apostrophe-s often enough
+        // that "Priya birthday is December 4th" is how "Priya's birthday"
+        // actually arrives. Relation nouns keep needing the real possessive —
+        // "Priya brother" is not a shape people speak.
         let readsLikeAHumanFact = hasPeoplePredicate(list, at: predicateIndex)
             || copulaDetail
-            || (first.isPossessive && (personalFactNouns.contains(predicate) || relationNouns.contains(predicate)))
+            || personalFactNouns.contains(predicate)
+            || (first.isPossessive && relationNouns.contains(predicate))
             || (hadMemoryLead && ["is", "was", "has", "had"].contains(predicate))
         guard readsLikeAHumanFact else { return nil }
 

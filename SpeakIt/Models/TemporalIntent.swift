@@ -180,15 +180,17 @@ struct TemporalIntent: Codable, Equatable, Sendable {
 
     /// The intent produced by an explicit edit in the item editor.
     ///
-    /// A person who opens the date picker and chooses a moment has said
-    /// something more precise than any sentence, and it must not be re-derived
-    /// from the sentence later.
+    /// A person who opens the picker and chooses a day or moment has said
+    /// something more authoritative than any sentence, and it must not be
+    /// re-derived from the sentence later. Date-only edits deliberately keep
+    /// `time == nil`; storage midnight is not a clock the person selected.
     static func userEdited(
         dueDate: Date?,
         reminderDate: Date?,
         recurrence: RecurrenceRule?,
         sourceText: String?,
-        calendar: Calendar
+        calendar: Calendar,
+        dueDateHasTime: Bool = true
     ) -> TemporalIntent {
         guard let moment = dueDate ?? reminderDate else {
             return TemporalIntent(
@@ -201,12 +203,14 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         let components = calendar.dateComponents([.hour, .minute], from: moment)
         let kind: TemporalKind = recurrence.map {
             $0.repeatsByElapsedTime ? .durationRecurrence : .calendarRecurrence
-        } ?? .exactDateTime
+        } ?? (dueDateHasTime ? .exactDateTime : .dateOnly)
 
         return TemporalIntent(
             kind: kind,
             day: CalendarDay(from: moment, calendar: calendar),
-            time: WallClockTime(hour: components.hour ?? 0, minute: components.minute ?? 0),
+            time: dueDateHasTime
+                ? WallClockTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+                : nil,
             timeZoneIdentifier: calendar.timeZone.identifier,
             timeZoneBehavior: .deviceLocal,
             relativeSeconds: recurrence?.intervalSeconds,

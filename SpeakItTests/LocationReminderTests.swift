@@ -1272,7 +1272,11 @@ final class LocationReminderTests: XCTestCase {
     /// it was the wrong reading — it honours the half the person was least
     /// specific about. Nothing fires until the combination is enforced; see
     /// `testCombinedPlaceAndTimeGoesToReview`.
-    func testCombinedPlaceAndTimeKeepsBothHalves() throws {
+    /// A sentence naming a place and a time keeps the time. The stated clock
+    /// is the constraint the person made precise and the one Speak It can
+    /// always honour; the redundant place is dropped rather than holding the
+    /// whole capture in review. The wording survives on the transcript.
+    func testCombinedPlaceAndTimeKeepsTheTimeAndDropsThePlace() throws {
         setHome()
         let item = try repository.createCapture(
             text: "When I get home tonight, remind me to call Mom",
@@ -1281,16 +1285,13 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: false
         )
 
-        XCTAssertEqual(item.locationIntent?.place, .home)
+        XCTAssertNil(item.locationIntent, "the stated time outranks the place")
         XCTAssertNotEqual(
             item.temporalKind ?? .none,
             TemporalKind.none,
-            "the day the person named must survive, not be thrown away"
+            "the time the person named must survive, not be thrown away"
         )
-        XCTAssertEqual(item.reminderTriggerKind, .location)
-        if case .location = item.reminderTrigger {} else {
-            XCTFail("a sentence naming a place must produce a place trigger")
-        }
+        XCTAssertFalse(item.constrainsBothPlaceAndTime)
     }
 
     // MARK: Configuring Home actually unblocks the reminder
@@ -1683,15 +1684,13 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
-    // MARK: A place and a time together are held, not halved
+    // MARK: A place and a time together keep the time
 
-    /// The regression this exists for: "when I get home tonight" used to keep
-    /// both halves live independently. The place was monitored and the time was
-    /// *also* scheduled, so once Home was configured the person would be told at
-    /// 8pm whether or not they were home, and told again when they walked in.
-    ///
-    /// Neither half may fire while the combination is unenforced.
-    func testCombinedPlaceAndTimeSchedulesNoClockReminder() throws {
+    /// The stated time wins, and exactly one trigger survives. The original
+    /// regression — both halves live at once, so the person was told at 8pm
+    /// *and* again when they walked in — stays impossible, because the place
+    /// half is dropped at parse time rather than merely withheld.
+    func testCombinedPlaceAndTimeSchedulesExactlyTheClockReminder() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1703,14 +1702,14 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertEqual(item.locationIntent?.place, .home, "the place is still understood")
-        XCTAssertNil(
+        XCTAssertNil(item.locationIntent, "the stated time outranks the place")
+        XCTAssertNotNil(
             item.reminderDate,
-            "a place-constrained request must not also carry a clock reminder"
+            "the clock the person named becomes the one real trigger"
         )
-        XCTAssertNil(
+        XCTAssertNotNil(
             ReminderScheduleRequest(item: item),
-            "no time notification may be scheduled for a combined request"
+            "the timed notification is actually scheduled"
         )
     }
 
@@ -1723,7 +1722,9 @@ final class LocationReminderTests: XCTestCase {
     /// CoreLocation permission, which is `notDetermined` in a test process, so a
     /// reconciler-based assertion would pass whether or not the exclusion
     /// existed.
-    func testCombinedPlaceAndTimeIsExcludedFromMonitoring() throws {
+    /// With the time winning, nothing watches a region for this sentence:
+    /// exactly one trigger exists, so it can never fire twice.
+    func testCombinedPlaceAndTimeProducesNoMonitoredRegion() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1735,18 +1736,14 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertTrue(
-            item.constrainsBothPlaceAndTime,
-            "the reconciler excludes exactly this, so the flag is the contract"
-        )
-        // The place itself still resolves — the reminder is withheld because the
-        // request is unenforceable, not because the place is unknown.
-        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+        XCTAssertFalse(item.constrainsBothPlaceAndTime)
+        XCTAssertNil(item.locationIntent)
+        XCTAssertNil(item.locationMonitorRequest(authorization: authorized))
     }
 
-    /// Held for review, and named honestly rather than presented as a place
-    /// reminder that only needs a Home address.
-    func testCombinedPlaceAndTimeGoesToReview() throws {
+    /// The capture acts immediately instead of being parked in review: the
+    /// timed reminder is real and scheduled for the evening the person named.
+    func testCombinedPlaceAndTimeDoesNotGoToReview() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1758,9 +1755,9 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertTrue(item.constrainsBothPlaceAndTime)
-        XCTAssertTrue(item.needsClarification)
-        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+        XCTAssertFalse(item.needsClarification)
+        XCTAssertNil(item.clarificationRequirement)
+        XCTAssertNotNil(item.reminderDate, "the stated time becomes a real reminder")
     }
 
     /// The guard must not catch plain place reminders. "When I get home" names

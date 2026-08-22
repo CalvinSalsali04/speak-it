@@ -170,10 +170,59 @@ struct ItemPresentation: Equatable, Sendable {
     /// `ReminderScheduleRequest` and the editor's own `inferredReminderDelivery`
     /// already read it — one fewer place a stored copy could disagree with the
     /// transcript that is the source of truth for it.
+    ///
+    /// Memoized per item because rows and Today's reminder bookkeeping read
+    /// this on every render pass, and `ThoughtOrganizer.organize` is the full
+    /// capture pipeline — running it once or twice per item per pass dropped
+    /// frames on any list with timed items. The wording it reads is fixed at
+    /// capture, so an entry is valid for as long as `originalTextSegment`
+    /// matches; the one mutation that can change the segment (re-splitting a
+    /// combined capture) changes the key. Lock-protected rather than
+    /// actor-isolated so `ReminderScheduleRequest` can share the reading.
+    private static let deliveryCacheLock = NSLock()
+    nonisolated(unsafe) private static var deliveryCache:
+        [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
+
     private static func reminderDelivery(for item: CapturedItem) -> ReminderDelivery {
         guard item.reminderDate != nil else { return .none }
+        return effectiveReminderDelivery(for: item)
+    }
+
+    /// The alert kind the original wording asked for: the segment's own
+    /// answer, or the whole transcript's when the segment says nothing.
+    /// Shared by row presentation and reminder scheduling so the glyph a row
+    /// shows and the alert that actually fires can never be derived from two
+    /// different parses.
+    static func effectiveReminderDelivery(for item: CapturedItem) -> ReminderDelivery {
+        let segment = item.originalTextSegment
+        let id = item.id
+
+        deliveryCacheLock.lock()
+        let cached = deliveryCache[id]
+        deliveryCacheLock.unlock()
+        if let cached, cached.segment == segment { return cached.delivery }
+
+        let delivery = parsedReminderDelivery(for: item, segment: segment)
+        deliveryCacheLock.lock()
+        deliveryCache[id] = (segment, delivery)
+        deliveryCacheLock.unlock()
+        return delivery
+    }
+
+    /// Test support. A suite that rebuilds items with reused IDs must not
+    /// observe a previous case's memoized parse.
+    static func resetDeliveryCacheForTesting() {
+        deliveryCacheLock.lock()
+        deliveryCache.removeAll()
+        deliveryCacheLock.unlock()
+    }
+
+    private static func parsedReminderDelivery(
+        for item: CapturedItem,
+        segment: String
+    ) -> ReminderDelivery {
         let segmentDelivery = ThoughtOrganizer.organize(
-            item.originalTextSegment,
+            segment,
             referenceDate: item.createdAt
         ).reminderDelivery
         guard segmentDelivery == .none, let session = item.captureSession else {

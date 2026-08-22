@@ -340,7 +340,12 @@ enum MemoryCollection: String, CaseIterable, Identifiable, Hashable {
         case .ideas:
             return belongsInMemory && MemoryGroup.ideas.contains(item)
         case .people:
-            return belongsInMemory && MemoryGroup.people.contains(item)
+            // People is the durable person index, not facts-only storage. A
+            // future follow-up belongs under Sarah immediately even while its
+            // Today appearance is intentionally deferred until it is timely.
+            let isHealthyPersonItem = item.belongsInMemory(authorization: authorization)
+                || item.belongsInToday(authorization: authorization)
+            return isHealthyPersonItem && MemoryGroup.people.contains(item)
         case .reference:
             return belongsInMemory && MemoryGroup.notes.contains(item)
         case .archive:
@@ -403,6 +408,25 @@ struct DockScrollPolicy: Equatable {
         deepest = scrolled
         shallowest = scrolled
         return visible
+    }
+}
+
+/// Retains the dock's scroll-direction bookkeeping without making it part of
+/// SwiftUI's render state.
+///
+/// `onScrollGeometryChange` can report every display frame. Keeping the value-
+/// typed `DockScrollPolicy` directly in `@State` meant each of those reports
+/// invalidated the whole Today or Memory screen even when dock visibility did
+/// not change. Those renders re-filtered the full item collection and rebuilt
+/// reminder presentations while the scroll view was trying to animate.
+///
+/// This object publishes nothing. The views update their real render state
+/// (`reportsDockVisible`) only when the policy crosses a visibility threshold.
+final class DockScrollTracker: ObservableObject {
+    private var policy = DockScrollPolicy()
+
+    func update(scrolled: CGFloat) -> Bool? {
+        policy.update(scrolled: scrolled)
     }
 }
 
@@ -490,6 +514,9 @@ struct LibraryView: View {
 
     let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
+    /// Incremented by the dock when "Memory" is tapped while Memory is already
+    /// showing: any pushed collection pops back to the Memory root.
+    let popToRootSignal: Int
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
@@ -497,7 +524,7 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var libraryUndo: LibraryUndo?
     @State private var selectedCollection: MemoryCollection? = LibraryView.initialCollection
-    @State private var dockScrollPolicy = DockScrollPolicy()
+    @StateObject private var dockScrollTracker = DockScrollTracker()
     @State private var reportsDockVisible = true
     @State private var showsAccountSettings = false
     @AppStorage(MemoryPinStore.key) private var pinnedMemoryIDsRawValue = ""
@@ -505,10 +532,12 @@ struct LibraryView: View {
 
     init(
         onCapture: @escaping () -> Void,
-        onDockVisibilityChange: @escaping (Bool) -> Void = { _ in }
+        onDockVisibilityChange: @escaping (Bool) -> Void = { _ in },
+        popToRootSignal: Int = 0
     ) {
         self.onCapture = onCapture
         self.onDockVisibilityChange = onDockVisibilityChange
+        self.popToRootSignal = popToRootSignal
     }
 
     private static var initialCollection: MemoryCollection? {
@@ -603,6 +632,9 @@ struct LibraryView: View {
                 collection: collection,
                 onDockVisibilityChange: onDockVisibilityChange
             )
+        }
+        .onChange(of: popToRootSignal) {
+            selectedCollection = nil
         }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
@@ -859,8 +891,7 @@ struct LibraryView: View {
         case .pinned:
             return items.first?.displayTitle ?? "Keep essentials close"
         case .ideas:
-            let promising = items.filter { ideaStages[$0.id] == .promising }.count
-            return promising > 0 ? "\(promising) promising" : (items.first?.displayTitle ?? "Capture sparks")
+            return "Capture sparks"
         case .people:
             let names = Set(items.compactMap(MemoryPersonNameResolver.name).map { $0.lowercased() })
             if names.isEmpty {
@@ -868,7 +899,7 @@ struct LibraryView: View {
             }
             return names.count == 1 ? "1 person remembered" : "\(names.count) people remembered"
         case .reference:
-            return items.first?.displayTitle ?? "Facts and context"
+            return "Facts and context"
         case .archive:
             return "Saved out of sight"
         }
@@ -976,7 +1007,7 @@ struct LibraryView: View {
     }
 
     private func handleDockScroll(_ scrolled: CGFloat) {
-        guard let visibility = dockScrollPolicy.update(scrolled: scrolled) else { return }
+        guard let visibility = dockScrollTracker.update(scrolled: scrolled) else { return }
         // Searching hides the dock on purpose; do not undo that here.
         guard !visibility || !isSearchFocused else { return }
         updateDockVisibility(visibility)
@@ -1623,15 +1654,9 @@ private struct MemoryPersonProfileRow: View {
                 .background(Color.speakSurface, in: Circle())
                 .overlay { Circle().stroke(Color.speakDivider, lineWidth: 1) }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(profile.name)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.speakInk)
-                Text(profile.latestItem?.displayTitle ?? "No details yet")
-                    .font(.caption)
-                    .foregroundStyle(Color.speakMuted)
-                    .lineLimit(1)
-            }
+            Text(profile.name)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
 
             Spacer(minLength: 8)
             Text("\(profile.items.count)")
@@ -1717,11 +1742,11 @@ private struct MemoryPersonDetailView: View {
             } header: {
                 Text("Remembered")
             } footer: {
-                Text("Facts stay in Memory. Actions stay in Today.")
+                Text("Remembered details stay here. Dated follow-ups surface in Today when they become timely.")
             }
 
             if !relatedActions.isEmpty {
-                Section("Related in Today") {
+                Section("Follow-ups") {
                     ForEach(relatedActions) { item in
                         CapturedItemRow(
                             item: item,
