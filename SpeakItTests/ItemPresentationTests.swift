@@ -372,7 +372,7 @@ final class ItemPresentationTests: XCTestCase {
             )
         )
         XCTAssertFalse(SummerLaunchSale.isWithinSaleWindow(at: SummerLaunchSale.endsAt))
-        XCTAssertEqual(SummerLaunchSale.endDateText, "September 22, 2026")
+        XCTAssertEqual(SummerLaunchSale.endDateText, "October 22, 2026")
     }
 
     func testReferralDeepLinksAcceptOnlySpeakItsSupportedRoutes() {

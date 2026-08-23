@@ -4,7 +4,7 @@ import StoreKit
 import SwiftUI
 
 enum SummerLaunchSale {
-    static let endsAt = ISO8601DateFormatter().date(from: "2026-09-22T04:00:00Z")!
+    static let endsAt = ISO8601DateFormatter().date(from: "2026-10-22T04:00:00Z")!
     static let regularAnnualUSPrice = "$29.99"
 
     static func isActive(at date: Date = .now) -> Bool {

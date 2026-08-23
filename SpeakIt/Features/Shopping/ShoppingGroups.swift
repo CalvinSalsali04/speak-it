@@ -294,6 +294,24 @@ enum ShoppingGroupParser {
         return products.count > 1 ? products : nil
     }
 
+    /// Every product this parser recognizes, as one cached regex alternation,
+    /// longest phrase first so "peanut butter" wins over "butter".
+    ///
+    /// Exists for `GroceryHomophoneRepair`, which must only rewrite a dictated
+    /// "by" into "buy" in front of a word this vocabulary already owns — the
+    /// same closed list that keeps grouping conservative keeps the repair from
+    /// touching ordinary prose.
+    static let productPattern: String = {
+        let phrases = Set(groceryPhrases).union(knownProductPhrases)
+        return phrases.union(groceryWords)
+            .sorted { $0.count == $1.count ? $0 < $1 : $0.count > $1.count }
+            .map {
+                NSRegularExpression.escapedPattern(for: $0)
+                    .replacingOccurrences(of: " ", with: "\\s+")
+            }
+            .joined(separator: "|")
+    }()
+
     /// Multi-word products that must never be split across rows, including
     /// the compounds that use "and" as part of the noun.
     private static let knownProductPhrases: Set<String> = Set(groceryPhrases + [

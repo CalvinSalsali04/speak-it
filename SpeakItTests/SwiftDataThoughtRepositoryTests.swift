@@ -1344,6 +1344,138 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate != nil })
     }
 
+    func testMisheardByBecomesBuyForAShoppingList() throws {
+        // Dictation hears "buy" as "by", and without the action verb the whole
+        // list drifted into notes. The repaired reading still makes checkable
+        // rows; the person's actual words survive on the transcript.
+        try repository.createCapture(
+            text: "At the store, by bread, milk, and eggs",
+            source: .inAppVoice,
+            createdAt: .now
+        )
+
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let shopping = items.filter { $0.itemType == .shopping }
+        XCTAssertEqual(
+            shopping.count, 3,
+            "each product becomes its own row, got \(items.map(\.displayTitle))"
+        )
+        for item in shopping {
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Groceries")
+        }
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(
+            sessions.first?.originalTranscription,
+            "At the store, by bread, milk, and eggs",
+            "the repair is presentation-side only; the transcript keeps the person's words"
+        )
+    }
+
+    func testLegitimateByIsNeverRewrittenToBuy() {
+        // The homophone repair must not touch grammar that really takes "by".
+        XCTAssertEqual(
+            GroceryHomophoneRepair.repaired("Stop by the store and grab bread"),
+            "Stop by the store and grab bread"
+        )
+        XCTAssertEqual(
+            GroceryHomophoneRepair.repaired("The cookbook was written by Sarah"),
+            "The cookbook was written by Sarah"
+        )
+        XCTAssertEqual(
+            GroceryHomophoneRepair.repaired("Submit the report by Friday"),
+            "Submit the report by Friday"
+        )
+        XCTAssertEqual(
+            GroceryHomophoneRepair.repaired("by bread, milk, and eggs"),
+            "buy bread, milk, and eggs"
+        )
+    }
+
+    func testAlarmListWithSpokenHourAndTrailingDaySplitsIntoBoth() {
+        // "Set alarms for seven and 7:15 tomorrow" produced a single 7:00
+        // alarm on device: the trailing day stuck to "7:15" and stopped the
+        // list from reading as times at all.
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 15, calendar: calendar)
+
+        for transcript in [
+            "Set alarms for seven and 7:15 tomorrow",
+            "Set alarms for 7 and 7:15 tomorrow",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(
+                transcript,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            XCTAssertEqual(result.items.count, 2, transcript)
+            XCTAssertTrue(
+                result.items.allSatisfy { $0.organization.reminderDelivery == .alarm },
+                transcript
+            )
+            XCTAssertEqual(
+                result.items.compactMap(\.organization.reminderDate).sorted(),
+                [
+                    makeDate(year: 2026, month: 8, day: 4, hour: 7, calendar: calendar),
+                    makeDate(year: 2026, month: 8, day: 4, hour: 7, minute: 15, calendar: calendar),
+                ],
+                transcript
+            )
+        }
+    }
+
+    func testDictatedQuestionMarkOnAStatementIsNotKeptInTheTitle() throws {
+        // The punctuation model reads a rising tail as a question, so the
+        // imperative "Remember that Sarah likes oat milk" arrived wearing a
+        // "?" and the saved fact looked unsure of itself.
+        let item = try repository.createCapture(
+            text: "Remember that Sarah likes oat milk?",
+            source: .inAppVoice,
+            createdAt: .now
+        )
+
+        XCTAssertEqual(item.displayTitle, "Sarah likes oat milk")
+        XCTAssertEqual(
+            item.captureSession?.originalTranscription,
+            "Remember that Sarah likes oat milk?",
+            "the transcript keeps the mark; only the reading drops it"
+        )
+    }
+
+    func testGenuineQuestionsKeepTheirQuestionMark() {
+        // Only an imperative lead may shed the mark. A real question is real.
+        XCTAssertEqual(
+            DictationPunctuationRepair.repaired("What was the studio wifi password?"),
+            "What was the studio wifi password?"
+        )
+        XCTAssertEqual(
+            DictationPunctuationRepair.repaired("Remember that Sarah likes oat milk?"),
+            "Remember that Sarah likes oat milk"
+        )
+        XCTAssertEqual(
+            DictationPunctuationRepair.repaired("Remind me to buy milk tomorrow?"),
+            "Remind me to buy milk tomorrow"
+        )
+    }
+
+    func testTrailingStoreTriggerTitlesTheProductNotTheTrip() throws {
+        // "Remind me to buy cereal when I get to Costco" put the entire
+        // sentence on the Costco list as the row text. The clause is the
+        // trigger's words, not the product's.
+        let item = try repository.createCapture(
+            text: "Remind me to buy cereal when I get to Costco",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.displayTitle, "Buy cereal")
+        XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Costco")
+        XCTAssertEqual(
+            item.locationIntent?.place, .named("costco"),
+            "the place trigger is still understood and keeps its review surface"
+        )
+    }
+
     func testCompactClockDigitsReadAsTheSpokenTime() {
         // Dictation renders a spoken "six thirty" as "630", especially right
         // after a correction. Both must land as one 6:30 alarm.

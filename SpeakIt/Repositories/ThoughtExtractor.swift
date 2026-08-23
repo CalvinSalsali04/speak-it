@@ -172,7 +172,11 @@ enum RuleBasedThoughtExtractor {
         // Repair before understanding. See `SpeechRepair.swift` for why the
         // order matters.
         let cleaned = DisfluencyFilter.stripped(normalized)
-        let corrected = ClockDigitRepair.repaired(SelfCorrectionResolver.resolved(cleaned))
+        let corrected = GroceryHomophoneRepair.repaired(
+            DictationPunctuationRepair.repaired(
+                ClockDigitRepair.repaired(SelfCorrectionResolver.resolved(cleaned))
+            )
+        )
 
         // Separate what the person wants *managed* from what they want
         // *created*. A capture can do both in one breath, and reading only the
@@ -1057,7 +1061,22 @@ enum RuleBasedThoughtExtractor {
               let timesRange = Range(match.range(at: 1), in: text) else {
             return nil
         }
-        let timesText = String(text[timesRange])
+        var timesText = String(text[timesRange])
+        // "Set alarms for 7 and 7:15 tomorrow": the trailing day governs the
+        // whole list, not the last time it happens to touch. Left in place it
+        // made "7:15 tomorrow" fail to read as a time, so the sentence never
+        // split and only the first alarm survived. Peeled here, carried onto
+        // every per-time sentence so each alarm lands on the day the person
+        // named.
+        var dayContext = ""
+        if let dayRange = timesText.range(
+            of: #"(?i)\s+(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon|evening|night))?|this\s+(?:morning|afternoon|evening)|in\s+the\s+morning|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s*[.!?]*\s*$"#,
+            options: .regularExpression
+        ) {
+            dayContext = normalize(String(timesText[dayRange]))
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
+            timesText.removeSubrange(dayRange)
+        }
         guard let separator = NSRegularExpression.speakItCached(
             #"(?i)\s*(?:,|\band\b)\s*"#
         ) else { return nil }
@@ -1075,10 +1094,11 @@ enum RuleBasedThoughtExtractor {
                 return numericTimeTokens(in: component) ?? [component]
             }
         guard times.count > 1, times.allSatisfy(looksLikeTime) else { return nil }
+        let context = dayContext.isEmpty ? "" : " " + dayContext
         return times.map { time in
             Segment(
                 quote: time,
-                analysisText: "Set an alarm for \(time)",
+                analysisText: "Set an alarm for \(time)\(context)",
                 suggestedTitle: "Alarm for \(time)"
             )
         }

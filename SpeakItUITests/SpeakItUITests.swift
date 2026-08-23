@@ -521,7 +521,7 @@ final class SpeakItUITests: XCTestCase {
         annual.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         app.swipeUp()
         let annualFootnote = saleIsRunning
-            ? "Summer launch price · $14.99 per year until September 22, 2026. Auto-renews until cancelled."
+            ? "Summer launch price · $14.99 per year until October 22, 2026. Auto-renews until cancelled."
             : "$29.99 per year. Auto-renews until cancelled."
         XCTAssertTrue(app.staticTexts[annualFootnote].waitForExistence(timeout: 3))
         XCTAssertEqual(annual.value as? String, "Selected")

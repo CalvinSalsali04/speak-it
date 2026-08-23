@@ -81,14 +81,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         resolveCombinedPlaceAndTimeHoldouts()
     }
 
-    /// Releases items that older builds held in review for naming a place and
-    /// a time together ("when I go to Sobeys, remind me … in one hour").
+    /// Releases items that older builds held in review for naming a *named*
+    /// place and a time together ("when I go to Sobeys, remind me … in one
+    /// hour").
     ///
-    /// The stated time now wins at capture, so these holdouts are re-derived
-    /// the same way: reparse the untouched original wording, keep the timed
-    /// reading, drop the redundant place trigger. A reminder whose moment has
-    /// already passed lands as an honest overdue row rather than staying
-    /// stuck. A place the person set by hand in the editor is never touched.
+    /// A named place cannot be geofenced, so for those sentences the stated
+    /// time wins at capture, and legacy holdouts are re-derived the same way:
+    /// reparse the untouched original wording, keep the timed reading, drop
+    /// the unenforceable place trigger. A reminder whose moment has already
+    /// passed lands as an honest overdue row rather than staying stuck.
+    ///
+    /// A combination built on a *saved* place — "when I get home tonight" —
+    /// is deliberately left alone: it is held for review at capture on
+    /// purpose, because Speak It can enforce either half and must ask which.
+    /// A place the person set by hand in the editor is never touched either.
     private func resolveCombinedPlaceAndTimeHoldouts() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         var changed = false
@@ -96,7 +102,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         for item in items
         where !item.isArchived
             && !item.isCompleted
-            && item.locationIntent != nil
+            && item.locationIntent.map({ intent in
+                if case .named = intent.place { true } else { false }
+            }) == true
             && item.locationIntent?.isUserEdited != true
             && (item.temporalKind ?? TemporalKind.none) != TemporalKind.none {
             let reparsed = ThoughtOrganizer.organize(

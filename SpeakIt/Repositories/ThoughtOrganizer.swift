@@ -1224,15 +1224,31 @@ private enum TemporalIntentParser {
         // the device, not on the wording.
         let parsedLocation = LocationIntentParser.parse(text)
 
-        // "When I go to Sobeys, remind me to get cheese in one hour" names a
-        // place *and* a time, and Speak It enforces exactly one trigger. The
-        // stated time wins: it is the constraint the person made precise, it
-        // can always be honoured regardless of permissions or configured
-        // places, and holding the whole capture hostage in review over the
-        // redundant place read as a bug. The place words still live on the
-        // untouched transcript, and a sentence that names only a place keeps
-        // its place trigger exactly as before.
-        let locationIntent = resolution.intent.kind == .none ? parsedLocation : nil
+        // "Remind me to take out the garbage when I get home tonight" names a
+        // place *and* a time, and Speak It can enforce exactly one of them.
+        // For a saved place — Home, Work, here — both single-constraint
+        // readings are wrong in a way the person would feel: keeping the time
+        // fires the reminder at 8pm whether or not they are home, and keeping
+        // the place fires it on a 2pm arrival that "tonight" explicitly ruled
+        // out. So the combination is held for review rather than silently
+        // reduced to whichever half is easier to honour. (Build 13 briefly let
+        // the time win here; on-device QA produced exactly the 8pm-but-not-home
+        // misfire this rule exists to prevent.)
+        //
+        // A *named* place is different in kind: it cannot be geofenced at all,
+        // so the stated time is the only trigger Speak It could ever enforce.
+        // There the time wins — "when I go to Sobeys, remind me to get cheese
+        // in one hour" acts on the hour, and the name still labels the
+        // shopping list. The place words survive on the untouched transcript
+        // either way.
+        let placeIsEnforceable: Bool = switch parsedLocation?.place {
+        case .home, .work, .currentLocation: true
+        case .named, nil: false
+        }
+        let combinesPlaceAndTime = placeIsEnforceable && resolution.intent.kind != .none
+        let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
+            ? parsedLocation
+            : nil
         let unsupportedCondition = locationIntent == nil
             && resolution.intent.kind == .none
             && (itemType.isActionable || wantsReminder)
@@ -1256,7 +1272,9 @@ private enum TemporalIntentParser {
         )
 
         let reminderHasPassed = resolvedReminder.map { $0 <= referenceDate } ?? false
-        let reminderDate = reminderHasPassed ? nil : resolvedReminder
+        // Dropped for a combined request too, so no notification is scheduled
+        // against a clock the person also constrained by place.
+        let reminderDate = (reminderHasPassed || combinesPlaceAndTime) ? nil : resolvedReminder
 
         let vagueTime = containsAny(semanticText, [" later", "soon", "sometime", "when i can", "eventually"])
         // A place trigger is understood, so it is not review-worthy on its own.
@@ -1275,6 +1293,7 @@ private enum TemporalIntentParser {
         }
         let needsClarification = resolution.isAmbiguous
             || locationPlaceUnreadable
+            || combinesPlaceAndTime
             || unsupportedCondition
             || (locationIntent == nil && wantsReminder && (reminderDate == nil || vagueTime))
 

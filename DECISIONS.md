@@ -47,10 +47,12 @@ Both public surfaces are configuration-gated. An empty referral API URL leaves
 the existing “Share Speak It” row in place, and the website switch remains off
 until the production service and Sandbox redemption flow are verified.
 
-## 2026-08-17 — Summer launch pricing ends on September 22, 2026
+## 2026-08-17 — Summer launch pricing ends on October 22, 2026
+
+(Extended from September 22 on 2026-08-23 so the window clears the beta.)
 
 Annual Pro is $14.99 during the launch window and is intended to move to $29.99
-at 12:00 a.m. America/Toronto on September 22, 2026 (`04:00:00Z`). That makes
+at 12:00 a.m. America/Toronto on October 22, 2026 (`04:00:00Z`). That makes
 “50% off” a comparison with the genuine standard annual price, not with twelve
 monthly payments. Sale copy is build-gated and time-gated, and App Store Connect
 must have the matching future price scheduled before the gate is enabled.

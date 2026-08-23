@@ -100,6 +100,103 @@ enum ClockDigitRepair {
     }
 }
 
+// MARK: - Grocery homophone
+
+/// Dictation hears "buy" as "by" often enough that a spoken shopping list can
+/// arrive as "by bread, milk, and eggs" — which no longer contains an action
+/// verb, so the whole capture drifted into notes instead of a checkable list.
+///
+/// The rewrite is deliberately narrow, in both directions. "By" only becomes
+/// "buy" when the very next word is a product the shopping vocabulary already
+/// recognizes, and never when the word before it legitimately takes "by" —
+/// "stop by", "written by", "made by". A wrong repair here would corrupt real
+/// sentences, and the untouched transcript remains on the capture either way.
+enum GroceryHomophoneRepair {
+    /// Verbs and participles whose "by" is grammar, not a misheard "buy".
+    private static let byTakingWords: Set<String> = [
+        "stop", "stops", "stopped", "stopping", "swing", "swings", "swinging",
+        "swung", "go", "goes", "went", "going", "gone", "come", "comes",
+        "came", "coming", "run", "runs", "ran", "running", "walk", "walks",
+        "walked", "walking", "drive", "drives", "drove", "driving", "driven",
+        "pass", "passes", "passed", "passing", "drop", "drops", "dropped",
+        "dropping", "made", "written", "sold", "created", "recommended",
+        "done", "sent", "owned", "used", "inspired", "caused", "brought",
+        "delivered", "loved", "signed", "approved", "paid",
+    ]
+
+    static func repaired(_ text: String) -> String {
+        let pattern = #"(?i)\b(by)\s+(?:the\s+)?(?:"# + ShoppingGroupParser.productPattern + #")\b"#
+        guard let regex = NSRegularExpression.speakItCached(pattern) else { return text }
+
+        var result = text
+        let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+        for match in matches.reversed() {
+            guard let byRange = Range(match.range(at: 1), in: result) else { continue }
+            guard !precedingWordTakesBy(in: result, before: byRange.lowerBound) else { continue }
+            let by = result[byRange]
+            result.replaceSubrange(byRange, with: by.first == "B" ? "Buy" : "buy")
+        }
+        return result
+    }
+
+    private static func precedingWordTakesBy(in text: String, before index: String.Index) -> Bool {
+        var end = index
+        while end > text.startIndex {
+            let previous = text.index(before: end)
+            guard text[previous].isWhitespace else { break }
+            end = previous
+        }
+        var start = end
+        while start > text.startIndex {
+            let previous = text.index(before: start)
+            guard text[previous].isLetter else { break }
+            start = previous
+        }
+        guard start < end else { return false }
+        return byTakingWords.contains(text[start..<end].lowercased())
+    }
+}
+
+// MARK: - Dictated punctuation
+
+/// The on-device punctuation model reads intonation, and an imperative spoken
+/// with a rising tail — "Remember that Sarah likes oat milk?" — arrives
+/// wearing a question mark it never earned. A command cannot be a question,
+/// so a final "?" behind a recording or reminder lead is dictation noise, and
+/// it would otherwise survive into the saved title as if the person doubted
+/// their own fact.
+///
+/// Genuine questions are untouched: only the final clause is examined, and
+/// only when it opens with wording that instructs. "What was the wifi
+/// password?" keeps its mark.
+enum DictationPunctuationRepair {
+    private static let imperativeLead = #"(?i)^(?:please\s+)?(?:"#
+        + #"(?:\#(ActionabilityReader.recordingFrame))?\#(ActionabilityReader.recordingVerb)\b"#
+        + #"|remind\s+(?:me|us)\b"#
+        + #"|don'?t\s+(?:forget|let\s+me\s+forget)\b"#
+        + #")"#
+
+    static func repaired(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasSuffix("?") else { return text }
+        let body = String(trimmed.dropLast())
+            .trimmingCharacters(in: CharacterSet(charactersIn: "?! "))
+        guard !body.isEmpty else { return text }
+
+        // Only the final clause owns the final mark; an earlier clause that
+        // really asked something keeps its own punctuation untouched.
+        let clauseStart = body.rangeOfCharacter(
+            from: CharacterSet(charactersIn: ".!?;"),
+            options: .backwards
+        )?.upperBound ?? body.startIndex
+        let clause = body[clauseStart...].trimmingCharacters(in: .whitespaces)
+        guard clause.range(of: imperativeLead, options: .regularExpression) != nil else {
+            return text
+        }
+        return body
+    }
+}
+
 // MARK: - Self-correction
 
 /// Resolves "X, actually Y" by replacing the *slot* Y belongs to, rather than

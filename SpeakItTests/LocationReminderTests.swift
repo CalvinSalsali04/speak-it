@@ -1268,15 +1268,11 @@ final class LocationReminderTests: XCTestCase {
     /// discarded, so narrowing can be added later without the sentence having to
     /// be re-captured.
     ///
-    /// What changed is what happens *next*. Preferring the place and firing on
-    /// it was the wrong reading — it honours the half the person was least
-    /// specific about. Nothing fires until the combination is enforced; see
-    /// `testCombinedPlaceAndTimeGoesToReview`.
-    /// A sentence naming a place and a time keeps the time. The stated clock
-    /// is the constraint the person made precise and the one Speak It can
-    /// always honour; the redundant place is dropped rather than holding the
-    /// whole capture in review. The wording survives on the transcript.
-    func testCombinedPlaceAndTimeKeepsTheTimeAndDropsThePlace() throws {
+    /// Build 13 briefly resolved this by letting the time win, and device QA
+    /// showed why that reading is wrong: an "8 PM, no location" reminder for a
+    /// sentence that was mostly about being home. Nothing fires until the
+    /// person picks a trigger; see `testCombinedPlaceAndTimeGoesToReview`.
+    func testCombinedPlaceAndTimeKeepsBothHalves() throws {
         setHome()
         let item = try repository.createCapture(
             text: "When I get home tonight, remind me to call Mom",
@@ -1285,13 +1281,13 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: false
         )
 
-        XCTAssertNil(item.locationIntent, "the stated time outranks the place")
+        XCTAssertEqual(item.locationIntent?.place, .home)
         XCTAssertNotEqual(
             item.temporalKind ?? .none,
             TemporalKind.none,
-            "the time the person named must survive, not be thrown away"
+            "the day the person named must survive, not be thrown away"
         )
-        XCTAssertFalse(item.constrainsBothPlaceAndTime)
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
     }
 
     // MARK: Configuring Home actually unblocks the reminder
@@ -1686,11 +1682,11 @@ final class LocationReminderTests: XCTestCase {
 
     // MARK: A place and a time together keep the time
 
-    /// The stated time wins, and exactly one trigger survives. The original
-    /// regression — both halves live at once, so the person was told at 8pm
-    /// *and* again when they walked in — stays impossible, because the place
-    /// half is dropped at parse time rather than merely withheld.
-    func testCombinedPlaceAndTimeSchedulesExactlyTheClockReminder() throws {
+    /// Neither half may fire while the combination is unresolved: the person
+    /// was told at 8pm *and* again when they walked in, back when both halves
+    /// lived at once, and the Build 13 time-wins reading recreated the 8pm
+    /// half alone. Held means held.
+    func testCombinedPlaceAndTimeSchedulesNoClockReminder() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1702,14 +1698,14 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertNil(item.locationIntent, "the stated time outranks the place")
-        XCTAssertNotNil(
+        XCTAssertEqual(item.locationIntent?.place, .home, "the place is still understood")
+        XCTAssertNil(
             item.reminderDate,
-            "the clock the person named becomes the one real trigger"
+            "a place-constrained request must not also carry a clock reminder"
         )
-        XCTAssertNotNil(
+        XCTAssertNil(
             ReminderScheduleRequest(item: item),
-            "the timed notification is actually scheduled"
+            "no time notification may be scheduled for a combined request"
         )
     }
 
@@ -1722,9 +1718,7 @@ final class LocationReminderTests: XCTestCase {
     /// CoreLocation permission, which is `notDetermined` in a test process, so a
     /// reconciler-based assertion would pass whether or not the exclusion
     /// existed.
-    /// With the time winning, nothing watches a region for this sentence:
-    /// exactly one trigger exists, so it can never fire twice.
-    func testCombinedPlaceAndTimeProducesNoMonitoredRegion() throws {
+    func testCombinedPlaceAndTimeIsExcludedFromMonitoring() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1736,14 +1730,18 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertFalse(item.constrainsBothPlaceAndTime)
-        XCTAssertNil(item.locationIntent)
-        XCTAssertNil(item.locationMonitorRequest(authorization: authorized))
+        XCTAssertTrue(
+            item.constrainsBothPlaceAndTime,
+            "the reconciler excludes exactly this, so the flag is the contract"
+        )
+        // The place itself still resolves — the reminder is withheld because the
+        // request is unenforceable as spoken, not because the place is unknown.
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
     }
 
-    /// The capture acts immediately instead of being parked in review: the
-    /// timed reminder is real and scheduled for the evening the person named.
-    func testCombinedPlaceAndTimeDoesNotGoToReview() throws {
+    /// Held for review, and named honestly rather than presented as a place
+    /// reminder that only needs a Home address.
+    func testCombinedPlaceAndTimeGoesToReview() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
@@ -1755,9 +1753,28 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    /// The hold is only for places Speak It could actually enforce. A named
+    /// business cannot be geofenced at all, so its stated time is the one
+    /// trigger available and the capture acts on it instead of parking in
+    /// review — "when I go to Sobeys … in one hour" fires in an hour, and the
+    /// store still names the shopping list.
+    func testNamedPlaceWithATimeActsOnTheTimeInsteadOfReview() throws {
+        let item = try repository.createCapture(
+            text: "When I go to Sobeys, remind me to get cheese in one hour",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+
+        XCTAssertNil(item.locationIntent, "an unenforceable place is not kept as a trigger")
         XCTAssertFalse(item.needsClarification)
-        XCTAssertNil(item.clarificationRequirement)
-        XCTAssertNotNil(item.reminderDate, "the stated time becomes a real reminder")
+        XCTAssertNotNil(item.reminderDate, "the stated hour becomes the real trigger")
+        XCTAssertFalse(item.constrainsBothPlaceAndTime)
     }
 
     /// The guard must not catch plain place reminders. "When I get home" names

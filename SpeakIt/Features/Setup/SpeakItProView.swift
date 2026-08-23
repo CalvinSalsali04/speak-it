@@ -820,7 +820,7 @@ struct ProDiscoveryCard: View {
                     Text("You’ve organized \(itemCount) thoughts")
                         .font(.headline)
                         .foregroundStyle(Color.speakInk)
-                    Text("See how Pro can make your writing, Memory, and schedules even more useful.")
+                    Text("Pro removes the lifetime capture limit, so you can keep speaking without counting.")
                         .font(.subheadline)
                         .foregroundStyle(Color.speakMuted)
                 }

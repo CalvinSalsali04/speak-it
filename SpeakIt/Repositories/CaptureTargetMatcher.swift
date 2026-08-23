@@ -35,6 +35,13 @@ enum CaptureTargetMatcher {
         guard !wanted.isEmpty else { return [] }
 
         return activeItems(items).filter { item in
+            // Cancel and complete are verbs about commitments. Memory rows are
+            // knowledge — "Sarah likes oat milk" shares a word with "cancel my
+            // milk reminder" and must never be what that sentence destroys, so
+            // the durable knowledge layer is simply not searched. If only a
+            // memory matches, the honest answer is "no reminder found", with
+            // the fact left standing.
+            guard !item.belongsInMemory else { return false }
             let haystack = tokens(in: [
                 item.displayTitle,
                 item.originalTextSegment,

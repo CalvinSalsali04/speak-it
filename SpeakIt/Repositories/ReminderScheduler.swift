@@ -200,6 +200,20 @@ enum ReminderCopy {
 
         candidate = withoutTrailingTiming(candidate)
 
+        // A trailing place trigger is machinery the same way trailing timing
+        // is: "buy cereal when I get to Costco" is about the cereal, and the
+        // place already lives on the item's location intent (or names its
+        // shopping list). Only stripped when the sentence parses as a real
+        // place trigger, so an ordinary "when" clause is never cut.
+        if LocationIntentParser.parse(original) != nil {
+            let withoutPlace = candidate.replacingOccurrences(
+                of: ##"(?i)\s*,?\s+(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\s+(?:i|we)\b[^,;.!?]*$"##,
+                with: "",
+                options: .regularExpression
+            )
+            if !normalized(withoutPlace).isEmpty { candidate = withoutPlace }
+        }
+
         // If no “to/about” connector was spoken, remove a leading interval.
         candidate = candidate.replacingOccurrences(
             of: #"(?i)^\s*(?:in\s+(?:\d+|[a-z]+(?:[\s-][a-z]+)?)\s+(?:seconds?|minutes?|hours?|days?|weeks?)|today|tonight|tomorrow|at\s+\S+)\s*[:,.-]?\s*"#,

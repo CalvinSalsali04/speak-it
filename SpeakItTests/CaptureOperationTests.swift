@@ -116,6 +116,42 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertEqual(try allItems().count, before - 1)
     }
 
+    func testCancellationNeverReachesIntoMemory() async throws {
+        // "Cancel my milk reminder" once deleted "Sarah likes oat milk" — a
+        // person fact, not a reminder — because the matcher searched every
+        // active item. Knowledge is not a commitment and is never a candidate.
+        _ = try await capture("Remember that Sarah likes oat milk")
+        _ = try await capture("Remind me to buy milk tomorrow")
+
+        let result = try await capture("Cancel my milk reminder")
+
+        guard case let .performed(operation, _, title) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected the one real reminder to be cancelled")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertTrue(title.localizedCaseInsensitiveContains("buy milk"))
+
+        let remaining = try activeTitles()
+        XCTAssertTrue(
+            remaining.contains { $0.localizedCaseInsensitiveContains("oat milk") },
+            "the fact about Sarah must still be standing, got \(remaining)"
+        )
+    }
+
+    func testCancellationWithOnlyAMemoryMatchFindsNothing() async throws {
+        _ = try await capture("Remember that Sarah likes oat milk")
+
+        let result = try await capture("Cancel my milk reminder")
+
+        guard case .notFound = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("A memory is not a reminder; nothing should match")
+        }
+        XCTAssertTrue(
+            try activeTitles().contains { $0.localizedCaseInsensitiveContains("oat milk") },
+            "the fact survives the failed lookup untouched"
+        )
+    }
+
     func testCancelWithSeveralMatchesAsksInsteadOfGuessing() async throws {
         let first = try await capture("Call Mom on Friday")
         let second = try await capture("Call Mom about the tickets")

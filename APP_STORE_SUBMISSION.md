@@ -29,10 +29,10 @@ Working document for the first Speak It release. Status values: **Done**,
   review screenshot before it can be submitted.
 - **Todo — exact summer price schedule:** Use the United States storefront as
   the reference price, then schedule the annual product to move from $14.99 to
-  $29.99 at the start of **September 22, 2026**. Preserve the $14.99 price for
+  $29.99 at the start of **October 22, 2026**. Preserve the $14.99 price for
   existing subscribers; $29.99 applies to subscriptions begun after the cutoff.
   Configure equivalent localized tiers in every territory before enabling any
-  sale copy. The app cutoff is `2026-09-22T04:00:00Z`, which is midnight in
+  sale copy. The app cutoff is `2026-10-22T04:00:00Z`, which is midnight in
   Toronto while EDT is active.
 - **Launch gate:** Only after that schedule is visible in App Store Connect,
   build Release with `SPEAKIT_SUMMER_SALE_ENABLED=YES` and set
