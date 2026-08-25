@@ -26,6 +26,7 @@ struct AccountSettingsView: View {
     @State private var showsAccountSetup = false
     @State private var showsPro = false
     @State private var showsCaptureSetup = false
+    @State private var showsReadiness = false
     @State private var showsReminderSettings = false
     @State private var showsCompleted = false
     @State private var showsCaptureHistory = false
@@ -170,6 +171,9 @@ struct AccountSettingsView: View {
                 }
 
                 Section("Capture & reminders") {
+                    settingsButton("Make Speak It ready", symbol: "checklist") {
+                        showsReadiness = true
+                    }
                     settingsButton("Capture anywhere", symbol: "waveform") {
                         showsCaptureSetup = true
                     }
@@ -231,6 +235,12 @@ struct AccountSettingsView: View {
 #if DEBUG
                 Section {
                     NavigationLink {
+                        SpeechAccuracyLabView()
+                    } label: {
+                        Label("Measure speech accuracy", systemImage: "waveform.badge.magnifyingglass")
+                    }
+
+                    NavigationLink {
                         TestCustomerJourneyView(onUsePrompt: useTestPrompt)
                     } label: {
                         Label("Pretend to be a new customer", systemImage: "person.crop.circle.badge.clock")
@@ -281,6 +291,9 @@ struct AccountSettingsView: View {
         }
         .sheet(isPresented: $showsCaptureSetup) {
             CaptureAnywhereSetupView()
+        }
+        .sheet(isPresented: $showsReadiness) {
+            SpeakItReadinessView()
         }
         .sheet(isPresented: $showsReminderSettings) {
             ReminderSettingsView()
@@ -481,6 +494,587 @@ private struct AccountSetupView: View {
 }
 
 #if DEBUG
+struct SpeechBenchmarkCase: Identifiable, Equatable {
+    let id: String
+    let category: String
+    let instruction: String
+    let expected: String
+    let criticalPhrases: [String]
+
+    static let productSet: [Self] = [
+        Self(
+            id: "common-reminder",
+            category: "Everyday",
+            instruction: "Use your normal speaking voice.",
+            expected: "Remind me tomorrow to call Sarah about the car keys",
+            criticalPhrases: ["tomorrow", "Sarah", "car keys"]
+        ),
+        Self(
+            id: "calendar-time",
+            category: "Dates and times",
+            instruction: "Say the whole sentence without pausing after Tuesday.",
+            expected: "Schedule the dentist for Tuesday at four thirty",
+            criticalPhrases: ["dentist", "Tuesday", "four thirty"]
+        ),
+        Self(
+            id: "alarm-time",
+            category: "Dates and times",
+            instruction: "Use your normal speaking voice.",
+            expected: "Set an alarm for six fifteen tomorrow morning",
+            criticalPhrases: ["six fifteen", "tomorrow morning"]
+        ),
+        Self(
+            id: "name-siobhan",
+            category: "Names",
+            instruction: "Pronounce the name as you naturally would.",
+            expected: "Text Siobhan about the revised proposal",
+            criticalPhrases: ["Siobhan", "revised proposal"]
+        ),
+        Self(
+            id: "names-niamh-xavier",
+            category: "Names",
+            instruction: "Pronounce both names naturally.",
+            expected: "Ask Niamh to send the invoice to Xavier",
+            criticalPhrases: ["Niamh", "invoice", "Xavier"]
+        ),
+        Self(
+            id: "names-nguyen-priya",
+            category: "Names and time",
+            instruction: "Use your normal speaking voice.",
+            expected: "Lunch with Nguyen and Priya on Friday at noon",
+            criticalPhrases: ["Nguyen", "Priya", "Friday", "noon"]
+        ),
+        Self(
+            id: "quantities",
+            category: "Numbers",
+            instruction: "Keep a short pause between each item.",
+            expected: "Buy twelve eggs two avocados and thirty one candles",
+            criticalPhrases: ["twelve eggs", "two avocados", "thirty one candles"]
+        ),
+        Self(
+            id: "self-correction",
+            category: "Corrections",
+            instruction: "Say the correction naturally in one take.",
+            expected: "Call Maya at five no make that six thirty",
+            criticalPhrases: ["Maya", "five", "six thirty"]
+        ),
+        Self(
+            id: "final-word",
+            category: "Final words",
+            instruction: "Finish normally; do not exaggerate the last word.",
+            expected: "Remember the spare key is behind the blue planter",
+            criticalPhrases: ["spare key", "blue planter"]
+        ),
+        Self(
+            id: "opening-word",
+            category: "Opening words",
+            instruction: "Begin as soon as the screen says Listening.",
+            expected: "Urgent submit the permit application before Thursday",
+            criticalPhrases: ["urgent", "permit application", "Thursday"]
+        ),
+        Self(
+            id: "multi-action",
+            category: "Longer capture",
+            instruction: "Speak at a comfortable conversational pace.",
+            expected: "Pick up the prescription then drop off the dry cleaning after work",
+            criticalPhrases: ["prescription", "dry cleaning", "after work"]
+        ),
+        Self(
+            id: "quiet-voice",
+            category: "Quiet voice",
+            instruction: "Speak more quietly than usual, but still naturally.",
+            expected: "When I leave work remind me to buy milk for breakfast",
+            criticalPhrases: ["leave work", "buy milk", "breakfast"]
+        )
+    ]
+}
+
+struct SpeechBenchmarkScore: Equatable {
+    let wordErrors: Int
+    let referenceWordCount: Int
+    let criticalHits: Int
+    let criticalCount: Int
+    let isExact: Bool
+
+    var contentAccuracy: Double {
+        guard referenceWordCount > 0 else { return 0 }
+        return max(0, 1 - Double(wordErrors) / Double(referenceWordCount))
+    }
+
+    var criticalAccuracy: Double {
+        guard criticalCount > 0 else { return 0 }
+        return Double(criticalHits) / Double(criticalCount)
+    }
+}
+
+enum SpeechBenchmarkScorer {
+    static func score(
+        expected: String,
+        observed: String,
+        criticalPhrases: [String]
+    ) -> SpeechBenchmarkScore {
+        let reference = normalizedTokens(in: expected)
+        let hypothesis = normalizedTokens(in: observed)
+        let hits = criticalPhrases.reduce(into: 0) { count, phrase in
+            if contains(normalizedTokens(in: phrase), in: hypothesis) {
+                count += 1
+            }
+        }
+        return SpeechBenchmarkScore(
+            wordErrors: editDistance(reference, hypothesis),
+            referenceWordCount: reference.count,
+            criticalHits: hits,
+            criticalCount: criticalPhrases.count,
+            isExact: reference == hypothesis
+        )
+    }
+
+    static func normalizedTokens(in text: String) -> [String] {
+        let rawTokens = text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: "’", with: "'")
+            .split(whereSeparator: { character in
+                !character.isLetter && !character.isNumber && character != "'"
+            })
+            .map(String.init)
+
+        let numberValues = [
+            "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+            "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+            "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+            "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+            "eighteen": 18, "nineteen": 19
+        ]
+        let tensValues = [
+            "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+            "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90
+        ]
+
+        var normalized: [String] = []
+        var index = 0
+        while index < rawTokens.count {
+            let token = rawTokens[index]
+            if (token == "a" || token == "p"),
+               index + 1 < rawTokens.count,
+               rawTokens[index + 1] == "m" {
+                normalized.append(token + "m")
+                index += 2
+            } else if let tens = tensValues[token] {
+                if index + 1 < rawTokens.count,
+                   let ones = numberValues[rawTokens[index + 1]],
+                   (1...9).contains(ones) {
+                    normalized.append(String(tens + ones))
+                    index += 2
+                } else {
+                    normalized.append(String(tens))
+                    index += 1
+                }
+            } else if let number = numberValues[token] {
+                normalized.append(String(number))
+                index += 1
+            } else {
+                normalized.append(token)
+                index += 1
+            }
+        }
+        return normalized
+    }
+
+    private static func contains(_ needle: [String], in haystack: [String]) -> Bool {
+        guard !needle.isEmpty, needle.count <= haystack.count else { return false }
+        for start in 0...(haystack.count - needle.count) {
+            if Array(haystack[start..<(start + needle.count)]) == needle {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func editDistance(_ reference: [String], _ hypothesis: [String]) -> Int {
+        guard !reference.isEmpty else { return hypothesis.count }
+        guard !hypothesis.isEmpty else { return reference.count }
+
+        var previous = Array(0...hypothesis.count)
+        for (referenceIndex, referenceToken) in reference.enumerated() {
+            var current = Array(repeating: 0, count: hypothesis.count + 1)
+            current[0] = referenceIndex + 1
+            for (hypothesisIndex, hypothesisToken) in hypothesis.enumerated() {
+                let substitution = previous[hypothesisIndex]
+                    + (referenceToken == hypothesisToken ? 0 : 1)
+                current[hypothesisIndex + 1] = min(
+                    min(
+                        previous[hypothesisIndex + 1] + 1,
+                        current[hypothesisIndex] + 1
+                    ),
+                    substitution
+                )
+            }
+            previous = current
+        }
+        return previous[hypothesis.count]
+    }
+}
+
+private struct SpeechBenchmarkMeasurement: Codable, Identifiable, Equatable {
+    let id: UUID
+    let recordedAt: Date
+    let caseID: String
+    let category: String
+    let expected: String
+    let observed: String
+    let wordErrors: Int
+    let referenceWordCount: Int
+    let criticalHits: Int
+    let criticalCount: Int
+    let isExact: Bool
+    let profile: SpeechCaptureAudioProfile
+    let requestedRecognizer: SpeechBenchmarkRecognizerMode
+    let recognitionEngine: SpeechRecognitionEngine?
+    let quality: SpeechCaptureAudioQuality?
+}
+
+private enum SpeechBenchmarkRecognizerMode: String, CaseIterable, Codable, Identifiable {
+    case enhanced
+    case legacy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .enhanced: "Enhanced dictation"
+        case .legacy: "Legacy comparison"
+        }
+    }
+}
+
+private enum SpeechBenchmarkStore {
+    private static let key = "SpeakIt.debug.speechBenchmarkMeasurements"
+    private static let maximumMeasurements = 500
+
+    static var measurements: [SpeechBenchmarkMeasurement] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([SpeechBenchmarkMeasurement].self, from: data)) ?? []
+    }
+
+    static func append(_ measurement: SpeechBenchmarkMeasurement) -> [SpeechBenchmarkMeasurement] {
+        var updated = measurements
+        updated.append(measurement)
+        updated = Array(updated.suffix(maximumMeasurements))
+        if let data = try? JSONEncoder().encode(updated) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+        return updated
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+private struct SpeechBenchmarkSummary {
+    let measurements: [SpeechBenchmarkMeasurement]
+
+    var contentAccuracy: Double {
+        let referenceWords = measurements.reduce(0) { $0 + $1.referenceWordCount }
+        guard referenceWords > 0 else { return 0 }
+        let errors = measurements.reduce(0) { $0 + $1.wordErrors }
+        return max(0, 1 - Double(errors) / Double(referenceWords))
+    }
+
+    var criticalAccuracy: Double {
+        let criticalCount = measurements.reduce(0) { $0 + $1.criticalCount }
+        guard criticalCount > 0 else { return 0 }
+        return Double(measurements.reduce(0) { $0 + $1.criticalHits })
+            / Double(criticalCount)
+    }
+
+    var exactRate: Double {
+        guard !measurements.isEmpty else { return 0 }
+        return Double(measurements.filter(\.isExact).count) / Double(measurements.count)
+    }
+
+    var evidenceLabel: String {
+        switch measurements.count {
+        case 0..<12: "Too little data"
+        case 12..<30: "Early signal"
+        case 30..<100: "Directionally useful"
+        default: "Credible local benchmark"
+        }
+    }
+}
+
+@MainActor
+private struct SpeechAccuracyLabView: View {
+    @StateObject private var transcriber = SpeechTranscriber()
+    @AppStorage(SpeechCaptureAudioProfile.selectionDefaultsKey)
+    private var profileRawValue = SpeechCaptureAudioProfile.spokenAudio.rawValue
+    @State private var recognizerMode = SpeechBenchmarkRecognizerMode.enhanced
+    @State private var caseIndex = 0
+    @State private var activeCaseID: String?
+    @State private var measurements = SpeechBenchmarkStore.measurements
+    @State private var lastMeasurement: SpeechBenchmarkMeasurement?
+
+    private var benchmarkCase: SpeechBenchmarkCase {
+        SpeechBenchmarkCase.productSet[caseIndex % SpeechBenchmarkCase.productSet.count]
+    }
+
+    private var selectedProfile: SpeechCaptureAudioProfile {
+        SpeechCaptureAudioProfile(rawValue: profileRawValue) ?? .spokenAudio
+    }
+
+    private var currentProfileMeasurements: [SpeechBenchmarkMeasurement] {
+        measurements.filter {
+            $0.profile == selectedProfile && $0.requestedRecognizer == recognizerMode
+        }
+    }
+
+    private var summary: SpeechBenchmarkSummary {
+        SpeechBenchmarkSummary(measurements: currentProfileMeasurements)
+    }
+
+    private var isBusy: Bool {
+        switch transcriber.state {
+        case .requestingPermission, .listening, .finalizing: true
+        default: false
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Picker("Microphone processing", selection: $profileRawValue) {
+                    ForEach(SpeechCaptureAudioProfile.allCases) { profile in
+                        Text(profile.title).tag(profile.rawValue)
+                    }
+                }
+                .disabled(isBusy)
+
+                Picker("Recognizer", selection: $recognizerMode) {
+                    ForEach(SpeechBenchmarkRecognizerMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .disabled(isBusy)
+
+                if currentProfileMeasurements.isEmpty {
+                    Text("No scored recordings for this profile yet.")
+                        .foregroundStyle(Color.speakMuted)
+                } else {
+                    LabeledContent(
+                        "Content accuracy",
+                        value: summary.contentAccuracy.formatted(.percent.precision(.fractionLength(1)))
+                    )
+                    LabeledContent(
+                        "Critical details",
+                        value: summary.criticalAccuracy.formatted(.percent.precision(.fractionLength(1)))
+                    )
+                    LabeledContent(
+                        "Exact transcripts",
+                        value: summary.exactRate.formatted(.percent.precision(.fractionLength(1)))
+                    )
+                    LabeledContent("Evidence", value: summary.evidenceLabel)
+                }
+            } header: {
+                Text("Measured accuracy")
+            } footer: {
+                Text("The score ignores punctuation, capitalization, accents, and common spoken-number formatting. Critical details separately score names, dates, times, and quantities. Fewer than 30 recordings is only an early signal; 100 or more is the credible target.")
+            }
+
+            Section {
+                Text(benchmarkCase.expected)
+                    .font(.title3.weight(.semibold))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(benchmarkCase.instruction)
+                    .font(.footnote)
+                    .foregroundStyle(Color.speakMuted)
+
+                if !transcriber.transcript.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("HEARD")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.speakMuted)
+                        Text(transcriber.transcript)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                captureButton
+
+                if !isBusy {
+                    Button("Skip this phrase") {
+                        caseIndex = (caseIndex + 1) % SpeechBenchmarkCase.productSet.count
+                        lastMeasurement = nil
+                    }
+                }
+            } header: {
+                Text("\(benchmarkCase.category) · Phrase \(caseIndex + 1) of \(SpeechBenchmarkCase.productSet.count)")
+            } footer: {
+                Text("Read the phrase exactly. Do not tap Record until you are ready; begin only after Speak It says Listening.")
+            }
+
+            if let lastMeasurement {
+                let score = SpeechBenchmarkScore(
+                    wordErrors: lastMeasurement.wordErrors,
+                    referenceWordCount: lastMeasurement.referenceWordCount,
+                    criticalHits: lastMeasurement.criticalHits,
+                    criticalCount: lastMeasurement.criticalCount,
+                    isExact: lastMeasurement.isExact
+                )
+                Section("Last result") {
+                    LabeledContent(
+                        "Content accuracy",
+                        value: score.contentAccuracy.formatted(.percent.precision(.fractionLength(1)))
+                    )
+                    LabeledContent(
+                        "Critical details",
+                        value: "\(score.criticalHits) of \(score.criticalCount)"
+                    )
+                    LabeledContent(
+                        "Recognizer",
+                        value: lastMeasurement.recognitionEngine?.rawValue ?? "unknown"
+                    )
+                    Text(lastMeasurement.observed.isEmpty ? "No words recognized" : lastMeasurement.observed)
+                        .foregroundStyle(Color.speakMuted)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if !measurements.isEmpty {
+                Section {
+                    ShareLink(item: report) {
+                        Label("Export benchmark report", systemImage: "square.and.arrow.up")
+                    }
+                    Button("Reset all measurements", role: .destructive) {
+                        SpeechBenchmarkStore.clear()
+                        measurements = []
+                        lastMeasurement = nil
+                    }
+                } footer: {
+                    Text("Measurements and recognized text stay in this developer build's local settings unless you export them. Audio is never retained by the lab or included in the report.")
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.speakBackground)
+        .navigationTitle("Speech Accuracy Lab")
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { transcriber.cancel() }
+    }
+
+    @ViewBuilder
+    private var captureButton: some View {
+        switch transcriber.state {
+        case .requestingPermission:
+            Button("Preparing recognizer…") {}
+                .disabled(true)
+        case .listening:
+            Button {
+                transcriber.stopAndFinalize(record)
+            } label: {
+                Label("Stop and score", systemImage: "stop.fill")
+            }
+        case .finalizing:
+            Button("Scoring…") {}
+                .disabled(true)
+        case .permissionDenied:
+            Text("Microphone and Speech Recognition permission are required.")
+                .foregroundStyle(.red)
+        case .unavailable:
+            Text("Speech recognition is unavailable for the current locale.")
+                .foregroundStyle(.red)
+        case let .failed(message):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(message).foregroundStyle(.red)
+                Button("Try again") {
+                    transcriber.resetAfterFailure()
+                    startCapture()
+                }
+            }
+        case .idle:
+            Button(action: startCapture) {
+                Label("Record this phrase", systemImage: "mic.fill")
+            }
+        }
+    }
+
+    private func startCapture() {
+        let currentCase = benchmarkCase
+        activeCaseID = currentCase.id
+        lastMeasurement = nil
+        Task {
+            await transcriber.start(
+                contextualPhrases: [],
+                prefersEnhancedRecognition: true,
+                forcesLegacyRecognitionForBenchmark: recognizerMode == .legacy,
+                onAutomaticFinalization: record
+            )
+            switch transcriber.state {
+            case .requestingPermission, .listening, .finalizing:
+                break
+            default:
+                activeCaseID = nil
+            }
+        }
+    }
+
+    private func record(_ observed: String) {
+        let currentCase = benchmarkCase
+        guard activeCaseID == currentCase.id else { return }
+        activeCaseID = nil
+
+        let score = SpeechBenchmarkScorer.score(
+            expected: currentCase.expected,
+            observed: observed,
+            criticalPhrases: currentCase.criticalPhrases
+        )
+        let measurement = SpeechBenchmarkMeasurement(
+            id: UUID(),
+            recordedAt: .now,
+            caseID: currentCase.id,
+            category: currentCase.category,
+            expected: currentCase.expected,
+            observed: observed,
+            wordErrors: score.wordErrors,
+            referenceWordCount: score.referenceWordCount,
+            criticalHits: score.criticalHits,
+            criticalCount: score.criticalCount,
+            isExact: score.isExact,
+            profile: selectedProfile,
+            requestedRecognizer: recognizerMode,
+            recognitionEngine: transcriber.recognitionEngine,
+            quality: transcriber.lastAudioQuality
+        )
+        measurements = SpeechBenchmarkStore.append(measurement)
+        lastMeasurement = measurement
+        caseIndex = (caseIndex + 1) % SpeechBenchmarkCase.productSet.count
+    }
+
+    private var report: String {
+        let rows = measurements.map { measurement in
+            [
+                measurement.recordedAt.ISO8601Format(),
+                measurement.profile.rawValue,
+                measurement.requestedRecognizer.rawValue,
+                measurement.recognitionEngine?.rawValue ?? "unknown",
+                measurement.caseID,
+                "\(measurement.wordErrors)/\(measurement.referenceWordCount) word errors",
+                "\(measurement.criticalHits)/\(measurement.criticalCount) critical",
+                "expected: \(measurement.expected)",
+                "observed: \(measurement.observed)"
+            ].joined(separator: " | ")
+        }
+        return ([
+            "Speak It Speech Accuracy Lab",
+            "Measurements: \(measurements.count)",
+            "Generated: \(Date.now.ISO8601Format())",
+            ""
+        ] + rows).joined(separator: "\n")
+    }
+}
+
 private struct TestCustomerJourneyView: View {
     struct Prompt: Identifiable {
         let id: Int
@@ -493,6 +1087,9 @@ private struct TestCustomerJourneyView: View {
     @AppStorage(AccountProfileKeys.name) private var profileName = ""
     @AppStorage(AccountProfileKeys.email) private var profileEmail = ""
     @AppStorage("SpeakIt.hasDismissedProDiscovery") private var dismissedDiscovery = false
+    @AppStorage(SpeechCaptureAudioProfile.selectionDefaultsKey)
+    private var speechAudioProfileRawValue = SpeechCaptureAudioProfile.spokenAudio.rawValue
+    @State private var latestSpeechQuality = SpeechCaptureDiagnosticsStore.latest
 
     let onUsePrompt: (String) -> Void
 
@@ -577,6 +1174,41 @@ private struct TestCustomerJourneyView: View {
             }
 
             Section {
+                Picker("Microphone processing", selection: $speechAudioProfileRawValue) {
+                    ForEach(SpeechCaptureAudioProfile.allCases) { profile in
+                        Text(profile.title).tag(profile.rawValue)
+                    }
+                }
+
+                if let quality = latestSpeechQuality {
+                    LabeledContent(
+                        "Last recognizer",
+                        value: quality.recognitionEngine?.rawValue ?? "unknown"
+                    )
+                    LabeledContent(
+                        "Last signal",
+                        value: "RMS \(quality.rmsDecibels.formatted(.number.precision(.fractionLength(1)))) dB · peak \(quality.peakDecibels.formatted(.number.precision(.fractionLength(1)))) dB"
+                    )
+                    LabeledContent(
+                        "Clipped samples",
+                        value: quality.clippedSampleFraction.formatted(.percent.precision(.fractionLength(2)))
+                    )
+                    LabeledContent("Audio length", value: "\(quality.durationMilliseconds) ms")
+                } else {
+                    Text("Make one voice capture to record the first content-free signal measurement.")
+                        .foregroundStyle(Color.speakMuted)
+                }
+
+                Button("Refresh last measurement") {
+                    latestSpeechQuality = SpeechCaptureDiagnosticsStore.latest
+                }
+            } header: {
+                Text("Voice recognition A/B")
+            } footer: {
+                Text("Spoken audio is the product baseline. Raw measurement and voice processed exist only in developer builds so the same phrases can be compared on a real iPhone. These measurements contain no recording or transcript.")
+            }
+
+            Section {
                 ForEach(prompts) { prompt in
                     Button {
                         onUsePrompt(prompt.text)
@@ -612,7 +1244,10 @@ private struct TestCustomerJourneyView: View {
         .background(Color.speakBackground)
         .navigationTitle("Test Customer Journey")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { subscriptionStore.refreshFreeAllowance() }
+        .onAppear {
+            subscriptionStore.refreshFreeAllowance()
+            latestSpeechQuality = SpeechCaptureDiagnosticsStore.latest
+        }
     }
 }
 #endif
@@ -708,7 +1343,16 @@ private struct LearnSpeakItLesson: Identifiable, Hashable {
             symbol: "iphone.radiowaves.left.and.right",
             title: "Capture from anywhere",
             summary: "Reach Speak It without finding the app first.",
-            detail: "Open Account & Settings → Capture anywhere to choose one method and test it. Speak It recommends the Action Button on supported iPhones and the Lock Screen everywhere else. Control Center and Back Tap are also available.",
+            detail: "Open Account & Settings → Capture anywhere to choose one method and test it. Speak It recommends the Action Button on supported iPhones and the Lock Screen everywhere else. Control Center, a Home Screen Capture widget, and Back Tap are also available.",
+            examples: []
+        ),
+        .init(
+            id: "widgets",
+            group: .reach,
+            symbol: "rectangle.grid.2x2",
+            title: "Widgets",
+            summary: "Capture quickly or see Today at a glance.",
+            detail: "Add Speak It Capture to the Home Screen or Lock Screen for one-tap voice capture. Add Speak It Today to see open tasks and complete them from supported Home Screen widgets. Lock Screen task names stay hidden unless you explicitly turn them on in Account & Settings.",
             examples: []
         ),
         .init(
@@ -728,7 +1372,7 @@ private struct LearnSpeakItLesson: Identifiable, Hashable {
             symbol: "lock.shield",
             title: "Privacy and recovery",
             summary: "Your words stay recoverable without becoming analytics.",
-            detail: "Speak It stores the original capture locally before organizing it. Temporary recovery audio is deleted after a successful save. Anonymous analytics never include recordings, transcripts, titles, names, email addresses, or search words. Open Capture history if an interrupted capture needs attention.",
+            detail: "Speak It stores and organizes the original capture locally. Typing and organization work offline; depending on your device and language, Apple speech recognition may use an internet connection. Temporary recovery audio is deleted after a successful save. Anonymous analytics never include recordings, transcripts, titles, names, email addresses, or search words. Open Capture history if an interrupted capture needs attention.",
             examples: []
         ),
         .init(

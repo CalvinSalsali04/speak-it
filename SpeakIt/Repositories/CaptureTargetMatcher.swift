@@ -75,6 +75,13 @@ enum CaptureTargetMatcher {
     /// and a two-letter word could cancel an unrelated errand.
     private static func stemsMatch(_ lhs: String, _ rhs: String) -> Bool {
         if lhs == rhs { return true }
+        // A completion is spoken in the past tense and the item it closes is
+        // written in the present: "I already paid the rent" has to reach "Pay
+        // the rent". Prefix stemming cannot cross an irregular verb, so those
+        // are listed. Without this the seven commonest task verbs in English
+        // never matched, the operation reported nothing found, and the task
+        // stayed open after the person had told the app it was done.
+        if irregularPast[lhs] == rhs || irregularPast[rhs] == lhs { return true }
         let shorter = lhs.count <= rhs.count ? lhs : rhs
         let longer = lhs.count <= rhs.count ? rhs : lhs
         guard shorter.count >= 4, longer.hasPrefix(shorter) else { return false }
@@ -82,4 +89,20 @@ enum CaptureTargetMatcher {
         // to start the same way.
         return longer.count - shorter.count <= 3
     }
+
+    /// Past tense to base form, for the verbs an errand is actually spoken with.
+    private static let irregularPast: [String: String] = [
+        "paid": "pay", "sent": "send", "bought": "buy", "took": "take",
+        "made": "make", "wrote": "write", "did": "do", "got": "get",
+        "met": "meet", "told": "tell", "spoke": "speak", "gave": "give",
+        "brought": "bring", "caught": "catch", "left": "leave", "ran": "run",
+        "sold": "sell", "won": "win", "fed": "feed", "held": "hold",
+        "lost": "lose", "said": "say", "built": "build", "felt": "feel",
+        "found": "find", "heard": "hear", "drove": "drive", "kept": "keep",
+        "swept": "sweep", "hung": "hang", "rang": "ring", "shot": "shoot",
+        "spent": "spend", "stood": "stand", "understood": "understand",
+        "woke": "wake", "wore": "wear", "began": "begin", "drank": "drink",
+        "ate": "eat", "flew": "fly", "forgot": "forget", "froze": "freeze",
+        "grew": "grow", "knew": "know", "threw": "throw", "wound": "wind",
+    ]
 }

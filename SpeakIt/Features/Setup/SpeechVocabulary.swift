@@ -19,7 +19,10 @@ struct SpeechCorrection: Codable, Hashable, Identifiable, Sendable {
 
 enum SpeechVocabularyStore {
     private static let storageKey = "SpeakIt.speechCorrections"
+    private static let learnedPhrasesKey = "SpeakIt.learnedSpeechContext"
     private static let maximumEntries = 60
+    private static let maximumLearnedPhrases = 80
+    private static let maximumRecognitionPhrases = 100
 
     static var corrections: [SpeechCorrection] {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
@@ -30,7 +33,36 @@ enum SpeechVocabularyStore {
     }
 
     static var contextualPhrases: [String] {
-        corrections.flatMap { [$0.heardPhrase, $0.preferredPhrase] }
+        recognitionContext()
+    }
+
+    static func recognitionContext(additional: [String] = []) -> [String] {
+        let ranked = uniquePhrases(
+            additional
+                // A correction means the heard form is known-wrong. Boosting
+                // it alongside the preferred form teaches the recognizer both
+                // spellings and can increase the very error the person fixed.
+                + corrections.map(\.preferredPhrase)
+                + learnedPhrases
+        )
+        // Apple's contextual-strings contract accepts at most 100 phrases in
+        // total. Screen-specific phrases rank first, followed by explicit user
+        // corrections and then names learned from prior captures.
+        return Array(ranked.prefix(maximumRecognitionPhrases))
+    }
+
+    static func rememberContextualPhrases(_ phrases: [String]) {
+        let merged = uniquePhrases(phrases + learnedPhrases)
+        let retained = Array(merged.prefix(maximumLearnedPhrases))
+        if retained.isEmpty {
+            UserDefaults.standard.removeObject(forKey: learnedPhrasesKey)
+        } else {
+            UserDefaults.standard.set(retained, forKey: learnedPhrasesKey)
+        }
+    }
+
+    static func clearLearnedContextualPhrases() {
+        UserDefaults.standard.removeObject(forKey: learnedPhrasesKey)
     }
 
     static func save(_ corrections: [SpeechCorrection]) {
@@ -56,11 +88,36 @@ enum SpeechVocabularyStore {
     }
 
     static func apply(to transcript: String) -> String {
+        apply(corrections, to: transcript)
+    }
+
+    static func apply(_ corrections: [SpeechCorrection], to transcript: String) -> String {
         corrections
+            .compactMap(normalize)
             .sorted { $0.heardPhrase.count > $1.heardPhrase.count }
             .reduce(transcript) { result, correction in
                 replaceWholePhrase(in: result, using: correction)
             }
+    }
+
+    private static var learnedPhrases: [String] {
+        UserDefaults.standard.stringArray(forKey: learnedPhrasesKey) ?? []
+    }
+
+    private static func uniquePhrases(_ phrases: [String]) -> [String] {
+        var seen = Set<String>()
+        return phrases.compactMap { phrase in
+            let normalized = phrase
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalized.count >= 2, normalized.count <= 80 else { return nil }
+            let key = normalized.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            guard seen.insert(key).inserted else { return nil }
+            return normalized
+        }
     }
 
     private static func replaceWholePhrase(

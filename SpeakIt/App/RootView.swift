@@ -12,6 +12,7 @@ private enum FullScreenDestination: String, Equatable, Identifiable {
     case captureText
     case firstCaptureGuide
     case captureAnywhereSetup
+    case tutorialFinished
 
     var id: String { rawValue }
 }
@@ -30,6 +31,11 @@ struct RootView: View {
                     item.itemTypeRawValue == "unclear")
         }
     ) private var openMemoryItems: [CapturedItem]
+    @Query(
+        filter: #Predicate<CaptureSession> { session in
+            session.captureSourceRawValue == "tutorial"
+        }
+    ) private var tutorialSessions: [CaptureSession]
 
     /// The `@Query` predicate above is a coarse database pre-filter and nothing
     /// more. `#Predicate` cannot call the authorization-aware membership check,
@@ -46,6 +52,18 @@ struct RootView: View {
 
     @StateObject private var quickActionRouter = QuickActionRouter.shared
     @AppStorage("SpeakIt.hasCompletedWelcome") private var hasCompletedWelcome = false
+    @AppStorage("SpeakIt.shouldResumeFirstCaptureGuide")
+    private var shouldResumeFirstCaptureGuide = false
+    @AppStorage("SpeakIt.firstCapturePlacementSummary")
+    private var firstCapturePlacementSummaryRawValue = ""
+    @AppStorage("SpeakIt.firstCaptureTutorialStep")
+    private var firstCaptureTutorialStep = 0
+    @AppStorage(FirstRunTutorialKeys.phase)
+    private var tutorialPhaseRawValue = FirstRunTutorialPhase.inactive.rawValue
+    @AppStorage(FirstRunTutorialKeys.actionItemID)
+    private var tutorialActionItemIDRawValue = ""
+    @AppStorage(FirstRunTutorialKeys.ideaItemID)
+    private var tutorialIdeaItemIDRawValue = ""
     @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
 
     @State private var selectedDestination: AppDestination = RootView.initialDestination
@@ -54,9 +72,11 @@ struct RootView: View {
     /// tapped again. The destination views watch it and pop their pushed
     /// screens, so tapping "Today" from inside the List lands on Today.
     @State private var popToRootSignal = 0
-    @State private var showsSetupAfterFirstCapture = false
+    @State private var destinationNavigationGeneration = 0
+    @State private var showsSetupAfterFirstCapture = RootView.initialTutorialMission != nil
     @State private var captureAutoStartsVoice = false
-    @State private var captureShowsGuidedExamples = false
+    @State private var captureShowsGuidedExamples = RootView.initialTutorialMission != nil
+    @State private var captureTutorialMission = RootView.initialTutorialMission
     @State private var captureOpenedFromExternalSource = false
     @State private var captureInitialText = ""
     @State private var capturePerformance: CapturePerformanceTrace?
@@ -86,17 +106,56 @@ struct RootView: View {
             return .library
         }
 #endif
+        let phase = initialTutorialPhase
+        if phase == .showPeople || phase == .showPerson || phase == .showIdea {
+            return .library
+        }
         return .today
+    }
+
+    private static var initialTutorialPhase: FirstRunTutorialPhase {
+        FirstRunTutorialPhase(
+            rawValue: UserDefaults.standard.string(forKey: FirstRunTutorialKeys.phase) ?? ""
+        ) ?? .inactive
+    }
+
+    private static var initialTutorialMission: TutorialCaptureMission? {
+        initialTutorialPhase.mission
     }
 
     private static var initialFullScreenDestination: FullScreenDestination? {
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--show-capture-anywhere") {
+            return .captureAnywhereSetup
+        }
+        if arguments.contains("--show-first-capture-guide") {
+            return .firstCaptureGuide
+        }
         if arguments.contains("--ui-testing-reset") {
             return arguments.contains("--ui-testing-skip-welcome") ? nil : .welcome
         }
 #endif
-        return UserDefaults.standard.bool(forKey: "SpeakIt.hasCompletedWelcome") ? nil : .welcome
+        let defaults = UserDefaults.standard
+        switch initialTutorialPhase {
+        case .captureAction, .captureIdea:
+            return .captureVoice
+        case .readiness:
+            return .firstCaptureGuide
+        case .complete:
+            return .tutorialFinished
+        case .showToday, .showPeople, .showPerson, .showIdea:
+            return nil
+        case .inactive:
+            break
+        }
+        if !defaults.bool(forKey: "SpeakIt.hasCompletedWelcome") {
+            return .welcome
+        }
+        if defaults.bool(forKey: "SpeakIt.shouldResumeFirstCaptureGuide") {
+            return .firstCaptureGuide
+        }
+        return nil
     }
 
     var body: some View {
@@ -108,7 +167,10 @@ struct RootView: View {
                         TodayView(
                             onCapture: { presentCapture() },
                             onDockVisibilityChange: setDockVisibility,
-                            popToRootSignal: popToRootSignal
+                            popToRootSignal: popToRootSignal,
+                            tutorialSpotlight: tutorialSpotlight(for: .today),
+                            onTutorialPrimary: advanceFromTodaySpotlight,
+                            onEndTutorial: endTutorialEarly
                         )
                     }
                 case .library:
@@ -116,7 +178,10 @@ struct RootView: View {
                         LibraryView(
                             onCapture: { presentCapture() },
                             onDockVisibilityChange: setDockVisibility,
-                            popToRootSignal: popToRootSignal
+                            popToRootSignal: popToRootSignal,
+                            tutorialSpotlight: libraryTutorialSpotlight,
+                            onTutorialPrimary: advanceFromLibrarySpotlight,
+                            onEndTutorial: endTutorialEarly
                         )
                     }
                 }
@@ -124,7 +189,11 @@ struct RootView: View {
             // Both destinations have a NavigationStack at their root. Give
             // each stack an explicit identity so SwiftUI never reuses a Today
             // row, swipe-action layer, or scroll offset while showing Memory.
-            .id(selectedDestination)
+            .id(
+                selectedDestination == .today
+                    ? "today-\(destinationNavigationGeneration)"
+                    : "memory-\(destinationNavigationGeneration)"
+            )
 
             captureDock
                 .offset(y: isDockVisible ? 0 : 116)
@@ -166,11 +235,22 @@ struct RootView: View {
                 captureView(initialMode: .text)
                     .id(captureSessionToken)
             case .firstCaptureGuide:
-                FirstCaptureGuideView(
-                    onDone: finishFirstCaptureGuide
+                SpeakItReadinessView(
+                    isOnboarding: true,
+                    onFinished: finishTutorialReadiness
                 )
             case .captureAnywhereSetup:
-                CaptureAnywhereSetupView(showsOnboardingProgress: true)
+                CaptureAnywhereSetupView(
+                    showsOnboardingProgress: true,
+                    onFinished: tutorialPhase == .readiness
+                        ? continueFromCaptureAnywhereSetup
+                        : nil
+                )
+            case .tutorialFinished:
+                TutorialFinishedView(
+                    remainingFreeCaptures: subscriptionStore.freeCapturesRemaining,
+                    onContinue: completeTutorial
+                )
             }
         }
         .sheet(isPresented: $showsFreeLimit) {
@@ -188,6 +268,7 @@ struct RootView: View {
             .environmentObject(subscriptionStore)
         }
         .task {
+            repairInterruptedTutorialIfNeeded()
             if hasCompletedWelcome,
                ReferralProgramConfiguration.isEnabled,
                let pendingCode = PendingReferralStore.code {
@@ -476,7 +557,17 @@ struct RootView: View {
 
     private func beginFirstCapture() {
         showsSetupAfterFirstCapture = true
+        firstCaptureTutorialStep = 0
+        firstCapturePlacementSummaryRawValue = ""
+        tutorialActionItemIDRawValue = ""
+        tutorialIdeaItemIDRawValue = ""
+        setTutorialPhase(.captureAction)
+        captureTutorialMission = .action
         SpeakItAnalytics.track(.onboardingStarted)
+        // The iOS 26 speech model is a system-owned one-time asset. Begin that
+        // work as soon as the person commits to voice so their first tutorial
+        // recording does not silently use the older fallback recognizer.
+        Task { await SpeechTranscriber.prepareEnhancedRecognition() }
         // Entering the capture surface is not a completed onboarding. Persist
         // success only after the first thought is actually saved so cancelling
         // permission or closing an empty capture can return to Welcome.
@@ -487,7 +578,60 @@ struct RootView: View {
         }
     }
 
+    private func repairInterruptedTutorialIfNeeded() {
+        switch tutorialPhase {
+        case .showToday, .showPeople, .showPerson:
+            let current = UUID(uuidString: tutorialActionItemIDRawValue).flatMap {
+                tutorialItem($0)
+            }
+            if current.flatMap({ tutorialPersonName(for: $0) }) != nil { return }
+            if let replacement = tutorialItems.first(where: {
+                tutorialPersonName(for: $0) != nil
+                    && ($0.itemType == .personFollowUp || $0.itemType.isActionable)
+            }) {
+                tutorialActionItemIDRawValue = replacement.id.uuidString
+            } else {
+                setTutorialPhase(.captureAction)
+                captureTutorialMission = .action
+                showsSetupAfterFirstCapture = true
+                fullScreenDestination = .captureVoice
+            }
+        case .showIdea:
+            guard let id = UUID(uuidString: tutorialIdeaItemIDRawValue),
+                  tutorialSessions.contains(where: { session in
+                      session.items.contains(where: { $0.id == id })
+                  }) else {
+                setTutorialPhase(.captureIdea)
+                captureTutorialMission = .idea
+                showsSetupAfterFirstCapture = true
+                fullScreenDestination = .captureVoice
+                return
+            }
+        default:
+            break
+        }
+    }
+
+    private var tutorialItems: [CapturedItem] {
+        tutorialSessions.flatMap(\.items)
+    }
+
+    private func tutorialItem(_ id: UUID) -> CapturedItem? {
+        tutorialItems.first(where: { $0.id == id })
+    }
+
+    private func tutorialPersonName(for item: CapturedItem) -> String? {
+        let name = MemoryPersonNameResolver.name(for: item) ?? item.personName
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func completeWelcome(analyticsPath: AnalyticsCaptureEntry = .dock) {
+        if FirstRunTutorialPhase(rawValue: tutorialPhaseRawValue)?.isActive == true {
+            endTutorialEarly()
+            return
+        }
+        shouldResumeFirstCaptureGuide = false
         markWelcomeComplete(analyticsPath: analyticsPath)
         fullScreenDestination = nil
         if ReferralProgramConfiguration.isEnabled,
@@ -550,7 +694,7 @@ struct RootView: View {
     ) {
         guard fullScreenDestination == nil else { return }
         subscriptionStore.refreshFreeAllowance()
-        guard subscriptionStore.canCreateCapture else {
+        guard captureTutorialMission != nil || subscriptionStore.canCreateCapture else {
             SpeakItAnalytics.track(.freeLimitReached(used: subscriptionStore.freeCapturesUsed))
             showsFreeLimit = true
             return
@@ -563,7 +707,7 @@ struct RootView: View {
         captureAutoStartsVoice = autoStartsVoiceCapture
         // The first capture is the tutorial: the person tapped "Try it now"
         // and deserves something concrete to try.
-        captureShowsGuidedExamples = entry == .onboarding
+        captureShowsGuidedExamples = entry == .onboarding || captureTutorialMission != nil
         captureOpenedFromExternalSource = fromExternalSource
         captureInitialText = initialText
         let source: AnalyticsCaptureSource = initialMode == .text ? .text : .voice
@@ -601,13 +745,27 @@ struct RootView: View {
             performance: capturePerformance,
             autoDismissesSingleItemConfirmation: !showsSetupAfterFirstCapture,
             showsGuidedExamples: captureShowsGuidedExamples,
+            tutorialMission: captureTutorialMission,
             onSaveSucceeded: markFirstCaptureSucceeded,
-            onCancelled: handleCaptureCancelled
+            onCancelled: handleCaptureCancelled,
+            onTutorialEnded: endTutorialEarly
         ) {
+            let completedTutorialPhase = tutorialPhase
             if captureOpenedFromExternalSource {
                 CaptureActivationStore.markSucceeded()
             }
-            selectedDestination = .today
+            if completedTutorialPhase == .showToday {
+                selectedDestination = .today
+            } else if completedTutorialPhase == .showIdea {
+                selectedDestination = .library
+            } else if showsSetupAfterFirstCapture {
+                let placement = FirstCapturePlacementSummary(
+                    storedValue: firstCapturePlacementSummaryRawValue
+                ).primary
+                selectedDestination = placement.belongsToMemory ? .library : .today
+            } else {
+                selectedDestination = .today
+            }
             isDockVisible = true
             captureAutoStartsVoice = false
             captureShowsGuidedExamples = false
@@ -617,10 +775,18 @@ struct RootView: View {
 
             if returnsToSetupAfterExternalCapture {
                 returnsToSetupAfterExternalCapture = false
+                captureTutorialMission = nil
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(420))
                     fullScreenDestination = .captureAnywhereSetup
                 }
+                return
+            }
+
+            if completedTutorialPhase == .showToday || completedTutorialPhase == .showIdea {
+                captureTutorialMission = nil
+                showsSetupAfterFirstCapture = true
+                fullScreenDestination = nil
                 return
             }
 
@@ -636,16 +802,85 @@ struct RootView: View {
         }
     }
 
-    private func markFirstCaptureSucceeded() {
+    private func markFirstCaptureSucceeded(_ result: CaptureCreationResult) {
         guard showsSetupAfterFirstCapture else { return }
+        if result.session.captureSource == .tutorial,
+           tutorialPhase == .captureAction || captureTutorialMission == .action {
+            guard let anchor = preferredTutorialItem(in: result, mission: .action) else { return }
+            tutorialActionItemIDRawValue = anchor.id.uuidString
+            setTutorialPhase(.showToday)
+            shouldResumeFirstCaptureGuide = false
+            markWelcomeComplete(analyticsPath: .onboarding)
+            return
+        }
+        if result.session.captureSource == .tutorial,
+           tutorialPhase == .captureIdea || captureTutorialMission == .idea {
+            guard let anchor = preferredTutorialItem(in: result, mission: .idea) else { return }
+            tutorialIdeaItemIDRawValue = anchor.id.uuidString
+            setTutorialPhase(.showIdea)
+            // The first mission is nested inside People. Rebuild Memory's
+            // pushed destination so the second mission lands in Ideas instead
+            // of leaving the old person profile above it.
+            destinationNavigationGeneration += 1
+            return
+        }
+        if captureTutorialMission == .quickAccess {
+            return
+        }
         // The durable save is the success boundary. Keep the receipt onscreen,
-        // but make sure relaunching from it never restarts onboarding.
+        // but make sure relaunching from it resumes after the completed action
+        // instead of making the person repeat their first capture.
+        firstCapturePlacementSummaryRawValue = FirstCapturePlacementSummary
+            .make(from: result)
+            .storedValue
+        shouldResumeFirstCaptureGuide = true
         markWelcomeComplete(analyticsPath: .onboarding)
+    }
+
+    private func preferredTutorialItem(
+        in result: CaptureCreationResult,
+        mission: TutorialCaptureMission
+    ) -> CapturedItem? {
+        switch mission {
+        case .action:
+            return result.items.first(where: {
+                $0.itemType == .personFollowUp && tutorialPersonName(for: $0) != nil
+            }) ?? result.items.first(where: {
+                tutorialPersonName(for: $0) != nil && $0.itemType.isActionable
+            }) ?? result.items.first(where: {
+                tutorialPersonName(for: $0) != nil
+            }) ?? result.items.first
+        case .idea:
+            return result.items.first(where: { $0.itemType == .idea }) ?? result.items.first
+        case .quickAccess:
+            return result.items.first
+        }
     }
 
     private func handleCaptureCancelled() {
         guard showsSetupAfterFirstCapture else { return }
+        if captureTutorialMission == .idea {
+            captureTutorialMission = nil
+            setTutorialPhase(.showPerson)
+            selectedDestination = .library
+            return
+        }
+        if captureTutorialMission == .action {
+            captureTutorialMission = nil
+            cleanupTutorialData()
+            setTutorialPhase(.inactive)
+        }
+        if captureTutorialMission == .quickAccess {
+            captureTutorialMission = nil
+            returnsToSetupAfterExternalCapture = false
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(520))
+                fullScreenDestination = .captureAnywhereSetup
+            }
+            return
+        }
         showsSetupAfterFirstCapture = false
+        shouldResumeFirstCaptureGuide = false
         hasCompletedWelcome = false
         SpeakItAnalytics.track(.onboardingAbandoned)
         Task { @MainActor in
@@ -658,9 +893,148 @@ struct RootView: View {
         }
     }
 
-    private func finishFirstCaptureGuide() {
-        SpeakItAnalytics.track(.firstCaptureGuideCompleted)
+    private var tutorialPhase: FirstRunTutorialPhase {
+        FirstRunTutorialPhase(rawValue: tutorialPhaseRawValue) ?? .inactive
+    }
+
+    private var libraryTutorialSpotlight: TutorialSpotlight? {
+        switch tutorialPhase {
+        case .showPeople:
+            return tutorialSpotlight(for: .people)
+        case .showPerson:
+            return tutorialSpotlight(for: .person)
+        case .showIdea:
+            return tutorialSpotlight(for: .idea)
+        default:
+            return nil
+        }
+    }
+
+    private func tutorialSpotlight(
+        for placement: TutorialSpotlightPlacement
+    ) -> TutorialSpotlight? {
+        let rawID: String
+        switch placement {
+        case .today:
+            guard tutorialPhase == .showToday else { return nil }
+            rawID = tutorialActionItemIDRawValue
+        case .people:
+            guard tutorialPhase == .showPeople else { return nil }
+            rawID = tutorialActionItemIDRawValue
+        case .person:
+            guard tutorialPhase == .showPerson else { return nil }
+            rawID = tutorialActionItemIDRawValue
+        case .idea:
+            guard tutorialPhase == .showIdea else { return nil }
+            rawID = tutorialIdeaItemIDRawValue
+        }
+        guard let itemID = UUID(uuidString: rawID) else { return nil }
+        return TutorialSpotlight(
+            itemID: itemID,
+            placement: placement,
+            personName: tutorialItem(itemID).flatMap { tutorialPersonName(for: $0) }
+        )
+    }
+
+    private func setTutorialPhase(_ phase: FirstRunTutorialPhase) {
+        tutorialPhaseRawValue = phase.rawValue
+    }
+
+    private func advanceFromTodaySpotlight() {
+        guard tutorialPhase == .showToday else { return }
+        setTutorialPhase(.showPeople)
+        selectedDestination = .library
+        isDockVisible = true
+    }
+
+    private func advanceFromLibrarySpotlight() {
+        switch tutorialPhase {
+        case .showPeople:
+            setTutorialPhase(.showPerson)
+        case .showPerson:
+            setTutorialPhase(.captureIdea)
+            captureTutorialMission = .idea
+            showsSetupAfterFirstCapture = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(360))
+                presentCapture(entry: .onboarding)
+            }
+        case .showIdea:
+            setTutorialPhase(.readiness)
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(360))
+                fullScreenDestination = .captureAnywhereSetup
+            }
+        default:
+            break
+        }
+    }
+
+    private func continueFromCaptureAnywhereSetup() {
+        guard tutorialPhase == .readiness else { return }
         fullScreenDestination = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(360))
+            guard tutorialPhase == .readiness, fullScreenDestination == nil else { return }
+            fullScreenDestination = .firstCaptureGuide
+        }
+    }
+
+    private func finishTutorialReadiness() {
+        guard cleanupTutorialData() else { return }
+        SpeakItAnalytics.track(.firstCaptureGuideCompleted)
+        shouldResumeFirstCaptureGuide = false
+        firstCaptureTutorialStep = 0
+        setTutorialPhase(.complete)
+        subscriptionStore.refreshFreeAllowance()
+        fullScreenDestination = .tutorialFinished
+    }
+
+    private func completeTutorial() {
+        setTutorialPhase(.inactive)
+        tutorialActionItemIDRawValue = ""
+        tutorialIdeaItemIDRawValue = ""
+        captureTutorialMission = nil
+        showsSetupAfterFirstCapture = false
+        hasCompletedWelcome = true
+        selectedDestination = .today
+        isDockVisible = true
+        fullScreenDestination = nil
+    }
+
+    private func endTutorialEarly() {
+        guard cleanupTutorialData() else { return }
+        setTutorialPhase(.inactive)
+        tutorialActionItemIDRawValue = ""
+        tutorialIdeaItemIDRawValue = ""
+        captureTutorialMission = nil
+        showsSetupAfterFirstCapture = false
+        shouldResumeFirstCaptureGuide = false
+        hasCompletedWelcome = true
+        selectedDestination = .today
+        isDockVisible = true
+        fullScreenDestination = nil
+        subscriptionStore.refreshFreeAllowance()
+        sharedImportNotice = "Practice examples removed · Free captures untouched"
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            sharedImportNotice = nil
+        }
+    }
+
+    @discardableResult
+    private func cleanupTutorialData() -> Bool {
+        guard let repository else {
+            sharedImportNotice = "Practice cleanup will retry when storage is ready"
+            return false
+        }
+        do {
+            _ = try repository.deleteTutorialCaptures()
+            return true
+        } catch {
+            sharedImportNotice = "Practice examples couldn’t be removed yet"
+            return false
+        }
     }
 
     private func handleQuickAction(_ request: QuickActionRouter.Request?) {
@@ -671,15 +1045,18 @@ struct RootView: View {
             return
         }
 
+        let isTutorialTest = isActiveCaptureAnywhereTutorialTest
         subscriptionStore.refreshFreeAllowance()
-        guard subscriptionStore.canCreateCapture else {
+        guard isTutorialTest || subscriptionStore.canCreateCapture else {
             SpeakItAnalytics.track(.freeLimitReached(used: subscriptionStore.freeCapturesUsed))
             showsFreeLimit = true
             return
         }
 
         hasCompletedWelcome = true
-        showsSetupAfterFirstCapture = false
+        showsSetupAfterFirstCapture = isTutorialTest
+        captureTutorialMission = isTutorialTest ? .quickAccess : nil
+        returnsToSetupAfterExternalCapture = isTutorialTest
         selectedDestination = .today
         isDockVisible = true
         captureAutoStartsVoice = request.autoStartsVoiceCapture
@@ -710,6 +1087,7 @@ struct RootView: View {
 
         if url.host?.lowercased() == "setup" {
             hasCompletedWelcome = true
+            shouldResumeFirstCaptureGuide = false
             selectedDestination = .today
             isDockVisible = true
             fullScreenDestination = .captureAnywhereSetup
@@ -728,8 +1106,9 @@ struct RootView: View {
 
         guard url.host?.lowercased() == "capture" else { return }
 
+        let isTutorialTest = isActiveCaptureAnywhereTutorialTest
         subscriptionStore.refreshFreeAllowance()
-        guard subscriptionStore.canCreateCapture else {
+        guard isTutorialTest || subscriptionStore.canCreateCapture else {
             SpeakItAnalytics.track(.freeLimitReached(used: subscriptionStore.freeCapturesUsed))
             showsFreeLimit = true
             return
@@ -739,9 +1118,11 @@ struct RootView: View {
         let activationInstant = CapturePerformanceClock.now
         CaptureActivationStore.markInvoked(at: activatedAt)
         let isReturningFromSetup = fullScreenDestination == .captureAnywhereSetup
+            || isTutorialTest
 
         hasCompletedWelcome = true
-        showsSetupAfterFirstCapture = false
+        showsSetupAfterFirstCapture = isTutorialTest
+        captureTutorialMission = isTutorialTest ? .quickAccess : nil
         returnsToSetupAfterExternalCapture = isReturningFromSetup
         selectedDestination = .today
         isDockVisible = true
@@ -755,6 +1136,15 @@ struct RootView: View {
         SpeakItAnalytics.track(.captureStarted(mode: .voice, entry: .deepLink))
         captureSessionToken = UUID()
         fullScreenDestination = .captureVoice
+    }
+
+    private var isActiveCaptureAnywhereTutorialTest: Bool {
+        guard tutorialPhase == .readiness else { return false }
+        let beganAt = UserDefaults.standard.double(
+            forKey: "SpeakIt.captureSetupTestBeganAt"
+        )
+        guard beganAt > 0 else { return false }
+        return Date.now.timeIntervalSince1970 - beganAt < 30 * 60
     }
 
     private func importSharedCaptures() async {

@@ -248,44 +248,143 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.buttons["dock.capture"].waitForExistence(timeout: 4))
     }
 
-    func testFirstSuccessfulCaptureExplainsTodayAndMemory() {
-        let app = launchApp()
+    func testFirstRunTeachesInsideTheRealAppThenRemovesPracticeData() {
+        let app = launchApp("--ui-testing-spoken-time-break")
+        captureFlowScreenshot("01-welcome")
 
-        app.buttons["welcome.tryItNow"].tap()
-        let typeInstead = app.buttons["capture.typeInstead"]
-        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
-        typeInstead.tap()
-
-        let editor = app.textViews["capture.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 4))
-        editor.tap()
-        editor.typeText("The spare key is in the blue drawer")
+        tapInsideWideButton(app.buttons["welcome.tryItNow"], horizontalFraction: 0.88)
+        let useExample = app.buttons["tutorial.useExample"]
+        XCTAssertTrue(useExample.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
+        captureFlowScreenshot("02-action-practice")
+        tapInsideWideButton(useExample, horizontalFraction: 0.12)
+        XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 4))
+        XCTAssertTrue(
+            app.staticTexts["tutorial.missionExample"].exists,
+            "The action phrase must remain visible while the person types"
+        )
         app.buttons["capture.finishTyping"].tap()
         app.buttons["capture.save"].tap()
 
         XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+        captureFlowScreenshot("03-action-remembered")
         let continueFromReceipt = app.buttons["capture.confirmationContinue"]
         XCTAssertTrue(continueFromReceipt.waitForExistence(timeout: 3))
-        continueFromReceipt.tap()
-        XCTAssertTrue(app.staticTexts["That’s the whole idea."].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Today is for action"].exists)
-        XCTAssertTrue(app.staticTexts["Memory is for knowledge"].exists)
-        XCTAssertTrue(app.buttons["firstCaptureGuide.continue"].isHittable)
-        XCTAssertTrue(app.buttons["firstCaptureGuide.done"].isHittable)
+        tapInsideWideButton(continueFromReceipt, horizontalFraction: 0.88)
+        XCTAssertTrue(app.staticTexts["Ready for tomorrow"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Ask Maya about the proposal"].exists)
+        XCTAssertFalse(
+            app.staticTexts["Tomorrow at nine"].exists,
+            "A spoken-time sentence break must not create a second phantom item"
+        )
+        captureFlowScreenshot("04-today-placement")
+
+        tapInsideWideButton(
+            app.buttons["tutorial.spotlight.primary"],
+            horizontalFraction: 0.12
+        )
+        XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["tutorial.editor.guidance"].exists)
+        XCTAssertTrue(app.textFields["tutorial.editor.title"].exists)
+        captureFlowScreenshot("05-real-editor")
+        app.buttons["tutorial.editor.notNow"].tap()
+
+        XCTAssertTrue(app.staticTexts["Maya is in People"].waitForExistence(timeout: 8))
+        captureFlowScreenshot("06-people-maya")
+        tapInsideWideButton(
+            app.buttons["tutorial.spotlight.primary"],
+            horizontalFraction: 0.88
+        )
+
+        XCTAssertTrue(app.staticTexts["The follow-up is here"].waitForExistence(timeout: 8))
+        captureFlowScreenshot("07-maya-follow-up")
+        tapInsideWideButton(
+            app.buttons["tutorial.spotlight.primary"],
+            horizontalFraction: 0.12
+        )
+
+        let useIdeaExample = app.buttons["tutorial.useExample"]
+        XCTAssertTrue(useIdeaExample.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
+        captureFlowScreenshot("08-idea-practice")
+        tapInsideWideButton(useIdeaExample, horizontalFraction: 0.88)
+        XCTAssertTrue(
+            app.staticTexts["tutorial.missionExample"].exists,
+            "The idea phrase must remain visible while the person types"
+        )
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+        tapInsideWideButton(
+            app.buttons["capture.confirmationContinue"],
+            horizontalFraction: 0.12
+        )
+
+        XCTAssertTrue(app.staticTexts["Your idea is in Memory"].waitForExistence(timeout: 8))
+        captureFlowScreenshot("09-ideas-placement")
+        tapInsideWideButton(
+            app.buttons["tutorial.spotlight.primary"],
+            horizontalFraction: 0.88
+        )
+        XCTAssertTrue(app.navigationBars["Idea stage"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["tutorial.ideaStage.guidance"].exists)
+        captureFlowScreenshot("10-real-stage-picker")
+        let promising = app.buttons["ideaStagePicker.promising"]
+        XCTAssertTrue(promising.waitForExistence(timeout: 3))
+        promising.tap()
+
+        let actionButtonMethod = app.buttons["captureAnywhere.method.actionButton"]
+        XCTAssertTrue(actionButtonMethod.waitForExistence(timeout: 8))
+        if !actionButtonMethod.isSelected { actionButtonMethod.tap() }
+        XCTAssertTrue(actionButtonMethod.isSelected)
+        captureFlowScreenshot("11-capture-anywhere-top")
+
+        let otherMethods = app.buttons["captureAnywhere.otherMethods"]
+        XCTAssertTrue(otherMethods.waitForExistence(timeout: 4))
+        otherMethods.tap()
+        Thread.sleep(forTimeInterval: 0.45)
+
+        let backTapMethod = app.buttons["captureAnywhere.method.backTap"]
+        XCTAssertTrue(backTapMethod.waitForExistence(timeout: 3))
+        for _ in 0..<6 where !backTapMethod.isHittable { app.swipeUp() }
+        XCTAssertTrue(backTapMethod.isHittable)
+        backTapMethod.tap()
+        XCTAssertTrue(backTapMethod.isSelected)
+        captureFlowScreenshot("12-capture-anywhere-methods")
+        let captureAnywhereTest = app.buttons["captureAnywhere.test"]
+        for _ in 0..<7 where !captureAnywhereTest.isHittable { app.swipeUp() }
+        XCTAssertTrue(captureAnywhereTest.isHittable)
+        captureFlowScreenshot("13-capture-anywhere-setup-and-test")
+
+        let doneWithCaptureAnywhere = app.buttons["captureAnywhere.done"]
+        XCTAssertTrue(doneWithCaptureAnywhere.isHittable)
+        doneWithCaptureAnywhere.tap()
+        XCTAssertTrue(app.staticTexts["Choose what Speak It can use"].waitForExistence(timeout: 8))
+        captureFlowScreenshot("14-readiness")
+
+        let finish = app.buttons["readiness.finish"]
+        for _ in 0..<5 where !finish.isHittable { app.swipeUp() }
+        XCTAssertTrue(finish.isHittable)
+        captureFlowScreenshot("15-readiness-finish")
+        tapInsideWideButton(finish, horizontalFraction: 0.12)
+
+        XCTAssertTrue(app.staticTexts["Practice examples removed"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["10 free captures ready"].exists)
+        captureFlowScreenshot("16-practice-removed")
+        tapInsideWideButton(app.buttons["tutorial.finished"], horizontalFraction: 0.88)
+        XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
+        captureFlowScreenshot("17-empty-real-app")
     }
 
-    func testAbandonedFirstCaptureReturnsToWelcomeAndDoesNotPersistCompletion() {
+    func testEndingFirstPracticeIsOptionalAndEntersTheRealApp() {
         let app = launchApp()
 
         app.buttons["welcome.tryItNow"].tap()
-        let close = app.buttons["capture.close"]
-        XCTAssertTrue(close.waitForExistence(timeout: 5))
-        close.tap()
-        let discard = app.buttons["Discard"]
-        if discard.waitForExistence(timeout: 2) {
-            discard.tap()
-        }
-        XCTAssertTrue(app.buttons["welcome.tryItNow"].waitForExistence(timeout: 5))
+        let endTutorial = app.buttons["tutorial.capture.end"]
+        XCTAssertTrue(endTutorial.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["capture.close"].exists)
+        endTutorial.tap()
+        XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
 
         app.terminate()
         let relaunched = XCUIApplication()
@@ -293,9 +392,10 @@ final class SpeakItUITests: XCTestCase {
         relaunched.launch()
 
         XCTAssertTrue(
-            relaunched.buttons["welcome.tryItNow"].waitForExistence(timeout: 5),
-            "Starting and abandoning capture must not permanently complete onboarding"
+            relaunched.staticTexts["Your day is clear."].waitForExistence(timeout: 5),
+            "Ending optional practice should persist entry into the real app"
         )
+        XCTAssertFalse(relaunched.buttons["welcome.tryItNow"].exists)
     }
 
     func testFirstSavePersistsOnboardingBeforeReceiptIsDismissed() {
@@ -308,8 +408,13 @@ final class SpeakItUITests: XCTestCase {
 
         let editor = app.textViews["capture.text"]
         XCTAssertTrue(editor.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
         editor.tap()
         editor.typeText("Buy toothpaste")
+        XCTAssertTrue(
+            app.staticTexts["tutorial.missionExample"].exists,
+            "The tutorial phrase must not disappear after typing begins"
+        )
         app.buttons["capture.finishTyping"].tap()
         app.buttons["capture.save"].tap()
         XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
@@ -319,7 +424,10 @@ final class SpeakItUITests: XCTestCase {
         relaunched.launchArguments = ["--ui-testing"]
         relaunched.launch()
 
-        XCTAssertTrue(relaunched.staticTexts["Today"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            relaunched.staticTexts["tutorial.missionExample"].waitForExistence(timeout: 5),
+            "A missing in-memory UI-test store should restart the saved practice mission, never return to Welcome"
+        )
         XCTAssertFalse(relaunched.buttons["welcome.tryItNow"].exists)
     }
 
@@ -330,6 +438,35 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["today.doubleTapSetup"].exists)
         XCTAssertTrue(app.staticTexts["Try saying “Buy toothpaste” or “Call Mom tomorrow at 5.”"].exists)
+    }
+
+    func testCaptureAnywhereShowsOneChoiceFirstAndKeepsAlternativesOptional() {
+        let app = launchApp("--ui-testing-skip-welcome", "--show-capture-anywhere")
+
+        XCTAssertTrue(app.staticTexts["Set up Action Button"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["captureAnywhere.done"].isHittable)
+        XCTAssertTrue(app.buttons["captureAnywhere.method.actionButton"].exists)
+        XCTAssertFalse(app.buttons["captureAnywhere.method.backTap"].exists)
+
+        let alternatives = app.buttons["captureAnywhere.otherMethods"]
+        XCTAssertEqual(alternatives.value as? String, "Collapsed")
+        tapInsideWideButton(alternatives, horizontalFraction: 0.88)
+
+        let backTap = app.buttons["captureAnywhere.method.backTap"]
+        XCTAssertTrue(backTap.waitForExistence(timeout: 3))
+        XCTAssertEqual(alternatives.value as? String, "Expanded")
+        tapInsideWideButton(backTap, horizontalFraction: 0.12)
+
+        XCTAssertTrue(app.buttons["captureAnywhere.method.backTap"].isSelected)
+        XCTAssertEqual(alternatives.value as? String, "Collapsed")
+        XCTAssertTrue(app.staticTexts["Tap Add Shortcut below"].exists)
+
+        tapInsideWideButton(alternatives, horizontalFraction: 0.12)
+        let actionButton = app.buttons["captureAnywhere.method.actionButton"]
+        XCTAssertTrue(actionButton.waitForExistence(timeout: 3))
+        tapInsideWideButton(actionButton, horizontalFraction: 0.88)
+        XCTAssertTrue(app.buttons["captureAnywhere.method.actionButton"].isSelected)
+        XCTAssertTrue(app.staticTexts["Press and hold the side button"].exists)
     }
 
     func testLearnSpeakItIsAvailableFromSettings() {
@@ -547,6 +684,14 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(primaryAction.isHittable)
         assertMinimumTouchTarget(primaryAction)
         XCTAssertTrue(app.buttons["welcome.exploreFirst"].isHittable)
+
+        primaryAction.tap()
+        let endTutorial = app.buttons["tutorial.capture.end"]
+        XCTAssertTrue(endTutorial.waitForExistence(timeout: 5))
+        XCTAssertTrue(endTutorial.isHittable)
+        assertMinimumTouchTarget(endTutorial)
+        XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
+        XCTAssertTrue(app.buttons["tutorial.useExample"].isHittable)
     }
 
     func testColdLaunchPerformance() {
@@ -564,9 +709,41 @@ final class SpeakItUITests: XCTestCase {
 
     private func launchApp(_ extraArguments: String...) -> XCUIApplication {
         let app = XCUIApplication()
+        // UI tests can relaunch the bundle themselves. Always terminate any
+        // process left by the preceding method so --ui-testing-reset reaches a
+        // fresh App initializer instead of activating an already-running app.
+        app.terminate()
         app.launchArguments = ["--ui-testing", "--ui-testing-reset"] + extraArguments
         app.launch()
         return app
+    }
+
+    /// Keeps the product walkthrough tied to the exact UI journey under test.
+    /// A brief settle prevents attachments from catching a navigation frame
+    /// midway through its animation while adding only a few seconds to one test.
+    private func captureFlowScreenshot(_ name: String) {
+        Thread.sleep(forTimeInterval: 0.35)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Exercises the visible edges of a wide button instead of its text. This
+    /// catches SwiftUI controls whose background was stretched outside the
+    /// label, leaving only the centered words responsive to taps.
+    private func tapInsideWideButton(
+        _ element: XCUIElement,
+        horizontalFraction: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(element.waitForExistence(timeout: 4), file: file, line: line)
+        XCTAssertTrue(element.isHittable, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(element.frame.width, 240, file: file, line: line)
+        element.coordinate(
+            withNormalizedOffset: CGVector(dx: horizontalFraction, dy: 0.5)
+        ).tap()
     }
 
     private func assertMinimumTouchTarget(

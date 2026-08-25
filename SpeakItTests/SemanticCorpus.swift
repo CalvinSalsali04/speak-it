@@ -49,6 +49,78 @@ enum CorpusFamily: String, CaseIterable {
     // Family 24 pairs real intent signals with ordinary wording that merely
     // contains the same characters or verb shape.
     case collisions = "Semantic keyword collisions"
+    // Family 25, from TestFlight: reminders and errands aimed at another
+    // person. "Remind Alex to get the wrench in 20 minutes" is a request for
+    // *this* phone to buzz so its owner can do the reminding — the Siri and
+    // Google Assistant convention — never a bare note.
+    case delegation = "Delegation and third person"
+    // Family 26: the command vocabulary Siri, Google Assistant, and Alexa
+    // taught everyone. People arrive speaking it — "add milk to my shopping
+    // list", "take a note that…", "on the first of next month", "after work"
+    // — and Speak It's promise is that saying it any of those ways lands it
+    // in the right place.
+    case assistant = "Assistant conventions"
+    // Family 27: the ways English actually says a day or an hour — "the day
+    // after tomorrow", "a week from Friday", "quarter past five", "on the
+    // 15th", "by end of day" — none of which is a weekday name or a bare
+    // clock, and all of which every assistant resolves.
+    case calendarEdges = "Spoken calendar edges"
+    // Family 28: what dictation actually types when the words above are
+    // spoken. Each utterance here is a documented misrendering — "by milk",
+    // "an our", "is do on the 15th" — and the contract asserts the intent the
+    // speaker had, not the words the recognizer produced. This family is the
+    // regression net for the repair layer.
+    case dictation = "Dictation renderings"
+
+    // Families 29-34, written from a sweep of roughly nineteen hundred
+    // realistic utterances judged against the product contract. Each names the
+    // rule that was wrong rather than the sentence that exposed it.
+    case contentPreservation = "Repairs that deleted content"
+    case runOnSpeech = "Run-on speech"
+    case openers = "Discourse openers"
+    case clockForms = "Clock forms"
+    case calendarVocabulary = "Calendar vocabulary"
+    case managingItems = "Managing existing items"
+    case listsAndPeople = "Lists and the people on them"
+
+    // Families 36-38, from a second sweep run after the punctuation-invariance
+    // work. The first names a defect that appeared four separate times in four
+    // separate files, which is the reason it is a family and not a patch.
+    case wordInterior = "Rules matching inside a word"
+    case negationIntegrity = "Negations read as corrections"
+    case renderingLoss = "Content lost in one rendering only"
+
+    // Family 39, found on a device rather than by replay: the recognizer
+    // wrote one word as two and every temporal alternation in the app
+    // matches whole tokens, so the time became invisible.
+    case splitCompound = "One word dictated as two"
+    case paragraphs = "Multi-clause paragraphs"
+
+    // Families 40-41, from one capture made on a device. Both are the same
+    // shape of mistake: a rule spelled out the *formal* way of saying
+    // something and speech uses the informal one. English drops the "that"
+    // after "remind me", and a proposal arrives behind a hedge ("I think
+    // it'd be cool to…") rather than bare.
+    case elidedComplementizer = "Complementizers English drops"
+    case hedgedProposals = "Proposals wearing a hedge"
+
+    // Family 42: spoken filler tripping the consolidation veto, so ordinary
+    // noise ("right so I mean", "to like finish") cost whole errands and the
+    // dates on them.
+    case fillerCollapse = "Filler that collapsed a capture"
+
+    // Family 43: a repair that rewrote quantities, prices and years into clock
+    // times — inside the quote, which is the field the contract promises is
+    // the person's own wording.
+    case quantitiesNotClocks = "Quantities rewritten as clocks"
+
+    // Family 44: the assistant list vocabulary read as a frame with slots,
+    // rather than as one memorised sentence.
+    case listCommands = "List commands as a frame"
+
+    // Family 45: decisions moved off a hardcoded word list and onto structure
+    // — occupations read by meaning, errands read by grammatical shape.
+    case structuralReadings = "Structure instead of vocabulary"
 }
 
 

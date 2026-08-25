@@ -107,6 +107,11 @@ enum LocationIntentParser {
     /// matches nothing and, worse, would stop resolving against the saved Home.
     private static let placeTerminator =
         #"(?:\s*[,;.!?]"#
+        // Politeness ends a place name as surely as punctuation does. "When I
+        // get home please remind me to water the plants" was naming a place
+        // called "home please", which matches no saved place and no map — so
+        // the geofence resolved to nothing and the reminder could never fire.
+        + #"|\s+(?:please|kindly|pls)\b"#
         + #"|\s+(?:remind|tell|let|and\s+then|then|so\s+that|to\s+)\b"#
         // "When I get to the store buy batteries" is three parts — trigger,
         // place, action — and only the middle one is the place. Without this

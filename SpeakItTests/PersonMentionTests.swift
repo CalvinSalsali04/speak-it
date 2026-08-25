@@ -323,4 +323,45 @@ final class PersonMentionTests: XCTestCase {
 
         XCTAssertTrue(memoryPeopleItems.isEmpty)
     }
+
+    // MARK: - Plurals of things that are not people
+
+    /// `neverName` is written in the singular and was looked up exactly, so
+    /// every plural walked past it and became a person. The singular/plural
+    /// pair is the whole proof: the same sentence with "note" filed nobody and
+    /// with "notes" filed a person called Notes.
+    func testAPluralCommonNounIsNotAPerson() {
+        let pairs = [
+            ("call note about the thing", "call notes about the thing"),
+            ("tell report to the team", "tell reports to the team"),
+            ("email invoice to the client", "email invoices to the client"),
+            ("text reminder to the group", "text reminders to the group"),
+            ("message package to her", "message packages to her"),
+            ("call deadline about it", "call deadlines about it"),
+        ]
+        for (singular, plural) in pairs {
+            XCTAssertNil(person(singular), "control: \(singular)")
+            XCTAssertNil(person(plural), "plural must be read the same way: \(plural)")
+        }
+    }
+
+    /// "meeting notes" and "meeting agenda" sit exactly where "meeting Sarah"
+    /// sits, so they read as somebody being met. Both were filed under People.
+    func testMeetingFurnitureIsNotSomebodyBeingMet() {
+        XCTAssertNil(person("meeting notes from the sync with design"))
+        XCTAssertNil(person("meeting agenda for Monday"))
+        XCTAssertNil(person("send me the deck before the review"))
+    }
+
+    /// The guard on the plural fold. Only a trailing "s" is stripped, and only
+    /// when what is left is itself in the stoplist — so real names that end in
+    /// "s" are untouched. This is the assertion that fails first if anybody
+    /// widens the fold to "es" or a stemmer.
+    func testRealNamesEndingInSStillResolve() {
+        XCTAssertEqual(person("call Chris about the invoice"), "Chris")
+        XCTAssertEqual(person("tell James the meeting moved"), "James")
+        XCTAssertEqual(person("remind me to call Miles tomorrow"), "Miles")
+        XCTAssertEqual(person("ask Agnes about the booking"), "Agnes")
+        XCTAssertEqual(person("text Jess about dinner"), "Jess")
+    }
 }

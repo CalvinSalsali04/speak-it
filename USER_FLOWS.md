@@ -2,14 +2,18 @@
 
 ## First launch
 
-1. See the promise, the three-beat **Speak → Organized → Remembered** model, and that no account is required.
+1. See the promise, the explicit **Tap → Speak → Pause** interaction, and that no account is required or command vocabulary has to be learned.
 2. Start in Light appearance. System and Dark remain explicit choices in Account & Settings and persist once chosen.
-3. Choose **Try it now** to complete one real in-app capture, or **Explore first** to enter the product without pretending capture succeeded.
-4. Request microphone and speech permission only when voice capture actually begins. Closing or abandoning the first capture returns to Welcome and does not persist onboarding completion.
-5. Persist onboarding completion when the first thought is durably saved. Keep its **Remembered** receipt visible until the person explicitly continues; VoiceOver users always get the same non-expiring control.
-6. Show the one-screen distinction: **Today is for action; Memory is for knowledge**.
-7. After at least two successful captures, offer capture-anywhere setup as a dismissible discovery card. It never blocks initial value and remains available from Account & Settings.
-8. Choose one method, follow only its instructions, and run a real outside-the-app test. Setup becomes complete only after Speak It detects that the thought was saved.
+3. Choose **Try it now** to enter a resumable practice journey, or **Skip for now** to enter the empty real product. Practice provides one concrete action example and always leaves **Type this example** available; microphone and speech permission are requested only if the person actually starts listening. Every practice capture uses a visible **End tutorial** action instead of an ambiguous X, and ending enters the empty real product without consuming a capture.
+4. Save “Tomorrow at 9, ask Maya about the proposal” through the real capture pipeline. Mark its session as tutorial data, schedule no real interruption, and spend none of the ten free captures.
+5. Route to the live Today screen and pulse a fully inset border around that exact row under Coming up. Explain why it landed there, then open the real item editor with the title field visibly highlighted and the type, timing, and person controls named. The person may edit and save or choose **Not now** without getting stuck.
+6. Route to Memory › People › Maya and highlight the same thought in Maya’s real profile. Explain that this is a connected view of one item rather than a duplicate.
+7. Run a second real practice capture using natural speech: “I had an idea for weekly planning to read itself back to me.” Exact wording is not required. Route to Memory › Ideas, highlight the exact row, and open the real stage picker with Promising identified as a concrete practice choice.
+8. Present **Make Speak It ready**, one optional setup center with live status, a short reason, and the real system-owned action for microphone and speech, notifications, Home, location reminders, alarms, and Capture Anywhere. **Set up next recommended** advances one unfinished capability at a time; **Finish for now** never blocks core use. Denied system permissions open Settings rather than displaying a switch the app cannot control.
+9. Capture Anywhere puts the selected or recommended route and its setup first. **Choose a different way** expands the other routes only on request, then collapses again after a choice. The routes are Action Button, Back Tap, Lock Screen widget, Control Center (iOS 18+), Home Screen Capture widget, and Siri (“Capture with Speak It”, zero setup). Recommend the Action Button when the iPhone has one, otherwise Back Tap. **Done for now** is always visible because setup is optional. Unsupported routes remain visible with the reason. Each setup card shows numbered, animated navigation steps and can run a real outside-the-app test; a successful practice test is also tutorial data and costs no free capture.
+10. On finish or **End practice**, delete only tutorial sessions and their reminders, recurrence, location, pin, stage, shopping, and pending-operation metadata. Tutorial data never enters iCloud and its deletion creates no cloud tombstone. Preserve all real user data.
+11. Show **Practice examples removed** and the actual remaining free-capture count. A fresh install therefore finishes with all ten free captures. Enter an empty real Today/Memory experience when the person continues.
+12. Persist the phase and exact tutorial item identifiers so a relaunch resumes the current live step. If tutorial data is missing, restart only the affected practice mission instead of showing a broken spotlight.
 
 ## Learn Speak It
 

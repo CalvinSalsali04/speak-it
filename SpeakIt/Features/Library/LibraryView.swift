@@ -517,6 +517,9 @@ struct LibraryView: View {
     /// Incremented by the dock when "Memory" is tapped while Memory is already
     /// showing: any pushed collection pops back to the Memory root.
     let popToRootSignal: Int
+    let tutorialSpotlight: TutorialSpotlight?
+    let onTutorialPrimary: () -> Void
+    let onEndTutorial: () -> Void
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
@@ -533,11 +536,23 @@ struct LibraryView: View {
     init(
         onCapture: @escaping () -> Void,
         onDockVisibilityChange: @escaping (Bool) -> Void = { _ in },
-        popToRootSignal: Int = 0
+        popToRootSignal: Int = 0,
+        tutorialSpotlight: TutorialSpotlight? = nil,
+        onTutorialPrimary: @escaping () -> Void = {},
+        onEndTutorial: @escaping () -> Void = {}
     ) {
         self.onCapture = onCapture
         self.onDockVisibilityChange = onDockVisibilityChange
         self.popToRootSignal = popToRootSignal
+        self.tutorialSpotlight = tutorialSpotlight
+        self.onTutorialPrimary = onTutorialPrimary
+        self.onEndTutorial = onEndTutorial
+        let initialCollection: MemoryCollection? = switch tutorialSpotlight?.placement {
+        case .some(.people), .some(.person): .people
+        case .some(.idea): .ideas
+        default: Self.initialCollection
+        }
+        _selectedCollection = State(initialValue: initialCollection)
     }
 
     private static var initialCollection: MemoryCollection? {
@@ -630,11 +645,25 @@ struct LibraryView: View {
         .navigationDestination(item: $selectedCollection) { collection in
             MemoryCollectionView(
                 collection: collection,
-                onDockVisibilityChange: onDockVisibilityChange
+                onDockVisibilityChange: onDockVisibilityChange,
+                tutorialSpotlight: tutorialSpotlight,
+                onTutorialPrimary: onTutorialPrimary,
+                onEndTutorial: onEndTutorial
             )
         }
+        .onChange(of: tutorialSpotlight) { _, spotlight in
+            switch spotlight?.placement {
+            case .some(.people), .some(.person): selectedCollection = .people
+            case .some(.idea): selectedCollection = .ideas
+            default: break
+            }
+        }
         .onChange(of: popToRootSignal) {
-            selectedCollection = nil
+            switch tutorialSpotlight?.placement {
+            case .some(.people), .some(.person): selectedCollection = .people
+            case .some(.idea): selectedCollection = .ideas
+            default: selectedCollection = nil
+            }
         }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
@@ -1092,11 +1121,30 @@ private enum MemorySortOption: String, CaseIterable, Identifiable {
 private struct IdeaStagePickerSheet: View {
     let item: CapturedItem
     let selectedStage: IdeaStage
+    let showsTutorialGuidance: Bool
     let onSelect: (IdeaStage) -> Void
 
     var body: some View {
         NavigationStack {
             List {
+                if showsTutorialGuidance {
+                    Section("Practice") {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Choose a stage")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Choose Promising, or pick the stage that fits.")
+                                    .font(.footnote)
+                                    .foregroundStyle(Color.speakMuted)
+                            }
+                        } icon: {
+                            Image(systemName: "hand.tap")
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("tutorial.ideaStage.guidance")
+                    }
+                }
+
                 Section {
                     ForEach(IdeaStage.allCases) { stage in
                         Button {
@@ -1124,11 +1172,20 @@ private struct IdeaStagePickerSheet: View {
                                     Image(systemName: "checkmark")
                                         .font(.subheadline.weight(.bold))
                                         .foregroundStyle(Color.speakInk)
+                                } else if showsTutorialGuidance, stage == .promising {
+                                    Text("TRY THIS")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .tracking(0.7)
+                                        .foregroundStyle(Color.speakInverseInk)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 4)
+                                        .background(Color.speakInverseSurface, in: Capsule())
                                 }
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.speakIt)
+                        .accessibilityIdentifier("ideaStagePicker.\(stage.rawValue)")
                     }
                 } header: {
                     Text(item.displayTitle)
@@ -1150,6 +1207,9 @@ private struct MemoryCollectionView: View {
 
     let collection: MemoryCollection
     let onDockVisibilityChange: (Bool) -> Void
+    let tutorialSpotlight: TutorialSpotlight?
+    let onTutorialPrimary: () -> Void
+    let onEndTutorial: () -> Void
 
     @State private var searchText = ""
     @State private var isSearchPresented = false
@@ -1158,6 +1218,8 @@ private struct MemoryCollectionView: View {
     @State private var selectedSort = MemorySortOption.relevant
     @State private var selectedItem: CapturedItem?
     @State private var stagePickerItem: CapturedItem?
+    @State private var tutorialPersonName: String?
+    @State private var tutorialOpenedStagePicker = false
     @State private var errorMessage: String?
     @State private var libraryUndo: LibraryUndo?
     @AppStorage("SpeakIt.memoryCompactRows") private var usesCompactRows = false
@@ -1223,7 +1285,8 @@ private struct MemoryCollectionView: View {
     }
 
     var body: some View {
-        List {
+        ScrollViewReader { proxy in
+            List {
             if isSearchPresented {
                 collectionSearchField
             } else if !query.isEmpty {
@@ -1244,7 +1307,18 @@ private struct MemoryCollectionView: View {
             } else {
                 ForEach(collectionItems) { item in
                     collectionRow(item)
+                        .id(item.id)
+                        .tutorialSpotlight(
+                            spotlight(for: item),
+                            onPrimary: { openStagePicker(item) },
+                            onEndPractice: onEndTutorial
+                        )
                 }
+            }
+            }
+            .onAppear { revealTutorialSpotlight(using: proxy) }
+            .onChange(of: tutorialSpotlight) { _, _ in
+                revealTutorialSpotlight(using: proxy)
             }
         }
         .listStyle(.plain)
@@ -1272,13 +1346,25 @@ private struct MemoryCollectionView: View {
                 .accessibilityLabel(usesCompactRows ? "Use comfortable rows" : "Use compact rows")
             }
         }
+        .navigationDestination(item: $tutorialPersonName) { name in
+            MemoryPersonDetailView(
+                displayName: name,
+                resolvedName: name,
+                onDockVisibilityChange: onDockVisibilityChange,
+                tutorialSpotlight: tutorialSpotlight,
+                onTutorialPrimary: onTutorialPrimary,
+                onEndTutorial: onEndTutorial
+            )
+        }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
         }
-        .sheet(item: $stagePickerItem) { item in
+        .sheet(item: $stagePickerItem, onDismiss: tutorialStagePickerDidDismiss) { item in
             IdeaStagePickerSheet(
                 item: item,
-                selectedStage: stage(for: item)
+                selectedStage: stage(for: item),
+                showsTutorialGuidance: tutorialSpotlight?.placement == .idea
+                    && tutorialSpotlight?.itemID == item.id
             ) { stage in
                 setStage(stage, for: item)
                 stagePickerItem = nil
@@ -1301,6 +1387,7 @@ private struct MemoryCollectionView: View {
         }
         .onAppear {
             onDockVisibilityChange(false)
+            revealTutorialPersonIfNeeded()
 #if DEBUG
             if collection == .ideas,
                ProcessInfo.processInfo.arguments.contains("--show-idea-stage-picker"),
@@ -1308,6 +1395,16 @@ private struct MemoryCollectionView: View {
                 stagePickerItem = collectionItems.first
             }
 #endif
+        }
+        .onChange(of: tutorialSpotlight) { _, spotlight in
+            if spotlight?.placement != .person {
+                // The person profile is a programmatic tutorial push. Remove
+                // it explicitly before routing the next mission to Ideas;
+                // changing the parent collection alone can otherwise leave
+                // the old profile above the new Ideas destination.
+                tutorialPersonName = nil
+            }
+            revealTutorialPersonIfNeeded()
         }
         .onChange(of: isCollectionSearchFocused) { _, isFocused in
             guard !isFocused, isSearchPresented else { return }
@@ -1440,11 +1537,20 @@ private struct MemoryCollectionView: View {
                     MemoryPersonDetailView(
                         displayName: profile.name,
                         resolvedName: profile.resolvedName,
-                        onDockVisibilityChange: onDockVisibilityChange
+                        onDockVisibilityChange: onDockVisibilityChange,
+                        tutorialSpotlight: tutorialSpotlight,
+                        onTutorialPrimary: onTutorialPrimary,
+                        onEndTutorial: onEndTutorial
                     )
                 } label: {
                     MemoryPersonProfileRow(profile: profile)
                 }
+                .id(profile.id)
+                .tutorialSpotlight(
+                    peopleSpotlight(for: profile),
+                    onPrimary: onTutorialPrimary,
+                    onEndPractice: onEndTutorial
+                )
                 .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 16))
                 .listRowSeparatorTint(Color.speakDivider)
                 .listRowBackground(Color.speakBackground)
@@ -1505,7 +1611,7 @@ private struct MemoryCollectionView: View {
             showsPinnedIndicator: pinnedMemoryIDs.contains(item.id),
             showsPriorityIndicator: true,
             trailingDetail: collection == .ideas ? stage(for: item).title : nil,
-            onTrailingDetailTap: collection == .ideas ? { stagePickerItem = item } : nil,
+            onTrailingDetailTap: collection == .ideas ? { openStagePicker(item) } : nil,
             onToggleCompleted: {},
             onEdit: { selectedItem = item }
         )
@@ -1588,6 +1694,76 @@ private struct MemoryCollectionView: View {
 
     private func stage(for item: CapturedItem) -> IdeaStage {
         ideaStages[item.id] ?? .new
+    }
+
+    private func spotlight(for item: CapturedItem) -> TutorialSpotlight? {
+        guard collection == .ideas,
+              tutorialSpotlight?.placement == .idea,
+              tutorialSpotlight?.itemID == item.id else { return nil }
+        return tutorialSpotlight
+    }
+
+    private func openStagePicker(_ item: CapturedItem) {
+        tutorialOpenedStagePicker = tutorialSpotlight?.placement == .idea
+            && tutorialSpotlight?.itemID == item.id
+        stagePickerItem = item
+    }
+
+    private func tutorialStagePickerDidDismiss() {
+        guard tutorialOpenedStagePicker else { return }
+        tutorialOpenedStagePicker = false
+        onTutorialPrimary()
+    }
+
+    private func peopleSpotlight(for profile: MemoryPersonProfile) -> TutorialSpotlight? {
+        guard collection == .people,
+              tutorialSpotlight?.placement == .people,
+              profile.items.contains(where: { $0.id == tutorialSpotlight?.itemID }) else {
+            return nil
+        }
+        return tutorialSpotlight
+    }
+
+    private func revealTutorialSpotlight(using proxy: ScrollViewProxy) {
+        guard let spotlight = tutorialSpotlight else { return }
+        switch spotlight.placement {
+        case .people:
+            guard collection == .people,
+                  let profile = personProfiles.first(where: {
+                      $0.items.contains(where: { $0.id == spotlight.itemID })
+                  }) else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(220))
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(profile.id, anchor: .center)
+                }
+            }
+        case .idea:
+            guard collection == .ideas,
+                  collectionItems.contains(where: { $0.id == spotlight.itemID }) else { return }
+            selectedIdeaStage = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(220))
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(spotlight.itemID, anchor: .center)
+                }
+            }
+        case .today, .person:
+            break
+        }
+    }
+
+    private func revealTutorialPersonIfNeeded() {
+        guard collection == .people,
+              let spotlight = tutorialSpotlight,
+              spotlight.placement == .person,
+              let item = allItems.first(where: { $0.id == spotlight.itemID }),
+              let name = MemoryPersonNameResolver.name(for: item) ?? item.personName,
+              !name.isEmpty else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            tutorialPersonName = name
+        }
     }
 
     private func setStage(_ stage: IdeaStage, for item: CapturedItem) {
@@ -1683,6 +1859,9 @@ private struct MemoryPersonDetailView: View {
     let displayName: String
     let resolvedName: String?
     let onDockVisibilityChange: (Bool) -> Void
+    let tutorialSpotlight: TutorialSpotlight?
+    let onTutorialPrimary: () -> Void
+    let onEndTutorial: () -> Void
 
     @State private var selectedItem: CapturedItem?
     @State private var errorMessage: String?
@@ -1722,7 +1901,8 @@ private struct MemoryPersonDetailView: View {
     }
 
     var body: some View {
-        List {
+        ScrollViewReader { proxy in
+            List {
             Section {
                 if memories.isEmpty {
                     Text("No remembered details yet.")
@@ -1754,9 +1934,17 @@ private struct MemoryPersonDetailView: View {
                             onEdit: { selectedItem = item }
                         )
                         .padding(.vertical, 8)
+                        .id(item.id)
+                        .tutorialSpotlight(
+                            spotlight(for: item),
+                            onPrimary: onTutorialPrimary,
+                            onEndPractice: onEndTutorial
+                        )
                     }
                 }
             }
+            }
+            .onAppear { revealTutorialSpotlight(using: proxy) }
         }
         .scrollContentBackground(.hidden)
         .navigationTitle(displayName)
@@ -1767,7 +1955,33 @@ private struct MemoryPersonDetailView: View {
         }
         .repositoryErrorAlert($errorMessage)
         .speakScreenStyle()
-        .onAppear { onDockVisibilityChange(false) }
+        .onAppear {
+            onDockVisibilityChange(false)
+            // A person row is a real navigation target. If the learner taps
+            // Maya directly instead of the teaching card's button, advance the
+            // persisted phase here so the follow-up lesson still appears.
+            if tutorialSpotlight?.placement == .people {
+                onTutorialPrimary()
+            }
+        }
+    }
+
+    private func spotlight(for item: CapturedItem) -> TutorialSpotlight? {
+        guard tutorialSpotlight?.placement == .person,
+              tutorialSpotlight?.itemID == item.id else { return nil }
+        return tutorialSpotlight
+    }
+
+    private func revealTutorialSpotlight(using proxy: ScrollViewProxy) {
+        guard let spotlight = tutorialSpotlight,
+              spotlight.placement == .person,
+              relatedActions.contains(where: { $0.id == spotlight.itemID }) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.easeInOut(duration: 0.35)) {
+                proxy.scrollTo(spotlight.itemID, anchor: .center)
+            }
+        }
     }
 
     private func complete(_ item: CapturedItem) {

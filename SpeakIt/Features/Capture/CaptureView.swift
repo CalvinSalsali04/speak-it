@@ -6,6 +6,80 @@ enum CaptureInitialMode: Equatable, Sendable {
     case text
 }
 
+enum TutorialCaptureMission: String, Equatable, Sendable {
+    case action
+    case idea
+    case quickAccess
+
+    var stepLabel: String {
+        switch self {
+        case .action: "PRACTICE 1 OF 2"
+        case .idea: "PRACTICE 2 OF 2"
+        case .quickAccess: "CAPTURE ANYWHERE TEST"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .action: "Try a task connected to a person"
+        case .idea: "Now try something worth developing"
+        case .quickAccess: "Use the iPhone trigger you just chose"
+        }
+    }
+
+    var example: String {
+        switch self {
+        case .action:
+#if DEBUG
+            // Exercise the sentence break produced by live dictation in the
+            // first-run UI test. This exact rendering previously created a
+            // phantom "Tomorrow at nine" event and detached Maya's follow-up.
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing-spoken-time-break") {
+                return "Tomorrow at nine. Ask Maya about the proposal."
+            }
+#endif
+            return "Tomorrow at 9, ask Maya about the proposal."
+        case .idea: return "I had an idea for weekly planning to read itself back to me."
+        case .quickAccess: return "This is my capture anywhere test."
+        }
+    }
+
+    var contextualPhrases: [String] {
+        switch self {
+        case .action: [example, "Maya", "ask Maya about the proposal"]
+        case .idea: [example, "I had an idea", "weekly planning", "read itself back to me"]
+        case .quickAccess: [example, "capture anywhere"]
+        }
+    }
+
+    func repairVoiceTranscript(_ transcript: String) -> String {
+        let corrections: [SpeechCorrection]
+        switch self {
+        case .action:
+            // Apple commonly hears the unfamiliar name in this exact context
+            // as the possessive "my". Repair the surrounding phrase instead
+            // of every occurrence of "my", so somebody saying "ask my boss"
+            // still keeps precisely what they said.
+            corrections = [
+                SpeechCorrection(heardPhrase: "ask my about", preferredPhrase: "ask Maya about"),
+                SpeechCorrection(heardPhrase: "ask may about", preferredPhrase: "ask Maya about"),
+                SpeechCorrection(heardPhrase: "ask Mia about", preferredPhrase: "ask Maya about"),
+                SpeechCorrection(heardPhrase: "ask Mya about", preferredPhrase: "ask Maya about")
+            ]
+        case .idea:
+            corrections = [
+                SpeechCorrection(
+                    heardPhrase: "I had an ideal for weekly planning",
+                    preferredPhrase: "I had an idea for weekly planning"
+                )
+            ]
+        case .quickAccess:
+            corrections = []
+        }
+        return SpeechVocabularyStore.apply(corrections, to: transcript)
+    }
+}
+
 struct CaptureView: View {
     private enum CaptureMode {
         case voice
@@ -23,9 +97,11 @@ struct CaptureView: View {
     private let autoStartsVoiceCapture: Bool
     private let autoDismissesSingleItemConfirmation: Bool
     private let showsGuidedExamples: Bool
+    private let tutorialMission: TutorialCaptureMission?
     private let performance: CapturePerformanceTrace?
-    private let onSaveSucceeded: () -> Void
+    private let onSaveSucceeded: (CaptureCreationResult) -> Void
     private let onCancelled: () -> Void
+    private let onTutorialEnded: () -> Void
 
     @StateObject private var transcriber = SpeechTranscriber()
     @State private var mode: CaptureMode
@@ -39,6 +115,9 @@ struct CaptureView: View {
     @State private var savedConfirmationSymbol = "checkmark"
     @State private var savedConfirmationDetail = "Memory"
     @State private var savedResult: CaptureCreationResult?
+    /// The safe, already-persisted attempt that a new voice capture will
+    /// replace only after the retry itself saves successfully.
+    @State private var retryingUnclearResult: CaptureCreationResult?
     @State private var showsCaptureReview = false
     @State private var showsCloseOptions = false
     @State private var closesAfterSave = false
@@ -56,6 +135,10 @@ struct CaptureView: View {
         typedText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var tutorialAwareVoiceTranscript: String {
+        tutorialMission?.repairVoiceTranscript(transcriber.transcript) ?? transcriber.transcript
+    }
+
     init(
         initialMode: CaptureInitialMode = .voice,
         autoStartsVoiceCapture: Bool = false,
@@ -63,8 +146,10 @@ struct CaptureView: View {
         performance: CapturePerformanceTrace? = nil,
         autoDismissesSingleItemConfirmation: Bool = true,
         showsGuidedExamples: Bool = false,
-        onSaveSucceeded: @escaping () -> Void = {},
+        tutorialMission: TutorialCaptureMission? = nil,
+        onSaveSucceeded: @escaping (CaptureCreationResult) -> Void = { _ in },
         onCancelled: @escaping () -> Void = {},
+        onTutorialEnded: @escaping () -> Void = {},
         onSaved: @escaping () -> Void
     ) {
         self.onSaved = onSaved
@@ -72,9 +157,11 @@ struct CaptureView: View {
         self.autoStartsVoiceCapture = autoStartsVoiceCapture && initialMode == .voice
         self.autoDismissesSingleItemConfirmation = autoDismissesSingleItemConfirmation
         self.showsGuidedExamples = showsGuidedExamples
+        self.tutorialMission = tutorialMission
         self.performance = performance
         self.onSaveSucceeded = onSaveSucceeded
         self.onCancelled = onCancelled
+        self.onTutorialEnded = onTutorialEnded
         _mode = State(initialValue: initialMode == .text ? .text : .voice)
         _typedText = State(initialValue: initialText)
     }
@@ -167,6 +254,13 @@ struct CaptureView: View {
         .onChange(of: transcriber.state) { _, newState in
             switch newState {
             case .listening:
+                // This transition now occurs on the first real microphone
+                // buffer, so the cue is safe to speak after—not merely an
+                // animation that can race Core Audio/model startup.
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if accessibilityVoiceOverEnabled {
+                    UIAccessibility.post(notification: .announcement, argument: "Listening")
+                }
                 performance?.markMicrophoneReady()
                 armNoSpeechTimeout()
                 Task { await CaptureActivityManager.beginListening() }
@@ -202,8 +296,16 @@ struct CaptureView: View {
             if !newTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 noSpeechTimeoutTask?.cancel()
                 voiceNotice = nil
-                scheduleCheckpoint(newTranscript, source: .inAppVoice)
+                let repaired = tutorialMission?.repairVoiceTranscript(newTranscript) ?? newTranscript
+                scheduleCheckpoint(repaired, source: .inAppVoice)
             }
+        }
+        .onChange(of: transcriber.isWaitingForContinuation) { _, isWaiting in
+            guard isWaiting, accessibilityVoiceOverEnabled else { return }
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "Still listening. Take your time, or tap the pulse when you're finished."
+            )
         }
         .onChange(of: typedText) { _, newText in
             if newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -231,33 +333,56 @@ struct CaptureView: View {
 
     private var header: some View {
         HStack {
-            Button(action: requestClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 44, height: 44)
-                    .background(Color.speakInk.opacity(0.08), in: Circle())
+            if tutorialMission != nil {
+                Button("End tutorial", action: endTutorial)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .buttonStyle(.speakIt)
+                    .foregroundStyle(Color.speakMuted)
+                    .disabled(isCaptureTransitionBusy)
+                    .accessibilityHint("Stops practice and opens the real app")
+                    .accessibilityIdentifier("tutorial.capture.end")
+            } else {
+                Button(action: requestClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .background(Color.speakInk.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.speakIt)
+                .foregroundStyle(Color.speakInk)
+                .disabled(isCaptureTransitionBusy)
+                .accessibilityLabel("Close capture")
+                .accessibilityIdentifier("capture.close")
             }
-            .buttonStyle(.speakIt)
-            .foregroundStyle(Color.speakInk)
-            .disabled(isCaptureTransitionBusy)
-            .accessibilityLabel("Close capture")
-            .accessibilityIdentifier("capture.close")
 
             Spacer()
-
-            SpeakItWordmark()
-
-            Spacer()
-
-            Color.clear.frame(width: 38, height: 38)
         }
+        .overlay { SpeakItWordmark().allowsHitTesting(false) }
         .padding(.horizontal, 20)
         .padding(.top, 12)
     }
 
+    @ViewBuilder
     private var voiceView: some View {
+        if tutorialMission != nil {
+            ScrollView {
+                voiceContent
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+        } else {
+            voiceContent
+        }
+    }
+
+    private var voiceContent: some View {
         VStack(spacing: 18) {
             Spacer(minLength: 20)
+
+            if tutorialMission != nil {
+                practiceBanner
+            }
 
             Button(action: handleVoiceButton) {
                 ListeningOrb(
@@ -274,6 +399,8 @@ struct CaptureView: View {
             )
             .accessibilityLabel(voiceButtonAccessibilityLabel)
             .accessibilityHint(voiceButtonAccessibilityHint)
+            .scaleEffect(tutorialMission == nil ? 1 : 0.72)
+            .frame(height: tutorialMission == nil ? 230 : 166)
 
             VStack(spacing: 8) {
                 Text(voiceTitle)
@@ -286,20 +413,26 @@ struct CaptureView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 290)
             }
+            .accessibilityElement(children: .combine)
 
             ScrollView {
-                Text(transcriber.transcript.isEmpty ? " " : transcriber.transcript)
+                Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
                     .font(.title3)
                     .foregroundStyle(Color.speakInk.opacity(0.84))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 330)
                     .padding(.horizontal)
             }
-            .frame(maxHeight: 126)
+            .frame(
+                maxHeight: tutorialMission != nil && transcriber.transcript.isEmpty
+                    ? 30
+                    : 126
+            )
             .accessibilityLabel("Live transcription")
-            .accessibilityValue(transcriber.transcript)
+            .accessibilityValue(tutorialAwareVoiceTranscript)
 
             if showsGuidedExamples,
+               tutorialMission == nil,
                transcriber.transcript.isEmpty,
                !isRecoveringAudio {
                 guidedExamplesCard
@@ -337,9 +470,26 @@ struct CaptureView: View {
         .padding(.horizontal, 20)
     }
 
+    @ViewBuilder
     private var typingView: some View {
+        if tutorialMission != nil {
+            ScrollView {
+                typingContent
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+        } else {
+            typingContent
+        }
+    }
+
+    private var typingContent: some View {
         VStack(alignment: .leading, spacing: 22) {
             Spacer(minLength: 26)
+
+            if tutorialMission != nil {
+                practiceBanner
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("What’s on your mind?")
@@ -493,8 +643,47 @@ struct CaptureView: View {
                 }
             }
 
-            if let savedResult,
-               savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
+            if let savedResult, savedResult.needsInterpretationConfirmation {
+                VStack(spacing: 10) {
+                    Button(action: retryUnclearCapture) {
+                        Label("Try saying it again", systemImage: "waveform")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                    .buttonStyle(.speakIt)
+                    .foregroundStyle(Color.speakInverseInk)
+                    .background(
+                        Color.speakInverseSurface,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .accessibilityHint("Keeps this attempt safe until the new one is saved")
+                    .accessibilityIdentifier("capture.clarificationRetry")
+
+                    Button {
+                        confirmationDismissTask?.cancel()
+                        showsCaptureReview = true
+                    } label: {
+                        Text("Review what I understood")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.speakInk)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.speakIt)
+
+                    Button(action: finishSavedCapture) {
+                        Text("Keep it as saved")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.speakMuted)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.speakIt)
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: 330)
+            } else if let savedResult,
+                      savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
                 VStack(spacing: 10) {
                     Button {
                         confirmationDismissTask?.cancel()
@@ -511,20 +700,27 @@ struct CaptureView: View {
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
 
-                    Button("Done", action: finishSavedCapture)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.speakInk)
-                        .frame(maxWidth: .infinity, minHeight: 46)
+                    Button(action: finishSavedCapture) {
+                        Text("Done")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.speakInk)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .contentShape(Rectangle())
+                    }
                         .buttonStyle(.speakIt)
                 }
                 .padding(.top, 8)
                 .frame(maxWidth: 330)
             } else if savedResult != nil, requiresExplicitSavedConfirmation {
-                Button("Continue", action: finishSavedCapture)
-                    .font(.headline)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .frame(maxWidth: 330, minHeight: 54)
+                Button(action: finishSavedCapture) {
+                    Text("Continue")
+                        .font(.headline)
+                        .foregroundStyle(Color.speakInverseInk)
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .contentShape(Rectangle())
+                }
                     .buttonStyle(.speakIt)
+                    .frame(maxWidth: 330)
                     .background(
                         Color.speakInverseSurface,
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -537,9 +733,8 @@ struct CaptureView: View {
         .padding(.horizontal, 24)
     }
 
-    /// Shown only for the guided first capture, and only until words arrive.
-    /// One example per destination, so the person's first attempt can be any
-    /// of the three things the app actually does with a thought.
+    /// Shown only for a normal guided first capture. Tutorial missions keep
+    /// their exact phrase in `practiceBanner` until the capture is submitted.
     private var guidedExamplesCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("TRY SAYING")
@@ -568,9 +763,79 @@ struct CaptureView: View {
         .frame(maxWidth: 330)
         .transition(.opacity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "Try saying: Remind me to call Mom tomorrow at 6. Buy milk, eggs, and toothpaste. Or, Priya's birthday is December 4th."
-        )
+        .accessibilityLabel("Try saying a reminder, shopping list, or fact")
+    }
+
+    private var practiceBanner: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let tutorialMission {
+                Label(tutorialMission.stepLabel, systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+
+                Text(tutorialMission.title)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.speakMuted)
+
+                Text("“\(tutorialMission.example)”")
+                    .font(.headline)
+                    .foregroundStyle(Color.speakInk)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("tutorial.missionExample")
+
+                Text("Say it naturally, or use your own words.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.speakMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if mode == .voice && transcriber.transcript.isEmpty {
+                    Button {
+                        transcriber.cancel()
+                        typedText = tutorialMission.example
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+                            mode = .text
+                        }
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(220))
+                            isTextFocused = true
+                        }
+                    } label: {
+                        Text("Type this example")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.speakIt)
+                    .accessibilityIdentifier("tutorial.useExample")
+                } else if mode == .text && trimmedTypedText.isEmpty {
+                    Button {
+                        typedText = tutorialMission.example
+                        isTextFocused = true
+                    } label: {
+                        Text("Use this example")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.speakIt)
+                    .accessibilityIdentifier("tutorial.useExample")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tutorial.practiceBanner")
+    }
+
+    private func endTutorial() {
+        confirmationDismissTask?.cancel()
+        noSpeechTimeoutTask?.cancel()
+        draftCheckpointTask?.cancel()
+        transcriber.cancel()
+        discardActiveDraft()
+        onTutorialEnded()
     }
 
     private var orbPhase: ListeningOrb.Phase {
@@ -589,8 +854,12 @@ struct CaptureView: View {
         if isRecoveringAudio { return "Recovering your words…" }
         return switch transcriber.state {
         case .idle: "Tap to speak"
-        case .requestingPermission: "Getting ready…"
-        case .listening: "Listening"
+        case .requestingPermission:
+            transcriber.isPreparingEnhancedRecognition
+                ? "Preparing accurate recognition…"
+                : "Getting ready…"
+        case .listening:
+            transcriber.isWaitingForContinuation ? "Still listening…" : "Listening"
         case .finalizing: "Saving your thought…"
         case .permissionDenied: "Microphone access is off"
         case .unavailable: "Speech recognition is unavailable"
@@ -608,8 +877,14 @@ struct CaptureView: View {
 
         return switch transcriber.state {
         case .idle: "Say anything you don’t want to forget."
-        case .requestingPermission: "Speak It only listens while you’re capturing."
-        case .listening: "Just speak. I’ll save after a natural pause."
+        case .requestingPermission:
+            transcriber.isPreparingEnhancedRecognition
+                ? "One-time voice setup stays on this iPhone."
+                : "Speak It only listens while you’re capturing."
+        case .listening:
+            transcriber.isWaitingForContinuation
+                ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
+                : "Just speak. I’ll save after a natural pause."
         case .finalizing: "The original words are saved first."
         case .permissionDenied: "Allow microphone and speech recognition, or type instead."
         case .unavailable: "You can still capture this thought by typing."
@@ -623,7 +898,7 @@ struct CaptureView: View {
 
     private var voiceButtonAccessibilityHint: String {
         transcriber.isListening
-            ? "Finishes immediately; otherwise Speak It finishes after a natural pause"
+            ? "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
             : "Requests permission if needed, then begins listening"
     }
 
@@ -649,7 +924,11 @@ struct CaptureView: View {
         guard mode == .voice else { return }
         ensureDraft(source: .inAppVoice)
         let recoveryURL = activeDraft.flatMap { try? CaptureDraftStore.prepareAudioURL(for: $0) }
-        await transcriber.start(recoveryAudioURL: recoveryURL) { finalText in
+        await transcriber.start(
+            recoveryAudioURL: recoveryURL,
+            contextualPhrases: tutorialMission?.contextualPhrases ?? [],
+            prefersEnhancedRecognition: tutorialMission != nil
+        ) { finalText in
             save(finalText, source: .inAppVoice)
         }
     }
@@ -701,7 +980,16 @@ struct CaptureView: View {
             } else {
                 transcriber.cancel()
                 discardActiveDraft()
-                voiceNotice = "I didn’t hear anything. Tap when you’re ready, or type instead."
+                if let quality = transcriber.lastAudioQuality, quality.isVeryQuiet {
+                    voiceNotice = "That was very quiet. Bring the iPhone closer and try once more."
+                } else if let quality = transcriber.lastAudioQuality, quality.isLikelyClipped {
+                    voiceNotice = "That was too loud for the microphone. Move it a little farther away."
+                } else {
+                    voiceNotice = "I didn’t hear speech. Tap when you’re ready, or type instead."
+                }
+                if let quality = transcriber.lastAudioQuality {
+                    SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: false))
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 Task { await CaptureActivityManager.cancelListening() }
             }
@@ -710,7 +998,7 @@ struct CaptureView: View {
 
     private func switchToTyping() {
         captureNotice = nil
-        let partialTranscript = transcriber.transcript
+        let partialTranscript = tutorialAwareVoiceTranscript
         if !partialTranscript.isEmpty {
             typedText = partialTranscript
         }
@@ -741,7 +1029,8 @@ struct CaptureView: View {
     }
 
     private func continueByTyping(notice: String) {
-        let partialTranscript = transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let partialTranscript = tutorialAwareVoiceTranscript
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         if !partialTranscript.isEmpty {
             typedText = partialTranscript
         }
@@ -764,7 +1053,10 @@ struct CaptureView: View {
     }
 
     private func save(_ text: String, source: CaptureSource) {
-        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let repairedText = source == .inAppVoice
+            ? tutorialMission?.repairVoiceTranscript(text) ?? text
+            : text
+        let normalizedText = repairedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedText.isEmpty else {
             errorMessage = "Speak a little longer, or type the thought instead."
             return
@@ -778,6 +1070,9 @@ struct CaptureView: View {
             return
         }
         if source == .inAppVoice {
+            if let quality = transcriber.lastAudioQuality {
+                SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: true))
+            }
             performance?.updateSource(.voice)
             let finalizedAt = transcriber.finalTranscriptAt ?? CapturePerformanceClock.now
             performance?.markEndOfSpeechDetected(
@@ -787,7 +1082,7 @@ struct CaptureView: View {
             performance?.markTranscriptFinalized(at: finalizedAt)
         }
         subscriptionStore.refreshFreeAllowance()
-        guard subscriptionStore.canCreateCapture else {
+        guard tutorialMission != nil || subscriptionStore.canCreateCapture else {
             isTextFocused = false
             transcriber.cancel()
             SpeakItAnalytics.track(.freeLimitReached(used: subscriptionStore.freeCapturesUsed))
@@ -803,32 +1098,57 @@ struct CaptureView: View {
         isSaving = true
         Task { @MainActor in
             do {
+                let persistenceSource: CaptureSource = tutorialMission == nil
+                    ? source
+                    : .tutorial
                 let result = try await repository.createCaptureResult(
                     text: normalizedText,
-                    source: source,
+                    source: persistenceSource,
                     createdAt: captureStartedAt ?? .now,
-                    schedulesReminders: true,
+                    schedulesReminders: tutorialMission == nil,
                     performance: performance
                 )
+                let retrySource = retryingUnclearResult
+                let replacesRetrySource = retrySource.map {
+                    result.createdNewCapture && $0.session.id != result.session.id
+                } ?? false
                 if result.createdNewCapture {
                     // Cancelling, completing or withdrawing manages existing
                     // content rather than storing a new thought, so it does not
                     // spend one of the ten free captures.
-                    if result.consumesFreeCapture {
+                    // A clarification retry replaces an already-charged
+                    // attempt, so the person never spends two captures for
+                    // helping Speak It understand one thought.
+                    if result.consumesFreeCapture, !replacesRetrySource {
                         subscriptionStore.recordSuccessfulCapture()
                     }
-                    SpeakItAnalytics.track(.captureSaved(
-                        source: source == .inAppVoice ? .voice : .text,
-                        itemCount: result.itemCount,
-                        needsReviewCount: result.needsReviewCount,
-                        plan: subscriptionStore.hasProAccess ? .pro : .free
-                    ))
+                    if tutorialMission == nil {
+                        SpeakItAnalytics.track(.captureSaved(
+                            source: source == .inAppVoice ? .voice : .text,
+                            itemCount: result.itemCount,
+                            needsReviewCount: result.needsReviewCount,
+                            plan: subscriptionStore.hasProAccess ? .pro : .free
+                        ))
+                    }
                 }
+                if replacesRetrySource, let retrySource {
+                    do {
+                        // The retry was durable before this deletion starts.
+                        // If deletion fails, both versions remain recoverable
+                        // and the person is told instead of losing either one.
+                        for item in retrySource.items {
+                            try repository.delete(item)
+                        }
+                    } catch {
+                        errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
+                    }
+                }
+                retryingUnclearResult = nil
                 isSaving = false
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
-                onSaveSucceeded()
+                onSaveSucceeded(result)
                 // An operation reports what it did. Saying "Remembered" after
                 // cancelling something is the app describing the wrong action.
                 if let outcome = result.operationOutcome {
@@ -836,12 +1156,18 @@ struct CaptureView: View {
                     savedConfirmationTitle = copy.title
                     savedConfirmationSymbol = copy.symbol
                     savedConfirmationDetail = copy.detail
+                } else if result.needsInterpretationConfirmation {
+                    savedConfirmationTitle = "Can you clarify?"
+                    savedConfirmationSymbol = "questionmark"
+                    savedConfirmationDetail = clarificationDetail(for: result)
                 } else {
                     savedConfirmationTitle = result.isDuplicate ? "Already captured" : "Remembered"
                     savedConfirmationSymbol = result.isDuplicate ? "equal" : "checkmark"
                     savedConfirmationDetail = confirmationDetail(for: result)
                 }
-                if result.isDuplicate {
+                if result.needsInterpretationConfirmation {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                } else if result.isDuplicate {
                     UISelectionFeedbackGenerator().selectionChanged()
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -850,10 +1176,17 @@ struct CaptureView: View {
                     showsSavedConfirmation = true
                 }
                 Task {
-                    await CaptureActivityManager.showRemembered(
-                        normalizedText,
-                        context: savedConfirmationDetail
-                    )
+                    if result.needsInterpretationConfirmation {
+                        await CaptureActivityManager.showProblem(
+                            title: "Needs clarification",
+                            detail: "Open Speak It to try again or review what was saved."
+                        )
+                    } else {
+                        await CaptureActivityManager.showRemembered(
+                            normalizedText,
+                            context: savedConfirmationDetail
+                        )
+                    }
                 }
 
                 if closesAfterSave {
@@ -890,6 +1223,9 @@ struct CaptureView: View {
         }
 
         let context = result.receiptContext
+        if tutorialMission != nil {
+            return "Practice · doesn’t use a free capture\nNext, see exactly where it went"
+        }
         guard !subscriptionStore.hasProAccess else { return context }
         switch subscriptionStore.freeCapturesRemaining {
         case 2:
@@ -900,6 +1236,52 @@ struct CaptureView: View {
             return "\(context)\nLast free capture used"
         default:
             return context
+        }
+    }
+
+    private func clarificationDetail(for result: CaptureCreationResult) -> String {
+        guard result.itemCount == 1,
+              let requirement = result.primaryItem.clarificationRequirement else {
+            return "I’m not completely sure I understood that. Your original words are safe."
+        }
+
+        switch requirement {
+        case .time:
+            return "I understood the thought, but not when. Try again with the time."
+        case .person:
+            return "I understood the follow-up, but not who it’s about."
+        case .type:
+            return "I’m not sure whether this is something to do or something to remember."
+        case .splitDecision:
+            return "I’m not sure whether that was one thought or more."
+        case .confirmation:
+            return "I’m not completely sure I understood that. Your original words are safe."
+        case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
+             .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
+            return "This needs a quick review. Your original words are safe."
+        }
+    }
+
+    private func retryUnclearCapture() {
+        guard let savedResult else { return }
+
+        confirmationDismissTask?.cancel()
+        retryingUnclearResult = savedResult
+        transcriber.cancel()
+        typedText = ""
+        captureNotice = nil
+        voiceNotice = "Try saying it a different way, or include the missing detail."
+        mode = .voice
+        self.savedResult = nil
+
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
+            showsSavedConfirmation = false
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(260))
+            guard retryingUnclearResult != nil, !showsSavedConfirmation else { return }
+            await startVoiceCapture()
         }
     }
 

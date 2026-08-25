@@ -28,3 +28,9 @@ Marketing/SpeakIt-TikTok-UGC-Slideshows.zip
 *.p8
 *.pem
 *.mobileprovision
+
+# Rendered exports and scratch working files. Same reasoning as the demo video
+# above: these are hundreds of megabytes of generated artefacts, cheap to
+# regenerate and expensive to carry in history forever.
+output/
+tmp/

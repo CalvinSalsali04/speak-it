@@ -22,6 +22,8 @@ enum CaptureOperationCopy {
                 return Copy(title: "Cancelled", detail: title, symbol: "bell.slash")
             case .complete:
                 return Copy(title: "Completed", detail: title, symbol: "checkmark.circle")
+            case .reschedule:
+                return Copy(title: "Rescheduled", detail: title, symbol: "calendar.badge.clock")
             case .create, .retract:
                 return Copy(title: "Done", detail: title, symbol: "checkmark")
             }
@@ -30,7 +32,11 @@ enum CaptureOperationCopy {
             return Copy(title: "Discarded", detail: "Nothing was saved", symbol: "arrow.uturn.backward")
 
         case let .notFound(operation, target):
-            let what = operation == .complete ? "complete" : "cancel"
+            let what = switch operation {
+            case .complete: "complete"
+            case .reschedule: "move"
+            default: "cancel"
+            }
             return Copy(
                 title: "Couldn't find that",
                 detail: "Nothing to \(what) matching “\(target)”",

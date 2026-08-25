@@ -38,6 +38,20 @@ enum AnalyticsPaywallContext: String, Sendable {
     case freeLimit = "free_limit"
 }
 
+enum AnalyticsOnboardingTutorialStep: String, Sendable {
+    case placement
+    case systemMap = "system_map"
+    case permissions
+    case quickAccess = "quick_access"
+}
+
+enum AnalyticsPermissionCapability: String, Sendable {
+    case voice
+    case notifications
+    case alarms
+    case location
+}
+
 enum AnalyticsSearchResultBucket: String, Sendable {
     case none
     case oneToFive = "1_to_5"
@@ -59,6 +73,8 @@ enum SpeakItAnalyticsEvent: Sendable {
     case onboardingStarted
     case onboardingAbandoned
     case onboardingCompleted(path: AnalyticsCaptureEntry)
+    case onboardingTutorialStepViewed(AnalyticsOnboardingTutorialStep)
+    case onboardingPermissionAction(AnalyticsPermissionCapability)
     case firstCaptureGuideCompleted
     case learnSpeakItOpened
     case captureAnywhereDiscoveryDismissed
@@ -69,6 +85,7 @@ enum SpeakItAnalyticsEvent: Sendable {
     case captureSaved(source: AnalyticsCaptureSource, itemCount: Int, needsReviewCount: Int, plan: AnalyticsPlan)
     case captureFailed(source: AnalyticsCaptureSource, category: String)
     case capturePerformance(CaptureLatencySample)
+    case speechCaptureQuality(SpeechCaptureAudioQuality, producedWords: Bool)
     case freeLimitReached(used: Int)
     case paywallViewed(context: AnalyticsPaywallContext)
     case planSelected(AnalyticsPlan)
@@ -90,6 +107,8 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .onboardingStarted: "onboarding_started"
         case .onboardingAbandoned: "onboarding_abandoned"
         case .onboardingCompleted: "onboarding_completed"
+        case .onboardingTutorialStepViewed: "onboarding_tutorial_step_viewed"
+        case .onboardingPermissionAction: "onboarding_permission_action"
         case .firstCaptureGuideCompleted: "first_capture_guide_completed"
         case .learnSpeakItOpened: "learn_speak_it_opened"
         case .captureAnywhereDiscoveryDismissed: "capture_anywhere_discovery_dismissed"
@@ -98,6 +117,7 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .captureSaved: "capture_saved"
         case .captureFailed: "capture_failed"
         case .capturePerformance: "capture_performance"
+        case .speechCaptureQuality: "speech_capture_quality"
         case .freeLimitReached: "free_limit_reached"
         case .paywallViewed: "paywall_viewed"
         case .planSelected: "plan_selected"
@@ -132,6 +152,10 @@ enum SpeakItAnalyticsEvent: Sendable {
             [:]
         case .onboardingCompleted(let path):
             ["entry": path.rawValue]
+        case .onboardingTutorialStepViewed(let step):
+            ["tutorial_step": step.rawValue]
+        case .onboardingPermissionAction(let capability):
+            ["capability": capability.rawValue]
         case .profileCreated:
             [:]
         case .captureStarted(let mode, let entry):
@@ -147,6 +171,16 @@ enum SpeakItAnalyticsEvent: Sendable {
             ["source": source.rawValue, "error_category": Self.safeCategory(category)]
         case .capturePerformance(let sample):
             Self.performanceProperties(sample)
+        case .speechCaptureQuality(let quality, let producedWords):
+            [
+                "recognizer": quality.recognitionEngine?.rawValue ?? "unknown",
+                "audio_profile": quality.profile.rawValue,
+                "rms_bucket": Self.rmsBucket(quality.rmsDecibels),
+                "peak_bucket": Self.peakBucket(quality),
+                "clipping_bucket": Self.clippingBucket(quality.clippedSampleFraction),
+                "duration_bucket": Self.durationBucket(quality.durationMilliseconds),
+                "output_present": producedWords
+            ]
         case .freeLimitReached(let used):
             ["free_captures_used": max(0, used)]
         case .paywallViewed(let context):
@@ -173,10 +207,12 @@ enum SpeakItAnalyticsEvent: Sendable {
         "plan", "screen", "entry", "mode", "source", "item_count",
         "needs_review_count", "error_category", "free_captures_used",
         "context", "has_pro", "completed", "collection", "result_bucket",
+        "tutorial_step", "capability",
         "capture_kind", "capture_ready_ms", "speech_end_detection_ms",
         "transcription_ms", "semantic_parsing_ms", "temporal_resolution_ms",
         "persistence_ms", "render_ms", "capture_total_ms", "pipeline_complete",
-        "requires_review"
+        "requires_review", "recognizer", "audio_profile", "rms_bucket", "peak_bucket",
+        "clipping_bucket", "duration_bucket", "output_present"
     ]
 
     private static let allowedErrorCategories: Set<String> = [
@@ -221,6 +257,40 @@ enum SpeakItAnalyticsEvent: Sendable {
             properties["transcription_ms"] = max(0, transcriptionMilliseconds)
         }
         return properties
+    }
+
+    private static func rmsBucket(_ decibels: Double) -> String {
+        switch decibels {
+        case ..<(-42): "very_quiet"
+        case ..<(-30): "quiet"
+        case ..<(-16): "healthy"
+        default: "loud"
+        }
+    }
+
+    private static func peakBucket(_ quality: SpeechCaptureAudioQuality) -> String {
+        if quality.isLikelyClipped { return "clipped" }
+        if quality.peakDecibels < -24 { return "low" }
+        if quality.peakDecibels > -3 { return "hot" }
+        return "healthy"
+    }
+
+    private static func clippingBucket(_ fraction: Double) -> String {
+        switch fraction {
+        case ..<0.000_1: "none"
+        case ..<0.005: "trace"
+        case ..<0.02: "some"
+        default: "heavy"
+        }
+    }
+
+    private static func durationBucket(_ milliseconds: Int) -> String {
+        switch milliseconds {
+        case ..<2_000: "under_2s"
+        case ..<10_000: "2_to_10s"
+        case ..<30_000: "10_to_30s"
+        default: "over_30s"
+        }
     }
 }
 

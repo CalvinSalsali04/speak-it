@@ -46,6 +46,21 @@ enum SemanticCorpusA {
         corpusCase(.normal, "Doctor Thursday at 3", count: 1, type: [.event], route: [.today],
                    delivery: [.none], due: [CorpusDate(month: 8, day: 6, hour: 15)],
                    note: "Paraphrase of \"Dentist Tuesday at 2\": a bare commitment on the calendar with nothing to perform."),
+
+        // An errand whose verb is not in `actionVerb`.
+        //
+        // The list is closed and always one word short, so these were filed in
+        // Memory purely because of which verb they used. `hasImperativeShape`
+        // reads verb-head + optional particle + determiner instead.
+        corpusCase(.normal, "Swap the winter tires.", count: 1, type: [.task], route: [.today]),
+        corpusCase(.normal, "Ring the bank.", count: 1, type: [.task], route: [.today]),
+        corpusCase(.normal, "Turns out the leak was the dishwasher.",
+                   count: 1, type: [.note], route: [.memory],
+                   note: "Guard: an imperative uses the bare stem, so an inflected -s head is not one."),
+        corpusCase(.normal, "Coffee with the neighbours.",
+                   count: 1, type: [.note], route: [.memory],
+                   note: "Guard: same shape as an errand, but the head is a noun."),
+
     ]
 
     // MARK: - Natural messy speech
@@ -200,6 +215,45 @@ enum SemanticCorpusA {
         corpusCase(.tense, "I was meant to send the invoice Friday", count: 1, route: [.today],
                    due: [CorpusDate(month: 8, day: 7, hour: nil)],
                    note: "Outstanding, and the day it was owed is still the day it is about."),
+
+        // How something went, versus when it happens.
+        //
+        // `.event` was assigned by a keyword scan over nouns, and `.event` is
+        // unconditionally a Today row, so every sentence containing "meeting",
+        // "dinner" or "appointment" arrived on Today no matter what tense it
+        // was in or what it said. A verdict can only be delivered on something
+        // already finished, and that — not the noun, and not the tense — is
+        // what `isPastExperience` reads.
+        corpusCase(.tense, "The meeting went badly.",
+                   count: 1, type: [.note], route: [.memory], kind: [.none], due: [nil],
+                   note: "Was Today/event. Person is still mis-extracted as \"Went Badly\" — domains C7, not asserted here."),
+        corpusCase(.tense, "The dinner at Ana's was lovely.",
+                   count: 1, type: [.note], route: [.memory], person: ["Ana"], due: [nil]),
+        corpusCase(.tense, "I had a dentist appointment.",
+                   count: 1, type: [.note], route: [.memory], due: [nil],
+                   note: "The appointment is the thing that happened, not a thing to attend."),
+
+        // The two sentences the rule must NOT take. A bare time is a schedule,
+        // and a plan that moved is still a plan.
+        corpusCase(.tense, "The meeting was at 3.",
+                   count: 1, type: [.event], route: [.today], kind: [.exactDateTime],
+                   due: [CorpusDate(month: 8, day: 3, hour: 15)],
+                   note: "Genuinely ambiguous — may be a schedule still to attend. Declining costs less than guessing."),
+        corpusCase(.tense, "The meeting was moved to Thursday.",
+                   count: 1, type: [.event], route: [.today], kind: [.dateOnly],
+                   due: [CorpusDate(month: 8, day: 6, hour: nil)]),
+
+        // A question is not an instruction, and a wish is not a commitment.
+        // Both used to reach Today because `obligationLead` is a word list and
+        // cannot see the frame the word sits in.
+        corpusCase(.tense, "Should I be worried about the mole on my arm?",
+                   count: 1, type: [.note], route: [.memory], due: [nil]),
+        corpusCase(.tense, "Someday I want to learn piano.",
+                   count: 1, type: [.note], route: [.memory], due: [nil]),
+        corpusCase(.tense, "I should call the vet.",
+                   count: 1, type: [.task], route: [.today],
+                   note: "Guard: no inversion, no hedge. An ordinary obligation stays on Today."),
+
     ]
 
     static let all: [CorpusCase] = normal + messySpeech + multipleThoughts + negation + tense

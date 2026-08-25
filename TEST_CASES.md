@@ -74,9 +74,26 @@
 
 ## Voice and system-capture checks
 
+- First launch teaches **Tap → Speak → Pause**, then provides an action example that can be spoken or inserted without guessing what to say. The practice banner explicitly says that natural wording is accepted and exposes **End tutorial** instead of a generic X.
+- The two practice captures run through the production organizer but use a tutorial source, schedule no interruptions, create no iCloud payloads, and consume zero free captures.
+- The action mission spotlights its exact row in Today with all four outline edges inside the row bounds, opens the production editor, highlights the title field, names type/timing/person as editable, then spotlights the same item inside Maya’s production People profile.
+- The idea mission accepts conversational wording such as “I had an idea…”, persists a non-empty content title, spotlights its exact row in Ideas, and opens the production stage picker with a concrete suggested choice; completing the picker advances to readiness.
+- Relaunching resumes the exact tutorial phase and item. Missing practice data restarts only the affected mission.
+- **Make Speak It ready** reports live status and explains microphone/speech, notifications, Home, location reminders, alarms, and Capture Anywhere. Each action invokes the production permission or setup flow; all setup remains optional.
+- Finishing or ending practice deletes only tutorial sessions and all of their auxiliary metadata, is idempotent, preserves real captures, and leaves the lifetime free allowance unchanged.
+- A fresh first-run completion shows **Practice examples removed** and **10 free captures ready**, then enters the real app with no tutorial rows.
+- Capture Anywhere shows one selected/recommended route first and keeps alternatives collapsed behind **Choose a different way**. Picking an alternative promotes it to the top and collapses the list. It lists every route: Back Tap, Lock Screen, Home Screen widget, Siri, plus Action Button (selectable only on supported hardware) and Control Center (selectable only on iOS 18+). **Done for now** stays visible and setup never blocks the tutorial. Unsupported routes appear disabled under “Not on this iPhone” with the reason. The recommendation is Action Button when the hardware has one, otherwise Back Tap. Selecting a method shows only that method's setup steps, each with a gesture illustration. Steps that require navigating Settings or Shortcuts play a looping sequence of mocked screens marking the exact row to touch; Reduce Motion renders the same frames as a static numbered stack. A step's buttons (Shortcuts link, "Open near Back Tap") render inside that step's own column, never between two steps.
 - First voice capture asks for microphone and speech permission only after tapping the pulse.
 - The pulse reacts to audio input and partial transcription updates while speaking.
 - Pausing naturally saves one capture session that may contain several organized items.
+- A complete thought still auto-saves after the 2.1-second fast pause; ordinary captures do not inherit the extended delay.
+- A transcript ending in a strong continuation cue — including the exact beta result “Remind me to pick up Ice wine at LCBO tomorrow. At.” — shows **Still listening…** after 2.1 seconds and waits up to 8 seconds. Periods, commas, ellipses, quotes, parentheses, capitalization, or missing whitespace around punctuation cannot hide the final spoken **at**.
+- Formatting-only partial-result revisions (case, punctuation, quotes, or whitespace) update the display but do not restart the pause timer or dismiss **Still listening…**. A lexical addition, deletion, or substitution does reset and reclassify; retraction to punctuation-only content cancels the pending endpoint.
+- The endpoint fixture matrix includes complete short fragments and commands, completed recipients/times, questions and short answers, plus incomplete coordination, recipients/times, noun phrases, capture frames, hesitations, and ambiguous prepositions/list markers. No release decision may rely only on the ice-wine sentence.
+- An ambiguous trailing preposition, list marker, or filler gets a 4-second middle window, limiting false-positive delay for complete wording such as “count me in”.
+- Speaking again during the extended window clears the continuation cue and restarts endpointing from the newest transcript. A pulse tap always finishes immediately.
+- Completed values (“at LCBO”, “at six”) stay on the fast path; fillers, connectors, open articles/possessives, and list launches use the extended path.
+- Fresh audio just before timeout may briefly defer finalization while recognition catches up, but steady background noise cannot keep the microphone open indefinitely.
 - Opening capture from the in-app dock waits for an explicit pulse or **Type instead** choice; it does not start the microphone on its own.
 - Tapping **Type instead** while listening preserves partial text and stops the audio engine.
 - Denied permissions expose both Open Settings and Type Instead.
@@ -110,3 +127,20 @@
 
 The complete physical-device release matrix and current stress evidence live in
 [`CAPTURE_STRESS_TEST_PLAN.md`](CAPTURE_STRESS_TEST_PLAN.md).
+
+## Rendering invariance
+
+`RenderingInvarianceTests` replays every semantic corpus case through the ways a
+recognizer can write the same spoken sentence down, and asserts the app behaves
+identically. See the 2026-08-24 entry in [`DECISIONS.md`](DECISIONS.md) for why.
+
+- **comma-free** — every comma dropped, sentence marks kept. Gates the release.
+- **unpunctuated** — no punctuation at all, as a fast talker is transcribed.
+  Gates the release.
+- **lowercased** — no capitalization, as an unrecognized name is transcribed.
+  Reported, not gated: a lowercased name has already lost information the app
+  cannot recover, and person-boundary detection reads capitalization as evidence.
+
+`testRenderingSensitivitySummary` never fails; it prints how much of the corpus
+is rendering-sensitive so a regression in this direction shows up as a number
+rather than as a surprise months later.

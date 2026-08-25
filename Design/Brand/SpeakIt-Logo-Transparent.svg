@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="4096"
+     height="4096"
+     viewBox="0 0 4096 4096"
+     role="img"
+     aria-labelledby="title description"
+     shape-rendering="geometricPrecision">
+  <title id="title">Speak It logo</title>
+  <desc id="description">Five symmetrical black voice-waveform bars on a transparent background.</desc>
+
+  <g fill="#000000">
+    <rect x="664"  y="1688" width="368" height="720"  rx="184"/>
+    <rect x="1264" y="1292" width="368" height="1512" rx="184"/>
+    <rect x="1864" y="956"  width="368" height="2184" rx="184"/>
+    <rect x="2464" y="1292" width="368" height="1512" rx="184"/>
+    <rect x="3064" y="1688" width="368" height="720"  rx="184"/>
+  </g>
+</svg>

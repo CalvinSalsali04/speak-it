@@ -83,6 +83,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -quiet 
   -only-testing:SpeakItTests CODE_SIGNING_ALLOWED=NO
 ```
 
+Fast answers about what the pipeline does with a sentence, without a simulator
+run (rules path only, no store, fixed 2026-08-03 10:00 America/Toronto frame):
+
+```bash
+./Tools/PipelineProbe/build.sh && ./Tools/PipelineProbe/build/probe utterances.txt
+```
+
+See `Tools/PipelineProbe/README.md` for what it cannot tell you.
+
 Release compile check:
 
 ```bash

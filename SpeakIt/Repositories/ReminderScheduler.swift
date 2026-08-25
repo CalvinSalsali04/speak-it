@@ -142,8 +142,26 @@ enum ReminderCopy {
         return result
     }
 
+    /// Removes a fronted day that sits directly in front of a reminder command.
+    ///
+    /// A day at the front of a capture is the schedule for every clause that
+    /// follows it, so it gets carried onto each one — and a reminder clause
+    /// arrives here as "Tomorrow remind me that I have a meeting at 4:15 PM".
+    /// Every pattern below is anchored at the start of the sentence, so the day
+    /// hid the command and the row kept the entire sentence as its title. The
+    /// date is already parsed and held on the item, so dropping it costs
+    /// nothing. Narrow on purpose: only a day immediately in front of a
+    /// reminder command comes off, never one in front of an ordinary errand.
+    private static func withoutFrontedDay(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"(?i)^(?:on\s+)?(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+week|monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday)\s*,?\s+(?=(?:please\s+)?(?:remind|notify|alert)\s+me\b)"#,
+            with: "",
+            options: [.regularExpression]
+        )
+    }
+
     private static func strippedAction(from transcript: String) -> String {
-        let original = normalized(transcript)
+        let original = withoutFrontedDay(normalized(transcript))
         guard !original.isEmpty else { return "Your reminder" }
 
         // "The report is due Friday but remind me Wednesday" is about the
@@ -152,7 +170,13 @@ enum ReminderCopy {
         // the statement in front of it, with any trailing timing the statement
         // itself carries stripped the usual way.
         if let reminderClause = original.range(
-            of: #"(?i)\s*,?\s*(?:but|and)\s+(?:please\s+)?(?:remind\s+me|send\s+me\s+a\s+reminder)\b.*$"#,
+            // `\b` before the conjunction is load-bearing. Without it the
+            // leading `\s*,?\s*` matches nothing and `and` matches *inside* the
+            // preceding word, so "when I land remind me to text mom" was titled
+            // "When I l" and "call my husband remind me at 6" became "Call my
+            // husb". Every word ending -and or -but was affected: band, stand,
+            // island, errand, demand, grand, husband, debut.
+            of: #"(?i)\s*,?\s*\b(?:but|and)\b\s+(?:please\s+)?(?:remind\s+me|send\s+me\s+a\s+reminder)\b.*$"#,
             options: .regularExpression
         ), reminderClause.lowerBound != original.startIndex {
             let statement = withoutTrailingTiming(
@@ -170,6 +194,16 @@ enum ReminderCopy {
             return sentenceCased(locationAction)
         }
 
+        // "Remind Alex to get the wrench in 20 minutes" keeps its command:
+        // the owner's action *is* the reminding, so stripping through "to"
+        // would retitle Alex's errand as the owner's. Only the trailing
+        // timing comes off — the reminder date already holds it.
+        if ReminderPhrasing.isDelegated(original) {
+            let kept = withoutTrailingTiming(original)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
+            if !kept.isEmpty { return sentenceCased(kept) }
+        }
+
         // Both the verb form ("remind me to …") and the noun form ("give me a
         // reminder to …") are requests for a reminder, so both must be stripped
         // before the row title and notification body are built.
@@ -180,7 +214,23 @@ enum ReminderCopy {
         }
 
         var candidate: String
-        if let actionConnector = original.range(
+        // "Remind me that I have a meeting at 4:15" is a reminder *about the
+        // meeting*. Without this the row was titled "I have a meeting", which
+        // names the speaker's possession of it rather than the thing itself.
+        //
+        // The complementizer is optional in speech — "remind me I have a
+        // meeting at 4:15" is the same sentence — so the elided form is matched
+        // too. It is anchored to the reminder command rather than left floating
+        // like the `that` form, because a bare "I have" can sit inside a
+        // perfectly ordinary reminder: "remind me to tell Bob I have the keys"
+        // is about telling Bob, and an unanchored match would retitle it "The
+        // keys".
+        if let haveConnector = original.range(
+            of: #"(?i)(?:\bthat\s+|\b(?:remind|notify|alert)\s+me\s+)(?:i|we)\s+(?:have|['’]ve\s+got|got)\s+(?:an?\s+|the\s+|my\s+)?"#,
+            options: .regularExpression
+        ) {
+            candidate = String(original[haveConnector.upperBound...])
+        } else if let actionConnector = original.range(
             of: #"(?i)\bto\s+"#,
             options: .regularExpression
         ) {

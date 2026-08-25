@@ -205,6 +205,10 @@ struct CaptureCreationResult {
     /// as a stored thought, because that row is real and the person can act on
     /// it.
     var consumesFreeCapture: Bool {
+        // Practice has to be complimentary at the source. The allowance is a
+        // monotonic Keychain-backed ledger, so spending and then "refunding"
+        // would be both unreliable and exploitable across processes.
+        if session.captureSource == .tutorial { return false }
         guard let operationOutcome else { return true }
         switch operationOutcome {
         case .performed, .notFound, .retracted:
@@ -235,6 +239,30 @@ struct CaptureCreationResult {
     /// as a ready action and be counted twice.
     var needsReviewCount: Int {
         presentations.filter(\.requiresReview).count
+    }
+
+    /// True only when Speak It is unsure about the meaning of the capture.
+    ///
+    /// `needsReviewCount` is intentionally broader: it also includes thoughts
+    /// that were understood but cannot run yet (for example a place reminder
+    /// waiting for permission). Those states need setup, not a discouraging
+    /// "say it again" prompt.
+    var needsInterpretationConfirmation: Bool {
+        guard operationOutcome == nil else { return false }
+
+        return items.contains { item in
+            guard item.needsClarification, item.processingConfidence < 0.82 else {
+                return false
+            }
+
+            switch item.clarificationRequirement {
+            case .time, .person, .type, .splitDecision, .confirmation:
+                return true
+            case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
+                 .locationTrigger, .combinedTimeAndPlace, .pendingOperation, .none:
+                return false
+            }
+        }
     }
 
     var reminderCount: Int {
@@ -315,6 +343,11 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func performReminderAction(itemIDs: [UUID], action: ReminderAction) throws
     func loadSampleData(referenceDate: Date) throws -> SampleDataLoadResult
 
+    /// Removes every disposable first-run capture and its sidecar state.
+    /// Idempotent so an interrupted finish can safely retry on next launch.
+    @discardableResult
+    func deleteTutorialCaptures() throws -> Int
+
     @discardableResult
     func createCapture(
         text: String,
@@ -355,6 +388,9 @@ protocol ThoughtRepository: AnyObject, Sendable {
 }
 
 extension ThoughtRepository {
+    @discardableResult
+    func deleteTutorialCaptures() throws -> Int { 0 }
+
     @discardableResult
     func addShoppingItems(
         _ entries: [String],

@@ -1,5 +1,11 @@
 # Speak It — Final Release Candidate Acceptance Audit
 
+> **HISTORICAL AUDIT — SUPERSEDED AUGUST 24, 2026.** This file preserves the
+> observations from an earlier build and its provisional P1 classifications;
+> several were fixed afterwards. Do not use its top-line verdict as the current
+> release decision. `APP_STORE_SUBMISSION.md` now carries the live verdict,
+> current automated evidence, and remaining submission gates.
+
 > **STATUS: IN PROGRESS.** The executive summary and release verdict at the top of
 > this file are provisional and will be rewritten once every section is complete.
 > The section-by-section body below is the durable evidence record and is written

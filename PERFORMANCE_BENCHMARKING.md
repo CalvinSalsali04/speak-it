@@ -99,6 +99,39 @@ This six-phrase corpus is a performance smoke test, not evidence of semantic
 correctness. Keep the larger semantic torture corpus as a separate correctness
 gate. A fast wrong classification fails the product even when this test passes.
 
+## Speech Accuracy Lab
+
+Debug builds expose **Account & Settings → Developer testing → Measure speech
+accuracy**. Run this on a physical iPhone: simulator or synthetic speech is not
+evidence of real microphone accuracy. The lab asks the person to read twelve
+fixed phrases spanning ordinary language, names, dates/times, numbers,
+self-correction, opening/final words, longer capture, and a quiet voice.
+
+For every take it records no audio and calculates two distinct local metrics:
+
+- **Content accuracy:** `1 - word edit distance / reference words`, weighted
+  across all words. Capitalization, punctuation, diacritics, and equivalent
+  spoken-number formatting such as `four thirty` versus `4:30` are ignored.
+- **Critical-detail accuracy:** exact normalized recovery of the case's names,
+  dates, times, quantities, and other high-cost details. This is the primary
+  release metric; high average word accuracy cannot hide a wrong person or time.
+
+The scorer also reports exact-transcript rate, requested and actual recognizer
+backend, microphone profile, and content-free signal quality. A developer-only
+selector runs the same set through enhanced iOS 26 dictation or the legacy
+recognizer; it does not alter production routing. The fixed expected sentence
+is never passed to the recognizer as contextual vocabulary. Results stay in the
+debug build's local settings; the exported text report contains
+expected/recognized text and metrics but never audio.
+
+Treat fewer than 30 recordings per configuration as an early signal, 30–99 as
+directionally useful, and 100 or more as the minimum credible local benchmark.
+For an audio-profile or recognizer decision, use the same speaker, phone, room,
+distance, and phrase count for every configuration, alternate configuration
+order between rounds, and compare critical-detail accuracy first, then weighted
+content accuracy, then latency/energy. Do not select a path from Apple's raw
+confidence alone.
+
 ## Physical-device run
 
 Use a release-like build and Instruments’ `os_signposts` instrument, filtered
@@ -133,3 +166,33 @@ The iOS Speech path still needs a same-device comparison against
 time to first partial, time to final transcript, word accuracy, names, numbers,
 dates, CPU, and energy. Keep the current fallback until device evidence shows a
 meaningful improvement.
+
+## Library scale policy
+
+Speak It Pro has no user-visible capture or item-count ceiling. "Unlimited
+capture" remains the product contract; available local or iCloud storage can
+fail independently, but the app must not turn either condition into a hidden
+item quota. A storage failure must preserve recoverable input, explain the
+problem, and leave existing data untouched.
+
+Capacity engineering is measured in persisted `CapturedItem` rows rather than
+capture sessions because one statement can produce several items and rows drive
+query, rendering, search, and snapshot costs.
+
+Use this internal scale ladder:
+
+- 10,000 items: routine heavy-user benchmark;
+- 50,000 items: minimum long-lived Pro-library target;
+- 100,000 items: stress test, not a customer-facing promise.
+
+At 10,000 and 50,000 items, record cold launch, first usable Today render,
+Memory open, exact and non-exact search, capture-to-organized-row latency,
+iCloud snapshot encode/decode/merge duration, snapshot byte size, and peak
+memory. The capture golden path keeps its existing under-one-second acceptable
+target at every library size.
+
+Do not add these data sets to the routine unit-test run. Generate them only for
+the dedicated physical-device scale pass. If all-library fetching, in-memory
+search, or whole-file iCloud snapshots fail the 50,000-item pass, fix those
+operations with indexing, bounded queries, or incremental synchronization; do
+not impose a Pro item cap.

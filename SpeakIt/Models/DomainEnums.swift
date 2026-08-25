@@ -7,6 +7,10 @@ enum CaptureSource: String, CaseIterable, Codable, Identifiable, Sendable {
     case shortcut
     case shareSheet
     case sample
+    /// Disposable captures created while someone is learning the product.
+    /// This is a source marker rather than a schema field, so practice data
+    /// can be found and removed safely without changing the SwiftData model.
+    case tutorial
 
     var id: String { rawValue }
 
@@ -18,6 +22,7 @@ enum CaptureSource: String, CaseIterable, Codable, Identifiable, Sendable {
         case .shortcut: "Shortcut"
         case .shareSheet: "Shared to Speak It"
         case .sample: "Test example"
+        case .tutorial: "Practice tutorial"
         }
     }
 }

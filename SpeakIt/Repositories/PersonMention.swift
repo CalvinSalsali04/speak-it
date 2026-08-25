@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 // MARK: - What a person mention is
 
@@ -78,11 +79,44 @@ enum PersonMentionResolver {
 
     // MARK: Reading
 
+    /// Whether the text is cased the way dictation cases a sentence whose names
+    /// it did not recognize.
+    ///
+    /// Lowercase-name recovery used to require *zero* uppercase characters
+    /// anywhere in the capture, which made it unreachable for the commonest
+    /// dictated shape there is: a lowercase name beside a capitalized weekday.
+    /// "Call sunny about the dog" found Sunny; "call sunny on Friday" found
+    /// nobody, because of the F in Friday. The row still landed on Today, so
+    /// nothing looked broken — it simply never joined that person's record.
+    ///
+    /// Two kinds of capital carry no information about names and are ignored:
+    /// the words dictation always capitalizes, and the sentence-initial capital
+    /// on an ordinary word.
+    private static func isCasuallyCased(_ text: String) -> Bool {
+        let alwaysCapitalized = #"(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday"#
+            + #"|January|February|March|April|May|June|July|August|September|October|November|December"#
+            + #"|AM|PM|A\.M\.|P\.M\.|I|I'm|I'll|I've|I'd|OK|TV|UK|USA|US)"#
+        var stripped = text.replacingOccurrences(
+            of: #"\b\#(alwaysCapitalized)\b"#,
+            with: "",
+            options: .regularExpression
+        )
+        // A capital on the opening word is sentence case, not a name — but only
+        // when the rest of that word is lowercase, so "Call sunny" is ignored
+        // while "Sarah called" is still evidence.
+        stripped = stripped.replacingOccurrences(
+            of: #"^\s*[A-Z](?=[a-z']*(?:\s|$))"#,
+            with: "",
+            options: .regularExpression
+        )
+        return !stripped.contains(where: \.isUppercase)
+    }
+
     /// Every person named in one thought, in the order they were said.
     static func mentions(in text: String) -> [PersonMention] {
         let source = text[...]
         guard !source.isEmpty else { return [] }
-        let lowercaseOnly = !text.contains(where: \.isUppercase)
+        let lowercaseOnly = isCasuallyCased(text)
         let role = participantRole(in: text)
 
         var found = addressMentions(
@@ -118,7 +152,7 @@ enum PersonMentionResolver {
     static func followUpTarget(in text: String) -> FollowUpTarget {
         let source = text[...]
         guard !source.isEmpty else { return .missing }
-        let lowercaseOnly = !text.contains(where: \.isUppercase)
+        let lowercaseOnly = isCasuallyCased(text)
         let list = words(in: source)
 
         // Every verb is tried, not just the first: "Call, uh, call Mom"
@@ -199,6 +233,25 @@ enum PersonMentionResolver {
                     return connectorIndex + 1
                 }
             }
+        }
+        // "Make sure Sam returns the books", "get Alex to sign the form".
+        // Delegation without a speech verb. Both shapes are anchored hard —
+        // "make" needs its "sure", and "get" needs a written-like-a-name word
+        // with "to" right behind it — so "make dinner" and "get milk to go"
+        // never reach the name rules.
+        if verb == "make" || verb == "making",
+           index + 2 < list.count, list[index + 1].lower == "sure" {
+            let candidate = list[index + 2].lower == "that" ? index + 3 : index + 2
+            if candidate < list.count,
+               list[candidate].isCapitalized || kinship.contains(list[candidate].lower) {
+                return candidate
+            }
+        }
+        if verb == "get" || verb == "gets" || verb == "got",
+           index + 2 < list.count,
+           list[index + 1].isCapitalized || kinship.contains(list[index + 1].lower),
+           list[index + 2].lower == "to" {
+            return index + 1
         }
         // "Follow up with", "get back to", "say hi to". These verbs mean
         // nothing on their own — "get milk" must never reach the name rules —
@@ -453,8 +506,99 @@ enum PersonMentionResolver {
     private static func isNameToken(_ word: Word, allowLowercase: Bool) -> Bool {
         guard word.core.count >= 2 else { return false }
         if kinship.contains(word.lower) { return true }
-        guard !neverName.contains(word.lower) else { return false }
+        guard !namesNothing(word.lower) else { return false }
         return word.isCapitalized || allowLowercase
+    }
+
+    /// Whether a token is in `neverName`, testing its singular form as well.
+    ///
+    /// `neverName` is written in the singular, and membership was an exact
+    /// lookup — so every plural walked straight past it and was invented as a
+    /// person. "Call notes about the thing" filed a person called Notes while
+    /// "call note about the thing" correctly filed none, and the same split
+    /// held for reports, invoices, reminders, packages, deadlines and lists.
+    ///
+    /// Only a trailing "s" is folded. Richer stemming buys almost nothing here
+    /// — the plurals that matter are all regular — and costs real names:
+    /// stripping "es" turns "Ames" into "am" and "James" into "jam", which is
+    /// how a stoplist starts rejecting people.
+    private static func namesNothing(_ lowercased: String) -> Bool {
+        if neverName.contains(lowercased) { return true }
+        if lowercased.count > 2, lowercased.hasSuffix("s"),
+           neverName.contains(String(lowercased.dropLast())) {
+            return true
+        }
+        return readsAsOccupation(lowercased)
+    }
+
+    /// The occupation-shaped English suffixes. Agent nouns are formed with a
+    /// closed set of endings, which is why this is a list and the occupations
+    /// themselves are not.
+    private static let occupationalSuffixes = [
+        "er", "ers", "or", "ors", "ist", "ists", "ian", "ians",
+        "smith", "wright", "ier", "iers", "eur",
+    ]
+
+    /// The words an occupation sits near in meaning. A dozen is enough — the
+    /// space is dense here — and they are ordinary occupations rather than the
+    /// ones being tested, so this is not the stoplist wearing a disguise.
+    private static let occupationSeeds = [
+        "plumber", "dentist", "electrician", "receptionist", "accountant",
+        "contractor", "landlord", "pharmacy", "clinic", "agency",
+        "mechanic", "therapist",
+    ]
+
+    /// Held once. Loading the embedding is the expensive part; the lookups are
+    /// not, and a capture does only a handful.
+    private static let englishEmbedding = NLEmbedding.wordEmbedding(for: .english)
+
+    /// Whether a word names a *role* rather than a person, decided by meaning
+    /// rather than by membership of a list.
+    ///
+    /// `commonObjects` can only ever hold the occupations somebody thought to
+    /// write down, and the miss is not a blank field — it is a confident wrong
+    /// answer. Measured: thirty ordinary trade nouns (roofer, notary, caterer,
+    /// locksmith, arborist, glazier, appraiser, upholsterer, exterminator…)
+    /// were **every one of them** filed as a person, shown on the row and used
+    /// to address a message. Adding thirty words would leave the thirty-first.
+    ///
+    /// `NLEmbedding` answers the question the list was standing in for. It
+    /// ships with the OS from iOS 13, needs no network and no Apple
+    /// Intelligence — so it is available to every user, unlike the on-device
+    /// model — and its 57,000-word English space puts occupations measurably
+    /// nearer to a few occupation seeds than personal names are.
+    ///
+    /// Two layers, because one cutoff cannot separate them cleanly:
+    ///
+    /// - Below 1.12 the word is unambiguously in occupation space.
+    /// - Between 1.12 and 1.18 it is blocked only when it also *looks* like an
+    ///   occupation, by the agent-noun morphology above.
+    ///
+    /// Measured over 30 trade nouns and 36 personal names — including the ones
+    /// that are ordinary English words (Rose, Grace, Will, Dawn, Heather,
+    /// Sage, Ivy, Summer) and the surname-shaped ones ending in -er (Tyler,
+    /// Parker, Sawyer, Carter): **28 of 30 occupations blocked, 0 of 36 names
+    /// lost.** The two survivors, "tailor" and "movers", sit inside personal
+    /// name space; they stay the list's job.
+    ///
+    /// The asymmetry is deliberate and sets the thresholds. Failing to block a
+    /// role leaves today's behaviour untouched; blocking a real name would take
+    /// a person off a row, which is worse. So the cutoffs sit where no name in
+    /// the sample is lost, a word the embedding does not know is left alone —
+    /// that is where real names mostly live — and an unavailable embedding
+    /// declines rather than guesses.
+    private static func readsAsOccupation(_ lowercased: String) -> Bool {
+        guard lowercased.count > 3,
+              let embedding = englishEmbedding,
+              embedding.contains(lowercased) else { return false }
+        let distance = occupationSeeds
+            .map { embedding.distance(between: lowercased, and: $0) }
+            .min() ?? .greatestFiniteMagnitude
+        if distance < 1.12 { return true }
+        guard distance < 1.18 else { return false }
+        return occupationalSuffixes.contains {
+            lowercased.count > $0.count + 2 && lowercased.hasSuffix($0)
+        }
     }
 
     // MARK: A target that is described rather than named
@@ -602,6 +746,9 @@ enum PersonMentionResolver {
         "meet", "meets", "met", "meeting", "visit", "visits", "visited",
         "contact", "contacts", "contacted", "send", "sends", "sent",
         "owe", "owes", "owed",
+        // "Remind Alex to get the wrench" aims squarely at Alex. The pronoun
+        // stoplist keeps "remind me" from filing the speaker as a person.
+        "remind", "reminds", "reminded",
     ]
 
     /// Verbs that only aim at a person once their preposition arrives.
@@ -631,7 +778,7 @@ enum PersonMentionResolver {
         "messaged", "messages", "phoned", "wrote", "asked", "told", "said",
         "says", "mentioned", "replied", "visited", "met", "sent", "invited",
         "dropped", "stopped", "came", "reached", "confirmed", "cancelled",
-        "canceled", "wants", "needs",
+        "canceled", "wants", "needs", "reminded", "reminds",
         // Life events. A person moving, graduating or retiring is a fact about
         // them and belongs under their name, but every one of these is also
         // past tense with a month attached — "Alex moved to Toronto in
@@ -785,6 +932,10 @@ enum PersonMentionResolver {
         "electrician", "vet", "deadline", "report", "invoice", "package",
         "meeting", "appointment", "reminder", "message", "email", "text",
         "call", "note", "thing", "stuff", "list", "card", "gift", "milk",
+        // Documents and meeting furniture. These sit where a name sits —
+        // "meeting notes", "meeting agenda" — and read as somebody being met.
+        "agenda", "minute", "recap", "summary", "invite", "link", "draft",
+        "deck", "slide", "doc", "file", "folder", "attachment", "thread",
         // Departments answer like people and are named like acronyms. Filing
         // one as a person puts a row under People that nobody is.
         "hr", "it", "payroll", "accounting", "billing", "reception", "admin",

@@ -159,6 +159,18 @@ enum SemanticCorpusD {
         corpusCase(.events, "Standup moved from 9 to 9:30", count: 1,
                    due: [CorpusDate(month: 8, day: 4, hour: 9, minute: 30)], severityCeiling: .metadata,
                    note: "Arguable: 9:30 today is already past at the 10 AM reference, so the next one is tomorrow. Recorded, not gated."),
+
+        // A stated day and a stated clock is a calendar commitment whatever the
+        // subject noun is. "The recital is Saturday at two" worked only because
+        // "recital" was on `scheduledNoun`; the identical sentence about soccer
+        // practice lost its route and its date together.
+        corpusCase(.events, "Soccer practice is Tuesday at five.",
+                   count: 1, type: [.event], route: [.today], kind: [.exactDateTime],
+                   due: [CorpusDate(month: 8, day: 4, hour: 17)]),
+        corpusCase(.events, "Nadia's birthday is October 12.",
+                   count: 1, type: [.note], route: [.memory], person: ["Nadia"], due: [nil],
+                   note: "Guard: a date with no clock stays the fact about a person that scheduledNoun's exclusion intends."),
+
     ]
 
     // MARK: - Pronouns, names and possessives

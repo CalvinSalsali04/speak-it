@@ -365,6 +365,61 @@ final class ItemPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: First-capture education must teach the real projection
+
+    func testFirstCapturePlacementSummaryUsesMemoryCollectionsNotItemCategory() {
+        let idea = CapturedItem(
+            originalTextSegment: "A quieter onboarding screen",
+            displayTitle: "A quieter onboarding screen",
+            itemType: .idea,
+            // Deliberately unrelated. ItemCategory is not the Ideas/People/
+            // Reference destination model and must never drive the lesson.
+            category: .work
+        )
+        let session = CaptureSession(
+            originalTranscription: idea.originalTextSegment,
+            items: [idea]
+        )
+        let result = CaptureCreationResult(session: session, items: [idea])
+
+        let summary = FirstCapturePlacementSummary.make(from: result)
+        XCTAssertEqual(summary.primary, .ideas)
+        XCTAssertTrue(summary.secondary.isEmpty)
+    }
+
+    func testFirstCapturePlacementSummaryReportsTodayAndPeopleForFollowUp() {
+        let followUp = CapturedItem(
+            originalTextSegment: "Call Alex tomorrow",
+            displayTitle: "Call Alex",
+            itemType: .personFollowUp,
+            category: .people,
+            dueDate: Date.now.addingTimeInterval(86_400),
+            personName: "Alex"
+        )
+        let session = CaptureSession(
+            originalTranscription: followUp.originalTextSegment,
+            items: [followUp]
+        )
+        let result = CaptureCreationResult(session: session, items: [followUp])
+
+        let summary = FirstCapturePlacementSummary.make(from: result)
+        XCTAssertEqual(summary.primary, .today)
+        XCTAssertEqual(summary.secondary, [.people])
+    }
+
+    func testFirstCapturePlacementSummaryPersistsRoutingWithoutCapturedWords() {
+        let summary = FirstCapturePlacementSummary(
+            primary: .shopping,
+            secondary: [.people],
+            itemCount: 2
+        )
+        let stored = summary.storedValue
+
+        XCTAssertEqual(FirstCapturePlacementSummary(storedValue: stored), summary)
+        XCTAssertFalse(stored.contains("Buy milk"))
+        XCTAssertFalse(stored.contains("Alex"))
+    }
+
     func testSummerLaunchSaleEndsAtThePublishedCutoff() {
         XCTAssertTrue(
             SummerLaunchSale.isWithinSaleWindow(

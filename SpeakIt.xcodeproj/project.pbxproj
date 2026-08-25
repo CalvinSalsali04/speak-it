@@ -45,6 +45,14 @@
 		A100000000000000000000C2 /* SemanticCorpusDataA.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C2 /* SemanticCorpusDataA.swift */; };
 		A100000000000000000000C3 /* SemanticCorpusDataB.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C3 /* SemanticCorpusDataB.swift */; };
 		A100000000000000000000C4 /* SemanticCorpusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C4 /* SemanticCorpusTests.swift */; };
+		D300000000000000000001 /* SemanticCorpusDataF.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000001 /* SemanticCorpusDataF.swift */; };
+		D300000000000000000002 /* SemanticCorpusDataG.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000002 /* SemanticCorpusDataG.swift */; };
+		D300000000000000000003 /* SemanticCorpusDataH.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000003 /* SemanticCorpusDataH.swift */; };
+		D300000000000000000004 /* SemanticCorpusDataI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000004 /* SemanticCorpusDataI.swift */; };
+		D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000001 /* RenderingInvarianceTests.swift */; };
+		D200000000000000000002 /* RefinementGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000002 /* RefinementGuardTests.swift */; };
+		D200000000000000000003 /* SpeechRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000003 /* SpeechRepairTests.swift */; };
+		D100000000000000000001 /* CorpusEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001 /* CorpusEvaluator.swift */; };
 		A100000000000000000000C5 /* CaptureOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C5 /* CaptureOperationTests.swift */; };
 		A100000000000000000000C6 /* ActionabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C6 /* ActionabilityTests.swift */; };
 		A100000000000000000000C7 /* PersonMentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C7 /* PersonMentionTests.swift */; };
@@ -191,6 +199,14 @@
 		B100000000000000000000C2 /* SemanticCorpusDataA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataA.swift; sourceTree = "<group>"; };
 		B100000000000000000000C3 /* SemanticCorpusDataB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataB.swift; sourceTree = "<group>"; };
 		B100000000000000000000C4 /* SemanticCorpusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusTests.swift; sourceTree = "<group>"; };
+		E300000000000000000001 /* SemanticCorpusDataF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataF.swift; sourceTree = "<group>"; };
+		E300000000000000000002 /* SemanticCorpusDataG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataG.swift; sourceTree = "<group>"; };
+		E300000000000000000003 /* SemanticCorpusDataH.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataH.swift; sourceTree = "<group>"; };
+		E300000000000000000004 /* SemanticCorpusDataI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataI.swift; sourceTree = "<group>"; };
+		E200000000000000000001 /* RenderingInvarianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingInvarianceTests.swift; sourceTree = "<group>"; };
+		E200000000000000000002 /* RefinementGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinementGuardTests.swift; sourceTree = "<group>"; };
+		E200000000000000000003 /* SpeechRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRepairTests.swift; sourceTree = "<group>"; };
+		E100000000000000000001 /* CorpusEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusEvaluator.swift; sourceTree = "<group>"; };
 		B100000000000000000000C5 /* CaptureOperationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureOperationTests.swift; sourceTree = "<group>"; };
 		B100000000000000000000C6 /* ActionabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionabilityTests.swift; sourceTree = "<group>"; };
 		B100000000000000000000C7 /* PersonMentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonMentionTests.swift; sourceTree = "<group>"; };
@@ -474,6 +490,14 @@
 				B1000000000000000000E3 /* IntentConsolidationTests.swift */,
 				B1000000000000000000C5 /* SemanticCorpusDataD.swift */,
 				B100000000000000000000C4 /* SemanticCorpusTests.swift */,
+				E300000000000000000001 /* SemanticCorpusDataF.swift */,
+				E300000000000000000002 /* SemanticCorpusDataG.swift */,
+				E300000000000000000003 /* SemanticCorpusDataH.swift */,
+				E300000000000000000004 /* SemanticCorpusDataI.swift */,
+				E200000000000000000001 /* RenderingInvarianceTests.swift */,
+				E200000000000000000002 /* RefinementGuardTests.swift */,
+				E200000000000000000003 /* SpeechRepairTests.swift */,
+				E100000000000000000001 /* CorpusEvaluator.swift */,
 				B100000000000000000000C5 /* CaptureOperationTests.swift */,
 				B100000000000000000001D0 /* DurabilityTests.swift */,
 				B100000000000000000000C6 /* ActionabilityTests.swift */,
@@ -868,6 +892,14 @@
 				A1000000000000000000E3 /* IntentConsolidationTests.swift in Sources */,
 				A1000000000000000000C5 /* SemanticCorpusDataD.swift in Sources */,
 				A100000000000000000000C4 /* SemanticCorpusTests.swift in Sources */,
+				D300000000000000000001 /* SemanticCorpusDataF.swift in Sources */,
+				D300000000000000000002 /* SemanticCorpusDataG.swift in Sources */,
+				D300000000000000000003 /* SemanticCorpusDataH.swift in Sources */,
+				D300000000000000000004 /* SemanticCorpusDataI.swift in Sources */,
+				D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */,
+				D200000000000000000002 /* RefinementGuardTests.swift in Sources */,
+				D200000000000000000003 /* SpeechRepairTests.swift in Sources */,
+				D100000000000000000001 /* CorpusEvaluator.swift in Sources */,
 				A100000000000000000000C5 /* CaptureOperationTests.swift in Sources */,
 				A100000000000000000001D0 /* DurabilityTests.swift in Sources */,
 			);

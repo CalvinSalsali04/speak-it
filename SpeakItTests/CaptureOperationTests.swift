@@ -324,6 +324,66 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertNotNil(item.completedAt, "The completed row stays exactly as it was")
     }
 
+    // MARK: Reschedule
+
+    func testRescheduleMovesTheReminderToTheSpokenDay() async throws {
+        _ = try await capture("Remind me to call the dentist tomorrow at 2 PM")
+
+        let result = try await capture("Move the dentist reminder to Friday")
+
+        guard case let .performed(operation, itemID, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected the reschedule to be performed")
+        }
+        XCTAssertEqual(operation, .reschedule)
+        let item = try XCTUnwrap(try allItems().first { $0.id == itemID })
+        let moved = try XCTUnwrap(item.reminderDate)
+        XCTAssertEqual(Calendar.current.component(.weekday, from: moved), 6,
+                       "The reminder must land on a Friday")
+        XCTAssertGreaterThan(moved, .now)
+        XCTAssertNil(item.completedAt, "A reschedule must never complete or remove the item")
+    }
+
+    func testPushBackMovesRelativeToTheScheduledMomentNotTheClock() async throws {
+        _ = try await capture("Remind me to call the dentist tomorrow at 2 PM")
+        let before = try XCTUnwrap(try allItems()
+            .first { $0.displayTitle.localizedCaseInsensitiveContains("dentist") }?.reminderDate)
+
+        let result = try await capture("Push the dentist back an hour")
+
+        guard case let .performed(operation, itemID, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected the push back to be performed")
+        }
+        XCTAssertEqual(operation, .reschedule)
+        let item = try XCTUnwrap(try allItems().first { $0.id == itemID })
+        XCTAssertEqual(item.reminderDate, before.addingTimeInterval(3600),
+                       "Back an hour is measured from the scheduled 2 PM, not from now")
+    }
+
+    func testRescheduleWithNoDestinationAsksInsteadOfGuessing() async throws {
+        _ = try await capture("Remind me to call the dentist tomorrow at 2 PM")
+        let before = try allItems()
+            .first { $0.displayTitle.localizedCaseInsensitiveContains("dentist") }?.reminderDate
+
+        let result = try await capture("Postpone the dentist")
+
+        guard case let .ambiguous(operation, candidateIDs) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected a held reschedule, not a silent guess")
+        }
+        XCTAssertEqual(operation, .reschedule)
+        XCTAssertEqual(candidateIDs.count, 1)
+        let after = try allItems()
+            .first { $0.displayTitle.localizedCaseInsensitiveContains("dentist") }?.reminderDate
+        XCTAssertEqual(after, before, "Nothing may move until the person names the new moment")
+    }
+
+    func testMoveWithANonTimeDestinationStaysAnOrdinaryCapture() async throws {
+        let result = try await capture("Move the couch to the garage")
+
+        XCTAssertNil(result.operationOutcome, "A physical move is a task, not a reschedule")
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertTrue(try activeTitles().contains { $0.localizedCaseInsensitiveContains("couch") })
+    }
+
     // MARK: Retract
 
     func testRetractionCreatesNothingAtAll() async throws {
@@ -380,6 +440,69 @@ final class CaptureOperationTests: XCTestCase {
         let result = try await capture("Buy toothpaste")
         XCTAssertTrue(result.consumesFreeCapture)
         XCTAssertNil(result.operationOutcome)
+    }
+
+    func testTutorialCaptureIsComplimentaryAndMissionsReachExpectedDestinations() async throws {
+        let action = try await repository.createCaptureResult(
+            text: TutorialCaptureMission.action.example,
+            source: .tutorial,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        XCTAssertFalse(action.consumesFreeCapture)
+        XCTAssertEqual(action.session.captureSource, .tutorial)
+        XCTAssertTrue(action.primaryItem.belongsInToday)
+        XCTAssertEqual(
+            MemoryPersonNameResolver.name(for: action.primaryItem)?.lowercased(),
+            "maya"
+        )
+        XCTAssertNotNil(action.primaryItem.dueDate)
+
+        let idea = try await repository.createCaptureResult(
+            text: TutorialCaptureMission.idea.example,
+            source: .tutorial,
+            createdAt: .now.addingTimeInterval(1),
+            schedulesReminders: false
+        )
+        XCTAssertFalse(idea.consumesFreeCapture)
+        XCTAssertEqual(idea.primaryItem.itemType, .idea)
+        XCTAssertTrue(idea.primaryItem.belongsInMemory)
+    }
+
+    func testTutorialCleanupIsScopedIdempotentAndCreatesNoCloudTombstones() async throws {
+        let previousPins = Array(MemoryPinStore.records().values)
+        let previousStages = Array(IdeaStageStore.records().values)
+        let previousGroups = ShoppingGroupStore.snapshot()
+        let previousDeletions = ICloudDeletionStore.records()
+        defer {
+            MemoryPinStore.restore(previousPins)
+            IdeaStageStore.restore(previousStages)
+            ShoppingGroupStore.restore(previousGroups)
+            ICloudDeletionStore.restore(previousDeletions)
+        }
+
+        let real = try await capture("The office door code is 2468")
+        let practice = try await repository.createCaptureResult(
+            text: TutorialCaptureMission.idea.example,
+            source: .tutorial,
+            createdAt: .now.addingTimeInterval(1),
+            schedulesReminders: false
+        )
+        let practiceID = practice.primaryItem.id
+        MemoryPinStore.setPinned(true, for: practiceID)
+        IdeaStageStore.setStage(.promising, for: practiceID)
+        ShoppingGroupStore.set("Practice", for: practiceID)
+
+        XCTAssertEqual(try repository.deleteTutorialCaptures(), 1)
+        XCTAssertEqual(try repository.deleteTutorialCaptures(), 0)
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertTrue(sessions.contains { $0.id == real.session.id })
+        XCTAssertFalse(sessions.contains { $0.captureSource == .tutorial })
+        XCTAssertNil(MemoryPinStore.records()[practiceID])
+        XCTAssertNil(IdeaStageStore.records()[practiceID])
+        XCTAssertNil(ShoppingGroupStore.group(for: practiceID))
+        XCTAssertEqual(ICloudDeletionStore.records(), previousDeletions)
     }
 
     // MARK: Confirmation copy
@@ -504,6 +627,50 @@ extension CaptureOperationTests {
         }
         XCTAssertFalse(delivery.pendingNotifications.contains(identifier))
     }
+
+    // MARK: A misread operation must not take the capture with it
+
+    /// The capture that named this defect. `CaptureOperationDetector` splits on
+    /// `and`, reads "cancel the cable" as a request against an existing row,
+    /// finds nothing in the store to act on — and the zero-match branch used to
+    /// discard the whole session. All four errands disappeared. Only the
+    /// transcript survived, on `CaptureSession`, where nothing surfaces it.
+    ///
+    /// See the convergence note in PIPELINE_SWEEP_FINDINGS.md: three separate
+    /// sweep lanes reached this same branch.
+    func testAMisreadCancellationDoesNotDestroyTheOtherErrands() async throws {
+        let result = try await capture(
+            "call Rogers about the bill and cancel the cable and keep the internet and ask about the loyalty discount"
+        )
+
+        let titles = try activeTitles()
+        XCTAssertFalse(titles.isEmpty, "the capture must not vanish, got \(titles)")
+        XCTAssertFalse(result.items.isEmpty, "the result must carry the rows it created")
+        XCTAssertTrue(
+            titles.contains { $0.localizedCaseInsensitiveContains("Rogers") },
+            "the first errand must survive, got \(titles)"
+        )
+        XCTAssertTrue(
+            titles.contains { $0.localizedCaseInsensitiveContains("loyalty") },
+            "the last errand must survive, got \(titles)"
+        )
+    }
+
+    /// The same branch reached through a different phrasing, and with a date on
+    /// the line: the deposit and the 15th used to go down with the unmatched
+    /// "cancel the other waitlist".
+    func testAMisreadCancellationKeepsTheDatedErrandBesideIt() async throws {
+        _ = try await capture(
+            "they need the deposit by the 15th so pay the deposit and cancel the other waitlist"
+        )
+
+        let titles = try activeTitles()
+        XCTAssertFalse(titles.isEmpty, "the capture must not vanish, got \(titles)")
+        XCTAssertTrue(
+            titles.contains { $0.localizedCaseInsensitiveContains("deposit") },
+            "the errand that had a deadline must survive, got \(titles)"
+        )
+    }
 }
 
 /// The analyzer engine reports finalized segments and a volatile tail
@@ -531,6 +698,3 @@ final class TranscriptAssemblyTests: XCTestCase {
         XCTAssertEqual(TranscriptAssembly.joined("Hello", ""), "Hello")
     }
 }
-
-
-

@@ -275,3 +275,153 @@ thread-safe singletons — so `.live` could not be read from the nonisolated
 `delivery` property. That is a warning today and an error under the Swift 6
 language mode, on the one code path that tears a reminder down. Release now
 compiles with zero warnings.
+
+## Family 25 — Delegation and third person (2026-08-23)
+
+Written from a TestFlight capture: "Remind Alex to get the wrench before we
+leave his parents' house in 20 minutes." was typed as a bare Note with no
+timing, no person, and no notification — the reminder engine only knew
+"remind **me**".
+
+The contract adopts the Siri / Google Assistant convention: a reminder aimed
+at another person is a request for *this* phone to interrupt its owner at the
+stated moment so the owner can do the reminding. Sixteen cases pin it:
+
+- **Reminders**: "Remind Alex … at 8 PM / in an hour", "Remind my wife
+  about…", "Remind the kids … tonight", weekly recurrence, and the negative
+  idiom "Don't let Alex forget…". All actionable, on Today, with parsed
+  timing and the named person attached. The row title keeps its command —
+  "Remind Alex to get the wrench" — because the owner's action *is* the
+  reminding; stripping through "to" would retitle Alex's errand as the
+  owner's.
+- **Verbs of speaking**: "Tell Alex…", "Ask Dad…", "Make sure Sam…",
+  "Get Alex to…" stay untimed person follow-ups/tasks on Today.
+- **Guards**: "Alex reminded me to get the wrench" (past tense — the errand
+  survives, no notification), "This song reminds me of…", "Alex reminds me
+  of my uncle" (figurative — Memory, no reminder).
+
+Authored against the untouched engine first: 12 of 16 failed (18 BEHAVIORAL,
+9 METADATA). Repairs, each a rule not a sentence:
+
+1. `ReminderPhrasing.delegatedCommand` + `isDelegated` — "remind/notify/alert
+   <name|my …|the …>" and third-person "don't let … forget" now request a
+   reminder; word boundaries and a `… of` lookahead keep "reminds"/"reminded"
+   and the figurative sense out.
+2. `ReminderCopy.strippedAction` keeps the whole delegated sentence (minus
+   trailing timing) as the title.
+3. `ActionabilityReader` — the negation short-circuit and the extractor's
+   safety net both learned the third-person "don't let X forget" exception;
+   "reminded me/us to <verb>" is reported speech that carries its own
+   obligation.
+4. `PersonMentionResolver` — remind/reminds/reminded joined the address and
+   human-action verbs; "make sure <Name>" and "get <Name> to" resolve the
+   name, anchored so "make dinner" and "get milk to go" cannot.
+
+One expectation was corrected rather than the engine: "Remind my wife about
+tomorrow's appointment" has a topic ("about tomorrow's appointment"), not a
+fire time, so it lands on Today held for review instead of guessing an hour —
+the designed pressure valve for time-less reminder requests.
+
+After repairs: 16/16 pass; full unit suite 517 passed, 0 failed; Release
+compiles clean.
+
+## Family 26 — Assistant conventions (2026-08-23)
+
+The command vocabulary Siri, Google Assistant, and Alexa trained everyone to
+use, researched from Apple's Siri/Reminders command guides, Google Assistant's
+reminder/note/list commands, and Alexa's reminder grammar, then diffed against
+the existing 25 families. A person switching to Speak It arrives speaking this
+vocabulary, and every miss is a first-session disappointment.
+
+Sixteen cases; run against the untouched engine, 10 failed (1 CRITICAL,
+13 BEHAVIORAL, 5 METADATA), clustering into exactly four rules:
+
+1. **List-add commands** — "Add milk to my shopping list", "Put toothpaste on
+   the shopping list", "Add eggs and bread to…" became tasks or Memory notes,
+   and never split into product rows. Fixed by canonicalizing the wrapper on
+   the *analysis text only* (`canonicalizedListCommand` in ThoughtExtractor
+   rewrites it to the "buy X" shape the shopping rules already own); the
+   person's words survive untouched in the quote.
+2. **Note commands** — "Take a note that…", "Add a note saying…" became
+   tasks on Today. `ActionabilityReader.recordingVerb` now accepts
+   make/take/add a note, and "saying" joined that/about as connectors.
+3. **Anchors of daily life** — "after work", "at lunch", "after dinner",
+   "before bed" resolved to nothing. `conventionalAnchorTime` resolves them
+   the same way morning/afternoon/evening already resolve (17:00, 12:00,
+   19:00, 21:00) — a conventional hour the person can correct beats a
+   reminder that silently never fires. Each pattern requires its preposition,
+   so "lunch with Alex" stays an event and "dinner at 7" keeps its own clock.
+4. **Questions** — "What are my reminders for tomorrow" was filed as a real
+   item. An interrogative-plus-auxiliary lead now routes to the safety net
+   (unclear, held for review); "how to fix the fence" is never caught because
+   the auxiliary is required.
+
+Month anchors ("the first of next month", "the last day of the month", "end
+of the month") and the snooze idiom ("remind me again in 10 minutes") already
+passed and are now pinned. After repairs: 16/16; full suite 518 passed, 0
+failed; Release compiles with no errors.
+
+**Known conscious gap**: rescheduling an existing item by voice ("move my
+dentist reminder to Friday") is a missing *operation*, not a missing parse —
+`CaptureOperation` supports create/cancel/complete/retract only. Adding a
+reschedule operation touches the model, detector, repository, and UI copy,
+and is left as a product decision.
+
+## Family 27 — Spoken calendar edges + voice reschedule (2026-08-23)
+
+Sixteen cases for the ways English names a day or hour without a weekday word
+or bare clock: "the day after tomorrow", "a week from Friday", "this coming
+Monday", "on the 15th", "quarter past five", "twenty to eight", "half past
+two", "between 2 and 4", "by end of day", "end of the year", "in a couple of
+hours". Two vagueness contracts ride along: "later today" and "in a few
+hours" are held for review, because neither names a moment and people
+genuinely disagree about "a few".
+
+Untouched baseline: 7 of 16 failed (9 BEHAVIORAL). Repairs, all in
+`ThoughtOrganizer`: "day after tomorrow" reads before the bare "tomorrow"
+rule; "N weeks from <anchor>" resolves the anchor then steps whole weeks;
+"end of (the) day" is today and "end of the year" is December 31; the
+relative-duration pattern accepts the spoken "a … of" wrapping so "in a
+couple of hours" resolves (couple was already 2). The clock idioms and
+day-of-month cases passed untouched and are now pinned.
+
+The assistant family also gained four reschedule cases pinning the new
+`.reschedule` operation (see DECISIONS.md): move/push/reschedule against the
+store, and "move the couch to the garage" guarded as an ordinary errand.
+`CaptureOperationTests` adds four end-to-end tests: absolute move, relative
+push measured from the scheduled moment, destination-less postpone held for
+review, and the non-time guard.
+
+Corpus: 27 families, ~487 cases. Full suite 523 passed, 0 failed; Release
+compiles clean.
+
+## Family 28 — Dictation renderings + homophone repair stage (2026-08-23)
+
+The transcription-quality pass. Research finding first: Wispr Flow and
+Claude's dictation are cloud pipelines (server Whisper + cloud LLM cleanup),
+while Apple's SpeechAnalyzer — already Speak It's engine — benchmarks at
+2.12% WER clean / 4.56% noisy, beating Whisper Small and matching mid-tier
+Whisper on-device. The engine is not the gap; the *cleanup layer* is. So the
+work went there, keeping every byte on the phone.
+
+`DictationHomophoneRepair` joins the repair pipeline between punctuation and
+grocery repair. Eight context-gated rules, each admitting only a reading
+that is near-certain: "remind me two/too <verb>" recovers its connector
+(verb-gated, so "remind me too" meaning *as well* survives); "an our" →
+"an hour"; "at ate" → "at eight"; "is do on…" → "is due"; "next weak" →
+"next week"; sentence-opening "Ad <object>" → "Add"; "male the <noun>" →
+"mail"; "meat <Name>" → "meet" (weekdays and months excluded, so "buy meat
+Friday" stays groceries).
+
+Fourteen corpus cases carry both directions: ten misrenderings that must be
+recovered, and four honest sentences the gates must leave alone. The guard
+half caught two pre-existing classification gaps while it was being written:
+"stop by the pharmacy" (and swing by / drop off / drop by) was not read as an
+errand, and "the ad campaign launches Monday" (launches, ships, airs,
+premieres) was not read as a descriptive schedule. Both fixed.
+
+Corpus: 28 families, ~501 cases. Full suite 524 passed, 0 failed; Release
+compiles clean. The cloud question is settled in the negative and recorded
+here: on-device SpeechAnalyzer + a strengthening repair layer is the product
+answer; Apple's on-device Foundation Models remain the v-next candidate for
+LLM-grade cleanup with the privacy story intact.

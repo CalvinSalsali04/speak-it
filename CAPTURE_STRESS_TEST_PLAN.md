@@ -65,6 +65,12 @@ Run every row after installing a release-like build. In Speak It, open
 | P-18 | Wait for Listening, then stay silent | Say nothing | Clean timeout; no empty memory is created |
 | P-19 | Very short thought | Say one meaningful word | It saves or gives a helpful retry, never crashes |
 | P-20 | Several thoughts | Speak 3 independent items | One original session is preserved and items are separated |
+| P-20A | Incomplete reminder time | Say “Remind me to pick up ice wine at LCBO tomorrow at”, pause for 5 seconds, then say “six” | Even if the live text renders `tomorrow. At.`, **Still listening…** appears and the final capture includes “six” exactly once |
+| P-20B | Resume at endpoint boundary | End on “at”, resume near 7.5 seconds | Capture keeps listening; no clipped word or duplicate save |
+| P-20C | Complete place/time values | Say one capture ending “at LCBO” and one ending “at six” | Both retain the normal fast-save behavior |
+| P-20D | Noisy extended endpoint | Repeat P-20A near a fan, traffic, café speech, and music leakage | Continuation survives; noise never leaves the mic active indefinitely |
+| P-20E | Formatting-only ASR revision | During a silent pause, observe live text changing only case, punctuation, quotes, or spacing | The displayed text may update, but the pause clock and **Still listening…** state do not reset |
+| P-20F | Lexical ASR revision | During a pause, observe a word addition, removal, or correction | The pending endpoint is cancelled and rebuilt from the newest words |
 | P-21 | Long capture | Speak for 60 seconds | Bounded finalization; transcript or recovery audio is retained |
 | P-22 | Reminder | Say “Remind me in 10 seconds to get the laundry” | Organized reminder saves and notification arrives |
 | P-23 | Speech permission revoked | Trigger | Clear access message; app does not loop or crash |
@@ -82,6 +88,12 @@ Run every row after installing a release-like build. In Speak It, open
 | P-35 | After P-34 | Force-quit and relaunch | The deleted recording does not come back and the attention card stays gone |
 
 ### Tester checklist note
+
+Run P-19 through P-20F with multiple opt-in speakers across fast, slow, and
+variable pacing; English accents and dialects; stutters, repetitions, false
+starts, and self-corrections; age and voice-quality variation; and quiet,
+noisy, wired, speaker, and Bluetooth routes. Record only content-free outcomes.
+Do not log transcripts or infer demographic identity.
 
 P-31 through P-35 are the TestFlight-reported recovery dead end. A beta tester
 who reaches an attention card they cannot resolve has no way out of it, so this

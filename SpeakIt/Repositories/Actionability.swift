@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 /// Whether the person still has something to do.
 ///
@@ -67,7 +68,14 @@ enum ActionabilityReader {
     /// Shared with `LocationIntentParser`, which needs the same list to know
     /// where a place name ends and the action begins in "when I get to the
     /// store buy batteries". One vocabulary, so the two cannot drift.
-    static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|say|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up)"#
+    static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|say|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up"#
+        // Everyday verbs that were simply missing. Their absence was not
+        // cosmetic: a capture whose only verb was one of these had no
+        // recognisable action in it, so an obligation carrying it collapsed to
+        // "Review captured thought" and the reminder inside it never fired.
+        // "Honestly I'm exhausted, remind me to go to bed at ten" scheduled
+        // nothing at all.
+        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel)"#
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.
@@ -84,7 +92,19 @@ enum ActionabilityReader {
     /// A stated point on the calendar. Used only as *corroboration* — it can
     /// turn a sentence with nothing to do in it into an event, and it can never
     /// turn a report of the past into an obligation.
-    private static let calendarCue = #"(?:\b(?:monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday|today|tomorrow|tonight|january|february|march|april|june|july|august|september|october|november|december)\b|\bat\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|\#(dayOfMonthCue))"#
+    private static let calendarCue = #"(?:\b(?:monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday|today|tomorrow|tonight|january|february|march|april|june|july|august|september|october|november|december)\b|\bat\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|\#(spokenClockCue)|\#(dayOfMonthCue))"#
+
+    /// A clock time said the way people say clock times.
+    ///
+    /// "Dentist at quarter to six" states a time as plainly as "dentist at
+    /// 5:45" does, and the resolver reads both. Only the digit form counted as
+    /// a calendar cue, so the spoken form was classified as a note — and the
+    /// note path discards the due date the resolver had already produced.
+    /// The item landed in Memory with its time thrown away.
+    ///
+    /// Kept in step with `ThoughtOrganizer.spokenClockFace`, which parses the
+    /// same shape.
+    static let spokenClockCue = #"\b(?:a\s+)?(?:half|quarter|five|ten|twenty|twenty[\s-]five)\s+(?:past|after|to|till|til|before|of)\s+(?:\d{1,2}|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
 
     /// "The 15th", "the first". A day number is as much a point on the calendar
     /// as a weekday is, and leaving it out of the cue list is why "vacation
@@ -120,7 +140,7 @@ enum ActionabilityReader {
     /// the obligation family below, because `want to` is in `obligationLead`.
     /// A birthday then arrived on Today as a task. The lead is what carries the
     /// meaning, not its position in the sentence.
-    static let recordingVerb = #"(?:remember|make\s+a\s+note(?:\s+of)?|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log)"#
+    static let recordingVerb = #"(?:remember|(?:make|take|add)\s+a\s+note(?:\s+of)?|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log)"#
 
     /// Optional framing in front of a recording verb: "I want to remember",
     /// "I need to remember", "let's remember", "just remember".
@@ -145,7 +165,7 @@ enum ActionabilityReader {
     /// expiring or renewing is a property of the thing and never an
     /// appointment. The wider list can be argued for later from real usage;
     /// this one cannot cost anybody a commitment.
-    private static let descriptiveVerb = #"(?:closes|close|closed|opens|open|reopens|reopen|expires|expire|renews|renew|resumes|resume)"#
+    private static let descriptiveVerb = #"(?:closes|close|closed|opens|open|reopens|reopen|expires|expire|renews|renew|resumes|resume|launches|launching|launched|ships|shipping|shipped|airs|airing|aired|premieres|premiered)"#
 
     /// Subjects whose closing is a deadline the person is subject to.
     ///
@@ -157,7 +177,17 @@ enum ActionabilityReader {
     private static let deadlineNoun = #"(?:application|applications|registration|enrol(?:l)?ment|submission|submissions|nomination|nominations|ballot|voting|admissions|entry|entries|sign[\s-]?ups?|rsvp|waitlist|auction|bidding|offer|window|early\s+bird)"#
 
     /// A stated clock reading, with or without a preposition in front of it.
-    private static let clockCue = #"\b(?:at|for)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
+    private static let clockCue = #"(?:\b(?:at|for)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|\#(spokenClockCue))"#
+
+    /// How a person judges an experience they have already had.
+    ///
+    /// The complement is what separates the two readings of a past copula.
+    /// "The meeting was at 3" states a schedule and may well still have to be
+    /// attended; "the meeting was awful" states a verdict, and a verdict can
+    /// only be delivered afterwards. Tense alone cannot tell them apart, which
+    /// is why the earlier attempt to settle this by listing "past" verbs kept
+    /// catching sentences that were still ahead of the person.
+    private static let evaluativeComplement = #"(?:lovely|fun|great|good|bad|rough|long|awful|fine|nice|hard|easy|weird|odd|quiet|busy|exhausting|amazing|terrible|awkward|boring|stressful|wonderful|disappointing|painful|useful|helpful|pointless|brutal|intense|emotional|worth\s+it|a\s+mess|a\s+disaster|a\s+relief|a\s+blur|a\s+lot)"#
 
     /// Copulas. A sentence built around one is stating what something *is*,
     /// which is the shape of a fact rather than of a commitment.
@@ -179,7 +209,7 @@ enum ActionabilityReader {
         // a constraint, and `CaptureOperationDetector` owns it. Never promote
         // one to Today from here.
         if matches(value, #"^(?:don'?t|do\s+not|never|no\s+need\s+to)\b"#),
-           !matches(value, #"^(?:don'?t|do\s+not)\s+(?:forget|let\s+me\s+forget)\b"#) {
+           !matches(value, #"^(?:don'?t|do\s+not)\s+(?:forget|let\s+[\w'’-]+(?:\s+[\w'’-]+)?\s+forget)\b"#) {
             return .ambiguous
         }
         // "I don't have to renew it" releases an obligation. The lead-in is
@@ -226,8 +256,18 @@ enum ActionabilityReader {
             return .actionable
         }
 
+        // "Should I be worried about the mole on my arm" contains "should" and
+        // nothing to do. `obligationLead` is a word list and cannot see that
+        // the sentence is a question, so every wondering-aloud in the language
+        // was arriving on Today as a task. Both of these run ahead of the lead
+        // for that reason: they describe the *frame* the lead sits in, and the
+        // frame outranks the word.
+        if isOpenQuestion(value) || isHedgedAspiration(value) { return .knowledge }
+
         if hasObligationLead(value) { return .actionable }
-        if hasActionVerbHead(value) { return .actionable }
+        if hasActionVerbHead(value)
+            || hasImperativeShape(value)
+            || hasDeterminerlessImperativeShape(value) { return .actionable }
 
         // A report of something that already happened stays history even when
         // it names a month. This runs *after* every actionable rule above, so
@@ -242,6 +282,14 @@ enum ActionabilityReader {
         // reminded before it, or naming an errand to do before it, is a
         // different sentence — and both are read by the rules above this one.
         if isDescriptiveSchedule(value) { return .knowledge }
+
+        // How something went is a verdict, and a verdict is only available
+        // afterwards. This runs ahead of the calendar rule because the
+        // sentences it catches are dense in exactly the nouns and time words
+        // that rule keys on — "the dinner at Ana's was lovely", "the meeting
+        // went badly", "I felt weirdly calm walking home tonight" — and every
+        // one of them was becoming a dated appointment on Today.
+        if isPastExperience(value) { return .knowledge }
 
         // Nothing to perform, but a stated time and no fact-shape either. This
         // is the "Dentist Tuesday at 2" family: a commitment on the calendar.
@@ -261,6 +309,11 @@ enum ActionabilityReader {
         let patterns = [
             #"\bi\s+forgot\s+(?:to|about)\b"#,
             #"\bi\s+keep\s+forgetting\b"#,
+            // "I always forget to pay the hydro bill" is the same live
+            // obligation as "I keep forgetting to" and was the only member of
+            // the family missing — so it fell through to the consolidation
+            // fallback and surfaced as "Review captured thought".
+            #"\bi\s+always\s+forget\s+to\b"#,
             #"\bi\s+was\s+(?:supposed|meant)\s+to\b"#,
             #"\bi\s+(?:still\s+)?(?:haven'?t|have\s+not)\b"#,
             #"\bi\s+never\s+(?:got\s+a?round\s+to\b|\#(completedVerb)\b)"#,
@@ -299,7 +352,7 @@ enum ActionabilityReader {
     private static func carriesOwnObligation(_ text: String) -> Bool {
         matches(text, #"\bi\s+(?:need|have|['’]ve\s+got)\s+to\s+\#(actionVerb)\b"#)
             || matches(text, #"\bi\s+(?:should|must|gotta)\s+\#(actionVerb)\b"#)
-            || matches(text, #"\b(?:said|told\s+me|asked\s+me)\s+to\s+\#(actionVerb)\b"#)
+            || matches(text, #"\b(?:said|told\s+me|asked\s+me|reminded\s+(?:me|us))\s+to\s+\#(actionVerb)\b"#)
     }
 
     /// "I was going to call Catherine but I didn't."
@@ -343,7 +396,11 @@ enum ActionabilityReader {
     /// when it names a day, which is why "Mom said the party is Saturday" must
     /// not become a Saturday commitment of the person's own.
     private static func isReportedSpeech(_ text: String) -> Bool {
-        matches(text, #"\b(?:said|says|told\s+me|mentioned|according\s+to)\b"#)
+        // "Reminded me" reports a nudge that already happened — attributed
+        // information, not a request for a new one. When the reported words
+        // carry an obligation ("Alex reminded me to get the wrench"), the
+        // carriesOwnObligation rule upstream keeps the errand alive.
+        matches(text, #"\b(?:said|says|told\s+me|reminded\s+(?:me|us)|mentioned|according\s+to)\b"#)
     }
 
     /// "Remember Alex likes golf", "I want to remember that Priya's birthday is
@@ -371,9 +428,11 @@ enum ActionabilityReader {
     /// family, because `want to` is an obligation lead. That is how a birthday
     /// became a task on Today.
     static func recordedFactBody(_ text: String) -> String? {
-        let pattern = #"^(?:okay|ok|so|well|oh|also|and|um+|uh+)?[\s,]*"#
+        // The trailing `[\s,]*` can match nothing, so the opener needs its own
+        // boundary or it clips the first word: "Okonkwo" opened with "ok".
+        let pattern = #"^(?:(?:okay|ok|so|well|oh|also|and|um+|uh+)\b)?[\s,]*"#
             + #"(?:\#(recordingFrame))?"#
-            + #"\#(recordingVerb)\s+(?:that\s+|about\s+)?"#
+            + #"\#(recordingVerb)\s+(?:that\s+|about\s+|saying\s+)?"#
         guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]),
               range.lowerBound == text.startIndex else { return nil }
         return String(text[range.upperBound...])
@@ -393,6 +452,90 @@ enum ActionabilityReader {
         // has to be attended. A scheduled noun says the sentence is about an
         // appointment rather than about a change that is already history.
         return !matches(text, #"\b\#(scheduledNoun)\b"#)
+    }
+
+    /// A question the person is asking, not an instruction they are giving.
+    ///
+    /// Detected by subject-auxiliary inversion rather than by a question mark,
+    /// because the mark is the recognizer's decision and not the speaker's —
+    /// see `RenderingInvarianceTests`. "Should I be worried" inverts; "I should
+    /// call the vet" does not, and stays a task.
+    private static func isOpenQuestion(_ text: String) -> Bool {
+        matches(text, #"^\s*(?:so\s+|but\s+|and\s+|hmm\s+|ok(?:ay)?\s+)?(?:should|shall|do|does|did|can|could|would|will|is|are|was|were|am|have|has|had|may|might)\s+(?:i|we|you|he|she|they|it|there)\b"#)
+    }
+
+    /// Something the person would like to do one day, as opposed to something
+    /// they are undertaking to do.
+    ///
+    /// The hedge is the whole signal. "I want to learn piano" is a plan;
+    /// "someday I want to learn piano" is a wish, and putting a wish on Today
+    /// means it is either done under false pretenses or carried, unfinished,
+    /// as a reproach. Deliberately excluded: "sometime", which almost always
+    /// arrives attached to a real horizon ("email Marcus sometime this week")
+    /// and would take genuine errands off Today.
+    private static func isHedgedAspiration(_ text: String) -> Bool {
+        // Proposal language belongs to the idea family, which reads these same
+        // hedges as the marker of a thing worth developing. "Let me create a
+        // feature in the future that files calendar events" is a design idea,
+        // and demoting it to a plain note takes it off the Ideas surface it was
+        // captured for. Both destinations are Memory either way, so this is
+        // about the type, not the route.
+        if matches(text, #"^\s*(?:let\s+me|what\s+if|maybe\s+(?:i|we)|perhaps\s+(?:i|we))\b"#) {
+            return false
+        }
+        return matches(text, #"\b(?:some\s?day|one\s+day|eventually|at\s+some\s+point|in\s+the\s+future)\b"#)
+            || matches(text, #"\b(?:kinda|kind\s+of|sort\s+of)\s+(?:want|wanna|would|feel|like|think)"#)
+            || matches(text, #"^\s*(?:kinda|sort\s+of|kind\s+of)\b"#)
+            || matches(text, #"\bi\s+wonder\s+(?:if|whether)\b"#)
+            || matches(text, #"\b(?:always\s+wanted\s+to|would\s+love\s+to|it\s+would\s+be\s+nice\s+to)\b"#)
+    }
+
+    /// A report of how something already went, rather than of when it happens.
+    ///
+    /// `isPastReport` above cannot cover this: it is a list of life-event verbs
+    /// (moved, joined, retired) and it declines outright whenever a
+    /// `scheduledNoun` appears, so no sentence about a meeting, a dinner or an
+    /// appointment could ever be read as history. That veto exists for a good
+    /// reason — "the meeting was moved to Thursday" is still ahead of you — but
+    /// it was applied to the noun rather than to the evidence, so "the meeting
+    /// went badly" became an event on Today with a person called "Went Badly"
+    /// attached to it.
+    ///
+    /// The evidence this reads is the *complement*, not the noun and not the
+    /// tense: a judgment ("was lovely", "went badly") can only be passed on
+    /// something finished, while a time or a place ("was at 3") describes a
+    /// schedule. Sentences whose complement is a bare time are deliberately
+    /// left alone and still reach the calendar rule, because "the meeting was
+    /// at 3" genuinely can be either and guessing costs more than declining.
+    private static func isPastExperience(_ text: String) -> Bool {
+        // A plan that has been moved is a plan, whatever tense announces it.
+        if matches(text, #"\b(?:moved|pushed|bumped|rescheduled|shifted|switched)\s+(?:to|back|up|forward)\b"#) {
+            return false
+        }
+
+        // "The dinner was lovely", "today was rough", "it was a disaster".
+        if matches(text, #"\b(?:was|were)\s+(?:really\s+|so\s+|pretty\s+|quite\s+|very\s+|kind\s+of\s+|sort\s+of\s+)?\#(evaluativeComplement)\b"#) {
+            return true
+        }
+
+        // "The interview went well", "the meeting went badly".
+        if matches(text, #"\bwent\s+(?:really\s+|so\s+|pretty\s+)?(?:\#(evaluativeComplement)|well|badly|okay|ok|smoothly|sideways|nowhere)\b"#) {
+            return true
+        }
+
+        // A first-person experience. "I felt awful after lunch", "I had a
+        // dentist appointment" — the appointment is the thing that happened,
+        // not a thing to attend.
+        // "I had an idea for weekly planning" is not a report of an afternoon;
+        // "having an idea" is how English says somebody thought of something,
+        // and the idea family owns that sentence. `isCalendarCommitment` keeps
+        // the same exclusion a few rules below, for the same reason.
+        if matches(text, #"\bi\s+felt\b"#) { return true }
+        if matches(text, #"\bi\s+had\s+(?:a|an|the|my)\s+(?!idea|thought|concept|notion|feeling)"#) {
+            return true
+        }
+
+        return false
     }
 
     /// "The office closes December 24", "the store opens at 9".
@@ -435,6 +578,163 @@ enum ActionabilityReader {
         matches(actionBody(text), #"^\#(actionVerb)\b"#)
     }
 
+    /// Verbs that take an object without asking anybody to do anything.
+    /// "Love the new couch" has the grammar of an errand and none of the
+    /// intent, so the shape rule below has to decline them by name.
+    private static let stativeVerb = #"(?:love|loved|like|liked|hate|hated|enjoy|enjoyed|miss|missed|prefer|preferred|trust|doubt|own|owns|deserve|want|wanted|need|needs|needed|know|knew|remember|regret|appreciate|resent|fancy)"#
+
+    /// An errand whose verb simply is not on the list.
+    ///
+    /// `actionVerb` is a closed vocabulary and will always be one word short.
+    /// "Deal with the parking ticket", "swap the winter tires", "ring the
+    /// bank", "blow up the balloons", "pump the tires" are all errands, and
+    /// every one of them was filed in Memory because of which verb it happened
+    /// to use. Growing the list one bug report at a time is how it got this
+    /// long; this reads the *shape* instead — a verb at the head of the body,
+    /// an optional particle or preposition, then a determiner.
+    ///
+    /// The determiner is what makes it safe to do structurally. NLTagger
+    /// labels "chicken", "salt", "milk" and "avocado" as verbs, so a bare
+    /// head-verb test would send every spoken shopping list to Today as a
+    /// task. "Chicken salt juice" has no determiner behind its head and "swap
+    /// the winter tires" does, which separates the two without a vocabulary.
+    private static func hasImperativeShape(_ text: String) -> Bool {
+        let body = actionBody(text)
+        guard !matches(body, #"^\#(stativeVerb)\b"#) else { return false }
+        // An imperative uses the bare stem, so its head is never inflected for
+        // the third person. Without this, "turns out the leak was the
+        // dishwasher" has an errand's shape and became a task. The "ss"
+        // exception keeps the real imperatives that simply end that way —
+        // "press the button", "pass the salt", "address the envelope".
+        guard !matches(body, #"^[\p{L}'-]*[^s\s]s\b"#) else { return false }
+        guard matches(body, #"^[\p{L}'-]+(?:\s+(?:up|out|off|down|in|on|over|back|around|with|to|for|at|into|through))?\s+(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those)\s+\S"#) else {
+            return false
+        }
+        // The head has to actually be a verb. Without this, "coffee with the
+        // neighbours" and "dinner at the Kims" have the same shape as an
+        // errand.
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = body
+        var headIsVerb = false
+        tagger.enumerateTags(
+            in: body.startIndex..<body.endIndex,
+            unit: .word,
+            scheme: .lexicalClass,
+            options: [.omitWhitespace, .omitPunctuation]
+        ) { tag, _ in
+            headIsVerb = tag == .verb
+            return false
+        }
+        return headIsVerb
+    }
+
+    /// An imperative whose object carries no determiner: "sharpen knives",
+    /// "unclog drain", "descale kettle", "ping Priya".
+    ///
+    /// `hasImperativeShape` above requires a determiner — "sharpen *the*
+    /// knives" — and spoken errands routinely drop it, so those fell past both
+    /// tests to `.ambiguous` and were filed in Memory as notes with their
+    /// resolved time discarded on the way. The vocabulary at `actionVerb` is
+    /// what stood between them and that outcome, and no list of verbs is ever
+    /// finished: English forms new ones freely, and every miss is an errand the
+    /// person never sees on Today.
+    ///
+    /// The trick is that `NLTagger` cannot read a bare two-word fragment —
+    /// "sharpen knives" tags Adjective, "prune" tags Adverb — but recovers as
+    /// soon as the fragment has a verb phrase's shape. So a determiner is
+    /// *inserted* and the tagger is asked about the result. The insertion is
+    /// the discriminator and it must be paired with a reading of the original:
+    /// a fragment whose bare head already tags as a noun is a noun phrase
+    /// ("dinner at seven"), whatever the padded version looks like.
+    ///
+    /// Measured over 30 determinerless errands and 20 dated noun phrases:
+    /// 21 of 30 errands recovered, 1 of 20 false positives — "wifi password
+    /// maple syrup", whose natural spoken form carries a copula and is read as
+    /// knowledge before it reaches here.
+    ///
+    /// This is a *union* with the two tests above and can only ever add an
+    /// actionable reading, never take one away.
+    private static func hasDeterminerlessImperativeShape(_ text: String) -> Bool {
+        let body = actionBody(text)
+        guard !matches(body, #"^\#(stativeVerb)\b"#) else { return false }
+        // The same third-person guard the determiner form uses.
+        guard !matches(body, #"^[\p{L}'-]*[^s\s]s\b"#) else { return false }
+        // Exactly two or three bare words. Longer fragments have room for a
+        // predicate and are somebody else's decision.
+        let words = body.split(separator: " ").map(String.init)
+        guard (2...3).contains(words.count) else { return false }
+        guard !matches(body, #"^(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those)\b"#) else {
+            return false
+        }
+        // A trailing day word makes this a dated noun phrase rather than an
+        // errand: "meeting Thursday" and "payday Friday" both take an imperative
+        // shape once padded, and both are things that happen rather than things
+        // to do.
+        guard !matches(body, #"\b(?:\#(dayOrMonthWord))\s*$"#) else { return false }
+        // A subject, not an imperative. "Sarah likes sushi" has exactly this
+        // shape — two or three bare words, no determiner, no day — and reading
+        // it as an errand turned a fact about a person into a task on Today.
+        //
+        // Two guards, because neither alone is enough. The tagger catches the
+        // SVO sentences it can parse ("alex *wants* pizza", "mom *loves*
+        // gardening") but not the ones whose subject it fumbles, where it
+        // mislabels the verb too. The embedding catches those: an imperative
+        // head is an ordinary English verb and the 57,000-word vocabulary knows
+        // it, while a personal name usually is not in there at all.
+        guard !laterTokenIsVerb(body) else { return false }
+        guard let embedding = personNameEmbedding,
+              embedding.contains(words[0].lowercased()) else { return false }
+
+        let padded = words[0] + " the " + words.dropFirst().joined(separator: " ")
+        return headTag(of: padded) == .verb && headTag(of: body) != .noun
+    }
+
+    /// Held once; loading is the expensive part.
+    private static let personNameEmbedding = NLEmbedding.wordEmbedding(for: .english)
+
+    /// Whether any token after the first reads as a verb, which is what a
+    /// subject-verb-object sentence has and an imperative does not.
+    private static func laterTokenIsVerb(_ text: String) -> Bool {
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        var index = 0
+        var found = false
+        tagger.enumerateTags(
+            in: text.startIndex..<text.endIndex,
+            unit: .word,
+            scheme: .lexicalClass,
+            options: [.omitWhitespace, .omitPunctuation]
+        ) { tag, _ in
+            if index > 0, tag == .verb { found = true; return false }
+            index += 1
+            return true
+        }
+        return found
+    }
+
+    /// The day and month words that end a dated noun phrase.
+    private static let dayOrMonthWord =
+        #"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday"#
+        + #"|january|february|march|april|may|june|july|august|september|october|november|december"#
+        + #"|today|tomorrow|tonight|weekend)"#
+
+    /// The lexical class of a fragment's first word.
+    private static func headTag(of text: String) -> NLTag? {
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        var head: NLTag?
+        tagger.enumerateTags(
+            in: text.startIndex..<text.endIndex,
+            unit: .word,
+            scheme: .lexicalClass,
+            options: [.omitWhitespace, .omitPunctuation]
+        ) { tag, _ in
+            head = tag
+            return false
+        }
+        return head
+    }
+
     /// A stated time with nothing to perform and nothing being described.
     private static func isCalendarCommitment(_ text: String) -> Bool {
         guard matches(text, calendarCue) else { return false }
@@ -465,6 +765,19 @@ enum ActionabilityReader {
                namesASpecificDay(text) {
                 return true
             }
+            // A stated day *and* a stated clock is how somebody puts a thing on
+            // a calendar out loud, and at that point the subject noun stops
+            // carrying any information. "Soccer practice is Tuesday at five"
+            // and "the recital is Saturday at two" are the same sentence; only
+            // the second had a noun on the list, so the first lost its route
+            // and its date together and the person was told nothing.
+            //
+            // Requiring the day *and* the clock is what keeps facts out. "The
+            // wifi password is maple syrup" has neither; "our lease renews in
+            // March" names a month and no day; "Nadia's birthday is October
+            // 12" names a date and no clock, and so stays the fact about a
+            // person that `scheduledNoun`'s exclusion list intends.
+            if namesASpecificDay(text), matches(text, clockCue) { return true }
             guard matches(text, #"\b\#(scheduledNoun)\b"#) else { return false }
             // A stated clock is as specific as a stated day: "the flight is at
             // 7:05" is a commitment today, not a fact about flights.

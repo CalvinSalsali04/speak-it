@@ -19,6 +19,9 @@ enum CaptureOperation: String, Codable, Equatable, Sendable {
     case cancel
     /// Mark something that already exists as done.
     case complete
+    /// Move something that already exists to a new moment. Non-destructive:
+    /// the item keeps everything else about itself and only its timing moves.
+    case reschedule
     /// Withdraw the capture in progress. Produces nothing at all.
     case retract
 }
@@ -59,13 +62,20 @@ struct CaptureOperationRequest: Equatable, Sendable {
     /// is everything the person owns.
     let isBroad: Bool
 
+    /// For `.reschedule` only: the person's words for the new moment — "Friday",
+    /// "3 PM", "an hour". Kept as words rather than a resolved date because
+    /// resolving needs the store (a relative "an hour" moves the *scheduled*
+    /// time, not the clock) and extraction only reports what was asked.
+    let newTimingText: String?
+
     init(
         operation: CaptureOperation,
         polarity: CapturePolarity = .negative,
         target: String?,
         sourceQuote: String,
         needsReview: Bool,
-        isBroad: Bool = false
+        isBroad: Bool = false,
+        newTimingText: String? = nil
     ) {
         self.operation = operation
         self.polarity = polarity
@@ -73,6 +83,40 @@ struct CaptureOperationRequest: Equatable, Sendable {
         self.sourceQuote = sourceQuote
         self.needsReview = needsReview
         self.isBroad = isBroad
+        self.newTimingText = newTimingText
+    }
+}
+
+/// The offset form of a reschedule destination: "back an hour", "by two
+/// days". Measured from the item's scheduled moment, not from the clock —
+/// pushing a 5 PM dentist back an hour means 6 PM whenever it is said.
+enum RescheduleOffset {
+    private static let numberWords: [String: Double] = [
+        "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "eleven": 11, "twelve": 12, "half": 0.5,
+    ]
+
+    static func parse(_ text: String) -> TimeInterval? {
+        let pattern = #"^(?:back\s+)?(?:by\s+)?(a|an|half\s+an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(minutes?|mins?|hours?|days?|weeks?)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 2,
+              let amountRange = Range(match.range(at: 1), in: text),
+              let unitRange = Range(match.range(at: 2), in: text) else {
+            return nil
+        }
+        let amountWord = text[amountRange].lowercased()
+        let amount = amountWord.hasPrefix("half")
+            ? 0.5
+            : (numberWords[amountWord] ?? Double(amountWord) ?? 1)
+        let unit = text[unitRange].lowercased()
+        let seconds: Double
+        if unit.hasPrefix("min") { seconds = 60 }
+        else if unit.hasPrefix("hour") { seconds = 3600 }
+        else if unit.hasPrefix("week") { seconds = 7 * 24 * 3600 }
+        else { seconds = 24 * 3600 }
+        return amount * seconds
     }
 }
 

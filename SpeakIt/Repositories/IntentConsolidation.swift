@@ -104,7 +104,13 @@ enum IntentConsolidator {
     /// title and from the text handed to the organizer, because a reason can
     /// carry a date of its own — "call the dentist because my appointment is
     /// Thursday" is a call with no day, not a call on Thursday.
-    private static let trailingExplanation = #"[\s,]+(?:because|since|cuz|coz|so\s+that|so\s+i\s+can|so\s+i\s+don['’]?t|which\s+means|that['’]?s\s+why)\b.*$"#
+    // The last alternative is the comma-less form of the aside
+    // `droppingTrailingAsides` handles: "book the hotel I've been putting it
+    // off for ages" arrives with no comma when the recognizer declines to
+    // write one, and the aside stuck to the title. Narrowed to the pronoun
+    // objects so a real relative clause — "call the guy I've been trying to
+    // reach" — keeps its words.
+    private static let trailingExplanation = #"[\s,]+(?:(?:because|since|cuz|coz|so\s+that|so\s+i\s+can|so\s+i\s+don['’]?t|which\s+means|that['’]?s\s+why)\b.*|i['’]?ve\s+been\s+putting\s+(?:it|this|that|them)\s+off\b.*)$"#
 
     // MARK: Verdict
 
@@ -335,7 +341,14 @@ enum IntentConsolidator {
         return value
     }
 
-    private static let leadingFiller = #"^(?:okay|ok|so|well|oh|um+|uh+|like|and|but|then|anyway|anyways|honestly|basically|actually|really|just|yeah|alright|i\s+mean|you\s+know|to\s+be\s+honest)\b[\s,]*"#
+    // "Right" opens as much speech as "okay" does, and its absence here cost a
+    // dated row: "right so I mean the meeting is Thursday at 2" never reached
+    // the fact reader because nothing stripped the "right", so the meeting was
+    // judged non-substantive and the whole capture collapsed onto its other
+    // clause. The "while I'm at it" family are asides meaning "also" — the
+    // clause they precede is the content: "while I'm thinking about it pay the
+    // hydro bill" is about the hydro bill.
+    private static let leadingFiller = #"^(?:okay|ok|so|well|oh|right|um+|uh+|like|and|but|then|anyway|anyways|honestly|basically|actually|really|just|yeah|alright|i\s+mean|you\s+know|to\s+be\s+honest|while\s+i['’]?m\s+(?:thinking\s+about\s+it|at\s+it)|while\s+i\s+remember|while\s+we['’]?re\s+at\s+it)\b[\s,]*"#
 
     private static func normalized(_ text: String) -> String {
         text

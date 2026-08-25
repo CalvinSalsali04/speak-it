@@ -3,6 +3,40 @@
 Working document for the first Speak It release. Status values: **Done**,
 **Blocked** (needs an Apple account or a hosted page), **Todo**.
 
+## Current verdict — August 24, 2026
+
+**The code is a release candidate; the app is not ready to click Submit yet.**
+No known code failure blocks TestFlight, but distribution still depends on the
+account, commerce, hosted-policy, listing, and physical-iPhone gates below.
+
+Current automated evidence from the working tree:
+
+- Unsigned Release build: passed.
+- Release static analyzer: passed with no findings or compiler warnings.
+- Unit/integration suite: 524 passed, 6 environment-specific tests skipped,
+  0 failed on iPhone 17 Pro / iOS 26.5 simulator.
+- UI suite: 22 passed, 0 failed on iPhone 17 Pro / iOS 26.5 simulator.
+- Complete first-run practice journey: passed on both iPhone 17 Pro and iPhone
+  SE (3rd generation) simulators. The SE pass includes the full example copy,
+  the scrollable typed-input escape route, live Today/People/Ideas coaching,
+  readiness, cleanup, and all ten free captures remaining.
+- The first-run UI test preserves 16 named screenshots and has a matching
+  screen recording, including the Capture Anywhere method and setup branch.
+
+Do not submit until every one of these external gates is closed:
+
+1. Complete the DSA trader declaration.
+2. Switch every target to the paid team and verify the app group and iCloud
+   container in a signed archive installed through TestFlight.
+3. Create and approve the monthly, annual, and code-only lifetime products;
+   verify the annual price schedule and all localized sale copy in App Store
+   Connect.
+4. Deploy the privacy and support pages, confirm the support mailbox is
+   monitored, and make App Store privacy answers match the privacy manifest.
+5. Finish the store listing, age rating, review notes, and required screenshots.
+6. Pass the physical-iPhone voice/route, locked-device, notification/alarm,
+   purchase/restore, iCloud, accessibility, and geofence matrices in section 7.
+
 ## 1. Account and agreements
 
 - **Done:** Apple Developer Program membership ($99/year) is paid.
@@ -57,7 +91,7 @@ Working document for the first Speak It release. Status values: **Done**,
 - **Done:** `MARKETING_VERSION` is `1.0` across the app, Live Activity
   extension, Share extension, and UI tests. Verified in the built product:
   `SpeakIt.app`, `SpeakItLiveActivity.appex`, and `SpeakItShareExtension.appex`
-  all report `1.0`. Build number stays at `10`.
+  all report `1.0`. The current build number is `13`.
 - **Done:** `ITSAppUsesNonExemptEncryption` is `false` in `SpeakIt/Info.plist`,
   so uploads no longer stall on the export-compliance question. Verified correct:
   the iOS binary uses only HTTPS and Apple data protection. It contains no
@@ -75,9 +109,10 @@ Working document for the first Speak It release. Status values: **Done**,
   the Save Thought App Intent, and the shared-inbox import.
 - **Done:** Security sweep of the shipping binary — no secrets, no debug
   logging, no developer paywall override, no ATS exceptions, no WebView.
-- **Done (Aug 17, 2026):** 307 unit tests passing with one environment-specific
-  notification case skipped, all 20 UI tests passing, 8 referral-service tests
-  passing, and the unsigned Release simulator build clean.
+- **Done (Aug 24, 2026):** 524 unit/integration tests passing with 6
+  environment-specific cases skipped, all 22 UI tests passing, the complete
+  onboarding passing on Pro and SE simulator sizes, the unsigned Release build
+  clean, and Release static analysis clean.
 
 ## 2A. Verified referral program — implemented, externally gated
 

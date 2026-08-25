@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftData
 import XCTest
 @testable import SpeakIt
@@ -244,9 +245,18 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
     }
 
-    /// One unrecognized word — a quantity, a brand, a qualifier — refuses the
-    /// comma-less split rather than guessing at product boundaries.
-    func testCommalessListWithUnknownWordsStaysWhole() throws {
+    /// A quantity in front of a product no longer refuses the comma-less split.
+    ///
+    /// This test used to assert one row, and the reason it gave was sound at
+    /// the time: the splitter was guessing at product boundaries from a closed
+    /// grocery vocabulary, and one unrecognized word meant it was guessing
+    /// blind. It is not guessing any more — the boundaries are read from
+    /// grammar, so "two dozen eggs" and "milk" are two products and become two
+    /// rows a person can check off one at a time.
+    ///
+    /// What the test still guards is the part that was never negotiable: the
+    /// reminder attached to the capture has to survive the split.
+    func testCommalessListWithAQuantitySplitsAndKeepsTheReminder() throws {
         let item = try repository.createCapture(
             text: "Remind me to get two dozen eggs and milk in one hour",
             source: .inAppText,
@@ -255,7 +265,12 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
 
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
-        XCTAssertEqual(items.count, 1, "got \(items.map(\.displayTitle))")
+        XCTAssertEqual(items.count, 2, "got \(items.map(\.displayTitle))")
+        XCTAssertEqual(
+            Set(items.map(\.displayTitle)),
+            ["Get two dozen eggs", "Get milk"],
+            "the quantity has to survive on the row it belongs to"
+        )
         XCTAssertNotNil(item.reminderDate, "the reminder must survive")
     }
 
@@ -588,6 +603,18 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             ThoughtTitleFormatter.polished(
+                "Oh, I had an idea for weekly planning to read itself back to me.",
+                itemType: .idea
+            ),
+            "Weekly planning to read itself back to me"
+        )
+        XCTAssertEqual(
+            ThoughtTitleFormatter.polished("Idea:", itemType: .idea),
+            "Idea",
+            "Removing an idea label must never leave a blank row title"
+        )
+        XCTAssertEqual(
+            ThoughtTitleFormatter.polished(
                 "iPhone shortcuts should stay fast.",
                 itemType: .note
             ),
@@ -858,11 +885,28 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.priority, .normal)
     }
 
+    func testNaturalConversationalIdeaGetsATitleAndRoutesToIdeas() throws {
+        let original = "Oh, I had an idea for weekly planning to read itself back to me."
+
+        let item = try repository.createCapture(
+            text: original,
+            source: .inAppVoice,
+            createdAt: .now
+        )
+
+        XCTAssertEqual(item.itemType, .idea)
+        XCTAssertEqual(item.category, .ideas)
+        XCTAssertEqual(item.displayTitle, "Weekly planning to read itself back to me")
+        XCTAssertEqual(item.captureSession?.originalTranscription, original)
+    }
+
     func testProposalLanguageCreatesIdeasWhileCommitmentsStayTasks() throws {
         let ideas = [
             "Let me create a feature in the future that lets people create events for their calendar automatically",
             "Idea: add calendar integration",
             "Idea for a quieter laundry basket",
+            "I had an idea for a calmer tutorial",
+            "I just thought of an idea to simplify setup",
             "It would be cool to add calendar integration",
             "Maybe I could add calendar integration",
             "Maybe I should add calendar integration",
@@ -1010,6 +1054,36 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(
             ReminderCopy.action(from: "Set a timer for twenty minutes to check the oven"),
             "Check the oven"
+        )
+    }
+
+    /// English drops the complementizer after "remind me", and the title
+    /// stripper used to demand it. "Remind me I have a meeting at 4:15" was
+    /// titled "I have a meeting" — the speaker's possession of the thing rather
+    /// than the thing — while the same sentence with "that" spoken read
+    /// "Meeting". The two must agree.
+    func testReminderTitleDropsTheHaveFrameWithOrWithoutThat() {
+        XCTAssertEqual(
+            ReminderCopy.action(from: "Remind me that I have a meeting at 4:15"),
+            "Meeting"
+        )
+        XCTAssertEqual(
+            ReminderCopy.action(from: "Remind me I have a meeting at 4:15"),
+            "Meeting"
+        )
+        XCTAssertEqual(
+            ReminderCopy.action(from: "remind me i have a meeting at 4:15"),
+            "Meeting"
+        )
+        XCTAssertEqual(
+            ReminderCopy.action(from: "Remind me we have dinner with the Nguyens at 7"),
+            "Dinner with the Nguyens"
+        )
+        // The elided form is anchored to the reminder command. Left floating,
+        // a bare "I have" inside an ordinary reminder retitled this "The keys".
+        XCTAssertEqual(
+            ReminderCopy.action(from: "Remind me to tell Bob I have the keys at 5"),
+            "Tell Bob I have the keys"
         )
     }
 
@@ -2351,14 +2425,41 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
     }
 
-    func testLongCaptureKeepsTheUntouchedTranscriptEvenWhenItemCountIsBounded() throws {
+    /// Fourteen errands used to become twelve rows. The cap was `prefix(12)`,
+    /// and errands 13 and 14 existed in no row at all — their words survived
+    /// only on the untouched transcript, where nothing would surface them
+    /// again. A 45-second grocery list reaching fifteen entries is ordinary.
+    func testLongCaptureKeepsEveryErrandUpToTheRowCap() throws {
         let transcript = (1...14).map { "Call person\($0)" }.joined(separator: " and ")
 
         let first = try repository.createCapture(text: transcript, source: .shortcut, createdAt: .now)
         let session = try XCTUnwrap(first.captureSession)
 
-        XCTAssertEqual(session.items.count, 12)
+        XCTAssertEqual(session.items.count, 14)
         XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
+    /// Past the cap the bound still holds, but it folds rather than truncates:
+    /// the overflow arrives as one review row carrying every remaining quote,
+    /// so the words stay on screen and the person is told there is more to
+    /// sort instead of never learning something vanished.
+    func testOverflowPastTheRowCapFoldsIntoOneReviewRowInsteadOfVanishing() throws {
+        let transcript = (1...25).map { "Call person\($0)" }.joined(separator: " and ")
+
+        let first = try repository.createCapture(text: transcript, source: .shortcut, createdAt: .now)
+        let session = try XCTUnwrap(first.captureSession)
+
+        XCTAssertEqual(session.items.count, 20)
+        XCTAssertEqual(session.originalTranscription, transcript)
+
+        let overflow = try XCTUnwrap(session.items.first { $0.needsClarification })
+        // Every errand past the cap has to be readable somewhere on the row.
+        for index in 20...25 {
+            XCTAssertTrue(
+                overflow.captureSession?.originalTranscription.contains("person\(index)") == true,
+                "person\(index) must survive the cap"
+            )
+        }
     }
 
     func testRamblingWithoutAPointStaysSafeAndDoesNotBecomeAParagraphTitle() throws {
@@ -2549,6 +2650,25 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertNotNil(result.items.first?.organization.dueDate)
     }
 
+    func testSpokenTemporalSentenceBreakStaysAttachedToTheMayaFollowUp() throws {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow at nine. Ask Maya about the proposal.",
+            referenceDate: date(0),
+            calendar: utcCalendar
+        )
+
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(item.sourceQuote, "Ask Maya about the proposal")
+        XCTAssertEqual(item.organization.itemType, .personFollowUp)
+        XCTAssertEqual(item.organization.personName, "Maya")
+        XCTAssertEqual(item.analysisText, "Tomorrow at nine Ask Maya about the proposal")
+        XCTAssertEqual(
+            utcCalendar.dateComponents([.hour, .minute], from: try XCTUnwrap(item.organization.dueDate)).hour,
+            9
+        )
+    }
+
     func testTodayVisualFixturesNeverCreateMemoryItems() {
         for fixture in SampleDataLibrary.todayExamples {
             let result = ThoughtExtractionEngine.extractWithRules(
@@ -2575,7 +2695,162 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let completed = SpeechTranscriber.naturalPauseDuration(for: "Buy milk.")
         let continuing = SpeechTranscriber.naturalPauseDuration(for: "Buy milk and")
 
-        XCTAssertNotEqual(completed, continuing)
+        XCTAssertEqual(completed, .milliseconds(1_100))
+        XCTAssertEqual(continuing, .seconds(8))
+    }
+
+    func testSpeechProtectsTheBetaTestersIncompleteReminderTime() {
+        let decision = SpeechTranscriber.naturalPauseDecision(
+            for: "Remind me to pick up Ice wine at LCBO tomorrow. At."
+        )
+
+        XCTAssertEqual(decision.promptAfter, .milliseconds(2_100))
+        XCTAssertEqual(decision.finishAfter, .seconds(8))
+    }
+
+    func testAutomaticPunctuationCannotHideAnIncompleteEnding() {
+        for transcript in [
+            "Remind me to pick up ice wine at LCBO tomorrow at.",
+            "Remind me to pick up ice wine at LCBO tomorrow, at…",
+            "Remind me to pick up ice wine at LCBO tomorrow. “At.”",
+            "Remind me to pick up ice wine at LCBO tomorrow. 'At.'",
+            "Remind me to pick up ice wine at LCBO tomorrow (at).",
+            "Remind me to pick up ice wine at LCBO tomorrow.At."
+        ] {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+
+            XCTAssertEqual(decision.promptAfter, .milliseconds(2_100), transcript)
+            XCTAssertEqual(decision.finishAfter, .seconds(8), transcript)
+        }
+    }
+
+    func testEndpointingSignatureIgnoresASRRestylingButNotWordRevisions() {
+        let baseline = SpeechTranscriber.endpointingSignature(
+            for: "Remind me to call Dr Chen at"
+        )
+
+        for restyled in [
+            "REMIND ME TO CALL DR. CHEN. AT.",
+            "Remind me to call Dr Chen, ‘at…’",
+            "Remind me to call Dr Chen\n(at)",
+            "Remind me to call Dr Chen.At."
+        ] {
+            XCTAssertEqual(
+                SpeechTranscriber.endpointingSignature(for: restyled),
+                baseline,
+                restyled
+            )
+        }
+
+        for lexicalRevision in [
+            "Remind me to call Dr Chen at six",
+            "Remind me to call Dr Chan at",
+            "Remind me to call Dr Chen"
+        ] {
+            XCTAssertNotEqual(
+                SpeechTranscriber.endpointingSignature(for: lexicalRevision),
+                baseline,
+                lexicalRevision
+            )
+        }
+        XCTAssertEqual(SpeechTranscriber.endpointingSignature(for: "…?!"), "")
+    }
+
+    func testEndpointingPolicyCoversBroadUtteranceClasses() {
+        let clearlyIncomplete = [
+            // Coordination, open recipients/times/noun phrases, capture frames,
+            // and explicit hesitation are categories rather than one fixture.
+            "Add eggs and",
+            "Pick either tea or",
+            "Send the photos to",
+            "Meet me at",
+            "Call my",
+            "Remind me about",
+            "One more thing",
+            "I want to",
+            "Maybe we could, um…"
+        ]
+        let ambiguous = [
+            // These can either continue or stand as conversational fragments.
+            "That is what I came for",
+            "Bring it with",
+            "Start after",
+            "Do it next",
+            "Tell me about",
+            "First",
+            "Well"
+        ]
+        let apparentlyComplete = [
+            // Short fragments, full commands, completed slots, questions, and
+            // grammatical short answers must not all inherit the long wait.
+            "Milk",
+            "Call my mother",
+            "Send the photos to Priya",
+            "Meet me at five",
+            "Buy eggs and bread",
+            "Remember the dentist appointment",
+            "What is the weather tomorrow?",
+            "Yes I can",
+            "That is all",
+            "LCBO"
+        ]
+
+        for transcript in clearlyIncomplete {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+            XCTAssertEqual(decision.promptAfter, .milliseconds(2_100), transcript)
+            XCTAssertEqual(decision.finishAfter, .seconds(8), transcript)
+        }
+        for transcript in ambiguous {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+            XCTAssertEqual(decision.promptAfter, .milliseconds(2_100), transcript)
+            XCTAssertEqual(decision.finishAfter, .seconds(4), transcript)
+        }
+        for transcript in apparentlyComplete {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+            XCTAssertNil(decision.promptAfter, transcript)
+            XCTAssertEqual(decision.finishAfter, .milliseconds(1_100), transcript)
+        }
+    }
+
+    func testFinishedPlaceAndTimePhrasesKeepTheFastPath() {
+        let place = SpeechTranscriber.naturalPauseDecision(
+            for: "Pick up ice wine at LCBO"
+        )
+        let time = SpeechTranscriber.naturalPauseDecision(
+            for: "Pick up ice wine at LCBO tomorrow. At six."
+        )
+
+        XCTAssertNil(place.promptAfter)
+        XCTAssertEqual(place.finishAfter, .milliseconds(1_100))
+        XCTAssertNil(time.promptAfter)
+        XCTAssertEqual(time.finishAfter, .milliseconds(1_100))
+    }
+
+    func testHesitationsAndOpenNounPhrasesHoldTheMicrophone() {
+        for transcript in [
+            "Buy milk and, um",
+            "Call my",
+            "Don't forget",
+            "Don’t forget",
+            "One more thing",
+            "I need to"
+        ] {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+            XCTAssertNotNil(decision.promptAfter, transcript)
+            XCTAssertEqual(decision.finishAfter, .seconds(8), transcript)
+        }
+    }
+
+    func testAmbiguousSentenceEndingsGetABoundedMiddleWindow() {
+        for transcript in [
+            "Count me in",
+            "That is what I came for",
+            "Do it next"
+        ] {
+            let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
+            XCTAssertEqual(decision.promptAfter, .milliseconds(2_100), transcript)
+            XCTAssertEqual(decision.finishAfter, .seconds(4), transcript)
+        }
     }
 
     func testRecognitionFailurePrefersTheRecoveryRecordingOverPartialText() {
@@ -2783,6 +3058,234 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             SpeechVocabularyStore.apply(to: "save this sample"),
             "save this sample"
         )
+    }
+
+    func testTutorialMayaRepairIsNarrowAndPreservesTheRestOfTheSpeech() {
+        let mission = TutorialCaptureMission.action
+
+        XCTAssertEqual(
+            mission.repairVoiceTranscript("Tomorrow at nine, ask my about the proposal"),
+            "Tomorrow at nine, ask Maya about the proposal"
+        )
+        XCTAssertEqual(
+            mission.repairVoiceTranscript("Tomorrow at ten, ask Mia about the budget"),
+            "Tomorrow at ten, ask Maya about the budget",
+            "the known name may be repaired, but the person's time and subject must remain untouched"
+        )
+        XCTAssertEqual(
+            mission.repairVoiceTranscript("Tomorrow at nine, ask my boss about the proposal"),
+            "Tomorrow at nine, ask my boss about the proposal",
+            "ordinary uses of 'my' must never be rewritten as a name"
+        )
+    }
+
+    func testRecognitionContextPrioritizesTutorialHintsAndLearnsPeopleNames() {
+        SpeechVocabularyStore.save([])
+        SpeechVocabularyStore.clearLearnedContextualPhrases()
+        defer {
+            SpeechVocabularyStore.save([])
+            SpeechVocabularyStore.clearLearnedContextualPhrases()
+        }
+
+        SpeechVocabularyStore.rememberContextualPhrases(["Maya", "maya", "Sarah"])
+        XCTAssertEqual(
+            SpeechVocabularyStore.recognitionContext(
+                additional: ["Tomorrow at 9, ask Maya about the proposal.", "Maya"]
+            ),
+            ["Tomorrow at 9, ask Maya about the proposal.", "Maya", "Sarah"]
+        )
+    }
+
+    func testRecognitionContextBoostsOnlyPreferredCorrectionsAndNeverExceedsAppleLimit() {
+        SpeechVocabularyStore.save([])
+        SpeechVocabularyStore.clearLearnedContextualPhrases()
+        defer {
+            SpeechVocabularyStore.save([])
+            SpeechVocabularyStore.clearLearnedContextualPhrases()
+        }
+
+        SpeechVocabularyStore.save(
+            (0..<60).map {
+                SpeechCorrection(
+                    heardPhrase: "wrong spelling \($0)",
+                    preferredPhrase: "Preferred Name \($0)"
+                )
+            }
+        )
+        SpeechVocabularyStore.rememberContextualPhrases(
+            (0..<80).map { "Learned Person \($0)" }
+        )
+
+        let context = SpeechVocabularyStore.recognitionContext(
+            additional: (0..<8).map { "Current Capture \($0)" }
+        )
+
+        XCTAssertEqual(context.count, 100)
+        XCTAssertEqual(Array(context.prefix(8)), (0..<8).map { "Current Capture \($0)" })
+        XCTAssertTrue(context.contains("Preferred Name 0"))
+        XCTAssertFalse(context.contains("wrong spelling 0"))
+    }
+
+    func testFirstAudioBufferGateOpensExactlyOnce() {
+        let gate = FirstAudioBufferGate()
+
+        XCTAssertTrue(gate.markReady())
+        XCTAssertFalse(gate.markReady())
+        XCTAssertFalse(gate.markReady())
+    }
+
+    func testSpeechCaptureAudioProcessorCopiesAndDrainsFinalBuffer() throws {
+        let format = try XCTUnwrap(
+            AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+        )
+        let source = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)
+        )
+        source.frameLength = 4
+        let sourceSamples = try XCTUnwrap(source.floatChannelData?.pointee)
+        sourceSamples[0] = 0.125
+        sourceSamples[1] = 0.25
+        sourceSamples[2] = 0.5
+        sourceSamples[3] = 0.75
+
+        let lock = NSLock()
+        var receivedSamples: [Float] = []
+        var readinessCount = 0
+        let processor = SpeechCaptureAudioProcessor(
+            process: { buffer in
+                guard let samples = buffer.floatChannelData?.pointee else { return }
+                lock.lock()
+                receivedSamples = Array(
+                    UnsafeBufferPointer(start: samples, count: Int(buffer.frameLength))
+                )
+                lock.unlock()
+            },
+            onFirstBufferProcessed: {
+                lock.lock()
+                readinessCount += 1
+                lock.unlock()
+            }
+        )
+
+        processor.append(source)
+        // AVAudioEngine reuses its tap memory. Mutating the source after append
+        // proves the processor retained an independent buffer for recognition.
+        sourceSamples[0] = 1
+        processor.finish()
+
+        lock.lock()
+        let captured = receivedSamples
+        let ready = readinessCount
+        lock.unlock()
+        XCTAssertEqual(captured, [0.125, 0.25, 0.5, 0.75])
+        XCTAssertEqual(ready, 1)
+    }
+
+    func testSpeechCaptureAudioProcessorRejectsBuffersAfterFinish() throws {
+        let format = try XCTUnwrap(
+            AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+        )
+        let source = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1)
+        )
+        source.frameLength = 1
+
+        let lock = NSLock()
+        var processedCount = 0
+        let processor = SpeechCaptureAudioProcessor { _ in
+            lock.lock()
+            processedCount += 1
+            lock.unlock()
+        }
+
+        processor.append(source)
+        processor.finish()
+        processor.append(source)
+        processor.finish()
+
+        lock.lock()
+        let count = processedCount
+        lock.unlock()
+        XCTAssertEqual(count, 1)
+    }
+
+    func testSpeechBenchmarkScorerIgnoresFormattingAndNormalizesSpokenNumbers() {
+        let score = SpeechBenchmarkScorer.score(
+            expected: "Schedule Maya for Tuesday at four thirty",
+            observed: "Schedule Máya for Tuesday at 4:30.",
+            criticalPhrases: ["Maya", "Tuesday", "four thirty"]
+        )
+
+        XCTAssertEqual(score.wordErrors, 0)
+        XCTAssertEqual(score.contentAccuracy, 1)
+        XCTAssertEqual(score.criticalHits, 3)
+        XCTAssertEqual(score.criticalAccuracy, 1)
+        XCTAssertTrue(score.isExact)
+    }
+
+    func testSpeechBenchmarkScorerUsesWordEditDistanceAndCriticalDetails() {
+        let score = SpeechBenchmarkScorer.score(
+            expected: "Text Siobhan about twelve eggs tomorrow",
+            observed: "Text Simone about 12 eggs today",
+            criticalPhrases: ["Siobhan", "twelve eggs", "tomorrow"]
+        )
+
+        XCTAssertEqual(score.referenceWordCount, 6)
+        XCTAssertEqual(score.wordErrors, 2)
+        XCTAssertEqual(score.contentAccuracy, 4.0 / 6.0, accuracy: 0.000_01)
+        XCTAssertEqual(score.criticalHits, 1)
+        XCTAssertEqual(score.criticalAccuracy, 1.0 / 3.0, accuracy: 0.000_01)
+        XCTAssertFalse(score.isExact)
+    }
+
+    func testAudioQualityTrackerReportsQuietnessClippingAndDurationWithoutAudio() throws {
+        SpeechCaptureDiagnosticsStore.clear()
+        defer { SpeechCaptureDiagnosticsStore.clear() }
+        let format = try XCTUnwrap(
+            AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)
+        )
+        let buffer = try XCTUnwrap(
+            AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600)
+        )
+        buffer.frameLength = 1_600
+        let samples = try XCTUnwrap(buffer.floatChannelData?.pointee)
+        for index in 0..<1_600 {
+            samples[index] = index < 10 ? 1 : 0.1
+        }
+
+        let tracker = AudioQualityTracker()
+        tracker.record(buffer)
+        let quality = try XCTUnwrap(
+            tracker.snapshot(profile: .measurement, recognitionEngine: .speechAnalyzer)
+        )
+
+        XCTAssertEqual(quality.durationMilliseconds, 100)
+        XCTAssertEqual(quality.peakDecibels, 0, accuracy: 0.01)
+        XCTAssertEqual(quality.clippedSampleFraction, 10.0 / 1_600.0, accuracy: 0.000_01)
+        XCTAssertTrue(quality.isLikelyClipped)
+        XCTAssertFalse(quality.isVeryQuiet)
+        XCTAssertEqual(quality.profile, .measurement)
+        XCTAssertEqual(quality.recognitionEngine, .speechAnalyzer)
+        SpeechCaptureDiagnosticsStore.save(quality)
+        XCTAssertEqual(SpeechCaptureDiagnosticsStore.latest, quality)
+
+        tracker.reset()
+        XCTAssertNil(tracker.snapshot(profile: .measurement, recognitionEngine: nil))
+    }
+
+    func testSavedPersonNameBecomesFutureRecognitionContext() async throws {
+        SpeechVocabularyStore.clearLearnedContextualPhrases()
+        defer { SpeechVocabularyStore.clearLearnedContextualPhrases() }
+
+        let result = try await repository.createCaptureResult(
+            text: "Tomorrow at 9, ask Maya about the proposal",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+
+        XCTAssertEqual(result.primaryItem.personName, "Maya")
+        XCTAssertTrue(SpeechVocabularyStore.contextualPhrases.contains("Maya"))
     }
 
     func testRepeatedShareSheetDeliveryDoesNotDuplicateTheCapture() throws {
@@ -5319,6 +5822,17 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
                 pipelineCompleted: true,
                 requiresReview: false
             )),
+            .speechCaptureQuality(
+                SpeechCaptureAudioQuality(
+                    rmsDecibels: -28,
+                    peakDecibels: -4,
+                    clippedSampleFraction: 0,
+                    durationMilliseconds: 4_200,
+                    profile: .spokenAudio,
+                    recognitionEngine: .speechAnalyzer
+                ),
+                producedWords: true
+            ),
             .freeLimitReached(used: 10),
             .paywallViewed(context: .freeLimit),
             .planSelected(.annual),
@@ -5498,6 +6012,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         personName: String? = nil,
         dueDate: Date? = nil,
         reminderDate: Date? = nil,
+        processingConfidence: Double = 1,
         needsClarification: Bool = true
     ) -> CapturedItem {
         let session = CaptureSession(
@@ -5512,6 +6027,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             dueDate: dueDate,
             reminderDate: reminderDate,
             personName: personName,
+            processingConfidence: processingConfidence,
             needsClarification: needsClarification,
             captureSession: session
         )
@@ -5524,6 +6040,30 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let item = makeFlaggedItem(needsClarification: false)
 
         XCTAssertNil(item.clarificationRequirement)
+    }
+
+    func testLowConfidenceMeaningGetsAClarificationPrompt() throws {
+        let item = makeFlaggedItem(
+            transcript: "Something about Jordan and the other thing",
+            itemType: .unclear,
+            processingConfidence: 0.58
+        )
+        let session = try XCTUnwrap(item.captureSession)
+        let result = CaptureCreationResult(session: session, items: [item])
+
+        XCTAssertTrue(result.needsInterpretationConfirmation)
+    }
+
+    func testUnderstoodReviewStateDoesNotAskThePersonToRepeatThemselves() throws {
+        let item = makeFlaggedItem(
+            transcript: "Call the dentist",
+            itemType: .task,
+            processingConfidence: 1
+        )
+        let session = try XCTUnwrap(item.captureSession)
+        let result = CaptureCreationResult(session: session, items: [item])
+
+        XCTAssertFalse(result.needsInterpretationConfirmation)
     }
 
     func testActionableItemWithoutAReminderNeedsATime() {

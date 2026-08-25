@@ -50,8 +50,10 @@ enum SemanticCorpusE {
                    type: [.note], category: [.general], route: [.memory]),
         corpusCase(.collisions, "Buy groceries", count: 1,
                    type: [.shopping], category: [.shopping], route: [.today]),
-        corpusCase(.collisions, "Grocery list: milk and eggs", count: 1,
-                   type: [.shopping], category: [.shopping], route: [.today]),
+        corpusCase(.collisions, "Grocery list: milk and eggs", count: 2,
+                   type: [.shopping, .shopping], category: [.shopping, .shopping],
+                   route: [.today, .today],
+                   note: "Contract corrected. This said one row when it was written, because a list introduced by a heading could not expand. 'Buy milk and eggs' has always produced two checkable rows, and a person saying the same thing another way is owed the same list."),
 
         corpusCase(.collisions, "When I get paid, remind me to transfer money", count: 1,
                    route: [.today], place: [nil], review: [true],
@@ -259,5 +261,315 @@ enum SemanticCorpusE {
         corpusCase(.consolidation, "Okay so the thing is I need to renew insurance", count: 1,
                    type: [.task],
                    note: "One clause carrying framing. Nothing to consolidate, and the framing still must not reach the title."),
+    ]
+
+    // MARK: - Delegation and third person
+    //
+    // From TestFlight: "Remind Alex to get the wrench before we leave his
+    // parents' house in 20 minutes" was typed as a bare Note with no timing.
+    //
+    // The contract follows the Siri and Google Assistant convention: a
+    // reminder aimed at another person is a request for *this* phone to
+    // interrupt its owner at the stated moment so the owner can do the
+    // reminding. "Remind Alex …" therefore behaves exactly like "Remind me
+    // to remind Alex …": actionable, on Today, with the parsed timing, and
+    // with the person attached. Verbs of speaking — tell, ask, text — are the
+    // untimed cousins and stay person follow-ups.
+    //
+    // The guard half of the family keeps the past tense and figurative
+    // "reminds me of" out of the reminder engine.
+    static let delegation: [CorpusCase] = [
+        // The reported capture, verbatim.
+        corpusCase(.delegation, "Remind Alex to get the wrench before we leave his parents' house in 20 minutes.",
+                   count: 1, route: [.today], person: ["Alex"],
+                   delivery: [.notification], kind: [.relativeDuration],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 10, minute: 20)],
+                   note: "The TestFlight capture that revealed the family. The timing belongs to the reminder, not to a note."),
+        corpusCase(.delegation, "Remind Alex to take out the trash at 8 PM",
+                   count: 1, route: [.today], person: ["Alex"],
+                   delivery: [.notification], kind: [.exactDateTime],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 20)]),
+        corpusCase(.delegation, "Remind Jake in an hour to send the invoice",
+                   count: 1, route: [.today], person: ["Jake"],
+                   delivery: [.notification], kind: [.relativeDuration],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 11)]),
+        corpusCase(.delegation, "Remind Mom to take her pills at six",
+                   count: 1, route: [.today], person: ["Mom"],
+                   delivery: [.notification],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 18)],
+                   note: "Bare six after 10 AM resolves the same way it does for first-person reminders."),
+        corpusCase(.delegation, "Remind my wife about tomorrow's appointment",
+                   count: 1, route: [.today], review: [true],
+                   note: "A relation rather than a name. 'About tomorrow' is a topic, not a fire time, so the reminder request lands on Today held for review instead of guessing an hour."),
+        corpusCase(.delegation, "Remind the kids to pack their swimsuits tonight",
+                   count: 1, route: [.today], delivery: [.notification],
+                   note: "A plural relation. Still a reminder for the owner of this phone."),
+        corpusCase(.delegation, "Remind Sarah to submit the report every Friday",
+                   count: 1, route: [.today], person: ["Sarah"],
+                   delivery: [.notification],
+                   recurs: [CorpusRecurrence(frequency: .weekly, weekdays: [6])],
+                   note: "Recurrence attaches to third-person reminders the same as first-person ones."),
+        corpusCase(.delegation, "Don't let Alex forget the passports tomorrow",
+                   count: 1, route: [.today], person: ["Alex"],
+                   note: "The negative idiom in third person. At minimum an actionable item on Today for tomorrow."),
+
+        // Verbs of speaking: an errand whose action is a conversation.
+        // Untimed, so no interruption — a person follow-up on Today.
+        corpusCase(.delegation, "Tell Alex to bring the charger tomorrow",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Alex"],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   note: "A day, not a time. The errand is to speak to Alex."),
+        corpusCase(.delegation, "Ask Dad if we can borrow the truck this weekend",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Dad"]),
+        corpusCase(.delegation, "Make sure Sam returns the library books Friday",
+                   count: 1, route: [.today], person: ["Sam"],
+                   due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   note: "Make sure <name> is delegation without a speech verb. Actionable, dated, on Today."),
+        corpusCase(.delegation, "Get Alex to sign the permission form before Friday",
+                   count: 1, route: [.today], person: ["Alex"],
+                   note: "Get <name> to <verb> is delegation; get here is not a shopping verb."),
+
+        // Guards. The character sequence remind without the request.
+        corpusCase(.delegation, "Alex reminded me to get the wrench",
+                   count: 1, route: [.today], delivery: [.none], remind: [nil],
+                   note: "Past tense reports the nudge already happened. The errand survives; no notification is created."),
+        corpusCase(.delegation, "I told Alex to get the wrench",
+                   count: 1, delivery: [.none], remind: [nil],
+                   note: "Past tense speaking verb. Nothing left to schedule."),
+        corpusCase(.delegation, "This song reminds me of summers in Halifax",
+                   count: 1, type: [.note], route: [.memory], delivery: [.none], remind: [nil],
+                   note: "Figurative reminds me of is an association, not a request."),
+        corpusCase(.delegation, "Alex reminds me of my uncle",
+                   count: 1, type: [.note], route: [.memory], person: ["Alex"],
+                   delivery: [.none], remind: [nil]),
+    ]
+
+    // MARK: - Assistant conventions
+    //
+    // The phrasings Siri, Google Assistant, and Alexa trained everyone to
+    // use. A person switching to Speak It arrives speaking this vocabulary,
+    // and every miss here is a first-session disappointment: the exact moment
+    // the app is supposed to prove "you say it, we organize it".
+    //
+    // Sources: Apple's Siri/Reminders documentation and command guides,
+    // Google Assistant's reminder/note/list commands, Alexa's reminder
+    // grammar. Contract decisions, not observations of current behaviour.
+    static let assistant: [CorpusCase] = [
+        // The list-add command. "Add X to my shopping list" is the single
+        // most documented assistant phrase there is. The command words are
+        // machinery; the product is the item.
+        corpusCase(.assistant, "Add milk to my shopping list",
+                   count: 1, type: [.shopping], route: [.today], delivery: [.none], remind: [nil],
+                   note: "The canonical Siri/Google list command. The wrapper must not survive into the row."),
+        corpusCase(.assistant, "Add eggs and bread to the shopping list",
+                   count: 2, type: [.shopping, .shopping], route: [.today, .today],
+                   note: "Two products, same contract as 'buy eggs and bread': separate checklist rows."),
+        corpusCase(.assistant, "Put toothpaste on the shopping list",
+                   count: 1, type: [.shopping], route: [.today]),
+        corpusCase(.assistant, "Add call the accountant to my to-do list",
+                   count: 1, route: [.today],
+                   note: "A to-do list add is a task capture wearing assistant words."),
+
+        // The note command. "Take a note", "make a note", "add a note
+        // saying" all introduce knowledge; the lead is framing, never content.
+        corpusCase(.assistant, "Take a note that the gate code is 7724",
+                   count: 1, type: [.note], route: [.memory], delivery: [.none], remind: [nil]),
+        corpusCase(.assistant, "Make a note that parking is on level 3",
+                   count: 1, type: [.note], route: [.memory]),
+        corpusCase(.assistant, "Add a note saying the deposit was refunded",
+                   count: 1, type: [.note], route: [.memory]),
+
+        // Month anchors. Every assistant resolves these; a person who says
+        // "the first of next month" has named a day as exactly as "September
+        // first" would have.
+        corpusCase(.assistant, "Pay rent on the first of next month",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 9, day: 1, hour: nil)],
+                   note: "A day, not a time. Reference instant is Aug 3, so next month's first is Sep 1."),
+        corpusCase(.assistant, "Submit the expense report by the last day of the month",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 31, hour: nil)],
+                   note: "August has 31 days and the contract expects the real calendar answer."),
+        corpusCase(.assistant, "Remind me to renew the lease at the end of the month",
+                   count: 1, route: [.today], delivery: [.notification],
+                   note: "End of the month resolves to Aug 31; the reminder must exist even though only a day was named."),
+
+        // Anchors of daily life. The app already resolves morning, afternoon,
+        // evening, and tonight to conventional hours; these are the same kind
+        // of word. After work is early evening, lunch is midday, dinner ends
+        // in the evening, and bed is late. A conventional hour the person can
+        // correct beats a reminder that silently never fires.
+        corpusCase(.assistant, "Remind me to call the pharmacy after work",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.exactDateTime], remind: [CorpusDate(month: 8, day: 3, hour: 17)],
+                   note: "The conventional end of a workday. A correctable guess beats no reminder."),
+        corpusCase(.assistant, "Remind me at lunch to stretch",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.exactDateTime], remind: [CorpusDate(month: 8, day: 3, hour: 12)]),
+        corpusCase(.assistant, "Remind me after dinner to call Grandma",
+                   count: 1, route: [.today], person: ["Grandma"], delivery: [.notification],
+                   kind: [.exactDateTime], remind: [CorpusDate(month: 8, day: 3, hour: 19)]),
+        corpusCase(.assistant, "Take out the recycling before bed",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 3, hour: 21)],
+                   note: "A task with a bedtime anchor keeps its evening; it does not need a notification to keep the hour."),
+
+        // The snooze idiom. "Again in ten minutes" is how every assistant
+        // says push it back; a capture app hears it as a fresh reminder.
+        corpusCase(.assistant, "Remind me again in 10 minutes",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.relativeDuration], remind: [CorpusDate(month: 8, day: 3, hour: 10, minute: 10)]),
+
+        // A question spoken at a capture surface. Speak It is not a query
+        // assistant; inventing a task out of a question would be worse than
+        // asking. It must never become an errand named "what are my
+        // reminders".
+        corpusCase(.assistant, "What are my reminders for tomorrow",
+                   count: 1, delivery: [.none], remind: [nil], review: [true],
+                   note: "A question, not a thought. Held for review rather than filed as anything."),
+
+        // Rescheduling. Moving an existing item is an operation on the store,
+        // never a fresh item named "move the dentist" — the same principle the
+        // cancel family already pins, aimed at the third verb people use.
+        corpusCase(.assistant, "Move my dentist reminder to Friday",
+                   count: 0, operation: [.reschedule], operationTarget: ["dentist"]),
+        corpusCase(.assistant, "Push the gym back an hour",
+                   count: 0, operation: [.reschedule], operationTarget: ["gym"]),
+        corpusCase(.assistant, "Reschedule the team call for Tuesday at 3",
+                   count: 0, operation: [.reschedule], operationTarget: ["team call"]),
+        corpusCase(.assistant, "Move the couch to the garage",
+                   count: 1, type: [.task], route: [.today], operation: [],
+                   note: "The destination is a place, not a time, so this is an errand — the timing gate is what keeps it one."),
+    ]
+
+    // MARK: - Spoken calendar edges
+    //
+    // Reference instant: Monday 2026-08-03 10:00. The ways English names a
+    // day or an hour without using a weekday word or a bare clock. Every
+    // assistant resolves these; a person who says "the day after tomorrow"
+    // has named Wednesday as exactly as saying it would have.
+    static let calendarEdges: [CorpusCase] = [
+        corpusCase(.calendarEdges, "Call the plumber the day after tomorrow",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 5, hour: nil)]),
+        corpusCase(.calendarEdges, "Remind me the day after tomorrow to water the plants",
+                   count: 1, route: [.today], delivery: [.notification],
+                   remind: [CorpusDate(month: 8, day: 5, hour: nil)],
+                   note: "Any moment on Aug 5 satisfies the day; the default alert hour is the engine's own business."),
+        corpusCase(.calendarEdges, "Pay the sitter a week from Friday",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 14, hour: nil)],
+                   note: "This Friday is Aug 7; a week from it is Aug 14."),
+        corpusCase(.calendarEdges, "Remind me a week from tomorrow to follow up",
+                   count: 1, route: [.today], delivery: [.notification],
+                   remind: [CorpusDate(month: 8, day: 11, hour: nil)]),
+        corpusCase(.calendarEdges, "Return the library books this coming Monday",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 10, hour: nil)],
+                   note: "Spoken on a Monday, 'this coming Monday' is the next one, not today."),
+        corpusCase(.calendarEdges, "The rent is due on the 15th",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 15, hour: nil)],
+                   note: "A bare day-of-month resolves inside the current month while it is still ahead."),
+        corpusCase(.calendarEdges, "Remind me at quarter past five to leave",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.exactDateTime],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 17, minute: 15)]),
+        corpusCase(.calendarEdges, "Meet Alex at half past two",
+                   count: 1, route: [.today], person: ["Alex"],
+                   due: [CorpusDate(month: 8, day: 3, hour: 14, minute: 30)],
+                   note: "Half past two spoken at 10 AM is this afternoon."),
+        corpusCase(.calendarEdges, "Remind me at twenty to eight to take my pills",
+                   count: 1, route: [.today], delivery: [.notification],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 19, minute: 40)],
+                   note: "Morning's 7:40 already passed, so the next twenty-to-eight is tonight."),
+        corpusCase(.calendarEdges, "Doctor's appointment between 2 and 4 tomorrow",
+                   count: 1, type: [.event], route: [.today],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   note: "A window names its day with certainty even where the hour is a range."),
+        corpusCase(.calendarEdges, "Remind me to check in with Jordan later today",
+                   count: 1, route: [.today], person: ["Jordan"], review: [true],
+                   note: "'Later' is not a moment. The reminder request is held for a real time rather than guessed."),
+        corpusCase(.calendarEdges, "Remind me in a couple of hours to flip the laundry",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.relativeDuration],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 12)],
+                   note: "A couple is two. Siri and Alexa both resolve it; leaving it unread drops the reminder."),
+        corpusCase(.calendarEdges, "Remind me in a few hours to check the roast",
+                   count: 1, route: [.today], review: [true],
+                   note: "'A few' genuinely varies between people. Held for review rather than silently choosing a number."),
+        corpusCase(.calendarEdges, "Submit the timesheet by end of day",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 3, hour: nil)],
+                   note: "End of day is today, whatever hour the engine renders it as."),
+        corpusCase(.calendarEdges, "Renew the passport before the end of the year",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 12, day: 31, hour: nil)]),
+        corpusCase(.calendarEdges, "Remind me tomorrow at noon to defrost the chicken",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.exactDateTime],
+                   remind: [CorpusDate(month: 8, day: 4, hour: 12)]),
+    ]
+
+    // MARK: - Dictation renderings
+    //
+    // The text the recognizer actually typed, with the organization the
+    // speaker meant. Every repair is context-gated, and this family carries
+    // both directions: the misrendering that must be recovered, and the
+    // honest sentence that must never be "repaired" into something else.
+    static let dictation: [CorpusCase] = [
+        corpusCase(.dictation, "By milk and eggs",
+                   count: 2, type: [.shopping, .shopping], route: [.today, .today],
+                   note: "The canonical by/buy mishearing, already repaired; pinned so it can never regress."),
+        corpusCase(.dictation, "Ad milk to my shopping list",
+                   count: 1, type: [.shopping], route: [.today],
+                   note: "A sentence never opens with the noun 'ad' followed by an object."),
+        corpusCase(.dictation, "Remind me two call Mom at five",
+                   count: 1, route: [.today], person: ["Mom"], delivery: [.notification],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 17)],
+                   note: "The lost connector costs the action and the person; a following verb makes 'to' the only reading."),
+        corpusCase(.dictation, "Remind me too text Jordan in an our",
+                   count: 1, route: [.today], person: ["Jordan"], delivery: [.notification],
+                   kind: [.relativeDuration],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 11)],
+                   note: "Two mishearings in one sentence; 'an our' is not English and 'too text' is."),
+        corpusCase(.dictation, "Meat Alex at noon",
+                   count: 1, route: [.today], person: ["Alex"],
+                   due: [CorpusDate(month: 8, day: 3, hour: 12)],
+                   note: "A name after 'meat' makes it a meeting."),
+        corpusCase(.dictation, "The rent is do on the 15th",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 15, hour: nil)],
+                   note: "'Is do' only reads as 'is due', and the difference is a deadline existing."),
+        corpusCase(.dictation, "Call the plumber next weak",
+                   count: 1, review: [true],
+                   note: "'Next weak' is 'next week', which stays ambiguous by design — seven days, not one."),
+        corpusCase(.dictation, "Male the check tomorrow",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   note: "A determiner after 'male' makes it the verb."),
+        corpusCase(.dictation, "Set an alarm for 630",
+                   count: 1, delivery: [.alarm],
+                   remind: [CorpusDate(month: 8, day: 4, hour: 6, minute: 30)],
+                   note: "Compact digits behind a time cue are a clock; an alarm's bare morning hour is tomorrow's."),
+        corpusCase(.dictation, "Wake me up at ate",
+                   count: 1, delivery: [.alarm],
+                   remind: [CorpusDate(month: 8, day: 4, hour: 8)],
+                   note: "'At ate' is not English; 'at eight' is a time, and a wake-up call's is morning."),
+
+        // The guard half: honest sentences the gates must leave alone.
+        corpusCase(.dictation, "Stop by the pharmacy for milk",
+                   count: 1, route: [.today],
+                   note: "'Stop by' legitimately takes 'by'; the product after it must not force a rewrite."),
+        corpusCase(.dictation, "Remind me too when you send the invite",
+                   count: 1,
+                   note: "'Too' meaning 'as well'. No connector verb follows, so the words stand."),
+        corpusCase(.dictation, "Buy meat Friday",
+                   count: 1, type: [.shopping], route: [.today],
+                   due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   note: "A weekday after 'meat' is a shopping day, never a person named Friday."),
+        corpusCase(.dictation, "The ad campaign launches Monday",
+                   count: 1, route: [.memory],
+                   note: "'Ad' mid-sentence is a real noun; only the impossible sentence-opening form is repaired."),
     ]
 }

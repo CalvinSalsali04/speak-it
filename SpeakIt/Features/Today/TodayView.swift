@@ -135,6 +135,9 @@ struct TodayView: View {
     /// showing. Tapping the destination you are on means "take me back to it",
     /// so any pushed screen — the List — pops instead of the tap doing nothing.
     let popToRootSignal: Int
+    let tutorialSpotlight: TutorialSpotlight?
+    let onTutorialPrimary: () -> Void
+    let onEndTutorial: () -> Void
 
     @State private var selectedItem: CapturedItem?
     @State private var errorMessage: String?
@@ -159,6 +162,7 @@ struct TodayView: View {
     @State private var showsAccountSettings = TodayView.initialShowsAccountSettings
     @State private var showsShoppingList = false
     @State private var shoppingListFocus: String?
+    @State private var tutorialOpenedEditor = false
     @State private var referenceNow = Date.now
     @AppStorage("SpeakIt.shortcutSetupCompleted") private var shortcutSetupCompleted = false
     @AppStorage("SpeakIt.hasDismissedProDiscovery") private var hasDismissedProDiscovery = false
@@ -168,11 +172,17 @@ struct TodayView: View {
     init(
         onCapture: @escaping () -> Void,
         onDockVisibilityChange: @escaping (Bool) -> Void = { _ in },
-        popToRootSignal: Int = 0
+        popToRootSignal: Int = 0,
+        tutorialSpotlight: TutorialSpotlight? = nil,
+        onTutorialPrimary: @escaping () -> Void = {},
+        onEndTutorial: @escaping () -> Void = {}
     ) {
         self.onCapture = onCapture
         self.onDockVisibilityChange = onDockVisibilityChange
         self.popToRootSignal = popToRootSignal
+        self.tutorialSpotlight = tutorialSpotlight
+        self.onTutorialPrimary = onTutorialPrimary
+        self.onEndTutorial = onEndTutorial
     }
 
     private static var initialShowsUpcoming: Bool {
@@ -371,8 +381,9 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 28) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 28) {
                 header
                     .dockScrollTopAnchor()
 
@@ -440,8 +451,13 @@ struct TodayView: View {
                     completedTodayLink
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 18)
+                .padding(.horizontal, 22)
+                .padding(.top, 18)
+            }
+            .onAppear { revealTutorialSpotlight(using: proxy) }
+            .onChange(of: tutorialSpotlight) { _, _ in
+                revealTutorialSpotlight(using: proxy)
+            }
         }
         .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
         .coordinateSpace(name: DockScroll.coordinateSpace)
@@ -463,8 +479,12 @@ struct TodayView: View {
         .onChange(of: popToRootSignal) {
             showsShoppingList = false
         }
-        .sheet(item: $selectedItem) { item in
-            ItemEditorView(item: item)
+        .sheet(item: $selectedItem, onDismiss: tutorialEditorDidDismiss) { item in
+            ItemEditorView(
+                item: item,
+                showsTutorialGuidance: tutorialSpotlight?.placement == .today
+                    && tutorialSpotlight?.itemID == item.id
+            )
         }
         .sheet(isPresented: $showsCaptureSetup, onDismiss: dismissCaptureAnywhereDiscovery) {
             CaptureAnywhereSetupView()
@@ -1084,10 +1104,16 @@ struct TodayView: View {
                             item: item,
                             showsCreatedDate: false,
                             onToggleCompleted: { toggleCompleted(item) },
-                            onEdit: { selectedItem = item }
+                            onEdit: { openItem(item) }
                         )
                         .padding(.vertical, 12)
                     }
+                    .id(item.id)
+                    .tutorialSpotlight(
+                        spotlight(for: item),
+                        onPrimary: { openItem(item) },
+                        onEndPractice: onEndTutorial
+                    )
 
                     Divider().overlay(Color.speakDivider)
                 }
@@ -1158,10 +1184,16 @@ struct TodayView: View {
                                     item: item,
                                     showsCreatedDate: false,
                                     onToggleCompleted: { toggleCompleted(item) },
-                                    onEdit: { selectedItem = item }
+                                    onEdit: { openItem(item) }
                                 )
                                 .padding(.vertical, 12)
                             }
+                            .id(item.id)
+                            .tutorialSpotlight(
+                                spotlight(for: item),
+                                onPrimary: { openItem(item) },
+                                onEndPractice: onEndTutorial
+                            )
                             Divider().overlay(Color.speakDivider)
                         }
                     }
@@ -1197,6 +1229,40 @@ struct TodayView: View {
 
     private func itemContext(_ item: CapturedItem) -> String {
         "\(item.category.displayName) · \(item.itemType.displayName)"
+    }
+
+    private func spotlight(for item: CapturedItem) -> TutorialSpotlight? {
+        guard tutorialSpotlight?.itemID == item.id else { return nil }
+        return tutorialSpotlight
+    }
+
+    private func openItem(_ item: CapturedItem) {
+        tutorialOpenedEditor = tutorialSpotlight?.itemID == item.id
+        selectedItem = item
+    }
+
+    private func tutorialEditorDidDismiss() {
+        guard tutorialOpenedEditor else { return }
+        tutorialOpenedEditor = false
+        onTutorialPrimary()
+    }
+
+    private func revealTutorialSpotlight(using proxy: ScrollViewProxy) {
+        guard let spotlight = tutorialSpotlight,
+              let item = allItems.first(where: { $0.id == spotlight.itemID }) else { return }
+
+        switch TodayActionTiming.group(for: item, relativeTo: referenceNow) {
+        case .comingUp: showsUpcoming = true
+        case .noDate: showsNoDate = true
+        case .overdue, .today: break
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.easeInOut(duration: 0.35)) {
+                proxy.scrollTo(item.id, anchor: .center)
+            }
+        }
     }
 
     private func swipeToComplete<Content: View>(

@@ -100,11 +100,21 @@ struct SaveThoughtIntent: LiveActivityIntent {
         await CaptureActivityManager.showOrganizing(normalizedThought)
         let result = try await ExternalCaptureWriter.save(normalizedThought)
         CaptureActivationStore.markSucceeded()
-        await CaptureActivityManager.showRemembered(
-            normalizedThought,
-            context: result.confirmationContext
-        )
-        return .result(dialog: result.isDuplicate ? "Already captured." : "Remembered.")
+        if result.needsInterpretationConfirmation {
+            await CaptureActivityManager.showProblem(
+                title: "Needs clarification",
+                detail: "Open Speak It to try again or review what was saved."
+            )
+            return .result(
+                dialog: "I’m not completely sure I understood that. Open Speak It to try again or review it."
+            )
+        } else {
+            await CaptureActivityManager.showRemembered(
+                normalizedThought,
+                context: result.confirmationContext
+            )
+            return .result(dialog: result.isDuplicate ? "Already captured." : "Remembered.")
+        }
     }
 }
 
@@ -450,10 +460,17 @@ private final class BackgroundCaptureCoordinator {
             activeDraftID = nil
             captureStartedAt = nil
             CaptureActivationStore.markSucceeded()
-            await CaptureActivityManager.showRemembered(
-                normalized,
-                context: result.confirmationContext
-            )
+            if result.needsInterpretationConfirmation {
+                await CaptureActivityManager.showProblem(
+                    title: "Needs clarification",
+                    detail: "Open Speak It to try again or review what was saved."
+                )
+            } else {
+                await CaptureActivityManager.showRemembered(
+                    normalized,
+                    context: result.confirmationContext
+                )
+            }
             ownsCapture = false
             triggerGate.transition(to: .idle)
         } catch {
@@ -561,6 +578,7 @@ private enum ExternalCaptureWriter {
     struct Result: Sendable {
         let confirmationContext: String
         let isDuplicate: Bool
+        let needsInterpretationConfirmation: Bool
     }
 
     static func save(_ thought: String, createdAt: Date = .now) async throws -> Result {
@@ -571,7 +589,13 @@ private enum ExternalCaptureWriter {
         // function came from another process (Shortcuts, Siri, the Action
         // Button) and cannot be assumed to be a reasonable length.
         let thought = CaptureTextLimit.clamp(thought)
-        guard SubscriptionStore.canCreateBackgroundCapture(now: createdAt) else {
+        let defaults = UserDefaults.standard
+        let tutorialBeganAt = defaults.double(forKey: "SpeakIt.captureSetupTestBeganAt")
+        let isTutorialTest = defaults.string(forKey: FirstRunTutorialKeys.phase)
+            == FirstRunTutorialPhase.readiness.rawValue
+            && tutorialBeganAt > 0
+            && createdAt.timeIntervalSince1970 - tutorialBeganAt < 30 * 60
+        guard isTutorialTest || SubscriptionStore.canCreateBackgroundCapture(now: createdAt) else {
             throw CaptureAccessError.freeLimitReached
         }
 
@@ -580,19 +604,31 @@ private enum ExternalCaptureWriter {
         )
         let capture = try await repository.createCaptureResult(
             text: thought,
-            source: .shortcut,
+            source: isTutorialTest ? .tutorial : .shortcut,
             createdAt: createdAt,
             // The outside-the-app path awaits and verifies one schedule below.
             // Avoid a second asynchronous scheduler racing the verified request.
             schedulesReminders: false
         )
-        if capture.createdNewCapture {
+        if capture.createdNewCapture, !isTutorialTest {
             SubscriptionStore.recordBackgroundCapture(now: createdAt)
+        }
+
+        if isTutorialTest {
+            return Result(
+                confirmationContext: "Practice test · free captures untouched",
+                isDuplicate: capture.isDuplicate,
+                needsInterpretationConfirmation: capture.needsInterpretationConfirmation
+            )
         }
 
         let confirmationContext: String
         if capture.isDuplicate {
-            return Result(confirmationContext: "Already captured", isDuplicate: true)
+            return Result(
+                confirmationContext: "Already captured",
+                isDuplicate: true,
+                needsInterpretationConfirmation: capture.needsInterpretationConfirmation
+            )
         }
         let requests = capture.items.compactMap(ReminderScheduleRequest.init(item:))
         if !requests.isEmpty {
@@ -619,7 +655,8 @@ private enum ExternalCaptureWriter {
 
         return Result(
             confirmationContext: confirmationContext,
-            isDuplicate: false
+            isDuplicate: false,
+            needsInterpretationConfirmation: capture.needsInterpretationConfirmation
         )
     }
 

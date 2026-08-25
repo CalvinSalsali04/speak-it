@@ -927,3 +927,195 @@ This closes a test blind spot where a reminder could be lost or invented while
 the type label made the expected route appear to pass. The corpus is now 439
 cases with 0 critical and 0 behavioral disagreements; the full suite reports
 451 passed, 5 skipped, and the unsigned Release build compiles cleanly.
+
+## Reschedule is a capture operation (2026-08-23)
+
+"Move my dentist reminder to Friday", "push the gym back an hour", and
+"postpone the dentist" are requests against items the person already has —
+the third verb alongside cancel and complete, and the last piece of assistant
+parity the operation model was missing. `CaptureOperation` gains
+`.reschedule`; the request carries the spoken destination as words
+(`newTimingText`), because resolving them needs the store: "back an hour" is
+measured from the item's scheduled moment, never from the clock.
+
+Application goes through the same `update(_:with:)` path the editor uses, so
+notifications, recurrence, and location metadata move with the time. The
+matcher, the one-confident-match rule, and the never-guess fallbacks are all
+inherited unchanged. Three deliberate boundaries:
+
+- A destination must *look like a time* before the sentence reads as an
+  operation — "move the couch to the garage" stays an errand.
+- A pronoun target ("move it to Monday") never claims the store: inside a
+  capture it usually corrects something said in the same breath, and the
+  existing correction machinery owns it.
+- A move with no destination ("postpone the dentist") is held with the item
+  attached rather than guessed.
+
+A reschedule is non-destructive and spends no free capture.
+
+## 2026-08-24 — First-run learning happens inside the real product
+
+A passive feature tour makes the person translate screenshots and promises into
+an interface they have not yet learned. First run is therefore a resumable
+practice journey through production screens. One action example lands in its
+exact Today row and Maya profile; one idea example lands in its exact Ideas row
+and opens the real stage picker. Teaching stays attached to the object through
+a spotlight and explanation immediately below it, so the next action is visible
+where it will be used later.
+
+Practice data is a distinct capture source, not sample content disguised as a
+real memory. It uses the normal organizer and repository, but cannot consume the
+lifetime allowance, schedule an interruption, enter an iCloud snapshot, or
+leave a deletion tombstone. Finishing or ending the tutorial deletes tutorial
+sessions and their recurrence, notification, alarm, location, pin, idea-stage,
+shopping, and pending-operation metadata. Cleanup is scoped and idempotent; it
+never deletes a real capture. A new person therefore begins the real product
+with no example rows and all ten free captures.
+
+Permissions are not bundled into an inaccurate wall of switches. **Make Speak
+It ready** puts every capability in one place, explains its value, reports live
+state, and invokes the real system-owned request or app setup. Microphone and
+speech, notifications, Home, location reminders, alarms, and Capture Anywhere
+remain individually optional. A denied permission routes to Settings, and the
+person can always finish for now. This center remains available from Account &
+Settings after onboarding.
+
+The tutorial persists its phase and exact item identifiers. Relaunch resumes
+the live step; missing tutorial content restarts only that practice mission.
+This supersedes the passive first-capture explanation described in the
+2026-08-17 onboarding decisions while preserving their durability rule: a
+capture is successful only after the repository has safely saved it.
+
+## 2026-08-24 — Tutorial guidance names one visible target and stays optional
+
+A tutorial highlight is part of the layout, not decoration outside it. Its
+outline stays inset within the real row so a list or scroll container cannot
+clip the sides. When the tutorial opens an editing surface, it names and
+highlights a concrete next target—the title field or a suggested idea stage—
+while preserving a visible no-change path.
+
+Practice language demonstrates ordinary speech rather than a command syntax.
+The idea example therefore uses “I had an idea…” and the title formatter accepts
+that conversational frame without producing a blank title. Every practice
+capture offers **End tutorial**, and optional system setup offers **Done for
+now**. Capture Anywhere shows one chosen method and its instructions first;
+alternative methods expand only on request and collapse after selection.
+
+## 2026-08-24 — Understanding must not depend on how the recognizer punctuated it
+
+`SpeechTranscriber` runs two recognizers: the iOS 26 `SpeechAnalyzer` when its
+model is installed, and `SFSpeechRecognizer` otherwise — on iOS 17-25, while the
+analyzer model downloads, and whenever the analyzer fails to start. They do not
+punctuate identically, and neither punctuates a fast talker reliably.
+
+Nearly every rule in `SpeechRepair.swift`, and every clause boundary in
+`ThoughtExtractor.swift`, was originally written against a comma. That made the
+app's behaviour a function of *which engine answered*, which is not something a
+person can see, control, or report a bug about. It also made one defect arrive
+over and over wearing a different sentence: a repair would be added for one
+phrasing, and the next recording would render without the comma and fail again.
+
+The rule from here is that **meaning survives the rendering**. Two things
+enforce it:
+
+- `ClauseJuxtaposition` finds where one instruction ends and the next begins
+  when nothing announces the boundary, so a run-on breath splits the way a
+  punctuated sentence does. It is deliberately narrow — a verb that can open an
+  instruction, preceded by a word that cannot be continuing one, with a real
+  clause already behind it — and it refuses a boundary inside an open place
+  trigger, in front of a conjunction, or after an article.
+- `RenderingInvarianceTests` replays the entire semantic corpus through the
+  renderings a recognizer actually produces (commas dropped, all punctuation
+  dropped, all lowercase) and asserts the same contract holds. The release gate
+  is the corpus gate: zero CRITICAL and zero BEHAVIORAL.
+
+A correction is the one place where punctuation still carries weight, and only
+in one direction. A repair may replace a slot it can see — "meeting at three
+sorry four" is unambiguous — but it may not *discard* the words in front of it
+without either a pause or a restated verb. Without that rule, "tell Sam sorry I
+missed his call" became "tell I missed his call".
+
+The lowercase axis is reported rather than gated. A recognizer that lowercases
+a name has destroyed information the app cannot recover, and person-boundary
+detection legitimately reads capitalization as evidence. The cost stays visible
+in the suite's summary instead of being silently accepted.
+
+## The refinement model is bounded by the rules, not trusted over them
+
+`ThoughtExtractionEngine.extract` hands the capture to Apple's on-device model
+(`IntelligentThoughtExtractor`) whenever `shouldRefine` says so, and returns
+what the model produced. `shouldRefine` returns true for **every** capture the
+rules split into more than one row, plus anything flagged for review, plus any
+transcript containing a comma, "and", "also", "then", "actually", "not" or
+"said" — 31% of the corpus, and far more of real speech, which is longer and
+messier than a corpus sentence.
+
+The corpus does not test that path. `CorpusEvaluator` calls `extractWithRules`,
+and so does `RenderingInvarianceTests`. The suite is green on the simulator
+because Apple Intelligence is unavailable there and the model call falls back to
+rules, so the gap was invisible: on a device with Apple Intelligence the
+multi-row captures this project worked hardest on were exactly the ones the
+rules no longer decided.
+
+That is the punctuation problem one level up — behaviour depending on invisible
+state — and the same answer applies. `RefinementGuard.preservesEverything`
+requires that every row the rules found still corresponds to some row in the
+refinement, matched on the words that distinguish it from its siblings. The
+model may re-segment, merge, split, retitle, recategorize, and spot a person the
+rules missed. It may not make something disappear. Failing the check keeps the
+rules reading, so the worst case is the behaviour every other device gets.
+
+`RefinementGuardTests` replays the corpus through that seam: for every multi-row
+capture, deleting any one row must be rejected, and the rules' own output must
+always pass — the second half matters because a guard that was accidentally too
+strict would silently switch the model off everywhere and no test would notice.
+The guard is compiled outside `canImport(FoundationModels)` on purpose, so it is
+testable on machines where the model never runs.
+
+This bounds the damage. It does not make the model's reading *correct*, and
+nothing here measures that. Doing so needs a device with Apple Intelligence
+enabled: replay the corpus through the async path and count cases fixed against
+cases broken. Until that measurement exists, the model's quality contribution is
+unknown in both directions.
+
+### Why not a cloud model on Wi-Fi
+
+Rejected. Availability would become a function of network state, so the same
+sentence would categorize differently depending on where the person was
+standing — the exact class of defect `RenderingInvarianceTests` exists to
+prevent, except observable by the user and unreportable as a bug. It also puts
+user-authored text off-device, which changes the privacy nutrition label, the
+policy, and the local-first premise; and per-capture inference against a
+$1.99/month subscription makes the heaviest users the least profitable. Apple's
+on-device model costs nothing per capture, needs no backend, and is keyed to the
+device rather than the network.
+
+### Which Foundation Models variant the refinement uses
+
+`SystemLanguageModel.default`, not `SystemLanguageModel(useCase: .contentTagging)`.
+
+The tagging adapter was the original choice and it was the wrong tool, by
+Apple's own description of it. The content-tagging model "isn't a typical
+language model that responds to a query from a person" — it evaluates and groups
+its input, and if you ask it questions it produces tags about asking questions.
+Apple's guidance names two conditions for preferring `general`, and this call
+meets both: the content is not an action, object, emotion or topic, and the
+constraints are more complicated than the tagging model's maximum-count support.
+What `IntelligentThoughtExtractor` asks for is instructed extraction returning a
+seven-field `@Generable` struct — exact source quotes, inherited context spans, a
+natural-language title, a person, a confidence — which is not tagging in any
+sense the adapter was built for.
+
+The `respond` call also passes `GenerationOptions(sampling: .greedy)`. The rules
+path is deterministic by construction, and a refinement sampling randomly on top
+of it meant one capture could organize two ways on two days with nothing to
+explain the difference. Greedy sampling does not make the model correct; it
+makes it repeatable, which is the precondition for a disagreement being
+reportable as a bug rather than as a mood.
+
+**Neither change is measured.** Both are documented-correct and both compile,
+but the refinement path needs an A17 Pro or later device with Apple Intelligence
+enabled to run at all, and no such device was available. The change is one line
+each and trivially revertible. The measurement that would settle it is the one
+already described above: replay the corpus through the async path and count
+cases fixed against cases broken.

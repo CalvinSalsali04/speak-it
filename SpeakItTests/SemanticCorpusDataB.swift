@@ -126,6 +126,54 @@ enum SemanticCorpusB {
         corpusCase(.people, "Sarah lives in Toronto", count: 1, type: [.note], route: [.memory], person: ["Sarah"]),
         corpusCase(.people, "Sarah doesn't live in Toronto", count: 1, type: [.note], route: [.memory], person: ["Sarah"]),
         corpusCase(.people, "Wish Grandma happy birthday tomorrow", count: 1, person: ["Grandma"]),
+
+        // A second person named without a capital.
+        //
+        // "Call Mom tomorrow and Alex Friday" split into two errands; the same
+        // sentence lowercased stayed one row and Alex was never filed. The two
+        // gates that split it — NLTagger's `.personalName`, and the fallback
+        // that reads the opening capital directly — both need a capital
+        // letter, and speech does not have capitals. Which engine answered,
+        // and how confidently it cased a name, decided whether a person the
+        // user named reached Today at all.
+        //
+        // The pairs below are the whole point: each sentence appears cased and
+        // lowercased, and the two must agree on every gated field. Asserting
+        // only the lowercase form would let a fix pass that broke the cased
+        // one. `RenderingInvarianceTests` replays the corpus lowercased but
+        // reports rather than gates, so the lowercase halves are pinned here.
+        corpusCase(.people, "Call Mom tomorrow and Alex Friday",
+                   count: 2, type: [.personFollowUp, .personFollowUp], route: [.today, .today],
+                   person: ["Mom", "Alex"], kind: [.dateOnly, .dateOnly],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil), CorpusDate(month: 8, day: 7, hour: nil)]),
+        corpusCase(.people, "call mom tomorrow and alex friday",
+                   count: 2, type: [.personFollowUp, .personFollowUp], route: [.today, .today],
+                   person: ["Mom", "Alex"], kind: [.dateOnly, .dateOnly],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil), CorpusDate(month: 8, day: 7, hour: nil)],
+                   note: "Was 1 row: Alex unfiled and his Friday gone."),
+
+        // The lowercase form also used to hand Mom the *second* conjunct's
+        // date — "tonight" became tomorrow — so the surviving row was wrong as
+        // well as incomplete.
+        corpusCase(.people, "Text Mom tonight and Dad tomorrow",
+                   count: 2, type: [.personFollowUp, .personFollowUp], route: [.today, .today],
+                   person: ["Mom", "Dad"], kind: [.exactDateTime, .dateOnly],
+                   due: [CorpusDate(month: 8, day: 3, hour: 20), CorpusDate(month: 8, day: 4, hour: nil)]),
+        corpusCase(.people, "text mom tonight and dad tomorrow",
+                   count: 2, type: [.personFollowUp, .personFollowUp], route: [.today, .today],
+                   person: ["Mom", "Dad"], kind: [.exactDateTime, .dateOnly],
+                   due: [CorpusDate(month: 8, day: 3, hour: 20), CorpusDate(month: 8, day: 4, hour: nil)],
+                   note: "Was 1 row: Dad dropped and Mom's \"tonight\" overwritten with Tue Aug 4."),
+
+        // Guards. The split is gated on the *left* conjunct naming a person, so
+        // an ordinary list keeps its shape no matter how the time word sits.
+        // These are the cases a bundled first-name lexicon would have broken.
+        corpusCase(.people, "pick up the kids and the dog tomorrow",
+                   count: 1, route: [.today], person: [nil],
+                   note: "One errand with two objects. The left conjunct names no person, so nothing splits."),
+        corpusCase(.people, "Call Priya and her sister tomorrow",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Priya"],
+                   note: "A possessive pointing back at Priya is one call, not two."),
     ]
 
     // MARK: - Recurrence

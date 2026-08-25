@@ -35,7 +35,29 @@ Views may query models with `@Query` for presentation, but they do not insert, m
 
 `PersistenceController.shared` owns the production `ModelContainer`. In-app and outside-the-app capture use the same repository path, so both follow the same extraction, validation, reminder, and durability rules.
 
-Voice data flows through `SpeechTranscriber`: permission request → audio engine → partial Speech results → adaptive natural-pause detection → final transcript → repository. Recognition itself runs behind the `SpeechRecognitionBackend` protocol (`SpeechRecognitionBackend.swift`): on iOS 26+ with the current locale's model installed, capture uses Apple's on-device `SpeechAnalyzer`/`Speech.SpeechTranscriber` engine (higher accuracy than the legacy recognizer); otherwise — older iOS, unsupported locale, or a model still downloading in the background — it falls back to the original `SFSpeechRecognizer` path, so capture is never blocked on a model download. Both backends feed the same orchestration, vocabulary corrections, and durability machinery. Outside the app, partial text is mirrored into a Live Activity. During an unfinished voice capture, `CaptureDraftStore` also holds an encrypted-at-rest, backup-excluded temporary recording so recognizer or process interruption cannot silently lose the person’s words. It is deleted immediately after a successful save or intentional discard. A recording whose recovery fails is never removed automatically: Capture history offers Try Again, Type Instead, and a confirmed Delete Recording, and deletion writes a tombstone in `CaptureDraftStore` so a checkpoint written elsewhere cannot resurrect it on the next launch. Failure copy comes from `CaptureRecoveryPresentation`, keyed on `CaptureRecoveryFailureKind` rather than the recognizer's own message.
+Voice data flows through `SpeechTranscriber`: permission request → model preheat → audio engine → first-buffer readiness cue → partial Speech results → adaptive natural-pause detection → final transcript → repository. The Core Audio tap performs only a bounded buffer copy and level measurement; ordered recognition conversion, recovery-file writing, and quality analysis run on `SpeechCaptureAudioProcessor` away from the real-time callback. That processor is synchronously drained before the backend receives `endAudio()`, preserving the final queued syllable. Recognition itself runs behind the `SpeechRecognitionBackend` protocol (`SpeechRecognitionBackend.swift`): on iOS 26+ with the current locale's model installed, capture uses Apple's on-device `SpeechAnalyzer` with the dictation-specific `DictationTranscriber`, progressive high-quality results, N-best/confidence attributes, lingering model retention, and `SpeechDetector` voice activity. This is the Apple path documented to consume contextual strings. Otherwise — older iOS, unsupported locale, or a model still downloading in the background — it falls back to the original `SFSpeechRecognizer` path, so capture is never blocked on a model download. Both backends feed the same orchestration, vocabulary corrections, and durability machinery. Context is ranked and capped at Apple's 100-phrase limit; only the preferred side of an explicit correction is boosted. Outside the app, partial text is mirrored into a Live Activity. During an unfinished voice capture, `CaptureDraftStore` also holds an encrypted-at-rest, backup-excluded temporary recording so recognizer or process interruption cannot silently lose the person’s words. It is deleted immediately after a successful save or intentional discard. A recording whose recovery fails is never removed automatically: Capture history offers Try Again, Type Instead, and a confirmed Delete Recording, and deletion writes a tombstone in `CaptureDraftStore` so a checkpoint written elsewhere cannot resurrect it on the next launch. Failure copy comes from `CaptureRecoveryPresentation`, keyed on `CaptureRecoveryFailureKind` rather than the recognizer's own message.
+
+Natural-pause detection is a bounded state machine rather than one global silence
+timer. Apparently complete wording keeps the 1.1-second fast path. Ambiguous
+endings show **Still listening…** and wait up to 4 seconds; strong continuation
+cues use the same status and wait up to 8 seconds. A new transcript cancels and
+reclassifies the pending endpoint. Recent microphone activity can briefly rebase
+the decision before the
+recognizer catches up, but those deferrals are capped so background noise cannot
+hold the microphone open indefinitely. Manual pulse taps, interruptions, and
+protected-recording recovery retain their existing precedence. A backend only
+reports whole-stream completion after the app closes its audio input; stable
+SpeechAnalyzer segment results are assembled without being mistaken for the end
+of the user's turn.
+Endpoint classification tokenizes spoken letters and numbers independently of
+punctuation, so pause-induced formatting such as `tomorrow. At.` cannot hide the
+final continuation word. Display and persistence still retain the recognizer's
+original punctuation unchanged. The same lexical signature stabilizes partial
+results: formatting-only ASR revisions update the visible transcript without
+restarting the pause clock or hiding its prompt, while word additions, removals,
+or substitutions cancel and rebuild the decision. A retraction to no lexical
+content cancels the pending endpoint.
+See `VOICE_ENDPOINTING_DECISION.md` for the evidence, edge cases, and beta gate.
 
 `CapturePerformanceTrace` follows the in-app path from activation to microphone
 readiness and from the last detected voice activity to a real
@@ -43,8 +65,9 @@ readiness and from the last detected voice activity to a real
 separate transcript finalization, semantic parsing, temporal resolution, raw
 durability, final persistence, rendering, and later notification acceptance.
 All elapsed values use `ContinuousClock`; wall-clock `Date` values never enter
-latency arithmetic. Voice activity is timestamped on the audio callback before
-UI throttling, and the endpoint decision and final transcript are separate
+latency arithmetic. Legacy voice activity is timestamped on the audio callback
+before UI throttling; iOS 26 uses Apple's trained detector so steady noise does
+not extend a turn. The endpoint decision and final transcript are separate
 milestones. Recoverable or asynchronously enriched rows are excluded until they
 are stable.
 Only closed enums and integer durations may enter performance analytics; the

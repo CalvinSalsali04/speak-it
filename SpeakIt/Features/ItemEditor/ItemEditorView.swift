@@ -16,6 +16,7 @@ struct ItemEditorView: View {
     @Environment(\.thoughtRepository) private var repository
 
     let item: CapturedItem
+    let showsTutorialGuidance: Bool
 
     /// Resolved once on open. The asterisk has to stay on the field the person
     /// arrived to fill, so it must not re-derive from the item — or from live
@@ -67,8 +68,9 @@ struct ItemEditorView: View {
     @State private var editedLocationIntent: LocationIntent?
     private let hadLocationIntent: Bool
 
-    init(item: CapturedItem) {
+    init(item: CapturedItem, showsTutorialGuidance: Bool = false) {
         self.item = item
+        self.showsTutorialGuidance = showsTutorialGuidance
         self.pendingOperation = PendingOperationStore.record(for: item.id)
         self.requirement = item.clarificationRequirement
         self.hadLocationIntent = item.locationIntent != nil
@@ -102,6 +104,29 @@ struct ItemEditorView: View {
     private var editorForm: some View {
         NavigationStack {
             Form {
+                if showsTutorialGuidance {
+                    Section("Practice") {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "hand.tap")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(width: 34, height: 34)
+                                .background(Color.speakInk.opacity(0.09), in: Circle())
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Change the thought here")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Edit the highlighted title, then tap Save—or continue without changing it.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("tutorial.editor.guidance")
+                    }
+                }
+
                 if let requirement {
                     Section {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -186,7 +211,26 @@ struct ItemEditorView: View {
                     TextField("Title", text: $title, axis: .vertical)
                         .textInputAutocapitalization(.sentences)
                         .autocorrectionDisabled(false)
+                        .padding(showsTutorialGuidance ? 10 : 0)
+                        .background(
+                            Color.speakInk.opacity(showsTutorialGuidance ? 0.08 : 0),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
+                        .overlay {
+                            if showsTutorialGuidance {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.speakInk, lineWidth: 2)
+                            }
+                        }
                         .accessibilityLabel("Item title")
+                        .accessibilityHint(
+                            showsTutorialGuidance
+                                ? "Highlighted practice field. Change any words, then tap Save"
+                                : ""
+                        )
+                        .accessibilityIdentifier(
+                            showsTutorialGuidance ? "tutorial.editor.title" : "editor.title"
+                        )
 
                     Picker(selection: $itemType) {
                         ForEach(ItemType.allCases) { type in
@@ -429,7 +473,10 @@ struct ItemEditorView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(showsTutorialGuidance ? "Not now" : "Cancel") { dismiss() }
+                        .accessibilityIdentifier(
+                            showsTutorialGuidance ? "tutorial.editor.notNow" : "editor.cancel"
+                        )
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
@@ -547,7 +594,7 @@ struct ItemEditorView: View {
         switch pending.operation {
         case .cancel: return "Cancel \(subject)?"
         case .complete: return "Mark \(subject) complete?"
-        case .create, .retract: return "Confirm this?"
+        case .reschedule, .create, .retract: return "Confirm this?"
         }
     }
 
@@ -557,7 +604,7 @@ struct ItemEditorView: View {
         switch pending.operation {
         case .cancel: return "Cancel everything"
         case .complete: return "Mark everything complete"
-        case .create, .retract: return "Confirm"
+        case .reschedule, .create, .retract: return "Confirm"
         }
     }
 
