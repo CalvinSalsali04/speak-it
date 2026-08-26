@@ -1,0 +1,209 @@
+# Unfinished-thought development set.
+#
+# The behaviour this set exists for: a person opens a thought out loud and
+# never finishes it. Speak It must not manufacture an action from the half
+# they did say, and must not treat every short sentence as a fragment.
+#
+# Written from the product contract before reading any detector, and
+# deliberately adversarial in the false-positive direction: two thirds of it is
+# things that look like fragments and are not. A detector that flags everything
+# scores worse here than one that flags nothing.
+#
+# Columns: id, utterance, family, expectation, note
+#
+#   Incomplete  a frame was opened and its required content never arrived.
+#               Keep the words, flag for recovery, schedule nothing.
+#   Complete    a finished thought. Must NOT be called unfinished, whatever
+#               else happens to it.
+#   Abandoned   the speaker explicitly withdrew it out loud.
+#   Mixed       one finished thought and one unfinished one in one capture.
+#               The finished half must survive.
+#
+id	utterance	family	expectation	note
+# --- Dangling infinitive: "to" with no verb after it -------------------------
+INC01	Tomorrow I want to	dangling-infinitive	Incomplete	the headline case
+INC02	I need to	dangling-infinitive	Incomplete	
+INC03	I was going to	dangling-infinitive	Incomplete	
+INC04	I should probably	dangling-infinitive	Incomplete	modal with no verb
+INC05	Later I should	dangling-infinitive	Incomplete	
+INC06	I have to	dangling-infinitive	Incomplete	
+INC07	I meant to	dangling-infinitive	Incomplete	
+INC08	I keep meaning to	dangling-infinitive	Incomplete	
+INC09	I ought to	dangling-infinitive	Incomplete	
+INC10	I am going to	dangling-infinitive	Incomplete	
+INC11	I'm supposed to	dangling-infinitive	Incomplete	
+INC12	Next week I was going to	dangling-infinitive	Incomplete	temporal prefix
+INC13	tomorrow i want to	dangling-infinitive	Incomplete	lowercased, unpunctuated
+INC14	i need to	dangling-infinitive	Incomplete	lowercased
+INC15	Tomorrow I want to.	dangling-infinitive	Incomplete	recognizer added a period
+INC16	I need to...	dangling-infinitive	Incomplete	ellipsis
+INC17	At some point I need to	dangling-infinitive	Incomplete	vague temporal prefix
+INC18	This weekend I have to	dangling-infinitive	Incomplete	
+INC19	I really need to	dangling-infinitive	Incomplete	intensifier
+INC20	I definitely have to	dangling-infinitive	Incomplete	
+# --- Reminder frame with no content -----------------------------------------
+INC21	Remind me to	reminder-no-content	Incomplete	
+INC22	Don't forget to	reminder-no-content	Incomplete	
+INC23	Tomorrow remind me to	reminder-no-content	Incomplete	
+INC24	Remind me later to	reminder-no-content	Incomplete	
+INC25	Set a reminder to	reminder-no-content	Incomplete	
+INC26	remind me to	reminder-no-content	Incomplete	lowercased
+INC27	Remind me to.	reminder-no-content	Incomplete	
+INC28	Don't let me forget to	reminder-no-content	Incomplete	
+INC29	Remind me tomorrow to	reminder-no-content	Incomplete	date present, action absent
+INC30	Remind me at five to	reminder-no-content	Incomplete	time present, action absent
+# --- Incomplete complement: transitive verb with no object ------------------
+INC31	I want	incomplete-complement	Incomplete	
+INC32	I need	incomplete-complement	Incomplete	
+INC33	Tomorrow I want	incomplete-complement	Incomplete	
+INC34	I was thinking about	incomplete-complement	Incomplete	
+INC35	I have to get	incomplete-complement	Incomplete	
+INC36	I should buy	incomplete-complement	Incomplete	
+INC37	Can you remind me about	incomplete-complement	Incomplete	
+INC38	I need to pick up	incomplete-complement	Incomplete	
+INC39	Add	incomplete-complement	Incomplete	bare imperative verb
+INC40	Buy	incomplete-complement	Incomplete	bare imperative verb
+# --- Trailing function word: conjunction, preposition, article --------------
+INC41	Pick up milk and	trailing-function-word	Incomplete	
+INC42	Call Sarah about	trailing-function-word	Incomplete	
+INC43	Meet Mike at	trailing-function-word	Incomplete	
+INC44	Buy eggs bread and	trailing-function-word	Incomplete	
+INC45	I need to talk to Sarah about the	trailing-function-word	Incomplete	dangling article
+INC46	Send the report to	trailing-function-word	Incomplete	
+INC47	Take the car in for	trailing-function-word	Incomplete	
+INC48	Book the table for	trailing-function-word	Incomplete	
+# --- Abandoned mid-thought, said out loud -----------------------------------
+INC49	Tomorrow I need to, um, wait, I forgot	abandoned-midthought	Incomplete	
+INC50	Next week I should, wait, I lost it	abandoned-midthought	Incomplete	
+INC51	I was going to, uh, hold on	abandoned-midthought	Incomplete	
+INC52	Remind me to, um, what was it	abandoned-midthought	Incomplete	
+INC53	I need to, hmm	abandoned-midthought	Incomplete	
+INC54	Tomorrow I want to um	abandoned-midthought	Incomplete	filler tail
+INC55	I have to uh	abandoned-midthought	Incomplete	
+INC56	I need to I need to	abandoned-midthought	Incomplete	repeated frame, still empty
+INC57	I was going to call, I mean	abandoned-midthought	Incomplete	self-correction into nothing
+# --- Explicit abandonment ---------------------------------------------------
+ABD01	Tomorrow I need to, never mind	explicit-abandonment	Abandoned	
+ABD02	Remind me to, forget it	explicit-abandonment	Abandoned	
+ABD03	I was going to, actually never mind	explicit-abandonment	Abandoned	
+ABD04	I need to, forget I said anything	explicit-abandonment	Abandoned	
+ABD05	Tomorrow I want to, never mind	explicit-abandonment	Abandoned	
+# --- Mixed: a finished thought and an unfinished one ------------------------
+MIX01	Buy milk, and tomorrow I need to, actually I forgot	mixed	Mixed	the finished half must survive
+MIX02	Sarah hates sushi and remind me to	mixed	Mixed	
+MIX03	Call the dentist tomorrow and I was going to	mixed	Mixed	
+MIX04	I need to, and also buy eggs	mixed	Mixed	unfinished first
+MIX05	The door code is 4821 and I want to	mixed	Mixed	
+# ============================================================================
+# FALSE-POSITIVE CONTROLS. Every row below is a finished thought. Any detector
+# that flags one of these is worse than no detector, because it interrupts
+# somebody who said exactly what they meant.
+# ============================================================================
+# --- The minimal pairs: same frame, one word more ---------------------------
+FP01	Tomorrow I want to run	minimal-pair	Complete	pair of INC01
+FP02	I need to call Sarah	minimal-pair	Complete	pair of INC02
+FP03	I was going to call Mike	minimal-pair	Complete	pair of INC03
+FP04	I should probably call the bank	minimal-pair	Complete	pair of INC04
+FP05	Later I should clean the kitchen	minimal-pair	Complete	pair of INC05
+FP06	I have to renew my passport	minimal-pair	Complete	pair of INC06
+FP07	Remind me to buy milk	minimal-pair	Complete	pair of INC21
+FP08	Don't forget to send the invoice	minimal-pair	Complete	pair of INC22
+FP09	Tomorrow I want pizza	minimal-pair	Complete	pair of INC33
+FP10	I need milk	minimal-pair	Complete	pair of INC32
+FP11	I want coffee	minimal-pair	Complete	pair of INC31
+FP12	I was thinking about the wedding	minimal-pair	Complete	pair of INC34
+FP13	Pick up milk and eggs	minimal-pair	Complete	pair of INC41
+FP14	Call Sarah about the invoice	minimal-pair	Complete	pair of INC42
+FP15	Meet Mike at noon	minimal-pair	Complete	pair of INC43
+FP16	Set a reminder to water the plants	minimal-pair	Complete	pair of INC25
+FP17	Tomorrow remind me to call the clinic	minimal-pair	Complete	pair of INC23
+FP18	I have to get groceries	minimal-pair	Complete	pair of INC35
+FP19	Send the report to Priya	minimal-pair	Complete	pair of INC46
+FP20	Book the table for eight	minimal-pair	Complete	pair of INC48
+# --- Short but complete -----------------------------------------------------
+FP21	Tomorrow is busy	short-complete	Complete	
+FP22	I forgot my keys	short-complete	Complete	
+FP23	I forgot what Sarah said	short-complete	Complete	
+FP24	I want rain tomorrow	short-complete	Complete	
+FP25	Remind me tomorrow	short-complete	Complete	reminder with a time and no verb, still a request
+FP26	Maybe tomorrow	short-complete	Complete	
+FP27	I think I forgot	short-complete	Complete	
+FP28	Milk	short-complete	Complete	one-word shopping item
+FP29	LCBO	short-complete	Complete	one-word place
+FP30	That is all	short-complete	Complete	
+FP31	Yes I can	short-complete	Complete	
+FP32	Call my mother	short-complete	Complete	
+FP33	Dentist Thursday	short-complete	Complete	telegraphic but finished
+FP34	Gym at six	short-complete	Complete	
+FP35	Passport renewal	short-complete	Complete	noun phrase, finished
+# --- Third person: somebody else's unfinished-looking sentence --------------
+FP36	Sarah wants to leave	third-person	Complete	
+FP37	Mike needs to sign it	third-person	Complete	
+FP38	She said she needs to	third-person	Complete	reported, not mine to finish
+FP39	Sarah said never mind	third-person	Complete	must never trigger destruction
+FP40	Mike told me he forgot	third-person	Complete	
+FP41	Sarah told Mike to call me	third-person	Complete	
+FP42	He was going to call	third-person	Complete	
+FP43	They want to reschedule	third-person	Complete	
+# --- Names that are ordinary words ------------------------------------------
+FP44	I need Sarah	ordinary-word-names	Complete	
+FP45	Call Hope	ordinary-word-names	Complete	
+FP46	Text Summer	ordinary-word-names	Complete	
+FP47	Ask Faith about the party	ordinary-word-names	Complete	
+FP48	Remind me to call Grace	ordinary-word-names	Complete	
+FP49	I want to see April	ordinary-word-names	Complete	
+FP50	Meet Justice at noon	ordinary-word-names	Complete	
+# --- Products, brands, unknown nouns ----------------------------------------
+FP51	I need Advil	products	Complete	
+FP52	Buy Native shampoo	products	Complete	
+FP53	Get Old Spice deodorant	products	Complete	
+FP54	I need AAA batteries	products	Complete	
+FP55	Pick up Zyrtec	products	Complete	
+FP56	I need a plumber	occupations	Complete	
+FP57	Call the electrician	occupations	Complete	
+FP58	I need to see a dentist	occupations	Complete	
+FP59	Buy quinoa	products	Complete	unknown noun
+FP60	Order a Grobet file	products	Complete	unknown brand
+# --- Negation and prohibitives ----------------------------------------------
+FP61	Don't buy milk	negation	Complete	
+FP62	Remind me not to eat before the blood test	negation	Complete	
+FP63	I don't need to go	negation	Complete	negated frame, still finished
+FP64	Don't forget the passport	negation	Complete	
+FP65	I never want to do that again	negation	Complete	
+# --- Questions and non-actions ----------------------------------------------
+FP66	What is the weather tomorrow	questions	Complete	
+FP67	Was the meeting Wednesday	questions	Complete	
+FP68	Do I need to bring anything	questions	Complete	
+FP69	Where did I leave my keys	questions	Complete	
+# --- Delegation -------------------------------------------------------------
+FP70	Tell Sam to call me	delegation	Complete	
+FP71	Ask Priya to send the file	delegation	Complete	
+FP72	Have Mike pick up the parcel	delegation	Complete	
+# --- Filler and speech artifacts around a finished thought ------------------
+FP73	Um I need to call Sarah	filler	Complete	filler before a complete frame
+FP74	I need to uh call Sarah	filler	Complete	filler inside a complete frame
+FP75	so yeah buy milk	filler	Complete	
+FP76	okay so remind me to water the plants tomorrow	filler	Complete	
+FP77	i need to call sarah tomorrow at three	lowercased	Complete	lowercased and unpunctuated
+FP78	buy milk and text daniel	lowercased	Complete	
+FP79	remind me to pick up the parcel on thursday	lowercased	Complete	
+# --- Self-correction that lands somewhere -----------------------------------
+FP80	I need to call Mike, I mean Sarah	correction	Complete	correction resolves
+FP81	Remind me at five, actually make that six	correction	Complete	
+FP82	Buy milk, no wait, buy oat milk	correction	Complete	
+# --- Multiple complete thoughts ---------------------------------------------
+FP83	Buy milk and call Sarah	multiple	Complete	
+FP84	Call the clinic Thursday and pick up Ana from the airport	multiple	Complete	
+FP85	Buy milk and Sarah hates sushi	multiple	Complete	splits across destinations
+FP86	The door code is 4821 and buy laundry detergent	multiple	Complete	
+# --- Longer finished thoughts with trailing-ish shapes ----------------------
+FP87	I need to think about it	trailing-shape	Complete	"about it" completes
+FP88	I want to go	trailing-shape	Complete	shortest complete infinitive
+FP89	I have to go	trailing-shape	Complete	
+FP90	Remind me to think about it	trailing-shape	Complete	
+FP91	I was going to say something	trailing-shape	Complete	
+FP92	I keep meaning to write that down	trailing-shape	Complete	
+FP93	Tomorrow I want to sleep in	trailing-shape	Complete	particle verb
+FP94	I need to follow up	trailing-shape	Complete	particle verb, no object
+FP95	Don't forget to check in	trailing-shape	Complete	particle verb
+FP96	I should probably head out	trailing-shape	Complete	particle verb

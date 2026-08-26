@@ -679,6 +679,25 @@ struct CaptureView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.speakIt)
+
+                    // Offered only for a thought that stopped mid-sentence.
+                    // Everywhere else, a capture the app merely failed to
+                    // understand still holds words worth keeping, and putting a
+                    // one-tap delete under them invites throwing away the very
+                    // thing this app promises to preserve. A fragment is the
+                    // one case where the person knows there is nothing there.
+                    if isUnfinishedThought {
+                        Button(role: .destructive, action: discardUnfinishedCapture) {
+                            Text("Discard it")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.speakWarning)
+                                .frame(maxWidth: .infinity, minHeight: 46)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.speakIt)
+                        .accessibilityHint("Deletes this unfinished capture. Nothing is saved.")
+                        .accessibilityIdentifier("capture.discardUnfinished")
+                    }
                 }
                 .padding(.top, 8)
                 .frame(maxWidth: 330)
@@ -1270,9 +1289,33 @@ struct CaptureView: View {
             return "I couldn’t tell whether that was yours to do."
         case .ambiguousTemporalScope:
             return "I heard a day but not a decision. Try again with the one you meant."
+        case .incompleteThought:
+            return "It sounded like that thought wasn’t finished. Your words are safe — pick it up where you left off."
         case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
             return "This needs a quick review. Your original words are safe."
+        }
+    }
+
+    /// True when the interpreter said the sentence itself stopped, rather than
+    /// that it could not read a finished one.
+    private var isUnfinishedThought: Bool {
+        guard let savedResult, savedResult.itemCount == 1 else { return false }
+        return savedResult.primaryItem.clarificationRequirement == .incompleteThought
+    }
+
+    /// Throws away a capture that never became a thought.
+    ///
+    /// Deliberately the only delete offered from this screen. `delete` removes
+    /// the whole session when the fragment is its only row, so nothing is left
+    /// orphaned behind it.
+    private func discardUnfinishedCapture() {
+        guard let savedResult, let repository else { return }
+        confirmationDismissTask?.cancel()
+        try? repository.delete(savedResult.primaryItem)
+        self.savedResult = nil
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
+            showsSavedConfirmation = false
         }
     }
 

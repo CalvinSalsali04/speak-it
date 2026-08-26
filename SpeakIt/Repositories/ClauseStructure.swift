@@ -545,6 +545,162 @@ enum TemporalCommitment {
     }
 }
 
+// MARK: - Whether the thought was finished at all
+
+/// Whether the speaker opened a thought and never closed it.
+///
+/// A different question from every other one in this file. The rest ask what a
+/// finished sentence *meant*; this asks whether a sentence arrived at all. People
+/// lose the thread out loud — "tomorrow I want to…", "remind me to…" — and the
+/// half they did say is enough for the pipeline to build a confident, dated,
+/// scheduled row out of nothing. "Tomorrow remind me to" produced a real
+/// notification for tomorrow with no action inside it.
+///
+/// Read off the tail of the sentence, structurally. English has word classes
+/// that cannot end a sentence because they exist to introduce something: a
+/// coordinator joins, a determiner determines a noun, an infinitive marker marks
+/// a verb. When one of those is the last thing said, the thing it was
+/// introducing never came.
+///
+/// **Not a phrase list.** Nothing here matches "I want to" or "remind me to".
+/// The rule sees `want/Verb to/Particle ⟂` and `remind/Verb me/Pronoun to/Particle ⟂`
+/// as the same shape, which is also the shape of a sentence nobody has written
+/// down yet. The one lexical test is `to`, and that is a closed grammatical class
+/// with exactly one member — English has a single infinitive marker — so naming
+/// it is naming a structure, not enumerating vocabulary.
+enum ThoughtCompletion {
+
+    /// Why the utterance reads as unfinished. Named for the same reason
+    /// `TemporalCommitment.Unsettled` is: the behaviour has to be explainable.
+    enum Unfinished: String, Equatable, Sendable, CaseIterable {
+        /// "…I want to", "…remind me to". An infinitive marker with no verb.
+        case danglingInfinitive
+        /// "…milk and", "…about the". A word whose whole job is to introduce
+        /// something that never arrived.
+        case trailingFunctionWord
+
+        /// All three are the same gap seen from three angles: a frame was
+        /// opened and its content never came.
+        var gap: SemanticGap { .incompleteThought }
+    }
+
+    /// The reason this text reads as unfinished, or `nil` when it does not.
+    ///
+    /// Takes the whole sentence rather than a fragment, because the tagger needs
+    /// the sentence to tag it: "to" in "want to" and "to" in "to Priya" are the
+    /// same three characters and different structures, and only context
+    /// separates them.
+    static func unfinished(in text: String) -> Unfinished? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let context = SentenceContextCache.context(for: trimmed)
+        let tokens = context.tokens
+        guard let last = tokens.last else { return nil }
+        let lastWord = last.text.lowercased()
+
+        // A one-token utterance. Only a lone function word counts: it is what
+        // clause splitting hands on when the sentence it came from was already
+        // cut short ("I was thinking about" arrives here as "about"). A lone
+        // noun is a perfectly good capture — "Milk", "LCBO".
+        //
+        // A bare imperative verb — "Add", "Buy" — was tried and removed. It
+        // cannot be read reliably: `NLTagger` calls a one-word "Add" a verb on
+        // macOS and something else on iOS, so the host tools and the app
+        // disagreed about the same four characters. A rule that depends on
+        // which platform is asking is not a structural rule.
+        if tokens.count == 1 {
+            switch last.lexicalClass {
+            case .determiner?, .preposition?, .particle?:
+                // A lone function word is the tail of something already cut
+                // short — clause splitting hands on "about" when the sentence
+                // was "I was thinking about". Safe here in a way it is not at
+                // the end of a longer clause, because a one-word capture that
+                // is a bare preposition is not a thought anybody finished.
+                return .trailingFunctionWord
+            default:
+                return nil
+            }
+        }
+
+        // Somebody else's unfinished sentence is not the user's to finish.
+        // "She said she needs to" trails off exactly like "I need to" and means
+        // something entirely different: the report is complete: she said a
+        // thing, and what she left hanging is hers. Offering to resume it would
+        // put the user back at the microphone to finish a sentence they never
+        // started.
+        if ClauseScope.read(trimmed).act == .reporting { return nil }
+
+        // The infinitive marker. English has one, so this is a structural test
+        // wearing a word: an infinitive was announced and no verb followed it.
+        // Checked ahead of the class tests because taggers disagree about
+        // whether "to" is a particle or a preposition, and the answer does not
+        // change what it means at the end of a sentence.
+        if lastWord == "to" {
+            // Only when it is the *first* infinitive marker in the clause.
+            //
+            // "Remind me to buy milk when I get to" ends on "to" and is not an
+            // unfinished thought: the frame it opened was filled — there is an
+            // action, and it is "buy milk". What trails off is a second,
+            // subordinate phrase whose place never arrived, and the location
+            // architecture already reads that as a place trigger waiting on a
+            // place. Calling the whole capture unfinished threw the location
+            // intent away and asked the person to start over on a sentence they
+            // had very nearly completed.
+            //
+            // An earlier "to" is exactly the evidence that the frame got its
+            // content: the infinitive it marked was followed by something, or
+            // the clause would have stopped there instead.
+            let markers = tokens.filter { $0.text.lowercased() == "to" }
+            if markers.count == 1 { return .danglingInfinitive }
+            return nil
+        }
+
+        // One guard covers every remaining class. A word that introduces
+        // something is only dangling if nothing it could attach to came after —
+        // and a verb immediately before it means the tail belongs to the verb
+        // rather than being left stranded. That is what separates "follow up",
+        // "check in" and "head out", which are finished, from "send the report
+        // to" and "talk about the", which are not. It is also what keeps "That
+        // is all" whole: the tagger calls "all" a determiner, but a determiner
+        // sitting straight after a copula is completing the sentence, not
+        // opening a noun phrase.
+        let previous = tokens[tokens.count - 2]
+        guard !previous.isVerb else { return nil }
+
+        // Only the determiner survives, and which classes survive was measured
+        // rather than reasoned. A determiner cannot close a sentence: "talk to
+        // Sarah about the" has announced a noun that never came.
+        //
+        // The three classes that are *not* here each looked obvious and each
+        // cost real captures:
+        //
+        // - **Preposition.** "Meet Mike at" and "remind me an hour before" are
+        //   the same shape — `Noun Preposition ⟂` — and the second is finished.
+        //   So is "we're almost out". The tag cannot tell them apart and
+        //   neither can the token in front of it.
+        // - **Conjunction.** "I haven't submitted the report yet" ends on
+        //   `yet/Conjunction`, tagged identically to the "and" in "pick up milk
+        //   and".
+        // - **Adverb.** Recovers "call Sarah about"; costs "remind me
+        //   tomorrow", "maybe tomorrow" and "write that down", because those
+        //   are adverbs too.
+        //
+        // Each of those was tried, measured against the corpus, and removed:
+        // the first three cost four blocking corpus failures between them. What
+        // separates the pairs is which preposition, which conjunction, which
+        // adverb — and that is a word list, which is the thing this file exists
+        // not to keep. Fragments ending in a stranded preposition are therefore
+        // out of scope, and honestly so.
+        switch last.lexicalClass {
+        case .determiner?:
+            return .trailingFunctionWord
+        default:
+            return nil
+        }
+    }
+}
+
 // MARK: - How settled a reading is
 
 /// How confident the pipeline is entitled to be about one reading, and why.
@@ -648,4 +804,10 @@ enum SemanticGap: String, Equatable, Sendable, CaseIterable {
     case ambiguousActor
     /// A day or clock was stated without being settled on.
     case ambiguousTemporalScope
+    /// The speaker opened a thought and never finished saying it — an
+    /// infinitive with no verb, a coordinator with no second conjunct, an
+    /// imperative with nothing to act on. Distinct from `missingAction`, which
+    /// is a *complete* sentence that happens to name no action ("remind me
+    /// about the thing"). This one is a sentence that stopped.
+    case incompleteThought
 }

@@ -410,6 +410,30 @@ enum ThoughtOrganizer {
             ? ItemCategory.people
             : inferredCategory(from: lowercase, type: type)
 
+        // Checked before anything reads a date, because a date is exactly what
+        // an unfinished thought must not acquire. "Tomorrow I want to" resolved
+        // its "tomorrow" perfectly and then hung it on a sentence that never
+        // said what to do; "Tomorrow remind me to" went further and scheduled a
+        // notification with no action inside it. The words are kept and every
+        // commitment is dropped — no date, no reminder, no recurrence, no
+        // place — because there is nothing here to commit to yet.
+        if ThoughtCompletion.unfinished(in: normalized) != nil {
+            return OrganizedThought(
+                itemType: .unclear,
+                category: category,
+                priority: .normal,
+                personName: personName,
+                dueDate: nil,
+                reminderDate: nil,
+                reminderDelivery: .none,
+                recurrenceRule: nil,
+                needsClarification: true,
+                temporalIntent: .none,
+                locationIntent: nil,
+                state: .underspecified(.incompleteThought)
+            )
+        }
+
         // A resolved instant is not the same thing as a settled plan. When the
         // wording says the day was never chosen — two candidates, a hedge with
         // nobody behind it, a question — the words are kept and the calendar is

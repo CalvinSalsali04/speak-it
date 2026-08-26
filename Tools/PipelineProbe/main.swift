@@ -291,6 +291,10 @@ for utterance in utterances {
         if organization.locationIntent != nil { print("     location:   \(describe(organization.locationIntent))") }
         if item.shoppingGroup != nil { print("     list:       \(item.shoppingGroup!)") }
         if item.needsReview { print("     needsReview: true") }
+        // The interpreter's own verdict, which is what a reason-shaped dev set
+        // has to score against. `needsReview` says only that something is
+        // unclear; this says what.
+        print("     state:      \(organization.state.kind.rawValue)\(organization.state.gap.map { " gap=\($0.rawValue)" } ?? "")")
         if item.sourceQuote != rowTitle(item) {
             print("     quote:      \(item.sourceQuote)")
         }

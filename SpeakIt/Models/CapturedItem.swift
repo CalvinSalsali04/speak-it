@@ -555,6 +555,9 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// Wednesday", "maybe Thursday", "was the meeting Wednesday". The words are
     /// kept and nothing is scheduled.
     case ambiguousTemporalScope
+    /// The sentence stopped before it finished. Not a question about what was
+    /// meant — nothing was said yet to mean anything.
+    case incompleteThought
 
     /// Shown on the review row. Names the gap in the person's own terms.
     var listLabel: String {
@@ -574,6 +577,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .reportedSpeech: "Someone else's words"
         case .ambiguousActor: "Whose to do?"
         case .ambiguousTemporalScope: "Time not settled"
+        case .incompleteThought: "Unfinished thought"
         }
     }
 
@@ -597,6 +601,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .reportedSpeech: "This quotes someone else — confirm it is yours to do"
         case .ambiguousActor: "Confirm whose task this is"
         case .ambiguousTemporalScope: "Pick the day you meant"
+        case .incompleteThought: "Finish the thought, or keep it as it is"
         }
     }
 
@@ -611,7 +616,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         switch self {
         case .ambiguousTemporalScope: .time
         case .ambiguousPerson: .person
-        case .missingAction, .ambiguousActor, .reportedSpeech: .type
+        case .missingAction, .ambiguousActor, .reportedSpeech, .incompleteThought: .type
         case .time, .person, .type, .splitDecision, .confirmation,
              .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation: self
@@ -632,6 +637,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .uncertainClauseBoundary: self = .splitDecision
         case .ambiguousActor: self = .ambiguousActor
         case .ambiguousTemporalScope: self = .ambiguousTemporalScope
+        case .incompleteThought: self = .incompleteThought
         }
     }
 }

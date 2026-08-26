@@ -233,6 +233,7 @@ final class SemanticStatePersistenceTests: XCTestCase {
                 "ambiguousActor",
                 "ambiguousPerson",
                 "ambiguousTemporalScope",
+                "incompleteThought",
                 "missingAction",
                 "reportedSpeech",
                 "uncertainClauseBoundary",

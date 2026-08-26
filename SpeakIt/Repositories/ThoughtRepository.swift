@@ -267,6 +267,11 @@ struct CaptureCreationResult {
             case .missingAction, .ambiguousPerson, .reportedSpeech,
                  .ambiguousActor, .ambiguousTemporalScope:
                 return true
+            // An unfinished thought is the clearest case there is for offering
+            // to hear it again: there is nothing to confirm, because nothing
+            // was said yet.
+            case .incompleteThought:
+                return true
             case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
                  .locationTrigger, .combinedTimeAndPlace, .pendingOperation, .none:
                 return false
