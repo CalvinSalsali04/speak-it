@@ -117,7 +117,18 @@ final class SpeechTranscriber: ObservableObject {
     private var activeStartID: UUID?
     private var audioProfile = SpeechCaptureAudioProfile.spokenAudio
 
-    private static let completeThoughtPauseMilliseconds = 1_100
+    /// How long a sentence that sounds finished may sit in silence before the
+    /// capture closes.
+    ///
+    /// Back to the value build 13 shipped. It had been halved to 1,100 ms
+    /// inside a commit about the understanding pipeline, with no recorded
+    /// reason, and build 14 was the first build to put that on a phone. It cuts
+    /// people off: an ordinary thinking pause mid-thought runs one to two
+    /// seconds, so 1,100 ms lands inside the range where somebody is still
+    /// composing rather than done. The endpointing improvements that arrived
+    /// alongside it are kept — a tail that sounds mid-sentence still waits far
+    /// longer than build 13 allowed.
+    private static let completeThoughtPauseMilliseconds = 2_100
     private static let continuationPromptPauseMilliseconds = 2_100
     private static let ambiguousThoughtPauseMilliseconds = 4_000
     private static let incompleteThoughtPauseMilliseconds = 8_000
