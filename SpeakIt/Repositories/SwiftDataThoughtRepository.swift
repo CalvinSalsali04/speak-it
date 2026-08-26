@@ -828,6 +828,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let thoughts = names.map { name in
             ExtractedThought(
                 sourceQuote: name,
+                // A name the person typed onto a list. No repair chain ran, so
+                // the quote is already what they wrote.
+                rawQuote: name,
+                wasRepaired: false,
                 analysisText: name,
                 suggestedTitle: name,
                 organization: organization,
@@ -1387,6 +1391,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             )
             return ExtractedThought(
                 sourceQuote: part,
+                rawQuote: part,
+                wasRepaired: false,
                 analysisText: part,
                 suggestedTitle: nil,
                 organization: organization,
@@ -1438,6 +1444,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         let candidate = ExtractedThought(
             sourceQuote: sourceText,
+            // Joined from the stored `originalTextSegment`s, which are already
+            // the person's words.
+            rawQuote: sourceText,
+            wasRepaired: false,
             analysisText: sourceText,
             suggestedTitle: title,
             organization: organization,
@@ -1485,6 +1495,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         apply(
             ExtractedThought(
                 sourceQuote: session.originalTranscription,
+                // The fallback that keeps an unreadable capture: the untouched
+                // transcript is both the quote and the raw span.
+                rawQuote: session.originalTranscription,
+                wasRepaired: false,
                 analysisText: session.originalTranscription,
                 suggestedTitle: session.originalTranscription,
                 organization: rawOrganization,

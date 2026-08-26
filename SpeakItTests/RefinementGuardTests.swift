@@ -36,6 +36,10 @@ final class RefinementGuardTests: XCTestCase {
         let analysis = context.isEmpty ? quote : "\(context) \(quote)"
         return ExtractedThought(
             sourceQuote: quote,
+            // The fixture lifts the quote straight out of the transcript, so
+            // the raw span is the quote and no repair ran.
+            rawQuote: quote,
+            wasRepaired: false,
             analysisText: analysis,
             suggestedTitle: nil,
             organization: ThoughtOrganizer.organize(
@@ -114,6 +118,8 @@ final class RefinementGuardTests: XCTestCase {
         var retitled = rules
         retitled[0] = ExtractedThought(
             sourceQuote: rules[0].sourceQuote,
+            rawQuote: rules[0].rawQuote,
+            wasRepaired: rules[0].wasRepaired,
             analysisText: rules[0].analysisText,
             suggestedTitle: "Email Professor Chen about the extension",
             organization: rules[0].organization,

@@ -90,6 +90,19 @@ if let index = arguments.firstIndex(of: "--clauses") {
     arguments.remove(at: index)
 }
 
+// Drift mode. For every utterance, checks that the words a person is shown —
+// the row title and the quote — can all be found in what they actually said,
+// unless the row records that a repair happened inside its span.
+//
+// This is the whole point of `TranscriptProvenance`: before it, a quote cut
+// from repaired text could differ from the utterance with nothing recording
+// that it had.
+var showDrift = false
+if let index = arguments.firstIndex(of: "--drift") {
+    showDrift = true
+    arguments.remove(at: index)
+}
+
 // Timing mode. Prints per-utterance rules-path latency instead of readings, so
 // a change to the linguistic layers can be costed rather than guessed at. The
 // warmup matters more than it looks: NLTagger loads its model lazily on the
@@ -147,6 +160,57 @@ if showClausesOnly {
         print("\(utterance)\t\(clauses.joined(separator: " | "))")
     }
     exit(0)
+}
+
+if showDrift {
+    func tokens(_ text: String) -> Set<String> {
+        Set(text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 1 })
+    }
+
+    // Two different promises, measured apart.
+    //
+    // The **quote** promises fidelity: it is the person's own words and a token
+    // in it that they never said is a defect, full stop, unless the row records
+    // that a repair ran inside its span.
+    //
+    // The **title** promises readability, and the product contract has it
+    // paraphrase — "Remind me not to text Dave" is shown as "Don't text Dave",
+    // which introduces a word nobody said on purpose. Counting that as drift
+    // would make the gate meaningless, so it is reported and never gates.
+    var checked = 0
+    var quoteDrift = 0
+    var titleParaphrase = 0
+    var explained = 0
+    for utterance in utterances {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            utterance, referenceDate: referenceDate, calendar: calendar
+        )
+        let said = tokens(utterance)
+        for item in result.items {
+            checked += 1
+            if !tokens(rowTitle(item)).subtracting(said).isEmpty { titleParaphrase += 1 }
+
+            let invented = tokens(item.sourceQuote).subtracting(said)
+            guard !invented.isEmpty else { continue }
+            if item.wasRepaired {
+                explained += 1
+                continue
+            }
+            quoteDrift += 1
+            print("QUOTE DRIFT  \"\(utterance)\"")
+            print("   quoted but never said: \(invented.sorted().joined(separator: ", "))")
+            print("   quote: \(item.sourceQuote)")
+            print("   raw:   \(item.rawQuote)")
+        }
+    }
+    print("")
+    print("CONTENT DRIFT — \(utterances.count) utterances, \(checked) rows")
+    print("  GATED   quote holds a word never said, unexplained   \(quoteDrift)")
+    print("  ok      quote differs, and the row records a repair  \(explained)")
+    print("  report  title paraphrases (by contract)              \(titleParaphrase)")
+    exit(quoteDrift == 0 ? 0 : 1)
 }
 
 if benchmarkRounds > 0 {

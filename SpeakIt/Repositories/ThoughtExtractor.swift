@@ -7,6 +7,19 @@ import FoundationModels
 
 struct ExtractedThought: Equatable, Sendable {
     let sourceQuote: String
+    /// The words of the **original transcript** this row came from, before any
+    /// repair touched them.
+    ///
+    /// `sourceQuote` is cut from the repaired text, which is what every later
+    /// stage reads and is usually the right thing to show. This is the other
+    /// half of the record: what the person actually said. Keeping both is what
+    /// makes it possible to assert that a quote never drifts silently — see
+    /// `ContentDriftTests`. Non-optional on purpose; a nullable field would let
+    /// the test that checks it pass by finding nothing.
+    let rawQuote: String
+    /// Whether a repair changed anything inside this row's span. A `rawQuote`
+    /// that differs from `sourceQuote` is only acceptable when this is true.
+    let wasRepaired: Bool
     let analysisText: String
     let suggestedTitle: String?
     let organization: OrganizedThought
@@ -368,6 +381,13 @@ enum RuleBasedThoughtExtractor {
         // How many things were said, before anything decides what they are.
         // Clause count is not item count, and the splitter below can only
         // answer the second question. See `IntentConsolidation.swift`.
+        // What the person said, kept beside what the repairs read. Built once
+        // per capture and consulted per row, so no stage has to thread token
+        // spans through itself to answer "which words was this cut from".
+        let provenance = normalized == creating
+            ? nil
+            : TranscriptProvenance(raw: normalized, repaired: creating)
+
         let consolidation = IntentConsolidator.consolidate(creating, clauses: splitClauses(creating))
 
         let segments: [Segment]
@@ -457,8 +477,17 @@ enum RuleBasedThoughtExtractor {
                 || cannotIdentifyPoint
                 || organization.needsClarification
                 || organization.itemType == .unclear
+            let span = provenance.map { record -> (raw: String, repaired: Bool) in
+                guard let range = creating.range(of: segment.quote) else {
+                    return (segment.quote, false)
+                }
+                return (record.rawSpan(for: range), record.wasRepaired(in: range))
+            } ?? (raw: segment.quote, repaired: false)
+
             return ExtractedThought(
                 sourceQuote: segment.quote,
+                rawQuote: span.raw.isEmpty ? segment.quote : span.raw,
+                wasRepaired: span.repaired,
                 analysisText: segment.analysisText,
                 suggestedTitle: segment.suggestedTitle,
                 organization: organization,
@@ -606,6 +635,12 @@ enum RuleBasedThoughtExtractor {
                 let analysisText = "\(entry.verb) \(entry.product)"
                 return ExtractedThought(
                     sourceQuote: entry.product,
+                    // One product off a spoken list. The row's own words are
+                    // the product; the raw span it came from is the parent's,
+                    // because the splitter works on the repaired list text and
+                    // there is no smaller honest answer.
+                    rawQuote: item.rawQuote,
+                    wasRepaired: item.wasRepaired,
                     analysisText: analysisText,
                     suggestedTitle: analysisText,
                     organization: item.organization,
@@ -838,6 +873,8 @@ enum RuleBasedThoughtExtractor {
             let organization = item.organization
             return ExtractedThought(
                 sourceQuote: item.sourceQuote,
+                rawQuote: item.rawQuote,
+                wasRepaired: item.wasRepaired,
                 analysisText: item.analysisText,
                 suggestedTitle: item.suggestedTitle,
                 organization: OrganizedThought(
@@ -2273,6 +2310,10 @@ enum IntelligentThoughtExtractor {
             let title = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
             output.append(ExtractedThought(
                 sourceQuote: quote,
+                // The model is instructed to copy every quote exactly from the
+                // transcript it was handed, so its quote is already raw.
+                rawQuote: quote,
+                wasRepaired: false,
                 analysisText: analysisText,
                 suggestedTitle: title.isEmpty ? nil : String(title.prefix(140)),
                 organization: organization,

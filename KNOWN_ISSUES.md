@@ -48,6 +48,8 @@ Standard-size Today and Memory layouts now have clean-state simulator visual cov
 
 Storing the reason on `CapturedItem` at capture time would make these exact and would let a row tap open straight to the field in question rather than the generic editor. It is a persisted-model change, so it needs a new schema version and an explicit migration stage.
 
+**Half of this now exists in memory and does not reach the store.** `OrganizedThought.state` carries a `SemanticState` — `resolved`, `underspecified`, `contested`, `unsupported` — with a named `SemanticGap` saying what could not be determined (`ambiguousActor`, `ambiguousTemporalScope`, `reportedSpeech`, and so on). Rules branch on it, and `TemporalCommitment` is the first producer. It is dropped on the way into `CapturedItem`, so Needs review still re-derives its wording. Persisting it is the same schema-version change described above, and it would replace the guess rather than add to it.
+
 ## Temporal intent is stored; two kinds of trigger are still missing
 
 Schema version 2 records what a person said about time (`TemporalIntent`) beside the instant it resolved to, so `dateOnly`, `exactDateTime`, `relativeDuration`, `calendarRecurrence`, and `durationRecurrence` are now distinct all the way into storage. Named time zones are stored as identifiers. What is still not modelled:
@@ -125,6 +127,53 @@ The specifics:
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.
+
+## Capitalization still decides two things
+
+Lowercasing the whole gating corpus costs 4 blocking failures against 0 for
+every other rendering (`corpus-run --rendering lowercased`). It was 9 before the
+Phase 2 coordination work removed the two clause-splitting gates that read
+`NLTagger.personalName` and a bare capital letter. What is left:
+
+- **The shopping grouper.** "Get Coke and Sprite" produces two shopping rows and
+  "get coke and sprite" produces one shopping row and a Memory note, because
+  product recognition reads the capital. This is genuinely lexical — "sprite" is
+  a brand — so it does not have the structural fix the clause splitter had.
+- **Name casing in titles and person fields.** "let priya know…" resolves the
+  person as "Priya Know", and "remind me not to text dave tonight" titles the
+  row "Don't text dave". Both are name-boundary and display-casing problems
+  rather than routing ones.
+
+The lowercased rendering is reported and does not gate, for the reason
+`RenderingInvarianceTests` gives: a recognizer that lowercases a name has
+already destroyed information the app cannot recover. The number is tracked so
+the cost stays visible.
+
+## Ownership does not read animacy
+
+`ActionabilityReader.obligationBelongsToAnotherPerson` files "Mike should call
+Sarah" in Memory, correctly, and would file "the car has to go in Tuesday" there
+too, incorrectly. Separating an animate subject from an inanimate one needs
+either a lexicon or an embedding query, and the rule deliberately does neither.
+
+It is the safer wrong: the words are kept and nothing is scheduled, where the
+opposite error puts a job the person never accepted on the list they work from.
+No utterance of that shape appears in the 1,069-case corpus, so the cost is
+currently hypothetical and the benefit is measured. If a real capture hits it,
+the fix is a new corpus family, not a widening of the rule.
+
+## Delete and remove are not operation verbs
+
+"Cancel my plumber reminder" is recognised as an operation. "Delete the reminder
+to call Dave" and "remove the dentist appointment" are not — they fall through
+to a Memory row flagged for review, and nothing is destroyed.
+
+This is a gap and it fails closed, which is why it is documented rather than
+fixed. Modifying or deleting stored user data needs substantially stronger
+evidence than creating content does, and widening the destructive vocabulary to
+make the family consistent would trade a safe gap for an unsafe one. Both cases
+are in `Tools/CorpusRunner/devsets/routed.tsv`, expected to fail, so the gap
+stays measured.
 
 ## Intent consolidation reads English discourse markers only
 

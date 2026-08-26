@@ -33,15 +33,22 @@ stays untouched and keeps measuring.
 
 ## Baseline
 
-Recorded 2026-08-25, after the speech-act scope and prohibitive-reminder work:
+Recorded 2026-08-25, after the contextual-semantic (Phase 2) work. The previous
+column is the speech-act scope and prohibitive-reminder baseline it replaced.
 
-| measure | value |
-|---|---|
-| destination correct | 229/320 (71.6%) |
-| thought count correct | 252/310 (81.3%) |
-| captures producing nothing | 0 |
-| genuinely ambiguous captures | 69 |
-| **acted on anyway** | **9 (13.0%)** |
+| measure | before | after |
+|---|---|---|
+| destination correct | 229/320 (71.6%) | 229/320 (71.6%) |
+| thought count correct | 252/310 (81.3%) | 251/310 (81.0%) |
+| captures producing nothing | 0 | 0 |
+| genuinely ambiguous captures | 69 | 69 |
+| **acted on anyway** | **9 (13.0%)** | **8 (11.6%)** |
+
+The rules that moved the last row were developed against
+`Tools/CorpusRunner/devsets/`, not against these sentences. On that development
+set the same change took unsafe actions from 8/22 to 2/32, and only one of them
+carried here — which is the honest reading of how much the development families
+overlap the ambiguity this set contains, and is worth knowing.
 
 The last row is the one to watch. It counts captures whose meaning a careful
 human reader could not pin down, on which the app nevertheless scheduled

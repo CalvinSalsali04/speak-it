@@ -418,6 +418,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let deterministic = ThoughtOrganizer.organize(capture)
         let refined = [ExtractedThought(
             sourceQuote: capture,
+            // The fixture quotes the whole capture verbatim.
+            rawQuote: capture,
+            wasRepaired: false,
             analysisText: capture,
             suggestedTitle: "Get eggs, bread, and cheese",
             organization: OrganizedThought(
@@ -457,6 +460,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let deterministic = ThoughtOrganizer.organize(capture)
         let refined = [ExtractedThought(
             sourceQuote: capture,
+            // The fixture quotes the whole capture verbatim.
+            rawQuote: capture,
+            wasRepaired: false,
             analysisText: capture,
             suggestedTitle: "Buy milk, eggs, and cheese",
             organization: OrganizedThought(

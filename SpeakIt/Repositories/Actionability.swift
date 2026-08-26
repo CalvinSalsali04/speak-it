@@ -725,19 +725,7 @@ enum ActionabilityReader {
         // The head has to actually be a verb. Without this, "coffee with the
         // neighbours" and "dinner at the Kims" have the same shape as an
         // errand.
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = body
-        var headIsVerb = false
-        tagger.enumerateTags(
-            in: body.startIndex..<body.endIndex,
-            unit: .word,
-            scheme: .lexicalClass,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, _ in
-            headIsVerb = tag == .verb
-            return false
-        }
-        return headIsVerb
+        return headTag(of: body) == .verb
     }
 
     /// An imperative whose object carries no determiner: "sharpen knives",
@@ -807,21 +795,7 @@ enum ActionabilityReader {
     /// Whether any token after the first reads as a verb, which is what a
     /// subject-verb-object sentence has and an imperative does not.
     private static func laterTokenIsVerb(_ text: String) -> Bool {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = text
-        var index = 0
-        var found = false
-        tagger.enumerateTags(
-            in: text.startIndex..<text.endIndex,
-            unit: .word,
-            scheme: .lexicalClass,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, _ in
-            if index > 0, tag == .verb { found = true; return false }
-            index += 1
-            return true
-        }
-        return found
+        SentenceContextCache.context(for: text).tokens.dropFirst().contains(where: \.isVerb)
     }
 
     /// The day and month words that end a dated noun phrase.
@@ -831,20 +805,17 @@ enum ActionabilityReader {
         + #"|today|tomorrow|tonight|weekend)"#
 
     /// The lexical class of a fragment's first word.
+    ///
+    /// Through the shared cache rather than a fresh `NLTagger` per call.
+    /// `ActionabilityReader.read` is asked the same question about the same
+    /// string several times in one capture — by the clause splitter deciding
+    /// whether the left conjunct stands alone, by the organizer, and by the
+    /// router — and each of those used to build and throw away a tagger.
+    ///
+    /// The reading is identical: this tags the same string the old code tagged.
+    /// Only the allocation is saved.
     private static func headTag(of text: String) -> NLTag? {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = text
-        var head: NLTag?
-        tagger.enumerateTags(
-            in: text.startIndex..<text.endIndex,
-            unit: .word,
-            scheme: .lexicalClass,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, _ in
-            head = tag
-            return false
-        }
-        return head
+        SentenceContextCache.context(for: text).tokens.first?.lexicalClass
     }
 
     /// A stated time with nothing to perform and nothing being described.

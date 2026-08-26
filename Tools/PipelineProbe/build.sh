@@ -27,6 +27,7 @@ sed -n "1,$((LCUT - 1))p" SpeakIt/Models/LocationIntent.swift > "$OUT/LocationIn
 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swiftc -O -o "$OUT/probe" \
   SpeakIt/Repositories/ClauseStructure.swift \
+  SpeakIt/Repositories/TranscriptProvenance.swift \
   SpeakIt/Repositories/ThoughtExtractor.swift \
   SpeakIt/Repositories/ThoughtOrganizer.swift \
   SpeakIt/Repositories/SpeechRepair.swift \

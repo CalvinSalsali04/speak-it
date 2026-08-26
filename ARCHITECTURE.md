@@ -100,6 +100,45 @@ another event completing), its temporal intent records an unsupported
 condition and Needs review says **Trigger not supported** instead of pretending
 the user omitted a time.
 
+### The structural layer
+
+`ClauseStructure.swift` holds the linguistic reading the rest of the pipeline
+asks questions of. It exists because the same question kept being answered by a
+different local rule each time.
+
+`SentenceContext` tags a whole clause once with `NLTagger` and keeps the token
+spans, so a rule can ask about a *part* of a sentence without re-tagging that
+part on its own. That matters because `NLTagger` is contextual and answers
+differently about a fragment: "cassava" is a Noun in "buy plantains and cassava"
+and a Verb by itself. It never lets `nameType` decide a clause boundary — that
+tag only fires on a capitalized token, and a reading that turns on it is a
+reading the speaker cannot control.
+
+`ClauseScope` finds one boundary: where the matrix speech act ends and a
+reported or quoted proposition begins. It distinguishes reporting ("Sarah
+said…"), communicating ("text Mike that…") and reminding, recovers the speaker
+and recipient when structure gives them, and reads the actor — deliberately
+including `unresolved`, because inventing one puts a task on Today that nobody
+agreed to do. It is not a dependency parser and not recursive.
+
+`TemporalCommitment` answers whether a stated day was settled on. Two candidate
+days, a hedge with nobody behind it, or a question all mean the resolver's
+instant is not a plan.
+
+`SemanticState` records how settled a reading is — `resolved`,
+`underspecified`, `contested`, `unsupported` — with a named `SemanticGap` rather
+than a numeric confidence. A person can be shown a reason; nobody can be shown a
+0.62. Actionability stays asymmetric: anything short of `resolved` may still
+produce a row and may not produce an alarm.
+
+`TranscriptProvenance` keeps what was said beside what was read. The repair
+chain runs before understanding, which is the right order, but `sourceQuote` is
+cut from the repaired text — so every row also carries `rawQuote`, the span of
+the original transcript it came from, and `wasRepaired`. `ContentDriftTests`
+asserts across the whole corpus that no quote holds a word the person never
+said unless a repair is recorded in its span. Titles are exempt and reported
+separately, because the contract has them paraphrase.
+
 One `CaptureSession` always keeps the complete untouched transcript. Extraction produces up to twelve linked `CapturedItem` records. Rules run immediately on every supported iPhone; Apple Intelligence can refine complex captures locally when Foundation Models are available. Model output is accepted only when every quote is grounded in the original transcript, and deterministic code—not the model—controls dates and reminders.
 
 ## Referral boundary

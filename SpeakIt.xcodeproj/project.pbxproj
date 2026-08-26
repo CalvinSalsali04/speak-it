@@ -38,6 +38,7 @@
 		A1000000000000000000001C /* ReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ReminderScheduler.swift */; };
 		A1000000000000000000E1 /* IntentConsolidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000E1 /* IntentConsolidation.swift */; };
 		A100000000000000000000FE /* ClauseStructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FE /* ClauseStructure.swift */; };
+		A100000000000000000000FD /* TranscriptProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FD /* TranscriptProvenance.swift */; };
 		A1000000000000000000001D /* ThoughtExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* ThoughtExtractor.swift */; };
 		A1000000000000000000001E /* CaptureDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* CaptureDraftStore.swift */; };
 		A1000000000000000000001F /* CaptureSessionReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* CaptureSessionReviewView.swift */; };
@@ -50,6 +51,8 @@
 		D300000000000000000002 /* SemanticCorpusDataG.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000002 /* SemanticCorpusDataG.swift */; };
 		D300000000000000000003 /* SemanticCorpusDataH.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000003 /* SemanticCorpusDataH.swift */; };
 		D300000000000000000004 /* SemanticCorpusDataI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000004 /* SemanticCorpusDataI.swift */; };
+		D200000000000000000F01 /* ContentDriftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F01 /* ContentDriftTests.swift */; };
+		D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000F02 /* SemanticCorpusDataQ.swift */; };
 		D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000001 /* RenderingInvarianceTests.swift */; };
 		D200000000000000000002 /* RefinementGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000002 /* RefinementGuardTests.swift */; };
 		D200000000000000000003 /* SpeechRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000003 /* SpeechRepairTests.swift */; };
@@ -193,6 +196,7 @@
 		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
 		B1000000000000000000E1 /* IntentConsolidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentConsolidation.swift; sourceTree = "<group>"; };
 		B100000000000000000000FE /* ClauseStructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClauseStructure.swift; sourceTree = "<group>"; };
+		B100000000000000000000FD /* TranscriptProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptProvenance.swift; sourceTree = "<group>"; };
 		B10000000000000000000025 /* ThoughtExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtExtractor.swift; sourceTree = "<group>"; };
 		B10000000000000000000026 /* CaptureDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDraftStore.swift; sourceTree = "<group>"; };
 		B10000000000000000000027 /* CaptureSessionReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionReviewView.swift; sourceTree = "<group>"; };
@@ -205,6 +209,8 @@
 		E300000000000000000002 /* SemanticCorpusDataG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataG.swift; sourceTree = "<group>"; };
 		E300000000000000000003 /* SemanticCorpusDataH.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataH.swift; sourceTree = "<group>"; };
 		E300000000000000000004 /* SemanticCorpusDataI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataI.swift; sourceTree = "<group>"; };
+		E200000000000000000F01 /* ContentDriftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentDriftTests.swift; sourceTree = "<group>"; };
+		E300000000000000000F02 /* SemanticCorpusDataQ.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataQ.swift; sourceTree = "<group>"; };
 		E200000000000000000001 /* RenderingInvarianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingInvarianceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000002 /* RefinementGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinementGuardTests.swift; sourceTree = "<group>"; };
 		E200000000000000000003 /* SpeechRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRepairTests.swift; sourceTree = "<group>"; };
@@ -383,6 +389,7 @@
 				B10000000000000000000023 /* ThoughtOrganizer.swift */,
 				B1000000000000000000E1 /* IntentConsolidation.swift */,
 				B100000000000000000000FE /* ClauseStructure.swift */,
+				B100000000000000000000FD /* TranscriptProvenance.swift */,
 				B10000000000000000000025 /* ThoughtExtractor.swift */,
 				B100000000000000000000D2 /* SpeechRepair.swift */,
 				B100000000000000000000D3 /* CaptureTargetMatcher.swift */,
@@ -497,6 +504,8 @@
 				E300000000000000000002 /* SemanticCorpusDataG.swift */,
 				E300000000000000000003 /* SemanticCorpusDataH.swift */,
 				E300000000000000000004 /* SemanticCorpusDataI.swift */,
+				E200000000000000000F01 /* ContentDriftTests.swift */,
+				E300000000000000000F02 /* SemanticCorpusDataQ.swift */,
 				E200000000000000000001 /* RenderingInvarianceTests.swift */,
 				E200000000000000000002 /* RefinementGuardTests.swift */,
 				E200000000000000000003 /* SpeechRepairTests.swift */,
@@ -851,6 +860,7 @@
 				A1000000000000000000001C /* ReminderScheduler.swift in Sources */,
 				A1000000000000000000E1 /* IntentConsolidation.swift in Sources */,
 				A100000000000000000000FE /* ClauseStructure.swift in Sources */,
+				A100000000000000000000FD /* TranscriptProvenance.swift in Sources */,
 				A1000000000000000000001D /* ThoughtExtractor.swift in Sources */,
 				A100000000000000000000D2 /* SpeechRepair.swift in Sources */,
 				A100000000000000000000D3 /* CaptureTargetMatcher.swift in Sources */,
@@ -900,6 +910,8 @@
 				D300000000000000000002 /* SemanticCorpusDataG.swift in Sources */,
 				D300000000000000000003 /* SemanticCorpusDataH.swift in Sources */,
 				D300000000000000000004 /* SemanticCorpusDataI.swift in Sources */,
+				D200000000000000000F01 /* ContentDriftTests.swift in Sources */,
+				D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */,
 				D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */,
 				D200000000000000000002 /* RefinementGuardTests.swift in Sources */,
 				D200000000000000000003 /* SpeechRepairTests.swift in Sources */,
