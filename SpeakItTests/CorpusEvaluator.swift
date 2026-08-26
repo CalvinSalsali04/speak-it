@@ -76,6 +76,9 @@ struct CorpusEvaluator {
 
         func record(_ field: String, _ expected: String, _ actual: String) {
             var severity = CorpusSeverity.forField(field)
+            if let floor = testCase.severityFloor, severity < floor {
+                severity = floor
+            }
             if let ceiling = testCase.severityCeiling, severity > ceiling {
                 severity = ceiling
             }
@@ -138,7 +141,7 @@ struct CorpusEvaluator {
         each(testCase.delivery, "delivery", { $0.organization.reminderDelivery.rawValue }, { $0.rawValue })
         each(testCase.kind, "temporalKind", { $0.organization.temporalIntent.kind.rawValue }, { $0.rawValue })
         each(testCase.review, "needsReview", { $0.needsReview ? "true" : "false" }, { $0 ? "true" : "false" })
-        each(testCase.title, "title", { $0.suggestedTitle ?? $0.sourceQuote }, { $0 })
+        each(testCase.title, "title", { Self.displayTitle(for: $0) }, { $0 })
 
         for mismatch in compareDates(testCase.due, "dueDate", items, { $0.organization.dueDate }) {
             record(mismatch.0, mismatch.1, mismatch.2)
@@ -150,6 +153,28 @@ struct CorpusEvaluator {
         each(testCase.place, "location", { describePlace($0.organization.locationIntent) }, { describeExpectedPlace($0) })
 
         return found
+    }
+
+    /// The title the person actually sees on the row.
+    ///
+    /// Mirrors `SwiftDataThoughtRepository.displayTitle` and
+    /// `Tools/PipelineProbe`. The corpus used to compare the raw
+    /// `suggestedTitle ?? sourceQuote`, which is not a title — the rules path
+    /// usually leaves `suggestedTitle` nil and the polishing happens on the way
+    /// into the store. So every `title` expectation was being checked against
+    /// the unpolished capture, and an assertion about what a row *reads* could
+    /// neither pass honestly nor fail usefully.
+    static func displayTitle(for candidate: ExtractedThought) -> String {
+        let raw: String
+        if let title = candidate.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            raw = title
+        } else if candidate.organization.reminderDate != nil {
+            raw = ReminderCopy.action(from: candidate.analysisText)
+        } else {
+            raw = candidate.sourceQuote
+        }
+        return ThoughtTitleFormatter.polished(raw, itemType: candidate.organization.itemType)
     }
 
     /// An operation target is the person's own words, so a rendering that
@@ -361,6 +386,9 @@ extension CorpusEvaluator {
             (.listCommands, SemanticCorpusL.listCommandGuards),
             (.structuralReadings, SemanticCorpusM.occupationsAreNotPeople),
             (.structuralReadings, SemanticCorpusM.structuralGuards),
+            (.ordinarySpeech, SemanticCorpusN.ordinarySpeech),
+            (.speechActScope, SemanticCorpusO.speechActScope),
+            (.prohibitions, SemanticCorpusP.prohibitions),
         ]
     }
 

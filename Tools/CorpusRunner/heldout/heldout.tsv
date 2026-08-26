@@ -1,0 +1,390 @@
+# id	utterance	family	expected_destination	expected_thoughts
+C001	remind me to uh remind me to call the vet on Thursday	false-start	Today	1
+C002	I need to I need to get the oil changed before the trip	false-start	Today	1
+C003	we should uh actually lets put milk on the list	false-start	Shopping	1
+C004	so the thing is I gotta the thing is I gotta send Priya the deck	false-start	Today	1
+C005	pick up pick up the the prescription at Shoppers	false-start	Today	1
+C006	add add bananas	false-start	Shopping	1
+C007	tomorrow no not tomorrow Wednesday I have the dentist	false-start	Event	1
+C008	book a book a table for four at seven	false-start	Today+Event	1
+C009	email I mean call Rose about the invoice	false-start	Today	1
+C010	put a put a note in memory that Dads blood type is O negative	false-start	Memory	1
+C011	let me okay so remind me Friday to renew the parking pass	false-start	Today	1
+C012	the um the the the garage door opener needs a battery	false-start	Today	1
+C013	remind me to call Mike Tuesday sorry Wednesday	self-correction	Today	1
+C014	add eggs to the list actually make that egg whites	self-correction	Shopping	1
+C015	meetings at 3 no 3:30	self-correction	Event	1
+C016	text Sarah no Sara with no h about the ride	self-correction	Today	1
+C017	buy two dozen well one dozen is fine	self-correction	Shopping	1
+C018	put it on the Costco list no Walmart	self-correction	Shopping	1
+C019	dinner with Jordan Friday scratch that Saturday	self-correction	Event	1
+C020	cancel the I mean reschedule the dentist	self-correction	Operation	1
+C021	her names Grace sorry Gracie shes the new PM	self-correction	Memory	1
+C022	I need milk and bread no we have bread just milk	self-correction	Shopping	1
+C023	set an alarm for 6 make it 5:45	self-correction	Today (alarm)	1
+C024	remind me at noon actually dont Ill be driving make it 2	self-correction	Today	1
+C025	um so like I need to you know call the landlord about the leak	fillers	Today	1
+C026	anyway right so the thing with the taxes is due April 30th	fillers	Today	1
+C027	I mean honestly we should probably just book the flights	fillers	Today (low confidence)	1
+C028	so uh yeah um like grab like a bag of ice	fillers	Shopping	1
+C029	you know what remind me to water the plants	fillers	Today	1
+C030	like literally I keep forgetting to like return the router	fillers	Today	1
+C031	okay so um Tuesday right Tuesday Ive got the thing with the bank	fillers	Event	1
+C032	well I mean I guess I could call them tomorrow	fillers	Ambiguous-preserve	0-1
+C033	so anyway the point is Marks birthday is the 14th	fillers	Memory+Event	1-2
+C034	uh huh yeah so add uh paper towels	fillers	Shopping	1
+C035	right so like note to self the wifi password is on the fridge	fillers	Memory	1
+C036	I dunno like maybe pick up flowers or something	fillers	Ambiguous-preserve	0-1
+C037	remind me to call the guy who fixed the fence last spring	nested-clause	Today	1
+C038	before I forget the meeting that got moved is now on the 12th	nested-clause	Event / Operation	1
+C039	if the package that I ordered on Monday doesnt come by Friday call UPS	nested-clause	Ambiguous-preserve / Today	1
+C040	the report that Sarah said Mike needed is due Thursday	nested-clause	Today	1
+C041	tell Dave when you see him that the invoice went out	nested-clause	Today	1
+C042	I need to email the woman from the school who runs the pickup list	nested-clause	Today	1
+C043	the thing I was supposed to do yesterday which I didnt do is the insurance form	nested-clause	Today (overdue)	1
+C044	remind me that the reason we switched dentists is because Dr Patel retired	nested-clause	Memory	1
+C045	since the car that we bought in June is still under warranty dont pay for the brakes	nested-clause	Memory / Today	1
+C046	the place where we had brunch with Rose has a patio	nested-clause	Memory	1
+C047	whoever is picking up Chase on Friday needs the car seat	nested-clause	Today	1
+C048	make sure that whatever Priya sends me gets forwarded to accounting	nested-clause	Today	1
+C049	Sarah said call Mike tomorrow	reported-speech	Today	1
+C050	my mom was saying I should get the furnace looked at	reported-speech	Today (low confidence)	1
+C051	Tom told me the deadline is the 20th	reported-speech	Today/Memory	1
+C052	the doctor said no caffeine after two	reported-speech	Memory	1
+C053	Priya mentioned that Chen is leaving in November	reported-speech	Memory	1
+C054	he said hed call me back on Monday	reported-speech	Memory / Ambiguous-preserve	0-1
+C055	she asked if I could pick up the kids Thursday	reported-speech	Today	1
+C056	Dad kept saying dont forget the water filter	reported-speech	Today	1
+C057	the landlord says the plumber comes between nine and eleven	reported-speech	Event	1
+C058	my boss goes yeah just push it to next sprint	reported-speech	Operation / Ambiguous-preserve	0-1
+C059	Grace said Will said the partys at seven	reported-speech	Event	1
+C060	the school sent a thing saying picture day is the 15th	reported-speech	Event	1
+C061	call Rose about the flowers	name-as-noun	Today	1
+C062	Will will call me back	name-as-noun	Memory / Ambiguous-preserve	0-1
+C063	mark the box and give it to Mark	name-as-noun	Today	1-2
+C064	Hope is coming in June	name-as-noun	Event	1
+C065	Grace said grace before dinner	name-as-noun	Ambiguous-preserve	0-1
+C066	ask Summer about summer camp	name-as-noun	Today	1
+C067	Bill sent the bill	name-as-noun	Memory	1
+C068	Frank was frank with me about the raise	name-as-noun	Memory	1
+C069	Rich is rich now apparently	name-as-noun	Memory	1
+C070	Art teaches art at the community centre	name-as-noun	Memory	1
+C071	meet Dawn at dawn	name-as-noun	Today	1
+C072	Robin saw a robin	name-as-noun	Memory	1
+C073	Sky said the sky looked crazy	name-as-noun	Memory	1
+C074	Chase is at Chase Bank on Tuesday	name-as-noun	Event	1
+C075	Reed plays the reed in the orchestra	name-as-noun	Memory	1
+C076	Baker the baker is on Baker Street	name-as-noun	Memory	1
+C077	Taylor the tailor hemmed my pants	name-as-noun	Memory	1
+C078	Carpenter the carpenter is coming Friday	name-as-noun	Event	1
+C079	May said wed do it in May	name-as-noun	Ambiguous-preserve / Event	1
+C080	Faith has faith in the plan	name-as-noun	Memory	1
+C081	Junes birthday is in June	name-as-noun	Memory+Event	1-2
+C082	Church is on Church Street next to the church	name-as-noun	Memory	1
+C083	Wells drilled a well	name-as-noun	Memory	1
+C084	Sunny said itll be sunny	name-as-noun	Memory	1
+C085	Venmo Jordan twenty bucks	brand-verb	Today	1
+C086	Uber to the airport at 6	brand-verb	Today	1
+C087	Google the return policy	brand-verb	Today	1
+C088	order a lamp off Amazon	brand-verb	Shopping	1
+C089	grab Dove soap and Dial	brand-verb	Shopping	2
+C090	we need Bounty and Tide	brand-verb	Shopping	2
+C091	get Joy dish soap not the Palmolive	brand-verb	Shopping	1
+C092	pick up a case of Fresca	brand-verb	Shopping	1
+C093	Apple said my repair is ready	brand-verb	Memory / Today	1
+C094	target practice is Saturday at 10	brand-verb	Event	1
+C095	swing by Target for socks	brand-verb	Shopping	1
+C096	the Apple Store on Tuesday at 4	brand-verb	Event	1
+C097	call Shoppers and ask if they have it	brand-verb	Today	1
+C098	Uber Eats from the Thai place	brand-verb	Today	1
+C099	I Venmoed Rose already so were square	brand-verb	Memory / Operation	0-1
+C100	call the dentist	occupation-vs-person	Today	1
+C101	call Dr Patel	occupation-vs-person	Today	1
+C102	Patel is my dentist	occupation-vs-person	Memory	1
+C103	the plumbers name is Kwame	occupation-vs-person	Memory	1
+C104	book the dentist for a cleaning in six months	occupation-vs-person	Today	1
+C105	my dentist Dr Nguyen moved offices	occupation-vs-person	Memory	1
+C106	ask the vet about the flea stuff	occupation-vs-person	Today	1
+C107	Dr Chen is the one who did the MRI	occupation-vs-person	Memory	1
+C108	the guy at the tire place said Thursday	occupation-vs-person	Event	1
+C109	text my sisters landlord	occupation-vs-person	Today	1
+C110	email HR about the form	occupation-vs-person	Today	1
+C111	the new accountant Siobhan starts Monday	occupation-vs-person	Memory+Event	1-2
+C112	I should probably see a dermatologist at some point	occupation-vs-person	Today (someday)	1
+C113	add gochujang and doenjang	unknown-product	Shopping	2
+C114	we need labneh and zaatar	unknown-product	Shopping	2
+C115	pick up some ashwagandha and a bottle of NMN	unknown-product	Shopping	2
+C116	get the Liquid IV hydration sticks	unknown-product	Shopping	1
+C117	grab a box of Bourbon Alfort biscuits	unknown-product	Shopping	1
+C118	were out of sumac	unknown-product	Shopping	1
+C119	buy a jar of Marmite and some Vegemite	unknown-product	Shopping	2
+C120	get the Olipop and a Poppi	unknown-product	Shopping	2
+C121	were out of shea butter and black soap	unknown-product	Shopping	2
+C122	pick up injera and berbere	unknown-product	Shopping	2
+C123	add magnesium glycinate to the list not the oxide	unknown-product	Shopping	1
+C124	get me one of those Stanley cups	unknown-product	Ambiguous-preserve / Shopping	1
+C125	call Oluwaseun about the car	unknown-name	Today	1
+C126	Xiulan is bringing the dumplings Saturday	unknown-name	Event	1
+C127	Bjorns flight lands at 9	unknown-name	Event	1
+C128	Aigerim needs the visa letter by Friday	unknown-name	Today	1
+C129	text Mohammed the address	unknown-name	Today	1
+C130	Nguyen said the keys are under the mat	unknown-name	Memory	1
+C131	Siobhans birthday is May 3rd	unknown-name	Memory+Event	1-2
+C132	email Priya and Chen the deck by end of day	unknown-name	Today	1
+C133	Kwame is my brother in law	unknown-name	Memory	1
+C134	ask Thandiwe if she can cover Tuesday	unknown-name	Today	1
+C135	Yusuf and Ayse are coming at 7	unknown-name	Event	1
+C136	Dr Adeyemis office called about the referral	unknown-name	Today	1
+C137	call Mike and Sarah about Saturday	multi-person	Today	1
+C138	remind me to email Priya Chen and Bill by Friday	multi-person	Today	1
+C139	Rose and Jordan are both coming	multi-person	Memory / Event	1
+C140	Sarah said to call Mike and Mike said to call Tom	multi-person	Today	2
+C141	split the bill with Grace Will and June	multi-person	Today	1
+C142	Chase and Reed need permission slips Monday	multi-person	Today	1
+C143	invite the Nguyens and the Patels	multi-person	Today	1
+C144	text Dawn and separately remind me to call Frank	multi-person	Today	2
+C145	Priya Bjorn and I have the standup at 10	multi-person	Event	1
+C146	my sister and her husband Kwame are visiting in July	multi-person	Event	1
+C147	cc Taylor and Baker on the thread	multi-person	Today	1
+C148	tell Will Rose is coming	multi-person	Today	1
+C149	dentist Tuesday and the car Thursday	multi-date	Today	2
+C150	flight leaves Friday the 12th and comes back Monday the 22nd	multi-date	Event	2
+C151	pay rent on the 1st and the hydro on the 15th	multi-date	Today	2
+C152	the sale runs from the 3rd to the 9th	multi-date	Memory / Event	1
+C153	Im off next Monday but working the Monday after	multi-date	Memory / Event	2
+C154	remind me tomorrow and then again on Friday	multi-date	Today	2 (or 1 with 2 alerts)
+C155	her birthdays June 2nd the partys June 7th	multi-date	Memory+Event	2
+C156	book it for either the 14th or the 21st	multi-date	Ambiguous-preserve	1
+C157	school starts September 3rd teachers start the 28th of August	multi-date	Event	2
+C158	renew the passport before March appointments in February	multi-date	Today	2
+C159	meeting moved from the 5th to the 12th	multi-date	Operation	1
+C160	Ill be away the 10th through the 14th	multi-date	Event	1
+C161	call the bank pick up the dry cleaning and email Sarah	multi-task	Today	3
+C162	milk eggs bread and call Mom	multi-task	Shopping+Today	4 (3 shopping + 1 task)
+C163	I need to book the flight and also remember that Priyas allergic to shellfish	multi-task	Today+Memory	2
+C164	water the plants take out the recycling and set an alarm for 6	multi-task	Today	3 (one is an alarm)
+C165	add batteries to the list and remind me to return the router Friday	multi-task	Shopping+Today	2
+C166	pay the visa then the mortgage then check the insurance renewal	multi-task	Today	3
+C167	text Will about Saturday and put dog food on the Costco list	multi-task	Today+Shopping	2
+C168	grab coffee filters oh and we need dish soap	multi-task	Shopping	2
+C169	finish the deck send it to Chen and book the room for Thursday	multi-task	Today	3
+C170	remind me to call the dentist and note that they dont take our insurance anymore	multi-task	Today+Memory	2
+C171	pick up Chase at 3 and Reed at 5	multi-task	Today	2
+C172	cancel Netflix and sign up for the annual thing	multi-task	Operation+Today	2
+C173	call her back about it	pronoun	Ambiguous-preserve	1
+C174	he needs it by Friday	pronoun	Today	1
+C175	put that on the list	pronoun	Ambiguous-preserve	0-1
+C176	her moms number is in my email	pronoun	Memory	1
+C177	return his jacket to him when you see him	pronoun	Today	1
+C178	its due next week	pronoun	Today	1
+C179	they said theyd get back to me	pronoun	Memory	0-1
+C180	my wifes cousins wedding is in August	pronoun	Event	1
+C181	send them the thing we talked about	pronoun	Ambiguous-preserve	1
+C182	I left mine at Roses	pronoun	Memory	1
+C183	their flight is the same as ours	pronoun	Memory	1
+C184	remind me about that thing	pronoun	Ambiguous-preserve	1
+C185	and eggs too	ellipsis	Shopping	1
+C186	same for Friday	ellipsis	Ambiguous-preserve	0-1
+C187	also milk	ellipsis	Shopping	1
+C188	oh and Tuesday works	ellipsis	Ambiguous-preserve	0-1
+C189	the other one too	ellipsis	Ambiguous-preserve	0
+C190	make it two	ellipsis	Operation	1
+C191	same time next week	ellipsis	Ambiguous-preserve	0-1
+C192	her too	ellipsis	Ambiguous-preserve	0
+C193	add that to Costco as well	ellipsis	Ambiguous-preserve	0-1
+C194	and one for Jordan	ellipsis	Shopping	1
+C195	ditto Thursday	ellipsis	Ambiguous-preserve	0-1
+C196	plus the usual	ellipsis	Ambiguous-preserve	0
+C197	dont call Mike	negation	Memory / Operation	0-1
+C198	we dont need milk	negation	Memory / Operation	0-1
+C199	no meeting on Friday	negation	Operation / Memory	0-1
+C200	cancel the dentist Im not going	negation	Operation	1
+C201	dont buy the almond milk get oat	negation	Shopping	1
+C202	I never got the confirmation	negation	Today	1
+C203	shes not coming Saturday	negation	Memory	1
+C204	remind me NOT to park on the street Tuesday	negation	Today	1
+C205	no nuts for Priya	negation	Memory	1
+C206	the store doesnt open till 10	negation	Memory	1
+C207	dont forget the passports	negation	Today	1
+C208	avoid the 401 after 3	negation	Memory	1
+C209	I dont not want to go	double-negation	Ambiguous-preserve	0-1
+C210	its not that I dont need it I just dont need it today	double-negation	Ambiguous-preserve	0-1
+C211	theres nothing I dont have for the trip	double-negation	Memory	1
+C212	dont forget to not leave the dog out	double-negation	Today	1
+C213	I cant not show up to Roses thing	double-negation	Today	1
+C214	nobody said we couldnt reschedule	double-negation	Ambiguous-preserve	0-1
+C215	I wouldnt say no to a coffee	double-negation	Ambiguous-preserve	0-1
+C216	were not out of coffee yet but almost	double-negation	Shopping (soon)	0-1
+C217	she didnt say she wasnt coming	double-negation	Memory	1
+C218	dont let me forget to cancel it	double-negation	Today	1
+C219	if it rains Saturday well move it inside	conditional	Memory	0-1
+C220	if Mike calls tell him the deck is done	conditional	Memory / Today	1
+C221	should the flight get cancelled book the 7am	conditional	Memory	0-1
+C222	in case I forget the code is 4412	conditional	Memory	1
+C223	if Im not back by six start without me	conditional	Memory	0-1
+C224	suppose we did it Thursday instead	hypothetical	Ambiguous-preserve	0-1
+C225	what if we just got takeout	hypothetical	Ambiguous-preserve	0
+C226	I would love to go to Japan someday	hypothetical	Memory	1
+C227	unless she says otherwise assume Friday	conditional	Memory / Event	1
+C228	if the sales still on buy two	conditional	Shopping (conditional)	0-1
+C229	worst case we push to next month	hypothetical	Ambiguous-preserve	0-1
+C230	if I get a chance Ill call the vet	conditional	Today (when-there's-time)	1
+C231	did I already pay the hydro bill	question	Ambiguous-preserve	0-1
+C232	whens Roses birthday	question	Ambiguous-preserve	0
+C233	what do I have on Thursday	question	Ambiguous-preserve	0
+C234	do we need milk	question	Ambiguous-preserve	0-1
+C235	can you remind me to call the bank tomorrow	question	Today	1
+C236	what was the wifi password again	question	Ambiguous-preserve	0
+C237	is the dentist Tuesday or Wednesday	question	Ambiguous-preserve	0
+C238	whos picking up Chase	question	Ambiguous-preserve	0
+C239	how much was the deposit	question	Ambiguous-preserve	0
+C240	should I call Mike or email him	question	Ambiguous-preserve	0-1
+C241	wasnt the meeting moved	question	Ambiguous-preserve	0
+C242	am I free on the 12th	question	Ambiguous-preserve	0
+C243	maybe I should call the vet	hedged	Today (someday, low conf)	1
+C244	I might go to the thing Saturday	hedged	Memory / tentative Event	1
+C245	I probably should get the oil changed	hedged	Today (someday)	1
+C246	I keep meaning to return that jacket	hedged	Today (someday)	1
+C247	we should maybe think about the trip	hedged	Memory	1
+C248	at some point I need to do the taxes	hedged	Today (someday)	1
+C249	one of these days Ill clean the garage	hedged	Today (someday)	1
+C250	I was thinking of getting Rose flowers	hedged	Today (someday)	1
+C251	itd be nice to see Grace sometime	hedged	Memory	1
+C252	kind of want to cancel the gym	hedged	Ambiguous-preserve	0-1
+C253	not sure if I need to renew it or not	hedged	Ambiguous-preserve	0-1
+C254	possibly Thursday works	hedged	Ambiguous-preserve	0-1
+C255	buy the tickets by Friday	homophone	Today	1
+C256	Ill be there in an our	homophone	Ambiguous-preserve / Today	0-1
+C257	the report is do Tuesday	homophone	Today	1
+C258	get to boxes of pasta	homophone	Shopping	1
+C259	the deadline is next weak	homophone	Today	1
+C260	wait for the package then wait it	homophone	Ambiguous-preserve	0-1
+C261	the couch is on sail	homophone	Memory / Shopping	0-1
+C262	did you here from Mark	homophone	Ambiguous-preserve	0
+C263	get a pear of scissors	homophone	Shopping	1
+C264	buy meat for the barbecue	homophone	Shopping	1
+C265	we need flower for the cake	homophone	Shopping	1
+C266	mail the check to the male at the front desk	homophone	Ambiguous-preserve / Today	1
+C267	the principal called about Chase	homophone	Today	1
+C268	read it aloud so its allowed	homophone	Ambiguous-preserve	0-1
+C269	I ate at eight	homophone	Memory	1
+C270	four for four dollars	homophone	Shopping	1
+C271	we won one game	homophone	Memory	1
+C272	no I dont know	homophone	Ambiguous-preserve	0
+C273	write it down right now	homophone	Today	1
+C274	my son is in the sun	homophone	Memory	1
+C275	sew what do we do about Friday	homophone	Ambiguous-preserve	0-1
+C276	get the brakes done before the break	homophone	Today	1
+C277	cell the old phone	homophone	Today	1
+C278	theres a whole in the wall	homophone	Today	1
+C279	knead the dough I need flour	homophone	Shopping+Today	2
+C280	wait what was the weight limit	homophone	Ambiguous-preserve	0
+C281	okay so tomorrow I have the dentist at 10 then I need to pick up the prescription and drop the car off and if theres time call my mom back she left a voicemail yesterday about thanksgiving	run-on	Event+Today x3 (+Memory)	4-5
+C282	milk eggs bread butter oh and coffee also we need to call the plumber about the sink its still dripping	run-on	Shopping x5 + Today	6
+C283	Sarah said the meeting moved to Thursday but Mike said Friday so I need to check with Priya before I book the room	run-on	Today (+Memory)	1-2
+C284	remind me Friday to pay the visa and also the mortgage comes out the first so make sure theres money in the account	run-on	Today x2 (+Memory)	2-3
+C285	im at Costco right now we need paper towels detergent and whatever else was on the list also grab dog food	run-on	Shopping x3	3
+C286	the flight is at 640 out of terminal 3 gate B12 confirmation is XR4419 we should leave by 4	run-on	Event+Memory	1-2
+C287	so my mom was saying that my aunt is coming in October and we should probably plan something maybe a dinner at that place on Church Street	run-on	Memory (+ hedged Today)	1-2
+C288	call the vet Tuesday about Baileys shots and ask if they can do nails at the same time and see if Thursday works better actually	run-on	Today	1-2
+C289	note to self the router password is on the bottom of the router and the wifi is Bell543 dont change it	run-on	Memory	1
+C290	pick up Chase from soccer at 5 Reed from piano at 6 and dinner needs to be quick because Reed has homework	run-on	Today x2 (+Memory)	2-3
+C291	dont hold your breath on that refund	idiom	Memory	0-1
+C292	lets call it a day	idiom	Ambiguous-preserve	0
+C293	book it	idiom	Ambiguous-preserve	0-1
+C294	Ill take a rain check on Friday	idiom	Operation / Memory	0-1
+C295	give me a ring tomorrow	idiom	Today	1
+C296	shoot me a text when you land	idiom	Memory	0-1
+C297	let me run it by Priya	idiom	Today	1
+C298	lets circle back next week	idiom	Today (vague)	1
+C299	Ill touch base with Mark Monday	idiom	Today	1
+C300	ping me after standup	idiom	Memory / Today	0-1
+C301	yeah that went great	sarcasm	Ambiguous-preserve	0-1
+C302	Im dying to see that movie	idiom	Memory	1
+C303	kill two birds and do the bank while Im out	idiom	Today	1
+C304	book a table for four	not-a-time	Today/Event	1
+C305	flight 815 lands at 11	not-a-time	Event	1
+C306	five bucks at 7-Eleven	not-a-time	Memory	1
+C307	its in aisle 12	not-a-time	Memory	1
+C308	the buzzer is unit 3B	not-a-time	Memory	1
+C309	I need size 10 wide	not-a-time	Shopping	1
+C310	I gave it 5 stars	not-a-time	Memory	1
+C311	its on channel 4 at 9	not-a-time	Memory/Event	1
+C312	we took route 66	not-a-time	Memory	1
+C313	apartment 214 buzz 3	not-a-time	Memory	1
+C314	take the 401 not the 407	not-a-time	Memory	1
+C315	my COVID-19 booster is due	not-a-time	Today	1
+C316	she teaches K-12	not-a-time	Memory	1
+C317	get 2% milk	not-a-time	Shopping	1
+C318	gate B12 boarding at 640	not-a-time	Event	1
+C319	the Saturday 6 pack is 12 dollars	not-a-time	Shopping	1
+C320	two dozen eggs and a half pound of butter	quantity	Shopping	2
+C321	the deposit was 1500 dollars	quantity	Memory	1
+C322	get 3 pounds of chicken thighs	quantity	Shopping	1
+C323	its 4.99 a pound at Costco	quantity	Memory	1
+C324	grab a 12 pack	quantity	Shopping	1
+C325	I owe Jordan 40 bucks	quantity	Today/Memory	1
+C326	six of the small ones and two big	quantity	Ambiguous-preserve	0-1
+C327	the quote was between 800 and 1200	quantity	Memory	1
+C328	20 percent off until Sunday	quantity	Memory	1
+C329	a liter of oat milk not the 2 liter	quantity	Shopping	1
+C330	cancel the dentist	operation	Operation	1
+C331	move the Thursday meeting to Friday	operation	Operation	1
+C332	I already did the taxes	operation	Operation	1
+C333	mark the router return as done	operation	Operation	1
+C334	push the vet appointment a week	operation	Operation	1
+C335	delete the thing about the gym	operation	Operation	1
+C336	actually I did call Mike	operation	Operation	1
+C337	change the alarm to 615	operation	Operation	1
+C338	take milk off the list	operation	Operation	1
+C339	the dentist is done but I need to rebook in six months	operation	Operation+Today	2
+C340	never mind about the flowers	operation	Operation	1
+C341	remind me again next week about it	operation	Operation	1
+C342	remind me to take the bins out when I get home	location	Today (geo)	1
+C343	when Im at Costco remind me about the tires	location	Today (geo)	1
+C344	next time Im near the pharmacy grab the prescription	location	Today (geo)	1
+C345	when I leave work text Sarah	location	Today (geo-exit)	1
+C346	remind me at the office to print the form	location	Today (geo)	1
+C347	if Im ever in Toronto I should see Rose	location	Memory	1
+C348	when we get to the cottage check the propane	location	Today (geo)	1
+C349	remind me when I get to the airport to check in	location	Today (geo)	1
+C350	at the grocery store remind me we need the coupon	location	Today (geo)	1
+C351	when I get home dont let me forget the laundry	location	Today (geo)	1
+C352	remind me every Tuesday to take the bins out	recurrence	Today (recurring)	1
+C353	set an alarm for 630 every weekday	recurrence	Alarm	1
+C354	every other Friday is payday	recurrence	Memory (recurring)	1
+C355	the first of every month pay the rent	recurrence	Today (recurring)	1
+C356	wake me up in 20 minutes	recurrence	Alarm	1
+C357	remind me every 3 months to change the filter	recurrence	Today (recurring)	1
+C358	daily at 9 take the meds	recurrence	Today (recurring)	1
+C359	every year on the 14th is our anniversary	recurrence	Memory (yearly)	1
+C360	twice a week water the plants	recurrence	Today (recurring)	1
+C361	set a timer for 10 minutes	recurrence	Alarm/Timer	1
+C362	remind me weekly on Sundays to do meal prep	recurrence	Today (recurring)	1
+C363	every second Tuesday of the month is the board meeting	recurrence	Event (recurring)	1
+C364	on the Costco list add paper towels	store	Shopping	1
+C365	Shoppers shampoo and razors	store	Shopping	2
+C366	we need bread from the bakery not the grocery store	store	Shopping	1
+C367	add to the hardware list screws and wood glue	store	Shopping	2
+C368	at Target get socks and a phone case	store	Shopping	2
+C369	the Costco list already has dog food	store	Memory	0-1
+C370	put avocados on the No Frills list	store	Shopping	1
+C371	grab milk while youre at the gas station	store	Shopping	1
+C372	order the printer ink from Amazon	store	Shopping	1
+C373	Loblaws has the sale on chicken this week	store	Memory	0-1
+C374	pick up wine whatever is on sale	store	Shopping	1
+C375	the farmers market Saturday for corn and peaches	store	Shopping+Event	2-3
+C376	the thing with the thing	ambiguous	Ambiguous-preserve	0-1
+C377	Rose Tuesday maybe	ambiguous	Ambiguous-preserve	0-1
+C378	ugh	ambiguous	Ambiguous-preserve	0
+C379	so about that	ambiguous	Ambiguous-preserve	0
+C380	Mark 3	ambiguous	Ambiguous-preserve	0-1
+C381	May 5	ambiguous	Ambiguous-preserve	0-1
+C382	Chase 4	ambiguous	Ambiguous-preserve	0-1
+C383	June	ambiguous	Ambiguous-preserve	0-1
+C384	Frank called	ambiguous	Ambiguous-preserve / Memory	1
+C385	did it	ambiguous	Operation / Ambiguous-preserve	0-1
+C386	okay yeah	ambiguous	Ambiguous-preserve	0
+C387	the blue one	ambiguous	Ambiguous-preserve	0-1
+C388	next week sometime	ambiguous	Ambiguous-preserve	0-1
+C389	Ill figure it out	ambiguous	Ambiguous-preserve	0-1

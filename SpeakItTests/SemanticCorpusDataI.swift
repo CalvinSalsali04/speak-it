@@ -512,3 +512,310 @@ enum SemanticCorpusM {
                    count: 1, route: [.memory]),
     ]
 }
+
+/// Corpus family 46: **ordinary speech**.
+///
+/// Every rule in the pipeline is a hypothesis about when to fire, and until now
+/// the corpus only ever tested the firing. Six `*Guards` arrays exist because
+/// six specific rules over-fired in the field; the other several hundred
+/// patterns had nothing holding them down at all.
+///
+/// These utterances are the control group. They are ordinary things people say
+/// that happen to contain the characters, verbs and numbers the parser watches
+/// for. The contract is deliberately minimal and identical for all of them:
+/// **one row, no operation.** Nothing is asserted about type or category,
+/// because the point is not that the app labels these cleverly — it is that the
+/// app does nothing clever at all. A second row, or an operation, means a rule
+/// reached outside its family.
+enum SemanticCorpusN {
+    static let ordinarySpeech: [CorpusCase] = [
+
+        // Numbers that are not clocks
+        corpusCase(.ordinarySpeech, "The recipe calls for 2 cups of flour", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We booked a table for six", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "There were about 40 people there", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The apartment is unit 3B", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "My seat was 14C", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The flight was 815 out of Toronto", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It cost 12 dollars at the corner store", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She gave the film 4 stars", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The speed limit there is 40", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Our room was 512", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He wears a size 11 shoe", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The recipe makes 24 cookies", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Aisle 12 has the cleaning stuff", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The bus I take is the 501", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Channel 4 was covering it", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The lease runs 12 months", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I paid 30 for parking", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "There are 7 of us going", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The wifi password is 4412", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Route 66 goes through there", count: 1, operation: []),
+
+        // Cancellation words that are not commands
+        corpusCase(.ordinarySpeech, "The parade got cancelled because of rain", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Their flight was cancelled twice last year", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She cancelled her gym membership years ago", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Cancel culture is exhausting", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The show got called off halfway through", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He called off the search", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "My subscription was cancelled without warning", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The wedding was off and then back on", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Nothing is ever off the table with them", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The deal fell off at the last minute", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The lid came off the jar", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I took the day off last Friday", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "They were off to a rough start", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The heating switched itself off", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "That was a cancelled check", count: 1, operation: []),
+
+        // Action verbs in the past or reported
+        corpusCase(.ordinarySpeech, "I called the plumber yesterday and he never showed", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Sarah texted me about the recital", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We booked the flights last month", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He emailed everyone the wrong link", count: 1, operation: []),
+        // Not a control case after all: a past-tense report of a finished
+        // errand is meant to close the matching item. Kept, with the contract
+        // corrected, because it still guards the boundary against the
+        // narrative statements around it.
+        corpusCase(.ordinarySpeech, "I bought the tickets already",
+                   count: 0, operation: [.complete],
+                   note: "Marks an existing 'buy tickets' item done. When nothing matches, the capture is currently discarded — tracked separately."),
+        corpusCase(.ordinarySpeech, "She picked up the kids on time", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "They sent the invoice twice", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I paid it off in March", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We met at a conference in Berlin", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He returned the jacket without the receipt", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I checked and it was fine", count: 1, operation: []),
+        // Anaphoric continuation: the second clause borrows its subject from
+        // the first, so it is the same episode and not a second thought.
+        corpusCase(.ordinarySpeech, "I emailed the office and they never wrote back", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We went to the new place and it was packed", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I read the report and it made no sense", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She rang the bell and nobody answered", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The train was late and then it was cancelled", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She ordered the wrong size", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We finished the deck on Sunday", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He scheduled it for the wrong week", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I already asked them about it",
+                   count: 0, operation: [.complete],
+                   note: "Same completion frame as 'I bought the tickets already'."),
+
+        // Names that are ordinary words
+        corpusCase(.ordinarySpeech, "The rose bush needs cutting back", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "There is a will and a way", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Jordan is a country in the Middle East", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We drove through the summer heat", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Grace under pressure is the whole job", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Hope is not a strategy", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The bill came to more than we expected", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He left his mark on the place", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "A penny saved is a penny earned", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She has a lot of faith in him", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The art was the best part", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Dawn broke over the water", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "June was miserable this year", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The baker down the road is excellent", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The carpenter did a beautiful job", count: 1, operation: []),
+
+        // Stores and places mentioned in passing
+        corpusCase(.ordinarySpeech, "Costco was a zoo on Saturday", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "There is a new Shoppers on the corner", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The Amazon rainforest is enormous", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Apple changed the design again", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Target has better produce than people think", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We drove past the old Loblaws", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The gym near work closed down", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "That Starbucks is always full", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Home is three hours from here", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The office moved across the street", count: 1, operation: []),
+
+        // Lists that are not shopping lists
+        corpusCase(.ordinarySpeech, "The guest list is getting out of hand", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He made the shortlist", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The waiting list is two years long", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I hate making lists", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The reading list for the course is enormous", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She was on the list of speakers", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The playlist was all wrong for the mood", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The list of complaints keeps growing", count: 1, operation: []),
+
+        // Idioms carrying trigger words
+        corpusCase(.ordinarySpeech, "Don't hold your breath on that one", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We should call it a day", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Let's play it by ear", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "That ship has sailed", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "He dropped the ball on this one", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We are back to square one", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It came out of the blue", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "She hit it out of the park", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "That is water under the bridge", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "They are cutting it close", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It is not rocket science", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "We were on the same page", count: 1, operation: []),
+
+        // Musings and observations
+        corpusCase(.ordinarySpeech, "I have been thinking about the way we do standups", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The weather has been strange all month", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It is interesting how much has changed", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I never really understood that film", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The traffic on that road is getting worse", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Their new place is much bigger", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The whole thing felt rushed", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I am not sure that approach works", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It reminded me of something my dad used to say", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The book was better than the film", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Nobody seems to know who decided that", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "That conversation went better than I expected", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "The garden looks completely different now", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "It is hard to explain why it works", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "I keep coming back to the same conclusion", count: 1, operation: []),
+
+        // Facts about people
+        corpusCase(.ordinarySpeech, "Priya grew up in Nairobi", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Chen has two younger brothers", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Mohammed is allergic to shellfish", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Siobhan plays the cello", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Dana used to work at the hospital", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Kwame is finishing his thesis", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Rose is my neighbour's daughter", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Will is the one with the truck", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Marco does not eat dairy", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Aigerim speaks four languages", count: 1, operation: []),
+
+        // Questions and hypotheticals
+        corpusCase(.ordinarySpeech, "What would happen if we just did nothing", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Why does it always rain on moving day", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "How do people manage this with kids", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Would it be cheaper to fly", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "What if we moved the whole thing outdoors", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Who decided this was a good idea", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "Is it worth fixing at this point", count: 1, operation: []),
+        corpusCase(.ordinarySpeech, "How long has that been broken", count: 1, operation: []),
+    ]
+}
+
+/// Corpus family 47: **speech-act scope**.
+///
+/// A cancellation only cancels when it is the utterance's own speech act. Ride
+/// it inside something the speaker wants relayed, is reporting, or is asking to
+/// have written down, and the copula belongs to the complement — the matrix act
+/// is send, report or record.
+///
+/// Before the guard in `CaptureOperationDetector.cancellationIsEmbedded`, all
+/// twelve relay frames and all seven report frames below produced a `cancel`
+/// against stored data and **zero rows**, so the message was never created. The
+/// worst of them is "Note that the picnic is off", where the person used the
+/// most explicit possible request to keep something and the app read it as a
+/// deletion.
+///
+/// The third block is the other half of the contract: explicit cancellation
+/// still cancels. "The call with Sarah is off" is the one that pins the test
+/// honestly — its head *is* a communication verb, and the determiner in front
+/// of it is what marks the noun reading.
+enum SemanticCorpusO {
+    static let speechActScope: [CorpusCase] = [
+
+        // Relay: the cancellation is what the message says.
+        corpusCase(.speechActScope, "Text Mike that the deal is off", count: 1, route: [.today], person: ["Mike"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Tell Sarah the meeting is off", count: 1, route: [.today], person: ["Sarah"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Email the landlord that the lease is off", count: 1, route: [.today], operation: []),
+        corpusCase(.speechActScope, "Message Dana that the party is cancelled", count: 1, route: [.today], person: ["Dana"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Tell Mom dinner is off", count: 1, route: [.today], person: ["Mom"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Let Priya know the trip is cancelled", count: 1, route: [.today], person: ["Priya"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Text the team that practice is cancelled", count: 1, route: [.today], operation: []),
+        corpusCase(.speechActScope, "Tell Chen the interview is off", count: 1, route: [.today], person: ["Chen"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Email Alex that the order is cancelled", count: 1, route: [.today], person: ["Alex"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Text Jordan that brunch is off", count: 1, route: [.today], person: ["Jordan"], operation: [], severityFloor: .behavioral),
+        corpusCase(.speechActScope, "Tell the kids school is cancelled", count: 1, route: [.today], operation: []),
+        corpusCase(.speechActScope, "Message Rose that the class is off", count: 1, route: [.today], person: ["Rose"], operation: [], severityFloor: .behavioral),
+
+        // Report: somebody else's words, or an explicit request to record them.
+        corpusCase(.speechActScope, "Sarah said the meeting is off", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "I heard the party is cancelled", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "Apparently the flight is cancelled", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "Mike told me the deal is off", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "The gym said the class is cancelled", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "Note that the picnic is off", count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "Remember the recital is cancelled", count: 1, route: [.memory], operation: []),
+
+        // The other half: an explicit cancellation is still a cancellation.
+        corpusCase(.speechActScope, "Cancel the dentist appointment", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Never mind the dentist appointment", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Cancel my 3pm meeting", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Scratch the dentist appointment", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Cancel the Friday reminder", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Friday's meeting is off", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "The meeting on Tuesday is cancelled", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "The call with Sarah is off", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "My dentist appointment is cancelled", count: 0, operation: [.cancel]),
+        corpusCase(.speechActScope, "Book club is cancelled", count: 0, operation: [.cancel]),
+
+        // A cancellation the same sentence takes back. Refused rather than
+        // resolved: the final state is *on*, and acting would delete an event
+        // the person has just said is happening.
+        corpusCase(.speechActScope, "The wedding was off and then back on",
+                   count: 1, route: [.memory], operation: []),
+        corpusCase(.speechActScope, "The meeting was cancelled but it's on again",
+                   count: 1, operation: []),
+    ]
+}
+
+/// Corpus family 48: **prohibitive reminders**.
+///
+/// English lets the negator sit on either side of the infinitival `to`, and both
+/// spellings mean the same thing. The parser used to read word order instead of
+/// grammar: "remind me **not to** eat before the blood test" put the negator in
+/// front of the connector it cut on and threw it away, filing the task "Eat
+/// before the blood test" and scheduling a notification for it — the exact
+/// inverse of a medical instruction. "Remind me **to not** eat …" kept it as a
+/// stray token and read "Not eat before …".
+///
+/// Every case here is paired, because the contract is equivalence: whatever the
+/// app does with one spelling it must do with the other.
+enum SemanticCorpusP {
+    static let prohibitions: [CorpusCase] = [
+        corpusCase(.prohibitions, "Remind me not to eat before the blood test",
+                   count: 1, type: [.task], route: [.today], title: ["Don't eat before the blood test"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not eat before the blood test",
+                   count: 1, type: [.task], route: [.today], title: ["Don't eat before the blood test"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me not to call before nine",
+                   count: 1, type: [.task], route: [.today], title: ["Don't call before nine"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not call before nine",
+                   count: 1, type: [.task], route: [.today], title: ["Don't call before nine"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me not to forget the tickets",
+                   count: 1, type: [.task], route: [.today], title: ["Don't forget the tickets"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not forget the tickets",
+                   count: 1, type: [.task], route: [.today], title: ["Don't forget the tickets"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me not to water the plants today",
+                   count: 1, type: [.task], route: [.today], title: ["Don't water the plants"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not water the plants today",
+                   count: 1, type: [.task], route: [.today], title: ["Don't water the plants"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me not to buy milk",
+                   count: 1, type: [.task], route: [.today], title: ["Don't buy milk"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not buy milk",
+                   count: 1, type: [.task], route: [.today], title: ["Don't buy milk"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me not to text Dave tonight",
+                   count: 1, type: [.task], route: [.today], title: ["Don't text Dave"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to not text Dave tonight",
+                   count: 1, type: [.task], route: [.today], title: ["Don't text Dave"], severityFloor: .behavioral),
+
+        // "Never" is the same prohibition with a different negator.
+        corpusCase(.prohibitions, "Remind me never to use that pharmacy again",
+                   count: 1, type: [.task], title: ["Don't use that pharmacy again"], severityFloor: .behavioral),
+        corpusCase(.prohibitions, "Remind me to never use that pharmacy again",
+                   count: 1, type: [.task], title: ["Don't use that pharmacy again"], severityFloor: .behavioral),
+
+        // Guards. The negator has to attach to the verb: adjacency to the
+        // connector is the whole test.
+        corpusCase(.prohibitions, "Remind me to bring the form not the copy",
+                   count: 1, type: [.task], title: ["Bring the form not the copy"],
+                   note: "Negates a noun phrase, leaves the verb alone."),
+        corpusCase(.prohibitions, "Don't forget to call Mom",
+                   count: 1, type: [.task], title: ["Call Mom"],
+                   note: "\"Don't forget to X\" means do X — the oldest exception in the file."),
+        corpusCase(.prohibitions, "Please don't pay the invoice yet",
+                   count: 1, route: [.memory],
+                   note: "A bare negative imperative statement is preserved, not inverted."),
+    ]
+}

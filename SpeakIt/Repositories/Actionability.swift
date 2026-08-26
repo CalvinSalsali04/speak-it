@@ -65,8 +65,30 @@ enum ActionabilityReader {
     /// only — the past-tense forms live in `completedVerb` and mean the
     /// opposite thing.
     ///
-    /// Shared with `LocationIntentParser`, which needs the same list to know
-    /// where a place name ends and the action begins in "when I get to the
+    /// **The single source of truth for "this word can head an errand."**
+    ///
+    /// Four separate alternations used to answer this question — here, in
+    /// `ThoughtExtractor.actionLeadPattern`, in
+    /// `ClauseJuxtaposition.instructionOpeners`, and in
+    /// `CaptureOperationDetector.actionVerbs` — and they agreed on 24 of the 128
+    /// verbs between them. The disagreement was visible to users as identical
+    /// grammar behaving oppositely: "don't call the plumber" cancelled and
+    /// "don't fix the sink" did not, because `fix` had reached one list and not
+    /// another. "Call the plumber tomorrow and shovel the driveway" produced one
+    /// row for the same reason.
+    ///
+    /// All four now read this. A verb added here reaches every stage at once,
+    /// which is the point — the alternative is that adding one costs four edits
+    /// and the fourth is the one nobody remembers.
+    ///
+    /// "Let Priya know" is here as a whole frame rather than as the verb
+    /// `let`, which on its own opens far more sentences than it closes ("let me
+    /// think", "let's not"). The object in the middle is what makes it a
+    /// communication errand, and the pronoun stoplist keeps the frames that are
+    /// about the speaker out.
+    ///
+    /// Also shared with `LocationIntentParser`, which needs the same list to
+    /// know where a place name ends and the action begins in "when I get to the
     /// store buy batteries". One vocabulary, so the two cannot drift.
     static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|say|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up"#
         // Everyday verbs that were simply missing. Their absence was not
@@ -75,7 +97,7 @@ enum ActionabilityReader {
         // "Review captured thought" and the reminder inside it never fired.
         // "Honestly I'm exhausted, remind me to go to bed at ten" scheduled
         // nothing at all.
-        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel)"#
+        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel|contact|set|wake|let\s+(?!me\b|us\b|him\b|her\b|them\b|it\b)\p{L}[\p{L}'\u2019-]*\s+know)"#
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.

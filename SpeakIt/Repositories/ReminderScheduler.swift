@@ -214,6 +214,25 @@ enum ReminderCopy {
         }
 
         var candidate: String
+
+        // A prohibition. English lets the negator sit on either side of the
+        // infinitival `to` — "remind me **not to** eat before the blood test"
+        // and "remind me **to not** eat before the blood test" are the same
+        // sentence, and both negate the complement VP.
+        //
+        // The connector search below takes everything after the first `to `,
+        // so the first form put the negator *in front of* the cut and threw it
+        // away: the row read "Eat before the blood test" and a notification
+        // fired telling the person to do the thing they asked to be warned
+        // against. The second form kept it and read "Not eat before …". One
+        // meaning, two renderings, neither of them right.
+        //
+        // Both are normalised here, before the cut, so the negation survives
+        // as a negation rather than as a stray token. Only a negator *adjacent
+        // to the connector* counts — "remind me to bring the form not the
+        // copy" negates a noun phrase, not the verb, and must not be touched.
+        let isProhibitive = ReminderPhrasing.isProhibitive(original)
+
         // "Remind me that I have a meeting at 4:15" is a reminder *about the
         // meeting*. Without this the row was titled "I have a meeting", which
         // names the speaker's possession of it rather than the thing itself.
@@ -276,6 +295,24 @@ enum ReminderCopy {
             options: .regularExpression
         )
         candidate = normalized(candidate).trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+
+        // Render the prohibition the way English renders a negative imperative.
+        // The negator is the person's own; only the auxiliary is supplied, and
+        // it is supplied because "Not eat before the blood test" is not a
+        // sentence. The untouched wording stays in the capture either way.
+        if isProhibitive {
+            // The connector cut may have left the negator behind at the front
+            // ("to not eat …" → "not eat …"); drop it so it is not said twice.
+            candidate = candidate.replacingOccurrences(
+                of: #"(?i)^(?:not|never)\s+"#,
+                with: "",
+                options: .regularExpression
+            )
+            candidate = normalized(candidate)
+            if !candidate.isEmpty {
+                return "Don't " + candidate.prefix(1).lowercased() + candidate.dropFirst()
+            }
+        }
 
         // "Wake me up at ten to nine" has no action beyond the waking — the
         // "to" inside the spoken clock is not a connector, and titling the row

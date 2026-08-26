@@ -291,7 +291,20 @@ enum RuleBasedThoughtExtractor {
     private static let reminderComplement =
         #"(?:to|that|about|(?:i|we|you|he|she|they)\b|(?:it|there|my|your|his|her|its|our|their|the|an|a|this|these|those)\b(?!\s+\#(temporalHeadNoun)\b)(?=(?:['’](?:s|re)|[^,;]{0,60}?\s\#(reminderClauseVerb)\b)))"#
 
-    private static let actionLeadPattern = #"(?:buy|get|order|pick\s+up|call|phone|text|email|message|ask|tell|say|send|submit|finish|book|schedule|pay|renew|remember|save|note|write|add|make|go|get|return|check|start|set|wake|pack|bring|meet|contact|follow\s+up|cancel|delete|remind\s+me\s+\#(reminderComplement)|again\s+in)\b"#
+    /// What can open a clause that is an errand.
+    ///
+    /// The errand verbs come from `ActionabilityReader.actionVerb`, which is the
+    /// one place that question is answered — this used to be a hand-copied
+    /// subset of 42, and the 70 verbs it was missing were invisible to clause
+    /// splitting. "Call the plumber tomorrow and shovel the driveway" and "buy
+    /// stamps and mail the forms" each produced a single row because `shovel`
+    /// and `mail` had never been copied across.
+    ///
+    /// The rest are not errand verbs and belong only here: a reminder command
+    /// with its complement, and the resumption "again in ten minutes".
+    private static let actionLeadPattern =
+        #"(?:\#(ActionabilityReader.actionVerb)|remember|save|note|delete"#
+        + #"|remind\s+me\s+\#(reminderComplement)|again\s+in)\b"#
     private static let triggerLeadPattern = #"(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\s+(?:i|we)\b"#
 
     static func extract(
@@ -1143,6 +1156,41 @@ enum RuleBasedThoughtExtractor {
         let leftCanStandAlone = hasSubjectPredicate(left)
             || ActionabilityReader.read(left) != .ambiguous
 
+        // A conjunct that points back at the clause before it is part of that
+        // clause's episode, not a thought of its own.
+        //
+        // "I called the plumber yesterday **and he never showed**" is one thing
+        // that happened; so is "I checked **and it was fine**", and "the wedding
+        // was off **and then back on**". Splitting them produced two Memory rows
+        // out of one recollection — and in the third case it was worse than
+        // untidy, because the fragment "the wedding was off" then matched the
+        // cancellation patterns with the reversal stranded in the other half,
+        // so a sentence that says the wedding is *on* cancelled it.
+        //
+        // The test is anaphora, which is what actually binds the clauses: a
+        // pronoun subject has no referent of its own, and a conjunct with no
+        // subject at all is a bare continuation. Either way the second clause
+        // cannot be understood without the first, which is the definition of
+        // not standing alone.
+        //
+        // Scoped to a non-actionable left clause, because that is what
+        // separates recounting from instructing. "Buy milk and text Daniel"
+        // is also subjectless on the right, and is two errands; imperatives
+        // drop their subject by rule rather than by reference. And a conjunct
+        // that introduces a *new* referent — "book the flights and Rose is
+        // coming too", "text Dana and the meeting moved to Thursday" — still
+        // splits, because a name or a definite noun phrase brings its own
+        // subject with it.
+        // Both halves have to be recollection. Anaphora binds *reference*, not
+        // commitment: "I met Catherine yesterday and **she said to call Alex
+        // Friday**" points back for its subject and still carries an errand
+        // nobody else is going to do, so it keeps its own row.
+        if !ActionabilityReader.read(left).belongsOnToday,
+           !ActionabilityReader.read(trimmed).belongsOnToday,
+           continuesTheSameEpisode(trimmed) {
+            return false
+        }
+
         // A conjunct listing another occurrence of a repeating schedule extends
         // the rule rather than starting a new thought: "every Tuesday and
         // Thursday" is one habit on two days.
@@ -1366,6 +1414,43 @@ enum RuleBasedThoughtExtractor {
 
     /// True when a phrase contains a subject followed by its own verb, which is
     /// what makes it able to lend a subject to a following bare predicate.
+    /// Whether a conjunct continues the previous clause's episode rather than
+    /// opening one of its own.
+    ///
+    /// True when the clause's subject is an anaphoric pronoun, or when it has
+    /// no subject at all. Both are closed-class tests, so this does not depend
+    /// on having seen the words in the clause before.
+    private static func continuesTheSameEpisode(_ text: String) -> Bool {
+        // A third-person pronoun subject refers back; "I" and "we" do not, so
+        // "I called the plumber and I paid him" stays two errands if the first
+        // half is actionable, and is caught by the actionability gate if not.
+        // Pronouns refer back; negative quantifiers refer to nothing at all.
+        // Neither introduces a discourse referent, so neither can start a
+        // thought of its own — "she rang the bell and **nobody** answered" is
+        // one episode with two halves.
+        // A discourse connective in front does not change what the subject
+        // refers to: "the train was late and **then it** was cancelled" is the
+        // same clause with a step marker on it.
+        if text.range(
+            of: #"(?i)^(?:(?:then|so|after\s+that|later|eventually|afterwards)\s+)?"#
+                + #"(?:he|she|it|they|that|this|those|these"#
+                + #"|nobody|no\s+one|none|nothing)\b"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        // A bare continuation with no subject and no verb of its own — "and
+        // then back on", "and not before" — cannot be a thought.
+        if !hasSubjectPredicate(text),
+           text.range(
+               of: #"(?i)^(?:then|back|again|not|never|only|just|still|barely|hardly)\b"#,
+               options: .regularExpression
+           ) != nil {
+            return true
+        }
+        return false
+    }
+
     private static func hasSubjectPredicate(_ text: String) -> Bool {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
         tagger.string = text
@@ -1635,6 +1720,22 @@ enum RuleBasedThoughtExtractor {
         if let range = text.range(of: recurrencePattern, options: .regularExpression) {
             return normalize(String(text[range]))
         }
+        // A fronted calendar date is context in exactly the same way a fronted
+        // weekday is. Only the weekday spellings were listed, so "December 4th
+        // say happy birthday to Sarah" left the date behind as a clause of its
+        // own: a phantom "December 4th" event, plus a follow-up with no date on
+        // it. The same sentence with "Tomorrow" in front had always worked,
+        // which is what gives the omission away as an oversight rather than a
+        // rule.
+        let datePattern = #"(?i)^(?:on\s+)?(?:the\s+)?"#
+            + #"(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)"#
+            + #"\s+\d{1,2}(?:st|nd|rd|th)?"#
+            + #"|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?"#
+            + #"(?:january|february|march|april|may|june|july|august|september|october|november|december))"#
+            + #"(?:\s+at\s+\#(clockExpression))?\b"#
+        if let range = text.range(of: datePattern, options: .regularExpression) {
+            return normalize(String(text[range]))
+        }
         let pattern = #"(?i)^(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+\#(clockExpression))?\b"#
         guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
         return normalize(String(text[range]))
@@ -1712,65 +1813,6 @@ enum RuleBasedThoughtExtractor {
         ) != nil
     }
 
-    private static func correctedText(in text: String) -> String {
-        let pattern = #"(?i)(?:\s*[—–-]\s*|,\s*|\s+)(?:(?:no)\s*,?\s*)?(?:actually|rather|i\s+mean)\s*[:,]?\s*(?=\w)"#
-        guard let regex = NSRegularExpression.speakItCached(pattern),
-              let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-              let range = Range(last.range, in: text),
-              range.lowerBound != text.startIndex else {
-            return text
-        }
-        let originalPrefix = normalize(String(text[..<range.lowerBound]))
-        var replacement = normalize(String(text[range.upperBound...]))
-        replacement = replacement.replacingOccurrences(
-            of: #"(?i)^make\s+(?:that|it)\s+"#,
-            with: "",
-            options: .regularExpression
-        )
-        guard !replacement.isEmpty else { return text }
-
-        // “Remind me tomorrow at 4 — actually, make that 5 — to call Alex”
-        // repairs the time; it is not a new task called “Make that 5”.
-        let timePattern = #"(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon|midnight)"#
-        let replacementStartsWithTimeAndAction = replacement.range(
-            of: #"(?i)^\#(timePattern)\s*[—–-]?\s*to\b"#,
-            options: .regularExpression
-        ) != nil
-        if replacementStartsWithTimeAndAction,
-           let oldTime = originalPrefix.range(
-               of: #"(?i)\#(timePattern)\s*$"#,
-               options: .regularExpression
-           ) {
-            return normalize(String(originalPrefix[..<oldTime.lowerBound]) + replacement)
-        }
-
-        // “Remind me at 3, actually make it 4” has no trailing action for the
-        // older branch above to anchor. It is still a correction of the final
-        // time token, not a new thought consisting only of “4”.
-        let replacementIsOnlyTime = replacement.range(
-            of: #"(?i)^\#(timePattern)$"#,
-            options: .regularExpression
-        ) != nil
-        if replacementIsOnlyTime,
-           let oldTime = originalPrefix.range(
-               of: #"(?i)\#(timePattern)\s*$"#,
-               options: .regularExpression
-           ) {
-            return normalize(String(originalPrefix[..<oldTime.lowerBound]) + replacement)
-        }
-
-        // When the action itself is repaired, keep any reminder date that came
-        // before it instead of discarding useful context with the old action.
-        let reminderContextPattern = #"(?i)^(?:please\s+)?(?:remind\s+me|notify\s+me|alert\s+me|don['’]t\s+let\s+me\s+forget|do\s+not\s+let\s+me\s+forget)\b.*?\bto\b"#
-        if let contextRange = originalPrefix.range(
-            of: reminderContextPattern,
-            options: .regularExpression
-        ) {
-            return normalize("\(originalPrefix[contextRange]) \(replacement)")
-        }
-
-        return replacement
-    }
 
     /// The assistant list vocabulary, read as a **frame** rather than as a
     /// phrase book.

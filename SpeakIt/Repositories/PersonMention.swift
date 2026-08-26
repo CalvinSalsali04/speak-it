@@ -234,6 +234,14 @@ enum PersonMentionResolver {
                 }
             }
         }
+        // "Let Priya know the trip is cancelled". A light-verb frame that means
+        // *tell*, and the only thing marking it is the "know" behind the
+        // object — anchored on that, so "let me think", "let's go" and "let the
+        // dog out" never reach the name rules. The pronoun stoplist handles
+        // "let me know", where the object is the speaker.
+        if verb == "let", index + 2 < list.count, list[index + 2].lower == "know" {
+            return index + 1
+        }
         // "Make sure Sam returns the books", "get Alex to sign the form".
         // Delegation without a speech verb. Both shapes are anchored hard —
         // "make" needs its "sure", and "get" needs a written-like-a-name word

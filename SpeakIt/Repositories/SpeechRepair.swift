@@ -1259,9 +1259,19 @@ enum SelfCorrectionResolver {
 /// what keeps ordinary sentences whole.
 enum ClauseJuxtaposition {
 
-    /// Verbs that can open a fresh instruction mid-capture. Wider than the
-    /// operation detector's list because a reschedule is an instruction too.
-    private static let instructionOpeners = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|submit|send|call|phone|text|email|message|book|schedule|renew|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|print|fix|reply|respond|confirm|cancel|sign|file|mail|charge|move|shift|reschedule|postpone|push|put|start|write|feed|walk|wake|remember|save|note)"#
+    /// Verbs that can open a fresh instruction mid-capture.
+    ///
+    /// The errands come from `ActionabilityReader.actionVerb`, the one place
+    /// that question is answered. This used to be a hand-copied subset, and the
+    /// copies drifted: `shovel`, `mail` and `iron` were errands to the router
+    /// and invisible to clause splitting, so "finish the essay tonight iron the
+    /// shirt for tomorrow" arrived as a single row.
+    ///
+    /// The additions are the verbs that are *not* errands but can still open an
+    /// instruction — moving an existing thing, or asking for one to be kept.
+    private static let instructionOpeners =
+        #"(?:\#(ActionabilityReader.actionVerb)"#
+        + #"|move|shift|reschedule|postpone|push|remember|save|note)"#
 
     /// Words after which a verb continues the same clause rather than opening a
     /// new one: "remind me *to call* Mom", "don't *call* Catherine", and —
@@ -1387,6 +1397,20 @@ enum CaptureOperationDetector {
 
     private static let actionVerbs = #"(?:buy|get|order|pick\s+up|call|phone|text|email|message|ask|tell|send|submit|finish|book|schedule|pay|renew|pack|check|return|start|set|bring|meet|contact|remind|water|take|wash|clean|visit)"#
 
+    /// Verbs of saying, in the imperative — the frame that asks for a message
+    /// to be *relayed* rather than for anything to happen to a stored item.
+    private static let relayVerb =
+        #"(?:tell|text|email|message|dm|ping|notify|inform|warn|remind|ask|let)"#
+
+    /// Finite verbs of saying — the frame that marks the words as somebody
+    /// else's. Past forms dominate because reporting is nearly always past.
+    private static let reportVerb =
+        #"(?:said|says|told|tells|telling|mentions?|mentioned|hears?|heard|texted|emailed|messaged|announced|according\s+to|let\s+me\s+know)"#
+
+    /// Adverbs that mark a proposition as second-hand without naming a source.
+    private static let evidentialAdverb =
+        #"(?:apparently|evidently|supposedly|reportedly|turns\s+out(?:\s+that)?)"#
+
     /// Pronouns that name nothing. A cancellation aimed at one of these must be
     /// confirmed, because guessing wrong deletes the wrong reminder.
     private static let vagueTargets: Set<String> = [
@@ -1420,7 +1444,7 @@ enum CaptureOperationDetector {
         var operations: [CaptureOperationRequest] = []
         var remainders: [String] = []
         for piece in pieces {
-            if let operation = detect(piece) {
+            if let operation = detect(piece, within: text) {
                 operations.append(operation)
             } else {
                 remainders.append(piece)
@@ -1493,7 +1517,12 @@ enum CaptureOperationDetector {
         if !cleaned.isEmpty { pieces.append(cleaned) }
     }
 
-    static func detect(_ text: String) -> CaptureOperationRequest? {
+    /// - Parameter within: the whole capture this clause was carved out of.
+    ///   Some guards cannot be answered from the clause alone — a cancellation
+    ///   is only a cancellation if nothing later in the sentence takes it back,
+    ///   and the clause splitter has by then thrown that half away. Defaults to
+    ///   the clause itself for callers that never split.
+    static func detect(_ text: String, within containing: String? = nil) -> CaptureOperationRequest? {
         let source = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = source
             .lowercased()
@@ -1629,8 +1658,15 @@ enum CaptureOperationDetector {
             #"^(.+?)\s+(?:isn'?t|is\s+not|aren'?t|are\s+not)\s+(?:happening|coming|going\s+ahead)(?:\s+anymore)?$"#,
             #"^(?:i'?m|i\s+am|we'?re|we\s+are)\s+not\s+(?:going\s+to|going|doing|attending)\s+(.+?)(?:\s+anymore)?$"#,
         ]
+        let whole = (containing ?? source)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
         for pattern in calledOffPatterns {
-            if let target = capture(lower, pattern), namesAnItem(target) {
+            if let target = capture(lower, pattern),
+               namesAnItem(target),
+               namesSomethingContentful(target),
+               !cancellationIsEmbedded(whole),
+               !cancellationIsTakenBack(whole) {
                 return request(.cancel, target: target, source: source, review: isVague(target))
             }
         }
@@ -1664,19 +1700,106 @@ enum CaptureOperationDetector {
         return nil
     }
 
+    /// Whether a target has any word in it that could head a noun phrase.
+    ///
+    /// Closed-class test, so it needs no vocabulary of its own: strip the words
+    /// that can never be a head and see whether anything is left.
+    ///
+    /// Used only by the *descriptive* cancellation family. An explicit command
+    /// whose target is a pronoun — "don't remind me about that" — is a real
+    /// request that needs a referent, and the right answer there is to ask
+    /// (`isVague`), not to drop it on the floor.
+    private static func namesSomethingContentful(_ target: String) -> Bool {
+        let contentful = target
+            .lowercased()
+            .replacingOccurrences(
+                of: #"\b(?:the|a|an|this|that|these|those|my|our|your|his|her|its|their"#
+                    + #"|it|he|she|they|them|him|us|we|i|you|then|there|here|and|or|but"#
+                    + #"|so|just|also|now|still|again|already|only|even|really|very)\b"#,
+                with: " ",
+                options: .regularExpression
+            )
+            .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return !contentful.isEmpty
+    }
+
     /// Whether a captured target names a thing on a list rather than opening a
     /// sentence about one.
-    ///
-    /// "Cancel" is a word people say about the world, not only to their task
-    /// list. "Cancel culture is exhausting" produced a cancellation aimed at
-    /// "culture is exhausting", matched nothing, and the capture was lost. A
-    /// predicate inside the target is the tell: an item on a list is a noun
-    /// phrase, and a noun phrase does not contain its own verb.
     private static func namesAnItem(_ target: String) -> Bool {
         target.range(
             of: #"(?i)\b(?:is|are|was|were|isn'?t|aren'?t|wasn'?t|weren'?t|will\s+be|has\s+been|have\s+been)\b"#,
             options: .regularExpression
         ) == nil
+    }
+
+    /// Whether a "called off" reading sits inside a **complement clause**
+    /// rather than in the clause that carries the utterance's speech act.
+    ///
+    /// English lets a cancellation ride inside something the speaker wants
+    /// relayed, is reporting, or is asking to have written down. In all three
+    /// the copula belongs to the *complement*, and the matrix act is send,
+    /// report or record — never "act on what is stored here".
+    ///
+    ///     "Text Mike that the deal is off"   → send a message
+    ///     "Sarah said the meeting is off"    → pass on news
+    ///     "Note that the picnic is off"      → write it down
+    ///
+    /// Without this the `calledOffPatterns` capture, which is unanchored on the
+    /// left, swallowed the whole matrix clause: the target for the first became
+    /// "text mike that the deal", matched a stored *Text Mike* row, and deleted
+    /// it together with its `CaptureSession` — so the message was never sent
+    /// and the person's own words were destroyed. Measured before this guard:
+    /// 12 of 12 relay frames and 6 of 6 report frames were read as commands,
+    /// each producing zero items.
+    ///
+    /// Deliberately scoped to `calledOffPatterns`. The explicit cancellations
+    /// in `cancelPatterns` are unaffected, including "don't text Dave", which
+    /// is a real cancellation whose head *is* a communication verb.
+    ///
+    /// The test runs on the **whole utterance**, never on the captured target,
+    /// because the capture strips the determiner and the determiner is the
+    /// evidence: "the call with Sarah is off" opens a noun phrase and must
+    /// still cancel, while "call Sarah that the trip is off" opens a command.
+    private static func cancellationIsEmbedded(_ text: String) -> Bool {
+        // Relay. The verb must be bare — no determiner in front of it, or the
+        // head is a noun — and must be followed by a recipient and then more
+        // material, which is what separates the clausal frame from a two-word
+        // subject like "call is off".
+        let relayFrame = #"^(?:please\s+|just\s+|can\s+you\s+|could\s+you\s+|(?:i\s+(?:need|have|want|ought)\s+to|i\s+should|i\s+must)\s+)?"#
+            + #"\#(relayVerb)\b\s+\S+\s+\S+"#
+        if matches(text, relayFrame) { return true }
+
+        // Report, and its source-less evidential cousin. Either marks the
+        // proposition as somebody else's rather than as an instruction.
+        if matches(text, #"\b\#(reportVerb)\b"#) { return true }
+        if matches(text, #"^\#(evidentialAdverb)\b"#) { return true }
+
+        // Record. "Note that the picnic is off" is the most explicit possible
+        // request to keep something, so reading it as a deletion is the exact
+        // inverse of what was asked.
+        if matches(text, #"^\#(ActionabilityReader.recordingFrame)?\#(ActionabilityReader.recordingVerb)\b"#) {
+            return true
+        }
+
+        return false
+    }
+
+    /// Whether the utterance goes on to put back what it just called off.
+    ///
+    /// "The wedding was off **and then back on**" is not a cancellation; it is
+    /// a small story whose final state is *on*. The clause splitter hands the
+    /// operation detector only the first half, so without the whole capture the
+    /// reversal is invisible and the app deletes an event the person has just
+    /// said is happening.
+    ///
+    /// Deliberately refuses rather than resolving. Working out which state won
+    /// needs an ordering the grammar does not always supply, and the cost of
+    /// being wrong is asymmetric: a cancellation that does not fire leaves a row
+    /// the person can delete, while one that fires wrongly destroys the row and
+    /// the capture behind it. Same reasoning as `hasMixedPolarity`.
+    private static func cancellationIsTakenBack(_ text: String) -> Bool {
+        matches(text, #"\b(?:back\s+on|on\s+again|is\s+on\b|still\s+on\b|un-?cancell?ed|not\s+cancell?ed|rescheduled|back\s+in\s+the\s+calendar)"#)
     }
 
     /// True when the utterance denies one thing and instructs another.

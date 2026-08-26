@@ -88,6 +88,44 @@ enum ReminderPhrasing {
         matches(text, command) || matches(text, sentenceLead) || matches(text, delegatedCommand)
     }
 
+    /// The negator that turns a reminder into a warning, in either of the two
+    /// positions English allows it.
+    ///
+    /// "Remind me **not to** eat before the blood test" and "remind me **to
+    /// not** eat before the blood test" are one sentence with one meaning —
+    /// the negator attaches to the complement VP whichever side of the
+    /// infinitival `to` it is spoken on. Anything that reads one of these
+    /// differently from the other is reading word order, not grammar.
+    ///
+    /// Adjacency to the connector is the whole test. "Remind me to bring the
+    /// form **not** the copy" negates a noun phrase, leaves the verb alone,
+    /// and is not a prohibition.
+    static let prohibitiveComplement = #"\b(?:not|never)\s+to\s+|\bto\s+(?:not|never)\s+"#
+
+    /// True when the person asked to be warned *off* something rather than
+    /// reminded to do it.
+    ///
+    /// Before this, "remind me not to eat before the blood test" filed the task
+    /// "Eat before the blood test" and fired a notification for it — the exact
+    /// inverse of the instruction, on a medical one. See `ReminderCopy` for the
+    /// title, which renders the prohibition, and `ThoughtOrganizer.inferredType`
+    /// for why a prohibition can never take an action type.
+    static func isProhibitive(_ text: String) -> Bool {
+        guard requestsReminder(text) else { return false }
+        guard let negator = text.range(
+            of: prohibitiveComplement,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return false }
+        // The negator must belong to the reminder's own complement rather than
+        // to a later clause: "remind me to call Ann and not to worry" is still
+        // a request to call Ann.
+        guard let request = text.range(
+            of: command + #"|"# + sentenceLead,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return false }
+        return negator.lowerBound >= request.lowerBound
+    }
+
     /// True when the reminder is aimed at somebody other than the speaker.
     /// A first-person command wins when both appear ("remind me to remind
     /// Alex"), because the speaker already said who the interruption is for.
@@ -495,6 +533,19 @@ enum ThoughtOrganizer {
             return .note
         }
 
+        // A prohibited action is not an instance of that action. "Remind me not
+        // to buy milk" is not a shopping row, and "remind me not to text Dave
+        // tonight" is not a person to follow up with — in both the person is
+        // asking to be warned off, and filing it under the action would put it
+        // on the very surface that invites doing it.
+        //
+        // This is also what makes the two spellings of a prohibition agree all
+        // the way down: the negator's position no longer reaches the type
+        // cascade at all. See `ReminderPhrasing.isProhibitive`.
+        if ReminderPhrasing.isProhibitive(originalText) {
+            return .task
+        }
+
         if matchesAny(text, [
             #"^(?:buy|order)\b"#,
             #"^(?:grocery|shopping)\s+list\b"#,
@@ -895,11 +946,59 @@ private enum RecurrenceIntentParser {
             return RecurrenceRule(frequency: .weekly, weekdays: [1, 7], anchor: anchor)
         }
 
-        let mentionedWeekdays = weekdays.compactMap { name, value in
-            text.range(of: #"\b"# + name + #"\b"#, options: .regularExpression) == nil ? nil : value
+        // The plural is how people say a repeating day — "weekly on Sundays",
+        // "every other Tuesdays". Matching only the singular meant the day never
+        // bound at all, and the rule fell through to a bare weekly repeat that
+        // fired on whatever day the capture happened to be made. It looked
+        // correct for Mondays purely because the fixture was captured on one.
+        // "Except" flips the meaning of the day it introduces, so a day named
+        // *behind* it is not a day the series runs on: "I go to the gym every
+        // day except Sunday" was read as weekly on Sundays, the one day the
+        // person said they do not go.
+        //
+        // Only the text in front of the marker is evidence. Refusing the whole
+        // rule instead would be worse than the bug — "every Friday at five …
+        // except this Friday" states a real weekly series and one exception to
+        // it, and dropping the series drops the other fifty-one Fridays.
+        // Surfacing the exception is `carriesUnsupportedException`'s job.
+        // Quantification first, because it is one cheap scan and the weekday
+        // work below is fourteen. Nothing here can match without it.
+        let quantifiedOverWeeks = text.range(
+            of: #"\b(?:every|each|weekly|every\s+week)\b"#,
+            options: .regularExpression
+        ) != nil
+
+        let scopeForWeekdays = text.range(
+            of: #"\b(?:except|apart\s+from|other\s+than|but\s+not)\b"#,
+            options: .regularExpression
+        ).map { String(text[..<$0.lowerBound]) } ?? text
+        // A weekday inside a noun phrase names *which* thing, not *when* it
+        // repeats. "Remind me every morning to check whether **the Friday
+        // deadline** moved" is a daily reminder about a deadline that happens
+        // to be called Friday's; reading the modifier as the schedule made it
+        // weekly on Fridays, which is once a week to check a thing that has by
+        // then already passed.
+        //
+        // The frame is the evidence and it is entirely closed-class: a
+        // determiner or possessive in front, and a head noun behind. Adverbial
+        // uses never wear one — "on Friday", "every Friday", "Friday at five".
+        func namesTheSchedule(_ name: String) -> Bool {
+            let all = #"\b"# + name + #"s?\b"#
+            let attributive = #"\b(?:the|a|an|my|our|your|his|her|their)\s+"# + name + #"s?\s+\p{L}"#
+            let occurrences = scopeForWeekdays.ranges(of: all).count
+            let modifiers = scopeForWeekdays.ranges(of: attributive).count
+            return occurrences > modifiers
         }
-        if !mentionedWeekdays.isEmpty,
-           text.range(of: #"\b(?:every|each)\b"#, options: .regularExpression) != nil {
+        let mentionedWeekdays = quantifiedOverWeeks
+            ? weekdays.compactMap { name, value in namesTheSchedule(name) ? value : nil }
+            : []
+        // A weekday only binds when the sentence is quantified over weeks. Both
+        // spellings count: "every Sunday" and "weekly on Sundays" are the same
+        // rule, and requiring the word "every" left the second one with a bare
+        // weekly frequency and no day, so it fired on whatever day the capture
+        // happened to be made.
+        //
+        if !mentionedWeekdays.isEmpty {
             let interval = text.range(of: #"\bevery\s+other\b"#, options: .regularExpression) == nil ? 1 : 2
             return RecurrenceRule(
                 frequency: .weekly,
@@ -1015,27 +1114,16 @@ private enum RecurrenceIntentParser {
     /// day — 1 through 7 are afternoon, 8 onward are morning — because "every
     /// day at nine" and "call Catherine Tuesday at nine" mean the same nine.
     private static func seriesWallClock(in text: String) -> WallClockTime? {
-        let number = #"(\d{1,2}|\#(numberWords.keys.sorted().joined(separator: "|")))"#
+        // Ask the app's one clock grammar first. It already knows spoken clock
+        // faces, meridiems, compact digits and the alarm conventions, and it is
+        // the reader every non-repeating sentence goes through — so a series
+        // that repeats an hour now lands on the same hour the same words would
+        // produce without the repetition.
+        if let stated = TemporalIntentParser.statedWallClock(in: text) {
+            return stated
+        }
 
-        if let parts = match(in: text, pattern: #"\b\#(number)(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b"#),
-           parts.count >= 4, let raw = self.number(parts[1]), (1...12).contains(raw) {
-            let hour = (raw % 12) + (parts[3].hasPrefix("p") ? 12 : 0)
-            return WallClockTime(hour: hour, minute: Int(parts[2]) ?? 0)
-        }
-        if text.range(of: #"\bnoon\b"#, options: .regularExpression) != nil {
-            return WallClockTime(hour: 12, minute: 0)
-        }
-        if text.range(of: #"\bmidnight\b"#, options: .regularExpression) != nil {
-            return WallClockTime(hour: 0, minute: 0)
-        }
         let daypart = DaypartHint(in: text)
-        if let parts = match(in: text, pattern: #"\bat\s+\#(number)(?::(\d{2}))?\b"#),
-           parts.count >= 3, let raw = self.number(parts[1]), (1...12).contains(raw) {
-            // "Every morning at seven" states the half of the day outright, so
-            // the 1-through-7-means-afternoon default does not get a vote.
-            let hour = daypart?.hour(for: raw) ?? ((1...7).contains(raw) ? raw + 12 : raw)
-            return WallClockTime(hour: hour, minute: Int(parts[2]) ?? 0)
-        }
         // No clock and no daypart were stated at all — "every Friday", with
         // nothing else. Falling through with no wall clock lands the series at
         // midnight (`landing(_:)` above passes the bare start of the day
@@ -2304,6 +2392,38 @@ private enum TemporalIntentParser {
     /// the clock time the person actually stated was never examined at all.
     private static let durationUnitGuard = #"(?!\s*(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?)\b)"#
 
+    /// The clock the person actually stated, read by the **same grammar every
+    /// other clock in the app goes through**.
+    ///
+    /// Exposed for `RecurrenceIntentParser`, which used to carry a second,
+    /// much thinner clock reader of its own. The two disagreed on ordinary
+    /// sentences and the recurring one always lost, because a series re-derived
+    /// its hour from scratch instead of consuming the hour that had already been
+    /// parsed correctly:
+    ///
+    ///     "Set an alarm for 7"          → 07:00   (this grammar)
+    ///     "Wake me at 7 daily"          → 19:00   (the second one)
+    ///     "Set an alarm for 5 every morning"  → 09:00, the stated 5 unread
+    ///     "Set an alarm for 6:30 every weekday" → 09:00, the stated 6:30 unread
+    ///
+    /// Every one of those is a missed alarm, and the hour was sitting there
+    /// already parsed. One grammar, so a clock cannot mean two things depending
+    /// on whether the sentence also happens to repeat.
+    static func statedWallClock(in text: String) -> WallClockTime? {
+        guard let parsed = time(in: text, allowsBareClock: true) else { return nil }
+        // A stated daypart still disambiguates a bare hour, the same way it
+        // does on a one-off sentence. "Every night at 10" is 22:00; without
+        // this the hour arrives with no meridiem and the series fires twelve
+        // hours early. Only a bare 1-to-12 is eligible — anything the grammar
+        // has already pinned to a half of the day keeps its answer.
+        guard !parsed.hasMeridiem,
+              (1...12).contains(parsed.hour),
+              let daypart = DaypartHint(in: text) else {
+            return WallClockTime(hour: parsed.hour, minute: parsed.minute)
+        }
+        return WallClockTime(hour: daypart.hour(for: parsed.hour), minute: parsed.minute)
+    }
+
     private static func time(in text: String, allowsBareClock: Bool) -> ParsedTime? {
         // "First thing" is the app's one morning policy, deliberately the same
         // hour a date-only reminder alerts at. Speak It exposes one morning, so
@@ -2657,5 +2777,17 @@ extension NSRegularExpression {
         }
         speakItCache[key] = regex
         return regex
+    }
+}
+
+
+private extension String {
+    /// Every match of `pattern`, case-insensitively. Used where a rule needs to
+    /// know *how many* times a form occurs rather than merely whether it does.
+    func ranges(of pattern: String) -> [Range<String.Index>] {
+        guard let regex = NSRegularExpression.speakItCached(pattern) else { return [] }
+        return regex
+            .matches(in: self, range: NSRange(startIndex..., in: self))
+            .compactMap { Range($0.range, in: self) }
     }
 }

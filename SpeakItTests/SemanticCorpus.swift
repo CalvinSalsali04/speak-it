@@ -121,6 +121,18 @@ enum CorpusFamily: String, CaseIterable {
     // Family 45: decisions moved off a hardcoded word list and onto structure
     // — occupations read by meaning, errands read by grammatical shape.
     case structuralReadings = "Structure instead of vocabulary"
+
+    // Family 46: the control group. Ordinary speech that happens to contain
+    // the characters, verbs and numbers the parser watches for, asserted only
+    // to produce one row and no operation. Every other family tests that a
+    // rule fires; this one tests that the rest of them stay out of the way.
+    case ordinarySpeech = "Ordinary speech (control)"
+
+    // Families 47-48, from the harm audit. Both encode the same principle: a
+    // keyword only carries the utterance's speech act when it sits in the
+    // matrix clause, and a negator only negates what it is adjacent to.
+    case speechActScope = "Speech-act scope"
+    case prohibitions = "Prohibitive reminders"
 }
 
 
@@ -245,6 +257,23 @@ struct CorpusCase {
     /// Caps the severity of every disagreement in this case. Used where the
     /// contract is genuinely arguable and should not gate a release.
     var severityCeiling: CorpusSeverity?
+    /// Raises the severity of every disagreement in this case.
+    ///
+    /// The other standing use is `person` on a relay frame: "text Mike that the
+    /// deal is off" drafts a message, and who it is drafted to is behaviour, not
+    /// a label. Graded by field alone, deleting the entire person subsystem cost
+    /// two blocking failures out of a hundred and five changed utterances.
+    ///
+    /// `CorpusSeverity.forField` grades by *which field* disagrees, which is
+    /// usually right and is sometimes badly wrong. A prohibitive reminder is
+    /// the clearest example: "remind me not to eat before the blood test"
+    /// differs from the contract only in `title`, graded cosmetic — but the
+    /// title *is* the notification body, so a cosmetic diff there is the app
+    /// telling somebody to do the thing they asked to be warned against.
+    ///
+    /// Use it where the consequence is worse than the field suggests, and say
+    /// why in `note`.
+    var severityFloor: CorpusSeverity?
     /// Why this case exists, when that is not obvious from the sentence.
     var note: String?
 }
@@ -270,6 +299,7 @@ func corpusCase(
     operation: [CaptureOperation]? = nil,
     operationTarget: [String?]? = nil,
     severityCeiling: CorpusSeverity? = nil,
+    severityFloor: CorpusSeverity? = nil,
     note: String? = nil
 ) -> CorpusCase {
     CorpusCase(
@@ -292,6 +322,7 @@ func corpusCase(
         operation: operation,
         operationTarget: operationTarget,
         severityCeiling: severityCeiling,
+        severityFloor: severityFloor,
         note: note
     )
 }
