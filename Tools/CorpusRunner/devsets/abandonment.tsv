@@ -1,0 +1,88 @@
+# Explicit-abandonment development set.
+#
+# The behaviour this set exists for: a person opens a thought out loud, decides
+# against it, and says so — "tomorrow I need to... never mind". The half they
+# did say must not become a commitment, and the words they said about somebody
+# else must not be read as them taking their own capture back.
+#
+# Kept apart from `unfinished.tsv` on purpose. That set's numbers are a release
+# gate with a floor written against them, and folding these rows in would move
+# the denominators the floor is quoted on. Two questions, two files.
+#
+# Columns: id, utterance, family, expectation, note
+#
+#   Abandoned   the speaker withdrew the thought they were in the middle of.
+#               Nothing actionable may survive it: no row, no date, no
+#               reminder, no recurrence, no place.
+#   Kept        the words "never mind" are in the sentence and are NOT the
+#               speaker withdrawing this capture. The row survives.
+#   Mixed       a finished thought and a withdrawn one in one breath. The
+#               finished one must survive as its own row.
+#
+# A note beginning KNOWN: marks a row that fails today, on purpose, and is kept
+# anyway — the same convention `../README.md` describes for DO02 and DO03. Each
+# one says why closing it would cost more than leaving it open. They are
+# reported apart from the live numbers so that a real regression cannot hide
+# behind them.
+#
+# The renderings matter more here than anywhere else in the project. Dictation
+# does not supply a comma when somebody trails off, because trailing off is the
+# pause — so the unpunctuated and ellipsis forms are the *common* case and the
+# comma form is the rare one. Every shape is carried in all three.
+
+id	utterance	family	expectation	note
+ABN01	Tomorrow I need to never mind	dangling-then-withdrawn	Abandoned	the release blocker, unpunctuated
+ABN02	Tomorrow I need to... never mind	dangling-then-withdrawn	Abandoned	the release blocker, as dictation writes it
+ABN03	Tomorrow I need to, never mind	dangling-then-withdrawn	Abandoned	the comma form that already worked
+ABN04	tomorrow i need to never mind	dangling-then-withdrawn	Abandoned	lowercased rendering
+ABN05	Remind me to never mind	dangling-then-withdrawn	Abandoned	no reminder may be scheduled
+ABN06	Remind me to... never mind	dangling-then-withdrawn	Abandoned
+ABN07	remind me to never mind	dangling-then-withdrawn	Abandoned	lowercased rendering
+ABN08	I was going to actually never mind	dangling-then-withdrawn	Abandoned	repair marker announces it
+ABN09	I was going to... actually never mind	dangling-then-withdrawn	Abandoned
+ABN10	Tomorrow I want to never mind	dangling-then-withdrawn	Abandoned
+ABN11	I was going to never mind	dangling-then-withdrawn	Abandoned	unpunctuated, objectless withdrawal
+ABN12	Next week I should forget it	ordinary-content	Kept	"I should forget it" is an ordinary sentence; only the comma form withdraws
+ABN13	Tomorrow I need to, um, never mind	filler-between	Abandoned	disfluency ate the comma
+ABN14	Tomorrow I need to, um, wait, never mind	filler-between	Abandoned	stacked fillers
+ABN15	Tomorrow I need to um never mind	filler-between	Abandoned	unpunctuated stacked fillers
+ABN16	Remind me to, uh, never mind	filler-between	Abandoned
+ABN17	I need to call Sarah, actually never mind	finished-then-withdrawn	Abandoned	a complete clause, explicitly taken back
+ABN18	I need to call Sarah... actually never mind	finished-then-withdrawn	Abandoned
+ABN19	I was going to call Mike, scratch that	finished-then-withdrawn	Abandoned
+ABN20	I was going to call Mike scratch that	finished-then-withdrawn	Abandoned	KNOWN: no licence catches this without also destroying "I need to scratch that"
+ABN21	Next week I should, forget it	finished-then-withdrawn	Abandoned
+ABN22	Buy milk actually never mind	finished-then-withdrawn	Abandoned	nothing to shop for
+ABN23	Never mind	bare	Abandoned	the whole capture is the withdrawal
+ABN24	Forget it	bare	Abandoned
+ABN25	Scratch that	bare	Abandoned
+ABN26	Sarah said never mind	reported	Kept	somebody else's words
+ABN27	Sarah said, never mind	reported	Kept	the comma must not change whose words they are
+ABN28	Sarah said... never mind	reported	Kept
+ABN29	Mike told me never mind	reported	Kept
+ABN30	Mike told me, never mind	reported	Kept
+ABN31	sarah said never mind	reported	Kept	lowercased rendering
+ABN32	I remember Sarah saying never mind	reported	Kept	reported inside a memory
+ABN33	Never mind is what Sarah always says	reported	Kept	the marker is the subject, not the act
+ABN34	Tell Sarah never mind	communication	Kept	message content, not a withdrawal
+ABN35	Text Sarah that I changed my mind and never mind the old plan	communication	Kept	the marker is inside the message
+ABN36	Email Priya never mind about Tuesday	communication	Kept
+ABN37	Buy a Never Mind album	ordinary-content	Kept	a proper name that reads like the marker
+ABN38	Never mind the gap	ordinary-content	Kept	KNOWN: pre-existing cancel pattern reads a named object as managing an item
+ABN39	I never mind the cold	ordinary-content	Kept	"mind" as an ordinary verb
+ABN40	Never mind, buy milk	leading	Mixed	KNOWN: pre-existing - a leading withdrawal takes the whole capture, milk included
+ABN41	Buy milk and tomorrow I need to, never mind	mixed	Mixed	milk survives
+ABN42	Buy milk and tomorrow I need to never mind	mixed	Mixed	unpunctuated
+ABN43	Sarah hates sushi and remind me to, never mind	mixed	Mixed	the fact about Sarah survives
+ABN44	Sarah hates sushi and remind me to never mind	mixed	Mixed	unpunctuated
+ABN45	Tomorrow I need to... never mind, but buy milk	mixed	Mixed	the later finished thought survives
+ABN46	Call the dentist and I was going to actually never mind	mixed	Mixed	KNOWN: an earlier "call" makes ClauseScope read the whole capture as a message
+ABN47	I need to forget it	ordinary-content	Kept	a well-formed VP fills the infinitive; this is a real sentence
+ABN48	Tomorrow I need to forget it	ordinary-content	Kept
+ABN49	I have to forget it	ordinary-content	Kept
+ABN50	Remind me to forget it	ordinary-content	Kept	a real reminder, and it must still be scheduled
+ABN51	I need to scratch that	ordinary-content	Kept
+ABN52	I want to scratch that	ordinary-content	Kept
+ABN53	Remind me to scratch that off the list	ordinary-content	Kept	the marker carries its own object
+ABN54	I need to forget about it	ordinary-content	Kept
+ABN55	Tell Sarah to forget it	communication	Kept	message content behind a relay verb

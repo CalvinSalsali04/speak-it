@@ -1432,6 +1432,44 @@ enum CaptureOperationDetector {
     private static let evidentialAdverb =
         #"(?:apparently|evidently|supposedly|reportedly|turns\s+out(?:\s+that)?)"#
 
+    /// The closed class of bare withdrawals: the words that take back what was
+    /// just said and name nothing to take it back from.
+    ///
+    /// Lifted out of the retraction branch below rather than written twice. It
+    /// is the same set, and it now has two jobs — deciding that a clause *is* a
+    /// withdrawal, and deciding where a clause boundary falls in front of one —
+    /// so the two must never be able to drift apart.
+    private static let bareWithdrawal =
+        #"(?:never\s*mind|nevermind|forget\s+(?:it|that|about\s+it)|scratch\s+that)"#
+
+    /// The withdrawals that cannot be the thing the sentence was reaching for.
+    ///
+    /// This is the difference between "tomorrow I need to never mind" and "I
+    /// need to forget it", and without it the second was destroyed along with
+    /// the first. Both are an unfinished-looking head plus a withdrawal, and
+    /// only one of them is a withdrawal: `forget it` and `scratch that` are
+    /// well-formed verb phrases carrying their own object, so an infinitive
+    /// that stopped at "to" is *completed* by them — "I need to forget it" and
+    /// "remind me to scratch that off the list" are ordinary English and mean
+    /// what they say.
+    ///
+    /// `never mind` is not one. `mind` in this frame is transitive — "mind the
+    /// gap", "mind your step" — and here its object never arrived, so the
+    /// phrase cannot fill the slot in front of it. The same reasoning the
+    /// unfinished-thought detector runs on a sentence, run on the two words
+    /// that would have finished it.
+    ///
+    /// Which is why the test below asks *what the withdrawal is* before it
+    /// trusts the shape of what came before it, rather than the other way
+    /// round: the head only looks unfinished because the withdrawal was taken
+    /// off the end of it, and reading that as evidence would be circular.
+    private static let objectlessWithdrawal = #"(?:never\s*mind|nevermind)"#
+
+    /// Repair markers that announce a correction without needing a pause behind
+    /// them. The subset of `SelfCorrectionResolver`'s vocabulary that can stand
+    /// immediately in front of a withdrawal: "…actually never mind".
+    private static let repairMarker = #"(?:actually|wait|no|sorry|um|uh|er|hmm|i\s+mean)"#
+
     /// Pronouns that name nothing. A cancellation aimed at one of these must be
     /// confirmed, because guessing wrong deletes the wrong reminder.
     private static let vagueTargets: Set<String> = [
@@ -1466,7 +1504,32 @@ enum CaptureOperationDetector {
         var remainders: [String] = []
         for piece in pieces {
             if let operation = detect(piece, within: text) {
-                operations.append(operation)
+                // A withdrawal that names no target takes back the thought it
+                // was spoken after — the one it scopes over, and only that one.
+                // "Buy milk and tomorrow I need to, never mind" used to reach
+                // `applyCaptureOperation` as a whole-capture retraction and the
+                // milk went down with the fragment; the person watched a thought
+                // they had just finished saying disappear because of a thought
+                // they had not.
+                if operation.operation == .retract,
+                   operation.target == nil,
+                   !remainders.isEmpty {
+                    remainders.removeLast()
+                    operations.append(
+                        CaptureOperationRequest(
+                            operation: operation.operation,
+                            polarity: operation.polarity,
+                            target: operation.target,
+                            sourceQuote: operation.sourceQuote,
+                            needsReview: operation.needsReview,
+                            isBroad: operation.isBroad,
+                            newTimingText: operation.newTimingText,
+                            isScoped: true
+                        )
+                    )
+                } else {
+                    operations.append(operation)
+                }
             } else {
                 remainders.append(piece)
             }
@@ -1501,9 +1564,16 @@ enum CaptureOperationDetector {
         // to call Mom anymore *and I already bought* the milk" is two facts, not
         // one ambiguous one. Reading them as a single clause lost the second
         // one entirely.
+        // An ellipsis is a pause the recognizer wrote down. "Tomorrow I need
+        // to... never mind" and "Tomorrow I need to, never mind" are the same
+        // sentence spoken the same way, and only the transcriber chose between
+        // the two spellings — so a boundary that exists in one has to exist in
+        // the other. Without this the comma form was withdrawn and the ellipsis
+        // form became a task dated tomorrow.
+        let pause = #"\s*(?:[;,]|\.{2,}|…)\s*"#
         let pattern = deniesUpFront
-            ? #"(?i)(?:\s*[;,]\s*(?:and\s+|but\s+|then\s+)?|\s+but\s+|\s+and\s+(?=(?:i|we)\b|don'?t\b|do\s+not\b|never\b))"#
-            : #"(?i)(?:\s*[;,]\s*(?:and\s+|but\s+|then\s+)?|\s+(?:and|but|then|also|plus)\s+)"#
+            ? #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+)?|\s+but\s+|\s+and\s+(?=(?:i|we)\b|don'?t\b|do\s+not\b|never\b))"#
+            : #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+)?|\s+(?:and|but|then|also|plus)\s+)"#
         guard let regex = NSRegularExpression.speakItCached(pattern) else { return [text] }
 
         var pieces: [String] = []
@@ -1515,7 +1585,72 @@ enum CaptureOperationDetector {
         }
         append(String(text[lowerBound...]), to: &pieces)
         let punctuated = pieces.isEmpty ? [text] : pieces
-        return punctuated.flatMap(splittingJuxtaposedInstructions)
+        return punctuated
+            .flatMap(splittingJuxtaposedInstructions)
+            .flatMap(splittingTrailingWithdrawal)
+    }
+
+    /// Breaks a clause in front of a withdrawal that ends it, when nothing but
+    /// the recognizer's punctuation was holding the two together.
+    ///
+    /// The comma form has always worked: "tomorrow I need to, never mind" is
+    /// two pieces, the second is a withdrawal, and the capture is dropped. The
+    /// same sentence spoken the same way and transcribed without the comma was
+    /// a task dated tomorrow. Dictation does not supply a comma when somebody
+    /// trails off — trailing off *is* the pause — so the one rendering this
+    /// mattered most for was the one that had no boundary to split on.
+    ///
+    /// Structure supplies the boundary the punctuation did not, and only on two
+    /// licences, because everything looser was measured and destroyed ordinary
+    /// sentences:
+    ///
+    /// - a **repair marker** announced it — "…actually never mind". That is
+    ///   `SelfCorrectionResolver`'s own rule for when a marker may discard the
+    ///   words in front of it, applied to a marker that discards them and puts
+    ///   nothing back.
+    /// - the withdrawal **could not have finished the sentence** and the words
+    ///   in front of it are unfinished. Both halves are needed. "Tomorrow I need
+    ///   to" plus "never mind" is a frame nothing filled; "I need to" plus
+    ///   "forget it" is a frame that "forget it" filled, and it is an ordinary
+    ///   sentence. Asking only whether the head looks unfinished cannot tell
+    ///   them apart, because the head only looks unfinished once the withdrawal
+    ///   has been taken off the end of it — see `objectlessWithdrawal`.
+    ///
+    /// Everything else keeps the words. "Tell Sarah never mind" and "Sarah said
+    /// never mind" are finished sentences whose last two words are the object
+    /// of a verb, and neither licence fires on them.
+    private static func splittingTrailingWithdrawal(_ clause: String) -> [String] {
+        guard let withdrawal = clause.range(
+            of: #"(?i)\s+(?:\#(repairMarker)\s*,?\s+)*\#(bareWithdrawal)\s*[.!?…]*\s*$"#,
+            options: .regularExpression
+        ) else { return [clause] }
+
+        let head = String(clause[clause.startIndex..<withdrawal.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;.…"))
+        guard !head.isEmpty else { return [clause] }
+
+        let tail = String(clause[withdrawal])
+        let announced = tail.range(
+            of: #"(?i)^\s*\#(repairMarker)\b"#,
+            options: .regularExpression
+        ) != nil
+        // The head reads as unfinished only because the withdrawal was lifted
+        // off the end of it, so that on its own proves nothing. It becomes
+        // evidence when the withdrawal could not have been what finished it.
+        let leftAFrameOpen = tail.range(
+            of: #"(?i)\#(objectlessWithdrawal)\s*[.!?…]*\s*$"#,
+            options: .regularExpression
+        ) != nil && ThoughtCompletion.unfinished(in: head) != nil
+        guard announced || leftAFrameOpen else { return [clause] }
+
+        // The tail is emitted as the bare withdrawal rather than as the words
+        // that carried it, so `detect` sees the shape it already recognizes and
+        // the two never have to agree about "um".
+        guard let bare = tail.range(
+            of: #"(?i)\#(bareWithdrawal)"#,
+            options: .regularExpression
+        ) else { return [clause] }
+        return [head, String(tail[bare])]
     }
 
     private static func splittingJuxtaposedInstructions(_ clause: String) -> [String] {
@@ -1579,9 +1714,18 @@ enum CaptureOperationDetector {
         }
 
         // Retraction: withdraws the capture itself and names no target.
+        //
+        // Guarded by whose sentence it is. Until this guard existed the only
+        // thing keeping "Sarah said never mind" a Memory note was that nobody
+        // had said it with a comma — "Sarah said, never mind" split into two
+        // pieces and withdrew the capture, and the protection everyone believed
+        // was a rule turned out to be an accident of punctuation. Now that a
+        // boundary can be found without a comma, the accident had to become a
+        // guard or reported speech would have started deleting itself.
         if matches(lower, #"^(?:actually\s+)?(?:never\s*mind|nevermind|forget\s+(?:it|that|about\s+it)|scratch\s+that)$"#)
             || matches(lower, #"^(?:wait|no)\s*,?\s*(?:no\s*,?\s*)?forget\s+(?:it|that)$"#)
             || matches(lower, #"^(?:wait|hold\s+on)\s*,?\s*no\b.*\bforget\b"#) {
+            guard !withdrawalBelongsToSomeoneElse(containing ?? source) else { return nil }
             return request(.retract, target: nil, source: source, review: false)
         }
 
@@ -1821,6 +1965,36 @@ enum CaptureOperationDetector {
     /// the capture behind it. Same reasoning as `hasMixedPolarity`.
     private static func cancellationIsTakenBack(_ text: String) -> Bool {
         matches(text, #"\b(?:back\s+on|on\s+again|is\s+on\b|still\s+on\b|un-?cancell?ed|not\s+cancell?ed|rescheduled|back\s+in\s+the\s+calendar)"#)
+    }
+
+    /// Whether the withdrawal is somebody else's words rather than the
+    /// speaker's own change of mind.
+    ///
+    /// A withdrawal only withdraws when the person saying it is the person
+    /// holding the phone. "Sarah said never mind" reports what Sarah said;
+    /// "text Priya that the plan changed, never mind the old one" is message
+    /// content. In both the words sit inside the complement of a verb of
+    /// saying, which is exactly the distinction `ClauseScope` was built to
+    /// read, so this asks it rather than inventing a second answer.
+    ///
+    /// Deliberately consults the **whole capture** rather than the clause. By
+    /// the time a withdrawal reaches `detect` the splitter has taken "Sarah
+    /// said" away from it, and the clause alone can no longer say whose it was.
+    private static func withdrawalBelongsToSomeoneElse(_ whole: String) -> Bool {
+        let reading = ClauseScope.read(whole)
+        switch reading.act {
+        case .reporting, .communicating:
+            // Only when the withdrawal is inside the reported words. "Text Mike
+            // the address, never mind" ends on the speaker's own withdrawal of
+            // their own instruction, and that is still theirs to withdraw.
+            guard let complement = reading.complement else { return false }
+            return complement.range(
+                of: #"(?i)\#(bareWithdrawal)"#,
+                options: .regularExpression
+            ) != nil
+        case .reminding, .direct:
+            return false
+        }
     }
 
     /// True when the utterance denies one thing and instructs another.

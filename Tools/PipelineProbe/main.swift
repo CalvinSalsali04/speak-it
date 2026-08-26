@@ -269,7 +269,12 @@ for utterance in utterances {
     }
 
     for request in result.operations {
-        print("   operation:   \(request.operation.rawValue) target=\(request.target ?? "nil")")
+        // `scoped` is the difference between a withdrawal that takes the whole
+        // capture and one that took back only the thought it was spoken after.
+        // The repository acts on it, so a dev set scored from here has to see
+        // it or it reads every scoped withdrawal as a whole-capture retraction.
+        let scope = request.isScoped ? " scoped" : ""
+        print("   operation:   \(request.operation.rawValue) target=\(request.target ?? "nil")\(scope)")
     }
 
     if result.items.isEmpty && result.operations.isEmpty {

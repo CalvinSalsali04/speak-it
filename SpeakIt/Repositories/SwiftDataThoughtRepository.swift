@@ -65,7 +65,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 // is safe: the words have not changed, so the reading has not
                 // either.
                 var creating = extraction
-                if let request = extraction.operations.first {
+                if let request = extraction.pendingOperation {
                     let outcome = applyCaptureOperation(request, session: session)
                     if case .notFound = outcome, !extraction.items.isEmpty {
                         creating = ThoughtExtractionEngine.extractWithRules(
@@ -772,7 +772,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             referenceDate: createdAt
         )
         var creating = extraction
-        if let request = extraction.operations.first {
+        if let request = extraction.pendingOperation {
             let outcome = applyCaptureOperation(request, session: pending.session)
             if case .notFound = outcome, !extraction.items.isEmpty {
                 creating = ThoughtExtractionEngine.extractWithRules(
@@ -896,7 +896,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // A cancellation, completion or retraction acts on what exists instead
         // of adding to it.
         var creating = extraction
-        if let request = extraction.operations.first {
+        if let request = extraction.pendingOperation {
             let outcome = applyCaptureOperation(request, session: pending.session)
             if case .notFound = outcome, !extraction.items.isEmpty {
                 // The operation matched nothing, but the same capture also

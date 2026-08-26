@@ -48,6 +48,22 @@ struct ThoughtExtractionResult: Equatable, Sendable {
     let operations: [CaptureOperationRequest]
     let method: Method
 
+    /// The operation that still has work to do against the session, if any.
+    ///
+    /// A bare withdrawal that already took back the one thought it was spoken
+    /// after is finished: `partition` dropped that clause and everything else
+    /// in the capture survived it. Handing it on anyway discards the whole
+    /// session, which is how "buy milk and tomorrow I need to, never mind" used
+    /// to lose the milk. It stays in `operations` regardless, because that is
+    /// what keeps the refinement model away from a capture whose words have
+    /// been withdrawn — it re-reads the original transcript, and the withdrawn
+    /// half is still in there.
+    var pendingOperation: CaptureOperationRequest? {
+        guard let request = operations.first else { return nil }
+        if request.isScoped, !items.isEmpty { return nil }
+        return request
+    }
+
     init(
         items: [ExtractedThought],
         operations: [CaptureOperationRequest] = [],
