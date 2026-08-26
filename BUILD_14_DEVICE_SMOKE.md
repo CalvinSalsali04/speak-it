@@ -73,13 +73,13 @@ this build.
 
 ## D. Temporal
 
-| # | Say | Expect | Blocker if |
+| # | Say (D5 is a tap, not a phrase) | Expect | Blocker if |
 |---|---|---|---|
 | **D1** | "Remind me to call the clinic on Friday at 9:30 am" | Today, reminder Friday 9:30 AM. Row shows the time. | Wrong day, wrong hour, or no time shown. |
 | **D2** | "Pick up the parcel on Thursday" | Today, **day only** — no time of day shown anywhere, no hour in the row or the editor. | An invented hour appears in the row. |
 | **D3** | "Remind me to take my vitamins every morning at 8" | Today, recurring, next occurrence tomorrow 8:00 AM (or today if before 8). | Fires immediately, or never schedules. |
 | **D4** | "Remind me to call Mom at 5" then immediately "actually make that 6" | The reminder ends at **6:00**, one row, not two. | Two rows, or the time stays at 5. |
-| **D5** | Open the C9 item, set a reminder for tomorrow 10 AM, save. | It leaves Needs review, lands in Today with that alarm, and the asterisk clears. | It stays in Needs review after the field is answered. |
+| **D5** | **Do not say this one — tap it.** Open the C9 row, turn on "Remind me" in the editor, set tomorrow 10 AM, tap Save. | It leaves Needs review, lands in Today with that alarm, and the asterisk clears. | It stays in Needs review after the field is answered. |
 
 ---
 
@@ -115,6 +115,22 @@ Build 14 is ready to archive if:
 
 Anything in the "Blocker if" column marked **stop-ship** stops the build.
 Everything else: write it down, finish the sheet, and decide afterwards.
+
+## Found during the build 14 run
+
+- **A bare "set a reminder for <time>" titles the row after the time.** Said on
+  its own it produces a row called "Tomorrow 10 AM"; joined with `and` it
+  produces the placeholder "Your reminder". Both schedule correctly and both
+  keep the original wording on the row, but neither title says what to do when
+  the alarm fires.
+
+  This is the `missingAction` semantic gap — "remind me about the thing, with
+  nothing in it to do". The gap and its review copy ("Needs something to do")
+  already exist and round-trip; nothing produces it yet, because
+  `TemporalCommitment` is still the only producer of a non-resolved state. So
+  this is the known coverage hole from Phase 2.1 surfacing in real use rather
+  than a new defect. Not a beta blocker: the reminder you asked for exists, at
+  the time you asked for, with your words intact.
 
 ## Known and accepted for this beta
 
