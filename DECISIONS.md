@@ -1119,3 +1119,49 @@ enabled to run at all, and no such device was available. The change is one line
 each and trivially revertible. The measurement that would settle it is the one
 already described above: replay the corpus through the async path and count
 cases fixed against cases broken.
+
+## 2026-08-26 — Version 3 is frozen against a real store, not against the source
+
+Version 3 was the last version still declared in terms of the live model
+classes, which meant "version 3" was whatever `CapturedItem` happened to be at
+the moment the plan was read. Version 1 and version 2 had each been frozen only
+after the version above them existed, and version 2's freeze was a repair to a
+launch abort that had already reached the build. This one is deliberately done
+before there is anything to migrate to: the first version 4 attribute would have
+silently redefined version 3, made two entries in the migration plan describe the
+same schema, and stopped every existing store from opening.
+
+The two roles were the actual defect, so they are now two declarations. Every
+numbered version is history and owns a copy of it. `SpeakItSchemaCurrent` — a
+one-line alias, today at `SpeakItSchemaV3Live` — is the live shape the app
+addresses, and is the only one allowed to move. `PersistenceController.schema`
+uses that, never a snapshot, because a container built from frozen classes would
+hold entities the repository has no way to fetch. When version 4 arrives it
+takes over that alias and version 3 stays exactly where it is.
+
+Freezing is worthless unless the frozen copy is provably the same schema the
+unfrozen one was, and re-reading the source proves nothing. So the anchor is
+external: `SpeakItTests/Fixtures/SpeakItVersionThree.store` is a real SQLite
+store written by the last build that shipped an unfrozen version 3, and
+`SchemaFreezeTests` pins the Core Data entity version hashes that build stamped
+into it —
+
+```
+CaptureSession   nilPIQj+q/80eRq7ELBuQBdnQiZ2/hkGMV4TQ6QxEHI=
+CapturedItem     mNIAGWB3h/BSblsq6iWJCD9bm4LmhOglGBbynuVnH9I=
+UserPreferences  Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8=
+```
+
+— and checks that the frozen snapshot still stamps them, that the live models
+still stamp them, and that the fixture opens under the frozen snapshot with **no
+migration plan at all**, which it can only do if the two are the same schema.
+
+Injecting one property into the live `CapturedItem` was used to confirm the
+freeze does something. The frozen-snapshot assertion and the no-plan fixture open
+both kept passing — version 3 no longer follows the live models — while the live
+assertion failed with the instruction to add version 4, and every store open
+failed loudly in the test suite. That is the same abort that used to be
+discoverable only on a phone that had already taken the update.
+
+Nothing about interpretation changed: the corpus is byte-identical across all
+four renderings, and no file the rules path compiles was touched.

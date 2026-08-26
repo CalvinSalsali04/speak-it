@@ -323,33 +323,201 @@ enum SpeakItSchemaV2: VersionedSchema {
 /// coordinates, and no resolution to recover. Those rows are re-read from their
 /// preserved wording on demand instead, which is honest about the fact that
 /// this is new capability rather than recovered data.
-// ============================================================================
-// IMPORTANT — READ BEFORE CHANGING ANY PERSISTED @Model
-//
-// SchemaV3 below is NOT frozen. Unlike V1 and V2, it nests no model copies, so
-// `CaptureSession.self` here resolves to the LIVE global class. Version 3 is
-// therefore currently defined as "whatever the models happen to be right now".
-//
-// That is safe only while V3 is the newest version. The moment a V4 is added:
-//
-//   1. you add a property to the live CapturedItem
-//   2. V3 silently changes too, because it points at that same class
-//   3. you define V4
-//   4. V3 and V4 now describe the same schema, and V3 no longer describes
-//      what is actually on existing devices
-//   5. opening any existing store aborts inside CoreData on launch
-//
-// This is exactly the bug that had to be fixed for V2 (see DECISIONS.md,
-// "Version 2 had to be frozen before version 3 could exist").
-//
-// DO NOT modify any persisted @Model until V3 has been given its own frozen
-// model snapshots, the way V1 and V2 have. Freeze V3 FIRST, before adding the
-// first V4 property — not afterwards.
-// ============================================================================
+///
+/// Version 3 is frozen here for exactly the reason versions 1 and 2 are, and it
+/// was frozen *before* the first version 4 attribute existed rather than after.
+/// It originally nested nothing: its `models` array named the live global
+/// classes, so version 3 read as "whatever the models happen to be right now".
+/// That is invisible while version 3 is the newest version and becomes a
+/// launch-time abort the moment a version 4 is added — the live `CapturedItem`
+/// gains an attribute, version 3 silently gains it too, both versions in the
+/// migration plan describe the same schema, and every existing store fails to
+/// open. The live shape now lives in `SpeakItSchemaCurrent` instead.
+///
+/// The snapshot below is not a reconstruction. It is pinned to the recorded
+/// Core Data version hashes of a real store written by the last build that
+/// shipped an unfrozen version 3, which `SchemaFreezeTests` re-derives on every
+/// run. Nothing in this enum may change.
 enum SpeakItSchemaV3: VersionedSchema {
     static let versionIdentifier = Schema.Version(3, 0, 0)
 
-    // ⚠️ Live classes, not a historical snapshot. See the block comment above.
+    static var models: [any PersistentModel.Type] {
+        [CaptureSession.self, CapturedItem.self, UserPreferences.self]
+    }
+
+    @Model
+    final class CaptureSession {
+        @Attribute(.unique) var id: UUID
+        var originalTranscription: String
+        var createdAt: Date
+        var captureSourceRawValue: String
+        var processingStatusRawValue: String
+        var processingError: String?
+
+        @Relationship(deleteRule: .cascade, inverse: \CapturedItem.captureSession)
+        var items: [CapturedItem]
+
+        init(
+            id: UUID = UUID(),
+            originalTranscription: String,
+            createdAt: Date = .now,
+            captureSourceRawValue: String = "inAppText",
+            processingStatusRawValue: String = "complete",
+            processingError: String? = nil,
+            items: [CapturedItem] = []
+        ) {
+            self.id = id
+            self.originalTranscription = originalTranscription
+            self.createdAt = createdAt
+            self.captureSourceRawValue = captureSourceRawValue
+            self.processingStatusRawValue = processingStatusRawValue
+            self.processingError = processingError
+            self.items = items
+        }
+    }
+
+    @Model
+    final class CapturedItem {
+        @Attribute(.unique) var id: UUID
+        var originalTextSegment: String
+        var displayTitle: String
+        var itemTypeRawValue: String
+        var categoryRawValue: String
+        var createdAt: Date
+        var dueDate: Date?
+        var reminderDate: Date?
+        var priorityRawValue: Int
+        var personName: String?
+        var completedAt: Date?
+        var isArchived: Bool
+        var archivedAt: Date?
+        var processingConfidence: Double
+        var needsClarification: Bool
+        var isReviewed: Bool
+        var lastModifiedAt: Date
+
+        /// The two attributes version 2 added.
+        var temporalIntentData: Data?
+        var temporalKindRawValue: String?
+
+        /// The two attributes version 3 added.
+        var locationIntentData: Data?
+        var reminderTriggerKindRawValue: String?
+
+        var captureSession: CaptureSession?
+
+        init(
+            id: UUID = UUID(),
+            originalTextSegment: String,
+            displayTitle: String,
+            itemTypeRawValue: String = "unclear",
+            categoryRawValue: String = "general",
+            createdAt: Date = .now,
+            dueDate: Date? = nil,
+            reminderDate: Date? = nil,
+            priorityRawValue: Int = 1,
+            personName: String? = nil,
+            completedAt: Date? = nil,
+            isArchived: Bool = false,
+            archivedAt: Date? = nil,
+            processingConfidence: Double = 1,
+            needsClarification: Bool = false,
+            isReviewed: Bool = false,
+            lastModifiedAt: Date = .now,
+            temporalIntentData: Data? = nil,
+            temporalKindRawValue: String? = nil,
+            locationIntentData: Data? = nil,
+            reminderTriggerKindRawValue: String? = nil,
+            captureSession: CaptureSession? = nil
+        ) {
+            self.id = id
+            self.originalTextSegment = originalTextSegment
+            self.displayTitle = displayTitle
+            self.itemTypeRawValue = itemTypeRawValue
+            self.categoryRawValue = categoryRawValue
+            self.createdAt = createdAt
+            self.dueDate = dueDate
+            self.reminderDate = reminderDate
+            self.priorityRawValue = priorityRawValue
+            self.personName = personName
+            self.completedAt = completedAt
+            self.isArchived = isArchived
+            self.archivedAt = archivedAt
+            self.processingConfidence = processingConfidence
+            self.needsClarification = needsClarification
+            self.isReviewed = isReviewed
+            self.lastModifiedAt = lastModifiedAt
+            self.temporalIntentData = temporalIntentData
+            self.temporalKindRawValue = temporalKindRawValue
+            self.locationIntentData = locationIntentData
+            self.reminderTriggerKindRawValue = reminderTriggerKindRawValue
+            self.captureSession = captureSession
+        }
+    }
+
+    @Model
+    final class UserPreferences {
+        @Attribute(.unique) var id: UUID
+        var morningBriefingEnabled: Bool
+        var morningBriefingTime: Date
+        var notificationPermissionState: String
+        var speechPermissionState: String
+        var microphonePermissionState: String
+        var shortcutSetupCompleted: Bool
+        var preferredCaptureMethodRawValue: String
+
+        init(
+            id: UUID = UUID(),
+            morningBriefingEnabled: Bool = false,
+            morningBriefingTime: Date = .now,
+            notificationPermissionState: String = "notDetermined",
+            speechPermissionState: String = "notDetermined",
+            microphonePermissionState: String = "notDetermined",
+            shortcutSetupCompleted: Bool = false,
+            preferredCaptureMethodRawValue: String = "inAppText"
+        ) {
+            self.id = id
+            self.morningBriefingEnabled = morningBriefingEnabled
+            self.morningBriefingTime = morningBriefingTime
+            self.notificationPermissionState = notificationPermissionState
+            self.speechPermissionState = speechPermissionState
+            self.microphonePermissionState = microphonePermissionState
+            self.shortcutSetupCompleted = shortcutSetupCompleted
+            self.preferredCaptureMethodRawValue = preferredCaptureMethodRawValue
+        }
+    }
+}
+
+/// The shape the running app opens, which is always the live model classes.
+///
+/// Every numbered version above is history: a fixed record of what some
+/// person's phone already holds. This is the opposite — it is deliberately
+/// whatever `CaptureSession`, `CapturedItem` and `UserPreferences` are right
+/// now, because those are the classes the repository fetches, inserts and
+/// saves. A container built from a frozen snapshot would hold entities the app
+/// has no way to address.
+///
+/// The two roles used to be filled by the same declaration, and that is the bug
+/// this file keeps re-learning: the newest numbered version pointed at the live
+/// classes, so it moved every time a model gained a field, and the moment a
+/// newer version was added it no longer described anything real. Separating
+/// "what the app runs on" from "what the store might be arriving as" is what
+/// stops the newest version from being redefined by the next edit.
+///
+/// It carries version 3.0.0 because that is the version existing stores are
+/// stamped with and the live shape is still exactly frozen version 3 —
+/// `SchemaFreezeTests` fails if that ever stops being true without a new
+/// version being added. When version 4 arrives it takes over this role: add
+/// `SpeakItSchemaV4` with the live classes and its own identifier, point this
+/// alias at it, and leave version 3 frozen where it is.
+typealias SpeakItSchemaCurrent = SpeakItSchemaV3Live
+
+/// The live-model schema `SpeakItSchemaCurrent` names. Declared separately only
+/// so the alias above can move to `SpeakItSchemaV4` in one line.
+enum SpeakItSchemaV3Live: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
+
+    /// Live global classes, on purpose. See `SpeakItSchemaCurrent`.
     static var models: [any PersistentModel.Type] {
         [CaptureSession.self, CapturedItem.self, UserPreferences.self]
     }

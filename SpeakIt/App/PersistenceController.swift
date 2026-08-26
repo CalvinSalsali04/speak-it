@@ -37,7 +37,13 @@ enum PersistenceController {
         let initializationError: String?
     }
 
-    static let schema = Schema(versionedSchema: SpeakItSchemaV3.self)
+    /// The live model shape, never a frozen snapshot.
+    ///
+    /// `SpeakItMigrationPlan` above is the history the store might be arriving
+    /// as; this is the shape the app addresses once it is open. They are the
+    /// same schema today and must not be the same *declaration* — see
+    /// `SpeakItSchemaCurrent`.
+    static let schema = Schema(versionedSchema: SpeakItSchemaCurrent.self)
 
     private static let bootstrap: StoreBootstrap = {
         do {

@@ -24,17 +24,43 @@ Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a cus
 
 Appearance, setup completion, and reminder permissions have UI. The broader modeled `UserPreferences` fields do not yet have a dedicated settings screen.
 
-## Future data migrations — version 3 is not frozen yet
+## Future data migrations — version 3 is frozen
 
-The store is at schema version 3. `SpeakItSchemaV1` and `SpeakItSchemaV2` in `SchemaV1.swift` are frozen snapshots: each nests its own `@Model` copies of `CaptureSession`, `CapturedItem`, and `UserPreferences`, so `CaptureSession.self` inside those enums resolves to the historical shape. They must never be edited — they are what later versions migrate *from*, so changing one rewrites history and can make an existing device's store unreachable.
+The store is at schema version 3. `SpeakItSchemaV1`, `SpeakItSchemaV2` and
+`SpeakItSchemaV3` in `SchemaV1.swift` are all frozen snapshots now: each nests
+its own `@Model` copies of `CaptureSession`, `CapturedItem`, and
+`UserPreferences`, so `CaptureSession.self` inside those enums resolves to the
+historical shape. They must never be edited — they are what later versions
+migrate *from*, so changing one rewrites history and can make an existing
+device's store unreachable.
 
-**`SpeakItSchemaV3` nests nothing.** Its `models` array names the live global classes, so version 3 is currently defined as "whatever the models are right now".
+Version 3 used to nest nothing, which meant version 3 was defined as "whatever
+the models are right now". That was harmless only while version 3 was the newest
+version, and would have become a launch-time abort on the first version 4. It was
+frozen before any version 4 attribute existed, which is the only order that
+works.
 
-This is harmless *today*, because version 3 is the newest version and the live shape and the version 3 shape are genuinely the same object. It becomes a launch-time crash the moment a version 4 is added: adding an attribute to the live `CapturedItem` would silently redefine version 3 to include it too, both versions in the migration plan would describe the same schema, and opening any existing store would abort inside CoreData — which is exactly the failure that had to be fixed for version 2.
+**The live shape now lives in `SpeakItSchemaCurrent`**, which is the schema
+`PersistenceController` opens and the only declaration allowed to move. The two
+roles — "the shape the app addresses" and "a version some phone is arriving as"
+— are deliberately separate declarations, because collapsing them is the bug
+this file kept re-learning.
 
-**Therefore: freezing version 3 is a prerequisite for any future persisted-model change, not a follow-up to it.** Give `SpeakItSchemaV3` its own nested model copies first, then add the version 4 snapshot and an explicit migration stage. Doing them in the other order reproduces the original bug.
+`SchemaFreezeTests` holds the contract, anchored to
+`SpeakItTests/Fixtures/SpeakItVersionThree.store` — a real SQLite store written
+by the last build that shipped an unfrozen version 3 — and to the Core Data
+entity version hashes that build stamped into it. Two assertions matter:
 
-Note this is a latent trap rather than a live defect, so it is safe to ship and safe to run device QA against. It is only unsafe to *extend*.
+- the frozen snapshot still stamps those hashes, which fails if anyone edits
+  `SpeakItSchemaV3`;
+- the live models still stamp those hashes, which fails the moment a persisted
+  model gains, loses or retypes a property.
+
+**The second one is not a test to update.** When it fails, the fix is to add
+`SpeakItSchemaV4` with the live classes, add a lightweight (or custom) stage
+from version 3 to it, and repoint `SpeakItSchemaCurrent` at version 4. Editing
+the recorded hashes instead would silently redefine a version that people's
+phones already hold.
 
 ## UI validation
 
