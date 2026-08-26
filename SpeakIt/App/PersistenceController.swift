@@ -3,18 +3,27 @@ import SwiftData
 
 enum SpeakItMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [SpeakItSchemaV1.self, SpeakItSchemaV2.self, SpeakItSchemaV3.self]
+        [
+            SpeakItSchemaV1.self,
+            SpeakItSchemaV2.self,
+            SpeakItSchemaV3.self,
+            SpeakItSchemaV4.self
+        ]
     }
 
     static var stages: [MigrationStage] {
-        // Both stages are lightweight because both only add optional
-        // attributes. No existing value is read, rewritten, or at risk.
+        // Every stage is lightweight because every one of them only adds
+        // optional attributes. No existing value is read, rewritten, or at risk.
         //
         // What version 2's new columns *mean* for pre-existing rows is filled in
         // after the store opens, by an idempotent backfill that can safely run
-        // again if it is interrupted. Version 3 needs no such pass: a row that
-        // predates place reminders has no region to recover, so its wording is
-        // re-read on demand instead of being invented at migration time.
+        // again if it is interrupted. Versions 3 and 4 need no such pass, for
+        // the same reason and in opposite directions: a row that predates place
+        // reminders has no region to recover and is re-read from its wording on
+        // demand, and a row that predates recorded semantics has no verdict to
+        // recover at all. Reconstructing one from the fields the old build left
+        // behind is exactly the guess version 4 exists to replace, so those rows
+        // stay empty and keep the derivation they already had.
         [
             .lightweight(
                 fromVersion: SpeakItSchemaV1.self,
@@ -23,6 +32,10 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: SpeakItSchemaV2.self,
                 toVersion: SpeakItSchemaV3.self
+            ),
+            .lightweight(
+                fromVersion: SpeakItSchemaV3.self,
+                toVersion: SpeakItSchemaV4.self
             )
         ]
     }

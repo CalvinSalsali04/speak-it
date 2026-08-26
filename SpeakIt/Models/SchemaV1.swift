@@ -488,6 +488,189 @@ enum SpeakItSchemaV3: VersionedSchema {
     }
 }
 
+/// Version 4 records what the interpreter concluded, instead of making every
+/// screen guess it back.
+///
+/// The pipeline has always computed a `SemanticState` for each reading — how
+/// settled it is, and a named `SemanticGap` when it is not — and has always
+/// dropped it on the way into storage. So "Needs review" reconstructed a reason
+/// afterwards from the item's type, person and dates: a guess, made by code that
+/// never saw the sentence, which reported "Task or note?" for a capture whose
+/// actual problem was that a day had been named and never settled on.
+///
+/// Two optional attributes, so this is lightweight for the same reason versions
+/// 2 and 3 were: no existing row is read or rewritten.
+///
+/// There is deliberately no backfill. Version 2 could reconstruct temporal
+/// intent because the resolved dates it was recovering were already on every
+/// row; nothing equivalent is true here. What a build that never recorded a
+/// verdict would have concluded is not recoverable from the fields it left
+/// behind — that reconstruction is precisely the guess this version exists to
+/// replace. Legacy rows therefore keep `nil` and keep the old derivation, which
+/// is what they already had. Writing `resolved` across them would be the one
+/// unrecoverable mistake available here: it would claim every unreviewed row
+/// from before the upgrade had been understood.
+///
+/// Frozen from the moment it was created, unlike versions 1, 2 and 3, each of
+/// which had to be frozen later. Nothing in this enum may change.
+enum SpeakItSchemaV4: VersionedSchema {
+    static let versionIdentifier = Schema.Version(4, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [CaptureSession.self, CapturedItem.self, UserPreferences.self]
+    }
+
+    @Model
+    final class CaptureSession {
+        @Attribute(.unique) var id: UUID
+        var originalTranscription: String
+        var createdAt: Date
+        var captureSourceRawValue: String
+        var processingStatusRawValue: String
+        var processingError: String?
+
+        @Relationship(deleteRule: .cascade, inverse: \CapturedItem.captureSession)
+        var items: [CapturedItem]
+
+        init(
+            id: UUID = UUID(),
+            originalTranscription: String,
+            createdAt: Date = .now,
+            captureSourceRawValue: String = "inAppText",
+            processingStatusRawValue: String = "complete",
+            processingError: String? = nil,
+            items: [CapturedItem] = []
+        ) {
+            self.id = id
+            self.originalTranscription = originalTranscription
+            self.createdAt = createdAt
+            self.captureSourceRawValue = captureSourceRawValue
+            self.processingStatusRawValue = processingStatusRawValue
+            self.processingError = processingError
+            self.items = items
+        }
+    }
+
+    @Model
+    final class CapturedItem {
+        @Attribute(.unique) var id: UUID
+        var originalTextSegment: String
+        var displayTitle: String
+        var itemTypeRawValue: String
+        var categoryRawValue: String
+        var createdAt: Date
+        var dueDate: Date?
+        var reminderDate: Date?
+        var priorityRawValue: Int
+        var personName: String?
+        var completedAt: Date?
+        var isArchived: Bool
+        var archivedAt: Date?
+        var processingConfidence: Double
+        var needsClarification: Bool
+        var isReviewed: Bool
+        var lastModifiedAt: Date
+
+        /// The two attributes version 2 added.
+        var temporalIntentData: Data?
+        var temporalKindRawValue: String?
+
+        /// The two attributes version 3 added.
+        var locationIntentData: Data?
+        var reminderTriggerKindRawValue: String?
+
+        /// The two attributes version 4 added.
+        var semanticStateRawValue: String?
+        var semanticGapRawValue: String?
+
+        var captureSession: CaptureSession?
+
+        init(
+            id: UUID = UUID(),
+            originalTextSegment: String,
+            displayTitle: String,
+            itemTypeRawValue: String = "unclear",
+            categoryRawValue: String = "general",
+            createdAt: Date = .now,
+            dueDate: Date? = nil,
+            reminderDate: Date? = nil,
+            priorityRawValue: Int = 1,
+            personName: String? = nil,
+            completedAt: Date? = nil,
+            isArchived: Bool = false,
+            archivedAt: Date? = nil,
+            processingConfidence: Double = 1,
+            needsClarification: Bool = false,
+            isReviewed: Bool = false,
+            lastModifiedAt: Date = .now,
+            temporalIntentData: Data? = nil,
+            temporalKindRawValue: String? = nil,
+            locationIntentData: Data? = nil,
+            reminderTriggerKindRawValue: String? = nil,
+            semanticStateRawValue: String? = nil,
+            semanticGapRawValue: String? = nil,
+            captureSession: CaptureSession? = nil
+        ) {
+            self.id = id
+            self.originalTextSegment = originalTextSegment
+            self.displayTitle = displayTitle
+            self.itemTypeRawValue = itemTypeRawValue
+            self.categoryRawValue = categoryRawValue
+            self.createdAt = createdAt
+            self.dueDate = dueDate
+            self.reminderDate = reminderDate
+            self.priorityRawValue = priorityRawValue
+            self.personName = personName
+            self.completedAt = completedAt
+            self.isArchived = isArchived
+            self.archivedAt = archivedAt
+            self.processingConfidence = processingConfidence
+            self.needsClarification = needsClarification
+            self.isReviewed = isReviewed
+            self.lastModifiedAt = lastModifiedAt
+            self.temporalIntentData = temporalIntentData
+            self.temporalKindRawValue = temporalKindRawValue
+            self.locationIntentData = locationIntentData
+            self.reminderTriggerKindRawValue = reminderTriggerKindRawValue
+            self.semanticStateRawValue = semanticStateRawValue
+            self.semanticGapRawValue = semanticGapRawValue
+            self.captureSession = captureSession
+        }
+    }
+
+    @Model
+    final class UserPreferences {
+        @Attribute(.unique) var id: UUID
+        var morningBriefingEnabled: Bool
+        var morningBriefingTime: Date
+        var notificationPermissionState: String
+        var speechPermissionState: String
+        var microphonePermissionState: String
+        var shortcutSetupCompleted: Bool
+        var preferredCaptureMethodRawValue: String
+
+        init(
+            id: UUID = UUID(),
+            morningBriefingEnabled: Bool = false,
+            morningBriefingTime: Date = .now,
+            notificationPermissionState: String = "notDetermined",
+            speechPermissionState: String = "notDetermined",
+            microphonePermissionState: String = "notDetermined",
+            shortcutSetupCompleted: Bool = false,
+            preferredCaptureMethodRawValue: String = "inAppText"
+        ) {
+            self.id = id
+            self.morningBriefingEnabled = morningBriefingEnabled
+            self.morningBriefingTime = morningBriefingTime
+            self.notificationPermissionState = notificationPermissionState
+            self.speechPermissionState = speechPermissionState
+            self.microphonePermissionState = microphonePermissionState
+            self.shortcutSetupCompleted = shortcutSetupCompleted
+            self.preferredCaptureMethodRawValue = preferredCaptureMethodRawValue
+        }
+    }
+}
+
 /// The shape the running app opens, which is always the live model classes.
 ///
 /// Every numbered version above is history: a fixed record of what some
@@ -498,24 +681,24 @@ enum SpeakItSchemaV3: VersionedSchema {
 /// has no way to address.
 ///
 /// The two roles used to be filled by the same declaration, and that is the bug
-/// this file keeps re-learning: the newest numbered version pointed at the live
+/// this file kept re-learning: the newest numbered version pointed at the live
 /// classes, so it moved every time a model gained a field, and the moment a
 /// newer version was added it no longer described anything real. Separating
 /// "what the app runs on" from "what the store might be arriving as" is what
 /// stops the newest version from being redefined by the next edit.
 ///
-/// It carries version 3.0.0 because that is the version existing stores are
-/// stamped with and the live shape is still exactly frozen version 3 —
-/// `SchemaFreezeTests` fails if that ever stops being true without a new
-/// version being added. When version 4 arrives it takes over this role: add
-/// `SpeakItSchemaV4` with the live classes and its own identifier, point this
-/// alias at it, and leave version 3 frozen where it is.
-typealias SpeakItSchemaCurrent = SpeakItSchemaV3Live
+/// It carries version 4.0.0 because that is the version stores are stamped with
+/// and the live shape is exactly frozen version 4 — `SchemaFreezeTests` fails if
+/// that ever stops being true without a new version being added. When version 5
+/// arrives it takes over this role: add `SpeakItSchemaV5` with its own frozen
+/// copies, point this alias at a live twin of it, and leave version 4 where it
+/// is.
+typealias SpeakItSchemaCurrent = SpeakItSchemaV4Live
 
 /// The live-model schema `SpeakItSchemaCurrent` names. Declared separately only
-/// so the alias above can move to `SpeakItSchemaV4` in one line.
-enum SpeakItSchemaV3Live: VersionedSchema {
-    static let versionIdentifier = Schema.Version(3, 0, 0)
+/// so the alias above can move to the next version in one line.
+enum SpeakItSchemaV4Live: VersionedSchema {
+    static let versionIdentifier = Schema.Version(4, 0, 0)
 
     /// Live global classes, on purpose. See `SpeakItSchemaCurrent`.
     static var models: [any PersistentModel.Type] {

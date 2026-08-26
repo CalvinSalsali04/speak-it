@@ -573,6 +573,46 @@ enum SemanticState: Equatable, Sendable {
     case contested(SemanticGap)
     case unsupported(SemanticGap)
 
+    /// The state without its reason, as a stable string.
+    ///
+    /// Exists so the state can be written to a column. The enum itself carries
+    /// an associated value and cannot be `RawRepresentable`, and splitting it
+    /// into "which state" plus "which gap" is the smallest durable form that
+    /// loses nothing — every state is exactly one kind and at most one gap.
+    /// These strings are storage, so they may be added to and never renamed.
+    enum Kind: String, Equatable, Sendable, CaseIterable {
+        case resolved
+        case underspecified
+        case contested
+        case unsupported
+    }
+
+    var kind: Kind {
+        switch self {
+        case .resolved: return .resolved
+        case .underspecified: return .underspecified
+        case .contested: return .contested
+        case .unsupported: return .unsupported
+        }
+    }
+
+    /// Rebuilds a state from the two stored halves, or `nil` when they do not
+    /// describe one.
+    ///
+    /// A kind that requires a reason and arrives without one is not repaired
+    /// into `resolved` — that would turn a row nothing is known about into a row
+    /// claimed to be understood, which is the one direction this type must never
+    /// fail in. It reads back as unknown instead.
+    init?(kind: Kind, gap: SemanticGap?) {
+        switch (kind, gap) {
+        case (.resolved, nil): self = .resolved
+        case let (.underspecified, .some(gap)): self = .underspecified(gap)
+        case let (.contested, .some(gap)): self = .contested(gap)
+        case let (.unsupported, .some(gap)): self = .unsupported(gap)
+        default: return nil
+        }
+    }
+
     /// Whether this reading is allowed to schedule, notify, or change stored
     /// data.
     var permitsAction: Bool {
@@ -591,7 +631,9 @@ enum SemanticState: Equatable, Sendable {
 /// What specifically could not be determined. One case per structural question
 /// the pipeline actually asks, so a reason always points at a rule that can be
 /// read.
-enum SemanticGap: String, Equatable, Sendable {
+/// The raw values are persisted in `CapturedItem.semanticGapRawValue`, so a
+/// case may be added and none may ever be renamed.
+enum SemanticGap: String, Equatable, Sendable, CaseIterable {
     /// "remind me about the thing" — nothing to do.
     case missingAction
     /// A name that could be a person or could be an ordinary word.

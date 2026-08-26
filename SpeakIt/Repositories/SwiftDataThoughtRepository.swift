@@ -298,6 +298,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 temporalIntent: carriedIntent(from: item, toOccurrenceOn: nextDate),
                 captureSession: session
             )
+            // The next occurrence is generated, not interpreted, so it has no
+            // verdict of its own. It is the same reading as the one it came
+            // from, which is why the verdict is carried rather than left empty —
+            // empty means "nothing was ever recorded", and something was.
+            next.copySemanticRecord(from: item)
             modelContext.insert(next)
             RecurrenceStore.inherit(from: item.id, to: next.id)
             RecurrenceStore.link(completed: item.id, to: next.id)
@@ -1278,6 +1283,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 temporalIntent: carriedIntent(from: item, toOccurrenceOn: nextDate),
                 captureSession: session
             )
+            // Same reading, carried forward. See `advanceOverdueRecurrences`.
+            next.copySemanticRecord(from: item)
             modelContext.insert(next)
             RecurrenceStore.inherit(from: item.id, to: next.id)
             RecurrenceStore.link(completed: item.id, to: next.id)
@@ -1776,6 +1783,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         item.isReviewed = reviewed
         item.lastModifiedAt = .now
         item.temporalIntent = organization.temporalIntent
+        // The interpreter's own verdict, kept rather than dropped. Before
+        // version 4 this line did not exist and every screen that wanted the
+        // reason re-derived one from the fields below — see
+        // `CapturedItem.semanticState`.
+        item.semanticState = organization.state
         // A hand-set place outranks the sentence, exactly as a hand-set time
         // does. Reorganizing a capture must not revert it.
         if item.locationIntent?.isUserEdited != true {
@@ -1822,6 +1834,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             lastModifiedAt: .now,
             temporalIntent: organization.temporalIntent,
             locationIntent: organization.locationIntent,
+            semanticState: organization.state,
             captureSession: session
         )
         RecurrenceStore.set(organization.recurrenceRule, for: item.id)

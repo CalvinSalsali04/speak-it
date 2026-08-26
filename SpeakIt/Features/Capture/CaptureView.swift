@@ -1256,6 +1256,20 @@ struct CaptureView: View {
             return "I’m not sure whether that was one thought or more."
         case .confirmation:
             return "I’m not completely sure I understood that. Your original words are safe."
+        // What the interpreter actually could not settle, said in the person's
+        // own terms. Before version 4 recorded it, every one of these arrived
+        // here as `.type` or `.confirmation` and was answered with a question
+        // about the wrong thing.
+        case .missingAction:
+            return "I heard the reminder, but not what to do. Try again with the action."
+        case .ambiguousPerson:
+            return "I understood the thought, but not who it’s about."
+        case .reportedSpeech:
+            return "That sounded like someone else’s words. Your original words are safe."
+        case .ambiguousActor:
+            return "I couldn’t tell whether that was yours to do."
+        case .ambiguousTemporalScope:
+            return "I heard a day but not a decision. Try again with the one you meant."
         case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
             return "This needs a quick review. Your original words are safe."

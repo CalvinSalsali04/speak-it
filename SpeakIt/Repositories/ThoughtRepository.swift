@@ -258,6 +258,15 @@ struct CaptureCreationResult {
             switch item.clarificationRequirement {
             case .time, .person, .type, .splitDecision, .confirmation:
                 return true
+            // Every recorded semantic gap is the interpreter saying it could
+            // not settle the meaning, which is exactly what this asks. They
+            // read `true` for the same reason the guessed cases above do, and
+            // this also keeps the answer unchanged for the rows that used to
+            // reach here as `.type` or `.confirmation` before version 4 stored
+            // the real reason.
+            case .missingAction, .ambiguousPerson, .reportedSpeech,
+                 .ambiguousActor, .ambiguousTemporalScope:
+                return true
             case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
                  .locationTrigger, .combinedTimeAndPlace, .pendingOperation, .none:
                 return false

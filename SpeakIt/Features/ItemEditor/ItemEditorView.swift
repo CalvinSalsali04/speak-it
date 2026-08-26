@@ -324,15 +324,17 @@ struct ItemEditorView: View {
 
                 Section("Details") {
                     HStack {
-                        if requirement == .person {
+                        if requirement?.editorField == .person {
                             requiredLabel("Person", when: .person)
                                 .layoutPriority(1)
                         }
                         TextField(
-                            requirement == .person ? "Name" : "Person (optional)",
+                            requirement?.editorField == .person ? "Name" : "Person (optional)",
                             text: $personName
                         )
-                        .multilineTextAlignment(requirement == .person ? .trailing : .leading)
+                        .multilineTextAlignment(
+                            requirement?.editorField == .person ? .trailing : .leading
+                        )
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled(false)
                         .textContentType(.name)
@@ -628,7 +630,7 @@ struct ItemEditorView: View {
         when marker: ClarificationRequirement,
         systemImage: String? = nil
     ) -> some View {
-        let isRequired = requirement == marker
+        let isRequired = requirement?.editorField == marker
         HStack(spacing: 4) {
             if let systemImage {
                 Label(text, systemImage: systemImage)
@@ -878,7 +880,9 @@ struct ItemEditorView: View {
     /// Whether the gap this editor was opened for has been filled in, judged
     /// against the live edits rather than the saved item.
     private var isRequirementSatisfied: Bool {
-        switch requirement {
+        // A recorded gap is answered by the field the editor marked for it, so
+        // both read from `editorField` rather than repeating the mapping.
+        switch requirement?.editorField {
         case .time: hasReminder
         case .person: !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .type: itemType != .unclear
@@ -899,6 +903,11 @@ struct ItemEditorView: View {
         // `.pendingOperation` never reaches this form at all: `body` renders
         // `pendingOperationConfirmationView` for it instead.
         case .splitDecision, .confirmation, .pendingOperation, .none: false
+        // Unreachable: `editorField` maps every recorded gap onto one of the
+        // fields above. Spelled out rather than defaulted so a new gap has to
+        // decide what closes it.
+        case .missingAction, .ambiguousPerson, .reportedSpeech,
+             .ambiguousActor, .ambiguousTemporalScope: false
         }
     }
 

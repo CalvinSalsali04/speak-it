@@ -24,43 +24,52 @@ Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a cus
 
 Appearance, setup completion, and reminder permissions have UI. The broader modeled `UserPreferences` fields do not yet have a dedicated settings screen.
 
-## Future data migrations — version 3 is frozen
+## Future data migrations — every version is frozen
 
-The store is at schema version 3. `SpeakItSchemaV1`, `SpeakItSchemaV2` and
-`SpeakItSchemaV3` in `SchemaV1.swift` are all frozen snapshots now: each nests
-its own `@Model` copies of `CaptureSession`, `CapturedItem`, and
-`UserPreferences`, so `CaptureSession.self` inside those enums resolves to the
-historical shape. They must never be edited — they are what later versions
-migrate *from*, so changing one rewrites history and can make an existing
-device's store unreachable.
+The store is at schema version 4. `SpeakItSchemaV1` through `SpeakItSchemaV4` in
+`SchemaV1.swift` are all frozen snapshots: each nests its own `@Model` copies of
+`CaptureSession`, `CapturedItem`, and `UserPreferences`, so `CaptureSession.self`
+inside those enums resolves to the historical shape. They must never be edited —
+they are what later versions migrate *from*, so changing one rewrites history and
+can make an existing device's store unreachable.
 
-Version 3 used to nest nothing, which meant version 3 was defined as "whatever
-the models are right now". That was harmless only while version 3 was the newest
-version, and would have become a launch-time abort on the first version 4. It was
-frozen before any version 4 attribute existed, which is the only order that
-works.
+Versions 1, 2 and 3 each had to be frozen after the fact, and version 2's freeze
+was a repair to a launch abort that had already reached a build. Version 4 was
+frozen the moment it was created, which is the order that works.
 
-**The live shape now lives in `SpeakItSchemaCurrent`**, which is the schema
-`PersistenceController` opens and the only declaration allowed to move. The two
-roles — "the shape the app addresses" and "a version some phone is arriving as"
-— are deliberately separate declarations, because collapsing them is the bug
-this file kept re-learning.
+**The live shape lives in `SpeakItSchemaCurrent`**, an alias — today pointing at
+`SpeakItSchemaV4Live` — which is the schema `PersistenceController` opens and the
+only declaration allowed to move. The two roles, "the shape the app addresses"
+and "a version some phone is arriving as", are deliberately separate
+declarations.
 
-`SchemaFreezeTests` holds the contract, anchored to
+`SchemaFreezeTests` holds both contracts. Version 3 is anchored to
 `SpeakItTests/Fixtures/SpeakItVersionThree.store` — a real SQLite store written
 by the last build that shipped an unfrozen version 3 — and to the Core Data
-entity version hashes that build stamped into it. Two assertions matter:
+entity version hashes that build stamped into it. Version 4 is anchored to the
+hashes it declared when it was introduced. Two assertions matter:
 
-- the frozen snapshot still stamps those hashes, which fails if anyone edits
-  `SpeakItSchemaV3`;
-- the live models still stamp those hashes, which fails the moment a persisted
-  model gains, loses or retypes a property.
+- each frozen snapshot still stamps its own hashes, which fails if anyone edits
+  a numbered schema;
+- the live models still stamp version 4's hashes, which fails the moment a
+  persisted model gains, loses or retypes a property.
 
 **The second one is not a test to update.** When it fails, the fix is to add
-`SpeakItSchemaV4` with the live classes, add a lightweight (or custom) stage
-from version 3 to it, and repoint `SpeakItSchemaCurrent` at version 4. Editing
-the recorded hashes instead would silently redefine a version that people's
-phones already hold.
+`SpeakItSchemaV5` with its own frozen model copies, add a stage from version 4 to
+it, and repoint `SpeakItSchemaCurrent` at a live twin of version 5. Editing the
+recorded hashes instead would silently redefine a version that people's phones
+already hold.
+
+### Rows that predate version 4 carry no verdict
+
+Version 4 persists `SemanticState` and `SemanticGap`. There is deliberately no
+backfill: what a build that never recorded a verdict would have concluded is not
+recoverable from the fields it left behind, and reconstructing one is exactly the
+guess version 4 exists to replace. Pre-version-4 rows read back as
+`semanticState == nil` with `hasRecordedSemanticState == false`, and
+`clarificationRequirement` falls back to the derivation they already had. They are
+never labelled `resolved`, which would claim every unreviewed row from before the
+upgrade had been understood.
 
 ## UI validation
 
@@ -72,9 +81,11 @@ Standard-size Today and Memory layouts now have clean-state simulator visual cov
 
 `ClarificationRequirement` re-derives the likely reason from the item's own fields so Needs review can name the gap. It is right for the common cases and covered by unit tests, but it is a good guess rather than ground truth. Two limits follow. "Might be 2 thoughts" is inferred from a capture still holding its whole transcript with a clause connector in it, so a whole capture kept for a safety reason can read as a split candidate. And a low-confidence flag with no identifiable gap falls back to "Needs confirmation" even when extraction had a more specific doubt.
 
-Storing the reason on `CapturedItem` at capture time would make these exact and would let a row tap open straight to the field in question rather than the generic editor. It is a persisted-model change, so it needs a new schema version and an explicit migration stage.
+*Resolved for readings the interpreter judged.* Schema version 4 stores `SemanticState` and its `SemanticGap` on `CapturedItem`, and `clarificationRequirement` reports the recorded gap in preference to the derivation. The derivation still runs for rows with no recorded verdict — every row written before version 4 — and for the reasons that are not readings of a sentence at all: a held destructive request, a place trigger waiting on the device, a combined place-and-time request. Those are states of the device or the item and still outrank a recorded gap.
 
-**Half of this now exists in memory and does not reach the store.** `OrganizedThought.state` carries a `SemanticState` — `resolved`, `underspecified`, `contested`, `unsupported` — with a named `SemanticGap` saying what could not be determined (`ambiguousActor`, `ambiguousTemporalScope`, `reportedSpeech`, and so on). Rules branch on it, and `TemporalCommitment` is the first producer. It is dropped on the way into `CapturedItem`, so Needs review still re-derives its wording. Persisting it is the same schema-version change described above, and it would replace the guess rather than add to it.
+**This now reaches the store.** `OrganizedThought.state` carries a `SemanticState` — `resolved`, `underspecified`, `contested`, `unsupported` — with a named `SemanticGap` saying what could not be determined (`ambiguousActor`, `ambiguousTemporalScope`, `reportedSpeech`, and so on). Schema version 4 persists it as two raw strings and `CapturedItem.semanticState` reads it back.
+
+What remains open is coverage, not plumbing: `TemporalCommitment` is still the only producer of a non-resolved state, so `ambiguousTemporalScope` is the only gap any capture currently records. The other six are storable, round-trip, and have review copy, and will start appearing as more of the pipeline reports what it could not settle. Until then most flagged rows still reach review through the old derivation.
 
 ## Temporal intent is stored; two kinds of trigger are still missing
 

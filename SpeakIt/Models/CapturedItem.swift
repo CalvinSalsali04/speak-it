@@ -49,6 +49,26 @@ final class CapturedItem: Identifiable {
     /// together with the intent it describes.
     var reminderTriggerKindRawValue: String?
 
+    /// The interpreter's own verdict on this reading, as a stable string.
+    ///
+    /// Version 4 added this and `semanticGapRawValue` together. Before them the
+    /// pipeline computed a `SemanticState` for every row and then dropped it on
+    /// the way into storage, so every screen that wanted to know *why* an item
+    /// was unclear had to re-derive a reason from the item's other fields — a
+    /// guess, made after the fact, by code that never saw the sentence. What is
+    /// stored here is what the interpreter actually decided.
+    ///
+    /// `nil` means no interpretation was ever recorded for this row: every row
+    /// written before version 4, and the placeholder a capture holds while it is
+    /// still being organized. It deliberately does not mean `resolved` — see
+    /// `semanticState`.
+    var semanticStateRawValue: String?
+
+    /// What specifically could not be determined, when something could not.
+    /// `nil` for a resolved reading and for a row with no recorded state.
+    /// Always written together with `semanticStateRawValue`.
+    var semanticGapRawValue: String?
+
     var captureSession: CaptureSession?
 
     init(
@@ -71,6 +91,7 @@ final class CapturedItem: Identifiable {
         lastModifiedAt: Date = .now,
         temporalIntent: TemporalIntent? = nil,
         locationIntent: LocationIntent? = nil,
+        semanticState: SemanticState? = nil,
         captureSession: CaptureSession? = nil
     ) {
         self.id = id
@@ -93,6 +114,55 @@ final class CapturedItem: Identifiable {
         self.captureSession = captureSession
         self.temporalIntent = temporalIntent
         self.locationIntent = locationIntent
+        self.semanticState = semanticState
+    }
+
+    /// What the interpreter concluded about this reading, or `nil` when nothing
+    /// is known.
+    ///
+    /// Three different situations read back as `nil`, and none of them may be
+    /// silently promoted to `resolved`:
+    ///
+    /// - a row written before version 4, which no build ever recorded a state
+    ///   for. Its reading may have been perfect or hopeless; this schema has no
+    ///   way to find out, and inventing `resolved` would claim knowledge that
+    ///   does not exist. Use `hasRecordedSemanticState` to tell this apart from
+    ///   a state that was recorded;
+    /// - a state written by a newer build using a name this one does not know;
+    /// - a stored pair that does not describe a state — a gap without a kind, or
+    ///   a kind that needs a reason and has none.
+    ///
+    /// Every one of them falls back to the pre-version-4 behaviour, which is the
+    /// conservative direction: the reason is re-derived from the item's fields
+    /// rather than asserted.
+    var semanticState: SemanticState? {
+        get {
+            guard let semanticStateRawValue,
+                  let kind = SemanticState.Kind(rawValue: semanticStateRawValue) else { return nil }
+            let gap = semanticGapRawValue.flatMap(SemanticGap.init(rawValue:))
+            // A gap this build cannot name is not the same as no gap. Reporting
+            // the state without it would say "understood, nothing missing" about
+            // a row whose reason simply has a newer name.
+            if semanticGapRawValue != nil, gap == nil { return nil }
+            return SemanticState(kind: kind, gap: gap)
+        }
+        set {
+            semanticStateRawValue = newValue?.kind.rawValue
+            semanticGapRawValue = newValue?.gap?.rawValue
+        }
+    }
+
+    /// True when some build recorded a verdict here, including one this build
+    /// cannot read. The distinction legacy rows are told apart by.
+    var hasRecordedSemanticState: Bool { semanticStateRawValue != nil }
+
+    /// Carries a recorded verdict across to a row that is the same reading —
+    /// the next occurrence of a recurring item, which is generated rather than
+    /// interpreted. Copies the raw strings rather than the decoded state so a
+    /// value written by a newer build survives a round trip through this one.
+    func copySemanticRecord(from other: CapturedItem) {
+        semanticStateRawValue = other.semanticStateRawValue
+        semanticGapRawValue = other.semanticGapRawValue
     }
 
     /// The stored intent, or `nil` for a row written before version 2 that has
@@ -350,10 +420,14 @@ final class CapturedItem: Identifiable {
 
     /// What the person has to supply before this item can leave "Needs review".
     ///
-    /// `needsClarification` is a single Bool, so the reason extraction had at
-    /// capture time is not stored — see `ClarificationRequirement` for what that
-    /// costs. This re-derives the most likely reason from the item's own fields
-    /// so the review list can name the gap instead of saying "tap to find out".
+    /// Reads the interpreter's own answer when there is one. `needsClarification`
+    /// is a single Bool that says only *that* something is unclear; version 4
+    /// added `semanticState`, which says *what*, recorded at the moment the
+    /// decision was made. A row that carries a gap reports that gap.
+    ///
+    /// The re-derivation below it is what every row used to get and what rows
+    /// without a recorded state still get: a reason reconstructed from the
+    /// item's own fields, which is a good guess rather than ground truth.
     var clarificationRequirement: ClarificationRequirement? {
         guard needsClarification else { return nil }
 
@@ -384,6 +458,15 @@ final class CapturedItem: Identifiable {
         if temporalIntent?.unsupportedTrigger == .condition {
             return .unsupportedConditionTrigger
         }
+
+        // Everything above reads a structured fact the interpreter or the
+        // device recorded. Everything below is the pre-version-4 guess: a reason
+        // reconstructed from type, person, and dates by code that never saw the
+        // sentence. When the interpreter recorded what it could not determine,
+        // that answer supersedes the guess entirely — it is the same question,
+        // answered by the stage that actually knows.
+        if let gap = semanticState?.gap { return ClarificationRequirement(gap) }
+
         if holdsWholeUnsplitTranscript { return .splitDecision }
         if itemType == .unclear { return .type }
         let hasPerson = personName?
@@ -450,6 +533,29 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// not to classify anything. See `PendingOperationStore`.
     case pendingOperation
 
+    // The cases below name a `SemanticGap` the interpreter recorded, rather
+    // than a shape guessed from the item's fields afterwards. Each one exists
+    // because no case above it carried that meaning: the two that did —
+    // `unsupportedCondition` and `uncertainClauseBoundary` — reuse
+    // `unsupportedConditionTrigger` and `splitDecision` instead of being
+    // duplicated here.
+
+    /// "Remind me about the thing" — understood, with nothing in it to do.
+    case missingAction
+    /// A name that reads as a person in one reading and an ordinary word in
+    /// another. Different from `person`, which is a follow-up with nobody named
+    /// at all.
+    case ambiguousPerson
+    /// The content belongs to somebody else's words, so whether it is the
+    /// person's own to do was never established.
+    case reportedSpeech
+    /// The structure does not say whose action this is.
+    case ambiguousActor
+    /// A day or a clock was stated and never settled on — "Tuesday or
+    /// Wednesday", "maybe Thursday", "was the meeting Wednesday". The words are
+    /// kept and nothing is scheduled.
+    case ambiguousTemporalScope
+
     /// Shown on the review row. Names the gap in the person's own terms.
     var listLabel: String {
         switch self {
@@ -463,6 +569,11 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .locationTrigger: "Place reminder"
         case .combinedTimeAndPlace: "Needs review"
         case .pendingOperation: "Confirm first"
+        case .missingAction: "Needs something to do"
+        case .ambiguousPerson: "Who is this about?"
+        case .reportedSpeech: "Someone else's words"
+        case .ambiguousActor: "Whose to do?"
+        case .ambiguousTemporalScope: "Time not settled"
         }
     }
 
@@ -481,6 +592,46 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .combinedTimeAndPlace:
             "Place and time conditions aren't supported together yet — choose one"
         case .pendingOperation: "That affects everything — confirm or decline"
+        case .missingAction: "Add what to do, or keep this as a note"
+        case .ambiguousPerson: "Confirm who this is about"
+        case .reportedSpeech: "This quotes someone else — confirm it is yours to do"
+        case .ambiguousActor: "Confirm whose task this is"
+        case .ambiguousTemporalScope: "Pick the day you meant"
+        }
+    }
+
+    /// The editor field that can answer this, when one field can.
+    ///
+    /// The editor marks a field with an asterisk for the gap the person came to
+    /// close. A recorded gap names the *reason*, which is not always the same
+    /// word as the field: "time not settled" and "needs a time" are different
+    /// answers to "why", and both are closed by setting a reminder. Without this
+    /// the new cases would leave the form with nothing marked at all.
+    var editorField: ClarificationRequirement? {
+        switch self {
+        case .ambiguousTemporalScope: .time
+        case .ambiguousPerson: .person
+        case .missingAction, .ambiguousActor, .reportedSpeech: .type
+        case .time, .person, .type, .splitDecision, .confirmation,
+             .unsupportedLocationTrigger, .unsupportedConditionTrigger,
+             .locationTrigger, .combinedTimeAndPlace, .pendingOperation: self
+        }
+    }
+
+    /// The review vocabulary for a reason the interpreter recorded.
+    ///
+    /// Total on purpose: every gap has to land somewhere a person can read, and
+    /// adding a `SemanticGap` without deciding how it reads is a compile error
+    /// rather than a row that silently says "Needs confirmation".
+    init(_ gap: SemanticGap) {
+        switch gap {
+        case .missingAction: self = .missingAction
+        case .ambiguousPerson: self = .ambiguousPerson
+        case .reportedSpeech: self = .reportedSpeech
+        case .unsupportedCondition: self = .unsupportedConditionTrigger
+        case .uncertainClauseBoundary: self = .splitDecision
+        case .ambiguousActor: self = .ambiguousActor
+        case .ambiguousTemporalScope: self = .ambiguousTemporalScope
         }
     }
 }

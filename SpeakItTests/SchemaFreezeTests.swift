@@ -44,6 +44,25 @@ final class SchemaFreezeTests: XCTestCase {
         "UserPreferences": "Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8="
     ]
 
+    /// The shape version 4 was defined as when it was introduced.
+    ///
+    /// Version 3's hashes were read out of a store a shipped build wrote, which
+    /// is the strongest anchor available and is not available here — no build
+    /// has shipped version 4 yet. These are therefore what `SpeakItSchemaV4`
+    /// declares, recorded at the moment it was declared, and they serve the same
+    /// purpose from then on: the live models are checked against them, so the
+    /// next persisted-model change fails a test instead of silently redefining a
+    /// version.
+    ///
+    /// `CaptureSession` and `UserPreferences` are unchanged from version 3 —
+    /// only `CapturedItem` gained the two semantic attributes, and the hashes
+    /// say so.
+    private static let versionFourHashes: [String: String] = [
+        "CaptureSession": "nilPIQj+q/80eRq7ELBuQBdnQiZ2/hkGMV4TQ6QxEHI=",
+        "CapturedItem": "Y4Dzp7vh3yJKc5y1vpl8pPx4+Ad6okEtO2EMGXG7Qt4=",
+        "UserPreferences": "Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8="
+    ]
+
     /// The identifiers the seeded fixture carries, so a fetch can be checked
     /// against what was written rather than against titles alone.
     private enum Seeded {
@@ -164,17 +183,34 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(try versionIdentifiers(atStore: storeURL("frozen-id")), ["3.0.0"])
     }
 
-    /// The gate that makes freezing version 3 worth doing.
+    func testFrozenVersionFourStampsItsRecordedShape() throws {
+        let hashes = try versionHashes(
+            ofStoreCreatedFrom: Schema(versionedSchema: SpeakItSchemaV4.self),
+            named: "frozen-v4"
+        )
+
+        XCTAssertEqual(
+            hashes,
+            Self.versionFourHashes,
+            """
+            SpeakItSchemaV4 no longer describes what version 4 stores hold. \
+            It was frozen the moment it was created and is history now — add \
+            SpeakItSchemaV5 instead of editing it.
+            """
+        )
+    }
+
+    /// The gate that makes freezing every version worth doing.
     ///
     /// Adding, removing or retyping any persisted property on `CaptureSession`,
     /// `CapturedItem` or `UserPreferences` changes the live hashes and fails
     /// here. That is the point: it means the store shape has moved and the
-    /// change needs a `SpeakItSchemaV4` snapshot plus a migration stage, not a
-    /// silent redefinition of a version people already hold.
+    /// change needs its own snapshot plus a migration stage, not a silent
+    /// redefinition of a version people already hold.
     ///
-    /// Updating the expectation is never the fix. Adding version 4 — and then
-    /// pointing `SpeakItSchemaCurrent` at it — is.
-    func testLiveModelsStillMatchTheFrozenVersionThreeShape() throws {
+    /// **Updating the expectation is never the fix**, and neither is editing a
+    /// frozen schema. Adding the next version is.
+    func testLiveModelsStillMatchTheFrozenNewestVersion() throws {
         let live = try versionHashes(
             ofStoreCreatedFrom: PersistenceController.schema,
             named: "live"
@@ -182,24 +218,48 @@ final class SchemaFreezeTests: XCTestCase {
 
         XCTAssertEqual(
             live,
-            Self.historicalVersionThreeHashes,
+            Self.versionFourHashes,
             """
-            A persisted model changed shape without a new schema version. \
-            Freeze nothing and edit nothing here: add SpeakItSchemaV4 with the \
-            live classes, add a migration stage from version 3 to it, and point \
-            SpeakItSchemaCurrent at version 4.
+            A persisted model changed shape without a new schema version. Do \
+            not edit this expectation and do not edit SpeakItSchemaV4 — both \
+            are history. Add SpeakItSchemaV5 with its own frozen model copies, \
+            add a migration stage from version 4 to it, and point \
+            SpeakItSchemaCurrent at a live twin of version 5.
             """
         )
     }
 
-    func testTheMigrationPlanStillEndsAtTheFrozenVersionThree() {
-        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 3)
+    func testTheMigrationPlanStillEndsAtTheFrozenNewestVersion() {
+        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 4)
         XCTAssertTrue(
-            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV3.Type,
+            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV4.Type,
             "The newest version in the plan must be the frozen snapshot"
         )
         XCTAssertEqual(SpeakItSchemaV3.versionIdentifier, Schema.Version(3, 0, 0))
-        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(3, 0, 0))
+        XCTAssertEqual(SpeakItSchemaV4.versionIdentifier, Schema.Version(4, 0, 0))
+        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(4, 0, 0))
+    }
+
+    /// Version 3's snapshot must be untouched by version 4 existing. This is
+    /// the same assertion `testFrozenVersionThreeStampsTheRecordedHistoricalHashes`
+    /// makes, stated against the newest version so the pair reads as one claim:
+    /// the two versions describe different schemas, which is the whole reason
+    /// freezing works.
+    func testVersionThreeAndVersionFourDescribeDifferentSchemas() throws {
+        XCTAssertNotEqual(
+            Self.historicalVersionThreeHashes["CapturedItem"],
+            Self.versionFourHashes["CapturedItem"],
+            "Version 4 added attributes, so its CapturedItem cannot hash the same"
+        )
+        XCTAssertEqual(
+            Self.historicalVersionThreeHashes["CaptureSession"],
+            Self.versionFourHashes["CaptureSession"],
+            "Version 4 did not touch CaptureSession"
+        )
+        XCTAssertEqual(
+            Self.historicalVersionThreeHashes["UserPreferences"],
+            Self.versionFourHashes["UserPreferences"]
+        )
     }
 
     // MARK: - A real version 3 store still opens
@@ -261,6 +321,64 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(preferences.map(\.id), [Seeded.preferences])
         XCTAssertEqual(preferences[0].preferredCaptureMethod, .inAppVoice)
         XCTAssertTrue(preferences[0].shortcutSetupCompleted)
+
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"], "The store must land on version 4")
+    }
+
+    /// The legacy contract, checked against the one store in this repository
+    /// that a build without semantic persistence actually wrote.
+    ///
+    /// Every row here predates version 4, so no verdict exists for any of them.
+    /// The migration must say exactly that — not `resolved`, which would claim
+    /// these five readings were understood, and not a reason reconstructed from
+    /// their fields, which is the guess version 4 exists to replace.
+    func testLegacyRowsCarryNoInventedSemanticVerdict() throws {
+        let url = try realVersionThreeStore()
+        let container = try openAsReleaseCandidate(at: url)
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+
+        XCTAssertEqual(items.count, 5)
+        for item in items {
+            XCTAssertFalse(
+                item.hasRecordedSemanticState,
+                "\(item.displayTitle) was given a verdict the old build never made"
+            )
+            XCTAssertNil(item.semanticState)
+            XCTAssertNil(item.semanticStateRawValue)
+            XCTAssertNil(item.semanticGapRawValue)
+        }
+    }
+
+    /// A legacy row must reach exactly the destination it reached before, and
+    /// must not become actionable, scheduled or reviewed because a column was
+    /// added beside it.
+    func testMigrationToVersionFourChangesNoLegacyBehaviour() throws {
+        let url = try realVersionThreeStore()
+        let container = try openAsReleaseCandidate(at: url)
+        let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+
+        let note = try XCTUnwrap(items.first { $0.id == Seeded.note })
+        XCTAssertTrue(note.belongsInMemory)
+        XCTAssertFalse(note.belongsInToday)
+        XCTAssertFalse(note.needsClarification)
+        XCTAssertNil(note.clarificationRequirement)
+
+        let placed = try XCTUnwrap(items.first { $0.id == Seeded.placed })
+        XCTAssertTrue(placed.needsClarification)
+        XCTAssertEqual(
+            placed.clarificationRequirement,
+            .locationTrigger,
+            "A legacy place reminder keeps the reason it had before version 4"
+        )
+
+        let timed = try XCTUnwrap(items.first { $0.id == Seeded.timed })
+        XCTAssertTrue(timed.belongsInToday)
+        XCTAssertEqual(timed.reminderDate, Seeded.due)
+
+        let done = try XCTUnwrap(items.first { $0.id == Seeded.done })
+        XCTAssertTrue(done.isCompleted)
+        let archived = try XCTUnwrap(items.first { $0.id == Seeded.archived })
+        XCTAssertTrue(archived.isArchived)
     }
 
     func testNoStoredReminderMovesWhenVersionThreeIsFrozen() throws {
@@ -332,20 +450,24 @@ final class SchemaFreezeTests: XCTestCase {
                 [Seeded.timed, Seeded.placed, Seeded.done, Seeded.note, Seeded.archived],
                 "Pass \(pass) changed the library"
             )
-            XCTAssertEqual(try versionIdentifiers(atStore: url), ["3.0.0"], "Pass \(pass) moved the store's version")
+            XCTAssertEqual(
+                try versionIdentifiers(atStore: url),
+                ["4.0.0"],
+                "Pass \(pass) left the store somewhere other than the newest version"
+            )
         }
     }
 
     // MARK: - Fresh installs and older stores
 
-    func testAFreshStoreIsCreatedAtTheHistoricalVersionThreeShape() throws {
+    func testAFreshStoreIsCreatedAtTheNewestVersionShape() throws {
         let url = storeURL("fresh")
         _ = try openAsReleaseCandidate(at: url)
 
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["3.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
         XCTAssertEqual(
             try versionHashes(atStore: url),
-            Self.historicalVersionThreeHashes,
+            Self.versionFourHashes,
             "A first launch must produce the same store shape an upgrade lands on"
         )
     }
@@ -371,9 +493,9 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(items.map(\.displayTitle), ["Water the plants"])
     }
 
-    /// Version 2 is the version most existing devices actually upgrade from,
-    /// and freezing version 3 must not disturb the stage that carries them.
-    func testAVersionTwoStoreStillMigratesToVersionThree() throws {
+    /// Version 2 is a version real devices upgrade from, and it must still
+    /// climb the whole ladder in one open.
+    func testAVersionTwoStoreStillMigratesToTheNewestVersion() throws {
         let url = storeURL("v2")
         let itemID = UUID()
         let sessionID = UUID()
@@ -413,13 +535,18 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(items[0].displayTitle, "Book the dentist")
         XCTAssertNil(items[0].locationIntentData, "Version 3's attribute arrives empty, not invented")
         XCTAssertNil(items[0].reminderTriggerKindRawValue)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["3.0.0"])
+        XCTAssertFalse(
+            items[0].hasRecordedSemanticState,
+            "Version 4's attribute arrives empty too — no verdict is recoverable for it"
+        )
+        XCTAssertNil(items[0].semanticState)
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
     }
 
     /// The oldest store shape, kept here beside the others so the whole ladder
     /// is provable in one place. `UpgradeDurabilityTests` exercises what the
     /// launch sequence then does with the rows.
-    func testAVersionOneStoreStillMigratesToVersionThree() throws {
+    func testAVersionOneStoreStillMigratesToTheNewestVersion() throws {
         let url = storeURL("v1")
         let itemID = UUID()
 
@@ -450,6 +577,8 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), [itemID])
         XCTAssertEqual(items[0].originalTextSegment, "The spare key is under the third planter")
         XCTAssertNil(items[0].locationIntentData)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["3.0.0"])
+        XCTAssertFalse(items[0].hasRecordedSemanticState)
+        XCTAssertNil(items[0].semanticState)
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
     }
 }

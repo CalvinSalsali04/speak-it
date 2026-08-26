@@ -1165,3 +1165,60 @@ discoverable only on a phone that had already taken the update.
 
 Nothing about interpretation changed: the corpus is byte-identical across all
 four renderings, and no file the rules path compiles was touched.
+
+## 2026-08-26 — The interpreter's verdict is stored, not re-guessed
+
+The pipeline has always decided how settled a reading is. `OrganizedThought`
+carries a `SemanticState` — `resolved`, `underspecified`, `contested`,
+`unsupported` — with a named `SemanticGap` when it is not resolved, and that
+value was computed for every capture and then dropped between the organizer and
+the row. So every screen that needed to explain *why* something was unclear
+reconstructed a reason from the item's other fields, after the fact, in code
+that never saw the sentence.
+
+The reconstruction was wrong in a way a person notices. "Let me know if the
+meeting is Tuesday or Wednesday" names two days and settles on neither, so
+`TemporalCommitment` returns `.underspecified(.ambiguousTemporalScope)`, the
+date is dropped and the type is set to `.unclear` — and `.unclear` was the only
+trace of any of that left on the row. Needs review therefore asked "Task or
+note?", a question about something the person had been perfectly clear about,
+while the thing they actually left open went unmentioned.
+
+Schema version 4 adds two optional columns, `semanticStateRawValue` and
+`semanticGapRawValue`. Two raw strings rather than one blob because there is
+exactly one state and at most one gap per reading, and neither needs to be
+queried; the enum carries an associated value and cannot be `RawRepresentable`,
+so `SemanticState.Kind` names the state and `init?(kind:gap:)` puts the two
+halves back together. A kind that requires a reason and arrives without one is
+**not** repaired into `resolved` — it reads back as unknown, which is the only
+direction this type is allowed to fail in.
+
+`CapturedItem.clarificationRequirement` now reports the recorded gap in
+preference to the derivation, and the derivation stays for everything the gap
+does not answer. Two classes of reason deliberately still outrank it: a held
+destructive request, and what the device is waiting for on a place trigger.
+Neither is a reading of a sentence — they are facts about the item and the
+phone — and answering them with what the wording left open would send the person
+to the wrong screen. Five review reasons were added for gaps no existing case
+carried; the two that were already carried (`unsupportedCondition`,
+`uncertainClauseBoundary`) reuse the cases that already said the right thing
+rather than being duplicated.
+
+**No backfill, on purpose.** Version 2 could reconstruct temporal intent because
+the resolved dates it was recovering were already on every row. Nothing
+equivalent is true here: what a build that never recorded a verdict would have
+concluded is not in the fields it left behind, and inferring it is precisely the
+guess this version exists to replace. Pre-version-4 rows keep `nil` and keep the
+old derivation, and `hasRecordedSemanticState` makes that observable. Writing
+`resolved` across them was the one unrecoverable option available and would have
+claimed that every unreviewed row from before the upgrade had been understood.
+
+The state is a record of a decision, not an input to one. Nothing about
+destination, actionability, scheduling or typing reads it, which is why the
+corpus is byte-identical across all four renderings and the held-out numbers did
+not move. Wiring `permitsAction` into scheduling would be a semantic change and
+belongs to whatever pass decides to make it.
+
+Generated recurrence occurrences carry the verdict of the row they came from
+rather than being left empty. They are the same reading, not a new one, and
+empty means "nothing was ever recorded" — which would be false.
