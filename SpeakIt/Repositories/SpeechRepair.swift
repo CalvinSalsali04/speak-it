@@ -1313,6 +1313,26 @@ enum ClauseJuxtaposition {
         "immediately", "already", "simply", "even", "quickly", "quietly", "just",
     ]
 
+    /// Whether the text ends on a verb of saying, so that the verb after it
+    /// opens a reported proposition rather than a fresh instruction.
+    ///
+    /// "Sarah said call Mike tomorrow" is a report of what Sarah asked for. Cut
+    /// at "call" it became a Memory note reading "Sarah said" beside a Today
+    /// row reading "Call Mike tomorrow" — an errand the person never took on,
+    /// indistinguishable from having said "call Mike tomorrow" themselves.
+    ///
+    /// Gated on `ClauseScope.reportingVerb` rather than by adding "said" to the
+    /// word set below, because the set is a list of words and this is a
+    /// grammatical class: every verb of saying licenses the same complement,
+    /// and the next one to arrive should not need its own defect first.
+    private static func endsOnReportedSpeech(_ head: String) -> Bool {
+        head.range(
+            of: #"(?i)\b\#(ClauseScope.reportingVerb)"#
+                + #"(?:\s+(?:me|us|him|her|them|everyone))?\s*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     /// Whether the text ends inside a place or condition clause that has not
     /// reached its verb yet.
     ///
@@ -1354,6 +1374,7 @@ enum ClauseJuxtaposition {
                     ?? ""
             }
             guard !hasOpenTriggerClause(head),
+                  !endsOnReportedSpeech(head),
                   let last = recent.last,
                   !clauseInternalLead.contains(last),
                   // A hedge can hide the modal it belongs to — "should probably

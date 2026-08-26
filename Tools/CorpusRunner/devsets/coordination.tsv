@@ -1,0 +1,158 @@
+# Coordination development set.
+#
+# Written to develop the full-context coordination fix. NOT held out: these are
+# for iteration. Expectations are the clause segmentation a careful reader would
+# give, written before the baseline was measured.
+#
+# The unit is `RuleBasedThoughtExtractor.splitClauses`, printed by
+# `probe --clauses`, because that is where the coordination decision is made.
+# Downstream the shopping grouper splits products into their own rows, which
+# would otherwise drown the signal this set exists to measure.
+#
+# Columns: id, utterance, expected clauses joined by " | ", family.
+#
+# The three structural targets:
+#   NP coordination  "buy milk and eggs"          one predicate, coordinated objects
+#   VP coordination  "buy milk and text Daniel"   two predicates, shared subject
+#   S  coordination  "buy milk and Sarah hates sushi"  right conjunct has its own subject
+#
+id	utterance	expected	family
+# --- NP coordination: coordinated objects stay in one clause -----------------
+NP01	buy milk and eggs	buy milk and eggs	np-objects
+NP02	get bread and butter	get bread and butter	np-objects
+NP03	pick up bananas and apples	pick up bananas and apples	np-objects
+NP04	buy milk eggs and bread	buy milk eggs and bread	np-objects
+NP05	grab coffee sugar and cream	grab coffee sugar and cream	np-objects
+NP06	order paper towels and dish soap	order paper towels and dish soap	np-objects
+NP07	get advil bandaids and vitamins	get advil bandaids and vitamins	np-objects
+NP08	buy shampoo and conditioner	buy shampoo and conditioner	np-objects
+NP09	pick up the dry cleaning and the parcel	pick up the dry cleaning and the parcel	np-objects
+NP10	bring a charger and headphones	bring a charger and headphones	np-objects
+# --- NP coordination with unknown products (not in any vocabulary) -----------
+UP01	buy gochujang and mirin	buy gochujang and mirin	unknown-products
+UP02	get harissa and tahini	get harissa and tahini	unknown-products
+UP03	order kombucha and kefir	order kombucha and kefir	unknown-products
+UP04	pick up chia seeds and flaxseed	pick up chia seeds and flaxseed	unknown-products
+UP05	buy quinoa and farro	buy quinoa and farro	unknown-products
+UP06	get halloumi and labneh	get halloumi and labneh	unknown-products
+UP07	buy plantains and cassava	buy plantains and cassava	unknown-products
+UP08	order sriracha and ponzu	order sriracha and ponzu	unknown-products
+# --- NP coordination where the product word is also a common verb ------------
+VB01	buy chicken and rice	buy chicken and rice	product-verb-homographs
+VB02	get water and ice	get water and ice	product-verb-homographs
+VB03	buy butter and jam	buy butter and jam	product-verb-homographs
+VB04	pick up salt and pepper	pick up salt and pepper	product-verb-homographs
+VB05	get juice and milk	get juice and milk	product-verb-homographs
+VB06	buy stock and cream	buy stock and cream	product-verb-homographs
+VB07	order squash and corn	order squash and corn	product-verb-homographs
+VB08	get dates and figs	get dates and figs	product-verb-homographs
+# --- NP coordination on brands ------------------------------------------------
+BR01	buy Tylenol and Advil	buy Tylenol and Advil	brands
+BR02	get Coke and Sprite	get Coke and Sprite	brands
+BR03	pick up Cheerios and Nutella	pick up Cheerios and Nutella	brands
+BR04	buy Colgate and Listerine	buy Colgate and Listerine	brands
+BR05	order Huggies and Pampers	order Huggies and Pampers	brands
+# --- VP coordination: two predicates, shared subject, two clauses ------------
+VP01	buy milk and text Daniel	buy milk | text Daniel	vp-predicates
+VP02	call the dentist and book the car in	call the dentist | book the car in	vp-predicates
+VP03	pick up the parcel and drop off the rental	pick up the parcel | drop off the rental	vp-predicates
+VP04	email Priya and file the expenses	email Priya | file the expenses	vp-predicates
+VP05	wash the car and mow the lawn	wash the car | mow the lawn	vp-predicates
+VP06	book the flights and renew my passport	book the flights | renew my passport	vp-predicates
+VP07	pay the hydro bill and cancel the gym	pay the hydro bill | cancel the gym	vp-predicates
+VP08	print the forms and sign them	print the forms | sign them	vp-predicates
+VP09	call the vet and order the dog food	call the vet | order the dog food	vp-predicates
+VP10	text Dana and confirm the booking	text Dana | confirm the booking	vp-predicates
+VP11	buy milk and call the plumber	buy milk | call the plumber	vp-predicates
+VP12	get gas and check the tire pressure	get gas | check the tire pressure	vp-predicates
+# --- S coordination: right conjunct brings its own subject -------------------
+SC01	buy milk and Sarah hates sushi	buy milk | Sarah hates sushi	s-coordination
+SC02	book the flights and Rose is coming too	book the flights | Rose is coming too	s-coordination
+SC03	text Dana and the meeting moved to Thursday	text Dana | the meeting moved to Thursday	s-coordination
+SC04	call the vet and the dog needs his shots	call the vet | the dog needs his shots	s-coordination
+SC05	pay the bill and the landlord is raising rent	pay the bill | the landlord is raising rent	s-coordination
+SC06	order the cake and Priya is allergic to nuts	order the cake | Priya is allergic to nuts	s-coordination
+SC07	email the team and the deadline slipped a week	email the team | the deadline slipped a week	s-coordination
+# --- Multiple people: people split, common nouns do not ----------------------
+PP01	call Alex and Sam	call Alex | Sam	multiple-people
+PP02	email Priya and Dana	email Priya | Dana	multiple-people
+PP03	text Mike and Sarah	text Mike | Sarah	multiple-people
+PP04	call mom and dad	call mom and dad	multiple-people
+PP05	call mom tomorrow and alex friday	call mom tomorrow | alex friday	multiple-people
+PP06	call Mom tomorrow and Alex Friday	call Mom tomorrow | Alex Friday	multiple-people
+# --- Lowercased names: the reading must not depend on capitalization ---------
+LC01	call alex and sam	call alex | sam	lowercased-names
+LC02	email priya and dana	email priya | dana	lowercased-names
+LC03	text mike and sarah	text mike | sarah	lowercased-names
+LC04	buy milk and text daniel	buy milk | text daniel	lowercased-names
+LC05	book the flights and rose is coming too	book the flights | rose is coming too	lowercased-names
+LC06	buy milk and sarah hates sushi	buy milk | sarah hates sushi	lowercased-names
+# --- Ordinary words used as names --------------------------------------------
+OW01	call Hope and Grace	call Hope | Grace	ordinary-word-names
+OW02	text Summer and Autumn	text Summer | Autumn	ordinary-word-names
+OW03	email Rose and Daisy	email Rose | Daisy	ordinary-word-names
+OW04	buy rose and daisy seeds	buy rose and daisy seeds	ordinary-word-names
+OW05	call Mark and Bill	call Mark | Bill	ordinary-word-names
+OW06	pay the mark and the bill	pay the mark and the bill	ordinary-word-names
+# --- Occupations are described targets, not a second thought -----------------
+OC01	call the dentist and the plumber	call the dentist and the plumber	occupations
+OC02	call the dentist Friday and the plumber Monday	call the dentist Friday | the plumber Monday	occupations
+OC03	email the landlord and the agent	email the landlord and the agent	occupations
+OC04	call the vet and the groomer	call the vet and the groomer	occupations
+# --- Temporal phrases ---------------------------------------------------------
+TM01	call the dentist at 9 and go to Costco	call the dentist at 9 | go to Costco	temporal
+TM02	gym at 6 and dinner at 8	gym at 6 | dinner at 8	temporal
+TM03	meeting Tuesday and Thursday	meeting Tuesday and Thursday	temporal
+TM04	standup every Tuesday and Thursday	standup every Tuesday and Thursday	temporal
+TM05	call Priya tomorrow and book the car Friday	call Priya tomorrow | book the car Friday	temporal
+TM06	dentist at 2 and pick up the kids at 3	dentist at 2 | pick up the kids at 3	temporal
+# --- Communication complements: the message content stays with the verb ------
+CM01	tell Mike the meeting is cancelled	tell Mike the meeting is cancelled	communication-complement
+CM02	text Mike that the deal is off	text Mike that the deal is off	communication-complement
+CM03	tell Mike the meeting is cancelled and Sarah is running late	tell Mike the meeting is cancelled and Sarah is running late	communication-complement
+CM04	text Dana that I am running late and will call after	text Dana that I am running late and will call after	communication-complement
+CM05	email the team that the release slipped and the demo moved	email the team that the release slipped and the demo moved	communication-complement
+CM06	text Mike that the meeting is cancelled and remind me to call Sarah	text Mike that the meeting is cancelled | remind me to call Sarah	communication-complement
+CM07	tell Priya I will be late and book the room	tell Priya I will be late | book the room	communication-complement
+# --- Reported speech: the right conjunct belongs to what was said ------------
+RS01	Sarah said the meeting is off	Sarah said the meeting is off	reported-speech
+RS02	Sarah said the meeting is off and the demo moved	Sarah said the meeting is off and the demo moved	reported-speech
+RS03	Mike told me the deal closed and the team is celebrating	Mike told me the deal closed and the team is celebrating	reported-speech
+RS04	Sarah said call Mike tomorrow	Sarah said call Mike tomorrow	reported-speech
+RS05	Priya mentioned the office is closed and parking is free	Priya mentioned the office is closed and parking is free	reported-speech
+# --- Negation ------------------------------------------------------------------
+NG01	don't call the plumber	don't call the plumber	negation
+NG02	remind me not to eat before the blood test	remind me not to eat before the blood test	negation
+NG03	don't buy milk and don't call the plumber	don't buy milk | don't call the plumber	negation
+NG04	buy milk and don't forget the eggs	buy milk | don't forget the eggs	negation
+NG05	remind me not to call Mike and to email Priya	remind me not to call Mike and to email Priya	negation
+NG06	the wedding was off and then back on	the wedding was off and then back on	negation
+# --- Anaphora: the right conjunct points back --------------------------------
+AN01	I called the plumber yesterday and he never showed	I called the plumber yesterday and he never showed	anaphora
+AN02	I checked and it was fine	I checked and it was fine	anaphora
+AN03	she rang the bell and nobody answered	she rang the bell and nobody answered	anaphora
+AN04	the train was late and then it was cancelled	the train was late and then it was cancelled	anaphora
+AN05	remember Alex likes golf and hates mornings	remember Alex likes golf and hates mornings	anaphora
+AN06	Alex and his brother are coming Friday	Alex and his brother are coming Friday	anaphora
+# --- Three or more coordinated elements ---------------------------------------
+TH01	buy milk text Daniel and call the plumber	buy milk | text Daniel | call the plumber	three-or-more
+TH02	call the dentist book the car and pay the hydro bill	call the dentist | book the car | pay the hydro bill	three-or-more
+TH03	buy milk and text Daniel and call the plumber	buy milk | text Daniel | call the plumber	three-or-more
+TH04	call mom tomorrow and alex friday and priya saturday	call mom tomorrow | alex friday | priya saturday	three-or-more
+TH05	email Priya file the expenses and book the room	email Priya | file the expenses | book the room	three-or-more
+TH06	buy milk eggs bread and cheese	buy milk eggs bread and cheese	three-or-more
+TH07	call Alex Sam and Dana	call Alex | Sam | Dana	three-or-more
+# --- Nested coordination -------------------------------------------------------
+NS01	buy milk and eggs and call the plumber	buy milk and eggs | call the plumber	nested
+NS02	buy bread and butter and text Daniel	buy bread and butter | text Daniel	nested
+NS03	call Alex and Sam and buy milk	call Alex | Sam | buy milk	nested
+NS04	get coffee and sugar and email the team	get coffee and sugar | email the team	nested
+NS05	text Dana and Priya and book the room	text Dana | Priya | book the room	nested
+NS06	buy milk and eggs and Sarah hates sushi	buy milk and eggs | Sarah hates sushi	nested
+# --- Guards: things that must never split ------------------------------------
+GD01	I've been going back and forth on this	I've been going back and forth on this	idiom-guards
+GD02	it's been touch and go	it's been touch and go	idiom-guards
+GD03	I'm sick and tired of the commute	I'm sick and tired of the commute	idiom-guards
+GD04	we went over the pros and cons	we went over the pros and cons	idiom-guards
+GD05	the shop is open on and off	the shop is open on and off	idiom-guards
+GD06	first and foremost book the room	first and foremost book the room	idiom-guards

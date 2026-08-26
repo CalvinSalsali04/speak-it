@@ -26,6 +26,7 @@ for f in SpeakItTests/SemanticCorpus.swift SpeakItTests/SemanticCorpusData*.swif
 done
 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swiftc -O -o "$OUT/corpus-run" \
+  SpeakIt/Repositories/ClauseStructure.swift \
   SpeakIt/Repositories/ThoughtExtractor.swift \
   SpeakIt/Repositories/ThoughtOrganizer.swift \
   SpeakIt/Repositories/SpeechRepair.swift \

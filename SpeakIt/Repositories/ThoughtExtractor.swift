@@ -1113,18 +1113,23 @@ enum RuleBasedThoughtExtractor {
             .compactMap { Range($0.range, in: text) }
     }
 
-    /// The first "and" that is a join rather than part of a fixed phrase.
-    private static func firstSplittableAnd(in part: String) -> Range<String.Index>? {
-        guard let regex = NSRegularExpression.speakItCached(#"(?i)\s+and\s+"#) else { return nil }
+    /// Every "and" that is a join rather than part of a fixed phrase.
+    ///
+    /// All of them, because a decision taken at the first one used to settle
+    /// the whole clause: if the tail after it did not stand alone, the sentence
+    /// was left whole and no later boundary was ever examined. Coordination of
+    /// three or more elements is ordinary speech, not a stress case.
+    private static func splittableAndRanges(in part: String) -> [Range<String.Index>] {
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)\s+and\s+"#) else { return [] }
         let idioms = idiomRanges(in: part)
-        for match in regex.matches(in: part, range: NSRange(part.startIndex..., in: part)) {
-            guard let range = Range(match.range, in: part) else { continue }
-            let insideIdiom = idioms.contains {
-                $0.lowerBound < range.lowerBound && $0.upperBound > range.upperBound
+        return regex
+            .matches(in: part, range: NSRange(part.startIndex..., in: part))
+            .compactMap { Range($0.range, in: part) }
+            .filter { range in
+                !idioms.contains {
+                    $0.lowerBound < range.lowerBound && $0.upperBound > range.upperBound
+                }
             }
-            if !insideIdiom { return range }
-        }
-        return nil
     }
 
     /// Splits "X and Y" when Y is a thought in its own right.
@@ -1139,21 +1144,82 @@ enum RuleBasedThoughtExtractor {
     /// people to call. So a bare common noun keeps the thought together, while
     /// a person, a predicate, or a conjunct carrying its own time splits it.
     private static func splitIndependentConjuncts(_ part: String) -> [String] {
-        guard let range = firstSplittableAnd(in: part) else { return [part] }
+        let boundaries = splittableAndRanges(in: part)
+        guard !boundaries.isEmpty else { return [part] }
 
-        let left = normalize(String(part[..<range.lowerBound]))
-        let right = normalize(String(part[range.upperBound...]))
-        guard !left.isEmpty, !right.isEmpty, isIndependentConjunct(right, after: left) else {
-            return [part]
+        // One reading of the whole clause, produced before any of it is cut up.
+        // Every rule below asks this about a *span*; none of them re-tags a
+        // fragment on its own. See `SentenceContext` for what that was costing.
+        let context = SentenceContextCache.context(for: part)
+
+        // Where the speaker stops speaking in their own voice. A conjunction
+        // inside a reported proposition or a message body does not end it: the
+        // words after "and" in "Sarah said the meeting is off and the demo
+        // moved" are still Sarah's, and splitting them produced a second row
+        // that read like the app's own knowledge of a demo.
+        let reading = ClauseScope.read(part)
+
+        // The stretches between the coordinators, in order.
+        var segments: [Range<String.Index>] = []
+        var lower = part.startIndex
+        for boundary in boundaries {
+            segments.append(lower..<boundary.lowerBound)
+            lower = boundary.upperBound
         }
-        return [left] + splitIndependentConjuncts(right)
+        segments.append(lower..<part.endIndex)
+
+        // Walk the boundaries left to right, deciding each one against the
+        // segment that *immediately* follows it rather than against the whole
+        // remaining tail.
+        //
+        // The tail was the bug behind every chain of three. "Buy milk and eggs
+        // and Sarah hates sushi" asked whether "eggs and Sarah hates sushi"
+        // could stand alone; it has a subject and a predicate in it, so the
+        // answer was yes, and the capture split into "buy milk" and a second
+        // row that fused a grocery item to a fact about Sarah. Asking about
+        // "eggs" alone — and then, separately, about "Sarah hates sushi" —
+        // gets both boundaries right. It is also what lets the elided-verb rule
+        // fire more than once, so "call mom tomorrow and alex friday and priya
+        // saturday" is three errands instead of one row.
+        var clauses: [String] = []
+        var currentStart = part.startIndex
+        var currentEnd = segments[0].upperBound
+        for index in 1..<segments.count {
+            let rightRange = segments[index]
+            let endsComplement = ClauseScope.coordinatorEndsComplement(
+                boundaries[index - 1],
+                rightConjunct: rightRange,
+                in: context,
+                reading: reading
+            )
+            if endsComplement,
+               isIndependentConjunct(rightRange, after: currentStart..<currentEnd, in: context) {
+                let clause = normalize(String(part[currentStart..<currentEnd]))
+                if !clause.isEmpty { clauses.append(clause) }
+                currentStart = rightRange.lowerBound
+            }
+            currentEnd = rightRange.upperBound
+        }
+        let last = normalize(String(part[currentStart..<currentEnd]))
+        if !last.isEmpty { clauses.append(last) }
+        return clauses.isEmpty ? [part] : clauses
     }
 
     /// True when a conjunct stands on its own rather than extending a list.
-    private static func isIndependentConjunct(_ text: String, after left: String) -> Bool {
-        let trimmed = normalize(text)
-        guard !trimmed.isEmpty else { return false }
-        let leftCanStandAlone = hasSubjectPredicate(left)
+    ///
+    /// Takes spans into a `SentenceContext` rather than two loose strings, so
+    /// that "cassava" is read as the object it is in "buy plantains and
+    /// cassava" instead of as the verb `NLTagger` calls it when shown the word
+    /// by itself.
+    private static func isIndependentConjunct(
+        _ rightRange: Range<String.Index>,
+        after leftRange: Range<String.Index>,
+        in context: SentenceContext
+    ) -> Bool {
+        let trimmed = normalize(String(context.text[rightRange]))
+        let left = normalize(String(context.text[leftRange]))
+        guard !trimmed.isEmpty, !left.isEmpty else { return false }
+        let leftCanStandAlone = context.hasSubjectPredicate(in: leftRange)
             || ActionabilityReader.read(left) != .ambiguous
 
         // A conjunct that points back at the clause before it is part of that
@@ -1187,7 +1253,7 @@ enum RuleBasedThoughtExtractor {
         // nobody else is going to do, so it keeps its own row.
         if !ActionabilityReader.read(left).belongsOnToday,
            !ActionabilityReader.read(trimmed).belongsOnToday,
-           continuesTheSameEpisode(trimmed) {
+           continuesTheSameEpisode(trimmed, range: rightRange, in: context) {
             return false
         }
 
@@ -1239,30 +1305,33 @@ enum RuleBasedThoughtExtractor {
             return false
         }
 
-        let tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType])
-        tagger.string = trimmed
-        let range = trimmed.startIndex..<trimmed.endIndex
+        let words = context.tokens(in: rightRange)
+        guard !words.isEmpty else { return false }
 
-        var classes: [(String, NLTag?)] = []
-        tagger.enumerateTags(
-            in: range,
-            unit: .word,
-            scheme: .lexicalClass,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, tokenRange in
-            classes.append((String(trimmed[tokenRange]), tag))
-            return true
+        // An infinitive is not a finite clause and cannot be a thought on its
+        // own. "Remind me not to call Mike **and to email Priya**" coordinates
+        // two infinitives under one "remind me not to", and splitting it left a
+        // row reading "to email Priya" — a fragment the person cannot act on,
+        // with the negation stranded in the other half, which is the whole
+        // prohibitive-reminder defect coming back through a side door.
+        //
+        // Closed-class and positional: the infinitival marker, then a verb.
+        if trimmed.range(
+            of: #"(?i)^to\s+\p{L}"#,
+            options: .regularExpression
+        ) != nil, words.count >= 2, words[1].isVerb {
+            return false
         }
-        guard !classes.isEmpty else { return false }
 
         // Opens with a verb: "drop off the rental", "wrap the gift".
-        if classes[0].1 == .verb {
+        if words[0].isVerb {
             // Unless the subject is simply elided and carried over from the
             // left: "Remember Alex likes golf and hates mornings" is one fact
             // about Alex, not two thoughts. The tell is that the left conjunct
             // already supplies a subject with its own predicate, and the right
             // supplies no subject of its own.
-            if hasSubjectPredicate(left), !hasOwnSubject(classes) { return false }
+            if context.hasSubjectPredicate(in: leftRange),
+               !context.hasOwnSubject(in: rightRange) { return false }
             return true
         }
 
@@ -1274,12 +1343,12 @@ enum RuleBasedThoughtExtractor {
         if trimmed.range(
             of: #"(?i)^(?:his|her|their|its|my|our|your)\b"#,
             options: .regularExpression
-        ) != nil, !hasSubjectPredicate(left) {
+        ) != nil, !context.hasSubjectPredicate(in: leftRange) {
             return false
         }
 
         // Carries its own subject and predicate: "Catherine likes sushi".
-        if classes.count >= 2, classes.dropFirst().contains(where: { $0.1 == .verb }) {
+        if words.count >= 2, words.dropFirst().contains(where: \.isVerb) {
             return leftCanStandAlone
         }
 
@@ -1315,28 +1384,28 @@ enum RuleBasedThoughtExtractor {
             return leftCanStandAlone
         }
 
-        // Names a person: "Alexa", "Alex Friday". A person is someone to act
-        // on separately; a common noun is another entry on the same list.
-        var isPerson = false
-        tagger.enumerateTags(
-            in: range,
-            unit: .word,
-            scheme: .nameType,
-            options: [.omitWhitespace, .omitPunctuation, .joinNames]
-        ) { tag, _ in
-            if tag == .personalName { isPerson = true }
-            return !isPerson
-        }
-        if isPerson { return leftCanStandAlone }
-
-        // A capitalized opening token that NLTagger did not label is still far
-        // more likely a name than a grocery item.
-        if let first = classes.first?.0,
-           let initial = first.unicodeScalars.first,
-           CharacterSet.uppercaseLetters.contains(initial),
-           first.range(of: #"(?i)^\#(weekdayOrMonthPattern)$"#, options: .regularExpression) == nil,
-           classes.count <= 3 {
-            return leftCanStandAlone
+        // What is left is a conjunct with no verb in it: another argument of
+        // the verb further left. "Advil", "cassava", "eggs", "Sam".
+        //
+        // Whether that is a second errand or one more item on a single list is
+        // decided by the **left** conjunct, and never by the shape of the word
+        // on the right. Two gates used to read the right-hand word — NLTagger's
+        // `.personalName`, then a bare capital-letter fallback — and both of
+        // them are capitalization detectors. That made the reading a function
+        // of something the speaker cannot see or control: "call Alex and Sam"
+        // was two people to ring and "call alex and sam" was one row, and which
+        // one arrived was the recognizer's choice. Lowercasing the whole gating
+        // corpus cost 9 blocking failures against 0 for every other rendering,
+        // and these two gates were the cause.
+        //
+        // The invariant test is the verb on the left and what it takes as an
+        // object. `PersonMentionResolver` already answers that, structurally
+        // and without a name list: "call alex" resolves a person, "buy
+        // tylenol" and "call the dentist" do not. So a bare conjunct after a
+        // clause about a person is a second person to contact, and a bare
+        // conjunct after anything else is one more thing on the list.
+        if context.isVerbless(in: rightRange) {
+            return PersonMentionResolver.primary(in: left) != nil && leftCanStandAlone
         }
 
         return false
@@ -1420,7 +1489,11 @@ enum RuleBasedThoughtExtractor {
     /// True when the clause's subject is an anaphoric pronoun, or when it has
     /// no subject at all. Both are closed-class tests, so this does not depend
     /// on having seen the words in the clause before.
-    private static func continuesTheSameEpisode(_ text: String) -> Bool {
+    private static func continuesTheSameEpisode(
+        _ text: String,
+        range: Range<String.Index>,
+        in context: SentenceContext
+    ) -> Bool {
         // A third-person pronoun subject refers back; "I" and "we" do not, so
         // "I called the plumber and I paid him" stays two errands if the first
         // half is actionable, and is caught by the actionability gate if not.
@@ -1441,7 +1514,7 @@ enum RuleBasedThoughtExtractor {
         }
         // A bare continuation with no subject and no verb of its own — "and
         // then back on", "and not before" — cannot be a thought.
-        if !hasSubjectPredicate(text),
+        if !context.hasSubjectPredicate(in: range),
            text.range(
                of: #"(?i)^(?:then|back|again|not|never|only|just|still|barely|hardly)\b"#,
                options: .regularExpression
@@ -1452,30 +1525,8 @@ enum RuleBasedThoughtExtractor {
     }
 
     private static func hasSubjectPredicate(_ text: String) -> Bool {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass])
-        tagger.string = text
-        var sawNoun = false
-        var result = false
-        tagger.enumerateTags(
-            in: text.startIndex..<text.endIndex,
-            unit: .word,
-            scheme: .lexicalClass,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, _ in
-            if tag == .noun || tag == .pronoun { sawNoun = true }
-            else if tag == .verb, sawNoun { result = true; return false }
-            return true
-        }
-        return result
-    }
-
-    /// True when a conjunct names its own subject before its verb.
-    private static func hasOwnSubject(_ classes: [(String, NLTag?)]) -> Bool {
-        for (_, tag) in classes {
-            if tag == .verb { return false }
-            if tag == .noun || tag == .pronoun { return true }
-        }
-        return false
+        let context = SentenceContextCache.context(for: text)
+        return context.hasSubjectPredicate(in: text.startIndex..<text.endIndex)
     }
 
     /// Collapses a spoken restart: "call, call Mom" -> "call Mom".
@@ -1501,6 +1552,18 @@ enum RuleBasedThoughtExtractor {
 
     private static func appendSegment(_ value: String, to parts: inout [String]) {
         var cleaned = normalize(value)
+        // A fixed phrase that opens with one of these words keeps it. "First
+        // and foremost book the room" was stripped to "and foremost book the
+        // room" on the first pass and to "foremost" on the second, because this
+        // runs once before clause splitting and once after: the idiom lost a
+        // word each time and the sentence lost its opening. The idiom ranges
+        // are already known — the splitter uses them to refuse to cut inside
+        // one — and nothing else may cut inside one either.
+        if let idiom = idiomRanges(in: cleaned).first, idiom.lowerBound == cleaned.startIndex {
+            let trimmed = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ",;.!? "))
+            if !trimmed.isEmpty { parts.append(trimmed) }
+            return
+        }
         cleaned = cleaned.replacingOccurrences(
             // `\b` closes the same hole as `ReminderScheduler`, `ThoughtOrganizer`
             // and `Actionability`: the trailing separator is entirely optional,

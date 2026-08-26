@@ -80,6 +80,32 @@ if let index = arguments.firstIndex(of: "--repairs") {
     arguments.remove(at: index)
 }
 
+// Clause mode. Prints the clause segmentation alone — the decision
+// `splitIndependentConjuncts` actually makes — so coordination can be measured
+// without the shopping grouper, the organizer and the title formatter sitting
+// in between the change and the number.
+var showClausesOnly = false
+if let index = arguments.firstIndex(of: "--clauses") {
+    showClausesOnly = true
+    arguments.remove(at: index)
+}
+
+// Timing mode. Prints per-utterance rules-path latency instead of readings, so
+// a change to the linguistic layers can be costed rather than guessed at. The
+// warmup matters more than it looks: NLTagger loads its model lazily on the
+// first call in a process, and without it the first utterance is charged tens
+// of milliseconds that no later capture pays.
+var benchmarkRounds = 0
+if let index = arguments.firstIndex(of: "--bench") {
+    arguments.remove(at: index)
+    if index < arguments.count, let rounds = Int(arguments[index]) {
+        benchmarkRounds = rounds
+        arguments.remove(at: index)
+    } else {
+        benchmarkRounds = 5
+    }
+}
+
 var lines: [String] = []
 if arguments.isEmpty {
     while let line = readLine(strippingNewline: true) { lines.append(line) }
@@ -96,6 +122,63 @@ if arguments.isEmpty {
 let utterances = lines
     .map { $0.trimmingCharacters(in: .whitespaces) }
     .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+
+if showClausesOnly {
+    // The same repair chain `RuleBasedThoughtExtractor.process` runs before it
+    // segments, so the clauses printed here are the clauses the pipeline sees.
+    for utterance in utterances {
+        let cleaned = DisfluencyFilter.stripped(utterance)
+        let corrected = GroceryHomophoneRepair.repaired(
+            DictationHomophoneRepair.repaired(
+                DictationPunctuationRepair.repaired(
+                    SpokenShorthandRepair.twentyFourHourClock(
+                        SpokenShorthandRepair.repaired(
+                            ClockDigitRepair.repaired(
+                                SelfCorrectionResolver.resolved(
+                                    SplitCompoundRepair.rejoined(cleaned)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        let clauses = RuleBasedThoughtExtractor.splitClauses(corrected)
+        print("\(utterance)\t\(clauses.joined(separator: " | "))")
+    }
+    exit(0)
+}
+
+if benchmarkRounds > 0 {
+    // Warm the tagger and every cached regex before the clock starts.
+    for utterance in utterances {
+        _ = ThoughtExtractionEngine.extractWithRules(
+            utterance, referenceDate: referenceDate, calendar: calendar
+        )
+    }
+
+    var perRound: [Double] = []
+    for _ in 0..<benchmarkRounds {
+        let start = DispatchTime.now().uptimeNanoseconds
+        for utterance in utterances {
+            _ = ThoughtExtractionEngine.extractWithRules(
+                utterance, referenceDate: referenceDate, calendar: calendar
+            )
+        }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - start
+        perRound.append(Double(elapsed) / 1_000_000.0 / Double(utterances.count))
+    }
+
+    let sorted = perRound.sorted()
+    let median = sorted[sorted.count / 2]
+    let mean = perRound.reduce(0, +) / Double(perRound.count)
+    print("BENCH  \(utterances.count) utterances x \(benchmarkRounds) rounds")
+    print(String(format: "  per-utterance median  %.3f ms", median))
+    print(String(format: "  per-utterance mean    %.3f ms", mean))
+    print(String(format: "  per-utterance min     %.3f ms", sorted.first ?? 0))
+    print(String(format: "  per-utterance max     %.3f ms", sorted.last ?? 0))
+    exit(0)
+}
 
 for utterance in utterances {
     let result = ThoughtExtractionEngine.extractWithRules(

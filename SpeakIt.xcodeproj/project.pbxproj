@@ -37,6 +37,7 @@
 		A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* ThoughtOrganizer.swift */; };
 		A1000000000000000000001C /* ReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ReminderScheduler.swift */; };
 		A1000000000000000000E1 /* IntentConsolidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000E1 /* IntentConsolidation.swift */; };
+		A100000000000000000000FE /* ClauseStructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FE /* ClauseStructure.swift */; };
 		A1000000000000000000001D /* ThoughtExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000025 /* ThoughtExtractor.swift */; };
 		A1000000000000000000001E /* CaptureDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000026 /* CaptureDraftStore.swift */; };
 		A1000000000000000000001F /* CaptureSessionReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000027 /* CaptureSessionReviewView.swift */; };
@@ -191,6 +192,7 @@
 		B10000000000000000000023 /* ThoughtOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtOrganizer.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
 		B1000000000000000000E1 /* IntentConsolidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentConsolidation.swift; sourceTree = "<group>"; };
+		B100000000000000000000FE /* ClauseStructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClauseStructure.swift; sourceTree = "<group>"; };
 		B10000000000000000000025 /* ThoughtExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtExtractor.swift; sourceTree = "<group>"; };
 		B10000000000000000000026 /* CaptureDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureDraftStore.swift; sourceTree = "<group>"; };
 		B10000000000000000000027 /* CaptureSessionReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSessionReviewView.swift; sourceTree = "<group>"; };
@@ -380,6 +382,7 @@
 				B10000000000000000000008 /* SwiftDataThoughtRepository.swift */,
 				B10000000000000000000023 /* ThoughtOrganizer.swift */,
 				B1000000000000000000E1 /* IntentConsolidation.swift */,
+				B100000000000000000000FE /* ClauseStructure.swift */,
 				B10000000000000000000025 /* ThoughtExtractor.swift */,
 				B100000000000000000000D2 /* SpeechRepair.swift */,
 				B100000000000000000000D3 /* CaptureTargetMatcher.swift */,
@@ -847,6 +850,7 @@
 				A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */,
 				A1000000000000000000001C /* ReminderScheduler.swift in Sources */,
 				A1000000000000000000E1 /* IntentConsolidation.swift in Sources */,
+				A100000000000000000000FE /* ClauseStructure.swift in Sources */,
 				A1000000000000000000001D /* ThoughtExtractor.swift in Sources */,
 				A100000000000000000000D2 /* SpeechRepair.swift in Sources */,
 				A100000000000000000000D3 /* CaptureTargetMatcher.swift in Sources */,
