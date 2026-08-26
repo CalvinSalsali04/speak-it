@@ -266,6 +266,13 @@ enum ActionabilityReader {
             return .actionable
         }
 
+        // The same principle one step further out. "Mike asked me to send the
+        // invoice" carries no obligation lead of its own — just a bare
+        // infinitive after an indirect "me" — and was filed as a note. The
+        // indirect object is what makes it the user's errand, and it has to be
+        // read here, ahead of the rule that files every report as knowledge.
+        if reportedActionBelongsToUser(value) { return .actionable }
+
         if isCompletedHistory(value) || isReportedSpeech(value) || isRecordedFact(value) {
             return .knowledge
         }
@@ -285,6 +292,13 @@ enum ActionabilityReader {
         // for that reason: they describe the *frame* the lead sits in, and the
         // frame outranks the word.
         if isOpenQuestion(value) || isHedgedAspiration(value) { return .knowledge }
+
+        // Whose obligation is it? `obligationLead` matches "should" and "needs
+        // to" wherever they appear, and never asked. "Mike should call Sarah"
+        // and "Mike needs to pay the invoice" arrived on Today as the person's
+        // own errands — someone else's commitments, on the list of things they
+        // have to do, indistinguishable from the ones they took on.
+        if obligationBelongsToAnotherPerson(value) { return .knowledge }
 
         if hasObligationLead(value) { return .actionable }
         if hasActionVerbHead(value)
@@ -586,6 +600,82 @@ enum ActionabilityReader {
 
     private static func hasObligationLead(_ text: String) -> Bool {
         matches(text, #"\b\#(obligationLead)\b"#)
+    }
+
+    /// Obligation markers that can be predicated of somebody other than the
+    /// speaker. A closed class: English has no productive way to coin a new
+    /// one.
+    private static let thirdPersonObligation =
+        #"(?:should|needs\s+to|need\s+to|has\s+to|have\s+to|must|ought\s+to"#
+        + #"|is\s+supposed\s+to|are\s+supposed\s+to)"#
+
+    /// True when the sentence predicates an obligation of a specific third
+    /// party rather than of the speaker.
+    ///
+    /// Three exclusions carry the whole rule, and each one is a closed class:
+    ///
+    /// - **Indefinite subjects stay the user's.** "Someone should build the
+    ///   deck before the meeting" is a commitment the speaker is making in an
+    ///   impersonal frame, and the corpus guards it onto Today. "Someone",
+    ///   "anyone", "there" name nobody, so there is nobody else to own the job.
+    /// - **First person stays the user's**, obviously, including when the
+    ///   subject is fronted by filler.
+    /// - **Passives are not somebody's action.** "The report needs to be filed"
+    ///   says a thing must happen and does not say who by, and the speaker
+    ///   recording it is the likeliest candidate.
+    ///
+    /// The subject also has to be nominal in the *full sentence* reading, which
+    /// is what keeps "back should be fine" and similar out.
+    ///
+    /// What this deliberately does not do is decide animacy. "The car has to go
+    /// in Tuesday" is read as somebody else's obligation and filed in Memory,
+    /// which is wrong. It is the safer wrong: the words are kept and nothing is
+    /// scheduled, where the opposite error puts a job the person never accepted
+    /// on the list they work from. No utterance of that shape appears in the
+    /// 1,022-case corpus, so the cost is currently hypothetical and the benefit
+    /// is measured.
+    private static func obligationBelongsToAnotherPerson(_ text: String) -> Bool {
+        let pattern = #"(?i)^(?:(?:and|but|so|also|okay|ok|well|yeah)\s+)*"#
+            + #"((?!(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody"#
+            + #"|nobody|no\s+one|there|it|this|that|these|those|our|us)\b)"#
+            + #"(?:my|his|her|their)?\s*[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?)"#
+            + #"\s+\#(thirdPersonObligation)\s+(?!be\b)[\p{L}'’-]+"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let subjectRange = Range(match.range(at: 1), in: text)
+        else { return false }
+
+        // A first person anywhere ahead of the obligation means the speaker is
+        // in the sentence: "I think Mike should call Sarah" is still a note,
+        // but "tomorrow I need to call Mike" must not be caught by the subject
+        // slot swallowing "tomorrow".
+        let head = String(text[text.startIndex..<subjectRange.upperBound])
+        guard !matches(head, #"\b(?:i|we|i'?m|i'?ve|i'?ll)\b"#) else { return false }
+
+        // "No verb in the subject slot" rather than "a noun in the subject
+        // slot": the text here is lowercased, and NLTagger tags an unfamiliar
+        // lowercased name by guesswork — "mike" is a Noun and "priya" is an
+        // Interjection. A confident-noun requirement would fire for one name
+        // and not the other, which is the vocabulary dependence this layer
+        // exists to remove.
+        let context = SentenceContextCache.context(for: text)
+        return context.isVerbless(in: subjectRange)
+    }
+
+    /// True when a report hands the user the action: "Mike asked me to send the
+    /// invoice", "Sarah told me to call the vet".
+    ///
+    /// The indirect object is the whole rule. "Sarah told **me** to call Mike"
+    /// is an errand; "Sarah told **Mike** to call me" is not, and one word in
+    /// one slot is the entire difference. `ClauseScope` already answers it, so
+    /// this reads that answer rather than growing another regex beside it.
+    private static func reportedActionBelongsToUser(_ text: String) -> Bool {
+        let reading = ClauseScope.read(text)
+        guard reading.act == .reporting, reading.actor == .user,
+              let complement = reading.complement
+        else { return false }
+        // Only an instruction. "Sarah told me the meeting is off" is news.
+        return matches(complement, #"^to\s+[\p{L}'’-]+"#)
     }
 
     /// True when the sentence *body* opens with something to do.

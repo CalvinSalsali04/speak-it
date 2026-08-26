@@ -1,0 +1,148 @@
+# Routing / action-ownership development set.
+#
+# Same five columns and the same scorer as `heldout/`, deliberately: the number
+# that matters there — a confident action on a capture nobody can pin down — is
+# the number this set exists to move. The held-out set stays unread; this one is
+# for iteration.
+#
+# Written from the product contract, not from probe output.
+#
+#   Today               belongs on Today, actionable
+#   Memory              belongs in Memory, keep it, do not act
+#   Ambiguous-preserve  meaning cannot be pinned down: keep the words, schedule
+#                       nothing, date nothing, mutate nothing
+#   Operation           an explicit instruction to change stored data
+#
+# Columns: id, utterance, family, expected_destination, expected_thoughts
+#
+id	utterance	family	expected_destination	expected_thoughts
+# --- Action ownership: whose action is it? -----------------------------------
+AO01	call Mike	ownership-user	Today	1
+AO02	I need to call Mike	ownership-user	Today	1
+AO03	remind me to call Mike	ownership-user	Today	1
+AO04	Sarah told me to call Mike	ownership-user	Today	1
+AO05	Mike asked me to send the invoice	ownership-user	Today	1
+AO06	Sarah will call Mike	ownership-other	Memory	1
+AO07	Mike is calling Sarah tomorrow	ownership-other	Memory	1
+AO08	Mike should call Sarah	ownership-other	Memory	1
+AO09	Sarah told Mike to call me	ownership-other	Memory	1
+AO10	Priya is going to book the venue	ownership-other	Memory	1
+AO11	the landlord will fix the sink	ownership-other	Memory	1
+AO12	Dana said she would send the file	ownership-other	Memory	1
+AO13	my brother has to renew his passport	ownership-other	Memory	1
+AO14	Mike needs to pay the invoice	ownership-other	Memory	1
+AO15	the team is presenting on Thursday	ownership-other	Memory	1
+AO16	tell Sarah to call Mike	ownership-delegated	Today	1
+AO17	ask Priya to send the deck	ownership-delegated	Today	1
+AO18	text Mike to bring the charger	ownership-delegated	Today	1
+# --- Reported speech and reported commands -----------------------------------
+RC01	Sarah said the meeting is off	reported	Memory	1
+RC02	Sarah said call Mike tomorrow	reported	Memory	1
+RC03	Mike said to book the room	reported	Memory	1
+RC04	Priya mentioned the office is closed Friday	reported	Memory	1
+RC05	Dana said the deal is cancelled	reported	Memory	1
+RC06	my boss said to finish it by Friday	reported	Today	1
+RC07	Sarah said she is running late	reported	Memory	1
+RC08	the doctor said to stop the medication	reported	Memory	1
+RC09	Mike told everyone the launch slipped	reported	Memory	1
+RC10	Sarah says the venue is double booked	reported	Memory	1
+# --- Hypothetical and possible future actions --------------------------------
+HY01	I might call Mike	hypothetical	Memory	1
+HY02	I could book the flights this week	hypothetical	Memory	1
+HY03	maybe I should call the dentist	hypothetical	Memory	1
+HY04	I was thinking of calling Priya	hypothetical	Memory	1
+HY05	we may need to renew the lease	hypothetical	Memory	1
+HY06	it might be worth emailing the agent	hypothetical	Memory	1
+HY07	I would call them if I had the number	hypothetical	Memory	1
+HY08	if the weather holds we could go Saturday	hypothetical	Memory	1
+HY09	I'm considering switching dentists	hypothetical	Memory	1
+HY10	possibly move the meeting to Friday	hypothetical	Ambiguous-preserve	1
+# --- Noun fragments carrying a time ------------------------------------------
+NF01	dentist Tuesday	fragment-temporal	Today	1
+NF02	Mike Thursday	fragment-temporal	Today	1
+NF03	dinner at 8	fragment-temporal	Today	1
+NF04	the parcel Friday	fragment-temporal	Today	1
+NF05	Priya 3pm	fragment-temporal	Ambiguous-preserve	1
+NF06	invoice end of month	fragment-temporal	Ambiguous-preserve	1
+NF07	standup 9am	fragment-temporal	Today	1
+NF08	the thing on Tuesday	fragment-temporal	Today	1
+# --- Incomplete reminders -----------------------------------------------------
+IR01	remind me	incomplete-reminder	Ambiguous-preserve	1
+IR02	remind me about the thing	incomplete-reminder	Ambiguous-preserve	1
+IR03	remind me later	incomplete-reminder	Ambiguous-preserve	1
+IR04	remind me tomorrow	incomplete-reminder	Today	1
+IR05	don't let me forget	incomplete-reminder	Ambiguous-preserve	1
+IR06	set a reminder	incomplete-reminder	Ambiguous-preserve	1
+IR07	remind me to	incomplete-reminder	Ambiguous-preserve	1
+# --- Person versus business ---------------------------------------------------
+PB01	call Rogers	person-or-business	Today	1
+PB02	call Bell about the bill	person-or-business	Today	1
+PB03	email Sunlife	person-or-business	Today	1
+PB04	call Morgan	person-or-business	Today	1
+PB05	call Baker	person-or-business	Today	1
+PB06	book Sterling for Thursday	person-or-business	Today	1
+# --- Ambiguous names -----------------------------------------------------------
+AN01	call May	ambiguous-name	Ambiguous-preserve	1
+AN02	call April about the lease	ambiguous-name	Today	1
+AN03	text Summer	ambiguous-name	Today	1
+AN04	remind me about June	ambiguous-name	Ambiguous-preserve	1
+AN05	Mark the invoice	ambiguous-name	Ambiguous-preserve	1
+AN06	call Bill	ambiguous-name	Today	1
+AN07	pay the bill	ambiguous-name	Today	1
+# --- Event mention versus request ---------------------------------------------
+EM01	the conference is on Thursday	event-mention	Today	1
+EM02	Priya's birthday is next Tuesday	event-mention	Memory	1
+EM03	the office closes at 4 on Fridays	event-mention	Memory	1
+EM04	book the conference room for Thursday	event-request	Today	1
+EM05	there's a fire drill Wednesday	event-mention	Today	1
+EM06	the store opens at 9	event-mention	Memory	1
+EM07	dentist appointment Thursday at 2	event-request	Today	1
+EM08	the game starts at 7	event-mention	Today	1
+# --- Unknown predicates ---------------------------------------------------------
+UK01	defrag the archive tomorrow	unknown-predicate	Today	1
+UK02	winterize the cottage before November	unknown-predicate	Today	1
+UK03	rebalance the portfolio on Friday	unknown-predicate	Today	1
+UK04	decant the wine before dinner	unknown-predicate	Today	1
+UK05	the archive defragmented overnight	unknown-predicate	Memory	1
+UK06	proofread the contract by Monday	unknown-predicate	Today	1
+# --- Ambiguous coordination ------------------------------------------------------
+AC01	Mike and the invoice	ambiguous-coordination	Ambiguous-preserve	1
+AC02	Tuesday and the dentist	ambiguous-coordination	Ambiguous-preserve	1
+AC03	the thing and the other thing	ambiguous-coordination	Ambiguous-preserve	1
+AC04	milk and Sarah	ambiguous-coordination	Ambiguous-preserve	1
+# --- Destructive operations need explicit intent ---------------------------------
+DO01	cancel my plumber reminder	operation	Operation	0
+DO02	delete the reminder to call Dave	operation	Operation	0
+DO03	remove the dentist appointment	operation	Operation	0
+DO04	don't call the plumber	prohibitive	Today	1
+DO05	don't fix the sink	prohibitive	Today	1
+DO06	don't text Dave	prohibitive	Today	1
+DO07	don't reply to Dave	prohibitive	Today	1
+DO08	remind me not to eat before the blood test	prohibitive	Today	1
+DO09	Sarah said the meeting is off	reported-cancellation	Memory	1
+DO10	text Mike that the deal is off	message-cancellation	Today	1
+DO11	Mike said to cancel the order	reported-cancellation	Memory	1
+DO12	the wedding was off and then back on	reported-cancellation	Memory	1
+# --- Adversarial: a time word that must not become a scheduled item ----------
+# A day name in a capture is not by itself a request to put something on a day.
+# These are the shapes where acting on it is worse than abstaining.
+AD01	I saw Mike Tuesday	past-with-day	Memory	1
+AD02	I called the dentist Monday	past-with-day	Memory	1
+AD03	we met Priya Thursday	past-with-day	Memory	1
+AD04	the parcel arrived Friday	past-with-day	Memory	1
+AD05	we talked about Friday	day-as-topic	Ambiguous-preserve	1
+AD06	she asked about Tuesday	day-as-topic	Ambiguous-preserve	1
+AD07	the whole Thursday thing	day-as-topic	Ambiguous-preserve	1
+AD08	is the dentist Tuesday	question	Ambiguous-preserve	1
+AD09	was the meeting Wednesday	question	Ambiguous-preserve	1
+AD10	when is the conference	question	Ambiguous-preserve	1
+AD11	maybe Tuesday	hedged-day	Ambiguous-preserve	1
+AD12	Tuesday or Wednesday	hedged-day	Ambiguous-preserve	1
+AD13	the meeting is either Tuesday or Wednesday	hedged-day	Ambiguous-preserve	1
+AD14	sometime next week maybe	hedged-day	Ambiguous-preserve	1
+AD15	not Tuesday	hedged-day	Ambiguous-preserve	1
+AD16	Sarah said Tuesday	reported-day	Ambiguous-preserve	1
+AD17	Mike mentioned Friday	reported-day	Ambiguous-preserve	1
+AD18	they moved it to Thursday I think	reported-day	Ambiguous-preserve	1
+AD19	possibly move the meeting to Friday	hedged-day	Ambiguous-preserve	1
+AD20	something about Monday	day-as-topic	Ambiguous-preserve	1

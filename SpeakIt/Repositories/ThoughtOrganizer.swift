@@ -17,6 +17,10 @@ struct OrganizedThought: Equatable, Sendable {
     /// `temporalIntent` because a place trigger is a sibling of a time trigger —
     /// see `ReminderTrigger`.
     let locationIntent: LocationIntent?
+    /// How settled this reading is, and what could not be determined when it is
+    /// not. `needsClarification` says *that* something is unclear; this says
+    /// *what*, in a form a rule can branch on and a person can be shown.
+    let state: SemanticState
 
     init(
         itemType: ItemType,
@@ -29,7 +33,8 @@ struct OrganizedThought: Equatable, Sendable {
         recurrenceRule: RecurrenceRule?,
         needsClarification: Bool,
         temporalIntent: TemporalIntent = .none,
-        locationIntent: LocationIntent? = nil
+        locationIntent: LocationIntent? = nil,
+        state: SemanticState = .resolved
     ) {
         self.itemType = itemType
         self.category = category
@@ -42,6 +47,7 @@ struct OrganizedThought: Equatable, Sendable {
         self.needsClarification = needsClarification
         self.temporalIntent = temporalIntent
         self.locationIntent = locationIntent
+        self.state = state
     }
 }
 
@@ -403,6 +409,28 @@ enum ThoughtOrganizer {
         let category = type == .note && personName != nil
             ? ItemCategory.people
             : inferredCategory(from: lowercase, type: type)
+
+        // A resolved instant is not the same thing as a settled plan. When the
+        // wording says the day was never chosen — two candidates, a hedge with
+        // nobody behind it, a question — the words are kept and the calendar is
+        // left alone. Dropping the date rather than the row is deliberate: the
+        // capture still surfaces, and nothing fires.
+        if let reason = TemporalCommitment.unsettled(in: lowercase) {
+            return OrganizedThought(
+                itemType: type.isActionable ? .unclear : type,
+                category: category,
+                priority: .normal,
+                personName: personName,
+                dueDate: nil,
+                reminderDate: nil,
+                reminderDelivery: .none,
+                recurrenceRule: nil,
+                needsClarification: true,
+                temporalIntent: .none,
+                locationIntent: nil,
+                state: .underspecified(reason.gap)
+            )
+        }
 
         return OrganizedThought(
             itemType: type,

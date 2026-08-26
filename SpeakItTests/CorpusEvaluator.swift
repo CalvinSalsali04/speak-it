@@ -389,6 +389,12 @@ extension CorpusEvaluator {
             (.ordinarySpeech, SemanticCorpusN.ordinarySpeech),
             (.speechActScope, SemanticCorpusO.speechActScope),
             (.prohibitions, SemanticCorpusP.prohibitions),
+            (.coordinationContext, SemanticCorpusQ.coordinationContext),
+            (.coordinationContext, SemanticCorpusQ.coordinationGuards),
+            (.actionOwnership, SemanticCorpusQ.actionOwnership),
+            (.actionOwnership, SemanticCorpusQ.actionOwnershipGuards),
+            (.unsettledTime, SemanticCorpusQ.unsettledTime),
+            (.unsettledTime, SemanticCorpusQ.unsettledTimeGuards),
         ]
     }
 

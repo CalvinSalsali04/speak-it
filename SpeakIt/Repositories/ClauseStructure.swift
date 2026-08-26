@@ -299,11 +299,18 @@ enum ClauseScope {
             options: .regularExpression
         ) == nil else { return nil }
 
-        // The subject has to be able to *speak*. A full-sentence reading is
-        // what makes this safe: the token has to be nominal in place, which
-        // "back" in "call back and tell him" is not.
+        // The subject has to be able to *speak*, which "back" in "call back and
+        // tell him" cannot — that token is a verb in place and the guard below
+        // rejects it.
+        //
+        // Stated as "no verb here" rather than "a noun here" on purpose. The
+        // sentence reaching this point is lowercased, and `NLTagger` labels an
+        // unfamiliar lowercased name by guesswork: "mike" comes back Noun and
+        // "priya" comes back Interjection. Requiring a confident noun tag would
+        // therefore make the rule fire for some names and not others, which is
+        // a vocabulary effect wearing a part-of-speech costume.
         let context = SentenceContextCache.context(for: text)
-        guard context.tokens(in: subjectRange).contains(where: \.isNominal) else { return nil }
+        guard context.isVerbless(in: subjectRange) else { return nil }
 
         let complement = String(text[restRange]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !complement.isEmpty else { return nil }
@@ -447,4 +454,156 @@ enum ClauseScope {
         }
         return .other(indirectObject)
     }
+}
+
+// MARK: - Whether a stated time is a commitment
+
+/// Whether a day or a clock in the sentence is something the person settled on.
+///
+/// A time word is not by itself a request to put something on a day. "Tuesday
+/// or Wednesday" names two days precisely because the speaker has not picked
+/// one; "maybe Tuesday" says so outright; "was the meeting Wednesday" is asking
+/// rather than telling. All three used to resolve to a date and produce a dated
+/// row on Today, which is the shape of harm this whole layer exists to stop: a
+/// confident action on a capture whose meaning nobody could pin down.
+///
+/// The rule is narrow on purpose. It does not ask whether the sentence *feels*
+/// uncertain — it looks for three closed structures, and everything else keeps
+/// its date. In particular a hedge is not enough on its own: "Maybe I should
+/// text Sarah tonight" is a commitment wearing a hedge, and the corpus guards
+/// it onto Today with its 8 PM intact.
+enum TemporalCommitment {
+
+    /// Why a stated time was not treated as settled. Named rather than scored:
+    /// the point is that the behaviour can be explained, not that it can be
+    /// ranked.
+    enum Unsettled: String, Equatable, Sendable {
+        /// "Tuesday or Wednesday" — the speaker named the alternatives.
+        case competingDays
+        /// "maybe Tuesday" — hedged, with nobody committing to anything.
+        case hedgedWithoutCommitment
+        /// "was the meeting Wednesday" — a question, not a plan.
+        case interrogative
+
+        /// The state this reason produces. All three are the same gap seen
+        /// from three angles: the sentence stated a time and did not settle it.
+        var gap: SemanticGap { .ambiguousTemporalScope }
+    }
+
+    private static let dayWord =
+        #"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday"#
+        + #"|today|tomorrow|tonight|next\s+week|this\s+weekend"#
+        + #"|january|february|march|april|may|june|july|august"#
+        + #"|september|october|november|december)"#
+
+    /// The reason a time in this clause is not settled, or nil when it is.
+    static func unsettled(in text: String) -> Unsettled? {
+        let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+
+        // Two candidate days joined by "or". Naming the alternatives is how
+        // English says the choice has not been made, and picking one of them is
+        // a coin toss the person did not ask for.
+        if value.range(
+            of: #"(?i)\b(?:either\s+)?\#(dayWord)\s+or\s+\#(dayWord)\b"#,
+            options: .regularExpression
+        ) != nil { return .competingDays }
+
+        // A hedge with nobody behind it. The first-person exclusion is the
+        // whole safety of this branch: "maybe I should text Sarah tonight" is a
+        // person committing, and only the clauses where no one has committed
+        // are left.
+        if value.range(
+            of: #"(?i)^(?:maybe|possibly|perhaps|potentially)\b"#,
+            options: .regularExpression
+        ) != nil,
+           value.range(of: #"(?i)\b(?:i|we|i'?m|i'?ll|i'?ve)\b"#, options: .regularExpression) == nil,
+           value.range(of: #"(?i)\b\#(dayWord)\b|\bat\s+\d"#, options: .regularExpression) != nil {
+            return .hedgedWithoutCommitment
+        }
+
+        // A polar question. An auxiliary in front of a determiner is a shape
+        // declaratives and imperatives do not have: "was the meeting
+        // Wednesday", "is the dentist Tuesday", "did the parcel arrive Friday".
+        // The existing question test requires a pronoun subject, so every
+        // question about a *thing* fell through it and was scheduled.
+        //
+        // "do", "have", "has" and "had" are excluded because they head
+        // imperatives as readily as questions: "do this Friday" and "have the
+        // car serviced Friday" have exactly this shape and are instructions.
+        // The corpus caught the first one immediately. The remaining
+        // auxiliaries cannot open an imperative in English, which is what makes
+        // the test positional rather than a guess.
+        if value.range(
+            of: #"(?i)^(?:is|are|was|were|does|did|will|would"#
+                + #"|can|could|should|shall|may|might)\s+"#
+                + #"(?:the|a|an|my|our|your|his|her|their|this|that|these|those)\s+"#,
+            options: .regularExpression
+        ) != nil { return .interrogative }
+
+        return nil
+    }
+}
+
+// MARK: - How settled a reading is
+
+/// How confident the pipeline is entitled to be about one reading, and why.
+///
+/// Deliberately four named states and a named reason rather than a number.
+/// A score invites arithmetic — thresholds, weighted sums, tuning — and none of
+/// that survives contact with the actual question, which is not "how likely" but
+/// "what specifically could not be determined, and is acting on it safe anyway".
+/// A person can be shown a reason. A person cannot be shown a 0.62.
+///
+/// The states are ordered by how much the pipeline is allowed to do:
+///
+/// - `resolved`      act normally
+/// - `underspecified` something is missing; keep the words, do not schedule
+/// - `contested`     two readings are both defensible; keep the words, do not
+///                   schedule, and never mutate stored data
+/// - `unsupported`   the request is understood and cannot be honoured
+///
+/// The asymmetry that makes this worth having: a wrong Memory row costs the
+/// person a scroll, and a wrong notification, message recipient, geofence or
+/// deletion costs them something they cannot undo. So anything short of
+/// `resolved` may still produce a row, and may not produce an alarm.
+enum SemanticState: Equatable, Sendable {
+    case resolved
+    case underspecified(SemanticGap)
+    case contested(SemanticGap)
+    case unsupported(SemanticGap)
+
+    /// Whether this reading is allowed to schedule, notify, or change stored
+    /// data.
+    var permitsAction: Bool {
+        if case .resolved = self { return true }
+        return false
+    }
+
+    var gap: SemanticGap? {
+        switch self {
+        case .resolved: return nil
+        case let .underspecified(gap), let .contested(gap), let .unsupported(gap): return gap
+        }
+    }
+}
+
+/// What specifically could not be determined. One case per structural question
+/// the pipeline actually asks, so a reason always points at a rule that can be
+/// read.
+enum SemanticGap: String, Equatable, Sendable {
+    /// "remind me about the thing" — nothing to do.
+    case missingAction
+    /// A name that could be a person or could be an ordinary word.
+    case ambiguousPerson
+    /// The content belongs to somebody else's words.
+    case reportedSpeech
+    /// A condition the app cannot monitor.
+    case unsupportedCondition
+    /// The clause boundary could not be placed with confidence.
+    case uncertainClauseBoundary
+    /// Structure does not say whose action this is.
+    case ambiguousActor
+    /// A day or clock was stated without being settled on.
+    case ambiguousTemporalScope
 }

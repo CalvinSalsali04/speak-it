@@ -22,12 +22,16 @@ MUTATIONS=(
   "disfluency-filter|SpeakIt/Repositories/SpeechRepair.swift|static func stripped(_ text: String) -> String {|return text"
   "split-compound|SpeakIt/Repositories/SpeechRepair.swift|static func rejoined(_ text: String) -> String {|return text"
   "clause-splitting|SpeakIt/Repositories/ThoughtExtractor.swift|static func splitClauses(_ text: String) -> [String] {|return [text]"
-  "conjunct-independence|SpeakIt/Repositories/ThoughtExtractor.swift|isIndependentConjunct(_ text: String, after left: String) -> Bool {|return false"
+  "conjunct-independence|SpeakIt/Repositories/ThoughtExtractor.swift|private static func isIndependentConjunct(|return false"
   "cancellation-scope|SpeakIt/Repositories/SpeechRepair.swift|cancellationIsEmbedded(_ text: String) -> Bool {|return false"
   "cancellation-reversal|SpeakIt/Repositories/SpeechRepair.swift|cancellationIsTakenBack(_ text: String) -> Bool {|return false"
   "prohibitive-reminders|SpeakIt/Repositories/ThoughtOrganizer.swift|static func isProhibitive(_ text: String) -> Bool {|return false"
   "series-wall-clock|SpeakIt/Repositories/ThoughtOrganizer.swift|static func statedWallClock(in text: String) -> WallClockTime? {|return nil"
-  "episode-continuation|SpeakIt/Repositories/ThoughtExtractor.swift|continuesTheSameEpisode(_ text: String) -> Bool {|return false"
+  "episode-continuation|SpeakIt/Repositories/ThoughtExtractor.swift|private static func continuesTheSameEpisode(|return false"
+  "clause-scope|SpeakIt/Repositories/ClauseStructure.swift|static func read(_ clause: String) -> Reading {|return Reading(act: .direct, matrix: clause, complement: nil, complementRange: nil, speaker: nil, recipient: nil, actor: .unresolved)"
+  "sentence-context|SpeakIt/Repositories/ClauseStructure.swift|func tokens(in range: Range<String.Index>) -> [Token] {|return []"
+  "action-ownership|SpeakIt/Repositories/Actionability.swift|private static func obligationBelongsToAnotherPerson(_ text: String) -> Bool {|return false"
+  "unsettled-time|SpeakIt/Repositories/ClauseStructure.swift|static func unsettled(in text: String) -> Unsettled? {|return nil"
 )
 
 printf '%-24s %10s %10s   %s\n' "SUBSYSTEM" "BLOCKING" "FAILING" "VERDICT"
@@ -36,8 +40,11 @@ status=0
 for entry in "${MUTATIONS[@]}"; do
   IFS='|' read -r name file sig inject <<< "$entry"
   [ -n "$FILTER" ] && [[ "$name" != *"$FILTER"* ]] && continue
-  line=$(grep -nF -- "$sig" "$SP/../../$file" | head -1 | cut -d: -f1)
-  if [ -z "$line" ]; then
+  start=$(grep -nF -- "$sig" "$SP/../../$file" | head -1 | cut -d: -f1)
+  # Swift signatures wrap across lines. The statement has to land inside the
+  # body, so walk forward to the line that actually opens it.
+  line=$(awk -v s="$start" 'NR>=s && /\{[[:space:]]*$/ {print NR; exit}' "$SP/../../$file")
+  if [ -z "$start" ] || [ -z "$line" ]; then
     printf '%-24s %10s %10s   %s\n' "$name" "-" "-" "SIGNATURE NOT FOUND — update this script"
     status=1; continue
   fi

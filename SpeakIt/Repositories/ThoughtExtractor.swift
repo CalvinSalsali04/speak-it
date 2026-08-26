@@ -1193,7 +1193,12 @@ enum RuleBasedThoughtExtractor {
                 reading: reading
             )
             if endsComplement,
-               isIndependentConjunct(rightRange, after: currentStart..<currentEnd, in: context) {
+               isIndependentConjunct(
+                   rightRange,
+                   after: currentStart..<currentEnd,
+                   head: segments[0],
+                   in: context
+               ) {
                 let clause = normalize(String(part[currentStart..<currentEnd]))
                 if !clause.isEmpty { clauses.append(clause) }
                 currentStart = rightRange.lowerBound
@@ -1214,6 +1219,7 @@ enum RuleBasedThoughtExtractor {
     private static func isIndependentConjunct(
         _ rightRange: Range<String.Index>,
         after leftRange: Range<String.Index>,
+        head headRange: Range<String.Index>,
         in context: SentenceContext
     ) -> Bool {
         let trimmed = normalize(String(context.text[rightRange]))
@@ -1380,7 +1386,7 @@ enum RuleBasedThoughtExtractor {
             of: #"(?i)^(?!(?:the|a|an|my|his|her|their|our|your|its)\b)[\p{L}'-]+\s+\#(conjunctTimePattern)$"#,
             options: .regularExpression
         ) != nil,
-           PersonMentionResolver.primary(in: left) != nil {
+           namesAPerson(leftRange, orHead: headRange, in: context) {
             return leftCanStandAlone
         }
 
@@ -1409,6 +1415,27 @@ enum RuleBasedThoughtExtractor {
         }
 
         return false
+    }
+
+    /// Whether the clause on the left is about a person, asking the head of the
+    /// coordination when the immediate left conjunct has had its verb elided.
+    ///
+    /// The third link of a chain is the reason this exists. In "call mom
+    /// tomorrow and alex friday and priya saturday" the second boundary is
+    /// judged against "alex friday", which carries no verb, so the resolver
+    /// finds nobody in it and the last errand was swallowed into the second
+    /// row. The verb is the head's — that is what elision means — so the head
+    /// is where to look for it.
+    private static func namesAPerson(
+        _ leftRange: Range<String.Index>,
+        orHead headRange: Range<String.Index>,
+        in context: SentenceContext
+    ) -> Bool {
+        if PersonMentionResolver.primary(in: normalize(String(context.text[leftRange]))) != nil {
+            return true
+        }
+        guard headRange != leftRange else { return false }
+        return PersonMentionResolver.primary(in: normalize(String(context.text[headRange]))) != nil
     }
 
     /// Rejoins pieces that a comma split apart but that were never independent
@@ -1464,6 +1491,16 @@ enum RuleBasedThoughtExtractor {
             of: #"^\#(actionLeadPattern)$"#,
             options: .regularExpression
         ) != nil { return true }
+
+        // The piece is nothing but a fixed phrase. "First and foremost" is a
+        // discourse opener, and left standing alone it did not merely look
+        // untidy — the shopping grouper read it as a coordinated product list
+        // and produced rows reading "Buy First" and "Buy foremost". The idiom
+        // list is already the one place these phrases are named.
+        if let idiom = idiomRanges(in: value).first,
+           normalize(String(value[idiom])).lowercased() == text {
+            return true
+        }
 
         // Only discourse words survived the disfluency pass.
         if text.range(

@@ -133,6 +133,13 @@ enum CorpusFamily: String, CaseIterable {
     // matrix clause, and a negator only negates what it is adjacent to.
     case speechActScope = "Speech-act scope"
     case prohibitions = "Prohibitive reminders"
+
+    // Families 49-51, from the Phase 2 structural work. All three are the same
+    // question in different words: what does this stretch of the sentence
+    // attach to, and who does it belong to?
+    case coordinationContext = "Coordination in context"
+    case actionOwnership = "Whose action is it"
+    case unsettledTime = "A time never settled on"
 }
 
 
