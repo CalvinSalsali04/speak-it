@@ -2701,11 +2701,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let completed = SpeechTranscriber.naturalPauseDuration(for: "Buy milk.")
         let continuing = SpeechTranscriber.naturalPauseDuration(for: "Buy milk and")
 
-        // 2,100 ms is what build 13 shipped and what people were able to speak
-        // against. The relationship below it is the real invariant: a tail that
+        // 1,900 ms, arrived at by speaking at it. The relationship below it is the real invariant: a tail that
         // sounds mid-sentence must always buy more time than one that sounds
         // finished.
-        XCTAssertEqual(completed, .milliseconds(2_100))
+        XCTAssertEqual(completed, .milliseconds(1_900))
         XCTAssertEqual(continuing, .seconds(8))
         XCTAssertLessThan(completed, continuing)
     }
@@ -2819,7 +2818,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         for transcript in apparentlyComplete {
             let decision = SpeechTranscriber.naturalPauseDecision(for: transcript)
             XCTAssertNil(decision.promptAfter, transcript)
-            XCTAssertEqual(decision.finishAfter, .milliseconds(2_100), transcript)
+            XCTAssertEqual(decision.finishAfter, .milliseconds(1_900), transcript)
         }
     }
 
@@ -2832,9 +2831,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
 
         XCTAssertNil(place.promptAfter)
-        XCTAssertEqual(place.finishAfter, .milliseconds(2_100))
+        XCTAssertEqual(place.finishAfter, .milliseconds(1_900))
         XCTAssertNil(time.promptAfter)
-        XCTAssertEqual(time.finishAfter, .milliseconds(2_100))
+        XCTAssertEqual(time.finishAfter, .milliseconds(1_900))
     }
 
     func testHesitationsAndOpenNounPhrasesHoldTheMicrophone() {

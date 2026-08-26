@@ -128,7 +128,12 @@ final class SpeechTranscriber: ObservableObject {
     /// composing rather than done. The endpointing improvements that arrived
     /// alongside it are kept — a tail that sounds mid-sentence still waits far
     /// longer than build 13 allowed.
-    private static let completeThoughtPauseMilliseconds = 2_100
+    ///
+    /// 1,900 ms rather than build 13's 2,100: close enough to leave room for an
+    /// ordinary thinking pause, short enough that a finished one-word capture
+    /// does not feel like it is waiting for something. Chosen by speaking at it,
+    /// which is the only instrument that applies here.
+    private static let completeThoughtPauseMilliseconds = 1_900
     private static let continuationPromptPauseMilliseconds = 2_100
     private static let ambiguousThoughtPauseMilliseconds = 4_000
     private static let incompleteThoughtPauseMilliseconds = 8_000
