@@ -1,0 +1,27 @@
+# Editor defaults shared across the monorepo. Xcode reads indent settings from
+# its own preferences, so this mostly keeps the web projects, scripts, and
+# documentation consistent.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{js,mjs,ts,tsx,json,jsonc,yml,yaml,css,html,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{sh,py}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.pbxproj]
+indent_style = tab

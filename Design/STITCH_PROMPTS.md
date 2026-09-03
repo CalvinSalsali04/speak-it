@@ -300,7 +300,7 @@ useful outputs are the visual composition and spacing decisions. When translatin
 
 ## Open discrepancy
 
-`SCREEN_SPECIFICATIONS.md` line 50 describes "one violet accent"; the shipped theme is
+`Docs/SCREEN_SPECIFICATIONS.md` line 50 describes "one violet accent"; the shipped theme is
 monochrome with `speakAccent = speakInk`. These prompts follow the code. If violet is the
 intended direction, update the theme and this pack together rather than letting Stitch
 invent an accent.

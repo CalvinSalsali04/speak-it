@@ -64,7 +64,7 @@ struct ItemPresentation: Equatable, Sendable {
         /// reminded about — "buy milk tomorrow" carries a date but nothing
         /// will alert on it. Carrying delivery here, rather than inferring
         /// "has a date" as "will alert", is what lets a surface tell those two
-        /// rows apart. See FINAL_RELEASE_AUDIT.md B-1/C-1.
+        /// rows apart. See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1.
         case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
         case place(LocationIntent)
         case blockedPlace(LocationIntent, LocationReminderBlocker)

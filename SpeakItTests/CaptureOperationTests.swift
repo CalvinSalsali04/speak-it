@@ -636,7 +636,7 @@ extension CaptureOperationTests {
     /// discard the whole session. All four errands disappeared. Only the
     /// transcript survived, on `CaptureSession`, where nothing surfaces it.
     ///
-    /// See the convergence note in PIPELINE_SWEEP_FINDINGS.md: three separate
+    /// See the convergence note in Docs/PIPELINE_SWEEP_FINDINGS.md: three separate
     /// sweep lanes reached this same branch.
     func testAMisreadCancellationDoesNotDestroyTheOtherErrands() async throws {
         let result = try await capture(

@@ -441,7 +441,7 @@ final class CapturedItem: Identifiable {
         // all — the review row exists purely to confirm or decline a
         // destructive request, and every field below would ask the wrong
         // question. Checked first because this placeholder also happens to
-        // satisfy `itemType == .unclear`. See FINAL_RELEASE_AUDIT.md F-1.
+        // satisfy `itemType == .unclear`. See Docs/FINAL_RELEASE_AUDIT.md F-1.
         if PendingOperationStore.record(for: id) != nil { return .pendingOperation }
 
         // Checked ahead of the plain place trigger: a request that constrained

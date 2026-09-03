@@ -33,7 +33,7 @@ the fixed frame Monday 2026-08-03 10:00 America/Toronto.
 The corpus is a regression net and cannot detect improvement — it is at ceiling
 by construction, because it is authored from this contract by the same person
 who writes the rules. The held-out set is the progress meter. Read
-[Tools/CorpusRunner/heldout/README.md](Tools/CorpusRunner/heldout/README.md)
+[Tools/CorpusRunner/heldout/README.md](../Tools/CorpusRunner/heldout/README.md)
 before touching it.
 
 ---

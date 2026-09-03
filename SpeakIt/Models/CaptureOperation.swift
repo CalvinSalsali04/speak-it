@@ -172,7 +172,7 @@ enum CaptureOperationOutcome: Equatable, Sendable {
 /// could only be reclassified as an ordinary Task or Note, which is a
 /// destructive request's confirmation path leading nowhere: the person is
 /// told to "confirm in Needs review" and finds no control that does it. See
-/// FINAL_RELEASE_AUDIT.md F-1.
+/// Docs/FINAL_RELEASE_AUDIT.md F-1.
 ///
 /// Mirrors `RecurrenceStore`'s sidecar pattern rather than a schema change:
 /// this is confirmation state for one still-open review row, not data with a

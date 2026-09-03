@@ -93,7 +93,7 @@ struct RootView: View {
     // re-presenting the same capture case in quick succession can otherwise
     // let SwiftUI reuse the outgoing CaptureView's @State (typed text,
     // in-flight draft) instead of starting a clean session — see D-2 in
-    // FINAL_RELEASE_AUDIT.md.
+    // Docs/FINAL_RELEASE_AUDIT.md.
     @State private var captureSessionToken = UUID()
 
     private var appearance: SpeakItAppearance {

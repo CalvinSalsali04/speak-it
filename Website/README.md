@@ -270,7 +270,7 @@ which it stops reading as depth and starts reading as the page being uneven.
 - [x] **Every link and the QR point at `https://speakitapp.ca`.** That is the
       domain the shipping app already trusts for invite links
       (`ReferralService.swift` validates the host), the domain
-      `APP_STORE_SUBMISSION.md` names for the privacy and support routes, and
+      `Docs/APP_STORE_SUBMISSION.md` names for the privacy and support routes, and
       the one the referral service is configured for. It resolves today, which
       is the whole point: a QR that resolves to nothing is worse than one that
       resolves to the page the reader is already on. `APP_STORE_URL` at the top
@@ -342,7 +342,7 @@ which it stops reading as depth and starts reading as the page being uneven.
       main page's footer; `invite/index.html`'s App Store fallback now points at
       `speakitapp.ca` too. Confirm the mailbox exists and is monitored before
       the App Store listing goes live — it is also the contact in
-      `APP_STORE_SUBMISSION.md`.
+      `Docs/APP_STORE_SUBMISSION.md`.
 - [x] **`01-Today-v2.png` and `02-Memory-v2.png` are re-captured.** Shot from
       `SampleDataLibrary.Marketing` on an iPhone 17 Pro Max at 1320×2868; the
       recipe is in **The two screenshots** below.

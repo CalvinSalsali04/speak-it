@@ -4,20 +4,20 @@ A seven-lane read-only sweep of the understanding pipeline, run 2026-08-24 over
 roughly three thousand probe utterances. Each lane replayed real-shaped speech
 through the rules path and diffed the result against what the sentence meant.
 
-The full per-lane write-ups live in [`Docs/PipelineSweep/`](Docs/PipelineSweep/).
+The full per-lane write-ups live in [`Docs/PipelineSweep/`](PipelineSweep/).
 They were produced in a scratch directory and are checked in here because the
 analysis — mechanisms, call sites, utterance counts — is expensive to reproduce
 and was one reboot away from being lost.
 
 | Lane | Question it asked | Clusters |
 |---|---|---|
-| [routing](Docs/PipelineSweep/routing.md) | does a thought reach Today or Memory correctly? | R1–R12 |
-| [structured](Docs/PipelineSweep/structured.md) | do lists, recurrences and places survive? | C1–C11 |
-| [domains](Docs/PipelineSweep/domains.md) | does it handle the content of adult life? | C1–C11 |
-| [rambling](Docs/PipelineSweep/rambling.md) | do long unrehearsed captures survive? | C1–C11 |
-| [register](Docs/PipelineSweep/register.md) | dialect, non-native grammar, accented ASR | C1–C12 |
-| [people](Docs/PipelineSweep/people.md) | are people identified, attached, never dropped? | — |
-| [ai-feasibility](Docs/PipelineSweep/ai-feasibility.md) | should a model do the categorizing? | — |
+| [routing](PipelineSweep/routing.md) | does a thought reach Today or Memory correctly? | R1–R12 |
+| [structured](PipelineSweep/structured.md) | do lists, recurrences and places survive? | C1–C11 |
+| [domains](PipelineSweep/domains.md) | does it handle the content of adult life? | C1–C11 |
+| [rambling](PipelineSweep/rambling.md) | do long unrehearsed captures survive? | C1–C11 |
+| [register](PipelineSweep/register.md) | dialect, non-native grammar, accented ASR | C1–C12 |
+| [people](PipelineSweep/people.md) | are people identified, attached, never dropped? | — |
+| [ai-feasibility](PipelineSweep/ai-feasibility.md) | should a model do the categorizing? | — |
 
 ## How to read these
 

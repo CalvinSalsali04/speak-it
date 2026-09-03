@@ -33,7 +33,7 @@ struct ItemEditorView: View {
     /// the person asked for but that Speak It never executes automatically.
     /// When present it replaces the ordinary edit form outright: there is
     /// nothing to classify here, only a request to confirm or decline. See
-    /// FINAL_RELEASE_AUDIT.md F-1.
+    /// Docs/FINAL_RELEASE_AUDIT.md F-1.
     private let pendingOperation: PendingOperationStore.StoredPendingOperation?
     @State private var showsPendingOperationConfirmation = false
 

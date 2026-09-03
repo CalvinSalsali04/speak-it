@@ -1,0 +1,205 @@
+# Continuous integration for the Speak It monorepo.
+#
+# Linux jobs run on every push to main and every pull request. The iOS job is
+# the expensive one: GitHub bills macOS at ten times the Linux rate, and this
+# private repository's Free-plan allowance covers roughly one unit-suite run a
+# month there. So the iOS job runs on GitHub-hosted macOS only when dispatched
+# by hand, and on every pull request once the repository variable IOS_RUNNER
+# names a self-hosted Mac (see CONTRIBUTING.md).
+#
+# Every check is a script under Tools/CI so the same command runs locally.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "runs-on label for the iOS job (blank = IOS_RUNNER variable, else macos-26)"
+        type: string
+        default: ""
+      release_build:
+        description: "Also compile the Release configuration for a generic iOS device"
+        type: boolean
+        default: false
+      ui_tests:
+        description: "Also run the XCUITest suite (slow)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # paths-filter lists a pull request's files through the API
+    outputs:
+      ios: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ios == 'true' }}
+      dashboard: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.dashboard == 'true' }}
+      referral: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.referral == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            ios:
+              - 'SpeakIt/**'
+              - 'SpeakItTests/**'
+              - 'SpeakItUITests/**'
+              - 'SpeakItLiveActivity/**'
+              - 'SpeakItShareExtension/**'
+              - 'Shared/**'
+              - 'SpeakIt.xcodeproj/**'
+              - 'Tools/CorpusRunner/**'
+              - 'Tools/PipelineProbe/**'
+              - 'Tools/CI/**'
+              - '.github/workflows/ci.yml'
+            dashboard:
+              - 'FounderDashboard/**'
+              - '.github/workflows/ci.yml'
+            referral:
+              - 'ReferralService/**'
+              - '.github/workflows/ci.yml'
+
+  hygiene:
+    name: Secrets, workflow and shell lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan the full history for committed secrets
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD:/repo" -w /repo \
+            "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
+            git --redact --verbose --exit-code 1 --config .gitleaks.toml /repo
+        env:
+          GITLEAKS_VERSION: "v8.30.1"
+      - name: Lint the workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+      - name: Lint the shell scripts
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+        with:
+          scandir: ./Tools
+          severity: warning
+
+  dashboard:
+    name: Founder dashboard
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: FounderDashboard
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: FounderDashboard/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm test
+
+  referral-service:
+    name: Referral service
+    needs: changes
+    if: needs.changes.outputs.referral == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ReferralService
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ReferralService/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  ios:
+    name: iOS app
+    needs: changes
+    # GitHub-hosted macOS only when asked for by hand; a self-hosted Mac on
+    # every change. See the header comment for the cost reasoning.
+    if: >-
+      needs.changes.outputs.ios == 'true' &&
+      (github.event_name == 'workflow_dispatch' || vars.IOS_RUNNER != '')
+    runs-on: ${{ inputs.runner || vars.IOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode 26.6 on a GitHub-hosted image
+        if: runner.environment == 'github-hosted'
+        run: |
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -i ios || true
+
+      - name: Corpus gate (rules path, no simulator)
+        run: Tools/CI/corpus-gate.sh
+
+      - name: Unit tests
+        run: Tools/CI/unit-tests.sh SpeakItTests
+        env:
+          SPEAKIT_DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          SPEAKIT_RESULT_BUNDLE: ${{ runner.temp }}/SpeakItTests.xcresult
+
+      - name: Upload the unit-test result bundle
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SpeakItTests.xcresult
+          path: ${{ runner.temp }}/SpeakItTests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Release compile check
+        if: inputs.release_build == true || github.ref == 'refs/heads/main'
+        run: Tools/CI/release-build.sh
+        env:
+          SPEAKIT_RELEASE_DERIVED_DATA: ${{ runner.temp }}/DerivedDataRelease
+
+      - name: UI tests
+        if: inputs.ui_tests == true
+        run: Tools/CI/unit-tests.sh SpeakItUITests
+        env:
+          SPEAKIT_DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          SPEAKIT_RESULT_BUNDLE: ${{ runner.temp }}/SpeakItUITests.xcresult
+
+      - name: Upload the UI-test result bundle
+        if: failure() && inputs.ui_tests == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SpeakItUITests.xcresult
+          path: ${{ runner.temp }}/SpeakItUITests.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

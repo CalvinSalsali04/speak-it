@@ -251,7 +251,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Advances a recurring reminder that has gone overdue without either a
     /// native repeating trigger to keep it firing or the person completing
     /// it — the "first Monday every month" family from
-    /// FINAL_RELEASE_AUDIT.md H-1/E-1 that `ReminderScheduleRequest`'s
+    /// Docs/FINAL_RELEASE_AUDIT.md H-1/E-1 that `ReminderScheduleRequest`'s
     /// `repeatingComponents` cannot express as a single static calendar
     /// match (ordinal-weekday, multi-weekday, `interval` above 1,
     /// elapsed-time). Run from the same self-healing pass as
@@ -1065,7 +1065,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // else to live. Recorded against it here so the editor can offer a
             // real confirm control instead of the dead-end "confirm in Needs
             // review" the receipt used to promise. See
-            // FINAL_RELEASE_AUDIT.md F-1.
+            // Docs/FINAL_RELEASE_AUDIT.md F-1.
             if let placeholderID = session.items.first?.id {
                 PendingOperationStore.set(
                     operation: request.operation,
@@ -1099,7 +1099,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // because the operation clause had been carved out of the
             // remainder. The session is left intact for the caller to create
             // from instead. See the convergence note in
-            // PIPELINE_SWEEP_FINDINGS.md (rambling C2, domains C5, routing R11).
+            // Docs/PIPELINE_SWEEP_FINDINGS.md (rambling C2, domains C5, routing R11).
             return .notFound(operation: request.operation, target: target)
 
         case 1:
@@ -1208,7 +1208,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// request behaves exactly like the same operation performed one item at a
     /// time. The review row itself was only ever the confirmation vehicle, so
     /// it is removed once its request is resolved rather than left behind as
-    /// a permanent row with nothing left to say. See FINAL_RELEASE_AUDIT.md F-1.
+    /// a permanent row with nothing left to say. See Docs/FINAL_RELEASE_AUDIT.md F-1.
     func confirmPendingOperation(_ item: CapturedItem) throws {
         guard let record = PendingOperationStore.record(for: item.id) else { return }
         for candidateID in record.candidateIDs {
