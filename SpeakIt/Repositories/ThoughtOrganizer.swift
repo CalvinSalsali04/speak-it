@@ -174,10 +174,70 @@ enum ThoughtTitleFormatter {
 }
 
 enum ThoughtOrganizer {
+    /// Everything below is a pure reading of (text, referenceDate, calendar),
+    /// but a far from free one: the type, category, recurrence, and temporal
+    /// parsers each run many regular expressions over the transcript. Several
+    /// hot paths re-derive the same reading over and over with identical
+    /// inputs — `ItemPresentation.make` for every visible row on every SwiftUI
+    /// render, and `ReminderScheduleRequest.init` for every active item each
+    /// time Today's body is evaluated — which on-device profiling showed
+    /// saturating the main thread during scrolling and live capture. The memo
+    /// keeps one entry per distinct input instead.
+    private struct MemoKey: Hashable {
+        let text: String
+        let referenceDate: Date
+        let calendarIdentifier: Calendar.Identifier
+        let timeZoneIdentifier: String
+        let firstWeekday: Int
+        let localeIdentifier: String?
+    }
+
+    private static let memoLock = NSLock()
+    private static var memo: [MemoKey: OrganizedThought] = [:]
+    private static var memoInsertionOrder: [MemoKey] = []
+    private static let memoCapacity = 512
+
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
+    ) -> OrganizedThought {
+        let key = MemoKey(
+            text: text,
+            referenceDate: referenceDate,
+            calendarIdentifier: calendar.identifier,
+            timeZoneIdentifier: calendar.timeZone.identifier,
+            firstWeekday: calendar.firstWeekday,
+            localeIdentifier: calendar.locale?.identifier
+        )
+        memoLock.lock()
+        let cached = memo[key]
+        memoLock.unlock()
+        if let cached { return cached }
+
+        let organized = organizeUncached(text, referenceDate: referenceDate, calendar: calendar)
+
+        memoLock.lock()
+        if memo[key] == nil {
+            memo[key] = organized
+            memoInsertionOrder.append(key)
+            if memoInsertionOrder.count > memoCapacity {
+                // Evict the oldest half in one pass; per-call LRU bookkeeping
+                // would cost more than the misses it avoids at this size.
+                for stale in memoInsertionOrder.prefix(memoCapacity / 2) {
+                    memo[stale] = nil
+                }
+                memoInsertionOrder.removeFirst(memoCapacity / 2)
+            }
+        }
+        memoLock.unlock()
+        return organized
+    }
+
+    private static func organizeUncached(
+        _ text: String,
+        referenceDate: Date,
+        calendar: Calendar
     ) -> OrganizedThought {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()

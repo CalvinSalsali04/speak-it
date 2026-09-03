@@ -43,7 +43,8 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             : .notification
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
-            fireDate: fireDate
+            fireDate: fireDate,
+            intendedTime: item.temporalIntent?.time
         )
     }
 
@@ -59,7 +60,8 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// `advanceOverdueRecurrences`.
     static func repeatingComponents(
         rule: RecurrenceRule?,
-        fireDate: Date
+        fireDate: Date,
+        intendedTime: WallClockTime? = nil
     ) -> DateComponents? {
         guard let rule,
               rule.anchor == .scheduledDate,
@@ -67,7 +69,16 @@ struct ReminderScheduleRequest: Hashable, Sendable {
               !rule.repeatsByElapsedTime,
               rule.ordinalWeekday == nil else { return nil }
 
-        var components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+        // The series' clock is the one the person asked for, not the clock of
+        // this particular occurrence: a spring-forward day resolves "2:30" to
+        // 3:00 for that one date, and components taken from that fire date
+        // would drift every later day to 3:00 as well.
+        var components: DateComponents
+        if let intendedTime {
+            components = DateComponents(hour: intendedTime.hour, minute: intendedTime.minute)
+        } else {
+            components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+        }
         components.timeZone = TimeZone.current
 
         switch rule.frequency {
@@ -761,9 +772,15 @@ enum ReminderScheduler {
 
         let secondsUntilFire = group.fireDate.timeIntervalSinceNow
         let trigger: UNNotificationTrigger
+        let seriesTrigger = group.requests.count == 1
+            ? group.requests[0].repeatingComponents.map {
+                UNCalendarNotificationTrigger(dateMatching: $0, repeats: true)
+            }
+            : nil
         if secondsUntilFire > 60,
-           group.requests.count == 1,
-           let repeatingComponents = group.requests[0].repeatingComponents {
+           let seriesTrigger,
+           let firstSeriesFire = seriesTrigger.nextTriggerDate(),
+           abs(firstSeriesFire.timeIntervalSince(group.fireDate)) < 60 {
             // A recurring reminder that only ever schedules its next single
             // occurrence stops firing the moment the person misses one — see
             // FINAL_RELEASE_AUDIT.md H-1/E-1. Handing iOS the recurring
@@ -772,7 +789,14 @@ enum ReminderScheduler {
             // next `CapturedItem` occurrence, once the app does process a
             // completion, gets its own such trigger and this one is cancelled
             // the normal way `setCompleted` already cancels any reminder.
-            trigger = UNCalendarNotificationTrigger(dateMatching: repeatingComponents, repeats: true)
+            //
+            // Only valid while the pattern's first fire IS the stored
+            // occurrence. When the occurrence sits beyond the pattern's next
+            // match — a date edited into the future, or a DST-shifted
+            // occurrence whose clock differs from the series' — the repeating
+            // match would fire before the moment the item actually names, so
+            // that occurrence is scheduled as the exact one-shot below.
+            trigger = seriesTrigger
         } else if secondsUntilFire <= 60 {
             // Relative reminders such as “in 10 seconds” should count down
             // from the moment the thought is saved. A time-interval trigger

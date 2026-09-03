@@ -192,4 +192,34 @@ final class ActionabilityTests: XCTestCase {
             "an ambiguous reading must not demote a type the wording already gave"
         )
     }
+
+    // MARK: Memoisation
+
+    /// `ThoughtOrganizer.organize` memoises by its full input, because hot
+    /// render paths re-derive the same reading every frame. The memo must be
+    /// invisible: identical inputs return the identical reading, and inputs
+    /// differing only in reference date or calendar must never bleed into each
+    /// other's cached entries.
+    func testOrganizeMemoisationKeepsReadingsIndependent() {
+        let text = "Remind me to call Ana tomorrow at 5pm"
+
+        let first = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+        let repeated = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(first, repeated, "a cache hit must be indistinguishable from a fresh reading")
+
+        let laterReference = referenceDate.addingTimeInterval(48 * 60 * 60)
+        let later = ThoughtOrganizer.organize(text, referenceDate: laterReference, calendar: calendar)
+        XCTAssertNotEqual(
+            first.reminderDate, later.reminderDate,
+            "\"tomorrow\" from a different reference day must not reuse the earlier day's entry"
+        )
+
+        var vancouver = Calendar(identifier: .gregorian)
+        vancouver.timeZone = TimeZone(identifier: "America/Vancouver")!
+        let shifted = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: vancouver)
+        XCTAssertNotEqual(
+            first.reminderDate, shifted.reminderDate,
+            "the same wall clock in a different zone must not reuse the earlier zone's entry"
+        )
+    }
 }
