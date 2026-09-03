@@ -24,6 +24,12 @@ final class TemporalFullPathTests: XCTestCase {
     private var previousRecurrences: [RecurrenceRecordSnapshot] = []
     private var scheduledCheck: (id: UUID, fireDate: Date)?
 
+    /// The one zone this file writes its wall-clock expectations in.
+    ///
+    /// Only ever reached through `withFixtureClock`, which pins the device to
+    /// it and hands out the matching calendar in the same breath.
+    private static let fixtureTimeZoneIdentifier = "America/Toronto"
+
     override func setUpWithError() throws {
         previousRecurrences = RecurrenceStore.snapshots()
         storeURL = FileManager.default.temporaryDirectory
@@ -91,10 +97,30 @@ final class TemporalFullPathTests: XCTestCase {
         ))!
     }
 
-    private func torontoCalendar() -> Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
-        return calendar
+    /// Runs `body` with the device pinned to `fixtureTimeZoneIdentifier`,
+    /// handing it the calendar for that same zone.
+    ///
+    /// The pin and the calendar are only reachable together, and both come from
+    /// one constant, so they cannot disagree. That pairing is the point: a test
+    /// that builds its expectation in Toronto while the app under test resolves
+    /// through `Calendar.autoupdatingCurrent` — which follows the machine — is
+    /// not testing the app, it is testing where the developer lives. Six tests
+    /// here were written that way and passed only on a Mac set to Toronto.
+    ///
+    /// Deliberately scoped rather than hoisted into `setUp`. Pinning the whole
+    /// test case also pins the stretch where `ReminderScheduler` builds its
+    /// `UNCalendarNotificationTrigger`, and that path does not follow
+    /// `NSTimeZone.default`: the wall clock it writes into the trigger is then
+    /// read back in the machine's own zone, moving every scheduled reminder by
+    /// the offset between the two and silently dropping the ones that land in
+    /// the past. Anything asserting on `UNUserNotificationCenter` has to run in
+    /// the machine's zone, so the pin stops where scheduling starts.
+    private func withFixtureClock(_ body: (Calendar) throws -> Void) rethrows {
+        try withDeviceTimeZone(Self.fixtureTimeZoneIdentifier) {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: Self.fixtureTimeZoneIdentifier)!
+            try body(calendar)
+        }
     }
 
     /// `ReminderScheduler.synchronize` is deliberately fire-and-forget, ordered
@@ -178,81 +204,83 @@ final class TemporalFullPathTests: XCTestCase {
     /// March 14 2027 is a real future transition, so this runs against the real
     /// tzdata rules rather than a hand-built fixture.
     func testDailySeriesReturnsToItsClockAfterSpringForward() throws {
-        let calendar = torontoCalendar()
-        let captureTime = makeDate(year: 2027, month: 3, day: 13, hour: 1, calendar: calendar)
+        try withFixtureClock { calendar in
+            let captureTime = makeDate(year: 2027, month: 3, day: 13, hour: 1, calendar: calendar)
 
-        var current = try repository.createCapture(
-            text: "Take my pills every day at 2:30 AM",
-            source: .inAppText,
-            createdAt: captureTime,
-            schedulesReminder: false
-        )
-        XCTAssertEqual(
-            calendar.dateComponents([.day, .hour, .minute], from: try XCTUnwrap(current.dueDate)),
-            DateComponents(day: 13, hour: 2, minute: 30)
-        )
+            var current = try repository.createCapture(
+                text: "Take my pills every day at 2:30 AM",
+                source: .inAppText,
+                createdAt: captureTime,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(
+                calendar.dateComponents([.day, .hour, .minute], from: try XCTUnwrap(current.dueDate)),
+                DateComponents(day: 13, hour: 2, minute: 30)
+            )
 
-        // Occurrence on the transition day: 2:30 does not exist, so the policy
-        // is the first instant that does.
-        try repository.setCompleted(current, completed: true)
-        var nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
-        current = try loadItem(withID: nextID)
-        var components = calendar.dateComponents(
-            [.month, .day, .hour, .minute],
-            from: try XCTUnwrap(current.dueDate)
-        )
-        XCTAssertEqual(components.day, 14)
-        XCTAssertEqual(components.hour, 3, "2:30 AM does not exist on a spring-forward day")
-        XCTAssertEqual(components.minute, 0)
+            // Occurrence on the transition day: 2:30 does not exist, so the policy
+            // is the first instant that does.
+            try repository.setCompleted(current, completed: true)
+            var nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
+            current = try loadItem(withID: nextID)
+            var components = calendar.dateComponents(
+                [.month, .day, .hour, .minute],
+                from: try XCTUnwrap(current.dueDate)
+            )
+            XCTAssertEqual(components.day, 14)
+            XCTAssertEqual(components.hour, 3, "2:30 AM does not exist on a spring-forward day")
+            XCTAssertEqual(components.minute, 0)
 
-        // And the day after must return to 2:30, not stay at 3:00 forever.
-        try repository.setCompleted(current, completed: true)
-        nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
-        current = try loadItem(withID: nextID)
-        components = calendar.dateComponents(
-            [.month, .day, .hour, .minute],
-            from: try XCTUnwrap(current.dueDate)
-        )
-        XCTAssertEqual(components.day, 15)
-        XCTAssertEqual(
-            components.hour,
-            2,
-            "the series must return to the clock it was asked for, not adopt the transition-day nudge"
-        )
-        XCTAssertEqual(components.minute, 30)
+            // And the day after must return to 2:30, not stay at 3:00 forever.
+            try repository.setCompleted(current, completed: true)
+            nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
+            current = try loadItem(withID: nextID)
+            components = calendar.dateComponents(
+                [.month, .day, .hour, .minute],
+                from: try XCTUnwrap(current.dueDate)
+            )
+            XCTAssertEqual(components.day, 15)
+            XCTAssertEqual(
+                components.hour,
+                2,
+                "the series must return to the clock it was asked for, not adopt the transition-day nudge"
+            )
+            XCTAssertEqual(components.minute, 30)
+        }
     }
 
     /// The fall-back half of the policy, through the same real path. November 1
     /// 2026 has two 1:30 AMs; the series must take the first and stay on 1:30.
     func testDailySeriesFiresOnceAcrossFallBack() throws {
-        let calendar = torontoCalendar()
-        let captureTime = makeDate(year: 2026, month: 10, day: 31, hour: 1, calendar: calendar)
+        try withFixtureClock { calendar in
+            let captureTime = makeDate(year: 2026, month: 10, day: 31, hour: 1, calendar: calendar)
 
-        var current = try repository.createCapture(
-            text: "Log the meter reading every day at 1:30 AM",
-            source: .inAppText,
-            createdAt: captureTime,
-            schedulesReminder: false
-        )
-        let firstDue = try XCTUnwrap(current.dueDate)
-        XCTAssertEqual(
-            calendar.dateComponents([.day, .hour, .minute], from: firstDue),
-            DateComponents(day: 31, hour: 1, minute: 30)
-        )
+            var current = try repository.createCapture(
+                text: "Log the meter reading every day at 1:30 AM",
+                source: .inAppText,
+                createdAt: captureTime,
+                schedulesReminder: false
+            )
+            let firstDue = try XCTUnwrap(current.dueDate)
+            XCTAssertEqual(
+                calendar.dateComponents([.day, .hour, .minute], from: firstDue),
+                DateComponents(day: 31, hour: 1, minute: 30)
+            )
 
-        try repository.setCompleted(current, completed: true)
-        let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
-        current = try loadItem(withID: nextID)
-        let transitionDue = try XCTUnwrap(current.dueDate)
-        let components = calendar.dateComponents([.day, .hour, .minute], from: transitionDue)
-        XCTAssertEqual(components.day, 1)
-        XCTAssertEqual(components.hour, 1)
-        XCTAssertEqual(components.minute, 30)
-        XCTAssertEqual(
-            transitionDue.timeIntervalSince(firstDue),
-            24 * 60 * 60,
-            "the first of the two 1:30s is 24 hours later; landing on the second would be 25"
-        )
+            try repository.setCompleted(current, completed: true)
+            let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: current.id))
+            current = try loadItem(withID: nextID)
+            let transitionDue = try XCTUnwrap(current.dueDate)
+            let components = calendar.dateComponents([.day, .hour, .minute], from: transitionDue)
+            XCTAssertEqual(components.day, 1)
+            XCTAssertEqual(components.hour, 1)
+            XCTAssertEqual(components.minute, 30)
+            XCTAssertEqual(
+                transitionDue.timeIntervalSince(firstDue),
+                24 * 60 * 60,
+                "the first of the two 1:30s is 24 hours later; landing on the second would be 25"
+            )
+        }
     }
 
     // MARK: Invariants
@@ -260,42 +288,43 @@ final class TemporalFullPathTests: XCTestCase {
     /// Resolving an intent must never modify the intent. Asserted over every
     /// kind rather than one example, because the failure is silent.
     func testResolvingNeverMutatesTheIntent() throws {
-        let calendar = torontoCalendar()
-        let anchor = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
-        let intents: [TemporalIntent] = [
-            .none,
-            TemporalIntent(kind: .dateOnly, day: CalendarDay(year: 2026, month: 8, day: 21)),
-            TemporalIntent(
-                kind: .exactDateTime,
-                day: CalendarDay(year: 2026, month: 8, day: 21),
-                time: WallClockTime(hour: 15, minute: 0)
-            ),
-            TemporalIntent(kind: .relativeDuration, relativeSeconds: 3600),
-            TemporalIntent(
-                kind: .calendarRecurrence,
-                day: CalendarDay(year: 2026, month: 8, day: 21),
-                time: WallClockTime(hour: 9, minute: 0),
-                recurrence: RecurrenceRule(frequency: .daily)
-            ),
-            TemporalIntent(
-                kind: .durationRecurrence,
-                relativeSeconds: 86_400,
-                recurrence: RecurrenceRule(frequency: .daily, intervalSeconds: 86_400)
-            )
-        ]
-
-        for intent in intents {
-            let before = intent
-            for wantsReminder in [true, false] {
-                _ = TemporalResolver.resolve(
-                    intent,
-                    anchor: anchor,
-                    calendar: calendar,
-                    wantsReminder: wantsReminder
+        try withFixtureClock { calendar in
+            let anchor = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
+            let intents: [TemporalIntent] = [
+                .none,
+                TemporalIntent(kind: .dateOnly, day: CalendarDay(year: 2026, month: 8, day: 21)),
+                TemporalIntent(
+                    kind: .exactDateTime,
+                    day: CalendarDay(year: 2026, month: 8, day: 21),
+                    time: WallClockTime(hour: 15, minute: 0)
+                ),
+                TemporalIntent(kind: .relativeDuration, relativeSeconds: 3600),
+                TemporalIntent(
+                    kind: .calendarRecurrence,
+                    day: CalendarDay(year: 2026, month: 8, day: 21),
+                    time: WallClockTime(hour: 9, minute: 0),
+                    recurrence: RecurrenceRule(frequency: .daily)
+                ),
+                TemporalIntent(
+                    kind: .durationRecurrence,
+                    relativeSeconds: 86_400,
+                    recurrence: RecurrenceRule(frequency: .daily, intervalSeconds: 86_400)
                 )
+            ]
+
+            for intent in intents {
+                let before = intent
+                for wantsReminder in [true, false] {
+                    _ = TemporalResolver.resolve(
+                        intent,
+                        anchor: anchor,
+                        calendar: calendar,
+                        wantsReminder: wantsReminder
+                    )
+                }
+                _ = TemporalResolver.nextOccurrence(of: intent, after: anchor, calendar: calendar)
+                XCTAssertEqual(intent, before, "resolution must be a pure read of \(intent.kind)")
             }
-            _ = TemporalResolver.nextOccurrence(of: intent, after: anchor, calendar: calendar)
-            XCTAssertEqual(intent, before, "resolution must be a pure read of \(intent.kind)")
         }
     }
 
@@ -304,35 +333,36 @@ final class TemporalFullPathTests: XCTestCase {
     /// editor, the row, and the next reparse all start believing the person
     /// said nine o'clock.
     func testDateOnlyReminderDefaultIsNeverWrittenIntoTheIntent() throws {
-        let calendar = torontoCalendar()
-        let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
 
-        let plain = try repository.createCapture(
-            text: "Buy milk tomorrow",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        XCTAssertEqual(plain.temporalKind, .dateOnly)
-        XCTAssertNil(plain.temporalIntent?.time, "no time of day was expressed")
-        XCTAssertNil(plain.reminderDate, "a bare date-only item schedules nothing")
+            let plain = try repository.createCapture(
+                text: "Buy milk tomorrow",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(plain.temporalKind, .dateOnly)
+            XCTAssertNil(plain.temporalIntent?.time, "no time of day was expressed")
+            XCTAssertNil(plain.reminderDate, "a bare date-only item schedules nothing")
 
-        let reminded = try repository.createCapture(
-            text: "Remind me to buy milk tomorrow",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        XCTAssertEqual(reminded.temporalKind, .dateOnly, "still a day, not a moment")
-        XCTAssertNil(
-            reminded.temporalIntent?.time,
-            "the derived 9 AM belongs to the notification, never to the intent"
-        )
-        let reminderDate = try XCTUnwrap(reminded.reminderDate)
-        XCTAssertEqual(
-            calendar.dateComponents([.hour, .minute], from: reminderDate),
-            DateComponents(hour: TemporalResolver.dateOnlyAlertHour, minute: 0)
-        )
+            let reminded = try repository.createCapture(
+                text: "Remind me to buy milk tomorrow",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(reminded.temporalKind, .dateOnly, "still a day, not a moment")
+            XCTAssertNil(
+                reminded.temporalIntent?.time,
+                "the derived 9 AM belongs to the notification, never to the intent"
+            )
+            let reminderDate = try XCTUnwrap(reminded.reminderDate)
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: reminderDate),
+                DateComponents(hour: TemporalResolver.dateOnlyAlertHour, minute: 0)
+            )
+        }
     }
 
     /// A location phrase is understood, not unclear — the guarantee that
@@ -361,42 +391,43 @@ final class TemporalFullPathTests: XCTestCase {
     /// backfill and the recovery pass again; neither may reparse the wording
     /// back over the correction.
     func testManualEditSurvivesRelaunchAndRecovery() throws {
-        let calendar = torontoCalendar()
-        let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
-        let item = try repository.createCapture(
-            text: "Remind me to call the dentist tomorrow at 3 PM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        let itemID = item.id
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
+            let item = try repository.createCapture(
+                text: "Remind me to call the dentist tomorrow at 3 PM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            let itemID = item.id
 
-        let corrected = makeDate(year: 2026, month: 9, day: 4, hour: 18, minute: 45, calendar: calendar)
-        try repository.update(item, with: ItemEdits(
-            title: "Call the dentist",
-            itemType: .task,
-            category: .personal,
-            dueDate: corrected,
-            reminderDate: corrected,
-            priority: .normal,
-            personName: nil,
-            needsClarification: false
-        ))
-        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+            let corrected = makeDate(year: 2026, month: 9, day: 4, hour: 18, minute: 45, calendar: calendar)
+            try repository.update(item, with: ItemEdits(
+                title: "Call the dentist",
+                itemType: .task,
+                category: .personal,
+                dueDate: corrected,
+                reminderDate: corrected,
+                priority: .normal,
+                personName: nil,
+                needsClarification: false
+            ))
+            XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
 
-        try relaunch()
+            try relaunch()
 
-        let reloaded = try loadItem(withID: itemID)
-        XCTAssertEqual(reloaded.dueDate, corrected)
-        XCTAssertEqual(reloaded.reminderDate, corrected)
-        XCTAssertEqual(reloaded.temporalIntent?.isUserEdited, true)
-        XCTAssertEqual(reloaded.temporalIntent?.day, CalendarDay(year: 2026, month: 9, day: 4))
-        XCTAssertEqual(reloaded.temporalIntent?.time, WallClockTime(hour: 18, minute: 45))
-        XCTAssertEqual(
-            reloaded.temporalIntent?.sourceText?.isEmpty,
-            false,
-            "the original wording stays as provenance"
-        )
+            let reloaded = try loadItem(withID: itemID)
+            XCTAssertEqual(reloaded.dueDate, corrected)
+            XCTAssertEqual(reloaded.reminderDate, corrected)
+            XCTAssertEqual(reloaded.temporalIntent?.isUserEdited, true)
+            XCTAssertEqual(reloaded.temporalIntent?.day, CalendarDay(year: 2026, month: 9, day: 4))
+            XCTAssertEqual(reloaded.temporalIntent?.time, WallClockTime(hour: 18, minute: 45))
+            XCTAssertEqual(
+                reloaded.temporalIntent?.sourceText?.isEmpty,
+                false,
+                "the original wording stays as provenance"
+            )
+        }
     }
 
     // MARK: Stale notification reconciliation
@@ -460,9 +491,7 @@ final class TemporalFullPathTests: XCTestCase {
     /// the real notification centre against the real tzdata rules.
     func testIntendedWallClockReachesTheNotificationTriggerAcrossSpringForward() async throws {
         try await requireNotificationAuthorization()
-        let calendar = torontoCalendar()
-
-        try withDeviceTimeZone("America/Toronto") {
+        try withFixtureClock { calendar in
             let item = try repository.createCapture(
                 text: "Remind me to take my pills every day at 2:30 AM",
                 source: .inAppText,
@@ -612,82 +641,84 @@ final class TemporalFullPathTests: XCTestCase {
     /// Completing a recurring item late must schedule the next occurrence in the
     /// future, never in the past where iOS would silently drop it.
     func testRecurringItemCompletedLateSchedulesAFutureOccurrence() throws {
-        let calendar = torontoCalendar()
-        let createdAt = calendar.date(byAdding: .day, value: -9, to: .now)!
-        let item = try repository.createCapture(
-            text: "Water the plants every day at 8 AM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        XCTAssertEqual(item.temporalKind, .calendarRecurrence)
+        try withFixtureClock { calendar in
+            let createdAt = calendar.date(byAdding: .day, value: -9, to: .now)!
+            let item = try repository.createCapture(
+                text: "Water the plants every day at 8 AM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalKind, .calendarRecurrence)
 
-        try repository.setCompleted(item, completed: true)
-        let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: item.id))
-        let next = try loadItem(withID: nextID)
-        let due = try XCTUnwrap(next.dueDate)
+            try repository.setCompleted(item, completed: true)
+            let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: item.id))
+            let next = try loadItem(withID: nextID)
+            let due = try XCTUnwrap(next.dueDate)
 
-        XCTAssertGreaterThan(due, .now, "a late completion must not schedule into the past")
-        XCTAssertEqual(
-            calendar.dateComponents([.hour, .minute], from: due),
-            DateComponents(hour: 8, minute: 0),
-            "catching up must not move the clock the series repeats at"
-        )
+            XCTAssertGreaterThan(due, .now, "a late completion must not schedule into the past")
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: due),
+                DateComponents(hour: 8, minute: 0),
+                "catching up must not move the clock the series repeats at"
+            )
+        }
     }
 
     /// Editing one occurrence of a live series must become the series' new
     /// meaning, and must not be reverted by the original wording.
     func testEditingOneOccurrenceRetimesTheRestOfTheSeries() throws {
-        let calendar = torontoCalendar()
-        let item = try repository.createCapture(
-            text: "Water the plants every day at 8 AM",
-            source: .inAppText,
-            createdAt: .now,
-            schedulesReminder: false
-        )
-        let itemID = item.id
+        try withFixtureClock { calendar in
+            let item = try repository.createCapture(
+                text: "Water the plants every day at 8 AM",
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            let itemID = item.id
 
-        // The person moves this occurrence to 6:45 PM and keeps it repeating.
-        let retimed = calendar.date(
-            bySettingHour: 18,
-            minute: 45,
-            second: 0,
-            of: try XCTUnwrap(item.dueDate)
-        )!
-        try repository.update(item, with: ItemEdits(
-            title: "Water the plants",
-            itemType: .task,
-            category: .personal,
-            dueDate: retimed,
-            reminderDate: nil,
-            priority: .normal,
-            personName: nil,
-            needsClarification: false,
-            recurrenceRule: RecurrenceRule(frequency: .daily)
-        ))
-        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
-        XCTAssertEqual(item.temporalIntent?.time, WallClockTime(hour: 18, minute: 45))
+            // The person moves this occurrence to 6:45 PM and keeps it repeating.
+            let retimed = calendar.date(
+                bySettingHour: 18,
+                minute: 45,
+                second: 0,
+                of: try XCTUnwrap(item.dueDate)
+            )!
+            try repository.update(item, with: ItemEdits(
+                title: "Water the plants",
+                itemType: .task,
+                category: .personal,
+                dueDate: retimed,
+                reminderDate: nil,
+                priority: .normal,
+                personName: nil,
+                needsClarification: false,
+                recurrenceRule: RecurrenceRule(frequency: .daily)
+            ))
+            XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+            XCTAssertEqual(item.temporalIntent?.time, WallClockTime(hour: 18, minute: 45))
 
-        try repository.setCompleted(item, completed: true)
-        let next = try loadItem(
-            withID: try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: itemID))
-        )
+            try repository.setCompleted(item, completed: true)
+            let next = try loadItem(
+                withID: try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: itemID))
+            )
 
-        XCTAssertEqual(
-            calendar.dateComponents([.hour, .minute], from: try XCTUnwrap(next.dueDate)),
-            DateComponents(hour: 18, minute: 45),
-            "the rest of the series follows the correction, not the original sentence"
-        )
-        XCTAssertEqual(
-            next.temporalIntent?.isUserEdited,
-            true,
-            "the correction stays authoritative for every later occurrence"
-        )
-        XCTAssertNotEqual(
-            next.temporalIntent?.time,
-            WallClockTime(hour: 8, minute: 0),
-            "reparsing 'every day at 8 AM' must never win over a manual correction"
-        )
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: try XCTUnwrap(next.dueDate)),
+                DateComponents(hour: 18, minute: 45),
+                "the rest of the series follows the correction, not the original sentence"
+            )
+            XCTAssertEqual(
+                next.temporalIntent?.isUserEdited,
+                true,
+                "the correction stays authoritative for every later occurrence"
+            )
+            XCTAssertNotEqual(
+                next.temporalIntent?.time,
+                WallClockTime(hour: 8, minute: 0),
+                "reparsing 'every day at 8 AM' must never win over a manual correction"
+            )
+        }
     }
 
     // MARK: Travel and device environment
@@ -698,6 +729,9 @@ final class TemporalFullPathTests: XCTestCase {
     /// `Calendar.autoupdatingCurrent`, so this is the same change the app sees
     /// when someone lands in another country — not a mock handed to one
     /// function.
+    ///
+    /// `withFixtureClock` is built on it, and the travel tests below use it
+    /// directly to move somewhere that is not the fixture zone.
     private func withDeviceTimeZone(_ identifier: String, _ body: () throws -> Void) rethrows {
         let previous = NSTimeZone.default
         NSTimeZone.default = TimeZone(identifier: identifier)!
@@ -711,12 +745,12 @@ final class TemporalFullPathTests: XCTestCase {
     func testDateOnlyDayNeverShiftsWhenTravelling() throws {
         var item: CapturedItem!
         var itemID: UUID!
-        try withDeviceTimeZone("America/Toronto") {
+        try withFixtureClock { calendar in
             item = try repository.createCapture(
                 text: "Renew the passport on August 15",
                 source: .inAppText,
                 createdAt: makeDate(
-                    year: 2026, month: 8, day: 10, hour: 9, calendar: torontoCalendar()
+                    year: 2026, month: 8, day: 10, hour: 9, calendar: calendar
                 ),
                 schedulesReminder: false
             )
@@ -742,12 +776,12 @@ final class TemporalFullPathTests: XCTestCase {
     /// a day from a stored instant in the wrong zone.
     func testDateOnlyDaySurvivesATimeZoneChangeWhileTerminated() throws {
         var itemID: UUID!
-        try withDeviceTimeZone("America/Toronto") {
+        try withFixtureClock { calendar in
             let item = try repository.createCapture(
                 text: "Renew the passport on August 15",
                 source: .inAppText,
                 createdAt: makeDate(
-                    year: 2026, month: 8, day: 10, hour: 9, calendar: torontoCalendar()
+                    year: 2026, month: 8, day: 10, hour: 9, calendar: calendar
                 ),
                 schedulesReminder: false
             )
@@ -773,12 +807,12 @@ final class TemporalFullPathTests: XCTestCase {
     /// time the person never said.
     func testLegacyRowBackfilledAfterTravelKeepsItsDay() throws {
         var itemID: UUID!
-        try withDeviceTimeZone("America/Toronto") {
+        try withFixtureClock { calendar in
             let item = try repository.createCapture(
                 text: "Renew the passport on August 15",
                 source: .inAppText,
                 createdAt: makeDate(
-                    year: 2026, month: 8, day: 10, hour: 9, calendar: torontoCalendar()
+                    year: 2026, month: 8, day: 10, hour: 9, calendar: calendar
                 ),
                 schedulesReminder: false
             )
@@ -814,12 +848,12 @@ final class TemporalFullPathTests: XCTestCase {
     /// London whatever the device thinks the local zone is.
     func testFixedZoneIntentIgnoresTheDeviceZone() throws {
         var itemID: UUID!
-        try withDeviceTimeZone("America/Toronto") {
+        try withFixtureClock { calendar in
             let item = try repository.createCapture(
                 text: "Remind me to join the standup at 9 AM London time tomorrow",
                 source: .inAppText,
                 createdAt: makeDate(
-                    year: 2026, month: 8, day: 20, hour: 9, calendar: torontoCalendar()
+                    year: 2026, month: 8, day: 20, hour: 9, calendar: calendar
                 ),
                 schedulesReminder: false
             )
@@ -848,7 +882,7 @@ final class TemporalFullPathTests: XCTestCase {
     /// A bare "9 AM" follows the person. The stored behavior must stay
     /// `deviceLocal` so nothing later mistakes it for a pinned zone.
     func testBareClockTimeStaysDeviceLocal() throws {
-        try withDeviceTimeZone("America/Toronto") {
+        try withDeviceTimeZone(Self.fixtureTimeZoneIdentifier) {
             let item = try repository.createCapture(
                 text: "Remind me to stretch every day at 9 AM",
                 source: .inAppText,
@@ -872,33 +906,34 @@ final class TemporalFullPathTests: XCTestCase {
             }
         }
 
-        let calendar = torontoCalendar()
-        let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 9, calendar: calendar)
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 9, calendar: calendar)
 
-        defaults.set(false, forKey: key)
-        let twelveHour = try repository.createCapture(
-            text: "Remind me to call the bank tomorrow at 3 PM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        let twelveHourIntent = twelveHour.temporalIntent
+            defaults.set(false, forKey: key)
+            let twelveHour = try repository.createCapture(
+                text: "Remind me to call the bank tomorrow at 3 PM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            let twelveHourIntent = twelveHour.temporalIntent
 
-        defaults.set(true, forKey: key)
-        let twentyFourHour = try repository.createCapture(
-            text: "Remind me to call the credit union tomorrow at 3 PM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
+            defaults.set(true, forKey: key)
+            let twentyFourHour = try repository.createCapture(
+                text: "Remind me to call the credit union tomorrow at 3 PM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
 
-        XCTAssertEqual(twelveHourIntent?.time, WallClockTime(hour: 15, minute: 0))
-        XCTAssertEqual(
-            twentyFourHour.temporalIntent?.time,
-            twelveHourIntent?.time,
-            "3 PM is 15:00 whichever way the device prefers to print it"
-        )
-        XCTAssertEqual(twentyFourHour.reminderDate, twelveHour.reminderDate)
+            XCTAssertEqual(twelveHourIntent?.time, WallClockTime(hour: 15, minute: 0))
+            XCTAssertEqual(
+                twentyFourHour.temporalIntent?.time,
+                twelveHourIntent?.time,
+                "3 PM is 15:00 whichever way the device prefers to print it"
+            )
+            XCTAssertEqual(twentyFourHour.reminderDate, twelveHour.reminderDate)
+        }
     }
 
     /// Numeric dates ask only when both readings are genuinely possible.
@@ -932,30 +967,31 @@ final class TemporalFullPathTests: XCTestCase {
             }
         }
 
-        let calendar = torontoCalendar()
-        let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 9, calendar: calendar)
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2026, month: 8, day: 20, hour: 9, calendar: calendar)
 
-        defaults.set(["en-US"], forKey: key)
-        let first = try repository.createCapture(
-            text: "Remind me to call the bank tomorrow at 3 PM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
-        let firstReminder = first.reminderDate
-        let firstIntent = first.temporalIntent
+            defaults.set(["en-US"], forKey: key)
+            let first = try repository.createCapture(
+                text: "Remind me to call the bank tomorrow at 3 PM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            let firstReminder = first.reminderDate
+            let firstIntent = first.temporalIntent
 
-        defaults.set(["en-GB"], forKey: key)
-        let second = try repository.createCapture(
-            text: "Remind me to call the building society tomorrow at 3 PM",
-            source: .inAppText,
-            createdAt: createdAt,
-            schedulesReminder: false
-        )
+            defaults.set(["en-GB"], forKey: key)
+            let second = try repository.createCapture(
+                text: "Remind me to call the building society tomorrow at 3 PM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
 
-        XCTAssertEqual(second.temporalIntent?.time, firstIntent?.time)
-        XCTAssertEqual(second.temporalIntent?.day, firstIntent?.day)
-        XCTAssertEqual(second.reminderDate, firstReminder)
+            XCTAssertEqual(second.temporalIntent?.time, firstIntent?.time)
+            XCTAssertEqual(second.temporalIntent?.day, firstIntent?.day)
+            XCTAssertEqual(second.reminderDate, firstReminder)
+        }
     }
 
     // MARK: Permission and background state
