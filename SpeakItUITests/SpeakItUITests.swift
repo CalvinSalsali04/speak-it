@@ -51,10 +51,17 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
     }
 
+    /// Loads the List fixture rather than `--load-today-examples`: that one
+    /// reads "buy milk after work" against the device clock, and "after work"
+    /// is 5 PM. Run after 5 PM the capture rolled to tomorrow, so its card
+    /// moved into the collapsed "Coming up" disclosure, where the row is still
+    /// in the tree but `allowsHitTesting(false)` — the tap below did nothing
+    /// and the List never opened. The List fixture pins its own frame, so the
+    /// card sits in "Now" at every hour of the day.
     func testShoppingListOpensAndRemainsResponsive() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
-            "--load-today-examples"
+            "--load-shopping-examples"
         )
 
         XCTAssertFalse(app.buttons["today.shopping"].exists)
@@ -85,7 +92,7 @@ final class SpeakItUITests: XCTestCase {
     func testDockTodayTapPopsTheListBackToToday() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
-            "--load-today-examples"
+            "--load-shopping-examples"
         )
 
         let list = app.buttons.matching(

@@ -352,6 +352,23 @@ struct RootView: View {
                 }
                 UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedTodayQAExamples")
             }
+            if ProcessInfo.processInfo.arguments.contains("--load-shopping-examples"),
+               let repository,
+               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedShoppingQAExamples") {
+                // A pinned frame rather than the device clock, so the list
+                // card these produce sits in the same Today section at every
+                // hour of the day. See `SampleDataLibrary.Shopping`.
+                let referenceDate = SampleDataLibrary.Shopping.referenceDate()
+                for (index, text) in SampleDataLibrary.Shopping.captures.enumerated() {
+                    _ = try? await repository.createCaptureResult(
+                        text: text,
+                        source: .sample,
+                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        schedulesReminders: false
+                    )
+                }
+                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedShoppingQAExamples")
+            }
 #endif
             // Keep database recovery and reminder reconciliation out of the
             // App Intent cold-start path so a hardware trigger can reach the microphone

@@ -3737,6 +3737,100 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
+    /// The two List UI tests open the List by tapping a shopping card on the
+    /// Today root, and a card inside a collapsed disclosure takes no taps.
+    /// Reading the fixture at the device clock put that card in the collapsed
+    /// "Coming up" section for every hour after 5 PM, so the suite passed in
+    /// the morning and failed in the evening on unchanged code.
+    ///
+    /// `SampleDataLibrary.Shopping` pins its own frame instead. This is the
+    /// invariant that buys: the list is overdue — the always-visible *Now*
+    /// section — at every hour, in a fixed zone and in a real one.
+    func testShoppingFixtureStaysInAnAlwaysVisibleTodaySectionAtEveryHour() throws {
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.locale = Locale(identifier: "en_US_POSIX")
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+
+        let milk = try XCTUnwrap(SampleDataLibrary.Shopping.captures.last)
+
+        for calendar in [utcCalendar, toronto] {
+            // Straddles the 5 PM anchor "after work" resolves to, and both
+            // local midnights around it.
+            for (hour, minute) in [(0, 1), (9, 17), (12, 35), (16, 59),
+                                   (17, 0), (17, 1), (21, 14), (23, 59)] {
+                let now = makeDate(
+                    year: 2026,
+                    month: 8,
+                    day: 10,
+                    hour: hour,
+                    minute: minute,
+                    calendar: calendar
+                )
+                let context = "\(calendar.timeZone.identifier) at \(hour):\(minute)"
+
+                let pinned = ThoughtExtractionEngine.extractWithRules(
+                    milk,
+                    referenceDate: SampleDataLibrary.Shopping.referenceDate(
+                        relativeTo: now,
+                        calendar: calendar
+                    ),
+                    calendar: calendar
+                )
+                let item = try XCTUnwrap(pinned.items.first, context)
+                XCTAssertEqual(item.organization.itemType, .shopping, context)
+                XCTAssertEqual(
+                    TodayActionTiming.group(
+                        for: item.organization.dueDate,
+                        isDateOnly: item.organization.temporalIntent.kind == .dateOnly,
+                        calendarDay: item.organization.temporalIntent.day,
+                        relativeTo: now,
+                        calendar: calendar
+                    ),
+                    .overdue,
+                    "the pinned List fixture must stay out of a collapsed section — \(context)"
+                )
+            }
+        }
+    }
+
+    /// The failure the pinned frame exists to prevent, kept as a check rather
+    /// than a comment: read at the device clock, the very same sentence walks
+    /// from *Now* into *Coming up* as the day crosses 5 PM. *Coming up* is
+    /// collapsed by default, which is why a UI test that taps that card could
+    /// not pass in the evening.
+    func testDeviceClockFrameWalksTheShoppingFixtureOutOfTheNowSection() throws {
+        let calendar = utcCalendar
+        let milk = try XCTUnwrap(SampleDataLibrary.Shopping.captures.last)
+
+        func group(at hour: Int, minute: Int) throws -> TodayActionTiming {
+            let now = makeDate(
+                year: 2026,
+                month: 8,
+                day: 10,
+                hour: hour,
+                minute: minute,
+                calendar: calendar
+            )
+            let result = ThoughtExtractionEngine.extractWithRules(
+                milk,
+                referenceDate: now,
+                calendar: calendar
+            )
+            let item = try XCTUnwrap(result.items.first)
+            return TodayActionTiming.group(
+                for: item.organization.dueDate,
+                isDateOnly: item.organization.temporalIntent.kind == .dateOnly,
+                calendarDay: item.organization.temporalIntent.day,
+                relativeTo: now,
+                calendar: calendar
+            )
+        }
+
+        XCTAssertEqual(try group(at: 9, minute: 17), .today)
+        XCTAssertEqual(try group(at: 16, minute: 59), .today)
+        XCTAssertEqual(try group(at: 21, minute: 14), .comingUp)
+    }
+
     /// The same instant is a different calendar day in a different place, so
     /// bucketing must read the device's current time zone rather than UTC.
     func testTodaySectionsFollowTheDeviceTimeZone() {

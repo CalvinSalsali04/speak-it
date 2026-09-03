@@ -35,6 +35,54 @@ enum SampleDataLibrary {
         "Buy milk after work."
     ]
 
+    /// The List fixtures, and the frame they are read in.
+    ///
+    /// `todayExamples` cannot serve the List tests. "After work" is a
+    /// conventional anchor for 5 PM, so read against the device clock the same
+    /// sentence lands in *Now* before 5 PM and rolls to tomorrow after it,
+    /// which moves its card into the collapsed *Coming up* disclosure. A
+    /// collapsed disclosure keeps its rows in the tree but takes their hit
+    /// testing away, so the card stayed findable and stopped being tappable:
+    /// the two tests that open the List from it could only pass in the first
+    /// half of the day, on code that had not changed.
+    ///
+    /// So this fixture pins its own frame the way `Tools/PipelineProbe` fixes
+    /// its own, rather than borrowing the wall clock. Read at 10:00 on the
+    /// previous local day, every time it resolves to is already in the past at
+    /// whatever hour the suite runs, so the list is overdue — and *Now*, where
+    /// overdue lists sit, is the one Today section that is never collapsed.
+    enum Shopping {
+        /// One undated action and one shopping line, so the Today root still
+        /// carries a real list card next to ordinary work rather than a
+        /// screen with nothing else on it.
+        static let captures = [
+            "Pack gym clothes.",
+            "Buy milk after work."
+        ]
+
+        /// Yesterday at 10:00 local. Fixed against the calendar day rather
+        /// than the clock, which is what makes it unconditionally in the past.
+        static func referenceDate(
+            relativeTo now: Date = .now,
+            calendar: Calendar = .autoupdatingCurrent
+        ) -> Date {
+            let startOfToday = calendar.startOfDay(for: now)
+            guard let yesterday = calendar.date(
+                byAdding: .day,
+                value: -1,
+                to: startOfToday
+            ), let morning = calendar.date(
+                bySettingHour: 10,
+                minute: 0,
+                second: 0,
+                of: yesterday
+            ) else {
+                return startOfToday.addingTimeInterval(-14 * 60 * 60)
+            }
+            return morning
+        }
+    }
+
     /// The fixtures behind `Website/assets/img/01-Today.png` and
     /// `02-Memory.png` — the only place the marketing site shows the real app at
     /// size, so what is on these two screens is a product claim.
