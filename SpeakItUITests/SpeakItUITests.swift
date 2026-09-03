@@ -103,6 +103,10 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(list.waitForExistence(timeout: 4), "the Today root is back on screen")
     }
 
+    /// A collapsed section is not merely invisible: its rows have to be gone
+    /// from the accessibility tree. XCUITest queries that same tree, so a row
+    /// this test can still find is a row VoiceOver would read out — and read
+    /// out as a button, while `allowsHitTesting(false)` makes it inert.
     func testTodayDisclosureOpensAndClosesWithoutLeakingHiddenRows() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
@@ -115,11 +119,38 @@ final class SpeakItUITests: XCTestCase {
 
         XCTAssertEqual(comingUp.value as? String, "Collapsed")
 
+        // "Tomorrow at 9 AM" is tomorrow at whatever hour this suite runs, so
+        // this row is in "Coming up" and in no other section. Rows whose
+        // fixture text resolves against the clock — "Buy milk after work" and
+        // its list card — would move between sections during the day and
+        // cannot anchor this assertion.
+        let hiddenRow = app.buttons["item.edit.Call Sarah"]
+        let hiddenRowTitle = app.staticTexts["Call Sarah"]
+        XCTAssertFalse(
+            hiddenRow.exists,
+            "A collapsed section must not leave its rows in the accessibility tree"
+        )
+        XCTAssertFalse(
+            hiddenRowTitle.exists,
+            "VoiceOver reads text elements too, so the row's own text must go with it"
+        )
+
         comingUp.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
         XCTAssertTrue(waitForValue("Expanded", on: comingUp, timeout: 4))
+        XCTAssertTrue(
+            hiddenRow.waitForExistence(timeout: 4),
+            "Expanding must bring the same row back, not just make it visible"
+        )
+        XCTAssertTrue(hiddenRow.isHittable, "and bring it back usable, not just present")
+        XCTAssertTrue(hiddenRowTitle.exists)
 
         comingUp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         XCTAssertTrue(waitForValue("Collapsed", on: comingUp, timeout: 4))
+        XCTAssertTrue(
+            hiddenRow.waitForNonExistence(timeout: 4),
+            "Collapsing again must remove the row from the accessibility tree"
+        )
+        XCTAssertFalse(hiddenRowTitle.exists)
     }
 
     /// The floating dock must not become a permanent mask over the last Today

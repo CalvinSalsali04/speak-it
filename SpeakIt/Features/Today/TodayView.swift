@@ -11,38 +11,81 @@ private struct TodayDisclosureHeightPreferenceKey: PreferenceKey {
     }
 }
 
-/// Keeps disclosure rows alive and animates one clipped region. This avoids
-/// staggered insert/fade transitions and repeated lazy layout passes when a
-/// multi-row Today section opens on a physical device.
+/// The one animation a Today disclosure runs, shared by the header that starts
+/// it and the region that has to finish it on a first open.
+private enum TodayDisclosureMotion {
+    static let open: Animation = .smooth(duration: 0.26, extraBounce: 0)
+}
+
+/// Animates one clipped region rather than a row-by-row insert. That is what
+/// keeps a multi-row Today section from opening as a staggered fade with a
+/// layout pass per row on a physical device.
+///
+/// A closed section unmounts its rows. Leaving them mounted and merely clipped
+/// left them in the accessibility tree — rows nobody could see, carrying the
+/// button trait while `allowsHitTesting(false)` had already made them inert.
+/// `accessibilityHidden`, `accessibilityElement(children: .ignore)` and zero
+/// opacity were each measured against that tree on iOS 26.5 and none of them
+/// removed anything: not on this container, and not on a lone `Text` either.
+/// Not building the rows is the only thing that keeps them out.
+///
+/// Unmounting costs the open animation nothing: `measuredHeight` outlives the
+/// rows, so every open after the first has its target height ready before the
+/// rows mount. Only the very first open a person asks for has to wait a layout
+/// pass for it, and `animatesNextHeight` covers that one.
 private struct TodayDisclosureContent<Content: View>: View {
     let isExpanded: Bool
     @ViewBuilder let content: Content
 
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var measuredHeight: CGFloat = 0
+    @State private var animatesNextHeight = false
 
     var body: some View {
-        content
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: TodayDisclosureHeightPreferenceKey.self,
-                        value: proxy.size.height
-                    )
-                }
+        Group {
+            if isExpanded {
+                content
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: TodayDisclosureHeightPreferenceKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
+                    // Opening must not fade: the rows belong to the region the
+                    // clip is already growing. Closing keeps them mounted for
+                    // the length of the fade instead of blinking them out of a
+                    // box that is still shrinking.
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
-            .frame(height: isExpanded ? measuredHeight : 0, alignment: .top)
-            .clipped()
-            .allowsHitTesting(isExpanded)
-            .accessibilityHidden(!isExpanded)
-            .onPreferenceChange(TodayDisclosureHeightPreferenceKey.self) { height in
-                guard height > 0, abs(measuredHeight - height) > 0.5 else { return }
-                var transaction = Transaction(animation: nil)
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    measuredHeight = height
-                }
+        }
+        .frame(height: isExpanded ? measuredHeight : 0, alignment: .top)
+        .clipped()
+        .allowsHitTesting(isExpanded)
+        // Correct for the fade the closing rows are still mounted for, and
+        // harmless once they are gone.
+        .accessibilityHidden(!isExpanded)
+        .onChange(of: isExpanded) { _, expanded in
+            // Only the first open a person asks for has to wait on a
+            // measurement, and only that one may animate to it. A section that
+            // is already open when Today appears gets no `onChange` and so
+            // lands at its height without growing on screen.
+            animatesNextHeight = expanded && measuredHeight == 0
+        }
+        .onPreferenceChange(TodayDisclosureHeightPreferenceKey.self) { height in
+            guard height > 0, abs(measuredHeight - height) > 0.5 else { return }
+            // Every other measurement — an edited row, a Dynamic Type change —
+            // must land without animating the whole section.
+            let animates = animatesNextHeight && !accessibilityReduceMotion
+            var transaction = Transaction(animation: animates ? TodayDisclosureMotion.open : nil)
+            transaction.disablesAnimations = !animates
+            withTransaction(transaction) {
+                measuredHeight = height
             }
+            animatesNextHeight = false
+        }
     }
 }
 
@@ -1138,7 +1181,7 @@ struct TodayView: View {
                         isExpanded.wrappedValue = nextValue
                     }
                 } else {
-                    withAnimation(.smooth(duration: 0.26, extraBounce: 0)) {
+                    withAnimation(TodayDisclosureMotion.open) {
                         isExpanded.wrappedValue = nextValue
                     }
                 }
