@@ -44,6 +44,9 @@ jobs:
     name: Detect changed areas
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # paths-filter lists a pull request's files through the API
     outputs:
       ios: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ios == 'true' }}
       dashboard: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.dashboard == 'true' }}
@@ -87,7 +90,7 @@ jobs:
         run: |
           docker run --rm --user "$(id -u):$(id -g)" \
             -v "$PWD:/repo" -w /repo \
-            ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION} \
+            "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
             git --redact --verbose --exit-code 1 --config .gitleaks.toml /repo
         env:
           GITLEAKS_VERSION: "v8.30.1"
