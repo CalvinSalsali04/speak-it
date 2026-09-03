@@ -44,18 +44,20 @@ xcodebuild "${args[@]}" || status=$?
 # Best-effort pass/fail summary for the GitHub job summary; the .xcresult is
 # the authoritative record and is uploaded as an artifact on failure.
 if [ -n "$RESULT_BUNDLE" ] && [ -d "$RESULT_BUNDLE" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  if summary=$(xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" --format json 2>/dev/null); then
-    python3 - "$ONLY" <<'PY' <<< "$summary" >> "$GITHUB_STEP_SUMMARY" || true
+  summary_file="$(mktemp)"
+  if xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" --format json > "$summary_file" 2>/dev/null; then
+    python3 - "$ONLY" "$summary_file" <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
 import json, sys
-data = json.load(sys.stdin)
+data = json.load(open(sys.argv[2]))
 print(f"### {sys.argv[1]}")
 print()
-print(f"| Result | Passed | Failed | Skipped |")
-print(f"|---|---|---|---|")
+print("| Result | Passed | Failed | Skipped |")
+print("|---|---|---|---|")
 print(f"| {data.get('result', '?')} | {data.get('passedTests', '?')} | {data.get('failedTests', '?')} | {data.get('skippedTests', '?')} |")
 for failure in data.get("testFailures", [])[:25]:
     print(f"- `{failure.get('testName', '?')}` — {failure.get('failureText', '').strip()[:300]}")
 PY
   fi
+  rm -f "$summary_file"
 fi
 exit $status
