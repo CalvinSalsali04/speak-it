@@ -61,6 +61,9 @@
 		D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000001 /* RenderingInvarianceTests.swift */; };
 		D200000000000000000002 /* RefinementGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000002 /* RefinementGuardTests.swift */; };
 		D200000000000000000003 /* SpeechRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000003 /* SpeechRepairTests.swift */; };
+		D200000000000000000004 /* ObligationFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000004 /* ObligationFrameTests.swift */; };
+		D200000000000000000005 /* TutorialPracticeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000005 /* TutorialPracticeTests.swift */; };
+		D200000000000000000006 /* ReleaseReadinessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000006 /* ReleaseReadinessTests.swift */; };
 		D100000000000000000001 /* CorpusEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001 /* CorpusEvaluator.swift */; };
 		A100000000000000000000C5 /* CaptureOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C5 /* CaptureOperationTests.swift */; };
 		A100000000000000000000C6 /* ActionabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000C6 /* ActionabilityTests.swift */; };
@@ -224,6 +227,9 @@
 		E200000000000000000001 /* RenderingInvarianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingInvarianceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000002 /* RefinementGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinementGuardTests.swift; sourceTree = "<group>"; };
 		E200000000000000000003 /* SpeechRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRepairTests.swift; sourceTree = "<group>"; };
+		E200000000000000000004 /* ObligationFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObligationFrameTests.swift; sourceTree = "<group>"; };
+		E200000000000000000005 /* TutorialPracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialPracticeTests.swift; sourceTree = "<group>"; };
+		E200000000000000000006 /* ReleaseReadinessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseReadinessTests.swift; sourceTree = "<group>"; };
 		E100000000000000000001 /* CorpusEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusEvaluator.swift; sourceTree = "<group>"; };
 		B100000000000000000000C5 /* CaptureOperationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureOperationTests.swift; sourceTree = "<group>"; };
 		B100000000000000000000C6 /* ActionabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionabilityTests.swift; sourceTree = "<group>"; };
@@ -532,6 +538,9 @@
 				E200000000000000000001 /* RenderingInvarianceTests.swift */,
 				E200000000000000000002 /* RefinementGuardTests.swift */,
 				E200000000000000000003 /* SpeechRepairTests.swift */,
+				E200000000000000000004 /* ObligationFrameTests.swift */,
+				E200000000000000000005 /* TutorialPracticeTests.swift */,
+				E200000000000000000006 /* ReleaseReadinessTests.swift */,
 				E100000000000000000001 /* CorpusEvaluator.swift */,
 				B100000000000000000000C5 /* CaptureOperationTests.swift */,
 				B100000000000000000001D0 /* DurabilityTests.swift */,
@@ -943,6 +952,9 @@
 				D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */,
 				D200000000000000000002 /* RefinementGuardTests.swift in Sources */,
 				D200000000000000000003 /* SpeechRepairTests.swift in Sources */,
+				D200000000000000000004 /* ObligationFrameTests.swift in Sources */,
+				D200000000000000000005 /* TutorialPracticeTests.swift in Sources */,
+				D200000000000000000006 /* ReleaseReadinessTests.swift in Sources */,
 				D100000000000000000001 /* CorpusEvaluator.swift in Sources */,
 				A100000000000000000000C5 /* CaptureOperationTests.swift in Sources */,
 				A100000000000000000001D0 /* DurabilityTests.swift in Sources */,

@@ -126,8 +126,8 @@ enum SpeechVocabularyStore {
     ) -> String {
         let escaped = NSRegularExpression.escapedPattern(for: correction.heardPhrase)
         let pattern = "(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
-        guard let expression = try? NSRegularExpression(
-            pattern: pattern,
+        guard let expression = NSRegularExpression.speakItCached(
+            pattern,
             options: [.caseInsensitive]
         ) else {
             return transcript

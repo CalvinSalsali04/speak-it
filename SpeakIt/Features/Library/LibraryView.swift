@@ -215,6 +215,35 @@ enum IdeaStageStore {
     }
 }
 
+/// Whether an item answers a search.
+///
+/// One definition, because there used to be two and they had already drifted:
+/// the Memory home matched `itemType.displayName` and a collection did not, so
+/// searching "idea" found rows on one screen and nothing on the other.
+///
+/// Every whitespace-separated word has to appear somewhere on the item, in any
+/// field and in any order. Matching the whole query as one contiguous run — the
+/// old rule — meant "maya proposal" found nothing against a row that reads "Ask
+/// Maya about the proposal", which is exactly how people search. Nothing that
+/// matched before stops matching: a contiguous run still contains each of its
+/// own words.
+enum MemorySearch {
+    static func matches(_ item: CapturedItem, query: String) -> Bool {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !terms.isEmpty else { return false }
+        let fields = [
+            item.displayTitle,
+            item.originalTextSegment,
+            item.personName ?? "",
+            item.category.displayName,
+            item.itemType.displayName
+        ]
+        return terms.allSatisfy { term in
+            fields.contains { $0.localizedStandardContains(term) }
+        }
+    }
+}
+
 enum MemoryItemOrdering {
     static let homePreviewLimit = 3
 
@@ -584,17 +613,20 @@ struct LibraryView: View {
 
     private var searchResults: [CapturedItem] {
         guard !query.isEmpty else { return [] }
-        let matches = memoryItems.filter { matchesSearch($0, query: query) }
+        let matches = memoryItems.filter { MemorySearch.matches($0, query: query) }
         return MemoryItemOrdering.relevance(matches, pinnedIDs: pinnedMemoryIDs)
     }
 
+    /// Pinned items are not excluded here.
+    ///
+    /// They used to be, which meant pinning something took it off the Memory
+    /// home — the opposite of what the person asked for. `relevance` already
+    /// sorts pinned first and the row already draws its pin, so keeping them in
+    /// puts them where the gesture promised: at the top.
     private var recentItems: [CapturedItem] {
         Array(
-            MemoryItemOrdering.relevance(
-                memoryItems.filter { !pinnedMemoryIDs.contains($0.id) },
-                pinnedIDs: pinnedMemoryIDs
-            )
-            .prefix(MemoryItemOrdering.homePreviewLimit)
+            MemoryItemOrdering.relevance(memoryItems, pinnedIDs: pinnedMemoryIDs)
+                .prefix(MemoryItemOrdering.homePreviewLimit)
         )
     }
 
@@ -645,6 +677,7 @@ struct LibraryView: View {
         .navigationDestination(item: $selectedCollection) { collection in
             MemoryCollectionView(
                 collection: collection,
+                onCapture: onCapture,
                 onDockVisibilityChange: onDockVisibilityChange,
                 tutorialSpotlight: tutorialSpotlight,
                 onTutorialPrimary: onTutorialPrimary,
@@ -907,13 +940,23 @@ struct LibraryView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    /// Counted from every live item, letting `MemoryCollection.contains` decide
+    /// membership — it is the same rule the destination screen uses.
+    ///
+    /// Pre-filtering to `memoryItems` first threw away exactly the rows People
+    /// is written to keep: `contains` deliberately admits an item that belongs
+    /// in *Today* when it names a person ("a future follow-up belongs under
+    /// Sarah immediately"), and this filter removed them before it could. The
+    /// card read "0 people" over a People screen with people in it. Every other
+    /// collection already requires `belongsInMemory` inside `contains`, so
+    /// nothing else changes.
     private func count(for collection: MemoryCollection) -> Int {
-        memoryItems.filter { collection.contains($0, pinnedIDs: pinnedMemoryIDs) }.count
+        activeItems.filter { collection.contains($0, pinnedIDs: pinnedMemoryIDs) }.count
     }
 
     private func detail(for collection: MemoryCollection) -> String {
         let items = MemoryItemOrdering.relevance(
-            memoryItems.filter { collection.contains($0, pinnedIDs: pinnedMemoryIDs) },
+            activeItems.filter { collection.contains($0, pinnedIDs: pinnedMemoryIDs) },
             pinnedIDs: pinnedMemoryIDs
         )
         switch collection {
@@ -978,14 +1021,6 @@ struct LibraryView: View {
                 Label("Move to Archive", systemImage: "archivebox")
             }
         }
-    }
-
-    private func matchesSearch(_ item: CapturedItem, query: String) -> Bool {
-        item.displayTitle.localizedStandardContains(query)
-            || item.originalTextSegment.localizedStandardContains(query)
-            || item.personName?.localizedStandardContains(query) == true
-            || item.category.displayName.localizedStandardContains(query)
-            || item.itemType.displayName.localizedStandardContains(query)
     }
 
     private func toggleArchived(_ item: CapturedItem) {
@@ -1119,21 +1154,26 @@ private enum MemorySortOption: String, CaseIterable, Identifiable {
 }
 
 private struct IdeaStagePickerSheet: View {
+    @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
     let item: CapturedItem
     let selectedStage: IdeaStage
-    let showsTutorialGuidance: Bool
+    /// Set only while the tutorial sent the person here. This sheet covers the
+    /// tutorial banner, so it has to carry the step itself.
+    let tutorialStep: TutorialStep?
     let onSelect: (IdeaStage) -> Void
+
+    private var showsTutorialGuidance: Bool { tutorialStep != nil }
 
     var body: some View {
         NavigationStack {
             List {
-                if showsTutorialGuidance {
-                    Section("Practice") {
+                if let tutorialStep {
+                    Section {
                         Label {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Choose a stage")
                                     .font(.subheadline.weight(.semibold))
-                                Text("Choose Promising, or pick the stage that fits.")
+                                Text("Choose Promising, or pick the stage that fits. Either one continues the tutorial.")
                                     .font(.footnote)
                                     .foregroundStyle(Color.speakMuted)
                             }
@@ -1142,6 +1182,10 @@ private struct IdeaStagePickerSheet: View {
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("tutorial.ideaStage.guidance")
+                    } header: {
+                        TutorialStepHeader(step: tutorialStep, style: .compact)
+                            .textCase(nil)
+                            .padding(.bottom, 4)
                     }
                 }
 
@@ -1174,7 +1218,7 @@ private struct IdeaStagePickerSheet: View {
                                         .foregroundStyle(Color.speakInk)
                                 } else if showsTutorialGuidance, stage == .promising {
                                     Text("TRY THIS")
-                                        .font(.system(size: 9, weight: .bold))
+                                        .font(.system(size: badgeFontSize, weight: .bold))
                                         .tracking(0.7)
                                         .foregroundStyle(Color.speakInverseInk)
                                         .padding(.horizontal, 7)
@@ -1206,6 +1250,11 @@ private struct MemoryCollectionView: View {
     @Query(sort: \CapturedItem.createdAt, order: .reverse) private var allItems: [CapturedItem]
 
     let collection: MemoryCollection
+    /// Pushing a Memory screen hides the dock, and the dock is where capture
+    /// lives — so the app's primary action disappeared entirely on every
+    /// pushed Memory screen. The Shopping list already solves this the same
+    /// way, with a capture button in its own toolbar.
+    let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
     let tutorialSpotlight: TutorialSpotlight?
     let onTutorialPrimary: () -> Void
@@ -1244,7 +1293,7 @@ private struct MemoryCollectionView: View {
             items = items.filter { stage(for: $0) == selectedIdeaStage }
         }
         if !query.isEmpty {
-            items = items.filter { matchesSearch($0, query: query) }
+            items = items.filter { MemorySearch.matches($0, query: query) }
         }
         return sorted(items)
     }
@@ -1329,6 +1378,12 @@ private struct MemoryCollectionView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button(action: onCapture) {
+                    Image(systemName: "mic.fill")
+                }
+                .accessibilityLabel("Capture a thought")
+                .accessibilityIdentifier("memory.capture")
+
                 Button {
                     presentCollectionSearch()
                 } label: {
@@ -1350,6 +1405,7 @@ private struct MemoryCollectionView: View {
             MemoryPersonDetailView(
                 displayName: name,
                 resolvedName: name,
+                onCapture: onCapture,
                 onDockVisibilityChange: onDockVisibilityChange,
                 tutorialSpotlight: tutorialSpotlight,
                 onTutorialPrimary: onTutorialPrimary,
@@ -1363,8 +1419,7 @@ private struct MemoryCollectionView: View {
             IdeaStagePickerSheet(
                 item: item,
                 selectedStage: stage(for: item),
-                showsTutorialGuidance: tutorialSpotlight?.placement == .idea
-                    && tutorialSpotlight?.itemID == item.id
+                tutorialStep: spotlight(for: item)?.step
             ) { stage in
                 setStage(stage, for: item)
                 stagePickerItem = nil
@@ -1537,6 +1592,7 @@ private struct MemoryCollectionView: View {
                     MemoryPersonDetailView(
                         displayName: profile.name,
                         resolvedName: profile.resolvedName,
+                        onCapture: onCapture,
                         onDockVisibilityChange: onDockVisibilityChange,
                         tutorialSpotlight: tutorialSpotlight,
                         onTutorialPrimary: onTutorialPrimary,
@@ -1771,13 +1827,6 @@ private struct MemoryCollectionView: View {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
     }
 
-    private func matchesSearch(_ item: CapturedItem, query: String) -> Bool {
-        item.displayTitle.localizedStandardContains(query)
-            || item.originalTextSegment.localizedStandardContains(query)
-            || item.personName?.localizedStandardContains(query) == true
-            || item.category.displayName.localizedStandardContains(query)
-    }
-
     private func togglePinned(_ item: CapturedItem) {
         MemoryPinStore.setPinned(!pinnedMemoryIDs.contains(item.id), for: item.id)
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
@@ -1858,6 +1907,8 @@ private struct MemoryPersonDetailView: View {
 
     let displayName: String
     let resolvedName: String?
+    /// See `MemoryCollectionView.onCapture` — the dock is hidden here too.
+    let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
     let tutorialSpotlight: TutorialSpotlight?
     let onTutorialPrimary: () -> Void
@@ -1930,6 +1981,13 @@ private struct MemoryPersonDetailView: View {
                     ForEach(relatedActions) { item in
                         CapturedItemRow(
                             item: item,
+                            // Withheld while the tutorial is pointing at this
+                            // row. Completing it drops the item out of
+                            // `relatedActions` — the section is gated on
+                            // `belongsInToday`, which a completed item fails —
+                            // and the teaching card leaves with it. Unlike
+                            // Today, this row offers no undo at all.
+                            showsCompletionControl: spotlight(for: item) == nil,
                             onToggleCompleted: { complete(item) },
                             onEdit: { selectedItem = item }
                         )
@@ -1950,6 +2008,15 @@ private struct MemoryPersonDetailView: View {
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: onCapture) {
+                    Image(systemName: "mic.fill")
+                }
+                .accessibilityLabel("Capture a thought")
+                .accessibilityIdentifier("memory.person.capture")
+            }
+        }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
         }

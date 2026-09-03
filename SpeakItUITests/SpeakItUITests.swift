@@ -256,6 +256,7 @@ final class SpeakItUITests: XCTestCase {
         let useExample = app.buttons["tutorial.useExample"]
         XCTAssertTrue(useExample.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
+        assertTutorialStep(app, number: 1, title: "Practice a task")
         captureFlowScreenshot("02-action-practice")
         tapInsideWideButton(useExample, horizontalFraction: 0.12)
         XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 4))
@@ -273,6 +274,15 @@ final class SpeakItUITests: XCTestCase {
         tapInsideWideButton(continueFromReceipt, horizontalFraction: 0.88)
         XCTAssertTrue(app.staticTexts["Ready for tomorrow"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Ask Maya about the proposal"].exists)
+        // The persistent banner is the only thing on this screen that says a
+        // tutorial is running: the card beside it sits against the person's own
+        // rows and reads as ordinary app content without it.
+        XCTAssertTrue(
+            app.descendants(matching: .any)["tutorial.banner"].exists,
+            "A tutorial step inside the real app must stay marked as the tutorial"
+        )
+        XCTAssertTrue(app.buttons["tutorial.exit"].exists)
+        assertTutorialStep(app, number: 2, title: "Where it landed")
         XCTAssertFalse(
             app.staticTexts["Tomorrow at nine"].exists,
             "A spoken-time sentence break must not create a second phantom item"
@@ -286,10 +296,13 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.descendants(matching: .any)["tutorial.editor.guidance"].exists)
         XCTAssertTrue(app.textFields["tutorial.editor.title"].exists)
+        // This sheet covers the banner, so it has to carry the step itself.
+        assertTutorialStep(app, number: 2, title: "Where it landed")
         captureFlowScreenshot("05-real-editor")
         app.buttons["tutorial.editor.notNow"].tap()
 
         XCTAssertTrue(app.staticTexts["Maya is in People"].waitForExistence(timeout: 8))
+        assertTutorialStep(app, number: 3, title: "Find the person")
         captureFlowScreenshot("06-people-maya")
         tapInsideWideButton(
             app.buttons["tutorial.spotlight.primary"],
@@ -297,6 +310,7 @@ final class SpeakItUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.staticTexts["The follow-up is here"].waitForExistence(timeout: 8))
+        assertTutorialStep(app, number: 4, title: "The follow-up")
         captureFlowScreenshot("07-maya-follow-up")
         tapInsideWideButton(
             app.buttons["tutorial.spotlight.primary"],
@@ -306,6 +320,7 @@ final class SpeakItUITests: XCTestCase {
         let useIdeaExample = app.buttons["tutorial.useExample"]
         XCTAssertTrue(useIdeaExample.waitForExistence(timeout: 6))
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
+        assertTutorialStep(app, number: 5, title: "Practice an idea")
         captureFlowScreenshot("08-idea-practice")
         tapInsideWideButton(useIdeaExample, horizontalFraction: 0.88)
         XCTAssertTrue(
@@ -321,6 +336,7 @@ final class SpeakItUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.staticTexts["Your idea is in Memory"].waitForExistence(timeout: 8))
+        assertTutorialStep(app, number: 6, title: "Idea stages")
         captureFlowScreenshot("09-ideas-placement")
         tapInsideWideButton(
             app.buttons["tutorial.spotlight.primary"],
@@ -328,6 +344,7 @@ final class SpeakItUITests: XCTestCase {
         )
         XCTAssertTrue(app.navigationBars["Idea stage"].waitForExistence(timeout: 4))
         XCTAssertTrue(app.descendants(matching: .any)["tutorial.ideaStage.guidance"].exists)
+        assertTutorialStep(app, number: 6, title: "Idea stages")
         captureFlowScreenshot("10-real-stage-picker")
         let promising = app.buttons["ideaStagePicker.promising"]
         XCTAssertTrue(promising.waitForExistence(timeout: 3))
@@ -337,6 +354,7 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(actionButtonMethod.waitForExistence(timeout: 8))
         if !actionButtonMethod.isSelected { actionButtonMethod.tap() }
         XCTAssertTrue(actionButtonMethod.isSelected)
+        assertTutorialStep(app, number: 7, title: "Capture anywhere")
         captureFlowScreenshot("11-capture-anywhere-top")
 
         let otherMethods = app.buttons["captureAnywhere.otherMethods"]
@@ -360,6 +378,7 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(doneWithCaptureAnywhere.isHittable)
         doneWithCaptureAnywhere.tap()
         XCTAssertTrue(app.staticTexts["Choose what Speak It can use"].waitForExistence(timeout: 8))
+        assertTutorialStep(app, number: 8, title: "Finish setup")
         captureFlowScreenshot("14-readiness")
 
         let finish = app.buttons["readiness.finish"]
@@ -370,9 +389,14 @@ final class SpeakItUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Practice examples removed"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.staticTexts["10 free captures ready"].exists)
+        XCTAssertTrue(app.staticTexts["Tutorial complete"].exists)
         captureFlowScreenshot("16-practice-removed")
         tapInsideWideButton(app.buttons["tutorial.finished"], horizontalFraction: 0.88)
         XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["tutorial.banner"].exists,
+            "The tutorial banner must not survive into the real app"
+        )
         captureFlowScreenshot("17-empty-real-app")
     }
 
@@ -721,6 +745,33 @@ final class SpeakItUITests: XCTestCase {
     /// Keeps the product walkthrough tied to the exact UI journey under test.
     /// A brief settle prevents attachments from catching a navigation frame
     /// midway through its animation while adding only a few seconds to one test.
+    /// Every tutorial surface has to agree on one number. Reading the step
+    /// header on each screen is what stops the walkthrough from drifting back
+    /// into per-screen counts that told the person nothing about how much of
+    /// the tutorial was left.
+    private func assertTutorialStep(
+        _ app: XCUIApplication,
+        number: Int,
+        title: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let headers = app.staticTexts.matching(identifier: "tutorial.stepLabel")
+        XCTAssertTrue(
+            headers.firstMatch.waitForExistence(timeout: 6),
+            "No tutorial step header on screen",
+            file: file,
+            line: line
+        )
+        let labels = headers.allElementsBoundByIndex.map(\.label)
+        XCTAssertTrue(
+            labels.contains { $0.contains("Step \(number) of 8") && $0.contains(title) },
+            "Expected step \(number) (\(title)). Found: \(labels)",
+            file: file,
+            line: line
+        )
+    }
+
     private func captureFlowScreenshot(_ name: String) {
         Thread.sleep(forTimeInterval: 0.35)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

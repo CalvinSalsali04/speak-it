@@ -259,8 +259,14 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
         case .preciseLocationRequired: "Needs Precise Location"
         case .missingHome: "Set your Home location"
         case .missingWork: "Set your Work location"
-        case .ambiguousPlace: "Which one?"
-        case .placeNotFound: "Place not found"
+        // Neither offers a choice, so neither may imply one: Speak It watches
+        // Home, Work and "here", and a spoken place name is stored and
+        // explained but never geocoded. "Which one?" pointed at a picker that
+        // does not exist. They stay distinct because they are distinct — one
+        // heard a name it cannot act on, the other could not read a name at
+        // all.
+        case .ambiguousPlace: "Can't watch a named place"
+        case .placeNotFound: "Didn't catch the place"
         case .locationUnavailable: "Location unavailable"
         case .monitoringUnavailable: "Place reminders unavailable"
         case .monitoringLimitReached: "Too many place reminders"
@@ -300,10 +306,14 @@ enum LocationReminderBlocker: String, Codable, CaseIterable, Sendable {
             "Set your Home location"
         case .missingWork:
             "Set your Work location"
+        // Both state the real boundary and give the ways through it. Searching
+        // for a spoken place name is not built, so asking the person to choose
+        // one, or to pick it on a map, sent them looking for a control that is
+        // not there.
         case .ambiguousPlace:
-            "Choose which place you meant"
+            "Speak It can only watch Home, Work, and where you are right now. Set a time instead, or save this place as Home or Work."
         case .placeNotFound:
-            "Speak It couldn't find that place — pick it on the map"
+            "Speak It didn't catch which place you meant. Set a time instead, or say it again naming Home or Work."
         case .locationUnavailable:
             "Speak It can't read your location right now"
         case .monitoringUnavailable:

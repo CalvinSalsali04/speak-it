@@ -3,6 +3,7 @@ import AppIntents
 import AVFoundation
 import Speech
 import SwiftUI
+import UIKit
 
 enum CaptureAnywhereMethod: String, CaseIterable, Identifiable {
     case lockScreen
@@ -113,6 +114,7 @@ enum SpeakItHardware {
 }
 
 struct CaptureAnywhereSetupView: View {
+    @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
     @Environment(\.dismiss) private var dismiss
     @AppStorage("SpeakIt.shortcutSetupCompleted") private var setupCompleted = false
     @AppStorage("SpeakIt.captureAnywhereMethod") private var methodRawValue = ""
@@ -129,13 +131,19 @@ struct CaptureAnywhereSetupView: View {
     @State private var hasAppliedOnboardingRecommendation = false
 
     let showsOnboardingProgress: Bool
+    /// Set only while the first-run tutorial owns this screen. Kept separate
+    /// from `showsOnboardingProgress`, which also drives the recommended-method
+    /// defaulting and is reachable from paths that are not the tutorial.
+    let tutorialStep: TutorialStep?
     let onFinished: (() -> Void)?
 
     init(
         showsOnboardingProgress: Bool = false,
+        tutorialStep: TutorialStep? = nil,
         onFinished: (() -> Void)? = nil
     ) {
         self.showsOnboardingProgress = showsOnboardingProgress
+        self.tutorialStep = tutorialStep
         self.onFinished = onFinished
     }
 
@@ -216,6 +224,10 @@ struct CaptureAnywhereSetupView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    if let tutorialStep {
+                        TutorialStepHeader(step: tutorialStep)
+                    }
+
                     header
                     methodPicker
 
@@ -242,13 +254,13 @@ struct CaptureAnywhereSetupView: View {
                     .accessibilityIdentifier("captureAnywhere.done")
                 }
             }
-            .alert("Couldn’t open Accessibility", isPresented: Binding(
+            .alert("Couldn’t open Settings", isPresented: Binding(
                 get: { settingsErrorMessage != nil },
                 set: { if !$0 { settingsErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) { settingsErrorMessage = nil }
             } message: {
-                Text(settingsErrorMessage ?? "Please open Accessibility in Settings.")
+                Text(settingsErrorMessage ?? "Please open Settings from the Home Screen.")
             }
         }
         .fullScreenCover(isPresented: $showsVoiceTest) {
@@ -371,7 +383,7 @@ struct CaptureAnywhereSetupView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .frame(width: 42, height: 42)
                     .background(
-                        isSelected ? Color.white.opacity(0.12) : Color.speakInk.opacity(0.07),
+                        isSelected ? Color.speakInverseInk.opacity(0.12) : Color.speakInk.opacity(0.07),
                         in: Circle()
                     )
 
@@ -381,12 +393,12 @@ struct CaptureAnywhereSetupView: View {
                             .font(.headline)
                         if isRecommended {
                             Text("RECOMMENDED")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: badgeFontSize, weight: .bold))
                                 .tracking(0.8)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
                                 .background(
-                                    isSelected ? Color.white.opacity(0.12) : Color.speakInk.opacity(0.07),
+                                    isSelected ? Color.speakInverseInk.opacity(0.12) : Color.speakInk.opacity(0.07),
                                     in: Capsule()
                                 )
                         }
@@ -547,21 +559,62 @@ struct CaptureAnywhereSetupView: View {
             ActionButtonIllustration()
                 .frame(maxWidth: .infinity)
 
+            // The whole trip in one line, before the guided version. Someone
+            // standing in Settings has no screen to read, so the three words
+            // they need are said once, plainly, before they leave.
+            actionButtonCheatSheet
+
             setupStep(
                 1,
-                title: "Set the button to Shortcut",
-                detail: "Three taps in Settings."
+                title: "Tap Open Settings",
+                detail: "Then tap Action Button. If you land on Speak It’s own page first, tap ‹ Settings once to go up."
             ) {
-                GuidedSequenceView(screens: SetupSequences.actionButton)
+                VStack(alignment: .leading, spacing: 14) {
+                    openAppSettingsButton
+
+                    GuidedSequenceView(screens: SetupSequences.actionButtonFromDeepLink)
+                }
             }
             setupStep(
                 2,
+                title: "Swipe to Shortcut, then search",
+                detail: "Type “speak” instead of scrolling — Speak It Capture is right there."
+            ) {
+                GuidedSequenceView(screens: SetupSequences.actionButtonChooseShortcut)
+            }
+            setupStep(
+                3,
                 title: "Press and hold the side button",
                 detail: "Speak It opens already listening and saves when you pause.",
                 showsConnector: false
             )
         }
         .setupCardStyle()
+    }
+
+    /// The three words to carry into Settings, said once so nothing has to be
+    /// memorized from a three-frame animation.
+    private var actionButtonCheatSheet: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("IN SETTINGS, TAP")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.4)
+                .foregroundStyle(Color.speakMuted)
+
+            Text("Action Button › Shortcut › Speak It Capture")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            Color.speakInk.opacity(0.05),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("In Settings, tap Action Button, then Shortcut, then Speak It Capture.")
     }
 
     private var homeScreenSetupCard: some View {
@@ -772,7 +825,7 @@ struct CaptureAnywhereSetupView: View {
                             if didDetectReadyMicrophone {
                                 Text("Microphone ready in \(lastStartupDuration.formatted(.number.precision(.fractionLength(1))))s")
                                     .font(.caption.weight(.medium))
-                                    .foregroundStyle(.white.opacity(0.46))
+                                    .foregroundStyle(.white.opacity(0.64))
                             }
                         }
                     }
@@ -788,7 +841,7 @@ struct CaptureAnywhereSetupView: View {
                         finishOrDismiss()
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(.white.opacity(0.78))
                     .buttonStyle(.speakIt)
                 }
                 .foregroundStyle(.white)
@@ -832,6 +885,38 @@ struct CaptureAnywhereSetupView: View {
         }
     }
 
+    /// iOS has no public link to Settings › Action Button, so this lands on
+    /// Speak It's own Settings page — one back tap from the root list, where
+    /// Action Button is a top-level row.
+    private var openAppSettingsButton: some View {
+        Button(action: openAppSettings) {
+            Label("Open Settings", systemImage: "arrow.up.forward.app")
+                .font(.headline)
+                .foregroundStyle(Color.speakInverseInk)
+                .frame(maxWidth: .infinity, minHeight: 52)
+        }
+        .buttonStyle(.speakIt)
+        .background(
+            Color.speakInverseSurface,
+            in: RoundedRectangle(cornerRadius: 17, style: .continuous)
+        )
+        .accessibilityIdentifier("captureAnywhere.openSettings")
+        .accessibilityHint("Opens Speak It in Settings. Tap Back once to reach Action Button.")
+    }
+
+    @MainActor
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
+            settingsErrorMessage = "Open Settings → Action Button → Shortcut → Speak It Capture."
+            return
+        }
+        UIApplication.shared.open(url) { opened in
+            if !opened {
+                settingsErrorMessage = "Open Settings → Action Button → Shortcut → Speak It Capture."
+            }
+        }
+    }
+
     @available(iOS 26.0, *)
     private var openAccessibilityButton: some View {
         Button {
@@ -864,6 +949,9 @@ struct CaptureAnywhereSetupView: View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Every option opens Speak It already listening, so pick whichever feels most natural. The Action Button is fastest when your iPhone has one. Back Tap works from any screen without looking. Lock Screen and Control Center are one tap away. Siri needs no setup at all.")
+                if selectedMethod == .actionButton, #available(iOS 18.0, *) {
+                    Text("If Speak It Capture isn’t in the shortcut list, swipe the Action Button one more step to Controls and pick Speak It there instead. Either one opens it already listening.")
+                }
                 if selectedMethod == .backTap {
                     Text("Back Tap needs the one-tap Shortcuts step because Apple only lists personal shortcuts there. If a double-tap is ever missed, tap slightly firmer with a fingertip near the middle of the back.")
                 }
@@ -1321,7 +1409,7 @@ private struct SiriIllustration: View {
 
 /// One row inside a mocked iOS screen.
 private struct SetupMockRow: Identifiable {
-    enum Style { case plain, dim, header, highlighted }
+    enum Style { case plain, dim, header, highlighted, search }
 
     var id: String { title }
     let title: String
@@ -1339,6 +1427,12 @@ private struct SetupMockRow: Identifiable {
 
     static func header(_ title: String) -> SetupMockRow {
         SetupMockRow(title: title, style: .header)
+    }
+
+    /// A search field with the query already typed, so "search instead of
+    /// scrolling" is shown rather than only written in the caption.
+    static func search(_ query: String) -> SetupMockRow {
+        SetupMockRow(title: query, style: .search)
     }
 
     static func highlighted(
@@ -1472,7 +1566,33 @@ private struct SetupMockScreenView: View {
 
     @ViewBuilder
     private func rowView(_ row: SetupMockRow) -> some View {
-        if row.style == .header {
+        if row.style == .search {
+            HStack(spacing: 7) {
+                HStack(spacing: 5) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.speakMuted)
+
+                    Text(row.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                        .lineLimit(1)
+
+                    Rectangle()
+                        .fill(Color.speakInk.opacity(0.5))
+                        .frame(width: 1, height: 12)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 9)
+                .frame(minHeight: 25)
+                .background(Color.speakInk.opacity(0.08), in: Capsule())
+
+                pill("TYPE")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+        } else if row.style == .header {
             HStack {
                 Text(row.title)
                     .font(.system(size: 9, weight: .semibold))
@@ -1603,8 +1723,10 @@ private struct SetupMockScreenView: View {
         .shadow(color: .black.opacity(0.14), radius: 7, y: 3)
     }
 
-    private var badgePill: some View {
-        Text(screen.badge)
+    private var badgePill: some View { pill(screen.badge) }
+
+    private func pill(_ text: String) -> some View {
+        Text(text)
             .font(.system(size: 8, weight: .bold))
             .tracking(0.6)
             .foregroundStyle(Color.speakInverseInk)
@@ -1629,6 +1751,7 @@ private struct SetupMockScreenView: View {
         case .highlighted: Color.speakInk
         case .plain: Color.speakInk.opacity(0.75)
         case .dim, .header: Color.speakMuted.opacity(0.75)
+        case .search: Color.speakInk
         }
     }
 }
@@ -1886,18 +2009,34 @@ private enum SetupSequences {
         )
     ]
 
-    static let actionButton: [SetupMockScreen] = [
+    /// Where Open Settings drops the person: Speak It's own page, one back
+    /// tap below the root list that holds Action Button.
+    static let actionButtonFromDeepLink: [SetupMockScreen] = [
         SetupMockScreen(
-            caption: "Open Settings, tap Action Button",
-            navTitle: "Settings",
+            caption: "If you land on Speak It, tap ‹ Settings to go up",
+            backTitle: "Settings",
+            highlightsBack: true,
+            navTitle: "Speak It",
             rows: [
-                .dim("General", symbol: "gear"),
-                .highlighted("Action Button", symbol: "button.programmable"),
-                .dim("Camera", symbol: "camera")
+                .dim("Siri & Search"),
+                .dim("Microphone"),
+                .dim("Notifications")
             ]
         ),
         SetupMockScreen(
-            caption: "Swipe sideways until it says Shortcut",
+            caption: "Tap Action Button — it’s near the top",
+            navTitle: "Settings",
+            rows: [
+                .dim("General", symbol: "gear"),
+                .dim("Accessibility", symbol: "accessibility"),
+                .highlighted("Action Button", symbol: "button.programmable")
+            ]
+        )
+    ]
+
+    static let actionButtonChooseShortcut: [SetupMockScreen] = [
+        SetupMockScreen(
+            caption: "Swipe sideways to Shortcut, then Choose a Shortcut",
             badge: "SWIPE",
             navTitle: "Action Button",
             rows: [
@@ -1907,13 +2046,13 @@ private enum SetupSequences {
             ]
         ),
         SetupMockScreen(
-            caption: "Choose Speak It Capture",
+            caption: "Search “speak”, then tap Speak It Capture",
             navTitle: "Choose a Shortcut",
             rows: [
-                .dim("Open Camera"),
+                .search("speak"),
+                .header("SPEAK IT"),
                 .highlighted("Speak It Capture", symbol: "waveform", showsCheck: true)
-            ],
-            showsScrollHint: true
+            ]
         )
     ]
 }

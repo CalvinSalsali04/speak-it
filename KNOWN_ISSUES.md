@@ -18,7 +18,16 @@ Apple does not expose its Messages **Send Later** queue to third-party apps. Spe
 
 ## Today rows have no swipe-to-complete
 
-Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a custom `DragGesture`. Layered over scrolling content it won the touch outright and vertical swipes that started on a row did not scroll, so it was removed. Completion is unchanged through the circle on each row and through the editor. Memory, Inbox, and the completed log are `List`-based and keep their native swipe actions. Bringing the shortcut back to Today needs a native implementation, not another gesture.
+Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a custom `DragGesture`. Layered over scrolling content it won the touch outright and vertical swipes that started on a row did not scroll, so it was removed. Completion is unchanged through the circle on each row and through the editor. Memory and the completed log are `List`-based and keep their native swipe actions. Bringing the shortcut back to Today needs a native implementation, not another gesture.
+
+*Partly addressed.* The wrapper the five section call sites route through was
+`SwipeActionRow`, whose body was `content.frame(maxWidth: .infinity)` — it took
+an action title, an icon, an accessibility label, an enabled flag and a closure
+and rendered none of them, so the code read as though Today had a Done action
+when nothing was wired to anything. It is now `RowQuickAction` and delivers that
+action through a `.contextMenu`, which is the affordance that works inside a
+scroll view without competing for the drag, and the one Memory's rows already
+offer. A real swipe still needs Today to become a `List`.
 
 ## User preferences
 
@@ -73,7 +82,7 @@ upgrade had been understood.
 
 ## UI validation
 
-Standard-size Today and Memory layouts now have clean-state simulator visual coverage. VoiceOver, the largest accessibility Dynamic Type sizes, rotation policy, and a complete dark-mode pass still require hands-on device QA. The implementation uses semantic system controls and colours, but automated unit tests cannot replace that pass.
+Standard-size Today and Memory layouts now have clean-state simulator visual coverage. A dark-mode walk of Welcome, Today, Account & Settings and the Capture Anywhere method list on an iPhone 17 Pro simulator (2026-09-03) found and fixed two dark-only defects — an on switch with an invisible knob, and the selected method row's icon halo — and confirmed the new wordmark and icon in both appearances. VoiceOver, the largest accessibility Dynamic Type sizes, rotation policy, and a complete dark-mode pass still require hands-on device QA. The implementation uses semantic system controls and colours, but automated unit tests cannot replace that pass.
 
 ## Clarification reasons are inferred, not recorded
 
@@ -219,3 +228,78 @@ English phrases ("anyway", "the main thing is", "I've been meaning to"). A
 capture in another language, or one that rambles without any of these markers,
 falls through to clause splitting as before. The failure mode is the old one —
 over-splitting — not a new one, and the raw transcript is preserved either way.
+
+## Obligation vocabulary lives in four places and they still disagree
+
+Four separate lists state "this is an obligation", and they agree on only 7 of
+the 32 forms between them (22%):
+
+| list | file | what it gates |
+|---|---|---|
+| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1289` | whether the sentence gets cut here |
+| `ActionabilityReader.obligationLead` | `Actionability.swift:109` | Today versus Memory |
+| `ObligationFrame.link` | `ThoughtOrganizer.swift` | what the row title reads |
+| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1538` | whether a severed piece is glued back on |
+
+Every *multi-word* frame is protected for free, because it ends in `to` and
+`"to"` is the first entry in `clauseInternalLead`. Only single-token forms are
+exposed, and the four that were missing from both of the first two lists —
+`hafta`, `oughta`, `needa`, `better` — were cut in half: "I hafta drop the car
+off on Thursday" filed a Memory note titled **"I hafta"** beside the errand.
+Those four are now closed and pinned by nine `.dictation` corpus cases.
+
+The structural problem is not closed. The four lists are still four lists, and
+the next form somebody says will find whichever one is short. The fix is to
+derive them from one shared definition. It is deliberately staged: three of the
+four gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity, so
+unifying them needs its own measurement pass and its own release.
+
+**Measured, and the reason a partial fix is not enough:** widening `isFragment`
+alone — gluing the fragment back on without teaching `obligationLead` to read
+the result — was measured over a 233-capture stress set as **-37 rows, and all
+37 merges moved a Today task to a Memory note**, 19 of them dropping a resolved
+due date and one destroying an errand outright. The gating corpus showed
+**exactly zero change** for that same edit, so the corpus can neither detect the
+defect nor certify the fix. Any future work here has to be measured on captures
+authored for it.
+
+## "I had better" keeps its frame in the row title
+
+`ObligationFrame.link` admits `better` but not `had better`, so "I had better
+drop the car off on Thursday" routes and dates correctly but still reads with
+its frame attached. `'d better` works, because the clitic is part of the subject.
+
+Admitting `had\s+better` would be one alternative, and it is left out on
+purpose: nothing in the title layer knows whether a verb follows, so "I had
+better luck last time" would be retitled **"Luck last time"**. A comparative
+reading is more common than the past-tense deontic idiom in speech, and the
+title layer refuses rather than guesses.
+
+## Stacked errands behind a hedge collapse into one row
+
+`IntentConsolidation` destroys content on a run-on carrying three errands and a
+discourse hedge:
+
+    "I keep meaning to book the dentist and I have to call the bank about the
+     fee and honestly I should just cancel the gym membership"
+      -> one row, "Call the bank about the fee"
+
+Both other errands are lost. This is **not** an obligation-vocabulary defect:
+the spelled-out `have to` form and the contracted `oughta` form produce
+byte-identical output, before and after the contraction work above. The clause
+splitter segments it correctly into three; `consolidate` then collapses it.
+Origin is `IntentConsolidation.swift` around the `isSubstantive` /
+`elaborativeMarker` path.
+
+## Clause splitting can strand a fragment that the title layer can only tidy
+
+Independent of the frame reducer, `ThoughtExtractor` sometimes cuts a clause
+where there is no clause boundary, and every title is downstream of that.
+`I think I need to sit down and finally do my taxes this weekend` produces two
+rows, and the first one is `Sit down`. `I should rarely call Dana about the
+refund` produces `I should rarely` beside `Call Dana about the refund`.
+
+The reducer improved both — the first row used to read
+`I think I need to sit down and`, and the second used to read `Rarely` — but a
+title cannot repair a split that should not have happened. The origin is clause
+segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.

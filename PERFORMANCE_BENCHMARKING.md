@@ -196,3 +196,28 @@ the dedicated physical-device scale pass. If all-library fetching, in-memory
 search, or whole-file iCloud snapshots fail the 50,000-item pass, fix those
 operations with indexing, bounded queries, or incremental synchronization; do
 not impose a Pro item cap.
+
+## Known render hot spots
+
+A source audit on 2026-09-03 closed the cheap, behaviour-neutral cases (shared
+intent decoder, memoized person names, predicate lookups by ID, cached regexes,
+the editor's cached delivery reading, embedding warm-up at launch, Today's
+timer built once — see `DECISIONS.md`). What is still open is measurable on a
+large library and belongs to the next performance pass:
+
+- **`TodayView` recomputes its section chain several times per `body`.**
+  `activeActions`, `overdue`, `scheduledToday`, `noDate` and `comingUp` are
+  computed properties referenced from a dozen places in one render; each is a
+  full filter plus a sort. Compute one sections value per pass.
+- **`reminderSignature` joins one string per render** and is compared by
+  SwiftUI on every pass; the first evaluation also runs the pipeline for every
+  timed item before the delivery cache is warm. Hash instead of join, and warm
+  the cache off the main actor at launch.
+- **Launch and every foreground run unbounded fetches** in
+  `backfillTemporalIntents`, `resolveCombinedPlaceAndTimeHoldouts` and
+  `reconcilePendingReminders`. Add predicates so they scan the rows that need
+  work rather than the whole table.
+- **Memory home counts each collection with its own pass** over the active
+  items; four cards, one pass each. One pass, four counts.
+- **`makeICloudSnapshot` fetches the whole table after every save**, on the
+  main actor, debounced two seconds.

@@ -60,7 +60,7 @@ func describe(_ intent: LocationIntent?) -> String {
 /// The title the row actually shows. Mirrors
 /// `SwiftDataThoughtRepository.displayTitle(for:)` so the probe reports what a
 /// person would read on Today or in Memory, not the internal candidate title.
-func rowTitle(_ candidate: ExtractedThought) -> String {
+func rowTitle(_ candidate: ExtractedThought, spokenFallback: String = "") -> String {
     let rawTitle: String
     if let title = candidate.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
        !title.isEmpty {
@@ -70,7 +70,21 @@ func rowTitle(_ candidate: ExtractedThought) -> String {
     } else {
         rawTitle = candidate.sourceQuote
     }
-    return ThoughtTitleFormatter.polished(rawTitle, itemType: candidate.organization.itemType)
+    let polished = ThoughtTitleFormatter.polished(rawTitle, itemType: candidate.organization.itemType)
+    if !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        return polished
+    }
+    // Mirrors `SwiftDataThoughtRepository.displayTitle(for:spokenFallback:)` —
+    // a filler-only capture reaches here with every text field empty, and the
+    // row falls back to what the person actually said rather than rendering
+    // blank. In the app that fallback is the session transcript; here it is the
+    // utterance, which is the same words.
+    for fallback in [candidate.rawQuote, candidate.sourceQuote, candidate.analysisText, spokenFallback] {
+        let trimmed = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { continue }
+        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+    }
+    return polished
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
@@ -286,7 +300,7 @@ for utterance in utterances {
         let route = organization.itemType.isActionable || organization.reminderDate != nil
             ? "Today" : "Memory"
         print("   item \(index + 1) of \(result.items.count):")
-        print("     row title:  \(rowTitle(item))")
+        print("     row title:  \(rowTitle(item, spokenFallback: utterance))")
         print("     route:      \(route)   type: \(organization.itemType.rawValue)   category: \(organization.category.rawValue)   priority: \(organization.priority.rawValue)")
         print("     due:        \(describe(organization.dueDate))")
         print("     remind:     \(describe(organization.reminderDate))   delivery: \(organization.reminderDelivery.rawValue)")
@@ -300,7 +314,7 @@ for utterance in utterances {
         // has to score against. `needsReview` says only that something is
         // unclear; this says what.
         print("     state:      \(organization.state.kind.rawValue)\(organization.state.gap.map { " gap=\($0.rawValue)" } ?? "")")
-        if item.sourceQuote != rowTitle(item) {
+        if item.sourceQuote != rowTitle(item, spokenFallback: utterance) {
             print("     quote:      \(item.sourceQuote)")
         }
     }

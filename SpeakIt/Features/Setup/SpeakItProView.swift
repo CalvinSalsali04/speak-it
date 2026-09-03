@@ -2,6 +2,23 @@ import StoreKit
 import SwiftData
 import SwiftUI
 
+/// The published legal documents, in one place so the paywall and the in-app
+/// privacy summary cannot point at different things.
+///
+/// App Review guideline 3.1.2 asks a subscription screen to carry functional
+/// links to the terms of use and the privacy policy. The in-app summary
+/// (`SpeakItPrivacyView`) explains what Speak It does in plain language, which
+/// is the more useful thing to read — but it is not the published policy, so it
+/// cannot be what the paywall links to.
+enum SpeakItLegal {
+    static let privacyPolicy = URL(string: "https://speakitapp.ca/privacy")!
+    /// Apple's standard EULA, which is the terms of use for a subscription sold
+    /// through the App Store unless a custom agreement is supplied.
+    static let termsOfUse = URL(
+        string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+    )!
+}
+
 enum SpeakItSharing {
     private static var configuredAppStoreURL: URL? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "SpeakItAppStoreURL") as? String,
@@ -145,7 +162,7 @@ struct SpeakItProView: View {
 
     private var heroTitle: String {
         if subscriptionStore.hasProAccess { return "Your thoughts stay in motion." }
-        if context == .freeLimit { return "You’ve used your 10 free captures." }
+        if context == .freeLimit { return "You’ve used your \(FreePlanAllowance.lifetimeCaptureLimit) free captures." }
         return "More clarity from every thought."
     }
 
@@ -397,27 +414,25 @@ struct SpeakItProView: View {
                     }
                 }
 
-                HStack(alignment: .bottom, spacing: 12) {
-                    Text(isAnnual ? "One payment each year" : "Flexible monthly billing")
-                        .font(.footnote)
-                        .foregroundStyle(Color.speakMuted)
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 3) {
-                        if isAnnual,
-                           SummerLaunchSale.isActive(),
-                           product.priceFormatStyle.currencyCode == "USD" {
-                            Text("Regularly \(SummerLaunchSale.regularAnnualUSPrice)")
-                                .font(.caption2)
-                                .foregroundStyle(Color.speakMuted)
-                                .strikethrough()
-                        }
-                        Text(product.displayPrice)
-                            .font(.body.weight(.semibold))
-                        Text(isAnnual ? "per year" : "per month")
-                            .font(.caption)
-                            .foregroundStyle(Color.speakMuted)
+                // Swaps axis rather than forcing a width. `fixedSize(horizontal:)`
+                // on the price column made it take its full unwrapped width and
+                // never compress, so at large Dynamic Type the description was
+                // crushed toward nothing and the price itself was clipped off
+                // the trailing edge of the card. `ViewThatFits` keeps the
+                // side-by-side layout wherever it still fits and stacks below it
+                // when it does not.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .bottom, spacing: 12) {
+                        planCaption(isAnnual: isAnnual)
+                        Spacer(minLength: 8)
+                        priceColumn(product: product, isAnnual: isAnnual, alignment: .trailing)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
-                    .fixedSize(horizontal: true, vertical: false)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        planCaption(isAnnual: isAnnual)
+                        priceColumn(product: product, isAnnual: isAnnual, alignment: .leading)
+                    }
                 }
             }
             .foregroundStyle(Color.speakInk)
@@ -436,6 +451,35 @@ struct SpeakItProView: View {
             planAccessibilityLabel(product: product, isAnnual: isAnnual)
         )
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    private func planCaption(isAnnual: Bool) -> some View {
+        Text(isAnnual ? "One payment each year" : "Flexible monthly billing")
+            .font(.footnote)
+            .foregroundStyle(Color.speakMuted)
+    }
+
+    @ViewBuilder
+    private func priceColumn(
+        product: Product,
+        isAnnual: Bool,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
+            if isAnnual,
+               SummerLaunchSale.isActive(),
+               product.priceFormatStyle.currencyCode == "USD" {
+                Text("Regularly \(SummerLaunchSale.regularAnnualUSPrice)")
+                    .font(.caption2)
+                    .foregroundStyle(Color.speakMuted)
+                    .strikethrough()
+            }
+            Text(product.displayPrice)
+                .font(.body.weight(.semibold))
+            Text(isAnnual ? "per year" : "per month")
+                .font(.caption)
+                .foregroundStyle(Color.speakMuted)
+        }
     }
 
     private var bestValueBadge: some View {
@@ -604,7 +648,9 @@ struct SpeakItProView: View {
 #endif
 
     private var purchaseButtonTitle: String {
-        guard let selectedProduct else { return "Plans unavailable in this build" }
+        // Customer- and reviewer-facing. "in this build" is our word for
+        // our problem, on the screen that asks them to pay.
+        guard let selectedProduct else { return "Pro is being prepared" }
         return selectedProduct.id == SubscriptionStore.annualProductID
             ? "Choose Annual · \(selectedProduct.displayPrice)"
             : "Choose Monthly · \(selectedProduct.displayPrice)"
@@ -614,6 +660,12 @@ struct SpeakItProView: View {
         let period = product.id == SubscriptionStore.annualProductID ? "year" : "month"
         if product.id == SubscriptionStore.annualProductID,
            SummerLaunchSale.isActive() {
+            // Left exactly as it shipped. The audit is right that this reads as
+            // though the subscriber's own rate expires on the sale end date,
+            // which is not what a launch price does — but every word of it is
+            // part of the sale-pricing decision the owner still has to make,
+            // and `SpeakItUITests` pins this string. Changing half of a pricing
+            // claim is worse than leaving it whole.
             return "Summer launch price · \(product.displayPrice) per year until \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "\(product.displayPrice) per \(period). Auto-renews until cancelled."
@@ -773,9 +825,17 @@ struct SpeakItProView: View {
 
     private var legalControls: some View {
         HStack(spacing: 20) {
-            Button("Privacy") { showsPrivacy = true }
+            Button("How data is used") { showsPrivacy = true }
                 .buttonStyle(.speakIt)
-            Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+            // A subscription screen has to carry a link to the policy itself,
+            // not only to an in-app summary of it. The Privacy button above
+            // opens the explainer, which now ends in this same link.
+            Link(destination: SpeakItLegal.privacyPolicy) {
+                Text("Privacy Policy")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            Link(destination: SpeakItLegal.termsOfUse) {
                 Text("Terms")
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())

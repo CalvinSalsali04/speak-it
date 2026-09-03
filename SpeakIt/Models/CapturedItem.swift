@@ -165,13 +165,19 @@ final class CapturedItem: Identifiable {
         semanticGapRawValue = other.semanticGapRawValue
     }
 
+    /// One decoder for every intent read. These getters sit inside the filter
+    /// predicates Today and Memory run over every row on every render, and a
+    /// fresh `JSONDecoder` per read was most of what those predicates cost.
+    /// `JSONDecoder` has no mutable state after setup, so sharing it is safe.
+    private static let intentDecoder = JSONDecoder()
+
     /// The stored intent, or `nil` for a row written before version 2 that has
     /// not been backfilled yet. Reading it never invents a kind — an absent
     /// intent stays absent so the backfill can tell it still has work to do.
     var temporalIntent: TemporalIntent? {
         get {
             guard let temporalIntentData else { return nil }
-            return try? JSONDecoder().decode(TemporalIntent.self, from: temporalIntentData)
+            return try? Self.intentDecoder.decode(TemporalIntent.self, from: temporalIntentData)
         }
         set {
             temporalIntentData = newValue.flatMap { try? JSONEncoder().encode($0) }
@@ -191,7 +197,7 @@ final class CapturedItem: Identifiable {
     var locationIntent: LocationIntent? {
         get {
             guard let locationIntentData else { return nil }
-            return try? JSONDecoder().decode(LocationIntent.self, from: locationIntentData)
+            return try? Self.intentDecoder.decode(LocationIntent.self, from: locationIntentData)
         }
         set {
             locationIntentData = newValue.flatMap { try? JSONEncoder().encode($0) }

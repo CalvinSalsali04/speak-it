@@ -4,10 +4,22 @@ struct CaptureSessionReviewView: View {
     @Environment(\.thoughtRepository) private var repository
 
     let session: CaptureSession
+    /// Called after an operation that changes which items this session has, or
+    /// what the item the caller is holding contains.
+    ///
+    /// `ItemEditorView` pushes this screen from inside its own form and keeps
+    /// `@State` copies of the item's title, type and dates taken in `init`.
+    /// Split, Merge, Undo and Organize again all rewrite or delete that exact
+    /// item, and SwiftUI preserves `@State` across the pop — so returning to
+    /// the form and tapping Save wrote the pre-operation values straight back
+    /// over the result. The editor closes instead.
+    var onStructuralChange: () -> Void = {}
 
     @State private var splitTarget: CapturedItem?
     @State private var errorMessage: String?
     @State private var showsUndoConfirmation = false
+    @State private var showsReorganizeConfirmation = false
+    @State private var itemCountBeforeSplit = 0
 
     private var items: [CapturedItem] {
         session.items.sorted {
@@ -53,7 +65,12 @@ struct CaptureSessionReviewView: View {
 
             Section {
                 Button {
-                    perform { try repository?.reorganize(session) }
+                    // Re-reading the transcript rewrites every field on every
+                    // row in this capture — title, type, category, priority,
+                    // person, dates — so any correction made by hand is gone.
+                    // It used to run on the first tap, directly above an Undo
+                    // that does ask, which had the two backwards.
+                    showsReorganizeConfirmation = true
                 } label: {
                     Label("Organize again", systemImage: "arrow.clockwise")
                 }
@@ -71,8 +88,32 @@ struct CaptureSessionReviewView: View {
         }
         .navigationTitle("Capture details")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $splitTarget) { item in
+        .sheet(
+            item: $splitTarget,
+            onDismiss: {
+                // A split rewrites the first part in place and inserts the
+                // rest, so the count is the reliable signal that one happened.
+                // Cancelling the sheet leaves it unchanged and the editor stays
+                // where it is.
+                if session.items.count != itemCountBeforeSplit {
+                    onStructuralChange()
+                }
+            }
+        ) { item in
             SplitThoughtView(item: item)
+        }
+        .confirmationDialog(
+            "Organize again?",
+            isPresented: $showsReorganizeConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Organize again", role: .destructive) {
+                perform { try repository?.reorganize(session) }
+                onStructuralChange()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Speak It will read your original words again from scratch. Any changes you made to these items by hand will be replaced. Your original capture is not touched.")
         }
         .confirmationDialog(
             "Undo organization?",
@@ -81,6 +122,7 @@ struct CaptureSessionReviewView: View {
         ) {
             Button("Keep as one original thought") {
                 perform { try repository?.undoOrganization(session) }
+                onStructuralChange()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -90,6 +132,7 @@ struct CaptureSessionReviewView: View {
     }
 
     private func beginSplitting(_ item: CapturedItem) {
+        itemCountBeforeSplit = session.items.count
         splitTarget = item
     }
 
@@ -103,6 +146,7 @@ struct CaptureSessionReviewView: View {
     private func mergeWithNext(_ item: CapturedItem) {
         guard let next = nextItem(after: item) else { return }
         perform { try repository?.merge([item, next]) }
+        onStructuralChange()
     }
 
     private func perform(_ action: () throws -> Void) {

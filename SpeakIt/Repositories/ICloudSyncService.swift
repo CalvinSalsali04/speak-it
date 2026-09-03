@@ -124,7 +124,7 @@ enum ICloudSyncResult: Equatable, Sendable {
         case let .unavailable(message), let .failed(message):
             message
         case .uploaded, .synchronized, .upToDate:
-            "Library is up to date"
+            "Memory is up to date"
         }
     }
 }

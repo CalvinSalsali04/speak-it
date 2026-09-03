@@ -274,13 +274,40 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                   let session = item.captureSession,
                   let fireDate = item.reminderDate,
                   fireDate <= now,
-                  ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fireDate) == nil,
                   let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: now)
             else { continue }
 
             let reminderOffset = item.reminderDate.flatMap { reminder in
                 item.dueDate.map { reminder.timeIntervalSince($0) }
             } ?? 0
+
+            // A rule `repeatingComponents` *can* express is armed as a single
+            // native repeating trigger, so it is one row that keeps recurring
+            // rather than a chain of successors. It used to be excluded here
+            // entirely, which killed the series: nothing advanced the row past
+            // the occurrence that had just fired, `ReminderScheduleRequest`
+            // drops an item whose reminder is in the past, and the very next
+            // foreground cancelled every pending Speak It notification and
+            // re-added nothing. "Remind me every day at 8" alerted once, ever,
+            // and then sat in Today as a stale overdue row.
+            //
+            // Rolling this row forward is all it needs: the caller re-fetches
+            // after this pass, so the request is future-dated again and the
+            // repeating trigger is re-armed on the same run.
+            if ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fireDate) != nil {
+                let carried = carriedIntent(from: item, toOccurrenceOn: nextDate)
+                // Only move a due date the row already had. Giving one to a
+                // reminder-only row would move it out of "When you have time"
+                // and into "Coming up", quietly changing what kind of thing it
+                // is on a pass whose whole job is to keep it firing.
+                if item.dueDate != nil { item.dueDate = nextDate }
+                item.reminderDate = nextDate.addingTimeInterval(reminderOffset)
+                item.temporalIntent = carried
+                item.lastModifiedAt = now
+                advancedAny = true
+                continue
+            }
+
             let next = CapturedItem(
                 originalTextSegment: item.originalTextSegment,
                 displayTitle: item.displayTitle,
@@ -503,9 +530,31 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard ICloudSyncState.isSignedIn else {
             return .unavailable("Sign in to iCloud in Settings to sync")
         }
-        let local = makeICloudSnapshot()
         switch await ICloudSyncService.shared.download() {
         case .missing:
+            // Taken *after* the download, for the same reason as the merge
+            // below: a capture saved while the download was in flight must be
+            // in the file this uploads.
+            let local = makeICloudSnapshot()
+            // `.missing` answers a local-filesystem question, not a cloud one:
+            // it is `fileExists` on a container whose metadata sync is
+            // asynchronous, so a library this device has simply not been told
+            // about yet looks identical to an account that has none. Uploading
+            // an empty library in that state overwrites the cloud copy, and
+            // when that copy is the only one left — a delete-and-reinstall, or
+            // new hardware — there is nothing to restore it from.
+            //
+            // An empty local library is never worth writing over a cloud file
+            // whose existence we could not establish. A real first sync always
+            // has something in it, so the legitimate path is untouched.
+            //
+            // Reported as success rather than failure: for the person this is
+            // the ordinary "nothing captured yet" case, and there is genuinely
+            // nothing to send. The next sync, once they have said something,
+            // uploads normally.
+            guard !local.sessions.isEmpty || !local.items.isEmpty else {
+                return .upToDate
+            }
             switch await ICloudSyncService.shared.uploadImmediately(local) {
             case .succeeded:
                 ICloudSyncState.markCloudChangeApplied(at: local.generatedAt)
@@ -518,7 +567,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // This prevents a damaged/unavailable cloud copy from being replaced.
             return .failed(message)
         case let .snapshot(cloud):
+            // Read the local library now, not before the download.
+            //
+            // `applyICloudSnapshot` deletes every row the merged snapshot does
+            // not contain, so merging against a library read before a
+            // multi-second `await` deleted anything captured during that
+            // window: the new row was in neither half of the merge, and the
+            // apply treated it as a row the cloud had removed. This runs on
+            // every launch and every foreground, and speaking a thought while
+            // it ran was enough to lose it.
+            let local = makeICloudSnapshot()
             let wasUpToDate = local.hasSameContent(as: cloud)
+            // Nothing below can change anything when the two sides already
+            // match, and this runs on every launch and every foreground — so
+            // the common case was rewriting every row in the store and
+            // re-uploading a byte-identical file for no reason.
+            if wasUpToDate { return .upToDate }
             let merged = ICloudSnapshotMerger.merge(local: local, cloud: cloud)
             do {
                 try applyICloudSnapshot(merged)
@@ -572,9 +636,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func performReminderAction(itemIDs: [UUID], action: ReminderAction) throws {
         guard !itemIDs.isEmpty else { return }
         let wanted = Set(itemIDs)
-        let items = try modelContext.fetch(FetchDescriptor<CapturedItem>()).filter {
-            wanted.contains($0.id) && !$0.isArchived
-        }
+        let items = try modelContext.fetch(
+            FetchDescriptor<CapturedItem>(
+                predicate: #Predicate { itemIDs.contains($0.id) && $0.isArchived == false }
+            )
+        ).filter { wanted.contains($0.id) }
 
         switch action {
         case .complete:
@@ -588,7 +654,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.lastModifiedAt = .now
             }
             try persistChanges()
-            synchronizeAllReminders(requestAuthorizationIfNeeded: false)
+            rescheduleReminders(touching: items)
         case .tomorrow:
             let calendar = Calendar.autoupdatingCurrent
             guard let day = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)) else {
@@ -604,7 +670,25 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.lastModifiedAt = .now
             }
             try persistChanges()
-            synchronizeAllReminders(requestAuthorizationIfNeeded: false)
+            rescheduleReminders(touching: items)
+        }
+    }
+
+    /// Reschedules only the captures a notification action actually touched.
+    ///
+    /// These paths used to call `synchronizeAllReminders`, whose scope sets
+    /// `replacesAllSpeakItReminders` — so the first thing it did was remove
+    /// *every* pending Speak It notification and re-add them one at a time
+    /// across several awaits, from a task nobody waits on. That runs on the
+    /// background launch iOS grants for a notification action, and iOS may
+    /// suspend the app the moment the handler returns. Snoozing one reminder
+    /// should never put every other reminder on the phone at risk.
+    private func rescheduleReminders(touching items: [CapturedItem]) {
+        var handled: Set<UUID> = []
+        for item in items {
+            guard let session = item.captureSession,
+                  handled.insert(session.id).inserted else { continue }
+            synchronizeReminders(for: session, requestAuthorizationIfNeeded: false)
         }
     }
 
@@ -1176,11 +1260,28 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func update(_ item: CapturedItem, with edits: ItemEdits) throws {
-        let normalizedTitle = ThoughtTitleFormatter.polished(edits.title, itemType: edits.itemType)
+        // A person's own wording is not framing to be unwrapped. `reduceFrames`
+        // is off here so somebody who types "We need to talk to the landlord"
+        // gets what they typed, and the tidying that is genuinely about
+        // presentation — whitespace, stray punctuation, sentence case — still
+        // runs.
+        let normalizedTitle = ThoughtTitleFormatter.polished(
+            edits.title,
+            itemType: edits.itemType,
+            reduceFrames: false
+        )
         guard !normalizedTitle.isEmpty else { throw RepositoryError.emptyTitle }
         let previousRecurrences = RecurrenceStore.snapshots()
 
         item.displayTitle = normalizedTitle
+        // Only a title the automatic pass would disagree with needs protecting.
+        // Recording every edit would freeze the title of anyone who only
+        // changed a due date.
+        if ThoughtTitleFormatter.polished(normalizedTitle, itemType: edits.itemType) == normalizedTitle {
+            HandEditedTitleStore.forget(item.id)
+        } else {
+            HandEditedTitleStore.remember(item.id)
+        }
         item.itemType = edits.itemType
         item.category = edits.category
         item.dueDate = edits.dueDate
@@ -1770,7 +1871,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     ) {
         let organization = candidate.organization
         item.originalTextSegment = candidate.sourceQuote
-        item.displayTitle = displayTitle(for: candidate)
+        item.displayTitle = displayTitle(
+            for: candidate,
+            spokenFallback: item.captureSession?.originalTranscription ?? ""
+        )
         item.itemType = organization.itemType
         item.category = organization.category
         item.priority = organization.priority
@@ -1820,7 +1924,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let organization = candidate.organization
         let item = CapturedItem(
             originalTextSegment: candidate.sourceQuote,
-            displayTitle: displayTitle(for: candidate),
+            displayTitle: displayTitle(
+                for: candidate,
+                spokenFallback: session.originalTranscription
+            ),
             itemType: organization.itemType,
             category: organization.category,
             createdAt: createdAt,
@@ -1845,7 +1952,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return item
     }
 
-    private func displayTitle(for candidate: ExtractedThought) -> String {
+    private func displayTitle(
+        for candidate: ExtractedThought,
+        spokenFallback: String
+    ) -> String {
         let rawTitle: String
         if let title = candidate.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
@@ -1855,10 +1965,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         } else {
             rawTitle = candidate.sourceQuote
         }
-        return ThoughtTitleFormatter.polished(
+        let polished = ThoughtTitleFormatter.polished(
             rawTitle,
             itemType: candidate.organization.itemType
         )
+        if !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return polished
+        }
+        // A capture that is nothing but filler — "um", "uh", "hmm", "yeah" —
+        // reaches here with every text field already empty: extraction drops
+        // filler, so `sourceQuote`, `rawQuote` and `analysisText` are all "".
+        // The row is still created, and a row with no words renders as a blank
+        // line the person cannot read or tap by name, and that VoiceOver
+        // announces as "Complete ." The session transcript is the one place
+        // those words survive, and showing them back is exactly the promise the
+        // app is built on.
+        for fallback in [
+            candidate.rawQuote,
+            candidate.sourceQuote,
+            candidate.analysisText,
+            spokenFallback
+        ] {
+            let trimmed = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+        }
+        return polished
     }
 
     private func ensureFallbackItem(for session: CaptureSession) {
@@ -1877,21 +2009,71 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         modelContext.insert(item)
     }
 
+    /// Bumped when `ThoughtTitleFormatter` changes what a title should read.
+    /// Version 2 is `ObligationFrame`.
+    /// Internal rather than private so a test can put a fresh install back on
+    /// the clock; the stamp is process-wide and would otherwise leak from one
+    /// test into the next.
+    static let titlePolishVersionKey = "SpeakIt.titlePolishFormatterVersion"
+    static let titlePolishVersion = 2
+
+    /// Brings titles written by an older formatter up to the current contract,
+    /// **once per formatter version** rather than on every launch.
+    ///
+    /// It used to run unconditionally, on the main actor, over every row in the
+    /// store, at every launch — paying for a rewrite that had already happened.
+    /// Worse, it re-entered on its own output, so a formatter that was not
+    /// idempotent kept shortening the same title across successive launches.
+    /// Stamping the version makes the pass converge and makes a bad reduction a
+    /// bug that can be fixed rather than damage that has already been written.
+    ///
+    /// A title the person typed themselves is never touched — see
+    /// `HandEditedTitleStore`. The original wording is not touched either, by
+    /// anything, ever: `originalTextSegment` and the session transcript are not
+    /// written here.
     private func polishPersistedDisplayTitles() {
-        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
+        let defaults = UserDefaults.standard
+        guard defaults.integer(forKey: Self.titlePolishVersionKey) < Self.titlePolishVersion else {
+            return
+        }
+        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else {
+            // Deliberately unstamped. The store can be unreachable at the first
+            // launch after an upgrade — protected data is not available until
+            // the first unlock after a reboot — and stamping here would retire
+            // the migration having done nothing, leaving the person's whole
+            // backlog on the old formatter forever. Not stamping costs one
+            // cheap fetch on the next launch instead.
+            return
+        }
         var changed = false
 
         for item in items {
+            guard !HandEditedTitleStore.contains(item.id) else { continue }
             let polished = ThoughtTitleFormatter.polished(
                 item.displayTitle,
                 itemType: item.itemType
             )
             guard !polished.isEmpty, polished != item.displayTitle else { continue }
+            // Only rewrite where the rewrite settles. `polished` is written for
+            // a *transcript*, and `ReminderCopy` inside it will happily read an
+            // already-stored title as if it were one more spoken sentence:
+            // "Set an alarm for 6 AM" becomes "Alarm", and running again would
+            // take more. Requiring a fixpoint means this pass can only ever
+            // move a title to somewhere it would also have landed if it had
+            // been written by the current formatter in the first place.
+            guard ThoughtTitleFormatter.polished(polished, itemType: item.itemType) == polished else {
+                continue
+            }
             item.displayTitle = polished
             changed = true
         }
 
-        if changed { try? persistChanges() }
+        if changed {
+            // Same reasoning: a failed save must not retire the migration, or
+            // the rewrite is lost and never attempted again.
+            do { try persistChanges() } catch { return }
+        }
+        defaults.set(Self.titlePolishVersion, forKey: Self.titlePolishVersionKey)
     }
 
     private func orderedItems(in session: CaptureSession) -> [CapturedItem] {
@@ -2175,7 +2357,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     private func findItem(withID id: UUID) throws -> CapturedItem? {
-        try modelContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == id }
+        var descriptor = FetchDescriptor<CapturedItem>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
     }
 
     /// The intent to give the occurrence generated when a recurring item is

@@ -11,11 +11,23 @@ account, commerce, hosted-policy, listing, and physical-iPhone gates below.
 
 Current automated evidence from the working tree:
 
-- Unsigned Release build: passed.
+- Unsigned Release build (Sept 3, 2026): passed with zero compiler warnings.
 - Release static analyzer: passed with no findings or compiler warnings.
-- Unit/integration suite: 524 passed, 6 environment-specific tests skipped,
-  0 failed on iPhone 17 Pro / iOS 26.5 simulator.
-- UI suite: 22 passed, 0 failed on iPhone 17 Pro / iOS 26.5 simulator.
+- Unit/integration suite (Sept 3, 2026): 709 passed, 6 environment-specific
+  tests skipped, 6 failed on an iPhone 17 / iOS 26.5 simulator — the six
+  failures are the recurring-reminder wall-clock cases that shift by exactly
+  the host-to-Toronto UTC offset when the Mac is not in North America (this
+  run was on Asia/Bangkok), identical before and after the day's changes.
+  Re-run on a Toronto-zoned Mac before submission to record a clean count.
+- UI suite (Sept 3, 2026): 23 tests, 19 passed, 4 failed on an iPhone 17 /
+  iOS 26.5 simulator; one of the four passed on an isolated re-run. The three
+  that stay red are not the day's changes: `testFirstSavePersistsOnboarding…`
+  types "Buy toothpaste" into a first mission that now asks for a person and a
+  task (the in-flight tutorial work rejects it with "Almost — one more go"),
+  and the two shopping-card tests wait six seconds for the sixth seeded
+  example while the simulator's on-device model takes roughly nine seconds
+  for the six. Update the first-save test to the new mission, and either
+  lengthen the seed wait or seed the shopping row first, before re-baselining.
 - Complete first-run practice journey: passed on both iPhone 17 Pro and iPhone
   SE (3rd generation) simulators. The SE pass includes the full example copy,
   the scrollable typed-input escape route, live Today/People/Ideas coaching,

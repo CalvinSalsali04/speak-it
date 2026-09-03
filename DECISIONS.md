@@ -1222,3 +1222,360 @@ belongs to whatever pass decides to make it.
 Generated recurrence occurrences carry the verdict of the row they came from
 rather than being left empty. They are the same reading, not a new one, and
 empty means "nothing was ever recorded" — which would be false.
+
+## 2026-08-29 — The tutorial counts itself, in one number, everywhere
+
+Each tutorial surface used to name its own position or none at all: "PRACTICE 1
+OF 2" on a capture screen, an unnumbered teaching card on the real Today and
+Memory screens, an unnumbered setup screen at the end. Nothing told the person
+how much was left, and on Today and Memory nothing said a tutorial was running —
+a card asking to "Change this thought" read as the app making a demand.
+
+`TutorialStep` is now the single eight-item list every surface counts against,
+and one `TutorialStepHeader` renders the badge, the count, and the bar wherever
+teaching happens: both practice captures, the four spotlight steps, Capture
+Anywhere, and readiness. The finished screen shows the same bar full.
+
+While a step happens inside the real app, `TutorialBanner` is a layout row above
+the destination stack, not an overlay or a safe-area inset. Today and Memory
+hide their navigation bars, and both of those approaches let scroll content
+start underneath the banner: the screen header stayed half-covered and a pushed
+Memory screen lost its Back button behind it.
+
+Each spotlight button also states what it will actually do. All of them open
+something real — an editor, a person, a stage picker — so "Opens this thought.
+Save or close it and the tutorial continues." is the sentence that distinguishes
+the tutorial offering a next step from the app issuing an instruction. The
+sheets those buttons open cover the banner, so they carry the step count
+themselves.
+
+## 2026-08-30 — The Action Button trip is shortened, because it cannot be skipped
+
+Assigning Speak It to the Action Button for someone is not possible, and neither
+is linking straight to the pane where they would do it. iOS ships exactly three
+public Settings URLs — `openSettingsURLString`, `openNotificationSettingsURLString`
+(15.4), and `openDefaultApplicationsSettingsURLString` (18.3) — and the
+`AccessibilitySettings.Feature` list the Back Tap step already uses has six
+cases, none of them the Action Button. `App-Prefs:root=` reaches the pane but is
+private API. So the trip stays manual, and the only thing left to improve is how
+much of it a person has to carry in their head after leaving the app.
+
+Three things carry it. `openSettingsURLString` removes the app switch: it lands
+on Speak It's own page when the app has one, and on the Settings root when it
+does not, and Action Button is a top-level row visible without scrolling either
+way — so step one's copy names the destination first and treats the Speak It
+page as the detour it sometimes is. A one-line strip above the steps says the
+whole trip once — Action Button › Shortcut › Speak It Capture — with
+non-breaking spaces inside each name, so at accessibility text sizes it wraps at
+the separators instead of through "Speak It Capture". And the picker frame shows
+the search field with "speak" already typed, because `BeginListeningIntent` is
+an App Shortcut sharing that list with every personal shortcut the person owns.
+
+Controls is left in the help disclosure rather than the card. It is a second
+route of equal length on iOS 18+, and offering two equal paths to someone who
+has not done this before costs more than it saves. The existing test card is
+still what closes the loop: nothing here can read the assignment back, so a real
+outside-the-app capture remains the only proof it worked.
+
+## 2026-08-31 — A title drops the framing, not the words
+
+Nobody says the task first. They say "I've got to", "we need to", "make sure I",
+"I keep meaning to", and the thing to do follows. The row title used to keep all
+of it, because `ThoughtTitleFormatter` was a list of six literal prefixes —
+"I need to", "I have to", "I should", and three imperative wrappers — while
+`ActionabilityReader.obligationLead` already held eighteen. Routing knew "I've
+got to pick up the dry cleaning" was an obligation; the title did not, so the
+row read back the person's own throat-clearing.
+
+`ObligationFrame` replaces the list with the paradigm. A frame is
+`subject hedge* link+`, anchored at the start and contiguous, and that shape is
+the safety argument rather than a style preference: `^(i|we) … need to` cannot
+match "I told Alex to get the wrench" or "I need a wrench to fix the gate",
+because the noun phrase is physically in the way. No tagger has to decide it, so
+nothing about the reduction depends on how the recognizer capitalised the
+sentence. Measured over 1,216 utterances the reduction changed 78 titles, changed
+no row's count, type, route or date, and introduced no word the speaker had not
+said.
+
+Three properties are asserted rather than intended, in `ObligationFrameTests`,
+because a corpus `title` disagreement grades `.cosmetic` and only ever reports.
+The reduction is **deletion-only** — its output is a contiguous subsequence of
+its input, so a title can never contain an invented word. It is **idempotent**,
+because launch maintenance re-feeds the formatter its own output. And it is
+**invariant** to lowercasing, comma loss and full stops, which is why the gap
+between a frame and its complement accepts a comma: "I gotta, you know, finish
+the essay" and "I gotta you know finish the essay" are one sentence dictated by
+two engines.
+
+### Safety by omission, and why the vocabulary is deliberately incomplete
+
+`had to`, `was supposed to`, `meant to`, `needed to`, `refused to`, `managed to`,
+bare `got to`, `like to` and every negated auxiliary are absent from the link set
+on purpose. A form that is not listed can never sit inside the span that gets
+deleted, so a past, habitual or released obligation survives into the title
+untouched — "I had to cancel the appointment" is not retitled "Cancel the
+appointment". Adding a past, negated or noun-taking form to that set is the way
+this breaks, and the control block of `ObligationFrameTests` exists to catch
+exactly that edit.
+
+The complement boundary refuses four things outright, and refusing is the
+failure mode of the whole design: a stranded infinitival `to`, a negator, a
+coordinator, and a pseudo-cleft pivot. The negator case was already live damage —
+"I should not sign the lease until Dana looks at it" shipped as **"Not sign the
+lease until Dana looks at it"**, and "I need to not forget the passport" as
+**"Not forget the passport"**. Four such inversions, plus rows titled "Rarely",
+"And I will" and "But I probably won't", are fixed by refusing rather than by a
+new rule.
+
+### The person's own wording outranks the reducer
+
+`displayTitle` has no `isUserEdited` flag the way `temporalIntent` and
+`locationIntent` do, and giving it one is a versioned schema migration that does
+not belong in a presentation change. So `update(_:with:)` passes
+`reduceFrames: false` — somebody who types "We need to talk to the landlord" gets
+what they typed — and `HandEditedTitleStore` records the ids whose framing would
+not survive an automatic pass, so launch maintenance skips them. A title whose
+framing the formatter agrees with is not recorded, because freezing the title of
+anybody who only changed a due date would be worse than the problem.
+
+### Launch maintenance runs once per formatter version, not once per launch
+
+`polishPersistedDisplayTitles()` re-polished every row in the store on the main
+actor at every launch, and re-entered on its own output. It is now stamped with a
+formatter version, so an existing backlog is brought up to the current contract
+exactly once — cheaper than before, not more expensive — and a bad reduction
+becomes a bug that can be fixed rather than damage already written. It also
+requires a **fixpoint** before writing: `polished` is written for a transcript,
+and `ReminderCopy` inside it will read an already-stored title as one more spoken
+sentence, turning "Set an alarm for 6 AM" into "Alarm". A title is only moved to
+somewhere the current formatter would also have put it first time.
+
+### What was deliberately not built
+
+Not a tagger. `NLTagger` labels "I", "we", "she" and "they" identically as
+Pronoun, so it cannot say whose obligation a sentence states; the surface form is
+the only evidence, and two pronouns is a paradigm rather than a vocabulary. A
+tagger would also add a capitalisation dependency to a function that is currently
+invariant by construction.
+
+Not the on-device model. `IntelligentThoughtExtractor` already produces a
+`suggestedTitle`, but Apple Intelligence needs an A17 Pro or newer chip, and
+`shouldRefine` only consults it when a capture is ambiguous to *split*. Most of
+the defects above would never have reached it on any hardware.
+
+Not the comma rewrite — "Go to friend, do this" for "I need to go to friend to
+do this". It deletes a word to read worse than the infinitive it replaces, and
+that sentence already reduced correctly before this change.
+
+Not a reduction of Memory rows. The obligation layers are unreachable for a
+non-actionable type, which is what keeps "My blood type is O negative" a
+statement instead of an order.
+
+## 2026-08-31 — The Lock Screen rectangular slot lists three tasks, not two
+
+The accessory rectangular slot was rendering the header plus two task names
+because two was assumed to be what it fits. It was measured instead, on a
+device-sized simulator Lock Screen: the slot renders four lines cleanly and
+clips a fifth at both the top and the bottom. The header is one of the four, so
+three names is the honest maximum, and `LockScreenTodayVisibility
+.rectangularTitleLimit` now carries that number where a test can pin it.
+
+Lock Screen accessory widgets do not scale with Dynamic Type — the layout is
+byte-identical at the largest accessibility content size — so the fourth line
+does not need a smaller-count fallback.
+
+In the same pass, the header count stopped repeating itself. With names hidden
+the body already reads "12 open", so a "12" in the header said the same number
+twice; the header count now appears only when names occupy the body and the
+total would otherwise be lost.
+
+A task name longer than roughly twenty characters still truncates with an
+ellipsis at this width. That is left alone deliberately: the alternative is
+shrinking the text, and a Lock Screen glance is worth more legible than
+complete.
+
+## 2026-09-01 — The Lock Screen slot is a list with a next item, not three names
+
+Three names stacked in the rectangular slot rendered as a paragraph: same size,
+same weight, same colour, nothing for the eye to catch. It was present rather
+than useful.
+
+Each row now carries a marker, and the rows are no longer equals. The first —
+which is genuinely the soonest due, because `todayItemOrder` sorts by date
+ascending and the snapshot preserves that order — is set semibold with a
+brighter marker and shows its clock time on the trailing edge. The rest are
+lighter and unadorned: *this is next, and these are also today*.
+
+The time is on the first row only, and that is a measured decision rather than a
+timid one. A trailing time costs about a third of the 146 pt row; spending it on
+every line truncated every name to roughly ten characters — "Pick up th…" — which
+is a schedule nobody can read. Confining it to the row being acted on returns the
+other two to about twenty-one characters.
+
+Two supporting rules:
+
+- A whole hour drops its `:00`, but only where an AM/PM marker survives to
+  anchor the number. On a 24-hour clock a bare "17" is not a time, so those keep
+  their minutes. This is worth roughly two characters of task name.
+- A time is shown only for a task due on the day the widget is drawing. The slot
+  has no room to say *which* day, and a bare "5:00 PM" against tomorrow would be
+  a lie.
+
+VoiceOver still speaks every row's time, not just the first. It has no width
+budget to spend, so there is nothing to buy by withholding it.
+
+One bug fell out of writing the test, and it was the interesting part. The first
+draft formatted the row time with `dueDate.formatted(.dateTime...)`, which
+silently reaches for `TimeZone.autoupdatingCurrent` — the *device* zone —
+while `isDate(_:inSameDayAs:)` was answering "is this today?" in the zone of the
+calendar it was handed. On a Mac in Hong Kong running a Toronto fixture the two
+disagreed by thirteen hours, and 5 PM rendered as 4 AM. The formatter is now
+built with `Date.FormatStyle(locale:calendar:timeZone:)`, pinned to
+`calendar.timeZone`, so the zone that decides the day is the zone that prints
+the clock. In production both resolve to the device, so this was invisible until
+a test supplied a calendar of its own — which is exactly the failure mode that
+makes `TemporalFullPathTests` fail on a Mac outside North America.
+
+## 2026-09-01 — A contraction is the same obligation, so it is cut the same way
+
+"I hafta drop the car off at the shop on Thursday" produced **two** rows: a
+Memory note titled "I hafta", and the errand. "I have to drop the car off at the
+shop on Thursday" produced one, correctly routed and dated. The two sentences
+mean the same thing, and the app disagreed with itself about how many thoughts
+were in them.
+
+The cause is a coincidence rather than a rule. Every multi-word obligation frame
+ends in `to`, and `"to"` is the first entry in
+`ClauseJuxtaposition.clauseInternalLead` — the set of words after which a verb
+continues the clause instead of opening a new one. So every frame in the language
+is protected from clause splitting *for free*, except the single-token spoken
+contractions. That set named `gotta`, `wanna` and `gonna`, and did not name
+`hafta`, `oughta`, `needa` or `better`. Exactly those four were cut.
+
+Both halves of the repair are needed, and shipping either alone is worse than
+shipping neither:
+
+- `clauseInternalLead` gains the four, so the cut never happens;
+- `ActionabilityReader.obligationLead` gains them too, so the uncut sentence is
+  *read* as an obligation and reaches Today.
+
+Measured on a 233-capture stress set, gluing the fragment back on **without** the
+second half — the obvious fix, widening `ThoughtExtractor.isFragment` — is a net
+regression: 37 rows merge and **all 37 move a Today task to a Memory note**, 19
+lose a resolved due date, and one errand is destroyed outright. `isFragment` is
+the net, not the cause, and it is left alone.
+
+### Why `better` is admitted only with its subject
+
+`obligationLead` is tested **unanchored** (`ActionabilityReader.isOutstanding`),
+so a bare `better` would read "the weather is better tomorrow" as an errand.
+Only `i better`, `we better`, `'d better` and `had better` are admitted.
+`hafta`, `oughta` and `needa` are listed bare because they carry no other meaning
+in English. The gating corpus contains three sentences with a comparative
+`better` — "The book was better than the film" among them — and they are now
+pinned as controls beside the six positives.
+
+### What the corpus could not see
+
+The same edit measured **zero change across all 1,036 gating-corpus utterances**:
+byte-identical output, no merge, no wrong merge. The corpus contained no instance
+of any of the four forms, so it could neither detect the defect nor certify the
+fix. Nine `.dictation` cases now close that hole, and `count` is CRITICAL
+severity, so an invented row fails a release rather than being reported.
+
+The general lesson is the one already recorded for the corpus elsewhere: it is a
+regression net, not a coverage measure. A defect it cannot see is not a defect
+that is absent.
+
+## 2026-09-03 — The name is drawn, not typeset
+
+Speak It's wordmark used to be a `Text("Speak It")` in the caption style, and
+the app icon was the five-bar mark in black on white. Both are replaced by a
+single drawn brand system in `Tools/Brand/generate_brand.swift`.
+
+- **The mark stays.** The five rounded voice bars are the symbol people already
+  know from the dock button, the Lock Screen control and the website, and their
+  proportions (1 : 2.1 : 3.03, fully rounded) are unchanged.
+- **The lettering is new.** `SPEAK IT` is a monoline, geometric, all-caps
+  wordmark with open tracking and rounded terminals. The cue is the HEYTEA
+  wordmark: one stroke weight for every letter, letters that are plain shapes
+  rather than typeface details, and enough air between them that the name reads
+  as a mark and not as a line of text. Every glyph is geometry in the generator,
+  so there is no font to license, embed or subset.
+- **The icon inverts.** White bars on near-black (`#0A0A0A`), which is what the
+  favicon and the dock capture button already were; the white icon had been the
+  odd one out. The shipped icon carries no lettering, because iOS renders it at
+  60 pt where a wordmark becomes texture; `Design/Brand/SpeakIt-AppIcon-v2-Alt-
+  Wordmark-1024.png` is the lettered alternative if the listing ever wants it.
+- **In-app, the wordmark is a template PDF** (`Wordmark.imageset`) sized by a
+  `@ScaledMetric` on the caption style, so it tints with `speakMuted` and grows
+  with Dynamic Type exactly as the text did. `SpeakItWordmark` keeps its
+  accessibility label and header trait, so VoiceOver still says "Speak It".
+
+Re-run the generator after changing any letter; it rewrites the app icon, the
+brand masters, the asset-catalog PDF and the website favicon together so they
+cannot drift.
+
+## 2026-09-03 — Render cost is paid once per fact, not once per row
+
+A performance pass over what an iPhone 13 feels, with the rule that nothing
+here may change a schema or an answer — only how often the answer is computed.
+
+- **Intent decoding shares one `JSONDecoder`.** `CapturedItem.temporalIntent`
+  and `locationIntent` sit inside the predicates Today and Memory run over every
+  row on every render, and each read built a fresh decoder. One shared static
+  instance; the decoded value is unchanged.
+- **A person's name is memoized per item.** `MemoryPersonNameResolver.name`
+  runs the whole mention parser, and Memory's home asked for it for every row
+  several times per render. It is now cached by item ID and invalidated by the
+  three fields it derives from, mirroring `ItemPresentation`'s delivery cache.
+- **Lookups by ID use a predicate.** `findItem(withID:)` and
+  `performReminderAction` fetched the whole table to find one row; every
+  notification action and editor save paid for it.
+- **Regexes go through `speakItCached`.** Three call sites compiled their
+  pattern on every call; one of them ran twice per row in a person's detail.
+- **The editor reads the cached delivery.** `inferredReminderDelivery` re-ran
+  the whole pipeline in `body`. It now asks `ItemPresentation` — the same
+  reading the row glyph and the scheduler use — so the editor also stopped
+  explaining an alert that a different parse would fire.
+- **The word embedding loads at launch, off the main actor**, instead of inside
+  the first Memory render.
+- **Today's minute timer is built once**, not once per `body`; created inside
+  `body` it re-subscribed on every render and the tick restarted with it.
+
+Not done, on purpose: `TodayView` still recomputes its section chain several
+times per pass and its reminder signature still joins a string. Both are real
+but touch layout code and need a visual pass; see `PERFORMANCE_BENCHMARKING.md`.
+
+## 2026-09-03 — Small readiness fixes found by walking the app
+
+- The paywall's two adjacent links were "Privacy" and "Policy". They are now
+  "How data is used" (the in-app explainer) and "Privacy Policy" (the page).
+- "Sync now" reported "Library is up to date"; the product calls it Memory.
+- The setup screen's selected method row is `speakInverseSurface`, which is
+  white in dark mode, and its icon halo and RECOMMENDED pill were
+  `Color.white.opacity(0.12)` — invisible there. They use `speakInverseInk` now.
+- "Finish later", the way out of the microphone test, sat at 3.1:1 on black.
+  It and the timing caption are lifted to clear 4.5:1.
+- The Share extension's labels follow Dynamic Type, its close button meets
+  44 pt, and its error copy no longer promises audio import.
+- The generic repository alert no longer shows a SwiftData error code. A
+  system-shaped message is replaced with what happened and that nothing saved
+  was lost; messages the app wrote itself pass through.
+- The 9 pt badges (priority, TRY THIS, RECOMMENDED) scale with Dynamic Type.
+- The free-limit headline interpolates `FreePlanAllowance.lifetimeCaptureLimit`
+  instead of hard-coding ten, and the paywall uses one phrase, "Pro is being
+  prepared", for the products-not-loaded state.
+
+Checked and left alone: "Add to Calendar" presents `EKEventEditViewController`,
+which on iOS 17 and later needs no calendar permission or usage string, so the
+absence of `NSCalendars…UsageDescription` is correct; the paywall's privacy URL
+has no trailing slash because the site is deployed with `trailingSlash: false`.
+
+### The on-switch has its own tint
+
+Every switch inherited the app-wide `.tint(.speakInk)`, and `speakInk` is white
+in dark mode — so an on switch was a white track under iOS's white knob, a blank
+pill with no visible state. `Color.speakToggleTint` is the ink in light mode and
+a mid grey in dark mode, applied to the nine toggles directly. The global tint
+stays, because links, progress bars and buttons want the ink.

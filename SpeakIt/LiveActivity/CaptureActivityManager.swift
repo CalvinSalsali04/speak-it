@@ -96,12 +96,17 @@ enum CaptureActivityManager {
     static func showRemembered(_ thought: String, context: String? = nil) async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        let compactThought = compactDetail(for: thought)
-        let detail = context.map { "\($0) · \(compactThought)" } ?? compactThought
+        // Built from whichever halves survive the Lock Screen privacy gate, so
+        // a hidden thought leaves "Saved · Tomorrow 9:00 AM" rather than a
+        // dangling separator or a bare "Saved · ".
+        let parts = ["Saved", context, compactDetail(for: thought)]
+            .compactMap { $0 }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let detail = parts.joined(separator: " · ")
         let state = CaptureActivityAttributes.ContentState(
             phase: .remembered,
             title: "Remembered",
-            detail: "Saved · \(detail)"
+            detail: detail
         )
         let content = ActivityContent(
             state: state,
@@ -126,7 +131,10 @@ enum CaptureActivityManager {
 
         let alert = AlertConfiguration(
             title: "✓ Remembered",
-            body: LocalizedStringResource(stringLiteral: "Saved · \(detail)"),
+            // `detail` already leads with "Saved"; this used to prefix it a
+            // second time. The alert body is delivered like a notification, so
+            // it carries the same Lock Screen privacy gate the detail does.
+            body: LocalizedStringResource(stringLiteral: detail),
             sound: .default
         )
         await activity.update(content, alertConfiguration: alert)
@@ -221,7 +229,18 @@ enum CaptureActivityManager {
         }
     }
 
+    /// The thought text, shortened — or nothing at all when the person has not
+    /// turned on Lock Screen task names.
+    ///
+    /// A Live Activity draws on the Lock Screen and its alert body is delivered
+    /// like a notification, so this is exactly the content the widget's privacy
+    /// gate already governs. Settings promises that "a locked iPhone never
+    /// reveals what they are", and printing 72 characters of the thought here
+    /// broke that promise on every capture — including background saves from
+    /// Siri and Shortcuts, where the phone is usually locked and in a pocket.
+    /// A receipt stranded by a crash or a jetsam could sit there for hours.
     private static func compactDetail(for thought: String) -> String {
+        guard LockScreenTodayVisibility.showsTaskNames else { return "" }
         let normalized = thought
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)

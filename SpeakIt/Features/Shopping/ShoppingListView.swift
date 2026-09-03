@@ -111,6 +111,11 @@ struct ShoppingListView: View {
             }
         }
         .listStyle(.plain)
+        // The same clearance Today and Memory reserve. Without it the floating
+        // dock sits on top of the last row of the list — and the last row is
+        // the "Add items" field, so the control for adding to a list was the
+        // one thing the dock covered.
+        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .navigationTitle("List")
         .navigationBarTitleDisplayMode(.large)
@@ -130,10 +135,11 @@ struct ShoppingListView: View {
         .sheet(item: $addTarget) { target in
             addItemsSheet(for: target.group)
         }
-        .alert("You’re out of free captures", isPresented: $showsProGate) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Adding list items uses a capture. Speak It Pro removes the limit.")
+        // The paywall itself, not a one-button alert that names Pro and then
+        // offers no way to reach it. Every other free-limit gate in the app
+        // presents this sheet.
+        .sheet(isPresented: $showsProGate) {
+            SpeakItProView(context: .freeLimit)
         }
         .repositoryErrorAlert($errorMessage)
         .speakScreenStyle()

@@ -111,6 +111,10 @@ enum TodayActionTiming: Equatable {
 }
 
 struct TodayView: View {
+    /// Built once with the view, not once per `body`: a publisher created
+    /// inside `body` was re-subscribed on every render, so the minute tick
+    /// restarted whenever anything on the screen changed.
+    private let minuteTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -387,6 +391,19 @@ struct TodayView: View {
                 header
                     .dockScrollTopAnchor()
 
+                // Something the person has to act on comes before anything the
+                // app wants to sell or teach. A recording waiting to be
+                // recovered, or a reminder that cannot fire without permission,
+                // both used to sit underneath the Pro upsell and the Capture
+                // Anywhere card — all four can be on screen at once.
+                if !capturesNeedingAttention.isEmpty || !recoveryAudioDrafts.isEmpty {
+                    captureRecoveryCard
+                }
+
+                if !pendingReminderRequests.isEmpty, reminderAccessStatus != .ready {
+                    reminderPermissionCard
+                }
+
                 if shouldShowProDiscovery {
                     ProDiscoveryCard(
                         itemCount: allItems.count,
@@ -397,14 +414,6 @@ struct TodayView: View {
 
                 if shouldShowCaptureAnywhereDiscovery {
                     doubleTapCard
-                }
-
-                if !pendingReminderRequests.isEmpty, reminderAccessStatus != .ready {
-                    reminderPermissionCard
-                }
-
-                if !capturesNeedingAttention.isEmpty || !recoveryAudioDrafts.isEmpty {
-                    captureRecoveryCard
                 }
 
                 if !needsReview.isEmpty {
@@ -480,11 +489,7 @@ struct TodayView: View {
             showsShoppingList = false
         }
         .sheet(item: $selectedItem, onDismiss: tutorialEditorDidDismiss) { item in
-            ItemEditorView(
-                item: item,
-                showsTutorialGuidance: tutorialSpotlight?.placement == .today
-                    && tutorialSpotlight?.itemID == item.id
-            )
+            ItemEditorView(item: item, tutorialStep: spotlight(for: item)?.step)
         }
         .sheet(isPresented: $showsCaptureSetup, onDismiss: dismissCaptureAnywhereDiscovery) {
             CaptureAnywhereSetupView()
@@ -549,8 +554,19 @@ struct TodayView: View {
             reloadRecoveryAudioDrafts()
             reportsDockVisible = true
             onDockVisibilityChange(true)
+            // A collapsed section that holds the only thing on the screen reads
+            // as an empty app. "Coming up" ships closed and `RootView` gives
+            // each destination an explicit `.id`, so the state is rebuilt on
+            // every tab switch — and the first thing most people capture
+            // ("call Mom tomorrow at 5") lands in exactly this section. Open it
+            // when there is nothing else to look at.
+            if !comingUp.isEmpty,
+               overdue.isEmpty, scheduledToday.isEmpty,
+               noDate.isEmpty, needsReview.isEmpty {
+                showsUpcoming = true
+            }
         }
-        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { date in
+        .onReceive(minuteTimer) { date in
             referenceNow = date
         }
         // Three signals, because none of them covers the others. The minute
@@ -898,6 +914,7 @@ struct TodayView: View {
                                 .font(.system(size: 19, weight: .medium))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.displayTitle)
+                                    .lineLimit(2)
                                     .font(.body.weight(.medium))
                                     .multilineTextAlignment(.leading)
                                 Text(reviewRequirementLabel(item))
@@ -998,25 +1015,33 @@ struct TodayView: View {
 
     private func focusCard(_ item: CapturedItem) -> some View {
         HStack(spacing: 14) {
-            Button {
-                toggleCompleted(item)
-            } label: {
-                Image(systemName: "circle")
-                    .font(.system(size: 27, weight: .regular))
-                    .foregroundStyle(Color.speakInverseInk.opacity(0.62))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            // Withheld while the tutorial is pointing at this card. Completing
+            // the row takes it out of Today and the teaching card goes with it,
+            // which leaves the walkthrough with nothing to continue from — and
+            // this circle sits directly beside the card that is asking to be
+            // tapped.
+            if spotlight(for: item) == nil {
+                Button {
+                    toggleCompleted(item)
+                } label: {
+                    Image(systemName: "circle")
+                        .font(.system(size: 27, weight: .regular))
+                        .foregroundStyle(Color.speakInverseInk.opacity(0.62))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.speakIt)
+                .accessibilityLabel("Complete \(item.displayTitle)")
+                .accessibilityIdentifier("item.complete.\(item.displayTitle)")
             }
-            .buttonStyle(.speakIt)
-            .accessibilityLabel("Complete \(item.displayTitle)")
-            .accessibilityIdentifier("item.complete.\(item.displayTitle)")
 
             Button {
-                selectedItem = item
+                openItem(item)
             } label: {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 7) {
                         Text(item.displayTitle)
+                            .lineLimit(2)
                             .font(.body.weight(.medium))
                             .foregroundStyle(Color.speakInverseInk)
                             .multilineTextAlignment(.leading)
@@ -1027,7 +1052,12 @@ struct TodayView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    if let dueDate = item.dueDate {
+                    // A day with no time of day shows no time, the same rule
+                    // `ItemPresentation` states: rendering the start of that
+                    // day reads as "12:00 AM", a precision the person never
+                    // gave. This card is always today's next item, so the day
+                    // itself needs no restating either.
+                    if let dueDate = item.dueDate, !item.isDateOnly {
                         Text(dueDate.formatted(date: .omitted, time: .shortened))
                             .font(.caption)
                             .foregroundStyle(Color.speakInverseInk.opacity(0.68))
@@ -1061,24 +1091,42 @@ struct TodayView: View {
                 VStack(spacing: 0) {
                     Divider().overlay(Color.speakDivider)
                     ForEach(overdue) { item in
-                        swipeToComplete(item) {
+                        completableRow(item) {
                             CapturedItemRow(
                                 item: item,
+                                showsCompletionControl: spotlight(for: item) == nil,
                                 showsCreatedDate: false,
                                 onToggleCompleted: { toggleCompleted(item) },
-                                onEdit: { selectedItem = item }
+                                onEdit: { openItem(item) }
                             )
                             .padding(.vertical, 12)
                         }
+                        .id(item.id)
+                        // Every section that can hold the practice row has to
+                        // be able to draw the teaching card on it. "Now" could
+                        // not, so a practice capture that landed here — one
+                        // due today rather than tomorrow — left the tutorial
+                        // with nothing to continue from.
+                        .tutorialSpotlight(
+                            spotlight(for: item),
+                            onPrimary: { openItem(item) },
+                            onEndPractice: onEndTutorial
+                        )
                         Divider().overlay(Color.speakDivider)
                     }
                 }
             }
 
             if let upNext {
-                swipeToComplete(upNext) {
+                completableRow(upNext) {
                     focusCard(upNext)
                 }
+                .id(upNext.id)
+                .tutorialSpotlight(
+                    spotlight(for: upNext),
+                    onPrimary: { openItem(upNext) },
+                    onEndPractice: onEndTutorial
+                )
             }
 
             ForEach(dueNowShoppingGroups) { group in
@@ -1099,9 +1147,10 @@ struct TodayView: View {
                 Divider().overlay(Color.speakDivider)
 
                 ForEach(items) { item in
-                    swipeToComplete(item) {
+                    completableRow(item) {
                         CapturedItemRow(
                             item: item,
+                            showsCompletionControl: spotlight(for: item) == nil,
                             showsCreatedDate: false,
                             onToggleCompleted: { toggleCompleted(item) },
                             onEdit: { openItem(item) }
@@ -1179,9 +1228,10 @@ struct TodayView: View {
                     if !items.isEmpty {
                         Divider().overlay(Color.speakDivider)
                         ForEach(items) { item in
-                            swipeToComplete(item, isEnabled: isExpanded.wrappedValue) {
+                            completableRow(item, isEnabled: isExpanded.wrappedValue) {
                                 CapturedItemRow(
                                     item: item,
+                                    showsCompletionControl: spotlight(for: item) == nil,
                                     showsCreatedDate: false,
                                     onToggleCompleted: { toggleCompleted(item) },
                                     onEdit: { openItem(item) }
@@ -1265,16 +1315,20 @@ struct TodayView: View {
         }
     }
 
-    private func swipeToComplete<Content: View>(
+    private func completableRow<Content: View>(
         _ item: CapturedItem,
         isEnabled: Bool = true,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        SwipeActionRow(
+        // Never on the row the tutorial is pointing at. Completing it takes it
+        // out of Today, and the teaching card only draws on a row that is still
+        // there — so a stray long press during step 2 would leave the
+        // walkthrough with nothing to continue from.
+        RowQuickAction(
             actionTitle: "Done",
             systemImage: "checkmark",
             accessibilityLabel: "Complete \(item.displayTitle)",
-            isEnabled: isEnabled,
+            isEnabled: isEnabled && spotlight(for: item) == nil,
             action: { complete(item) },
             content: content
         )
@@ -1288,6 +1342,16 @@ struct TodayView: View {
     private func chronologicalBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
         let leftDate = lhs.dueDate ?? .distantFuture
         let rightDate = rhs.dueDate ?? .distantFuture
+        // Within one day, a stated time outranks a bare day.
+        //
+        // A date-only item is stored at the start of its day, so "sometime
+        // Thursday" sorted ahead of Thursday's 9am meeting and took the Now
+        // card — the most prominent thing on the screen — away from the only
+        // item on it with an actual hour.
+        if Calendar.autoupdatingCurrent.isDate(leftDate, inSameDayAs: rightDate),
+           lhs.isDateOnly != rhs.isDateOnly {
+            return !lhs.isDateOnly
+        }
         if leftDate != rightDate { return leftDate < rightDate }
         return lhs.priority > rhs.priority
     }
@@ -2231,6 +2295,7 @@ struct ICloudSyncSettingsView: View {
             Form {
                 Section {
                     Toggle("Sync with iCloud", isOn: syncBinding)
+                        .tint(Color.speakToggleTint)
                         .disabled(!isSignedIn)
 
                     if !isSignedIn {
@@ -2346,11 +2411,33 @@ struct SpeakItPrivacyView: View {
                     title: "Anonymous analytics are content-free",
                     detail: "If enabled in Settings, Speak It measures actions such as captures saved, tasks completed, and subscription steps. It never sends recordings, transcripts, task titles, memory text, names, email addresses, or search words. You can turn this off at any time."
                 )
+                // Gated the way the five other referral surfaces are: with no
+                // referral endpoint configured, this described a data flow the
+                // shipping build cannot perform.
+                if ReferralProgramConfiguration.isEnabled {
                 privacyRow(
                     symbol: "person.2",
                     title: "Referrals use an anonymous ID",
                     detail: "If you use Give a month. Get a month., Speak It sends a random referral ID and App Store-signed purchase identifiers to our referral service. We keep only the referral and reward ledger needed to verify rewards and prevent duplicate or self-referrals. Your thoughts, recordings, profile, and contact list are never included."
                 )
+                }
+                // The rows above explain the behaviour; this is the policy
+                // itself. Guideline 5.1.1(i) requires a link to it from inside
+                // the app, and until now the app had no https link to one at
+                // all — the explainer was standing in for a document it never
+                // pointed at.
+                Link(destination: SpeakItLegal.privacyPolicy) {
+                    HStack {
+                        Text("Read the full Privacy Policy")
+                        Spacer(minLength: 8)
+                        Image(systemName: "arrow.up.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityHint("Opens speakitapp.ca in Safari")
             }
             .navigationTitle("Privacy")
             .navigationBarTitleDisplayMode(.inline)

@@ -179,6 +179,19 @@ final class SubscriptionStore: ObservableObject {
         isDeveloperCustomerJourneyActive = defaults.bool(forKey: Self.developerJourneyKey)
 #endif
         Self.persistFreeUsage(normalizedUsage, defaults: defaults)
+        // Start from what the last verified check concluded, rather than from
+        // `.checking`. `hasProAccess` is false while checking, so a subscriber
+        // who had spent their ten free captures before subscribing was told the
+        // free limit was reached — a paywall shown to somebody already paying —
+        // for as long as the StoreKit round trip took on a cold launch.
+        //
+        // This is the same cached flag the Siri intent and the share extension
+        // already trust to let a background capture through, so nothing new is
+        // being believed here. `refreshEntitlements` overwrites it either way a
+        // moment later, so a lapsed subscription still closes.
+        if defaults.bool(forKey: Self.cachedProAccessKey) {
+            accessLevel = .pro
+        }
         updatesTask = observeTransactionUpdates()
         Task { await refreshEntitlements() }
     }
@@ -306,9 +319,18 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func prepare() async {
-        guard !hasPrepared else { return }
-        hasPrepared = true
-        await refreshEntitlements()
+        // Entitlements are checked once; products are retried every time.
+        //
+        // `hasPrepared` used to gate both, so a single failed product load at
+        // launch — a flaky network on the first run, which is exactly when this
+        // runs — left the paywall permanently unable to sell for the life of
+        // the process. `loadProducts` self-guards on `products.isEmpty` and on
+        // an in-flight load, so calling it again costs nothing once it has
+        // succeeded.
+        if !hasPrepared {
+            hasPrepared = true
+            await refreshEntitlements()
+        }
         await loadProducts()
     }
 

@@ -20,6 +20,13 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         previousIdeaStageRecords = Array(IdeaStageStore.records().values)
         previousShoppingGroups = ShoppingGroupStore.snapshot()
         ShoppingGroupStore.restore([:])
+        // Launch title maintenance runs once per formatter version and stamps
+        // `UserDefaults`, which outlives a test. Each test starts as a fresh
+        // install so the pass is actually exercised rather than skipped.
+        UserDefaults.standard.removeObject(
+            forKey: SwiftDataThoughtRepository.titlePolishVersionKey
+        )
+        HandEditedTitleStore.removeAll()
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(
             for: PersistenceController.schema,
@@ -671,6 +678,94 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.displayTitle, "The studio code is 4821")
         XCTAssertEqual(item.originalTextSegment, "remember that the studio code is 4821.")
         XCTAssertEqual(item.lastModifiedAt, modifiedAt)
+    }
+
+    func testLaunchMaintenanceRunsOncePerFormatterVersion() throws {
+        let item = CapturedItem(
+            originalTextSegment: "remember that the studio code is 4821.",
+            displayTitle: "remember that the studio code is 4821.",
+            itemType: .note
+        )
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+
+        repository.recoverUnorganizedCaptures()
+        XCTAssertEqual(item.displayTitle, "The studio code is 4821")
+
+        // A second pass must not touch anything. The formatter is written for a
+        // transcript, and re-reading its own output is how a title used to get
+        // shorter one launch at a time.
+        item.displayTitle = "remember that the studio code is 4821."
+        repository.recoverUnorganizedCaptures()
+        XCTAssertEqual(
+            item.displayTitle,
+            "remember that the studio code is 4821.",
+            "launch maintenance ran again for a formatter version it had already applied"
+        )
+    }
+
+    func testLaunchMaintenanceLeavesAHandTypedTitleAlone() throws {
+        let item = try repository.createCapture(
+            text: "we need to talk to the landlord",
+            source: .inAppText,
+            createdAt: .now
+        )
+
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: "We need to talk to the landlord",
+                itemType: .task,
+                category: .general,
+                dueDate: nil,
+                reminderDate: nil,
+                priority: .normal,
+                personName: nil,
+                needsClarification: false
+            )
+        )
+        XCTAssertEqual(item.displayTitle, "We need to talk to the landlord")
+        XCTAssertTrue(HandEditedTitleStore.contains(item.id))
+
+        // A fresh launch, with the stamp cleared the way an upgrade clears it.
+        UserDefaults.standard.removeObject(
+            forKey: SwiftDataThoughtRepository.titlePolishVersionKey
+        )
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertEqual(
+            item.displayTitle,
+            "We need to talk to the landlord",
+            "launch maintenance overwrote a title the person typed by hand"
+        )
+    }
+
+    func testATitleTheFormatterAgreesWithIsNotMarkedHandEdited() throws {
+        let item = try repository.createCapture(
+            text: "call the dentist",
+            source: .inAppText,
+            createdAt: .now
+        )
+
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: "Call the dentist tomorrow",
+                itemType: .task,
+                category: .general,
+                dueDate: nil,
+                reminderDate: nil,
+                priority: .normal,
+                personName: nil,
+                needsClarification: false
+            )
+        )
+
+        XCTAssertEqual(item.displayTitle, "Call the dentist tomorrow")
+        XCTAssertFalse(
+            HandEditedTitleStore.contains(item.id),
+            "freezing a title nobody disagreed about would strand anyone who only changed a date"
+        )
     }
 
     func testEmptyCaptureIsRejected() {
@@ -5491,6 +5586,160 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             titleLimit: 1
         )
         XCTAssertEqual(inline.inlineText, "Call the clinic")
+    }
+
+    /// The rectangular slot renders four lines and clips a fifth, so the header
+    /// plus three names is what the Lock Screen actually fits. Measured on
+    /// device-sized simulator screenshots; pinned here so a later layout edit
+    /// cannot silently drop a row back off the Lock Screen.
+    func testLockScreenFamilyLimitsMatchWhatEachSlotFits() {
+        XCTAssertEqual(LockScreenTodayVisibility.rectangularTitleLimit, 3)
+        XCTAssertEqual(LockScreenTodayVisibility.inlineTitleLimit, 1)
+
+        let snapshot = makeTodaySnapshot(
+            openCount: 12,
+            titles: [
+                "Call Mum",
+                "Pick up the dry cleaning",
+                "Call Sarah",
+                "Meeting at 9 AM"
+            ]
+        )
+
+        let rectangular = LockScreenTodayVisibility.summary(
+            for: snapshot,
+            titleLimit: LockScreenTodayVisibility.rectangularTitleLimit
+        )
+        XCTAssertEqual(
+            rectangular.titles,
+            ["Call Mum", "Pick up the dry cleaning", "Call Sarah"]
+        )
+        XCTAssertEqual(rectangular.countText, "12")
+        XCTAssertEqual(
+            rectangular.accessibilityText,
+            "Speak It. 12 open. Call Mum, Pick up the dry cleaning, Call Sarah."
+        )
+
+        // The privacy gate still outranks the larger limit.
+        let hidden = LockScreenTodayVisibility.summary(
+            for: makeTodaySnapshot(
+                openCount: 12,
+                titles: ["Call Mum", "Pick up the dry cleaning", "Call Sarah"],
+                showsTaskNames: false
+            ),
+            titleLimit: LockScreenTodayVisibility.rectangularTitleLimit
+        )
+        XCTAssertTrue(hidden.titles.isEmpty)
+        XCTAssertEqual(hidden.openLine, "12 open")
+    }
+
+    /// The Lock Screen list earns its space by saying *when*, so the row time
+    /// has to be right in both clock conventions and has to stay silent about
+    /// any day but today.
+    func testLockScreenRowTimeIsCompactTodayAndAbsentOtherwise() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        let noon = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 12))
+        )
+        func time(_ hour: Int, _ minute: Int, _ day: Int = 3, locale: String = "en_US") -> String? {
+            let date = calendar.date(
+                from: DateComponents(year: 2026, month: 8, day: day, hour: hour, minute: minute)
+            )
+            // iOS separates the AM/PM marker with a narrow no-break space, which
+            // is correct typography and invisible in an assertion diff. Compare
+            // on normalised spaces so a real change is what fails this test.
+            return LockScreenTodayVisibility.timeText(
+                for: date,
+                now: noon,
+                calendar: calendar,
+                locale: Locale(identifier: locale)
+            )?.replacingOccurrences(
+                of: "\u{202F}",
+                with: " "
+            ).replacingOccurrences(of: "\u{00A0}", with: " ")
+        }
+
+        // A whole hour drops its ":00" where AM/PM anchors the number.
+        XCTAssertEqual(time(17, 0), "5 PM")
+        XCTAssertEqual(time(18, 30), "6:30 PM")
+        XCTAssertEqual(time(9, 5), "9:05 AM")
+
+        // A 24-hour locale keeps the minutes, because "17" alone is not a time.
+        XCTAssertEqual(time(17, 0, locale: "en_GB"), "17:00")
+        XCTAssertEqual(time(18, 30, locale: "en_GB"), "18:30")
+
+        // Another day, and no date at all, both stay blank rather than show a
+        // bare clock time the slot has no room to qualify.
+        XCTAssertNil(time(17, 0, 4))
+        XCTAssertNil(time(17, 0, 2))
+        XCTAssertNil(
+            LockScreenTodayVisibility.timeText(for: nil, now: noon, calendar: calendar)
+        )
+    }
+
+    /// The row time reaches the widget and VoiceOver together, and the privacy
+    /// gate still removes both.
+    func testLockScreenRowsCarryTheirTimeIntoTheSpokenDescription() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        let noon = try XCTUnwrap(
+            calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 12))
+        )
+        func at(_ hour: Int, _ minute: Int = 0) -> Date? {
+            calendar.date(
+                from: DateComponents(year: 2026, month: 8, day: 3, hour: hour, minute: minute)
+            )
+        }
+
+        let snapshot = SharedTodaySnapshot(
+            generatedAt: noon,
+            openCount: 12,
+            items: [
+                SharedTodayItem(id: UUID(), title: "Call Mum", dueDate: at(17), isUrgent: false),
+                SharedTodayItem(
+                    id: UUID(),
+                    title: "Pick up the dry cleaning",
+                    dueDate: at(18, 30),
+                    isUrgent: false
+                ),
+                SharedTodayItem(
+                    id: UUID(),
+                    title: "Send the quarterly report",
+                    dueDate: nil,
+                    isUrgent: false
+                )
+            ],
+            showsTaskNamesOnLockScreen: true
+        )
+
+        let summary = LockScreenTodayVisibility.summary(
+            for: snapshot,
+            titleLimit: LockScreenTodayVisibility.rectangularTitleLimit,
+            now: noon,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(
+            summary.titles,
+            ["Call Mum", "Pick up the dry cleaning", "Send the quarterly report"]
+        )
+        // A task with no time contributes no time, and never an empty string.
+        XCTAssertNil(summary.rows.last?.timeText)
+        XCTAssertNotNil(summary.rows.first?.timeText)
+        XCTAssertTrue(summary.accessibilityText.hasPrefix("Speak It. 12 open. Call Mum at "))
+        XCTAssertTrue(summary.accessibilityText.hasSuffix("Send the quarterly report."))
+
+        var hidden = snapshot
+        hidden.showsTaskNamesOnLockScreen = false
+        let gated = LockScreenTodayVisibility.summary(
+            for: hidden,
+            titleLimit: LockScreenTodayVisibility.rectangularTitleLimit,
+            now: noon,
+            calendar: calendar
+        )
+        XCTAssertTrue(gated.rows.isEmpty)
+        XCTAssertEqual(gated.accessibilityText, "Speak It. 12 open.")
     }
 
     func testLockScreenSummaryTreatsAnEmptyDayAsAllClear() {

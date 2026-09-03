@@ -40,6 +40,10 @@ private struct TodayProvider: TimelineProvider {
 struct CompleteTodayItemIntent: AppIntent {
     static let title: LocalizedStringResource = "Complete Speak It task"
     static let openAppWhenRun = false
+    // The widget button constructs this directly; nobody can usefully run it by
+    // hand, because its only parameter is a raw item UUID. Offering it in the
+    // Shortcuts gallery just puts an unusable action in front of people.
+    static let isDiscoverable = false
 
     @Parameter(title: "Task") var itemID: String
 
@@ -78,7 +82,24 @@ struct SpeakItTodayWidget: Widget {
 
 private struct TodayWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
+    /// False on the Lock Screen and in StandBy, true on the Home Screen.
+    ///
+    /// StandBy shows a `systemSmall` widget on a locked, charging iPhone — and
+    /// permanently on always-on displays — so "Home Screen widgets always show
+    /// names" was true of the Home Screen and false of the only other place
+    /// this family appears.
+    @Environment(\.showsWidgetContainerBackground) private var showsContainerBackground
     let snapshot: SharedTodaySnapshot
+
+    /// Whether this render is somewhere a locked iPhone can be read from.
+    private var isLockedSurface: Bool {
+        switch family {
+        case .accessoryInline, .accessoryCircular, .accessoryRectangular:
+            return true
+        default:
+            return !showsContainerBackground
+        }
+    }
 
     var body: some View {
         Group {
@@ -89,21 +110,34 @@ private struct TodayWidgetEntryView: View {
                 TodayAccessoryView(
                     summary: LockScreenTodayVisibility.summary(
                         for: snapshot,
-                        titleLimit: family == .accessoryRectangular ? 2 : 1
+                        titleLimit: family == .accessoryRectangular
+                            ? LockScreenTodayVisibility.rectangularTitleLimit
+                            : LockScreenTodayVisibility.inlineTitleLimit
                     )
                 )
                 .widgetURL(URL(string: "speakit://today"))
             default:
-                TodayWidgetView(snapshot: snapshot)
+                if isLockedSurface {
+                    // StandBy. Same privacy gate as the Lock Screen families,
+                    // because it is the same locked phone.
+                    TodayAccessoryView(
+                        summary: LockScreenTodayVisibility.summary(
+                            for: snapshot,
+                            titleLimit: LockScreenTodayVisibility.rectangularTitleLimit
+                        )
+                    )
+                    .widgetURL(URL(string: "speakit://today"))
+                } else {
+                    TodayWidgetView(snapshot: snapshot)
+                }
             }
         }
         .containerBackground(for: .widget) {
-            // The Lock Screen renders accessory widgets over the wallpaper and
-            // supplies its own vibrancy, so it must not receive a solid fill.
-            switch family {
-            case .accessoryInline, .accessoryCircular, .accessoryRectangular:
+            // The Lock Screen and StandBy render over the wallpaper and supply
+            // their own vibrancy, so neither may receive a solid fill.
+            if isLockedSurface {
                 Color.clear
-            default:
+            } else {
                 Color.black
             }
         }
@@ -286,7 +320,10 @@ private struct TodayAccessoryView: View {
                     .font(.caption2.weight(.semibold))
                     .tracking(0.8)
                 Spacer(minLength: 0)
-                if !summary.isEmpty {
+                // The header count exists to carry the total that the names
+                // below cannot. When names are hidden the body already reads
+                // "12 open", so repeating the number here says it twice.
+                if !summary.isEmpty, !summary.titles.isEmpty {
                     Text(summary.countText)
                         .font(.caption2.weight(.bold))
                 }
@@ -302,12 +339,43 @@ private struct TodayAccessoryView: View {
                     .opacity(0.7)
                     .lineLimit(1)
             } else {
-                // Two lines is what the rectangular slot fits under the header;
-                // the header count already carries anything beyond that.
-                ForEach(Array(summary.titles.enumerated()), id: \.offset) { _, title in
-                    Text(title)
-                        .font(.caption)
-                        .lineLimit(1)
+                // Three lines is what the rectangular slot fits under the
+                // header; the header count already carries anything beyond that.
+                //
+                // Each row gets a marker and, when the task is due today, its
+                // time on the trailing edge. Three bare names stacked up read as
+                // a paragraph; a marker on the left and a time on the right give
+                // the eye two columns to scan and make the slot a list.
+                ForEach(Array(summary.rows.enumerated()), id: \.offset) { index, row in
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Circle()
+                            .frame(width: 3, height: 3)
+                            .opacity(index == 0 ? 0.95 : 0.55)
+                            // A dot sits on the baseline; nudge it to the middle
+                            // of the x-height so it reads as a bullet.
+                            .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
+
+                        Text(row.title)
+                            // The next thing due carries the most weight, so a
+                            // glance lands on it before reading the rest.
+                            .font(index == 0 ? .caption.weight(.semibold) : .caption)
+                            .lineLimit(1)
+
+                        // Only the next thing shows its time. A time costs a
+                        // third of the row, and spending that on every line left
+                        // every name truncated to about ten characters — which
+                        // is a schedule nobody can read. The first row is the
+                        // one being acted on; the rest are "also today" and are
+                        // worth more as readable names.
+                        if index == 0, let timeText = row.timeText {
+                            Spacer(minLength: 4)
+                            Text(timeText)
+                                .font(.caption2)
+                                .opacity(0.75)
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                        }
+                    }
                 }
             }
         }

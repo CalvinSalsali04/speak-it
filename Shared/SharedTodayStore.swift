@@ -43,13 +43,40 @@ struct SharedTodaySnapshot: Codable, Equatable, Sendable {
     static let empty = SharedTodaySnapshot(generatedAt: .now, openCount: 0, items: [])
 }
 
+/// One task as the Lock Screen list draws it: the name, and the clock time if
+/// the task is due today. The time is what turns a stack of names into
+/// something a person can act on without unlocking.
+struct LockScreenTodayRow: Equatable, Sendable {
+    let title: String
+    /// Set only for a task due on the reference day. A bare "5:00 PM" against
+    /// some other day would be a lie, and the slot has no room to say which day.
+    let timeText: String?
+
+    init(title: String, timeText: String? = nil) {
+        self.title = title
+        self.timeText = timeText
+    }
+}
+
 /// Everything the Lock Screen is allowed to render, resolved from the snapshot
 /// and the user's Lock Screen privacy choice. Kept in `Shared` so the widget
 /// extension renders exactly what the app-side tests assert.
 struct LockScreenTodaySummary: Equatable, Sendable {
     let openCount: Int
     /// Empty whenever the user has not opted into Lock Screen task names.
-    let titles: [String]
+    let rows: [LockScreenTodayRow]
+
+    /// The names alone, for the inline slot and for VoiceOver.
+    var titles: [String] { rows.map(\.title) }
+
+    init(openCount: Int, rows: [LockScreenTodayRow]) {
+        self.openCount = openCount
+        self.rows = rows
+    }
+
+    init(openCount: Int, titles: [String]) {
+        self.init(openCount: openCount, rows: titles.map { LockScreenTodayRow(title: $0) })
+    }
 
     var isEmpty: Bool { openCount == 0 }
 
@@ -74,8 +101,12 @@ struct LockScreenTodaySummary: Equatable, Sendable {
     /// bare number and never reads names the user chose to hide.
     var accessibilityText: String {
         guard !isEmpty else { return "Speak It. All clear." }
-        guard !titles.isEmpty else { return "Speak It. \(openLine)." }
-        return "Speak It. \(openLine). \(titles.joined(separator: ", "))."
+        guard !rows.isEmpty else { return "Speak It. \(openLine)." }
+        let spoken = rows.map { row in
+            guard let timeText = row.timeText else { return row.title }
+            return "\(row.title) at \(timeText)"
+        }
+        return "Speak It. \(openLine). \(spoken.joined(separator: ", "))."
     }
 }
 
@@ -86,6 +117,18 @@ enum LockScreenTodayVisibility {
     /// there is no cross-process preference to keep in sync.
     static let showsTaskNamesKey = "SpeakIt.lockScreen.showsTaskNames"
 
+    /// Task names the rectangular slot fits under its header.
+    ///
+    /// Measured on the Lock Screen rather than guessed: the slot renders four
+    /// lines cleanly, and a fifth clips at both the top and the bottom. The
+    /// header is one of the four, so three names is the honest maximum. Lock
+    /// Screen accessory widgets ignore Dynamic Type — the layout is identical at
+    /// the largest accessibility size — so this number does not need to shrink.
+    static let rectangularTitleLimit = 3
+
+    /// Inline sits beside the clock and renders a single symbol plus one line.
+    static let inlineTitleLimit = 1
+
     /// Defaults to `false`: an unset key reads as hidden.
     static var showsTaskNames: Bool {
         UserDefaults.standard.bool(forKey: showsTaskNamesKey)
@@ -93,25 +136,66 @@ enum LockScreenTodayVisibility {
 
     static func summary(
         for snapshot: SharedTodaySnapshot,
-        titleLimit: Int
+        titleLimit: Int,
+        now: Date = .now,
+        calendar: Calendar = .autoupdatingCurrent
     ) -> LockScreenTodaySummary {
         let openCount = max(0, snapshot.openCount)
         guard snapshot.showsTaskNamesOnLockScreen, openCount > 0, titleLimit > 0 else {
-            return LockScreenTodaySummary(openCount: openCount, titles: [])
+            return LockScreenTodaySummary(openCount: openCount, rows: [])
         }
 
-        let titles = snapshot.items
+        let rows = snapshot.items
             .lazy
-            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .map { item -> LockScreenTodayRow in
+                LockScreenTodayRow(
+                    title: item.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    timeText: timeText(for: item.dueDate, now: now, calendar: calendar)
+                )
+            }
+            .filter { !$0.title.isEmpty }
             .prefix(titleLimit)
 
         return LockScreenTodaySummary(
             openCount: openCount,
             // `openCount` counts every open item, while `items` is capped when
             // the snapshot is published, so never claim more names than exist.
-            titles: Array(titles.prefix(openCount))
+            rows: Array(rows.prefix(openCount))
         )
+    }
+
+    /// Locale-formatted clock time, but only for a task due on the reference
+    /// day. Anything else is left blank rather than shown without its day.
+    ///
+    /// Every character here is taken from the task name beside it, so a whole
+    /// hour drops its ":00" — but only where an AM/PM marker survives to anchor
+    /// the number. On a 24-hour clock a bare "17" is not a time, so those keep
+    /// their minutes.
+    static func timeText(
+        for dueDate: Date?,
+        now: Date,
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let dueDate, calendar.isDate(dueDate, inSameDayAs: now) else { return nil }
+
+        // The time zone has to come from the same calendar that decided this
+        // task is due "today". `Date.formatted` otherwise reaches for the
+        // device zone on its own, and the two disagreeing is precisely how a
+        // clock time ends up hours away from the day it was filed under.
+        let base = Date.FormatStyle(
+            locale: locale,
+            calendar: calendar,
+            timeZone: calendar.timeZone
+        )
+
+        let withMinutes = dueDate.formatted(
+            base.hour(.defaultDigits(amPM: .abbreviated)).minute()
+        )
+        guard calendar.component(.minute, from: dueDate) == 0 else { return withMinutes }
+
+        let hourOnly = dueDate.formatted(base.hour(.defaultDigits(amPM: .abbreviated)))
+        return hourOnly.contains(where: \.isLetter) ? hourOnly : withMinutes
     }
 }
 

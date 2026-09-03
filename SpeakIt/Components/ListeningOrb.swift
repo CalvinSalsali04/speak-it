@@ -10,6 +10,8 @@ struct ListeningOrb: View {
     let phase: Phase
     let level: CGFloat
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var isBreathing = false
 
     private var normalizedLevel: CGFloat {
@@ -43,9 +45,20 @@ struct ListeningOrb: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .frame(width: 230, height: 230)
-        .animation(.spring(response: 0.22, dampingFraction: 0.70), value: normalizedLevel)
+        // The rings ride live microphone amplitude, so this is continuous
+        // movement for as long as somebody is speaking.
+        .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.70), value: normalizedLevel)
         .animation(.easeInOut(duration: 0.28), value: phase)
         .onAppear {
+            // The one animation every capture goes through, and it never stops.
+            // Reduce Motion gets the resting geometry instead; the phase
+            // cross-fade above still separates ready, listening and processing,
+            // so nothing the orb communicates is lost. This follows the guard
+            // `TapMarker` and `ActionButtonIllustration` already use.
+            guard !reduceMotion else {
+                isBreathing = false
+                return
+            }
             withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
                 isBreathing = true
             }

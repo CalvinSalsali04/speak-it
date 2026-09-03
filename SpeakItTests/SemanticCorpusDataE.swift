@@ -571,5 +571,72 @@ enum SemanticCorpusE {
         corpusCase(.dictation, "The ad campaign launches Monday",
                    count: 1, route: [.memory],
                    note: "'Ad' mid-sentence is a real noun; only the impossible sentence-opening form is repaired."),
+
+        // The spoken contractions of an obligation. "gotta", "wanna" and
+        // "gonna" were protected from clause splitting; "hafta", "oughta",
+        // "needa" and "better" were not, and every multi-word frame is
+        // protected for free because it ends in "to". So exactly these four
+        // were cut in half — "I hafta drop the car off on Thursday" filed a
+        // Memory note titled "I hafta" beside the errand it was severed from,
+        // and the errand's own reading was unaffected, which is why no
+        // existing case could see it.
+        //
+        // The count is the assertion that matters: `count` is CRITICAL
+        // severity, so an invented row fails a release. Each case is paired
+        // with the spelled-out form it must now match exactly.
+        corpusCase(.dictation, "I hafta drop the car off at the shop on Thursday",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 6, hour: nil)],
+                   note: "Must read identically to 'I have to drop the car off at the shop on Thursday'."),
+        corpusCase(.dictation, "I oughta call the bank about the fee",
+                   count: 1, type: [.task], route: [.today],
+                   note: "Must read identically to 'I ought to call the bank about the fee'."),
+        corpusCase(.dictation, "I needa buy a new filter tomorrow",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   note: "Must read identically to 'I need to buy a new filter tomorrow'."),
+        corpusCase(.dictation, "I better call the plumber before six",
+                   count: 1, type: [.task], route: [.today],
+                   note: "Deontic 'better'. Only the subject-bearing form is an obligation."),
+        corpusCase(.dictation, "I'd better renew the insurance",
+                   count: 1, type: [.task], route: [.today],
+                   note: "The contracted auxiliary carries the same obligation."),
+        corpusCase(.dictation, "We hafta book the campsite",
+                   count: 1, type: [.task], route: [.today],
+                   note: "First person plural, same frame. The old split keyed on 'I' alone."),
+
+        // The controls that make the four admissions safe. "better" is an
+        // ordinary comparative, and `obligationLead` is tested UNANCHORED, so a
+        // bare entry would have read every one of these as an errand.
+        corpusCase(.dictation, "The book was better than the film",
+                   count: 1, route: [.memory],
+                   note: "Comparative, not deontic. No subject or auxiliary in front of 'better'."),
+        corpusCase(.dictation, "That conversation went better than I expected",
+                   count: 1, route: [.memory],
+                   note: "Comparative. 'I' appears after 'better', never in front of it."),
+        corpusCase(.dictation, "Target has better produce than people think",
+                   count: 1, route: [.memory],
+                   note: "Comparative inside a knowledge claim about a shop."),
+
+        // The controls that caught a real regression, and the reason "better"
+        // cannot live in `clauseInternalLead` with the other three
+        // contractions. Dictation writes a run-on with no punctuation, and a
+        // comparative is exactly where one clause ends and the next begins.
+        // Suppressing the split here buried the errand inside the fact.
+        //
+        // Only the word in FRONT of "better" separates the two readings, which
+        // is why the guard is at the split site rather than in a one-token set.
+        corpusCase(.dictation, "The weather is better book the campsite for Saturday",
+                   count: 2, route: [.memory, .today],
+                   note: "Comparative then errand. 'is better' is not an obligation."),
+        corpusCase(.dictation, "The food there is better call the restaurant to book",
+                   count: 2, route: [.memory, .today],
+                   note: "Comparative then errand, with a verb that also opens an instruction."),
+        corpusCase(.dictation, "This one is better buy the other one instead",
+                   count: 2,
+                   note: "Comparative then errand. Splitting must survive an unpunctuated run-on."),
+        corpusCase(.dictation, "I like the blue one better get the red one too",
+                   count: 2,
+                   note: "'better' after a noun phrase is comparative even with 'I' earlier in the clause."),
     ]
 }

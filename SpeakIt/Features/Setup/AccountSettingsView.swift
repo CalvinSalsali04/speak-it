@@ -216,19 +216,23 @@ struct AccountSettingsView: View {
                                 .foregroundStyle(Color.speakMuted)
                         }
                     }
-                    .tint(Color.speakInk)
+                    .tint(Color.speakToggleTint)
                     .accessibilityIdentifier("settings.anonymous-analytics")
 
                     Toggle(isOn: $showsLockScreenTaskNames) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Show task names on the Lock Screen")
                                 .foregroundStyle(Color.speakInk)
-                            Text("Off by default. The Lock Screen widget shows only how many things are open, so a locked iPhone never reveals what they are. Home Screen widgets always show names.")
+                            // Names every surface the promise actually covers.
+                            // It used to say only "the Lock Screen widget",
+                            // while StandBy, the capture receipt and Siri each
+                            // read task text on a locked phone.
+                            Text("Off by default. On the Lock Screen, in StandBy, and on capture receipts, Speak It shows only how many things are open — so a locked iPhone never reveals what they are. Home Screen widgets always show names, and a reminder notification shows the task it is reminding you about; iOS decides whether that is visible while locked.")
                                 .font(.footnote)
                                 .foregroundStyle(Color.speakMuted)
                         }
                     }
-                    .tint(Color.speakInk)
+                    .tint(Color.speakToggleTint)
                     .accessibilityIdentifier("settings.lock-screen-task-names")
                 }
 
@@ -452,7 +456,11 @@ private struct AccountSetupView: View {
                 } header: {
                     Text(hasProfile ? "Your profile" : "Create your profile")
                 } footer: {
-                    Text("During this beta, profile details stay on this iPhone. Purchases and iCloud remain securely connected through your Apple Account.")
+                    // The behaviour is permanent, so it is stated as permanent.
+                    // "During this beta" was the only use of the word in the
+                    // app, on a screen App Review reaches on the way to Restore
+                    // Purchases.
+                    Text("Profile details stay on this iPhone. Purchases and iCloud remain securely connected through your Apple Account.")
                 }
 
                 Section {

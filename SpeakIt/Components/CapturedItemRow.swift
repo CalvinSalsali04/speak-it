@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 
 struct CapturedItemRow: View {
+    /// Badge lettering follows Dynamic Type instead of staying 9 pt while the
+    /// rest of the row grows.
+    @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
     let item: CapturedItem
     let showsCompletionControl: Bool
     let showsPinnedIndicator: Bool
@@ -96,8 +99,22 @@ struct CapturedItemRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.speakIt)
-            .accessibilityLabel("Edit \(item.displayTitle)")
-            .accessibilityHint(alertAccessibilityHint(for: presentation) ?? "")
+            // Composed, not replaced.
+            //
+            // A Button is one accessibility element and an explicit label
+            // overrides everything its subtree would have contributed — so
+            // "Edit <title>" silently discarded the type line, the due time or
+            // place, and the pin and priority glyphs, both of which carry
+            // careful labels of their own that were never spoken. This is the
+            // most-instantiated view in the product: every Today section, every
+            // Memory row, and the saved-capture card. Leading with the person's
+            // own words rather than the verb is also the better reading order.
+            .accessibilityLabel(spokenLabel(for: presentation))
+            .accessibilityHint(
+                [alertAccessibilityHint(for: presentation), "Double tap to edit"]
+                    .compactMap { $0 }
+                    .joined(separator: ". ")
+            )
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
 
             if let trailingDetail, let onTrailingDetailTap {
@@ -191,7 +208,7 @@ struct CapturedItemRow: View {
 
         if showsPriorityIndicator, item.priority >= .high {
             Text(item.priority.displayName.uppercased())
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: badgeFontSize, weight: .bold))
                 .tracking(0.5)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
@@ -199,6 +216,25 @@ struct CapturedItemRow: View {
                 .overlay { Capsule().stroke(Color.speakDivider, lineWidth: 1) }
                 .accessibilityLabel("\(item.priority.displayName) priority")
         }
+    }
+
+    /// Everything the row shows, in the order it is read.
+    ///
+    /// Built from the same values the view has already computed, so the spoken
+    /// row and the drawn row cannot drift apart.
+    private func spokenLabel(for presentation: ItemPresentation) -> String {
+        [
+            item.displayTitle,
+            secondaryText,
+            trailingText(for: presentation),
+            showsPinnedIndicator ? "Pinned" : nil,
+            (showsPriorityIndicator && item.priority >= .high)
+                ? "\(item.priority.displayName) priority"
+                : nil
+        ]
+        .compactMap { $0 }
+        .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        .joined(separator: ", ")
     }
 
     private func trailingText(for presentation: ItemPresentation) -> String? {
@@ -246,7 +282,21 @@ struct CapturedItemRow: View {
 /// it means a native implementation (a `List` with `.swipeActions`, or a UIKit
 /// pan recognizer that refuses to begin on vertical movement), not another
 /// gesture over the scroll view.
-struct SwipeActionRow<Content: View>: View {
+/// A quick action on a row that lives inside a scroll view rather than a `List`.
+///
+/// This was named `SwipeActionRow` and took an action title, an icon, a label,
+/// an enabled flag and a closure — then rendered `content` alone and used none
+/// of them. Today's five section call sites all routed through it, so the code
+/// read as though Today's rows carried a "Done" action when nothing was wired
+/// to anything.
+///
+/// A swipe genuinely is not available here. `.swipeActions` needs a `List`, and
+/// the hand-rolled `DragGesture` that preceded this won the touch outright and
+/// stopped vertical scrolling — the reason it was removed in the first place,
+/// recorded in `KNOWN_ISSUES.md`. A context menu is the affordance that works
+/// inside a scroll view without competing for the drag, and it is the one
+/// Memory's rows already offer, so the two screens now teach the same gesture.
+struct RowQuickAction<Content: View>: View {
     let actionTitle: String
     let systemImage: String
     let accessibilityLabel: String
@@ -270,8 +320,23 @@ struct SwipeActionRow<Content: View>: View {
         self.content = content()
     }
 
+    @ViewBuilder
     var body: some View {
-        content.frame(maxWidth: .infinity)
+        if isEnabled {
+            content
+                .frame(maxWidth: .infinity)
+                .contextMenu {
+                    Button(action: action) {
+                        Label(actionTitle, systemImage: systemImage)
+                    }
+                    .accessibilityLabel(accessibilityLabel)
+                }
+        } else {
+            // A collapsed section still builds its rows. Installing a long
+            // press on something the person cannot see would put a menu behind
+            // the section header.
+            content.frame(maxWidth: .infinity)
+        }
     }
 }
 

@@ -111,7 +111,7 @@ enum RescheduleOffset {
 
     static func parse(_ text: String) -> TimeInterval? {
         let pattern = #"^(?:back\s+)?(?:by\s+)?(a|an|half\s+an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(minutes?|mins?|hours?|days?|weeks?)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               match.numberOfRanges > 2,
               let amountRange = Range(match.range(at: 1), in: text),

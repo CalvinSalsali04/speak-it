@@ -488,6 +488,63 @@ enum RecurrenceStore {
     }
 }
 
+/// Which items carry a title the person wrote themselves.
+///
+/// `displayTitle` has no `isUserEdited` flag the way `temporalIntent` and
+/// `locationIntent` do, and giving it one is a versioned SwiftData migration
+/// that does not belong in a presentation change. This sidecar is the same
+/// shape as `RecurrenceStore` and buys the same thing: launch maintenance can
+/// re-polish every row it wrote itself without touching a row somebody typed.
+///
+/// Only a title whose framing would **not** survive an automatic re-polish is
+/// recorded. Somebody who types "Call the dentist" is not asserting anything
+/// the formatter disagrees with, so there is nothing to protect; somebody who
+/// deliberately types "We need to talk to the landlord" is, and this is what
+/// stops the next launch from quietly shortening it back.
+@MainActor
+enum HandEditedTitleStore {
+    private static let key = "SpeakIt.handEditedTitles.v1"
+    private static let suiteName = "group.com.calvinwak.SpeakIt"
+    private static var cachedIDs: Set<String>?
+
+    static func remember(_ itemID: UUID) {
+        var value = ids
+        guard value.insert(itemID.uuidString).inserted else { return }
+        ids = value
+    }
+
+    static func forget(_ itemID: UUID) {
+        var value = ids
+        guard value.remove(itemID.uuidString) != nil else { return }
+        ids = value
+    }
+
+    static func contains(_ itemID: UUID) -> Bool {
+        ids.contains(itemID.uuidString)
+    }
+
+    static func removeAll() {
+        ids = []
+    }
+
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: suiteName) ?? .standard
+    }
+
+    private static var ids: Set<String> {
+        get {
+            if let cachedIDs { return cachedIDs }
+            let value = Set(defaults.stringArray(forKey: key) ?? [])
+            cachedIDs = value
+            return value
+        }
+        set {
+            cachedIDs = newValue
+            defaults.set(Array(newValue), forKey: key)
+        }
+    }
+}
+
 enum ItemType: String, CaseIterable, Codable, Identifiable, Sendable {
     case task
     case shopping

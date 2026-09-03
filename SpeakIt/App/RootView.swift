@@ -159,50 +159,61 @@ struct RootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch selectedDestination {
-                case .today:
-                    NavigationStack {
-                        TodayView(
-                            onCapture: { presentCapture() },
-                            onDockVisibilityChange: setDockVisibility,
-                            popToRootSignal: popToRootSignal,
-                            tutorialSpotlight: tutorialSpotlight(for: .today),
-                            onTutorialPrimary: advanceFromTodaySpotlight,
-                            onEndTutorial: endTutorialEarly
-                        )
-                    }
-                case .library:
-                    NavigationStack {
-                        LibraryView(
-                            onCapture: { presentCapture() },
-                            onDockVisibilityChange: setDockVisibility,
-                            popToRootSignal: popToRootSignal,
-                            tutorialSpotlight: libraryTutorialSpotlight,
-                            onTutorialPrimary: advanceFromLibrarySpotlight,
-                            onEndTutorial: endTutorialEarly
-                        )
+        // A real layout row rather than an overlay or a safe-area inset. Today
+        // and Memory hide their navigation bars, and both of those approaches
+        // let their scroll content start underneath the banner instead of below
+        // it — the screen header stayed permanently half-covered, and on a
+        // pushed Memory screen the Back button went with it.
+        VStack(spacing: 0) {
+            if let inAppTutorialStep {
+                TutorialBanner(step: inAppTutorialStep, onExit: endTutorialEarly)
+            }
+
+            ZStack(alignment: .bottom) {
+                Group {
+                    switch selectedDestination {
+                    case .today:
+                        NavigationStack {
+                            TodayView(
+                                onCapture: { presentCapture() },
+                                onDockVisibilityChange: setDockVisibility,
+                                popToRootSignal: popToRootSignal,
+                                tutorialSpotlight: tutorialSpotlight(for: .today),
+                                onTutorialPrimary: advanceFromTodaySpotlight,
+                                onEndTutorial: endTutorialEarly
+                            )
+                        }
+                    case .library:
+                        NavigationStack {
+                            LibraryView(
+                                onCapture: { presentCapture() },
+                                onDockVisibilityChange: setDockVisibility,
+                                popToRootSignal: popToRootSignal,
+                                tutorialSpotlight: libraryTutorialSpotlight,
+                                onTutorialPrimary: advanceFromLibrarySpotlight,
+                                onEndTutorial: endTutorialEarly
+                            )
+                        }
                     }
                 }
-            }
-            // Both destinations have a NavigationStack at their root. Give
-            // each stack an explicit identity so SwiftUI never reuses a Today
-            // row, swipe-action layer, or scroll offset while showing Memory.
-            .id(
-                selectedDestination == .today
-                    ? "today-\(destinationNavigationGeneration)"
-                    : "memory-\(destinationNavigationGeneration)"
-            )
+                // Both destinations have a NavigationStack at their root. Give
+                // each stack an explicit identity so SwiftUI never reuses a Today
+                // row, swipe-action layer, or scroll offset while showing Memory.
+                .id(
+                    selectedDestination == .today
+                        ? "today-\(destinationNavigationGeneration)"
+                        : "memory-\(destinationNavigationGeneration)"
+                )
 
-            captureDock
-                .offset(y: isDockVisible ? 0 : 116)
-                .opacity(isDockVisible ? 1 : 0)
-                // The capture screen's Type instead control occupies the same
-                // bottom region as this dock. Keep the covered dock out of the
-                // hit-test tree so it cannot swallow that first tap.
-                .allowsHitTesting(isDockVisible && fullScreenDestination == nil)
-                .animation(.smooth(duration: 0.24), value: isDockVisible)
+                captureDock
+                    .offset(y: isDockVisible ? 0 : 116)
+                    .opacity(isDockVisible ? 1 : 0)
+                    // The capture screen's Type instead control occupies the same
+                    // bottom region as this dock. Keep the covered dock out of the
+                    // hit-test tree so it cannot swallow that first tap.
+                    .allowsHitTesting(isDockVisible && fullScreenDestination == nil)
+                    .animation(.smooth(duration: 0.24), value: isDockVisible)
+            }
         }
         .tint(.speakInk)
         .preferredColorScheme(appearance.preferredColorScheme)
@@ -237,11 +248,13 @@ struct RootView: View {
             case .firstCaptureGuide:
                 SpeakItReadinessView(
                     isOnboarding: true,
+                    tutorialStep: tutorialPhase.isActive ? .finishSetup : nil,
                     onFinished: finishTutorialReadiness
                 )
             case .captureAnywhereSetup:
                 CaptureAnywhereSetupView(
                     showsOnboardingProgress: true,
+                    tutorialStep: tutorialPhase.isActive ? .captureAnywhere : nil,
                     onFinished: tutorialPhase == .readiness
                         ? continueFromCaptureAnywhereSetup
                         : nil
@@ -357,6 +370,13 @@ struct RootView: View {
             // App Intent cold-start path so a hardware trigger can reach the microphone
             // with as little main-actor work as possible.
             await Task.yield()
+            // The word embedding behind person and role detection takes a few
+            // hundred milliseconds to load the first time it is touched, and
+            // that first touch used to land inside the first Memory render.
+            Task.detached(priority: .utility) {
+                PersonMentionResolver.preloadEmbedding()
+                ActionabilityReader.preloadEmbedding()
+            }
             CaptureDraftStore.pruneEmptyTextDrafts()
             CaptureDraftStore.pruneResolvedTombstones()
             await recoverInterruptedAudioDrafts()
@@ -484,7 +504,9 @@ struct RootView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Capture a thought")
-            .accessibilityHint("Opens the Memory Pulse with a typing option")
+            // "Memory Pulse" is an internal codename that appears nowhere the
+            // person can see, so VoiceOver was the only place it surfaced.
+            .accessibilityHint("Opens capture. Starts listening, or switch to typing.")
             .accessibilityIdentifier("dock.capture")
             .frame(maxWidth: .infinity)
 
@@ -548,8 +570,11 @@ struct RootView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.speakIt)
+        // Branches on the value, not on nil-ness: an empty Memory has a badge
+        // count of zero, so this used to announce "Memory, 0 open" on every
+        // pass through the dock.
         .accessibilityLabel(
-            badgeCount.map { "\(title), \($0) open" } ?? title
+            (badgeCount ?? 0) > 0 ? "\(title), \(badgeCount ?? 0) open" : title
         )
         .accessibilityIdentifier("dock.\(title.lowercased())")
         .accessibilityAddTraits(selectedDestination == destination ? .isSelected : [])
@@ -806,7 +831,10 @@ struct RootView: View {
         guard showsSetupAfterFirstCapture else { return }
         if result.session.captureSource == .tutorial,
            tutorialPhase == .captureAction || captureTutorialMission == .action {
-            guard let anchor = preferredTutorialItem(in: result, mission: .action) else { return }
+            // Returning early here means the practice did not produce what the
+            // next three steps walk to. The capture screen stays up and offers
+            // another try, so this is a pause rather than a dead end.
+            guard let anchor = TutorialCaptureMission.action.satisfiedItem(in: result) else { return }
             tutorialActionItemIDRawValue = anchor.id.uuidString
             setTutorialPhase(.showToday)
             shouldResumeFirstCaptureGuide = false
@@ -815,7 +843,7 @@ struct RootView: View {
         }
         if result.session.captureSource == .tutorial,
            tutorialPhase == .captureIdea || captureTutorialMission == .idea {
-            guard let anchor = preferredTutorialItem(in: result, mission: .idea) else { return }
+            guard let anchor = TutorialCaptureMission.idea.satisfiedItem(in: result) else { return }
             tutorialIdeaItemIDRawValue = anchor.id.uuidString
             setTutorialPhase(.showIdea)
             // The first mission is nested inside People. Rebuild Memory's
@@ -835,26 +863,6 @@ struct RootView: View {
             .storedValue
         shouldResumeFirstCaptureGuide = true
         markWelcomeComplete(analyticsPath: .onboarding)
-    }
-
-    private func preferredTutorialItem(
-        in result: CaptureCreationResult,
-        mission: TutorialCaptureMission
-    ) -> CapturedItem? {
-        switch mission {
-        case .action:
-            return result.items.first(where: {
-                $0.itemType == .personFollowUp && tutorialPersonName(for: $0) != nil
-            }) ?? result.items.first(where: {
-                tutorialPersonName(for: $0) != nil && $0.itemType.isActionable
-            }) ?? result.items.first(where: {
-                tutorialPersonName(for: $0) != nil
-            }) ?? result.items.first
-        case .idea:
-            return result.items.first(where: { $0.itemType == .idea }) ?? result.items.first
-        case .quickAccess:
-            return result.items.first
-        }
     }
 
     private func handleCaptureCancelled() {
@@ -897,6 +905,19 @@ struct RootView: View {
         FirstRunTutorialPhase(rawValue: tutorialPhaseRawValue) ?? .inactive
     }
 
+    /// The tutorial steps that happen on the person's real Today and Memory
+    /// screens, where a teaching card sits directly against their own thoughts.
+    /// Those are the steps that need something permanent on screen saying a
+    /// tutorial is running; the rest own a full screen and say so themselves.
+    private var inAppTutorialStep: TutorialStep? {
+        switch tutorialPhase {
+        case .showToday, .showPeople, .showPerson, .showIdea:
+            return tutorialPhase.step
+        default:
+            return nil
+        }
+    }
+
     private var libraryTutorialSpotlight: TutorialSpotlight? {
         switch tutorialPhase {
         case .showPeople:
@@ -929,10 +950,20 @@ struct RootView: View {
             rawID = tutorialIdeaItemIDRawValue
         }
         guard let itemID = UUID(uuidString: rawID) else { return nil }
+        let anchor = tutorialItem(itemID)
         return TutorialSpotlight(
             itemID: itemID,
             placement: placement,
-            personName: tutorialItem(itemID).flatMap { tutorialPersonName(for: $0) }
+            personName: anchor.flatMap { tutorialPersonName(for: $0) },
+            // The same grouping Today itself sorts by, so the card names the
+            // section the row is genuinely sitting in rather than the one the
+            // scripted example would have produced.
+            todaySection: placement == .today
+                ? anchor.map { TodayActionTiming.group(for: $0) }
+                : nil,
+            isDueTomorrow: anchor?.dueDate.map {
+                Calendar.autoupdatingCurrent.isDateInTomorrow($0)
+            } ?? false
         )
     }
 
@@ -1106,6 +1137,13 @@ struct RootView: View {
 
         guard url.host?.lowercased() == "capture" else { return }
 
+        // A capture already on screen is not restarted. A second Back Tap, or a
+        // widget tap while capture is open, would otherwise tear down the sheet
+        // and rebuild it — discarding whatever had been said or typed into it.
+        if fullScreenDestination == .captureVoice || fullScreenDestination == .captureText {
+            return
+        }
+
         let isTutorialTest = isActiveCaptureAnywhereTutorialTest
         subscriptionStore.refreshFreeAllowance()
         guard isTutorialTest || subscriptionStore.canCreateCapture else {
@@ -1153,9 +1191,18 @@ struct RootView: View {
         defer { isImportingSharedCaptures = false }
 
         var importedCount = 0
+        var blockedByFreeLimit = false
         for pending in SharedCaptureInbox.pending() {
             subscriptionStore.refreshFreeAllowance()
-            guard subscriptionStore.canCreateCapture else { break }
+            guard subscriptionStore.canCreateCapture else {
+                // The Share sheet already told the person "Ready in Speak It"
+                // and played a success haptic — it cannot know about the
+                // allowance. Breaking silently left the payload in the shared
+                // inbox and repeated the same silent break on every foreground,
+                // so a thought they were told was safe simply never appeared.
+                blockedByFreeLimit = true
+                break
+            }
             // Clamped again on read: `captureText` appends the source URL after
             // the extension's own clamp, and a queued file may predate it.
             let text = CaptureTextLimit.clamp(
@@ -1195,6 +1242,16 @@ struct RootView: View {
                 // activation retries them without duplicating completed work.
                 break
             }
+        }
+
+        if blockedByFreeLimit {
+            let waiting = SharedCaptureInbox.pending().count
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                sharedImportNotice = waiting == 1
+                    ? "1 shared thought is waiting — your free captures are used up"
+                    : "\(waiting) shared thoughts are waiting — your free captures are used up"
+            }
+            showsFreeLimit = true
         }
 
         guard importedCount > 0 else { return }

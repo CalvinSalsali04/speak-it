@@ -51,24 +51,27 @@ enum SpeakItTypography {
     // semantic text style, it continues to follow Dynamic Type and Bold Text.
     static let itemTitle = Font.body.weight(.medium)
     static let metadata = Font.footnote
-    /// The wordmark, set the way speakitapp.ca sets it: title case, semibold,
-    /// tracked slightly *in*. It used to be `SPEAK IT` at `.tracking(2.2)` here
-    /// and `Speak It` on the site, which meant the product and the page selling
-    /// it did not spell the name the same way.
-    static let wordmark = Font.caption.weight(.semibold)
 }
 
 /// The name, wherever a screen has to say it.
 ///
-/// One view rather than six copies of a `Text` with its own tracking, because
-/// the previous six had drifted to two different tracking values and would drift
-/// again. `Font.caption` keeps it on Dynamic Type.
+/// One view rather than six copies, because six copies drift. The lettering is
+/// Speak It's own: a monoline, geometric, all-caps wordmark with open tracking
+/// and rounded terminals, drawn by `Tools/Brand/generate_brand.swift` and
+/// shipped as a template PDF so it tints like text. Its height follows the
+/// caption text style, so it still scales with Dynamic Type and reads as the
+/// same small label it always was.
 struct SpeakItWordmark: View {
+    @ScaledMetric(relativeTo: .caption) private var height: CGFloat = 12
+
     var body: some View {
-        Text("Speak It")
-            .font(SpeakItTypography.wordmark)
-            .tracking(-0.1)
+        Image("Wordmark")
+            .renderingMode(.template)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(height: height)
             .foregroundStyle(Color.speakMuted)
+            .accessibilityLabel("Speak It")
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -147,6 +150,16 @@ extension Color {
 
     static let speakAccent = Color.speakInk
     static let speakGlow = Color.speakMuted
+
+    /// The "on" track of a switch. `speakInk` is white in dark mode, and a
+    /// white track under iOS's white knob left an on switch reading as a blank
+    /// pill. A mid grey keeps the knob visible and still sits clearly apart
+    /// from the system's dark off track; light mode keeps the ink.
+    static let speakToggleTint = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.52, alpha: 1)
+            : UIColor(red: 0.055, green: 0.055, blue: 0.055, alpha: 1)
+    })
 }
 
 extension View {

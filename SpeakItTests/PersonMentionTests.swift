@@ -267,6 +267,34 @@ final class PersonMentionTests: XCTestCase {
         )
     }
 
+    /// The resolver memoizes per item because Memory asks for every row's name
+    /// several times per render. The memo must follow the fields it was derived
+    /// from: renaming the person in the editor, or re-organizing the words,
+    /// has to change the answer on the very next read.
+    func testResolvedNameFollowsTheFieldsItWasDerivedFrom() throws {
+        let item = try repository.createCapture(text: "I met Alex yesterday")
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: item), "Alex")
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: item), "Alex", "a cached read agrees")
+
+        item.personName = "Alexandra"
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: item), "Alexandra",
+                       "an explicit name set after the first read wins immediately")
+
+        item.personName = nil
+        item.originalTextSegment = "I met Priya yesterday"
+        item.displayTitle = "Met Priya"
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: item), "Priya",
+                       "new words are re-read rather than served from the memo")
+
+        let twin = CapturedItem(
+            id: item.id,
+            originalTextSegment: "I met Sam yesterday",
+            displayTitle: "Met Sam"
+        )
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: twin), "Sam",
+                       "a different object with a reused ID is keyed by its own fields")
+    }
+
     func testSeveralMemoriesAboutOnePersonCollapseIntoOneProfile() throws {
         _ = try repository.createCapture(text: "Catherine called me at five")
         _ = try repository.createCapture(text: "Remember Catherine's birthday is in March")

@@ -115,7 +115,15 @@ struct WelcomeView: View {
                     )
                     .foregroundStyle(Color.speakInk)
                 }
-                .scrollDisabled(!dynamicTypeSize.isAccessibilitySize)
+                // Locked only at the sizes this layout was measured at.
+                //
+                // `isAccessibilitySize` is false for xLarge, xxLarge and
+                // xxxLarge — the three largest steps of the ordinary Text Size
+                // slider, not an accessibility setting — and the content is
+                // pinned to at least the screen height, so at those sizes the
+                // first screen a new user ever sees pushed "Start speaking"
+                // below a fold that could not be scrolled to.
+                .scrollDisabled(dynamicTypeSize <= .large)
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
             }
@@ -160,6 +168,169 @@ enum FirstRunTutorialKeys {
     static let ideaItemID = "SpeakIt.firstRunTutorial.ideaItemID.v2"
 }
 
+/// The first-run tutorial, numbered the way a person actually walks through it.
+///
+/// Every tutorial surface used to name its own position, or no position at all:
+/// "PRACTICE 1 OF 2" on the capture screen, an unnumbered teaching card on
+/// Today, an unnumbered setup screen at the end. Nothing said how much was
+/// left, and on the real Today and Memory screens nothing said a tutorial was
+/// running at all — a card asking to "Change this thought" read as the app
+/// asking, not as the tutorial. This is the single list every tutorial surface
+/// now counts against.
+enum TutorialStep: Int, CaseIterable, Equatable, Sendable {
+    case practiceTask
+    case seeToday
+    case findPerson
+    case seeFollowUp
+    case practiceIdea
+    case seeIdea
+    case captureAnywhere
+    case finishSetup
+
+    static var count: Int { allCases.count }
+
+    /// One-based, because it is only ever shown or spoken as "Step 3 of 8".
+    var number: Int { rawValue + 1 }
+
+    /// Two or three words. It shares one line with the step count at every
+    /// Dynamic Type size, so it has to stay short.
+    var title: String {
+        switch self {
+        case .practiceTask: "Practice a task"
+        case .seeToday: "Where it landed"
+        case .findPerson: "Find the person"
+        case .seeFollowUp: "The follow-up"
+        case .practiceIdea: "Practice an idea"
+        case .seeIdea: "Idea stages"
+        case .captureAnywhere: "Capture anywhere"
+        case .finishSetup: "Finish setup"
+        }
+    }
+
+    var positionLabel: String { "Step \(number) of \(TutorialStep.count)" }
+
+    /// What VoiceOver reads for any tutorial header. It leads with the word
+    /// "Tutorial" for the same reason the badge does.
+    var spokenLabel: String { "Tutorial. \(positionLabel). \(title)" }
+}
+
+/// The word "Tutorial", set so it cannot be mistaken for the person's own
+/// content. It is the mark that answers "is this the tutorial?" wherever
+/// tutorial chrome sits beside real thoughts.
+struct TutorialBadge: View {
+    var body: some View {
+        Text("TUTORIAL")
+            .font(.caption2.weight(.bold))
+            .tracking(1.1)
+            .foregroundStyle(Color.speakInverseInk)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.speakInverseSurface, in: Capsule())
+            .accessibilityHidden(true)
+    }
+}
+
+/// One filled capsule per step, in the same language the rest of Speak It's
+/// setup screens already use.
+struct TutorialProgressBar: View {
+    let step: TutorialStep
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(TutorialStep.allCases, id: \.rawValue) { candidate in
+                Capsule()
+                    .fill(
+                        candidate.rawValue <= step.rawValue
+                            ? Color.speakInk
+                            : Color.speakDivider
+                    )
+                    .frame(height: 4)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// The shared tutorial header. Every surface that teaches something wears it,
+/// so the badge, the step count, and the bar are in the same place and say the
+/// same thing from the first practice capture to the last setup screen.
+struct TutorialStepHeader: View {
+    enum Style: Equatable {
+        /// Badge, position, and the full bar. For a surface that owns a screen.
+        case banner
+        /// Badge and position, no bar. For a sheet that covers the banner and
+        /// therefore has to carry the count itself.
+        case compact
+    }
+
+    let step: TutorialStep
+    var style: Style = .banner
+    var onExit: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: style == .banner ? 9 : 0) {
+            HStack(spacing: 8) {
+                TutorialBadge()
+
+                Text("\(step.positionLabel) · \(step.title)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.speakMuted)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    // The label lives on the text rather than the container so
+                    // VoiceOver still reaches the Exit button beside it as its
+                    // own element.
+                    .accessibilityLabel(step.spokenLabel)
+                    .accessibilityIdentifier("tutorial.stepLabel")
+
+                Spacer(minLength: 0)
+
+                if let onExit {
+                    Button("Exit", action: onExit)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.speakMuted)
+                        .buttonStyle(.speakIt)
+                        .accessibilityLabel("Exit tutorial")
+                        .accessibilityHint("Removes the practice examples and leaves the tutorial")
+                        .accessibilityIdentifier("tutorial.exit")
+                }
+            }
+            .accessibilityElement(children: .contain)
+
+            if style == .banner {
+                TutorialProgressBar(step: step)
+            }
+        }
+    }
+}
+
+/// The tutorial's anchor while the person is standing inside the real Today and
+/// Memory screens. Those steps put teaching cards next to genuine thoughts, so
+/// without something permanent on screen there was no way to tell which was
+/// which, or how much was left.
+struct TutorialBanner: View {
+    let step: TutorialStep
+    let onExit: () -> Void
+
+    var body: some View {
+        TutorialStepHeader(step: step, style: .banner, onExit: onExit)
+            .padding(.horizontal, 22)
+            .padding(.top, 8)
+            .padding(.bottom, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Paints up behind the status bar so the tutorial reads as a bar
+            // the system put there, not a card floating over the app.
+            .background(Color.speakSurface.ignoresSafeArea(edges: .top))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.speakDivider)
+                    .frame(height: 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("tutorial.banner")
+    }
+}
+
 enum FirstRunTutorialPhase: String, CaseIterable {
     case inactive
     case captureAction
@@ -179,6 +350,24 @@ enum FirstRunTutorialPhase: String, CaseIterable {
         }
     }
 
+    /// Where this phase sits in the numbering the person sees.
+    ///
+    /// `readiness` covers two consecutive full-screen setups, so those two
+    /// screens name their own step rather than sharing this one. Everything
+    /// else maps one to one.
+    var step: TutorialStep? {
+        switch self {
+        case .inactive, .complete: nil
+        case .captureAction: .practiceTask
+        case .showToday: .seeToday
+        case .showPeople: .findPerson
+        case .showPerson: .seeFollowUp
+        case .captureIdea: .practiceIdea
+        case .showIdea: .seeIdea
+        case .readiness: .captureAnywhere
+        }
+    }
+
     var isActive: Bool { self != .inactive }
 }
 
@@ -187,21 +376,47 @@ enum TutorialSpotlightPlacement: Equatable {
     case people
     case person
     case idea
+
+    var step: TutorialStep {
+        switch self {
+        case .today: .seeToday
+        case .people: .findPerson
+        case .person: .seeFollowUp
+        case .idea: .seeIdea
+        }
+    }
 }
 
 struct TutorialSpotlight: Equatable {
     let itemID: UUID
     let placement: TutorialSpotlightPlacement
     let personName: String?
+    /// Which Today section the anchored row actually landed in.
+    ///
+    /// The card used to state "You said “tomorrow at 9,” so it appears in
+    /// Coming up" whatever the person had said. The practice step invites their
+    /// own words — "ask Maya about the proposal" is a perfectly good answer and
+    /// carries no time at all — so that sentence was telling a first-time user
+    /// something they could see was false, on the one screen whose entire job
+    /// is teaching them to trust where things land.
+    let todaySection: TodayActionTiming?
+    /// Whether the anchored row is due tomorrow specifically, so the scripted
+    /// example can still be greeted with "Ready for tomorrow" rather than the
+    /// generic wording a further-out date needs.
+    let isDueTomorrow: Bool
 
     init(
         itemID: UUID,
         placement: TutorialSpotlightPlacement,
-        personName: String? = nil
+        personName: String? = nil,
+        todaySection: TodayActionTiming? = nil,
+        isDueTomorrow: Bool = false
     ) {
         self.itemID = itemID
         self.placement = placement
         self.personName = personName
+        self.todaySection = todaySection
+        self.isDueTomorrow = isDueTomorrow
     }
 
     private var personLabel: String {
@@ -220,7 +435,12 @@ struct TutorialSpotlight: Equatable {
 
     var title: String {
         switch placement {
-        case .today: "Ready for tomorrow"
+        case .today:
+            switch todaySection {
+            case .comingUp: isDueTomorrow ? "Ready for tomorrow" : "Ready for later"
+            case .today, .overdue: "On today's list"
+            case .noDate, nil: "Waiting for a free moment"
+            }
         case .people: "\(personLabel) is in People"
         case .person: "The follow-up is here"
         case .idea: "Your idea is in Memory"
@@ -230,7 +450,18 @@ struct TutorialSpotlight: Equatable {
     var detail: String {
         switch placement {
         case .today:
-            "You said “tomorrow at 9,” so it appears in Coming up."
+            switch todaySection {
+            case .comingUp:
+                isDueTomorrow
+                    ? "You gave it a time tomorrow, so it waits under Coming up until then."
+                    : "You gave it a time, so it waits under Coming up until then."
+            case .today:
+                "It is due today, so it sits at the top under Now."
+            case .overdue:
+                "Its time has already passed, so it sits under Now."
+            case .noDate, nil:
+                "There is no time on it, so it waits under When you have time."
+            }
         case .people:
             "Open \(personLabel) to see the connected follow-up."
         case .person:
@@ -248,6 +479,26 @@ struct TutorialSpotlight: Equatable {
         case .idea: "Change its stage"
         }
     }
+
+    /// Says out loud what the button does and that the tutorial is what is
+    /// asking. Every one of these buttons opens something real — an editor, a
+    /// person, a stage picker — so without this line "Change this thought"
+    /// reads as the app making a demand rather than the tutorial offering the
+    /// next step.
+    var primaryDetail: String {
+        switch placement {
+        case .today:
+            "Opens this thought. Save or close it and the tutorial continues."
+        case .people:
+            "Opens \(personLabel)\u{2019}s page, where the tutorial continues."
+        case .person:
+            "Starts the second practice capture."
+        case .idea:
+            "Opens the stage picker. Choosing a stage continues the tutorial."
+        }
+    }
+
+    var step: TutorialStep { placement.step }
 }
 
 /// Keeps each short teaching card attached to the real row it explains.
@@ -262,10 +513,23 @@ struct TutorialSpotlightModifier: ViewModifier {
 
             if let spotlight {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(spotlight.eyebrow)
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(Color.speakMuted)
+                    // The badge rides beside the card's own eyebrow rather
+                    // than repeating the step count already pinned in the
+                    // banner a few points above it.
+                    HStack(spacing: 8) {
+                        TutorialBadge()
+
+                        Text(spotlight.eyebrow)
+                            .font(.caption2.weight(.bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.speakMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Tutorial. \(spotlight.eyebrow)")
 
                     Text(spotlight.title)
                         .font(.headline)
@@ -276,10 +540,18 @@ struct TutorialSpotlightModifier: ViewModifier {
                         .foregroundStyle(Color.speakMuted)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(spacing: 4) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Button(action: onPrimary) {
-                            Text(spotlight.primaryTitle)
-                                .font(.subheadline.weight(.semibold))
+                            HStack(spacing: 8) {
+                                Text(spotlight.primaryTitle)
+                                    .font(.subheadline.weight(.semibold))
+                                    .multilineTextAlignment(.leading)
+
+                                Spacer(minLength: 0)
+
+                                Image(systemName: "arrow.right")
+                                    .font(.footnote.weight(.semibold))
+                            }
                                 .foregroundStyle(Color.speakInverseInk)
                                 .padding(.horizontal, 16)
                                 .frame(maxWidth: .infinity, minHeight: 48)
@@ -290,7 +562,16 @@ struct TutorialSpotlightModifier: ViewModifier {
                                 Color.speakInverseSurface,
                                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                             )
+                            .accessibilityLabel(spotlight.primaryTitle)
+                            .accessibilityHint(spotlight.primaryDetail)
                             .accessibilityIdentifier("tutorial.spotlight.primary")
+
+                        Text(spotlight.primaryDetail)
+                            .font(.caption)
+                            .foregroundStyle(Color.speakMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 2)
+                            .accessibilityHidden(true)
 
                         Button(action: onEndPractice) {
                             Text("End tutorial")
@@ -306,6 +587,13 @@ struct TutorialSpotlightModifier: ViewModifier {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 20))
+                // A tutorial card sits directly against the person's own rows.
+                // The border is what separates the two at a glance, before any
+                // of the words have been read.
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.speakInk.opacity(0.22), lineWidth: 1.5)
+                }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("tutorial.spotlight.\(spotlight.placement)")
             }
@@ -1167,6 +1455,11 @@ struct SpeakItReadinessView: View {
     @Environment(\.dismiss) private var dismiss
 
     let isOnboarding: Bool
+    /// Set only while the first-run tutorial owns this screen. `isOnboarding`
+    /// is not the same question: this screen is also the resume point for
+    /// somebody who made a first capture without walking the tutorial, and that
+    /// person is not on step 8 of anything.
+    let tutorialStep: TutorialStep?
     let onFinished: () -> Void
 
     @AppStorage("SpeakIt.shortcutSetupCompleted")
@@ -1180,9 +1473,11 @@ struct SpeakItReadinessView: View {
 
     init(
         isOnboarding: Bool = false,
+        tutorialStep: TutorialStep? = nil,
         onFinished: @escaping () -> Void = {}
     ) {
         self.isOnboarding = isOnboarding
+        self.tutorialStep = tutorialStep
         self.onFinished = onFinished
     }
 
@@ -1190,6 +1485,10 @@ struct SpeakItReadinessView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if let tutorialStep {
+                        TutorialStepHeader(step: tutorialStep)
+                    }
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text(isOnboarding ? "OPTIONAL SETUP" : "READINESS")
                             .font(.caption.weight(.bold))
@@ -1618,6 +1917,20 @@ struct TutorialFinishedView: View {
         ZStack {
             Color.speakBackground.ignoresSafeArea()
             VStack(spacing: 24) {
+                // The bar the tutorial has been carrying since the first
+                // practice capture, finally full.
+                VStack(spacing: 8) {
+                    TutorialProgressBar(step: .finishSetup)
+
+                    Text("Tutorial complete")
+                        .font(.caption.weight(.semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Color.speakMuted)
+                }
+                .frame(maxWidth: 340)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Tutorial complete. All \(TutorialStep.count) steps done.")
+
                 Image(systemName: "checkmark")
                     .font(.system(size: 36, weight: .semibold))
                     .foregroundStyle(Color.speakInverseInk)

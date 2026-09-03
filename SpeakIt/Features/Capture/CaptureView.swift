@@ -11,11 +11,16 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     case idea
     case quickAccess
 
-    var stepLabel: String {
+    /// Where this practice sits in the tutorial the person is counting.
+    ///
+    /// It used to say "PRACTICE 1 OF 2", which counted only the recordings and
+    /// left every other tutorial screen unnumbered. The whole walkthrough now
+    /// shares one spine.
+    var step: TutorialStep {
         switch self {
-        case .action: "PRACTICE 1 OF 2"
-        case .idea: "PRACTICE 2 OF 2"
-        case .quickAccess: "CAPTURE ANYWHERE TEST"
+        case .action: .practiceTask
+        case .idea: .practiceIdea
+        case .quickAccess: .captureAnywhere
         }
     }
 
@@ -78,9 +83,70 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
         }
         return SpeechVocabularyStore.apply(corrections, to: transcript)
     }
+
+    /// The row this practice step can actually teach from, or `nil` when the
+    /// capture did not produce the shape the lesson needs.
+    ///
+    /// Every step after a practice capture points at a real row on a real
+    /// screen — "here it is on Today", "here is Maya in People", "your idea is
+    /// in Memory". The tutorial used to anchor to whatever came back, so an
+    /// off-script sentence sent it to a screen the row is not on, where no
+    /// teaching card renders and the only control left is Exit. Saying `nil`
+    /// here is what lets the practice screen offer another try instead of
+    /// walking the person into a dead end.
+    ///
+    /// This is the single definition of "the practice worked". `RootView` uses
+    /// it to decide whether to advance, and `CaptureView` uses it to decide
+    /// whether to ask again, so the two cannot disagree.
+    @MainActor
+    func satisfiedItem(in result: CaptureCreationResult) -> CapturedItem? {
+        switch self {
+        case .action:
+            // The lesson is "a task connected to a person", and the three steps
+            // after it walk to that person's page. Both halves have to be real.
+            return result.items.first {
+                $0.itemType == .personFollowUp && Self.personName(for: $0) != nil
+            } ?? result.items.first {
+                $0.itemType.isActionable && Self.personName(for: $0) != nil
+            }
+        case .idea:
+            return result.items.first { $0.itemType == .idea }
+        case .quickAccess:
+            // Nothing downstream points at this row. Any saved capture already
+            // proves the outside-the-app trigger did its job.
+            return result.items.first
+        }
+    }
+
+    @MainActor
+    private static func personName(for item: CapturedItem) -> String? {
+        let name = MemoryPersonNameResolver.name(for: item) ?? item.personName
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Why this capture cannot carry the step, in the person's terms.
+    ///
+    /// Names what the step needs rather than what they did wrong. The capture
+    /// itself was saved and is never called a mistake — it is practice data
+    /// that costs nothing and is deleted at the end either way.
+    var missedPracticeDetail: String {
+        switch self {
+        case .action:
+            "The next steps follow a task to the person it belongs to, so this one needs a name and something to do."
+        case .idea:
+            "The next step opens the idea stages, so this one needs something you are thinking about rather than a task."
+        case .quickAccess:
+            ""
+        }
+    }
 }
 
 struct CaptureView: View {
+    /// Scroll anchor for the live transcript, so it keeps the newest words in
+    /// view as they arrive.
+    private static let transcriptTailID = "capture.transcriptTail"
+
     private enum CaptureMode {
         case voice
         case text
@@ -415,13 +481,29 @@ struct CaptureView: View {
             }
             .accessibilityElement(children: .combine)
 
-            ScrollView {
-                Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
-                    .font(.title3)
-                    .foregroundStyle(Color.speakInk.opacity(0.84))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 330)
-                    .padding(.horizontal)
+            // Follows the newest words.
+            //
+            // The box holds about five lines. Past that the transcript kept
+            // growing above a fixed viewport that never moved, so anyone
+            // speaking a long thought watched their own words scroll out of
+            // sight and had no way to see what was being heard — on the one
+            // screen the whole product is built around.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
+                        .font(.title3)
+                        .foregroundStyle(Color.speakInk.opacity(0.84))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 330)
+                        .padding(.horizontal)
+                        .id(Self.transcriptTailID)
+                }
+                .onChange(of: tutorialAwareVoiceTranscript) { _, _ in
+                    // Not animated: at speaking speed this fires on nearly
+                    // every partial result, and animating each one turns a
+                    // steady follow into a jitter.
+                    proxy.scrollTo(Self.transcriptTailID, anchor: .bottom)
+                }
             }
             .frame(
                 maxHeight: tutorialMission != nil && transcriber.transcript.isEmpty
@@ -643,7 +725,47 @@ struct CaptureView: View {
                 }
             }
 
-            if let savedResult, savedResult.needsInterpretationConfirmation {
+            if tutorialPracticeMissed, let tutorialMission {
+                VStack(spacing: 10) {
+                    // The practice screen's banner is not on this screen, so the
+                    // sentence the step is built around has to be restated here
+                    // or "try again" gives nothing to try.
+                    Text("“\(tutorialMission.example)”")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.speakInk.opacity(0.82))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 2)
+                        .accessibilityIdentifier("tutorial.missedExample")
+
+                    Button(action: retryTutorialPractice) {
+                        Label("Try again", systemImage: "arrow.counterclockwise")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                    .buttonStyle(.speakIt)
+                    .foregroundStyle(Color.speakInverseInk)
+                    .background(
+                        Color.speakInverseSurface,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .accessibilityHint("Removes this practice attempt and returns to the step")
+                    .accessibilityIdentifier("tutorial.practiceRetry")
+
+                    Button(action: useTutorialExample) {
+                        Text("Use this example")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.speakInk)
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.speakIt)
+                    .accessibilityHint("Saves the example sentence for you and continues")
+                    .accessibilityIdentifier("tutorial.practiceUseExample")
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: 330)
+            } else if let savedResult, savedResult.needsInterpretationConfirmation {
                 VStack(spacing: 10) {
                     Button(action: retryUnclearCapture) {
                         Label("Try saying it again", systemImage: "waveform")
@@ -788,8 +910,9 @@ struct CaptureView: View {
     private var practiceBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let tutorialMission {
-                Label(tutorialMission.stepLabel, systemImage: "sparkles")
-                    .font(.caption.weight(.semibold))
+                TutorialStepHeader(step: tutorialMission.step)
+
+                Divider().overlay(Color.speakDivider)
 
                 Text(tutorialMission.title)
                     .font(.subheadline)
@@ -807,7 +930,15 @@ struct CaptureView: View {
                     .foregroundStyle(Color.speakMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if mode == .voice && transcriber.transcript.isEmpty {
+                // Always offered, whatever is on screen.
+                //
+                // These used to be gated on the transcript and the text field
+                // being empty, so a cough, a false start, or one stray word
+                // took the way out away — and this is the control the flow
+                // promises is always there. During practice nothing is at
+                // stake: replacing a half-said sentence with the example is
+                // exactly what somebody reaching for this button wants.
+                if mode == .voice {
                     Button {
                         transcriber.cancel()
                         typedText = tutorialMission.example
@@ -826,7 +957,7 @@ struct CaptureView: View {
                     }
                     .buttonStyle(.speakIt)
                     .accessibilityIdentifier("tutorial.useExample")
-                } else if mode == .text && trimmedTypedText.isEmpty {
+                } else {
                     Button {
                         typedText = tutorialMission.example
                         isTextFocused = true
@@ -1101,9 +1232,31 @@ struct CaptureView: View {
             performance?.markTranscriptFinalized(at: finalizedAt)
         }
         subscriptionStore.refreshFreeAllowance()
-        guard tutorialMission != nil || subscriptionStore.canCreateCapture else {
+        // A clarification retry is exempt, because it replaces an attempt that
+        // was already charged — the `!replacesRetrySource` condition below
+        // guarantees it cannot charge a second time. Without this, the app
+        // invited the person to "try saying it again" on their tenth capture
+        // and then refused the retry it had just asked for.
+        guard tutorialMission != nil
+                || retryingUnclearResult != nil
+                || subscriptionStore.canCreateCapture
+        else {
             isTextFocused = false
+            // Move the words into the editor rather than cancelling. Cancelling
+            // clears the transcript, so what the person had just finished
+            // saying vanished off the screen at the same moment the paywall
+            // appeared, with nothing telling them where it went.
+            let spoken = tutorialAwareVoiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !spoken.isEmpty, trimmedTypedText.isEmpty {
+                typedText = spoken
+                mode = .text
+            }
             transcriber.cancel()
+            // The Live Activity is still advertising "Listening" at this point,
+            // and nothing else ends it — no lifecycle sweep runs on this path —
+            // so the Lock Screen kept claiming Speak It was recording after it
+            // had stopped and shown a paywall.
+            Task { await CaptureActivityManager.cancelListening() }
             SpeakItAnalytics.track(.freeLimitReached(used: subscriptionStore.freeCapturesUsed))
             showsFreeLimit = true
             return
@@ -1168,9 +1321,22 @@ struct CaptureView: View {
                 typedText = ""
                 savedResult = result
                 onSaveSucceeded(result)
+                // Whether this practice can carry the steps that follow. It has
+                // to be read from `result` rather than `tutorialPracticeMissed`,
+                // because the rest of this function runs before SwiftUI has
+                // published the `savedResult` write above.
+                let missedTutorialPractice = tutorialMission
+                    .map { $0.satisfiedItem(in: result) == nil } ?? false
                 // An operation reports what it did. Saying "Remembered" after
                 // cancelling something is the app describing the wrong action.
-                if let outcome = result.operationOutcome {
+                if missedTutorialPractice, let tutorialMission {
+                    // Deliberately ahead of every other outcome, including an
+                    // operation result. During practice, "what this step needs"
+                    // is the only thing the person can act on.
+                    savedConfirmationTitle = "Almost — one more go"
+                    savedConfirmationSymbol = "arrow.counterclockwise"
+                    savedConfirmationDetail = tutorialMission.missedPracticeDetail
+                } else if let outcome = result.operationOutcome {
                     let copy = CaptureOperationCopy.make(for: outcome)
                     savedConfirmationTitle = copy.title
                     savedConfirmationSymbol = copy.symbol
@@ -1208,13 +1374,18 @@ struct CaptureView: View {
                     }
                 }
 
-                if closesAfterSave {
+                // A missed practice is the one confirmation that must wait for a
+                // decision. Closing or auto-dismissing past it is what used to
+                // strand the tutorial on a screen with nothing to tap.
+                if closesAfterSave, !missedTutorialPractice {
                     closesAfterSave = false
                     finishSavedCapture()
                     return
                 }
+                closesAfterSave = false
 
-                if result.itemCount == 1,
+                if !missedTutorialPractice,
+                   result.itemCount == 1,
                    result.needsReviewCount == 0,
                    !requiresExplicitSavedConfirmation {
                     confirmationDismissTask?.cancel()
@@ -1316,6 +1487,69 @@ struct CaptureView: View {
         self.savedResult = nil
         withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
             showsSavedConfirmation = false
+        }
+    }
+
+    /// True when a practice capture saved, but is not the shape this tutorial
+    /// step teaches from.
+    ///
+    /// The capture itself is fine and is already durable. What it cannot do is
+    /// carry the steps that follow, all of which point at a specific row on a
+    /// specific screen.
+    private var tutorialPracticeMissed: Bool {
+        guard let tutorialMission, let savedResult else { return false }
+        return tutorialMission.satisfiedItem(in: savedResult) == nil
+    }
+
+    /// Clears the practice attempt and returns to the practice screen.
+    ///
+    /// Deleting is safe and deliberate here in a way it never is for a real
+    /// capture: this row is tutorial data, it spent none of the ten free
+    /// captures, and every practice row is deleted when the tutorial ends
+    /// anyway. Leaving it behind would put a stray "hello testing" in the
+    /// person's real library on their first minute in the app.
+    private func discardTutorialPractice() {
+        guard let savedResult, let repository else { return }
+        for item in savedResult.items {
+            try? repository.delete(item)
+        }
+    }
+
+    private func retryTutorialPractice() {
+        confirmationDismissTask?.cancel()
+        discardTutorialPractice()
+        savedResult = nil
+        typedText = ""
+        captureNotice = nil
+        voiceNotice = nil
+        transcriber.cancel()
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
+            showsSavedConfirmation = false
+        }
+    }
+
+    /// Takes the exact sentence the step is built around, so the person always
+    /// has a way through that cannot miss.
+    private func useTutorialExample() {
+        guard let tutorialMission else { return }
+        let example = tutorialMission.example
+        confirmationDismissTask?.cancel()
+        discardTutorialPractice()
+        savedResult = nil
+        captureNotice = nil
+        voiceNotice = nil
+        transcriber.cancel()
+        typedText = example
+        mode = .text
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
+            showsSavedConfirmation = false
+        }
+        Task { @MainActor in
+            // Let the confirmation finish leaving before the next save puts it
+            // back, so the person sees one transition rather than a flicker.
+            try? await Task.sleep(for: .milliseconds(260))
+            guard !showsSavedConfirmation else { return }
+            save(example, source: .inAppText)
         }
     }
 

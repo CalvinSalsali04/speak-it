@@ -146,8 +146,326 @@ enum ReminderPhrasing {
     }
 }
 
+/// The framing a person puts in front of the thing they actually have to do.
+///
+/// Nobody says the task first. They say "I've got to", "we need to", "make
+/// sure I", "I keep meaning to" — and the task follows. A row title is
+/// presentation, so it can drop that lead-in; `CaptureSession` keeps every word
+/// the person said, forever, and `ItemEditorView` shows it back to them.
+///
+/// Every pattern here is **anchored and contiguous**, and that is the safety
+/// argument rather than a style preference. `^subject hedge* link+` cannot
+/// match "I told Alex to get the wrench" or "I need a wrench to fix the gate",
+/// because the noun phrase is physically in the way — no tagger has to decide
+/// it, and therefore no capitalisation dependency enters a function that is
+/// today trivially rendering-invariant.
+///
+/// Everything this type does is a **deletion**. It never substitutes, reorders
+/// or re-inflects, so a reduced title is always a contiguous subsequence of
+/// what it was given, and a title can never contain a word the speaker did not
+/// say. See `ContentDriftTests` and `ObligationFrameTests`.
+enum ObligationFrame {
+
+    // MARK: - Fragments
+
+    /// Words a speaker thinks with. Nothing here may also head a verb phrase:
+    /// "look" and "listen" were in an early draft and turned "Look into
+    /// whether refinancing makes sense" into "Into whether refinancing makes
+    /// sense". A hedge that can be a verb is not a hedge, whatever it costs in
+    /// coverage — "Listen, I need to cancel the gym membership" keeps its
+    /// opener on purpose.
+    static let hedge = #"(?:probably|definitely|maybe|perhaps|really|honestly|basically|literally|seriously|just|actually|still|finally|like|so|well|anyway|anyways|yeah|alright|um+|uh+|you\s+know|i\s+mean|sort\s+of|kind\s+of)"#
+
+    /// The separator between a frame and what follows it.
+    ///
+    /// A comma is allowed because a comma is a **rendering**, not a word. "I
+    /// gotta, you know, finish the essay" and "I gotta you know finish the
+    /// essay" are one sentence dictated by two recognizers, and a reducer that
+    /// peels one and not the other makes the row title a function of which
+    /// engine answered — the class of defect `RenderingInvarianceTests` exists
+    /// to prevent.
+    private static let gap = #"\s*,?\s+"#
+
+    private static let hedges = #"(?:\#(gap)\#(hedge))*"#
+
+    /// The one closed token set structure cannot replace. A tagger labels "I",
+    /// "we", "she" and "they" identically as Pronoun, so only the surface form
+    /// says *whose* obligation this is, and only the first two are the
+    /// speaker's own. Two pronouns is a paradigm, not a vocabulary.
+    ///
+    /// `had` is deliberately absent from the auxiliary slot: a past frame is a
+    /// report, not an instruction. The negative lookahead stops the auxiliary
+    /// eating the `have` of "have to" and stranding its `to` — that defect
+    /// titled "Remember that I have to renew my passport" as "To renew my
+    /// passport".
+    private static let subject = #"(?:i|we)(?:['’](?:m|re|ve|d)|\s+(?:am|are|have|has|do)(?!\s+to\b))?"#
+
+    private static let bareSubject = #"(?:i|we)"#
+
+    /// One link of an obligation chain, consumed through its own infinitival
+    /// `to` where the form takes one. `should`, `must` and `better` take a bare
+    /// infinitive and so end at the modal.
+    ///
+    /// **Safety by omission — read this before adding anything.** Every
+    /// alternative below is present or ongoing. `had to`, `was supposed to`,
+    /// `meant to`, `needed to`, `refused to`, `managed to`, bare `got to` and
+    /// every negated auxiliary are absent *on purpose*: a form that is not
+    /// listed can never sit inside the span this type deletes, so a past or
+    /// negated obligation survives into the title untouched. That is why "I had
+    /// to cancel the appointment" is not retitled "Cancel the appointment".
+    /// Adding a past, negated, or noun-taking form here is the way this type
+    /// breaks, and `ObligationFrameTests`
+    /// `testWordingThatOnlyLooksLikeAFrameIsLeftAlone` exists to catch exactly
+    /// that edit. Those controls are hard `XCTAssert`s rather than corpus cases
+    /// on purpose: a corpus `title` disagreement grades `.cosmetic` and only
+    /// ever reports, so it could not fail a build over an inverted
+    /// prohibition.
+    ///
+    /// `like to` is absent because it is habitual rather than obligational: "I
+    /// like to call my mother on Sundays" is not a task.
+    private static let link = #"(?:"#
+        + #"going\s+to|gonna|supposed\s+to"#
+        + #"|gotta|hafta|oughta|wanna|needa"#
+        + #"|been\s+meaning\s+to|keep\s+meaning\s+to|keep\s+forgetting\s+to"#
+        + #"|need\s+to|needs\s+to|have\s+to|has\s+to|ought\s+to"#
+        + #"|want\s+to|would\s+like\s+to|plan\s+to|mean\s+to|intend\s+to"#
+        + #"|should|must|better"#
+        + #")"#
+
+    /// Subject, then one or more hedged obligation links. The chain is what
+    /// makes "I'm going to need to" one frame rather than two half-stripped
+    /// ones.
+    private static let chain = subject + hedges + #"(?:\#(gap)\#(link)\#(hedges))+"#
+
+    /// The same, with the obligation optional, for wrappers that take a finite
+    /// clause ("make sure I stop at the bank"). The bare-subject alternative
+    /// drops the auxiliary slot, so "Make sure I have the tickets" reduces to
+    /// "Have the tickets" rather than to "The tickets".
+    private static let clause = #"(?:\#(chain)|\#(bareSubject)\#(hedges))"#
+
+    /// What may not follow a frame that is about to be deleted.
+    ///
+    /// A stranded infinitival `to` is a broken title. A negator is the entire
+    /// meaning: "I should not sign the lease until Dana looks at it" is left
+    /// exactly as spoken rather than retitled "Not sign the lease", and a
+    /// prohibition that reads as an instruction is the worst thing this file
+    /// could do. Refusing is the failure mode of this whole type.
+    ///
+    /// A coordinator means the frame never got a complement at all — "I keep
+    /// meaning to but I never do" is a confession, and deleting its head left
+    /// the row titled "But I never do". A pseudo-cleft pivot means the frame is
+    /// only the *head* of a longer one: "what I need to do is call the dentist"
+    /// cannot lose "what I need to" and keep "do is". And a perfect infinitive
+    /// reports a missed obligation rather than stating a live one.
+    private static let boundary = #"(?!to\s)"#
+        + #"(?!(?:not|never|no|nor|nothing|nobody|hardly|barely|scarcely|rarely|seldom)\b)"#
+        + #"(?!(?:but|and|or|so|because|although|though|yet)\b)"#
+        + #"(?!do(?:es)?\s+is\b)"#
+        + #"(?!(?:have|has|had)\s+been\b)"#
+
+    // MARK: - Layers
+
+    private static let hedgeLead = #"^(?:\#(hedge)\b\s*[,.:;-]?\s*)+(?=\S)"#
+
+    private static let imperativeWrappers =
+        #"^(?:please\s+)?(?:remember\s+to|don['’]t\s+forget\s+to|do\s+not\s+forget\s+to)\s+"#
+
+    private static let actionablePatterns: [String] = [
+        // 1. Leading throat-clearing, first, so a hedge cannot shield a frame.
+        //    "Actually I need to cancel the gym membership" kept its "I need
+        //    to" only because the hedge strip used to run *after* the prefix
+        //    strip, and six words — actually, really, maybe, probably, still,
+        //    finally — were owned by that later pass alone.
+        hedgeLead,
+
+        // 2. A subordinator stranded by an upstream clause cut. The lookahead
+        //    is the whole safety of the rule: it fires only immediately in
+        //    front of a frame that is about to be deleted anyway. "So I was
+        //    thinking that I should probably email Marcus" arrives here already
+        //    cut to "that I should probably email Marcus", and used to be
+        //    titled "That I should probably email Marcus about the invoice".
+        #"^(?:that|what)\s+(?=\#(chain)\#(gap)\#(boundary))"#,
+
+        // 3. Cognitive matrix, under the same licence. A deliberately closed
+        //    set: `hope`, `doubt`, `fear`, `wish`, `pretend` and `regret` are
+        //    not here, because deleting one of those converts a doubt into a
+        //    commitment.
+        #"^(?:i|we)(?:\s+(?:was|am|['’]m))?\s+(?:think|thinking|thought|guess|figure|reckon|suppose)\s+(?:that\s+)?(?=\#(chain)\#(gap))"#,
+
+        // 4a. "Make sure I stop at the bank before it closes." The wrapper
+        //     takes a finite clause and the obligation inside it is optional.
+        #"^(?:please\s+)?makes?\s+sure\s+(?:that\s+)?\#(clause)\#(gap)\#(boundary)"#,
+
+        // 4b. "Remember that I have to renew my passport." At least one
+        //     obligation link is *required* here: without it this ate the word
+        //     that made the row a record, turning "Remember I parked on level
+        //     three" into "Parked on level three".
+        #"^(?:please\s+)?(?:remember|note)\s+(?:that\s+)?\#(chain)\#(gap)\#(boundary)"#,
+
+        // 5a. The perfect of "got to", written out rather than added to `link`
+        //     so that a bare past reading — "I got to see the house before the
+        //     offer closed" — can never match.
+        #"^(?:please\s+)?(?:i|we)(?:['’]ve|\s+(?:have|has))\s+got\s+to\#(hedges)\#(gap)\#(boundary)"#,
+
+        // 5b. The obligation itself. This one rule closes most of the measured
+        //     defect set: I've got to / I keep meaning to / I gotta / I'm going
+        //     to need to / we need to / we have to / we should.
+        #"^(?:please\s+)?\#(chain)\#(gap)\#(boundary)"#,
+
+        // 6. Imperative wrappers. They have no subject to anchor on, so they
+        //    stay listed whole. Unchanged from the shipping formatter.
+        imperativeWrappers,
+
+        // 7. Impersonal obligation. Closed and unambiguous.
+        #"^it['’]s\s+time\s+(?:for\s+(?:me|us)\s+)?to\s+"#,
+
+        // 8. The one deletion that is not at the head. No English title
+        //    legitimately ends on a bare coordinator, so removing one can only
+        //    be right. `then` and `also` are excluded: they are temporal
+        //    adverbs, and "Leave then" is content rather than debris.
+        #"\s+(?:and|or|but|plus)\s*[,.]?$"#
+    ]
+
+    // MARK: - Cheap rejection
+
+    /// Nine rows in ten open on a word no layer can match — "Buy milk", "Water
+    /// the plants", "The garage code is 1972". Those must not pay for a loop
+    /// that cannot fire. This gate is why `polished` stays at parity with the
+    /// previous formatter at p50, and why launch maintenance over a real
+    /// backlog costs milliseconds rather than hundreds of them.
+    private static let couldBeFramed = compileOne(
+        #"^\s*(?:i\b|i['’]|we\b|we['’]|that\b|what\b|please\b|makes?\s+sure\b|remember\b|note\b|it['’]s\b|don['’]t\b|do\s+not\b|\#(hedge)\b)"#
+    )
+
+    /// A first-person retraction anywhere in the sentence. "I was going to call
+    /// Catherine but I didn't" must not become "Call Catherine but I didn't" —
+    /// the tail cancels the head, and no head-anchored pattern can see that.
+    private static let retraction = compileOne(
+        // "don't forget" is the standard positive reminder idiom, not a
+        // retraction: "make sure I don't forget the passport" is a live
+        // instruction, and the app already treats "don't forget to" as an
+        // imperative wrapper.
+        #"\b(?:i|we)\s+(?:did|do|does|was|were|am|are|have|has|had|will|would|could|can|should)?n['’]?t\b(?!\s+forget\b)"#
+        + #"|\b(?:i|we)\s+(?:did|do|was|were|am|are|have|has|had)\s+not\b"#
+        + #"|\b(?:i|we)\s+never\b"#
+    )
+
+    /// The post-condition. A reduced title that still opens on a first-person
+    /// subject is a half-finished cut, and the whole edit is discarded.
+    private static let opensOnFirstPerson = compileOne(#"^\s*(?:i|we)(?:\b|['’])"#)
+
+    // MARK: - Layer sets
+
+    /// One reading's worth of peeling: which layers apply, whether it is worth
+    /// trying at all, and whether the meaning guards run.
+    struct Layers {
+        let gate: NSRegularExpression?
+        let patterns: [NSRegularExpression]
+        /// Only the machine-produced actionable path gets the retraction veto
+        /// and the first-person post-condition. A person's own typing and a
+        /// declarative Memory row are not obligations being unwrapped.
+        let guardsMeaning: Bool
+    }
+
+    static let actionable = Layers(
+        gate: couldBeFramed,
+        patterns: compile(actionablePatterns),
+        guardsMeaning: true
+    )
+
+    static let idea = Layers(
+        gate: nil,
+        patterns: compile([
+            hedgeLead,
+            #"^(?:(?:save\s+(?:my\s+)?)?idea(?:\s+for)?|my\s+idea\s+is|(?:oh\s*[,.-]?\s*)?i\s+(?:just\s+)?(?:have|had|got)\s+an?\s+idea(?:\s+(?:for|about|that|to))?|(?:oh\s*[,.-]?\s*)?i\s+(?:just\s+)?(?:came\s+up\s+with|thought\s+of)\s+an?\s+idea(?:\s+(?:for|about|that|to))?)\s*[:—,-]?\s*"#
+        ]),
+        guardsMeaning: false
+    )
+
+    /// The recording frame. `ActionabilityReader` owns this vocabulary so the
+    /// title and the routing agree about where the instruction ends and the
+    /// fact begins. A Memory row gets the hedge strip and nothing else — the
+    /// obligation layers are unreachable from here, which is what keeps "My
+    /// blood type is O negative" a declarative sentence instead of an order.
+    static let recording = Layers(
+        gate: nil,
+        patterns: compile([
+            hedgeLead,
+            #"^(?:please\s+)?(?:save\s+this(?:\s+note)?(?:\s+that)?\s+"#
+                + #"|(?:\#(ActionabilityReader.recordingFrame))?"#
+                + #"\#(ActionabilityReader.recordingVerb)\s+(?:that\s+|about\s+)?)"#
+        ]),
+        guardsMeaning: false
+    )
+
+    /// What a person typed by hand. Only the imperative wrappers, which are
+    /// what somebody is asking for when they type "Remember to call Mom" into a
+    /// title field. Their framing is their choice, and it stays.
+    static let handEdited = Layers(
+        gate: nil,
+        patterns: compile([imperativeWrappers]),
+        guardsMeaning: false
+    )
+
+    // MARK: - Peeling
+
+    static func peeled(_ text: String, using layers: Layers) -> String {
+        if let gate = layers.gate, !matches(gate, text) { return text }
+        if layers.guardsMeaning, matches(retraction, text) { return text }
+
+        var value = text
+        // Every layer strictly shortens the string, so this terminates. Nothing
+        // measured needed more than three passes; six is paranoia. The loop is
+        // what makes the result idempotent, which matters because launch
+        // maintenance re-feeds this function its own output.
+        for _ in 0..<6 {
+            let before = value
+            for layer in layers.patterns {
+                let range = NSRange(value.startIndex..., in: value)
+                let peeled = layer
+                    .stringByReplacingMatches(in: value, range: range, withTemplate: "")
+                    .trimmingCharacters(in: .whitespaces)
+                // A layer that would leave nothing behind was not framing — it
+                // was the whole thought. Keep the sentence.
+                if !peeled.isEmpty { value = peeled }
+            }
+            if value == before { break }
+        }
+
+        if layers.guardsMeaning, value != text, matches(opensOnFirstPerson, value) {
+            return text
+        }
+        return value
+    }
+
+    // MARK: - Compilation
+
+    /// Precompiled once. `replacingOccurrences(options: .regularExpression)`
+    /// rebuilds its `NSRegularExpression` on every call, and this type applies
+    /// up to ten patterns per title; measured, that shape ran several times
+    /// slower than matching against a compiled expression.
+    private static func compile(_ patterns: [String]) -> [NSRegularExpression] {
+        patterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }
+
+    private static func compileOne(_ pattern: String) -> NSRegularExpression? {
+        try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }
+
+    private static func matches(_ regex: NSRegularExpression?, _ text: String) -> Bool {
+        guard let regex else { return false }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+}
+
 enum ThoughtTitleFormatter {
-    static func polished(_ text: String, itemType: ItemType) -> String {
+    /// - Parameter reduceFrames: `false` when the string came from a person's
+    ///   own keyboard. `update(_:with:)` re-polishes a hand-typed title, and
+    ///   `displayTitle` has no `isUserEdited` flag the way `temporalIntent` and
+    ///   `locationIntent` do. Without this, somebody who deliberately types "We
+    ///   need to talk to the landlord" as their title gets "Talk to the
+    ///   landlord" stored instead, and cannot type their way back out of it.
+    static func polished(_ text: String, itemType: ItemType, reduceFrames: Bool = true) -> String {
         var value = text
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -193,39 +511,29 @@ enum ThoughtTitleFormatter {
             options: .regularExpression
         )
 
-        let prefixPattern: String?
-        if itemType.isActionable {
-            prefixPattern = #"^(?:please\s+)?(?:i\s+(?:really\s+)?(?:need|have)\s+to|i\s+should|remember\s+to|don['’]t\s+forget\s+to|do\s+not\s+forget\s+to)\s+"#
+        // The framing comes off here. `ObligationFrame` owns both the
+        // obligation vocabulary and the hedges, in one pass that repeats to a
+        // fixpoint, because they interleave: "Actually I need to cancel the gym
+        // membership" needs the hedge gone before the frame is visible, and "I
+        // should probably book the dentist" needs the frame gone before the
+        // hedge is. Two separate ordered passes could only ever get one of
+        // those two sentences right, and it got the second one.
+        let layers: ObligationFrame.Layers
+        if !reduceFrames {
+            layers = ObligationFrame.handEdited
+        } else if itemType.isActionable {
+            layers = ObligationFrame.actionable
         } else if itemType == .idea {
-            prefixPattern = #"^(?:(?:save\s+(?:my\s+)?)?idea(?:\s+for)?|my\s+idea\s+is|(?:oh\s*[,.-]?\s*)?i\s+(?:just\s+)?(?:have|had|got)\s+an?\s+idea(?:\s+(?:for|about|that|to))?|(?:oh\s*[,.-]?\s*)?i\s+(?:just\s+)?(?:came\s+up\s+with|thought\s+of)\s+an?\s+idea(?:\s+(?:for|about|that|to))?)\s*[:—,-]?\s*"#
+            layers = ObligationFrame.idea
         } else {
-            // The framed forms too: a row reading "I want to remember that
-            // Priya's birthday is on December fourth" is showing the person
-            // their own throat-clearing back. `ActionabilityReader` owns the
-            // vocabulary, so the title and the routing agree about where the
-            // instruction ends and the fact begins.
-            prefixPattern = #"^(?:please\s+)?(?:save\s+this(?:\s+note)?(?:\s+that)?\s+"#
-                + #"|(?:\#(ActionabilityReader.recordingFrame))?"#
-                + #"\#(ActionabilityReader.recordingVerb)\s+(?:that\s+|about\s+)?)"#
+            // A row reading "I want to remember that Priya's birthday is on
+            // December fourth" is showing the person their own throat-clearing
+            // back. `ActionabilityReader` owns that vocabulary, so the title
+            // and the routing agree about where the instruction ends and the
+            // fact begins — and a Memory row is never turned into an order.
+            layers = ObligationFrame.recording
         }
-
-        if let prefixPattern {
-            value = value.replacingOccurrences(
-                of: prefixPattern,
-                with: "",
-                options: [.regularExpression, .caseInsensitive]
-            )
-        }
-
-        // Hedges and fillers the speaker used to think with. They survive the
-        // obligation lead being stripped — "I should probably book the dentist"
-        // became a row titled "Probably book the dentist" — and they say
-        // nothing about what to do. Title only; the transcript keeps every word.
-        value = value.replacingOccurrences(
-            of: #"^(?:(?:probably|definitely|maybe|really|honestly|basically|literally|just|actually|still|finally|like|so|well|anyway|yeah)\s+)+(?=\S)"#,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
+        value = ObligationFrame.peeled(value, using: layers)
 
         value = value.replacingOccurrences(
             of: #"\bi\b"#,

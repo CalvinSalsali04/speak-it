@@ -560,6 +560,12 @@ enum PersonMentionResolver {
     /// not, and a capture does only a handful.
     private static let englishEmbedding = NLEmbedding.wordEmbedding(for: .english)
 
+    /// Touches the embedding so its one-off load happens on a background
+    /// task at launch rather than inside the first Memory render.
+    static func preloadEmbedding() {
+        _ = englishEmbedding
+    }
+
     /// Whether a word names a *role* rather than a person, decided by meaning
     /// rather than by membership of a list.
     ///
@@ -996,19 +1002,63 @@ enum PersonMentionResolver {
 /// `PersonMentionResolver`, so an item cannot be a person on Today and a
 /// nameless note in Memory.
 enum MemoryPersonNameResolver {
+    /// The resolved name is a pure function of the three fields below, and
+    /// resolving it runs the full mention parser. Memory's home asks for it
+    /// for every row several times per render, so the answer is memoized per
+    /// item and invalidated by the fields it was derived from, the same way
+    /// `ItemPresentation` memoizes the reminder delivery.
+    private struct Key: Equatable {
+        var personName: String?
+        var segment: String
+        var title: String
+    }
+
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [UUID: (key: Key, name: String?)] = [:]
+
     static func name(for item: CapturedItem) -> String? {
-        if let explicit = item.personName?.trimmingCharacters(in: .whitespacesAndNewlines),
+        let key = Key(
+            personName: item.personName,
+            segment: item.originalTextSegment,
+            title: item.displayTitle
+        )
+        cacheLock.lock()
+        let cached = cache[item.id]
+        cacheLock.unlock()
+        if let cached, cached.key == key { return cached.name }
+
+        let name = resolveName(personName: key.personName, segment: key.segment, title: key.title)
+        cacheLock.lock()
+        if cache.count >= 4096 { cache.removeAll(keepingCapacity: true) }
+        cache[item.id] = (key, name)
+        cacheLock.unlock()
+        return name
+    }
+
+    /// Test support: a suite that rebuilds items with reused IDs must not see
+    /// a previous case's memoized answer.
+    static func resetCacheForTesting() {
+        cacheLock.lock()
+        cache.removeAll()
+        cacheLock.unlock()
+    }
+
+    private static func resolveName(personName: String?, segment: String, title: String) -> String? {
+        if let explicit = personName?.trimmingCharacters(in: .whitespacesAndNewlines),
            !explicit.isEmpty {
             return explicit
         }
-        return PersonMentionResolver.primary(in: item.originalTextSegment)?.label
-            ?? PersonMentionResolver.primary(in: item.displayTitle)?.label
+        return PersonMentionResolver.primary(in: segment)?.label
+            ?? PersonMentionResolver.primary(in: title)?.label
     }
 
     static func containsWholeName(_ name: String, in text: String) -> Bool {
         let escaped = NSRegularExpression.escapedPattern(for: name)
-        let pattern = "(?i)(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
-        return text.range(of: pattern, options: .regularExpression) != nil
+        let pattern = "(?<![\\p{L}\\p{N}])\(escaped)(?![\\p{L}\\p{N}])"
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]) else {
+            return false
+        }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 }
 

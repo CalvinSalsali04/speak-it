@@ -33,20 +33,27 @@ final class ShareViewController: UIViewController {
 
         titleLabel.text = "Remembering…"
         titleLabel.textColor = .white
-        titleLabel.font = .systemFont(ofSize: 25, weight: .semibold)
+        titleLabel.font = UIFontMetrics(forTextStyle: .title2)
+            .scaledFont(for: .systemFont(ofSize: 25, weight: .semibold))
+        titleLabel.adjustsFontForContentSizeCategory = true
+        titleLabel.numberOfLines = 2
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
         detailLabel.text = "Adding this to Speak It"
         detailLabel.textColor = UIColor.white.withAlphaComponent(0.58)
-        detailLabel.font = .systemFont(ofSize: 15, weight: .regular)
+        detailLabel.font = UIFontMetrics(forTextStyle: .subheadline)
+            .scaledFont(for: .systemFont(ofSize: 15, weight: .regular))
+        detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textAlignment = .center
-        detailLabel.numberOfLines = 2
+        detailLabel.numberOfLines = 0
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
         closeButton.setTitle("Cancel", for: .normal)
         closeButton.setTitleColor(.white, for: .normal)
-        closeButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        closeButton.titleLabel?.font = UIFontMetrics(forTextStyle: .subheadline)
+            .scaledFont(for: .systemFont(ofSize: 15, weight: .semibold))
+        closeButton.titleLabel?.adjustsFontForContentSizeCategory = true
         closeButton.addTarget(self, action: #selector(cancel), for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -68,7 +75,9 @@ final class ShareViewController: UIViewController {
             detailLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
             closeButton.topAnchor.constraint(greaterThanOrEqualTo: detailLabel.bottomAnchor, constant: 18),
             closeButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -14),
-            closeButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            closeButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            closeButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            closeButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 44)
         ])
     }
 
@@ -179,7 +188,7 @@ private enum ShareImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedContent:
-            "Share selected text or a link. Audio import is coming later."
+            "Share selected text or a link to save it in Speak It."
         case .cancelled:
             "Share cancelled."
         }

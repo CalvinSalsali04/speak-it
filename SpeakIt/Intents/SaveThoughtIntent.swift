@@ -126,7 +126,16 @@ struct CompleteNextSpeakItItemIntent: AppIntent {
         "Complete the first open item in Speak It Today."
     )
     static let openAppWhenRun = false
-    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+    // Deliberately *not* `.alwaysAllowed`.
+    //
+    // This is a registered App Shortcut ("Complete my next item in Speak It"),
+    // so allowing it on a locked device let anyone holding the phone both
+    // perform a destructive write to somebody else's library and hear the task
+    // read aloud — the same title the Lock Screen widget withholds by default,
+    // on a screen where Settings promises "a locked iPhone never reveals what
+    // they are". Requiring authentication is the default, and it is the right
+    // default for a write.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let item = SharedTodayStore.load().items.first else {

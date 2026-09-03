@@ -509,9 +509,17 @@ enum SpokenShorthandRepair {
         // Repeat adverbs. Each names a cycle the recurrence parser already
         // builds from "every N units"; none of them resolved on their own, so
         // "renew the domain annually" produced no repeat at all.
-        (#"\b(?:annually|yearly)\b"#, "every year"),
-        (#"\bquarterly\b"#, "every 3 months"),
-        (#"\b(?:biweekly|bi-weekly|fortnightly)\b"#, "every 2 weeks"),
+        //
+        // Guarded exactly like `monthly`/`weekly`/`daily` below, and for the
+        // same reason: only the adverb use names a repeat. "The quarterly
+        // report" and "the yearly review" are noun phrases, and rewriting one
+        // renamed the thing the person was talking about — it produced the row
+        // title "File the every 3 months report by Friday", which contains
+        // words nobody said. These three were written before that guard existed
+        // and never got it.
+        (#"\b(?:annually|yearly)\b(?=\s*(?:[,.;!?]|$)|\s+(?:on|at|in|by|from|starting)\b)"#, "every year"),
+        (#"\bquarterly\b(?=\s*(?:[,.;!?]|$)|\s+(?:on|at|in|by|from|starting)\b)"#, "every 3 months"),
+        (#"\b(?:biweekly|bi-weekly|fortnightly)\b(?=\s*(?:[,.;!?]|$)|\s+(?:on|at|in|by|from|starting)\b)"#, "every 2 weeks"),
         (#"\bevery\s+(?:second|other)\s+day\b"#, "every 2 days"),
         (#"\bevery\s+fortnight\b"#, "every 2 weeks"),
         // Leading frequency words: "pay the mortgage monthly on the first".
@@ -1278,6 +1286,16 @@ enum ClauseJuxtaposition {
     /// the one that matters most — "cancel *the call* Mom reminder", where the
     /// verb is the name of the thing being cancelled rather than a new
     /// instruction. An article in front of it is the tell.
+    /// What has to sit in front of "better" for it to be an obligation rather
+    /// than a comparative. Closed and tiny on purpose: English has exactly one
+    /// deontic `better`, and it always carries its subject or the clitic of
+    /// `had`.
+    private static let deonticBetterSubject: Set<String> = [
+        "i", "we", "you", "they", "he", "she", "id", "i'd", "i’d",
+        "we'd", "we’d", "youd", "you'd", "you’d", "theyd", "they'd", "they’d",
+        "hed", "he'd", "he’d", "shed", "she'd", "she’d", "had"
+    ]
+
     private static let clauseInternalLead: Set<String> = [
         // Function words that cannot end a clause.
         "to", "and", "or", "but", "then", "also", "plus", "not", "dont", "don't",
@@ -1285,6 +1303,18 @@ enum ClauseJuxtaposition {
         "should", "can", "could", "may", "might", "must", "gonna", "wanna",
         "never", "i", "we", "you", "they", "he", "she", "it", "ill", "well",
         "gotta", "need", "needs", "wants", "want", "going", "than",
+        // The spoken contractions of the same obligation frames one line up.
+        // "gotta", "wanna" and "gonna" were here; "hafta", "oughta" and "needa"
+        // were not, and they are the obligation forms that reach clause
+        // splitting unprotected — every multi-word frame ends in "to", which is
+        // already the first entry in this set. The consequence was a row of its
+        // own titled "I hafta", beside the errand it was severed from.
+        //
+        // "better" is the fourth such form and it is deliberately NOT here: it
+        // is also an ordinary comparative, and a comparative is exactly where a
+        // spoken sentence ends one clause and starts another. See
+        // `deonticBetterSubject`.
+        "hafta", "oughta", "needa",
         // Motion verbs that take a second verb: "go get the laundry",
         // "come see the house", "run grab the mail".
         "go", "goes", "come", "comes", "run", "stop", "swing", "head", "try",
@@ -1377,6 +1407,17 @@ enum ClauseJuxtaposition {
                   !endsOnReportedSpeech(head),
                   let last = recent.last,
                   !clauseInternalLead.contains(last),
+                  // "Better" is two different words. After a subject or its
+                  // auxiliary it is the obligation — "I better call the
+                  // plumber" is one errand, and cutting it filed a row titled
+                  // "I better". Anywhere else it is a comparative, and a
+                  // comparative is precisely where an unpunctuated sentence
+                  // ends one clause and starts the next: "the weather is
+                  // better book the campsite" is a fact and an errand. Only the
+                  // word in front of it tells the two apart, so this cannot
+                  // live in `clauseInternalLead`, which sees one token.
+                  !(last == "better"
+                    && recent.dropLast().last.map(deonticBetterSubject.contains) == true),
                   // A hedge can hide the modal it belongs to — "should probably
                   // book the dentist" — so the word behind it is checked too,
                   // but only then. Checking it unconditionally swallowed real

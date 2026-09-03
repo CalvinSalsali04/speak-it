@@ -4,6 +4,14 @@
 **Decision date:** 2026-08-24  
 **Audience:** Product, engineering, QA, and beta support
 
+> **Window sizes, corrected.** The finished-sentence window is **1.9 s**
+> (`completeThoughtPauseMilliseconds`), settled in build 16 — this document
+> previously quoted 2.1 s throughout, which sent the pre-submission tester
+> looking for a fast path the code no longer has. The 2.1 s figure now belongs
+> to `continuationPromptPauseMilliseconds`: how long Speak It waits before
+> *asking* whether an unfinished thought is still coming. Different number,
+> different job.
+
 ## Direct answer
 
 Speak It should not use one silence timeout for every utterance. It should keep
@@ -13,9 +21,9 @@ cue such as **at**, **and**, **to**, an article, a list opener, or a hesitation.
 
 The implemented behavior is:
 
-| Live evidence | At 2.1 seconds of pause | Base silence window | What ends the wait |
+| Live evidence | At 1.9 seconds of pause | Base silence window | What ends the wait |
 | --- | --- | --- | --- |
-| Wording appears complete | Save normally | 2.1 seconds | Automatic save or an earlier pulse tap |
+| Wording appears complete | Save normally | 1.9 seconds | Automatic save or an earlier pulse tap |
 | Ending is ambiguous | Show **Still listening…** | 4 seconds | More speech resets the decision; a pulse tap finishes immediately; otherwise save at the cap |
 | Wording appears clearly incomplete | Show **Still listening…** | 8 seconds | More speech resets the decision; a pulse tap finishes immediately; otherwise save at the cap |
 | No recognized words | Keep the existing listening UI | 10 seconds | Speech begins, or the existing no-speech recovery/timeout runs |
@@ -35,7 +43,7 @@ families:
 | --- | --- | --- |
 | Lexical/pragmatic tail | Does the current wording leave a connector, recipient, time, noun phrase, list, or hesitation open? | Uses categories of cues and three confidence tiers, not one phrase match |
 | Transcript evolution | Did recognized words actually change? | Punctuation-only, capitalization-only, quote, and whitespace revisions no longer restart the timer or hide the prompt |
-| Pause duration | How long has the current candidate silence lasted? | Each stable transcript gets a 2.1-, 4-, or 8-second base window; genuine new words reset it and raw audio can defer it only a bounded number of times |
+| Pause duration | How long has the current candidate silence lasted? | Each stable transcript gets a 1.9-, 4-, or 8-second base window; genuine new words reset it and raw audio can defer it only a bounded number of times |
 | Fresh audio activity | Did sound resume before ASR published the new words? | May briefly defer a boundary, but only a bounded number of times because noise is not proof of speech |
 | Explicit/system state | Did the person tap finish, or did capture fail or get interrupted? | Manual finish wins; unexpected backend stops use protected-recording recovery |
 
@@ -171,10 +179,10 @@ rest of the thought.
 | “Tomorrow at…” or “call my…” | Show the continuation cue and wait up to 8 seconds | Strong evidence that a value or noun is missing |
 | “Tomorrow. At.”, quoted/parenthesized **at**, or missing whitespace around punctuation | Wait up to 8 seconds | Endpointing reads lexical words, not inferred formatting |
 | “Buy milk and, um…” | Wait up to 8 seconds | Connector/filler punctuation is normalized |
-| “Pick up ice wine at LCBO” | Save after 2.1 seconds | The place value completes the phrase |
-| “Pick up ice wine at LCBO tomorrow at six” | Save after 2.1 seconds | The time value completes the phrase |
+| “Pick up ice wine at LCBO” | Save after 1.9 seconds | The place value completes the phrase |
+| “Pick up ice wine at LCBO tomorrow at six” | Save after 1.9 seconds | The time value completes the phrase |
 | “Who are you going with?” | May wait 4 seconds | Trailing prepositions can be grammatical in questions; the user can tap to finish |
-| A complete clause followed by an unspoken intended second idea | Usually save after 2.1 seconds | No transcript can prove an idea the person has not started; future personalization may help |
+| A complete clause followed by an unspoken intended second idea | Usually save after 1.9 seconds | No transcript can prove an idea the person has not started; future personalization may help |
 | The speaker resumes at the timeout boundary | Continue listening | Transcript updates cancel the timer; fresh audio covers recognizer lag |
 | Steady music, traffic, fan, or another speaker | Audio deferral is capped | Raw level is not a perfect voice detector, so noise must not keep the mic open forever |
 | Recognizer rewrites the last few words | Reclassify from the newest full transcript | The previous task is cancelled |
@@ -238,7 +246,7 @@ Before shipping, run the automated endpointing tests and physically test:
 
 1. The exact ice-wine phrase with 3-, 5-, and 7-second thinking pauses after **at**.
 2. Resuming at approximately 7.5 seconds, including over AirPods.
-3. A complete one-line command to confirm the normal 2.1-second path is unchanged.
+3. A complete one-line command to confirm the normal 1.9-second path is unchanged.
 4. The 4-second middle path with “count me in”, “what I came for”, and “do it next”.
 5. Auto-punctuated **at.**, fillers, lists, and a question ending in a preposition.
 6. Quiet room, café noise, fan/traffic noise, another nearby speaker, and music leakage.

@@ -106,7 +106,14 @@ enum ActionabilityReader {
     /// obligation carrying a real object ("I need to call the contractor") from
     /// one carrying a pronoun ("I've been meaning to do this"). One vocabulary,
     /// so the two cannot drift.
-    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|got\s+ta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to)"#
+    ///
+    /// `hafta`, `oughta` and `needa` are the spoken contractions of forms
+    /// already here, and carry no other meaning in English, so they are listed
+    /// bare. `better` is not: it is an ordinary comparative, and this pattern is
+    /// tested **unanchored** (`isOutstanding`), so a bare entry would read "the
+    /// weather is better tomorrow" as an errand. Only the forms carrying their
+    /// subject or auxiliary are admitted.
+    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|got\s+ta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
 
     /// Past-tense verbs that report something already done.
     private static let completedVerb = #"(?:bought|got|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
@@ -791,6 +798,11 @@ enum ActionabilityReader {
 
     /// Held once; loading is the expensive part.
     private static let personNameEmbedding = NLEmbedding.wordEmbedding(for: .english)
+
+    /// See `PersonMentionResolver.preloadEmbedding`.
+    static func preloadEmbedding() {
+        _ = personNameEmbedding
+    }
 
     /// Whether any token after the first reads as a verb, which is what a
     /// subject-verb-object sentence has and an imperative does not.

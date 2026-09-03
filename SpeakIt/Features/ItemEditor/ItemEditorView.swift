@@ -16,7 +16,13 @@ struct ItemEditorView: View {
     @Environment(\.thoughtRepository) private var repository
 
     let item: CapturedItem
-    let showsTutorialGuidance: Bool
+    /// Set only while the first-run tutorial sent the person here, so the
+    /// editor can say which step it is standing in for. The sheet covers the
+    /// tutorial banner, and without this the person is left holding an ordinary
+    /// edit form with no sign that the tutorial is still waiting behind it.
+    let tutorialStep: TutorialStep?
+
+    private var showsTutorialGuidance: Bool { tutorialStep != nil }
 
     /// Resolved once on open. The asterisk has to stay on the field the person
     /// arrived to fill, so it must not re-derive from the item — or from live
@@ -68,9 +74,62 @@ struct ItemEditorView: View {
     @State private var editedLocationIntent: LocationIntent?
     private let hadLocationIntent: Bool
 
-    init(item: CapturedItem, showsTutorialGuidance: Bool = false) {
+    /// The form's values as it opened.
+    ///
+    /// Compared against the live `@State` to answer one question: has the
+    /// person typed anything they would lose? Held as a snapshot rather than
+    /// re-read from `item`, because the item is mutated by Save and by the
+    /// capture-review screen, and this has to mean "since this form appeared".
+    private struct OpeningValues: Equatable {
+        let title: String
+        let itemType: ItemType
+        let category: ItemCategory
+        let priority: ItemPriority
+        let hasDueDate: Bool
+        let dueDate: Date
+        let dueDateHasTime: Bool
+        let hasReminder: Bool
+        let reminderDate: Date
+        let repeats: Bool
+        let recurrenceFrequency: RecurrenceFrequency
+        let recurrenceInterval: Int
+        let recurrenceAfterCompletion: Bool
+        let personName: String
+        let needsClarification: Bool
+        let locationIntent: LocationIntent?
+    }
+    private let openingValues: OpeningValues
+
+    /// True once anything on the form differs from how it opened.
+    ///
+    /// This screen exists to repair what the recognizer misheard, and a
+    /// downward drag starting anywhere on the Form — including on the Title
+    /// field at the very top — used to dismiss it and throw all of that away
+    /// with no warning at all.
+    private var hasUnsavedChanges: Bool {
+        openingValues != OpeningValues(
+            title: title,
+            itemType: itemType,
+            category: category,
+            priority: priority,
+            hasDueDate: hasDueDate,
+            dueDate: dueDate,
+            dueDateHasTime: dueDateHasTime,
+            hasReminder: hasReminder,
+            reminderDate: reminderDate,
+            repeats: repeats,
+            recurrenceFrequency: recurrenceFrequency,
+            recurrenceInterval: recurrenceInterval,
+            recurrenceAfterCompletion: recurrenceAfterCompletion,
+            personName: personName,
+            needsClarification: needsClarification,
+            locationIntent: editedLocationIntent
+        )
+    }
+
+    init(item: CapturedItem, tutorialStep: TutorialStep? = nil) {
         self.item = item
-        self.showsTutorialGuidance = showsTutorialGuidance
+        self.tutorialStep = tutorialStep
         self.pendingOperation = PendingOperationStore.record(for: item.id)
         self.requirement = item.clarificationRequirement
         self.hadLocationIntent = item.locationIntent != nil
@@ -91,6 +150,24 @@ struct ItemEditorView: View {
         _recurrenceAfterCompletion = State(initialValue: recurrence?.anchor == .completionDate)
         _personName = State(initialValue: item.personName ?? "")
         _needsClarification = State(initialValue: item.needsClarification)
+        openingValues = OpeningValues(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            priority: item.priority,
+            hasDueDate: item.dueDate != nil,
+            dueDate: item.dueDate ?? .now,
+            dueDateHasTime: !item.isDateOnly,
+            hasReminder: item.reminderDate != nil,
+            reminderDate: item.reminderDate ?? item.dueDate ?? .now,
+            repeats: recurrence != nil,
+            recurrenceFrequency: recurrence?.frequency ?? .weekly,
+            recurrenceInterval: recurrence?.interval ?? 1,
+            recurrenceAfterCompletion: recurrence?.anchor == .completionDate,
+            personName: item.personName ?? "",
+            needsClarification: item.needsClarification,
+            locationIntent: item.locationIntent
+        )
     }
 
     var body: some View {
@@ -104,8 +181,8 @@ struct ItemEditorView: View {
     private var editorForm: some View {
         NavigationStack {
             Form {
-                if showsTutorialGuidance {
-                    Section("Practice") {
+                if let tutorialStep {
+                    Section {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "hand.tap")
                                 .font(.system(size: 15, weight: .semibold))
@@ -115,7 +192,7 @@ struct ItemEditorView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Change the thought here")
                                     .font(.subheadline.weight(.semibold))
-                                Text("Edit the highlighted title, then tap Save—or continue without changing it.")
+                                Text("Edit the highlighted title, then tap Save—or continue without changing it. Either one returns you to the tutorial.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -124,6 +201,10 @@ struct ItemEditorView: View {
                         .padding(.vertical, 4)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("tutorial.editor.guidance")
+                    } header: {
+                        TutorialStepHeader(step: tutorialStep, style: .compact)
+                            .textCase(nil)
+                            .padding(.bottom, 4)
                     }
                 }
 
@@ -256,10 +337,12 @@ struct ItemEditorView: View {
 
                 Section("Timing") {
                     Toggle("Has a due date", isOn: $hasDueDate)
+                        .tint(Color.speakToggleTint)
                         .accessibilityHint("Turn off to keep this item unscheduled")
 
                     if hasDueDate {
                         Toggle("Has a time", isOn: $dueDateHasTime)
+                            .tint(Color.speakToggleTint)
                             .accessibilityHint("Turn off when only the day matters")
 
                         DatePicker(
@@ -274,6 +357,7 @@ struct ItemEditorView: View {
                     Toggle(isOn: $hasReminder) {
                         requiredLabel("Remind me", when: .time)
                     }
+                    .tint(Color.speakToggleTint)
                     .accessibilityHint("Schedules an alert for this thought")
 
                     if hasReminder {
@@ -296,6 +380,7 @@ struct ItemEditorView: View {
 
                     if itemType.isActionable {
                         Toggle("Repeat", isOn: $repeats)
+                            .tint(Color.speakToggleTint)
 
                         if repeats {
                             Picker("Frequency", selection: $recurrenceFrequency) {
@@ -339,7 +424,17 @@ struct ItemEditorView: View {
                         .autocorrectionDisabled(false)
                         .textContentType(.name)
                     }
-                    Toggle("Needs clarification", isOn: $needsClarification)
+                    // Named for what the person was actually shown. Today's
+                    // section, the row badge and `ItemPresentation` all say
+                    // "Needs review"; this control said "Needs clarification",
+                    // which is our word, not theirs — and for a gap no single
+                    // field can answer this toggle is the only way out, so the
+                    // one control they have to find was the one thing not
+                    // called what they were looking for.
+                    Toggle("Needs review", isOn: $needsClarification)
+                        .tint(Color.speakToggleTint)
+                        .accessibilityHint("Turn off once this thought looks right to you")
+                        .accessibilityIdentifier("editor.needsReview")
                 }
 
                 if canContinueInAnotherApp {
@@ -381,7 +476,16 @@ struct ItemEditorView: View {
                     Text(item.captureSession?.originalTranscription ?? item.originalTextSegment)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
-                        .accessibilityLabel("Original thought")
+                        // The words themselves are the content here, and an
+                        // explicit label replaces them rather than introducing
+                        // them — so VoiceOver read "Original thought" and never
+                        // the thought. On the one screen whose whole purpose is
+                        // showing what was actually said, that is the thing a
+                        // VoiceOver user most needs to hear. The section header
+                        // already provides the introduction.
+                        .accessibilityLabel(
+                            "Original thought. \(item.captureSession?.originalTranscription ?? item.originalTextSegment)"
+                        )
 
                     LabeledContent(
                         "Captured",
@@ -393,7 +497,16 @@ struct ItemEditorView: View {
 
                     if let session = item.captureSession {
                         NavigationLink {
-                            CaptureSessionReviewView(session: session)
+                            CaptureSessionReviewView(
+                                session: session,
+                                // Split, Merge, Undo and Organize again all
+                                // rewrite or delete this very item, while this
+                                // form still holds the values it read in `init`.
+                                // Popping back and tapping Save wrote those
+                                // stale values over the result, undoing the
+                                // operation the person had just performed.
+                                onStructuralChange: { dismiss() }
+                            )
                         } label: {
                             requiredLabel(
                                 session.items.count > 1
@@ -423,8 +536,13 @@ struct ItemEditorView: View {
                             try repository?.setArchived(item, archived: !item.isArchived)
                         }
                     } label: {
+                        // "Restore" on its own, because there is no Inbox in
+                        // this product to restore to. Memory's swipe action
+                        // already calls it that, and naming a third destination
+                        // here sent people looking for a screen that does not
+                        // exist.
                         Label(
-                            item.isArchived ? "Restore to Inbox" : "Archive",
+                            item.isArchived ? "Restore" : "Archive",
                             systemImage: item.isArchived ? "tray.and.arrow.up" : "archivebox"
                         )
                     }
@@ -438,6 +556,11 @@ struct ItemEditorView: View {
             }
             .navigationTitle("Edit Thought")
             .navigationBarTitleDisplayMode(.inline)
+            // The drag has to stop working before it can throw work away. Cancel
+            // is still there and still discards — deliberately, because that is
+            // an explicit choice — but a swipe that starts on the Title field is
+            // not one.
+            .interactiveDismissDisabled(hasUnsavedChanges)
             .task {
                 refreshLocationBlocker()
                 await refreshNotificationDeliveryState()
@@ -491,8 +614,29 @@ struct ItemEditorView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    perform(dismissAfterward: true) {
-                        try repository?.delete(item)
+                    // Dismiss first, delete after.
+                    //
+                    // For a single-thought capture — the common case — `delete`
+                    // removes the *session*, and the cascade rule on
+                    // `CaptureSession.items` invalidates this very item. The
+                    // sheet takes about a third of a second to animate out, and
+                    // this body keeps reading `item.isCompleted`,
+                    // `item.isArchived` and `item.captureSession` the whole
+                    // time — on a model whose backing data is gone. Letting the
+                    // dismissal finish first means nothing re-reads it.
+                    guard let repository else {
+                        errorMessage = "Local storage is unavailable."
+                        return
+                    }
+                    let doomed = item
+                    dismiss()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(420))
+                        do {
+                            try repository.delete(doomed)
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -669,6 +813,7 @@ struct ItemEditorView: View {
             }
 
             Toggle("Every time", isOn: locationRepeatsBinding)
+                .tint(Color.speakToggleTint)
                 .accessibilityHint(
                     "On reminds you every time you cross this place. Off reminds you once."
                 )
@@ -945,6 +1090,11 @@ struct ItemEditorView: View {
     /// not inferred, it is asked for, and leaving the type alone would file the
     /// item in Memory with a deadline nothing ever surfaces.
     private var scheduledItemType: ItemType {
+        // Changing the type by hand is the most explicit thing the person has
+        // said about where this belongs, so it wins outright. Without this the
+        // promotion below silently undid it, and a dated row could never be
+        // moved to Memory at all: pick Note, save, and it came back a task.
+        guard itemType == item.itemType else { return itemType }
         guard hasDueDate || hasReminder, !itemType.isActionable else { return itemType }
         return .task
     }
@@ -1034,11 +1184,11 @@ struct ItemEditorView: View {
         }
     }
 
+    /// The same memoized reading the row glyph and the scheduler use, so the
+    /// editor explains the alert that will actually fire and does not re-run
+    /// the whole capture pipeline on every render.
     private var inferredReminderDelivery: ReminderDelivery {
-        ThoughtOrganizer.organize(
-            item.captureSession?.originalTranscription ?? item.originalTextSegment,
-            referenceDate: item.createdAt
-        ).reminderDelivery
+        ItemPresentation.effectiveReminderDelivery(for: item)
     }
 
     private func perform(dismissAfterward: Bool = false, _ action: () throws -> Void) {

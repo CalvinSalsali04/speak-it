@@ -191,6 +191,14 @@ a { color: inherit; text-decoration: none; }
 }
 .wordmark__glyph { width: 21px; height: 21px; flex: none; }
 
+/* The drawn wordmark: same geometry as the app and the icon. The text stays
+   in the DOM for assistive tech and search, visually replaced by the path. */
+.wordmark__word { height: 11px; width: auto; display: block; }
+.wordmark__name {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
 .nav__links {
   display: flex;
   gap: 28px;

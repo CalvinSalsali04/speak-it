@@ -1129,7 +1129,19 @@ enum CaptureAudioRecovery {
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
         request.contextualStrings = SpeechVocabularyStore.contextualPhrases
-        request.requiresOnDeviceRecognition = false
+        // Keep the protected recording on the device whenever this iPhone can
+        // read it locally.
+        //
+        // The live path sets this false deliberately, because a locale asset
+        // may not have finished downloading and the person is waiting on the
+        // very first tap. Neither argument applies here: the audio is already
+        // on disk, so a slower local model costs nothing anyone can feel, and
+        // recovery can run unattended at launch. Meanwhile the screen above it
+        // says "The temporary recording is safe on this iPhone", and the Today
+        // section under it says these recordings "stay only on this iPhone" —
+        // so uploading the file made three separate strings untrue at the
+        // moment they were on screen.
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
 
         let completion = AudioRecoveryCompletion()
         return try await withTaskCancellationHandler {
