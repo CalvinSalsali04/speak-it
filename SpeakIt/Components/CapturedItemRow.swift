@@ -156,7 +156,7 @@ struct CapturedItemRow: View {
                     // way to tell which one will actually alert. This glyph is
                     // the persistent distinction; the receipt word that used to
                     // carry it auto-dismissed in 3.6 seconds. See
-                    // FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
+                    // Docs/FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
                     if let alertGlyph = alertGlyph(for: presentation) {
                         Image(systemName: alertGlyph)
                             .font(.caption2)
@@ -293,7 +293,7 @@ struct CapturedItemRow: View {
 /// A swipe genuinely is not available here. `.swipeActions` needs a `List`, and
 /// the hand-rolled `DragGesture` that preceded this won the touch outright and
 /// stopped vertical scrolling — the reason it was removed in the first place,
-/// recorded in `KNOWN_ISSUES.md`. A context menu is the affordance that works
+/// recorded in `Docs/KNOWN_ISSUES.md`. A context menu is the affordance that works
 /// inside a scroll view without competing for the drag, and it is the one
 /// Memory's rows already offer, so the two screens now teach the same gesture.
 struct RowQuickAction<Content: View>: View {

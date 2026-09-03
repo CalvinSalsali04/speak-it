@@ -5389,7 +5389,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertFalse(item.isCompleted)
     }
 
-    /// FINAL_RELEASE_AUDIT.md H-1/E-1: a monthly ordinal-weekday series
+    /// Docs/FINAL_RELEASE_AUDIT.md H-1/E-1: a monthly ordinal-weekday series
     /// ("the first Monday of every month") cannot be expressed as a single
     /// native repeating trigger, so it used to depend entirely on the person
     /// completing the missed occurrence for the series to continue. This

@@ -993,7 +993,7 @@ enum ReminderScheduler {
            abs(repeatingNextFire.timeIntervalSince(group.fireDate)) < 60 {
             // A recurring reminder that only ever schedules its next single
             // occurrence stops firing the moment the person misses one — see
-            // FINAL_RELEASE_AUDIT.md H-1/E-1. Handing iOS the recurring
+            // Docs/FINAL_RELEASE_AUDIT.md H-1/E-1. Handing iOS the recurring
             // components instead means the series keeps firing on its own
             // schedule even if the app never runs again to regenerate it; the
             // next `CapturedItem` occurrence, once the app does process a

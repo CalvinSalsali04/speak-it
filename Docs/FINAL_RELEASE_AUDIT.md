@@ -412,14 +412,14 @@ SpeakIt.session.B5ED0D20-….B5ED0D20-…-1787230800   Call the bank
 
 Three individually reasonable lines interact to produce this:
 
-1. [`ThoughtOrganizer.swift:1186`](SpeakIt/Repositories/ThoughtOrganizer.swift:1186)
+1. [`ThoughtOrganizer.swift:1186`](../SpeakIt/Repositories/ThoughtOrganizer.swift:1186)
    ```swift
    delivery: reminderDate == nil ? .none : delivery
    ```
    The one-off resolver found no clock in "every morning", so `reminderDate` is
    nil and `delivery` is zeroed — even though `wantsReminder` was true.
 
-2. [`ThoughtOrganizer.swift:271`](SpeakIt/Repositories/ThoughtOrganizer.swift:271)
+2. [`ThoughtOrganizer.swift:271`](../SpeakIt/Repositories/ThoughtOrganizer.swift:271)
    ```swift
    let reminderDate = timing.delivery == .none ? timing.reminderDate
                                                : (recurringDate ?? timing.reminderDate)
@@ -428,7 +428,7 @@ Three individually reasonable lines interact to produce this:
    occurrence is never promoted to the reminder date. The date exists — it is on
    screen — but it is only a due date.
 
-3. [`ThoughtOrganizer.swift:307`](SpeakIt/Repositories/ThoughtOrganizer.swift:307)
+3. [`ThoughtOrganizer.swift:307`](../SpeakIt/Repositories/ThoughtOrganizer.swift:307)
    ```swift
    needsClarification: (timing.needsClarification && recurringDate == nil) || …
    ```
@@ -513,13 +513,13 @@ distinct — "Cancelled", not "Remembered", for a real cancellation.
 
 ### Source investigation (after observation)
 
-- F-2: [`SpeechRepair.swift:452`](SpeakIt/Repositories/SpeechRepair.swift:452)
+- F-2: [`SpeechRepair.swift:452`](../SpeakIt/Repositories/SpeechRepair.swift:452)
   ```swift
   if matches(lower, #"\b(?:anything|everything|nothing)\b"#) { return nil }
   ```
   returns nil for *any* text containing "everything". The broad-scope branch that
   would return `isBroad: true` sits three lines later at
-  [`:455`](SpeakIt/Repositories/SpeechRepair.swift:455) and is therefore
+  [`:455`](../SpeakIt/Repositories/SpeechRepair.swift:455) and is therefore
   unreachable for that word. It is reachable via "all" / "every", which is why
   "Cancel all my reminders" behaves correctly. The guard's own comment is about
   "Don't schedule anything Friday" — a legitimate constraint case — so the fix
@@ -949,13 +949,13 @@ complete. Everything else in the matrix below was genuinely exercised.
 - **P1/P2 candidate (pending further investigation) — E-1: a recurring
   reminder's delivery schedule depends on the app processing completion, not
   on the stated recurrence.** Source-confirmed (not just black-box): per
-  [`ReminderScheduler.swift:685-757`](SpeakIt/Repositories/ReminderScheduler.swift:685),
+  [`ReminderScheduler.swift:685-757`](../SpeakIt/Repositories/ReminderScheduler.swift:685),
   every notification this app schedules is a **one-shot** trigger
   (`repeats: false`) for a single concrete `fireDate` — there is no
   `repeats: true` anywhere in the file. The next occurrence of a recurring
   item is only computed when the *current* occurrence is marked complete,
   via `SwiftDataThoughtRepository.nextRecurrenceDate(for:rule:completedAt:)`
-  ([`SwiftDataThoughtRepository.swift:1771-1798`](SpeakIt/Repositories/SwiftDataThoughtRepository.swift:1771)),
+  ([`SwiftDataThoughtRepository.swift:1771-1798`](../SpeakIt/Repositories/SwiftDataThoughtRepository.swift:1771)),
   which generates a new `CapturedItem` and schedules *its own* one-shot
   notification. **Consequence: if the user never marks a recurring reminder
   complete (and never reopens the app to process it some other way), it
@@ -1444,7 +1444,7 @@ Release binary fresh for this pass (`e488642` + current working tree).
   the still-open system dialog**, before the person answered it — this is
   `hasRequestedAlwaysAuthorization` being recorded *before* the call, exactly
   as documented at
-  [`LocationReminderMonitor.swift:163-165`](SpeakIt/Repositories/LocationReminderMonitor.swift:163):
+  [`LocationReminderMonitor.swift:163-165`](../SpeakIt/Repositories/LocationReminderMonitor.swift:163):
   a prompt the person swipes away without answering still correctly counts as
   spent, since iOS will not show it again either way. **PASS** — confirms the
   code comment's claim live.
@@ -1474,7 +1474,7 @@ Release binary fresh for this pass (`e488642` + current working tree).
   back-affordance at the top of Settings). **One caveat:** it landed on the
   Settings **root** screen rather than jumping directly into Speak It's own
   settings page. The code uses the standard, correct API
-  ([`ItemEditorView.swift:702-703`](SpeakIt/Features/ItemEditor/ItemEditorView.swift:702)),
+  ([`ItemEditorView.swift:702-703`](../SpeakIt/Features/ItemEditor/ItemEditorView.swift:702)),
   and `openSettingsURLString` is documented by Apple to deep-link straight to
   the calling app's page — landing at root is a known Simulator-only quirk in
   some Xcode/runtime combinations rather than a confirmed app defect.
@@ -1533,7 +1533,7 @@ path in `ReminderScheduler.swift` for correctness.
   established elsewhere). Saving returned to Today with the item correctly
   removed from **Coming up** (4 → 3) and surfaced under "**1 completed
   today**" — no crash, no stuck state, no duplicate. This exercises
-  [`ReminderScheduler.cancel(itemID:)`](SpeakIt/Repositories/ReminderScheduler.swift:438),
+  [`ReminderScheduler.cancel(itemID:)`](../SpeakIt/Repositories/ReminderScheduler.swift:438),
   which calls both `delivery.removeNotifications` and
   `delivery.cancelAlarm(itemID)`. **PASS** as far as the app's own
   code path is concerned.
@@ -1543,7 +1543,7 @@ path in `ReminderScheduler.swift` for correctness.
 - **P2 — J-1: alarms requested with "wake me up" phrasing always get the
   generic title "Your reminder," and that generic string is what the real
   system alarm-ringing screen would show.**
-  [`ReminderCopy.action(from:)`](SpeakIt/Repositories/ReminderScheduler.swift:72)
+  [`ReminderCopy.action(from:)`](../SpeakIt/Repositories/ReminderScheduler.swift:72)
   strips the recognized command phrase (`wake\s+me(?:\s+up)?`, among others)
   and then strips all trailing timing language ("at 6:30," "tomorrow," "in
   ten minutes"). For "remind me **to** water the plants," the "to"-connector
@@ -1551,10 +1551,10 @@ path in `ReminderScheduler.swift` for correctness.
   tomorrow," there is no "to"/"about" connector, the command phrase and the
   time are the *entire* sentence, and the candidate is empty — so it falls
   back to the literal string `"Your reminder"`
-  ([`ReminderScheduler.swift:74`](SpeakIt/Repositories/ReminderScheduler.swift:74),
-  [`:132`](SpeakIt/Repositories/ReminderScheduler.swift:132)). This exact
+  ([`ReminderScheduler.swift:74`](../SpeakIt/Repositories/ReminderScheduler.swift:74),
+  [`:132`](../SpeakIt/Repositories/ReminderScheduler.swift:132)). This exact
   string is passed as `AlarmPresentation.Alert`'s title
-  ([`ReminderScheduler.swift:622`](SpeakIt/Repositories/ReminderScheduler.swift:622)),
+  ([`ReminderScheduler.swift:622`](../SpeakIt/Repositories/ReminderScheduler.swift:622)),
   so it is what would be on screen when the alarm actually rings, and it is
   also the item's permanent title on every Today row and in every list.
   "Wake me up (at time)" is arguably the single most natural way to ask for
@@ -1565,7 +1565,7 @@ path in `ReminderScheduler.swift` for correctness.
 
 - **AlarmKit permission escalation/denial recovery banner.** The code exists
   and mirrors the location pattern exactly —
-  [`TodayView.swift:579-608`](SpeakIt/Features/Today/TodayView.swift:579):
+  [`TodayView.swift:579-608`](../SpeakIt/Features/Today/TodayView.swift:579):
   `reminderAccessStatus == .denied` swaps a `bell`/`bell.slash` icon,
   "Make reminders work"/"Reminders are off" copy, and an "Allow"/"Settings"
   button. `simctl privacy` has no service for AlarmKit or
@@ -1788,7 +1788,7 @@ earlier scan predates several new files, e.g. `ReferralService.swift`).
 - **P2 — S-1: `PrivacyInfo.xcprivacy` has no
   `NSPrivacyAccessedAPICategorySystemBootTime` declaration, but the app uses
   a Required-Reason API in that category.**
-  [`SpeechTranscriber.swift:493`](SpeakIt/Features/Capture/SpeechTranscriber.swift:493)
+  [`SpeechTranscriber.swift:493`](../SpeakIt/Features/Capture/SpeechTranscriber.swift:493)
   reads `ProcessInfo.processInfo.systemUptime` inside
   `AudioLevelUpdateGate.shouldPublish(level:publishesAudioLevel:)`, purely to
   throttle audio-level UI updates to ~12 Hz — a legitimate "measure elapsed
@@ -1844,12 +1844,12 @@ driving, per instruction.
   SECTION S). `ReferralProgramConfiguration.apiBaseURL` returns `nil`
   whenever the configured string is empty, contains an unexpanded `$(`,
   isn't `https`, or carries embedded user/password —
-  [`ReferralService.swift:47-59`](SpeakIt/Features/Setup/ReferralService.swift:47)
+  [`ReferralService.swift:47-59`](../SpeakIt/Features/Setup/ReferralService.swift:47)
   — so `isEnabled` is `false`, matching `DECISIONS.md` (2026-08-17,
   "Referrals are isolated, verified, and launch-gated"): *"An empty referral
   API URL leaves the existing 'Share Speak It' row in place."*
 - **Safe degradation when a referral link arrives anyway.**
-  [`RootView.handleDeepLink(_:)`](SpeakIt/App/RootView.swift:667) stores any
+  [`RootView.handleDeepLink(_:)`](../SpeakIt/App/RootView.swift:667) stores any
   recognized referral code into `PendingReferralStore.code` unconditionally,
   but only promotes it to a visible `activeReferralCode` (which opens
   `ReferralProgramView`) when `ReferralProgramConfiguration.isEnabled` is
@@ -1860,7 +1860,7 @@ driving, per instruction.
   somehow attempted without a configured base URL: `guard let baseURL =
   ReferralProgramConfiguration.apiBaseURL ... else { throw
   ReferralClientError.notConfigured }`
-  ([`ReferralService.swift:333-335`](SpeakIt/Features/Setup/ReferralService.swift:333)),
+  ([`ReferralService.swift:333-335`](../SpeakIt/Features/Setup/ReferralService.swift:333)),
   surfaced to any caller as *"Referrals are not connected in this build."*
   **PASS.**
 - **Website's own switch is correctly OFF and matches app state.**
@@ -1883,7 +1883,7 @@ driving, per instruction.
   entitlement. This is the actual, load-bearing mechanism.
 - **The `https://speakitapp.ca/invite` branch of `ReferralDeepLink.code(from:)`
   cannot currently fire from a real tap.**
-  [`ReferralService.swift:71-77`](SpeakIt/Features/Setup/ReferralService.swift:71)
+  [`ReferralService.swift:71-77`](../SpeakIt/Features/Setup/ReferralService.swift:71)
   also parses `https://speakitapp.ca/invite?ref=...` as a second, alternate
   way to extract a referral code — but iOS only routes an `https` URL to an
   app (rather than to Safari) via Universal Links, which require **both** a
@@ -1943,7 +1943,7 @@ inspection only, per instruction.
   reads `NO`; `SummerLaunchSale.isActive(at:)` is `isConfigured &&
   isWithinSaleWindow(at:)`, and `isConfigured` requires the Info.plist value
   to be one of `"YES"`/`"true"`/`"1"`
-  ([`ReferralService.swift:10-32`](SpeakIt/Features/Setup/ReferralService.swift:10)),
+  ([`ReferralService.swift:10-32`](../SpeakIt/Features/Setup/ReferralService.swift:10)),
   which `"NO"` is not. **PASS** — no sale copy renders anywhere in the
   shipping app today.
 - **The end date is not stale.** `endsAt` is hard-coded to
@@ -1979,7 +1979,7 @@ inspection only, per instruction.
   but the in-app paywall's real (non-preview) `planButton(_ product:)`
   only ever shows a struck-through "Regularly \(price)" for the **annual**
   plan —
-  [`SpeakItProView.swift:406-413`](SpeakIt/Features/Setup/SpeakItProView.swift:406):
+  [`SpeakItProView.swift:406-413`](../SpeakIt/Features/Setup/SpeakItProView.swift:406):
   `if isAnnual, SummerLaunchSale.isActive(), ...` — there is no equivalent
   `if !isAnnual` branch anywhere in that function. **Confirmed by direct
   source reading**, exactly as the README's own TODO states: *"The in-app
@@ -2190,7 +2190,7 @@ path from SECTION A: Welcome → Try it now → first durable capture → receip
   automation limitation already documented for Toggle controls in
   SECTION E); rather than spend further budget on coordinate-guessing, the
   empty-results path was confirmed by direct source reading instead:
-  [`LibraryView.swift:762-772`](SpeakIt/Features/Library/LibraryView.swift:762)
+  [`LibraryView.swift:762-772`](../SpeakIt/Features/Library/LibraryView.swift:762)
   renders **"No memories found" / "Try a person, project, place, or phrase
   you remember saying."** whenever `searchResults.isEmpty`. Satisfies both
   "explains what happened" and "explains what to do next." **PASS (source-
@@ -2242,7 +2242,7 @@ path from SECTION A: Welcome → Try it now → first durable capture → receip
   — `CaptureView.checkpoint()` writes every keystroke to `CaptureDraftStore`,
   and `RootView`'s launch `.task` calls
   `repository?.recoverInterruptedCaptureDraft()`
-  ([RootView.swift:263](SpeakIt/App/RootView.swift:263)) before anything
+  ([RootView.swift:263](../SpeakIt/App/RootView.swift:263)) before anything
   else runs — and DURABILITY_FINDINGS.md already covers the persistence
   guarantee exhaustively at the unit level. The gap is purely one of
   acknowledgment: someone who force-quits mid-sentence and reopens the app

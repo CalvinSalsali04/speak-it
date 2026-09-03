@@ -34,3 +34,23 @@ Marketing/SpeakIt-TikTok-UGC-Slideshows.zip
 # regenerate and expensive to carry in history forever.
 output/
 tmp/
+
+# Xcode result bundles and archives written by the Tools/CI scripts.
+*.xcresult
+*.xcarchive
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Node projects (FounderDashboard, ReferralService). Each has its own
+# .gitignore; these repeat the essentials so a stray install elsewhere in the
+# tree is never committed.
+node_modules/
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Python scratch (Demo/create_contact_sheet.py, Website/tools).
+__pycache__/
+*.pyc

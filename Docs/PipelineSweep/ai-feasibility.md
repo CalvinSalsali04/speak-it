@@ -302,7 +302,7 @@ both of Apple's stated criteria.
 The adapter is likely degrading quality here, and it is a one-line change to test:
 `SystemLanguageModel.default`. This should be A/B'd against the corpus before anything else
 is considered. It is possible `.contentTagging` was chosen deliberately and measured — if so
-that decision is not recorded in `DECISIONS.md` and should be.
+that decision is not recorded in `../DECISIONS.md` and should be.
 
 ---
 

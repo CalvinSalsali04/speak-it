@@ -1,0 +1,13 @@
+# gitleaks configuration for the CI secret scan (.github/workflows/ci.yml).
+# The default rule set applies; only the documented example files are excused.
+title = "Speak It"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Example configuration files that hold placeholder values on purpose"
+paths = [
+  '''ReferralService/\.env\.example''',
+  '''FounderDashboard/\.dev\.vars\.example''',
+]

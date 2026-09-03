@@ -1,6 +1,6 @@
 # Speak It founder dashboard
 
-- This directory is a separate nested Git repository and a private founder-only analytics site. Do not run parent-repository Git actions from here.
+- This directory is the private founder-only analytics site, a Node project inside the Speak It monorepo. Run its `npm` commands from here; Git operations happen at the repository root, and its CI job lives in `.github/workflows/ci.yml`.
 - It uses React 19, TypeScript, vinext, and Cloudflare tooling. Node.js 22.13+ is required.
 - Dashboard metrics are preview/demo data until live App Store and content-free product analytics credentials are deliberately connected. Never present demo data as real business performance.
 - Never expose PostHog keys, App Store credentials, user identifiers, emails, captured text, transcripts, task titles, memory text, or search terms in client-rendered code, logs, fixtures, screenshots, or commits.

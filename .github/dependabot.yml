@@ -1,0 +1,25 @@
+# Weekly dependency updates for the two Node projects and the pinned actions.
+# The iOS app has no package dependencies, so there is nothing to watch there.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /FounderDashboard
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /ReferralService
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

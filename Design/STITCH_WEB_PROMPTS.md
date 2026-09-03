@@ -273,7 +273,7 @@ Stitch gives you HTML/CSS. Before this ships:
 
 - [ ] Replace every `SCREENSHOT:` placeholder with the real PNG from `Design/Screenshots/`.
 - [ ] Generate a real QR code pointing at the live App Store URL (the app has no
-      public listing yet — see `APP_STORE_SUBMISSION.md`; use a placeholder until the
+      public listing yet — see `Docs/APP_STORE_SUBMISSION.md`; use a placeholder until the
       App Store ID exists, and do not ship a QR that resolves to nothing).
 - [ ] Use Apple's official "Download on the App Store" badge asset from Apple's
       marketing guidelines. Do not ship a Stitch-drawn imitation — it violates the

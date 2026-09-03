@@ -1,0 +1,77 @@
+# Archives the app and uploads it to App Store Connect (TestFlight).
+#
+# Manual only, and not yet rehearsed: the three App Store Connect secrets have
+# never been configured for this repository, so the first run is a trial.
+# Required secrets:
+#   ASC_KEY_ID        App Store Connect API key ID
+#   ASC_ISSUER_ID     the key's issuer ID
+#   ASC_PRIVATE_KEY   the .p8 contents, base64-encoded (base64 < AuthKey.p8)
+# Optional secret:
+#   SPEAKIT_ANALYTICS_KEY   PostHog project key; leave unset to ship with
+#                           analytics off, exactly as a local build does.
+name: TestFlight upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "runs-on label (blank = IOS_RUNNER variable, else macos-26)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Archive and upload
+    runs-on: ${{ inputs.runner || vars.IOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode 26.6 on a GitHub-hosted image
+        if: runner.environment == 'github-hosted'
+        run: |
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Check that the App Store Connect secrets exist
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set. See the header of .github/workflows/testflight.yml."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Install the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          chmod 700 "$RUNNER_TEMP/asc"
+          echo "$ASC_PRIVATE_KEY" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" >> "$GITHUB_ENV"
+
+      - name: Archive and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SPEAKIT_ANALYTICS_KEY: ${{ secrets.SPEAKIT_ANALYTICS_KEY }}
+          SPEAKIT_ARCHIVE_DIR: ${{ runner.temp }}/archive
+        run: Tools/CI/testflight.sh
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

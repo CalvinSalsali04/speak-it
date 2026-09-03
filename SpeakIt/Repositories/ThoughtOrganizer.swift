@@ -686,7 +686,7 @@ enum ThoughtOrganizer {
         // hang a delivery on and reports `.none`. The recurrence rule is what
         // supplies that clock (see `RecurrenceIntentParser.initialDate`), so a
         // request that would otherwise be silently dropped is rescued here
-        // instead. See FINAL_RELEASE_AUDIT.md H-1.
+        // instead. See Docs/FINAL_RELEASE_AUDIT.md H-1.
         let wantsRecurringReminder = timing.wantsReminder && timing.delivery == .none && recurringDate != nil
         let reminderDate = wantsRecurringReminder
             ? recurringDate
@@ -1490,7 +1490,7 @@ private enum RecurrenceIntentParser {
         // through unchanged), which is not an hour anyone asked for and, worse,
         // is a real fire time for a series that wants to alert. Every other
         // bare-day case in this app already means 9 AM; a bare recurring day
-        // means the same thing. See FINAL_RELEASE_AUDIT.md H-1.
+        // means the same thing. See Docs/FINAL_RELEASE_AUDIT.md H-1.
         return WallClockTime(
             hour: daypart?.defaultHour ?? TemporalResolver.dateOnlyAlertHour,
             minute: 0
