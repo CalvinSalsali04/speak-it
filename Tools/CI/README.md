@@ -12,7 +12,7 @@ evidence as the CI job.
 | `simulator-id.sh` | Picks the simulator `unit-tests.sh` uses: `SPEAKIT_SIMULATOR_ID`, else a `SpeakIt-Slim-*` pool device, else a booted iPhone | — |
 | `simulator-pool.sh [N]` | Creates or reuses `SpeakIt-Slim-1…N`, slims them with the profile below, boots them, prints their UDIDs | — |
 | `slim-simulator.sh <udid>` | Applies `simslim-profile.json` to one simulator; a no-op without SimSlim, and refuses non-pool devices unless `SPEAKIT_SLIM_ANY=1` | — |
-| `simslim-profile.json` | The SimSlim profile: every daemon category off except `com.apple.mobileassetd` | — |
+| `simslim-profile.json` | The SimSlim profile: every daemon category off, eight daemons kept (see its `description`) | — |
 | `testflight.sh` | Archives with automatic signing and uploads to App Store Connect; dispatch-only workflow, not yet rehearsed | no |
 
 Every script honours `DEVELOPER_DIR` and defaults it to `/Applications/Xcode.app`,

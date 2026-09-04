@@ -29,9 +29,10 @@ for runtime, entries in devices.items():
     if "iOS" not in runtime:
         continue
     for device in entries:
-        if device.get("isAvailable") and device["name"].startswith("iPhone"):
+        pooled = device["name"].startswith("SpeakIt-Slim-")
+        if device.get("isAvailable") and (pooled or device["name"].startswith("iPhone")):
             candidates.append((
-                device["name"].startswith("SpeakIt-Slim-"),
+                pooled,
                 device.get("state") == "Booted",
                 runtime_version(runtime),
                 device["udid"],

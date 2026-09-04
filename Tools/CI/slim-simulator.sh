@@ -10,9 +10,10 @@
 #
 #   Tools/CI/slim-simulator.sh <udid>
 #
-# The profile is Tools/CI/simslim-profile.json. It keeps exactly one daemon,
-# com.apple.mobileassetd, because NaturalLanguage loads its tagger and embedding
-# assets through it: with it off, every NLTagger/NLEmbedding-backed test fails.
+# The profile is Tools/CI/simslim-profile.json. Its `description` field says
+# exactly which daemons it keeps and why (MobileAsset for NaturalLanguage's
+# assets, the StoreKit set for the paywall); change the profile, not this
+# comment, when that list moves.
 #
 # Deliberately opt-in and non-fatal:
 #   - Without SimSlim on the PATH it prints how to install it and exits 0.
@@ -20,8 +21,9 @@
 #     simulator-pool.sh creates), because slimming disables widgets, Live
 #     Activities, Siri and the App Store on that device, which is a surprise on
 #     a simulator someone also uses by hand. Set SPEAKIT_SLIM_ANY=1 to override.
-#   - A device that already matches the profile is left alone; SimSlim reboots
-#     the simulator when it applies changes, and a reboot is not free.
+#   - A device that already matches the profile is left alone (it is booted
+#     first, because SimSlim reads the state of a running simulator); SimSlim
+#     reboots the simulator when it applies changes, and a reboot is not free.
 #
 # Environment:
 #   DEVELOPER_DIR           Xcode to use (default /Applications/Xcode.app)
@@ -62,6 +64,22 @@ case "$name" in
     fi
     ;;
 esac
+
+# `simslim verify` reads the booted simulator's launchd state, so a shut-down
+# device is booted first; otherwise every cold run would fall through to
+# `simslim on` and pay a reboot for a profile that was already in place.
+if ! xcrun simctl list devices -j | python3 -c '
+import json, sys
+udid = sys.argv[1]
+for entries in json.load(sys.stdin)["devices"].values():
+    for device in entries:
+        if device["udid"] == udid and device.get("state") == "Booted":
+            sys.exit(0)
+sys.exit(1)
+' "$UDID"; then
+  xcrun simctl boot "$UDID" >/dev/null 2>&1 || true
+  xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1 || true
+fi
 
 if simslim verify "$UDID" --profile "$PROFILE" >/dev/null 2>&1; then
   echo "slim-simulator.sh: $name ($UDID) already matches $(basename "$PROFILE")"

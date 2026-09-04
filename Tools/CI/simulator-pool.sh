@@ -63,9 +63,8 @@ for index in $(seq 1 "$COUNT"); do
     echo "simulator-pool.sh: created $name ($udid) on $runtime" >&2
   fi
   "$HERE/slim-simulator.sh" "$udid" >&2
-  state="$(echo "$existing" | awk -v n="$name" '$1 == n {print $3; exit}')"
-  if [ "$state" != "Booted" ]; then
-    xcrun simctl boot "$udid" >/dev/null 2>&1 || true
-  fi
+  # slim-simulator.sh boots the device when SimSlim is installed; this covers
+  # the stock path, and is a no-op on a device that is already up.
+  xcrun simctl boot "$udid" >/dev/null 2>&1 || true
   echo "$udid"
 done

@@ -590,7 +590,41 @@ enum ThoughtOrganizer {
     /// person", "reasons for two-factor authentication"), and the router's
     /// own lists already decide those.
     static func statesAClock(_ text: String) -> Bool {
-        TemporalIntentParser.statesASpokenClock(in: text.lowercased())
+        TemporalIntentParser.statesASpokenClock(in: text)
+    }
+
+    /// Whether the wording names a month and a day — "August 15", "15 August",
+    /// "the 3rd of December", "22 Sept" — by the resolver's own readers, guards
+    /// and abbreviations included, so the router cannot fall behind it again.
+    static func namesAMonthAndDay(_ text: String) -> Bool {
+        TemporalIntentParser.namesAMonthAndDay(in: text)
+    }
+
+    /// "Get moving", "get cracking", "get ready for the party": nothing is
+    /// being acquired. The word after the verb is itself a verb, or it is a
+    /// predicative adjective with no noun behind it — "get ready" as against
+    /// "get organic shampoo". The tagger reads the whole sentence, and the
+    /// product vocabulary can rescue a word it mis-tags ("chicken" tags Verb
+    /// in some positions) but never refuse one.
+    private static func acquiredObjectIsNotAThing(_ object: String, in sentence: String) -> Bool {
+        let context = SentenceContextCache.context(for: sentence)
+        let tokens = context.tokens
+        guard let verb = tokens.first,
+              let nextIndex = tokens.indices.dropFirst().first(where: { !tokens[$0].text.allSatisfy(\.isNumber) }),
+              tokens[nextIndex].range.lowerBound > verb.range.lowerBound else { return false }
+        let next = tokens[nextIndex]
+        let refused: Bool
+        if next.isVerb {
+            refused = true
+        } else if next.lexicalClass == .adjective {
+            // An adjective that modifies nothing: the phrase ends, or continues
+            // with a preposition, conjunction or adverb rather than a noun.
+            let after = tokens.indices.first { $0 > nextIndex }.map { tokens[$0] }
+            refused = after.map { !$0.isNominal && $0.lexicalClass != .adjective } ?? true
+        } else {
+            refused = false
+        }
+        return refused && !ShoppingGroupParser.namesOnlyProducts(object)
     }
 
     static func organize(
@@ -948,14 +982,18 @@ enum ThoughtOrganizer {
         // "get going", "get ready", "get home" acquire nothing, and "I need to
         // get up at 6 tomorrow" was a shopping row titled *up*. Particles and
         // quantifiers are closed classes, so testing them is grammar.
+        let acquisition = #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?"#
         if text.range(
-            of: #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?(?!the\b|a\b|an\b|my\b|his\b|her\b|our\b|their\b|that\b|this\b"#
+            of: acquisition
+                + #"(?!the\b|a\b|an\b|my\b|his\b|her\b|our\b|their\b|that\b|this\b"#
                 + #"|some\b|any\b|more\b|enough\b|no\b|it\b|them\b|him\b|me\b|us\b"#
-                + #"|up\b|back\b|going\b|ready\b|dressed\b|home\b|here\b|there\b|in\b|out\b|off\b|on\b|away\b"#
-                + #"|together\b|to\b|around\b|by\b|over\b|through\b|started\b|rid\b|lost\b|well\b|better\b|down\b|along\b)\w"#,
+                + #"|up\b|back\b|home\b|here\b|there\b|in\b|out\b|off\b|on\b|away\b|together\b|to\b|around\b|by\b|over\b|through\b|down\b|along\b)\w"#,
             options: .regularExpression
         ) != nil {
-            return .shopping
+            let object = text.replacingOccurrences(of: acquisition, with: "", options: .regularExpression)
+            if !acquiredObjectIsNotAThing(object, in: text) {
+                return .shopping
+            }
         }
 
         if readsLikeIdeaProposal(originalText) {
@@ -2576,16 +2614,24 @@ private enum TemporalIntentParser {
         // there for the same reason: "the 1st September" is read day-first.
         let weekdayGuard = #"(?!\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|week|month|thing|of|"#
             + monthNamePattern + #"))"#
-        if let match = firstMatch(
-            in: text,
-            pattern: #"\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b\#(weekdayGuard)\#(ordinalIsADate)"#
-        ), match.count >= 2, let day = Int(match[1]) {
+        let digitOrdinal = #"\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b\#(weekdayGuard)"#
+        if let match = firstMatch(in: text, pattern: digitOrdinal + ordinalIsADate),
+           match.count >= 2, let day = Int(match[1]) {
             return day
         }
-        guard let match = firstMatch(
-            in: text,
-            pattern: #"\b(?:on\s+)?the\s+(\#(ActionabilityReader.ordinalWord))\b\#(weekdayGuard)\#(ordinalIsADate)"#
-        ), match.count >= 2 else { return nil }
+        if let range = text.range(of: digitOrdinal, options: [.regularExpression, .caseInsensitive]),
+           ordinalContinuesWithAVerb(in: text, after: range),
+           let match = firstMatch(in: String(text[range]), pattern: #"(\d{1,2})"#), match.count >= 2 {
+            return Int(match[1])
+        }
+        let wordOrdinal = #"\b(?:on\s+)?the\s+(\#(ActionabilityReader.ordinalWord))\b\#(weekdayGuard)"#
+        if let match = firstMatch(in: text, pattern: wordOrdinal + ordinalIsADate), match.count >= 2 {
+            return ordinalWords[match[1].lowercased().replacingOccurrences(of: "-", with: " ")]
+        }
+        guard let range = text.range(of: wordOrdinal, options: [.regularExpression, .caseInsensitive]),
+              ordinalContinuesWithAVerb(in: text, after: range),
+              let match = firstMatch(in: String(text[range]), pattern: #"(\#(ActionabilityReader.ordinalWord))$"#),
+              match.count >= 2 else { return nil }
         return ordinalWords[match[1].lowercased().replacingOccurrences(of: "-", with: " ")]
     }
 
@@ -2604,8 +2650,8 @@ private enum TemporalIntentParser {
     /// definition, so testing it decides the *shape* of what follows, and the
     /// question it settles is whether "the first" is a date or an adjective.
     private static let closedClassAfterDate = #"(?:at|by|to|and|or|but|so|then|in|on|for|from|until|till|before|after|around|about"#
-        + #"|is|are|was|were|will|would|should|can|could|must|might|do|does|did|don't|doesn't|have|has|had|be|been|being"#
-        + #"|i|i'm|i'll|i've|we|we're|we'll|you|he|she|they|it|it's|my|our|your|his|her|their|there|here"#
+        + #"|is|are|was|were|will|would|should|can|could|must|might|do|does|did|don['’]t|doesn['’]t|have|has|had|be|been|being"#
+        + #"|i|i['’]m|i['’]ll|i['’]ve|we|we['’]re|we['’]ll|you|he|she|they|it|it['’]s|my|our|your|his|her|their|there|here"#
         + #"|next|this|that|which|when|if|because|since|though|although|as|with|too|also|instead|otherwise|anyway"#
         + #"|please|remind|not|no|only|just|even|again|still|already|yet|every|each|through|onwards|onward"#
         + #"|o'clock|am|pm|a\.m\.|p\.m\.|morning|afternoon|evening|night|noon|midnight|tomorrow|today|tonight"#
@@ -2618,7 +2664,22 @@ private enum TemporalIntentParser {
     /// which overrode the Wednesday or Friday the sentence actually named. An
     /// ordinal naming a day stands alone or is followed by a function word;
     /// an ordinal followed by a noun is counting that noun.
-    private static let ordinalIsADate = #"(?!\s+(?:\d|(?!"# + closedClassAfterDate + #"\b)[a-z][a-z']*\b))"#
+    private static let ordinalIsADate = #"(?!\s+(?:\d(?!\d{3}\b)|(?!"# + closedClassAfterDate + #"\b)[a-z][a-z'’]*\b))"#
+
+    /// The word after an ordinal, when the ordinal is a date after all.
+    ///
+    /// `ordinalIsADate` refuses an open-class word because "the first draft"
+    /// is counting drafts — but "on the 1st renew the car insurance" continues
+    /// a plan with a verb, and no list of verbs is complete. The tagger reads
+    /// the whole sentence, and a verb after "the first" can never be the noun
+    /// an adjective reading needs, so a verb keeps the date.
+    private static func ordinalContinuesWithAVerb(in text: String, after ordinalRange: Range<String.Index>) -> Bool {
+        let context = SentenceContextCache.context(for: text)
+        guard let next = context.tokens.first(where: { $0.range.lowerBound >= ordinalRange.upperBound }) else {
+            return false
+        }
+        return next.isVerb
+    }
 
     private static let ordinalWords: [String: Int] = [
         "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
@@ -2752,6 +2813,8 @@ private enum TemporalIntentParser {
             }
         }
 
+        // Thirty-six regexes below, all of which miss when no month is named.
+        guard firstMatch(in: text, pattern: #"\b(?:"# + monthNamePattern + #")\b"#) != nil else { return nil }
         for month in months {
             let names = month.names.map(NSRegularExpression.escapedPattern).joined(separator: "|")
             // Dictation returns "December 4th" and "December fourth" for the
@@ -2912,6 +2975,13 @@ private enum TemporalIntentParser {
         return WallClockTime(hour: daypart.hour(for: parsed.hour), minute: parsed.minute)
     }
 
+    /// The month-and-day readers as a yes/no, for the router. See
+    /// `ThoughtOrganizer.namesAMonthAndDay`. The reference instant only
+    /// decides which year the day lands in, which a yes/no does not need.
+    static func namesAMonthAndDay(in text: String) -> Bool {
+        monthAndDay(in: text, referenceDate: Date(), calendar: .current) != nil
+    }
+
     /// The spoken clock forms, read together. See `ThoughtOrganizer.statesAClock`.
     static func statesASpokenClock(in text: String) -> Bool {
         spokenClockFace(in: text) != nil || bareHalfHour(in: text) != nil || twentyFourHourSpoken(in: text) != nil
@@ -3022,7 +3092,8 @@ private enum TemporalIntentParser {
         guard firstMatch(
             in: text,
             pattern: #"\b(?:set\s+an?\s+alarm|alarms?\s+(?:for|at)|wake\s+(?:me|up)|waking\s+up"#
-                + #"|(?:be|get|getting|being|am|i'm)\s+up)\b"#
+                // "Be up at 6" is waking; "I'm up for dinner at 7" is not.
+                + #"|(?:be|get|getting|being|am|i['’]m)\s+up\s+(?:at|by|before))\b"#
         ) != nil else { return time }
         // A daypart in the same sentence was explicit, so it already decided.
         guard DaypartHint(in: text) == nil else { return time }
@@ -3072,24 +3143,23 @@ private enum TemporalIntentParser {
         return spokenClockFace(offset: match[1], connective: connective, hour: match[3])
     }
 
-    private static func spokenClockFace(offset: String, connective: String, hour hourTerm: String) -> ParsedTime? {
-        let match = ["", offset, connective, hourTerm]
+    private static func spokenClockFace(offset offsetWord: String, connective: String, hour hourWord: String) -> ParsedTime? {
         let minuteWords: [String: Int] = [
             "half": 30, "quarter": 15, "five": 5, "ten": 10,
             "twenty": 20, "twenty five": 25, "twenty-five": 25,
         ]
-        let key = match[1].lowercased()
+        let key = offsetWord.lowercased()
         guard let offset = minuteWords[key] ?? Int(key), (1...59).contains(offset) else {
             return nil
         }
 
-        let isBefore = ["to", "till", "til", "before", "of"].contains(match[2].lowercased())
+        let isBefore = ["to", "till", "til", "before", "of"].contains(connective.lowercased())
 
         // Noon and midnight name an hour on the 24-hour clock rather than a
         // 1-12 reading, so they carry their meridiem with them and the
         // subtraction happens in 24-hour space — otherwise "ten to midnight"
         // lands after the boundary instead of ten minutes before it.
-        let hourTerm = match[3].lowercased()
+        let hourTerm = hourWord.lowercased()
         if hourTerm == "noon" || hourTerm == "midnight" {
             let anchor = (hourTerm == "noon" ? 12 : 24) * 60
             let total = isBefore ? anchor - offset : anchor + offset
@@ -3097,7 +3167,7 @@ private enum TemporalIntentParser {
             return ParsedTime(hour: normalized / 60, minute: normalized % 60, hasMeridiem: true)
         }
 
-        guard let hour = number(from: match[3]), (1...12).contains(hour) else { return nil }
+        guard let hour = number(from: hourWord), (1...12).contains(hour) else { return nil }
         if isBefore {
             let previous = hour == 1 ? 12 : hour - 1
             return ParsedTime(hour: previous, minute: 60 - offset, hasMeridiem: false)
@@ -3132,11 +3202,16 @@ private enum TemporalIntentParser {
     /// carries its half of the day with it, so the result is marked as having
     /// a meridiem: nothing downstream may roll "zero nine hundred" to 9 PM.
     private static func twentyFourHourSpoken(in text: String) -> ParsedTime? {
-        let lead = #"\b(?:at|for|by|around|about|until|till|before|after)\s+"#
+        // "We're at five hundred signups" says where something stands, not
+        // when it happens — the same first-person position `ClockDigitRepair`
+        // reads. "The flight is at seventeen thirty" keeps its "is at".
+        let lead = #"(?<!\bwe['’]re\s)(?<!\bwe\sare\s)(?<!\bi['’]m\s)(?<!\bi\sam\s)"#
+            + #"\b(?:at|for|by|around|about|until|till|before|after)\s+"#
         // A number this shape followed by a unit or an "and" is an amount —
-        // "two hundred dollars", "fifteen thirty and forty" — not a clock.
-        let amountGuard = #"(?!\s+(?:and\b|\d|dollars|bucks|euros|pounds|cents|people|grams|kilos|kg|miles|km"#
-            + #"|calories|words|percent|thousand|million|steps|units|metres|meters|feet))"#
+        // "two hundred dollars", "twenty five degrees" — not a clock.
+        let amountGuard = #"(?!\s+(?:and\b|\d|dollars|bucks|euros|pounds|cents|people|grams|kilos|kg|lbs|miles|km"#
+            + #"|calories|words|percent|per\s?cent|thousand|million|steps|units|metres|meters|feet|degrees|celsius|fahrenheit"#
+            + #"|minutes?|mins?|hours?|seconds?|secs?|days?|weeks?|months?|years?|times|signups|users|customers|orders))"#
         let afternoonHours = #"(thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[\s-](?:one|two|three))?)"#
         let minutes = #"(hundred(?:\s+hours)?|(?:twenty|thirty|forty|fifty)(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?"#
             + #"|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|fifteen|ten|five)"#

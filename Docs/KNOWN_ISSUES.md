@@ -130,7 +130,10 @@ Schema version 2 records what a person said about time (`TemporalIntent`) beside
   cue, so those sentences are events now. "We fly out on 5 Sept" still lands
   in Memory in either date order, because "fly out" is neither a scheduled
   noun nor a listed verb (routing R6/R8). "Grab lunch with Sam at noon" is
-  still a shopping row (routing R7: "grab" plus a bare noun). And "the first
+  still a shopping row (routing R7: "grab" plus a noun the tagger reads as a
+  noun). "On the 1st renew the car insurance" keeps its date on the fronted
+  day row but the clause splitter still makes the renewal a second, undated
+  row, and "we're at five" still reads a bare "at five" as 17:00. And "the first
   appointment is at 9" no longer means the 1st of next month, but a bare 9
   that has already passed still rolls to 21:00 (domains C4 d).
 - **The date-only alert hour is a constant, not a setting.** `TemporalResolver.dateOnlyAlertHour` is 9 AM, and it is the stated policy for "remind me tomorrow" — a day with no time still needs a moment to alert at. It should become a "Default reminder time" preference. Note the distinction it already enforces: *"buy milk tomorrow"* schedules nothing at all, while *"remind me to buy milk tomorrow"* alerts at the default hour, and neither writes a time into the intent.

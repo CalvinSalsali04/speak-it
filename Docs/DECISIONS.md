@@ -1653,12 +1653,30 @@ asked the whole grammar broke exactly those. Also closed in passing: "get up",
 non-determiner reads as a grocery list; particles and quantifiers are closed
 classes and are now excluded, while "get shampoo" stays a list.
 
+Review pass (the same day). Eight independent reviewers read the diff; what
+changed as a result: the object of "get" is read by the sentence tagger rather
+than a particle list — a verb, or a predicative adjective with no noun behind
+it, acquires nothing ("get moving", "get ready for the party") while "get
+organic shampoo" stays a list and the product vocabulary may rescue a
+mis-tagged noun; the router's day cue asks the resolver's month-and-day
+readers instead of keeping a fifth month list, so "22 Sept" and "Sept 22" agree
+with the spelled-out forms; the router's gate takes only the spoken-clock
+grammar, because the first version that also took the bare-digit clock cue
+read "reasons for two-factor authentication" as a commitment; an ordinal
+followed by a verb keeps its date, by the tagger, since no verb list is
+complete; a year may follow a date; dictation's curly apostrophe counts as a
+function word; "be up / get up" commit to the morning only before "at", "by"
+or "before", so "I'm up for dinner at 7" is the evening; "we're at five
+hundred" is a level, not 05:00. And `simulator-id.sh` only ever considered
+devices named "iPhone…", so its advertised pool preference could never fire —
+fixed and verified.
+
 Declined: "six terty" for "six thirty" is an accent-driven misrecognition, not a
 rendering; the rules do not chase recogniser errors (see
 `rules-not-transcription` in `PIPELINE_SWEEP_FINDINGS.md`). It still resolves
 to 18:00, thirty minutes early, and is recorded in `KNOWN_ISSUES.md`.
 
-Evidence: corpus families 52-54 (`SpeakItTests/SemanticCorpusDataR.swift`, 111
+Evidence: corpus families 52-54 (`SpeakItTests/SemanticCorpusDataR.swift`, 121
 cases) at 0 blocking; the 1,082 pre-existing cases byte-identical before and
 after; eight new mutation-gate rows, each rule protected; held-out set
 unchanged at 229/320 destination, 251/310 count, 8 of 69 ambiguous captures

@@ -89,6 +89,17 @@ enum SemanticCorpusR {
         corpusCase(.dayMonthOrder, "The deadline is 30 September",
                    count: 1, route: [.today], kind: [.dateOnly],
                    due: [CorpusDate(month: 9, day: 30, hour: nil)]),
+        // The router asks the resolver, so abbreviations and both orders agree.
+        corpusCase(.dayMonthOrder, "My flight is on 22 Sept",
+                   count: 1, type: [.event], route: [.today],
+                   due: [CorpusDate(month: 9, day: 22, hour: nil)]),
+        corpusCase(.dayMonthOrder, "My flight is on Sept 22",
+                   count: 1, type: [.event], route: [.today],
+                   due: [CorpusDate(month: 9, day: 22, hour: nil)],
+                   note: "Was a Memory note with no date: the router's month list had no abbreviations."),
+        // A year after the date does not un-name it.
+        corpusCase(.dayMonthOrder, "The meeting is on 15 August 2026",
+                   count: 1, route: [.today], due: [CorpusDate(month: 8, day: 15, hour: nil)]),
     ]
 
     static let dayMonthGuards: [CorpusCase] = [
@@ -177,6 +188,15 @@ enum SemanticCorpusR {
                    count: 1, type: [.task], route: [.today]),
         corpusCase(.internationalClock, "Get ready for the party",
                    count: 1, type: [.task], route: [.today]),
+        // Read by the tagger rather than a particle list: the word after "get"
+        // is a verb, or a predicative adjective with no noun behind it.
+        corpusCase(.internationalClock, "Get moving at 6 tomorrow",
+                   count: 1, type: [.task], route: [.today]),
+        corpusCase(.internationalClock, "Get cracking on the report",
+                   count: 1, type: [.task], route: [.today]),
+        // "I'm up for dinner at 7" is not a waking frame.
+        corpusCase(.internationalClock, "I'm up for dinner at 7",
+                   count: 1, due: [CorpusDate(month: 8, day: 3, hour: 19)]),
 
         // "Half five".
         corpusCase(.internationalClock, "Remind me at half five tomorrow to call mum",
@@ -291,9 +311,17 @@ enum SemanticCorpusR {
                    count: 1, due: [nil], remind: [nil],
                    note: "A duration, not a clock; it reads as relativeDuration and schedules nothing."),
 
-        // "Get" plus a product is still a list.
+        // "Get" plus a product is still a list, adjective or not.
         corpusCase(.internationalClock, "Get shampoo",
                    count: 1, type: [.shopping], route: [.today]),
+        corpusCase(.internationalClock, "Get organic shampoo",
+                   count: 1, type: [.shopping], route: [.today]),
+        corpusCase(.internationalClock, "Get chicken",
+                   count: 1, type: [.shopping], route: [.today],
+                   note: "'chicken' tags Verb in some positions; the vocabulary rescues it."),
+        // A spoken number that is an amount, in the 24-hour clock's shape.
+        corpusCase(.internationalClock, "Set the thermostat at twenty five degrees",
+                   count: 1, kind: [.none], due: [nil]),
         corpusCase(.internationalClock, "Get milk and eggs",
                    count: 2, type: [.shopping, .shopping], route: [.today, .today]),
         // The router's fact guards hold with the grammar asked as well.
@@ -413,6 +441,9 @@ enum SemanticCorpusR {
         corpusCase(.calendarIdioms, "The tenth is the deadline",
                    count: 1, due: [CorpusDate(month: 8, day: 10, hour: nil)]),
         corpusCase(.calendarIdioms, "Send it before the first",
+                   count: 1, due: [CorpusDate(month: 9, day: 1, hour: nil)]),
+        // Dictation's curly apostrophe is a function word too.
+        corpusCase(.calendarIdioms, "On the first don’t forget the rent",
                    count: 1, due: [CorpusDate(month: 9, day: 1, hour: nil)]),
     ]
 }
