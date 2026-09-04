@@ -88,6 +88,18 @@ Unit suite (about nine minutes; picks a booted or newest iPhone simulator, overr
 ./Tools/CI/unit-tests.sh
 ```
 
+Sharded across slim simulators (needs SimSlim: `brew install mobai-app/tap/simslim`; the pool is created on first use and each device holds ~0.9 GB instead of ~3.7 GB — see `Tools/CI/README.md`):
+
+```bash
+SPEAKIT_SHARDS=3 ./Tools/CI/unit-tests.sh
+```
+
+Give a session its own simulator so parallel runs stop displacing each other's bundle:
+
+```bash
+SPEAKIT_SIMULATOR_ID=$(./Tools/CI/simulator-pool.sh 2 | tail -n 1) ./Tools/CI/unit-tests.sh
+```
+
 One test class while iterating:
 
 ```bash

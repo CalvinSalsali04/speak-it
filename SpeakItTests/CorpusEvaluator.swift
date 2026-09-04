@@ -395,6 +395,12 @@ extension CorpusEvaluator {
             (.actionOwnership, SemanticCorpusQ.actionOwnershipGuards),
             (.unsettledTime, SemanticCorpusQ.unsettledTime),
             (.unsettledTime, SemanticCorpusQ.unsettledTimeGuards),
+            (.dayMonthOrder, SemanticCorpusR.dayMonthOrder),
+            (.dayMonthOrder, SemanticCorpusR.dayMonthGuards),
+            (.internationalClock, SemanticCorpusR.internationalClock),
+            (.internationalClock, SemanticCorpusR.internationalClockGuards),
+            (.calendarIdioms, SemanticCorpusR.calendarIdioms),
+            (.calendarIdioms, SemanticCorpusR.calendarIdiomGuards),
         ]
     }
 

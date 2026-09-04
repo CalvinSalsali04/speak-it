@@ -80,6 +80,10 @@ at `/Applications/Xcode.app` and at least one iPhone simulator):
 3. On GitHub: repository → Settings → Secrets and variables → Actions →
    Variables → new repository variable `IOS_RUNNER` with the value `speakit-mac`.
 
+Optional on that Mac: `brew install mobai-app/tap/simslim`. The iOS job then
+prepares a slim `SpeakIt-Slim-1` simulator (about 0.9 GB instead of 3.7 GB) for
+the unit tests; see `Tools/CI/README.md`. Without it the job runs stock.
+
 From then on the iOS job picks that label automatically. Self-hosted minutes are
 free on every plan. The repository is private and only its owner opens pull
 requests, so running third-party code on the runner is not a concern; keep it

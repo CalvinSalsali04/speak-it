@@ -372,7 +372,12 @@ enum ClockDigitRepair {
                 + #"(?<!(?i:\bwe['’]re\s))(?<!(?i:\bwe\sare\s))(?<!(?i:\bi['’]m\s))(?<!(?i:\bi\sam\s))"#
                 // "Set the oven at 450" is a temperature.
                 + #"(?<!(?i:\b(?:oven|broiler|thermostat|smoker)\s))"#
-                + #"\b([Aa]t|[Ff]or|[Bb]y|[Aa]round|[Uu]ntil|[Tt]ill|[Aa]larms?|[Tt]imer)\s+([1-9]|1[0-2])\s?([0-5][0-9])\b"#
+                // A leading zero is kept: "0620" is a 24-hour reading of the
+                // morning, and "06:20" is what tells the clock parser so.
+                // Dropping it made the unpunctuated rendering of "06:20"
+                // resolve to the evening while the punctuated one resolved to
+                // the morning — the same sentence, two answers.
+                + #"\b([Aa]t|[Ff]or|[Bb]y|[Aa]round|[Uu]ntil|[Tt]ill|[Aa]larms?|[Tt]imer)\s+(0[1-9]|[1-9]|1[0-2])\s?([0-5][0-9])\b"#
                 // A third digit group means a phone number, not a clock:
                 // "call the pharmacy at 416 555 0134" became 4:16 PM.
                 + #"(?![-\s]?\d)"#
@@ -498,8 +503,9 @@ enum SpokenShorthandRepair {
         (#"\bc\.?o\.?b\.?(?=\W|$)"#, "end of day"),
         (#"\bclose\s+of\s+business\b"#, "end of day"),
 
-        // "5ish" is "around 5". The suffix is how people hedge a clock time.
-        (#"\b(\d{1,2}(?::\d{2})?)\s*-?ish\b"#, "around $1"),
+        // "5ish" is "around 5". The suffix is how people hedge a clock time,
+        // and dictation spells the hour out as often as not: "sixish".
+        (#"\b(\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*-?ish\b"#, "around $1"),
 
         // "About 6" hedges exactly the way "around 6" does, and only one of the
         // two was in the vocabulary.

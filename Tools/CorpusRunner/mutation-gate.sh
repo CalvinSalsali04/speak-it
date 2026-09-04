@@ -32,6 +32,13 @@ MUTATIONS=(
   "sentence-context|SpeakIt/Repositories/ClauseStructure.swift|func tokens(in range: Range<String.Index>) -> [Token] {|return []"
   "action-ownership|SpeakIt/Repositories/Actionability.swift|private static func obligationBelongsToAnotherPerson(_ text: String) -> Bool {|return false"
   "unsettled-time|SpeakIt/Repositories/ClauseStructure.swift|static func unsettled(in text: String) -> Unsettled? {|return nil"
+  "day-month-order|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func dayBeforeMonth(|return nil"
+  "zero-padded-morning|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func isZeroPaddedMorning(_ hourToken: String) -> Bool {|return false"
+  "bare-half-hour|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func bareHalfHour(in text: String) -> ParsedTime? {|return nil"
+  "spoken-24-hour|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func twentyFourHourSpoken(in text: String) -> ParsedTime? {|return nil"
+  "clock-face-by-ear|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func spokenClockFaceByEar(in text: String) -> ParsedTime? {|return nil"
+  "past-weekday|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func isPastReference(to weekdayName: String, in text: String) -> Bool {|return false"
+  "week-after-weekday|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func namesTheWeekAfter(_ weekdayName: String, in text: String) -> Bool {|return false"
 )
 
 printf '%-24s %10s %10s   %s\n' "SUBSYSTEM" "BLOCKING" "FAILING" "VERDICT"

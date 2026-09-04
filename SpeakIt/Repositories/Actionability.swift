@@ -832,7 +832,14 @@ enum ActionabilityReader {
 
     /// A stated time with nothing to perform and nothing being described.
     private static func isCalendarCommitment(_ text: String) -> Bool {
-        guard matches(text, calendarCue) else { return false }
+        // The gate is a stated point on the calendar: the cue list, a day the
+        // resolver reads ("22 Sept" is not in the list; "22 September" is), or
+        // a clock said the way people say clocks. Not `clockCue`: its bare
+        // "for one|two" is a quantity as often as an hour ("options for one
+        // person"), and only the copular branch below is allowed to trust it.
+        let spokenClock = ThoughtOrganizer.statesAClock(text)
+        guard matches(text, calendarCue) || spokenClock || namesASpecificDay(text) else { return false }
+        let statesAClock = spokenClock || matches(text, clockCue)
         // "Idea for tomorrow's team meeting" files a thought *about* a meeting.
         // A sentence that names what kind of thing it is has already answered
         // this question, and the day inside it is subject matter.
@@ -872,11 +879,11 @@ enum ActionabilityReader {
             // March" names a month and no day; "Nadia's birthday is October
             // 12" names a date and no clock, and so stays the fact about a
             // person that `scheduledNoun`'s exclusion list intends.
-            if namesASpecificDay(text), matches(text, clockCue) { return true }
+            if namesASpecificDay(text), statesAClock { return true }
             guard matches(text, #"\b\#(scheduledNoun)\b"#) else { return false }
             // A stated clock is as specific as a stated day: "the flight is at
             // 7:05" is a commitment today, not a fact about flights.
-            return namesASpecificDay(text) || matches(text, clockCue)
+            return namesASpecificDay(text) || statesAClock
         }
         // Anything with a verb in it was already handled above; reaching here
         // with one means the verb was not at the head, and a sentence like
@@ -893,7 +900,27 @@ enum ActionabilityReader {
     private static func namesASpecificDay(_ text: String) -> Bool {
         matches(text, #"\b(?:monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday|today|tomorrow|tonight)\b"#)
             || matches(text, dayOfMonthCue)
-            || matches(text, #"\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}|\#(ordinalWord))\b"#)
+            // "22 September" names the day as surely as "September 22" does,
+            // and "Sept 22" as surely as either; only the month-first order
+            // with the month spelled out was listed here, so "my flight is on
+            // 22 September" was a fact about flights while its North American
+            // twin was an event. The resolver's own readers answer, guards and
+            // abbreviations included, so this cue cannot fall behind them.
+            || ThoughtOrganizer.namesAMonthAndDay(text)
+    }
+
+    /// Whether the sentence states a clock reading: the cue list here, or the
+    /// resolver's own spoken-clock grammar.
+    ///
+    /// `clockCue` and `spokenClockCue` are kept in step with the resolver by
+    /// hand, and they fell behind it: "lunch with Aoife at half one" and
+    /// "the flight is at seventeen thirty" resolved to a time and were then
+    /// classified as facts, and the fact path throws the resolved time away.
+    /// Asked as a union, the grammar can only add a commitment the cue lists
+    /// missed, never take one away. Only the *spoken* forms are asked for —
+    /// see `ThoughtOrganizer.statesAClock` for why a bare digit is not.
+    private static func statesAClock(_ text: String) -> Bool {
+        matches(text, clockCue) || ThoughtOrganizer.statesAClock(text)
     }
 
     // MARK: Body
