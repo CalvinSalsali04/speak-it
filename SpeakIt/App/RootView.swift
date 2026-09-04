@@ -96,6 +96,23 @@ struct RootView: View {
     // Docs/FINAL_RELEASE_AUDIT.md.
     @State private var captureSessionToken = UUID()
 
+#if DEBUG
+    /// Set once this view's launch-time maintenance task has run to the end,
+    /// debug fixture loading included.
+    ///
+    /// The fixtures go through the real capture pipeline, so where Apple
+    /// Intelligence is available the three Today fixtures containing a comma
+    /// each wait on the on-device model before their row exists — about nine
+    /// seconds for the six, against a third of a second for the rules alone.
+    /// Loading them is also only the first half of the launch work: draft
+    /// recovery, reminder and location reconciliation and the shared-capture
+    /// import all follow, and a tap that lands during those does not
+    /// necessarily get its screen within a UI test's timeout. So this is
+    /// raised at the very end, and means the app is settled rather than
+    /// merely populated.
+    @State private var hasFinishedLaunchWork = false
+#endif
+
     private var appearance: SpeakItAppearance {
         SpeakItAppearance(rawValue: appearanceRawValue) ?? .firstInstallDefault
     }
@@ -231,6 +248,24 @@ struct RootView: View {
                     .zIndex(20)
             }
         }
+#if DEBUG
+        // Comes into existence only once the launch-time task above has run to
+        // the end, so UI tests have something to wait on instead of racing it
+        // with a timeout. Carried by a `Text` rather than a bare container:
+        // `staticTexts` is a far narrower query than `otherElements`, which
+        // matches every container view in the app and was slow enough, polled
+        // against a main thread doing launch work, to time out the
+        // accessibility connection itself.
+        .overlay(alignment: .topLeading) {
+            if hasFinishedLaunchWork {
+                Text(verbatim: "Debug launch work finished")
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("debug.launchWorkFinished")
+            }
+        }
+#endif
         .fullScreenCover(item: $fullScreenDestination) { destination in
             switch destination {
             case .welcome:
@@ -401,6 +436,9 @@ struct RootView: View {
             repository?.reconcileLocationReminders()
             _ = await repository?.reconcileICloudSync()
             await importSharedCaptures()
+#if DEBUG
+            hasFinishedLaunchWork = true
+#endif
         }
         .onChange(of: quickActionRouter.pendingRequest) { _, request in
             handleQuickAction(request)

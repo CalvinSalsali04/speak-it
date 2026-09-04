@@ -199,6 +199,14 @@ final class SemanticCorpusTests: XCTestCase {
     }
 
     /// No row may be headed by a word the person never spoke.
+    // Families 52-54: the clock and calendar outside North America.
+    func testDayMonthOrder() { run(.dayMonthOrder, SemanticCorpusR.dayMonthOrder) }
+    func testDayMonthOrderGuards() { run(.dayMonthOrder, SemanticCorpusR.dayMonthGuards) }
+    func testInternationalClockForms() { run(.internationalClock, SemanticCorpusR.internationalClock) }
+    func testInternationalClockGuards() { run(.internationalClock, SemanticCorpusR.internationalClockGuards) }
+    func testWeekdayIdiomsAndOrdinalAdjectives() { run(.calendarIdioms, SemanticCorpusR.calendarIdioms) }
+    func testCalendarIdiomGuards() { run(.calendarIdioms, SemanticCorpusR.calendarIdiomGuards) }
+
     func testNoTitleInventsAWordTheSpeakerDidNotSay() {
         var offenders: [String] = []
         for (_, cases) in CorpusEvaluator.allFamilies {

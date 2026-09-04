@@ -118,6 +118,28 @@ none, so a blocking regression in them appeared only in the summary report that
 never fails — which is how a real regression in `renderingLoss` went unnoticed
 during this work.
 
+- **The clock and calendar as the rest of the world says them.** register
+  C1, C2, C3, C4, C11; domains C4 (a) and (b). Re-probed 2026-09-04 and every
+  cited utterance still reproduced. Nine rules, each factored so the mutation
+  gate can delete it, each measured against a negative set first; corpus
+  families 52-54 in `SemanticCorpusDataR.swift`. Day-month order ("15 August")
+  reads structurally — number, month, then a function word or a clock — so
+  "order 12 December calendars" stays a quantity. A zero-padded hour is a
+  24-hour clock and therefore morning. "Half five" is 5:30 behind a
+  preposition. The spoken 24-hour clock ("seventeen thirty", "zero nine
+  hundred") carries its meridiem. The clock face's connective is accepted by
+  ear ("ten pass six") behind a preposition. C1 closes as a consequence:
+  the timing flow reads the time first and drops a searchable place whenever
+  a time resolved, so a "remind me at …" object the grammar can now read never
+  reaches the place parser (an explicit oracle was tried and removed after
+  the mutation gate showed it unreachable). "Sunday week" is +7; "last Tuesday"
+  dates nothing; "the first draft" is an adjective because an open-class word
+  follows the ordinal. Full accounting in `DECISIONS.md`. The router's own
+  day and clock cues (routing R8's mechanism) read the same forms now, so the
+  copular sentences follow. Still open from those clusters: "terty" (a
+  recogniser error), and copular subjects outside `scheduledNoun` ("we fly
+  out on 5 Sept").
+
 - **A repair was editing the person's own words.** domains C6. `ClockDigitRepair`
   rewrites a 3-4 digit number after `at|for|by|around|until|till|alarm|timer`
   into `H:MM`. Its guard list named five predicates and no unit of measurement,
@@ -339,9 +361,9 @@ more often, overstate it.
 |---|---|---|---|---|
 | routing | R1–R12 | 0 | 0 | 12 |
 | structured | C1–C11 | 1 (C1) | 2 (C2, C11) | 8 |
-| domains | C1–C11 | 1 (C1) | 1 (C11) | 9 |
+| domains | C1–C11 | 1 (C1) | 2 (C4 a+b — 2026-09-04, C11) | 8 |
 | rambling | C1–C11 | 1 (C1) | 1 (C2) | 9 |
-| register | C1–C12 | 0 | 1 (C5) | 11 |
+| register | C1–C12 | 5 (C1, C2, C3, C4, C11 — 2026-09-04) | 1 (C5) | 6 |
 | people | P1–P14 | 1 (P3) | 0 | 13 |
 | **total** | **66** | **4** | **5** | **62** |
 

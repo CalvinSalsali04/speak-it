@@ -1,0 +1,15 @@
+{
+  "name": "speakit-tests",
+  "description": "Speak It unit and UI test runs. Every SimSlim category off; keep com.apple.mobileassetd (NaturalLanguage loads its tagger and embedding assets through it: 13 NLTagger/NLEmbedding tests fail without it) and the seven daemons SimSlim's storekit feature names (the scheme's StoreKit configuration serves no products without them, so the paywall falls back to its developer preview and the paywall UI test fails). Measured 2026-09-04 on iOS 26.5: 65 processes and 0.87 GB idle against 202 and 3.74 GB stock; 721/721 unit tests and the UI suite pass.",
+  "except": [],
+  "keep": [
+    "com.apple.mobileassetd",
+    "com.apple.storekitd",
+    "com.apple.itunesstored",
+    "com.apple.amsaccountsd",
+    "com.apple.amsengagementd",
+    "com.apple.amsondevicestoraged",
+    "com.apple.passd",
+    "com.apple.financed"
+  ]
+}

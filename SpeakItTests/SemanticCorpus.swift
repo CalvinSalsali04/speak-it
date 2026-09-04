@@ -140,6 +140,13 @@ enum CorpusFamily: String, CaseIterable {
     case coordinationContext = "Coordination in context"
     case actionOwnership = "Whose action is it"
     case unsettledTime = "A time never settled on"
+
+    // Families 52-54: the clock and the calendar as the rest of the
+    // English-speaking world says them. Every one arrived as a confident
+    // wrong hour or date rather than a missing one.
+    case dayMonthOrder = "Day-month date order"
+    case internationalClock = "International clock forms"
+    case calendarIdioms = "Weekday idioms and ordinal adjectives"
 }
 
 

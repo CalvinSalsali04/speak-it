@@ -44,6 +44,13 @@ enum LocationIntentParser {
     /// the prescription" are the same sentence shape; only the object differs.
     /// So the object is asked what it is, and a time answers first — reading
     /// "five" as a place would break an ordinary reminder to fix a rarer one.
+    ///
+    /// This list is deliberately not the whole clock grammar, and it does not
+    /// need to be: `TemporalIntentParser` reads the time first and drops a
+    /// searchable place whenever a time resolved, so a form this list misses
+    /// ("half five", "seventeen thirty", "sharp 5") becomes a place only if the
+    /// temporal grammar could not read it either. Widening the grammar there is
+    /// what closed register C1; widening this list is not required.
     private static let clockPhrase = #"^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"#
         + #"|noon|midnight|half\s+past|quarter\s+(?:past|to)"#
         + #"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"#

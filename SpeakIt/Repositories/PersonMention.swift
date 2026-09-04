@@ -905,6 +905,8 @@ enum PersonMentionResolver {
         "eight", "nine", "ten", "eleven", "twelve", "first", "second", "third",
         "half", "quarter", "am", "pm", "o'clock", "later", "soon", "asap",
         "now", "then", "again", "next", "every", "daily", "weekly", "monthly",
+        // "The call last Thursday" filed a person called *Last*.
+        "last", "past", "previous",
     ]
 
     /// Words a repaired transcript can leave sitting in the object slot.

@@ -56,6 +56,7 @@
 		D200000000000000000F13 /* SemanticStatePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F13 /* SemanticStatePersistenceTests.swift */; };
 		D200000000000000000F11 /* SpeakItVersionThree.store in Resources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F11 /* SpeakItVersionThree.store */; };
 		D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000F02 /* SemanticCorpusDataQ.swift */; };
+		D300000000000000000F03 /* SemanticCorpusDataR.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000F03 /* SemanticCorpusDataR.swift */; };
 		D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000001 /* RenderingInvarianceTests.swift */; };
 		D200000000000000000002 /* RefinementGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000002 /* RefinementGuardTests.swift */; };
 		D200000000000000000003 /* SpeechRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000003 /* SpeechRepairTests.swift */; };
@@ -220,6 +221,7 @@
 		E200000000000000000F13 /* SemanticStatePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticStatePersistenceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000F11 /* SpeakItVersionThree.store */ = {isa = PBXFileReference; lastKnownFileType = file; path = SpeakItVersionThree.store; sourceTree = "<group>"; };
 		E300000000000000000F02 /* SemanticCorpusDataQ.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataQ.swift; sourceTree = "<group>"; };
+		E300000000000000000F03 /* SemanticCorpusDataR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataR.swift; sourceTree = "<group>"; };
 		E200000000000000000001 /* RenderingInvarianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingInvarianceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000002 /* RefinementGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinementGuardTests.swift; sourceTree = "<group>"; };
 		E200000000000000000003 /* SpeechRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRepairTests.swift; sourceTree = "<group>"; };
@@ -521,6 +523,7 @@
 				E200000000000000000F13 /* SemanticStatePersistenceTests.swift */,
 				E200000000000000000F12 /* Fixtures */,
 				E300000000000000000F02 /* SemanticCorpusDataQ.swift */,
+				E300000000000000000F03 /* SemanticCorpusDataR.swift */,
 				E200000000000000000001 /* RenderingInvarianceTests.swift */,
 				E200000000000000000002 /* RefinementGuardTests.swift */,
 				E200000000000000000003 /* SpeechRepairTests.swift */,
@@ -933,6 +936,7 @@
 				D200000000000000000F10 /* SchemaFreezeTests.swift in Sources */,
 				D200000000000000000F13 /* SemanticStatePersistenceTests.swift in Sources */,
 				D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */,
+				D300000000000000000F03 /* SemanticCorpusDataR.swift in Sources */,
 				D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */,
 				D200000000000000000002 /* RefinementGuardTests.swift in Sources */,
 				D200000000000000000003 /* SpeechRepairTests.swift in Sources */,

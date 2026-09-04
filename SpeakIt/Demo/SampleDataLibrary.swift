@@ -26,13 +26,20 @@ enum SampleDataLibrary {
 
     /// Action-only fixtures used to verify long, expanded Today layouts without
     /// asking the simulator for notification permission.
+    ///
+    /// `RootView` seeds these one after another on launch, and the on-device
+    /// model makes each sentence cost about a second and a half, so the whole
+    /// set takes roughly nine seconds to land. The shopping sentence goes
+    /// first because the UI tests that open the list card wait for it with a
+    /// short timeout; Today sorts every section by date and priority rather
+    /// than capture order, so the layout the other tests assert is unchanged.
     static let todayExamples = [
+        "Buy milk after work.",
         "Tomorrow at 9 AM, call Sarah.",
         "Tomorrow at 10 AM, call Alex about getting the car keys.",
         "Friday at 4 PM, send the weekly report.",
         "Water the plants every three days after I complete it.",
-        "Pack gym clothes.",
-        "Buy milk after work."
+        "Pack gym clothes."
     ]
 
     /// The fixtures behind `Website/assets/img/01-Today.png` and

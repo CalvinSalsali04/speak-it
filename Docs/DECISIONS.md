@@ -1579,3 +1579,136 @@ in dark mode — so an on switch was a white track under iOS's white knob, a bla
 pill with no visible state. `Color.speakToggleTint` is the ink in light mode and
 a mid grey in dark mode, applied to the nine toggles directly. The global tint
 stays, because links, progress bars and buttons want the ink.
+
+## 2026-09-04 — International clock and calendar forms
+
+Re-probing the register lane of the pipeline sweep found its four largest
+open clusters still reproducing, and every one was a *confident wrong answer*
+rather than a missing one: "the meeting is on 15 August at 11" kept the 11 and
+resolved the day to **today**; "the train leaves at 06:20 tomorrow" resolved to
+18:20; "remind me at half five tomorrow to call mum" rang at the 09:00
+date-only default; "call the bank at ten pass six" resolved to 22:00 because
+the bare-clock fallback took the *offset* as the hour; and "remind me at half
+five to take the bins out" became an arrival trigger for a place called
+*half five*, which no map can find, so the reminder was silently dead.
+
+Each is now read by a rule shaped the way `Docs/PIPELINE_SWEEP_FINDINGS.md`
+asks for — structure, not vocabulary:
+
+- **Day before month.** A number, a month, and then a function word, a
+  clock, or nothing. An open-class word after the month makes it a quantity
+  ("order 12 December calendars"), and "may" followed by what a modal takes
+  stays a modal. Measured 17 of 17 positives, 0 of 10 negatives moved.
+- **A leading zero is a 24-hour clock**, and unambiguously morning. The
+  bare-hour default no longer flips 01:00–07:59 to the afternoon when the hour
+  was zero-padded. "6:20" without the zero keeps its evening default.
+- **Waking frames** — "be up at 6", "get up at 6", "wake up at 6" — commit an
+  hour to the morning the way "set an alarm for 6" already did.
+- **"Half five"**, behind a time preposition, is 5:30. "Half a dozen", "half
+  an hour" and "half the team" are not clocks because they have no preposition.
+- **The 24-hour clock said aloud** — "seventeen thirty", "eighteen hundred",
+  "zero nine hundred", "nine hundred hours" — carries its half of the day
+  with it and can never be rolled to the evening.
+- **The clock face by ear.** "Ten pass six", "ten passed six", "ten too six",
+  "ten two six" are the canonical face with the connective written by sound.
+  Accepted only behind a time preposition, because "two" and "pass" are
+  ordinary words: "the code is ten two six" is not a clock.
+- **A clock is not a place — closed by the grammar, not by a second list.**
+  `LocationIntentParser` decides whether "remind me at …" names a place with a
+  whitelist of a dozen clock shapes, and every form outside it became a place.
+  The first draft of this change added an oracle asking the temporal grammar
+  about the object of the preposition; the mutation gate reported that
+  deleting it cost nothing, because `TemporalIntentParser` reads the time
+  first and discards a searchable place whenever a time resolved. So the
+  oracle came out, and register C1 closes as a consequence of the clock rules
+  above: "half five", "seventeen thirty", "sharp 5" and "sixish" are times the
+  grammar now reads, and a time wins.
+- **"Sunday week"** and **"a week on Sunday"** are the Sunday after the coming
+  one. **"Last Tuesday"** is the Tuesday that has gone, and dates nothing;
+  "the last Tuesday of the month" is a different phrase and is left alone.
+- **"The first draft" counts drafts.** An ordinal naming a day stands alone or
+  is followed by a function word; an ordinal followed by an open-class word is
+  counting that word. The closed classes tested — prepositions, conjunctions,
+  determiners, pronouns, auxiliaries, the clock and daypart words — are
+  complete by definition, which is what makes this grammar rather than a list.
+
+Two behaviours changed deliberately. "Set an alarm for half six" and "wake me
+at half seven" used to decline safely with no time; the alarm rule now commits
+them to 06:30 and 07:30, as it does for "set an alarm for 6:30". And "remind me
+at breakfast", "at teatime" and "at supper" join lunch as conventional anchors
+(08:00, 17:00, 18:00) instead of becoming place names.
+
+The router had copies of the same knowledge and they fell behind. `Actionability`
+decides whether a copular sentence is a commitment with its own day cue and
+clock cue lists, and both knew only the North American forms: "my flight is on
+22 September" was a fact about flights while "my flight is on September 22" was
+an event, and "lunch with Aoife at half one" resolved to 13:30 and was then
+filed as a fact, which throws the resolved time away. The day cue now reads the
+day-first order, and the clock cue asks the spoken-clock grammar beside its own
+list — as a union, so it can only add a commitment. Not the whole clock grammar:
+a bare digit behind "for" is a quantity as often as an hour ("options for one
+person", "reasons for two-factor authentication"), and the first draft that
+asked the whole grammar broke exactly those. Also closed in passing: "get up",
+"get going", "get some rest" were shopping rows, because "get" plus a
+non-determiner reads as a grocery list; particles and quantifiers are closed
+classes and are now excluded, while "get shampoo" stays a list.
+
+Declined: "six terty" for "six thirty" is an accent-driven misrecognition, not a
+rendering; the rules do not chase recogniser errors (see
+`rules-not-transcription` in `PIPELINE_SWEEP_FINDINGS.md`). It still resolves
+to 18:00, thirty minutes early, and is recorded in `KNOWN_ISSUES.md`.
+
+Evidence: corpus families 52-54 (`SpeakItTests/SemanticCorpusDataR.swift`, 111
+cases) at 0 blocking; the 1,082 pre-existing cases byte-identical before and
+after; eight new mutation-gate rows, each rule protected; held-out set
+unchanged at 229/320 destination, 251/310 count, 8 of 69 ambiguous captures
+acted on. Every positive was measured against a negative set first
+(`Tools/PipelineProbe`), and no negative moved.
+
+## 2026-09-04 — Slim simulators for test runs
+
+A stock iOS 26.5 simulator boots 202 processes and holds 3.74 GB. Four of them
+were booted on this 16 GB Mac at the start of the day, with swap at 19.3 of
+20 GB, and every parallel session was reaching for the same one — which is the
+collision `concurrent-worktrees-share-simulator` describes.
+
+[SimSlim](https://github.com/MobAI-App/simslim) (MIT) writes persistent
+`launchctl disable` overrides into one simulator's launchd database. No `sudo`,
+nothing on the Mac changes, `simslim off` restores stock. Measured here:
+64 processes and 0.86 GB with the checked-in profile.
+
+The profile was found by bisection, not taken on trust. With every category
+off, 13 unit tests failed — every one backed by `NLTagger` or `NLEmbedding`,
+while the same corpus passed on the host. Re-enabling categories one at a time
+isolated `other`; keeping the single daemon `com.apple.mobileassetd` from it
+brought the suite to 721 of 721. NaturalLanguage loads its tagger and embedding
+assets through MobileAsset. The UI suite then failed its paywall test on the
+same profile: with StoreKit's daemons off the scheme's StoreKit configuration
+served no products and the paywall fell back to its developer preview card. So
+`Tools/CI/simslim-profile.json` is "everything off, keep `com.apple.mobileassetd`
+and the seven daemons SimSlim's `storekit` feature names", and those two
+findings are the reason the profile is checked in.
+
+How it is wired, and what it is not:
+
+- `Tools/CI/simulator-pool.sh N` keeps named `SpeakIt-Slim-N` devices, slimmed
+  and booted. `simulator-id.sh` prefers them, so a session that wants its own
+  device sets `SPEAKIT_SIMULATOR_ID` to one and stops colliding with everyone
+  else. `SPEAKIT_SHARDS=N` builds once and runs the unit suite's classes across
+  the pool, packed by test count.
+- `slim-simulator.sh` refuses to reconfigure a simulator that is not in the
+  pool unless told to, because slimming turns off widgets, Live Activities,
+  Siri and the App Store on that device — fine for a test device, a surprise on
+  one somebody uses by hand. Widget and purchase QA stay on stock devices.
+- It is opt-in everywhere. Without SimSlim installed every script behaves as
+  before. The CI job adds one step that prepares a pool device when SimSlim is
+  on the runner and says so when it is not.
+- Xcode's own `-parallel-testing-enabled` clones the destination through
+  CoreSimulator, and a CoreSimulator clone comes up stock — measured: a
+  `simctl clone` of a slim device booted with 0 of 170 overrides — so it would
+  spend the memory the profile saved. It stays off in the scheme for that
+  reason and one more: interrupted runs leak clones into
+  `~/Library/Developer/XCTestDevices`, and 131 of them (427 GB by `du`; APFS
+  cloning means the true figure is lower but not small) were found there on
+  2026-09-04, dated 4–17 August. They are not deleted by anything in this
+  change; that is a decision for the person whose disk it is.

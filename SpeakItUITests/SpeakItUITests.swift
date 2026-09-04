@@ -52,9 +52,16 @@ final class SpeakItUITests: XCTestCase {
     }
 
     func testShoppingListOpensAndRemainsResponsive() {
+        // The Groceries fixture is "Buy milk after work", which schedules for
+        // tomorrow evening, so its card is placed under *Coming up* — and that
+        // section starts collapsed. A collapsed row is not merely invisible
+        // here: it keeps its laid-out frame and still answers `exists` and
+        // `isHittable`, so without this the tap below lands on a dead element
+        // and the List never opens.
         let app = launchApp(
             "--ui-testing-skip-welcome",
-            "--load-today-examples"
+            "--load-today-examples",
+            "--expand-today-upcoming"
         )
 
         XCTAssertFalse(app.buttons["today.shopping"].exists)
@@ -83,9 +90,16 @@ final class SpeakItUITests: XCTestCase {
     /// Tapping the dock's "Today" from inside the List pops straight back to
     /// Today — the tap on the destination already on screen must not be dead.
     func testDockTodayTapPopsTheListBackToToday() {
+        // The Groceries fixture is "Buy milk after work", which schedules for
+        // tomorrow evening, so its card is placed under *Coming up* — and that
+        // section starts collapsed. A collapsed row is not merely invisible
+        // here: it keeps its laid-out frame and still answers `exists` and
+        // `isHittable`, so without this the tap below lands on a dead element
+        // and the List never opens.
         let app = launchApp(
             "--ui-testing-skip-welcome",
-            "--load-today-examples"
+            "--load-today-examples",
+            "--expand-today-upcoming"
         )
 
         let list = app.buttons.matching(
@@ -163,8 +177,19 @@ final class SpeakItUITests: XCTestCase {
 
         // A plain task row: shopping fixtures now live on their list card, so
         // the flat-row contract is asserted on a non-shopping item.
+        //
+        // The untimed row is the last thing on Today, below the discovery
+        // cards and every dated section. A lazy stack builds it a little
+        // ahead of the viewport, so it can *exist* while still being laid out
+        // under the dock or below the screen, where it is not hittable and the
+        // touch-target check below has nothing to measure. Scroll until it is
+        // actually on screen before asserting anything about it.
         let edit = app.buttons["item.edit.Pack gym clothes"]
         XCTAssertTrue(edit.waitForExistence(timeout: 6))
+        for _ in 0..<5 where !edit.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(edit.isHittable, "The untimed row never scrolled onto the screen")
         assertMinimumTouchTarget(edit)
 
         let complete = app.buttons["item.complete.Pack gym clothes"]
@@ -434,7 +459,10 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
         editor.tap()
-        editor.typeText("Buy toothpaste")
+        // The first practice mission only completes when the capture names a
+        // person and something to do for them; anything less shows the
+        // "one more go" retry instead of the receipt this test waits for.
+        editor.typeText("Tomorrow at 9, ask Maya about the proposal.")
         XCTAssertTrue(
             app.staticTexts["tutorial.missionExample"].exists,
             "The tutorial phrase must not disappear after typing begins"
@@ -731,7 +759,11 @@ final class SpeakItUITests: XCTestCase {
         }
     }
 
-    private func launchApp(_ extraArguments: String...) -> XCUIApplication {
+    private func launchApp(
+        _ extraArguments: String...,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> XCUIApplication {
         let app = XCUIApplication()
         // UI tests can relaunch the bundle themselves. Always terminate any
         // process left by the preceding method so --ui-testing-reset reaches a
@@ -739,7 +771,41 @@ final class SpeakItUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["--ui-testing", "--ui-testing-reset"] + extraArguments
         app.launch()
+        if extraArguments.contains(where: { $0.hasPrefix("--load-") }) {
+            waitForLaunchWorkToFinish(in: app, file: file, line: line)
+        }
         return app
+    }
+
+    /// Blocks until the app reports that its launch-time work has finished.
+    ///
+    /// The debug fixture loaders replay each sample sentence through the real
+    /// capture pipeline, which is not a fixed cost: measured on an idle
+    /// machine, the six `--load-today-examples` sentences take about nine
+    /// seconds, because the three containing a comma satisfy
+    /// `IntelligentThoughtExtractor.shouldRefine` and each wait on the
+    /// on-device model wherever Apple Intelligence is available — over four
+    /// seconds for the first, which also warms the model. Where it is
+    /// unavailable the same six cost about a third of a second. Draft
+    /// recovery, reminder and location reconciliation and the shared-capture
+    /// import then follow.
+    ///
+    /// A timeout large enough to cover that spread would be a magic number
+    /// that silently turns into a race the first time the load gets slower.
+    /// Waiting on the app's own completion signal removes the race instead,
+    /// and lets every assertion afterwards keep a short timeout that means
+    /// what it says: the app was already settled, so the wait measures the UI.
+    private func waitForLaunchWorkToFinish(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(
+            app.staticTexts["debug.launchWorkFinished"].waitForExistence(timeout: 120),
+            "The app never signalled that its launch-time work had finished",
+            file: file,
+            line: line
+        )
     }
 
     /// Keeps the product walkthrough tied to the exact UI journey under test.

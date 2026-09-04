@@ -167,6 +167,19 @@ jobs:
       - name: Corpus gate (rules path, no simulator)
         run: Tools/CI/corpus-gate.sh
 
+      # A stock simulator holds ~3.7 GB; the SimSlim profile in Tools/CI cuts
+      # it to ~0.9 GB, which is the difference between one simulator and
+      # several on a 16 GB self-hosted Mac. Opt-in: the step is a no-op when
+      # SimSlim is not installed on the runner (brew install mobai-app/tap/simslim).
+      - name: Prepare a slim simulator when SimSlim is installed
+        run: |
+          if command -v simslim >/dev/null 2>&1; then
+            udid="$(Tools/CI/simulator-pool.sh 1 | tail -n 1)"
+            echo "SPEAKIT_SIMULATOR_ID=$udid" >> "$GITHUB_ENV"
+          else
+            echo "simslim not installed; the unit tests run on a stock simulator"
+          fi
+
       - name: Unit tests
         run: Tools/CI/unit-tests.sh SpeakItTests
         env:

@@ -579,6 +579,20 @@ enum ThoughtTitleFormatter {
 }
 
 enum ThoughtOrganizer {
+    /// Whether the wording states a clock the way people *say* clocks — "half
+    /// past five", "half five", "ten pass six", "seventeen thirty", "zero nine
+    /// hundred" — by the **same grammar the resolver reads them with**.
+    ///
+    /// `ActionabilityReader` asks this beside its own cue lists, so a spoken
+    /// clock the resolver can read is never classified as a fact and then
+    /// thrown away. Deliberately not the whole clock grammar: a bare digit
+    /// behind "for" is a quantity as often as an hour ("options for one
+    /// person", "reasons for two-factor authentication"), and the router's
+    /// own lists already decide those.
+    static func statesAClock(_ text: String) -> Bool {
+        TemporalIntentParser.statesASpokenClock(in: text.lowercased())
+    }
+
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
@@ -929,8 +943,16 @@ enum ThoughtOrganizer {
         // "Get shampoo" acquires goods; "get the dry cleaning" collects a thing
         // that already belongs to you. The determiner is the whole difference,
         // and it is why "pick up" is not a shopping verb on its own.
+        //
+        // A particle after the verb is a different verb altogether: "get up",
+        // "get going", "get ready", "get home" acquire nothing, and "I need to
+        // get up at 6 tomorrow" was a shopping row titled *up*. Particles and
+        // quantifiers are closed classes, so testing them is grammar.
         if text.range(
-            of: #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?(?!the\b|a\b|an\b|my\b|his\b|her\b|our\b|their\b|that\b|this\b)\w"#,
+            of: #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?(?!the\b|a\b|an\b|my\b|his\b|her\b|our\b|their\b|that\b|this\b"#
+                + #"|some\b|any\b|more\b|enough\b|no\b|it\b|them\b|him\b|me\b|us\b"#
+                + #"|up\b|back\b|going\b|ready\b|dressed\b|home\b|here\b|there\b|in\b|out\b|off\b|on\b|away\b"#
+                + #"|together\b|to\b|around\b|by\b|over\b|through\b|started\b|rid\b|lost\b|well\b|better\b|down\b|along\b)\w"#,
             options: .regularExpression
         ) != nil {
             return .shopping
@@ -2550,20 +2572,53 @@ private enum TemporalIntentParser {
     private static func dayNumber(in text: String) -> Int? {
         // "Of" is in the guard because "the 10th of next month" and "the 3rd of
         // December" name a day in a month this parser cannot see; claiming the
-        // ordinal here resolved both to the current month.
-        let weekdayGuard = #"(?!\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|week|month|thing|of))"#
+        // ordinal here resolved both to the current month. The month names are
+        // there for the same reason: "the 1st September" is read day-first.
+        let weekdayGuard = #"(?!\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|week|month|thing|of|"#
+            + monthNamePattern + #"))"#
         if let match = firstMatch(
             in: text,
-            pattern: #"\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b\#(weekdayGuard)"#
+            pattern: #"\b(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\b\#(weekdayGuard)\#(ordinalIsADate)"#
         ), match.count >= 2, let day = Int(match[1]) {
             return day
         }
         guard let match = firstMatch(
             in: text,
-            pattern: #"\b(?:on\s+)?the\s+(\#(ActionabilityReader.ordinalWord))\b\#(weekdayGuard)"#
+            pattern: #"\b(?:on\s+)?the\s+(\#(ActionabilityReader.ordinalWord))\b\#(weekdayGuard)\#(ordinalIsADate)"#
         ), match.count >= 2 else { return nil }
         return ordinalWords[match[1].lowercased().replacingOccurrences(of: "-", with: " ")]
     }
+
+    /// Every month name the calendar grammar accepts, as one alternation.
+    private static let monthNamePattern = months
+        .flatMap(\.names)
+        .map(NSRegularExpression.escapedPattern)
+        .joined(separator: "|")
+
+    /// The closed classes of word that can follow a date expression: the
+    /// prepositions, conjunctions, determiners, pronouns and auxiliaries a
+    /// clause continues with, the clock and daypart words a time is added
+    /// with, and the handful of imperatives a plan continues with.
+    ///
+    /// This is grammar rather than vocabulary. Each class is complete by
+    /// definition, so testing it decides the *shape* of what follows, and the
+    /// question it settles is whether "the first" is a date or an adjective.
+    private static let closedClassAfterDate = #"(?:at|by|to|and|or|but|so|then|in|on|for|from|until|till|before|after|around|about"#
+        + #"|is|are|was|were|will|would|should|can|could|must|might|do|does|did|don't|doesn't|have|has|had|be|been|being"#
+        + #"|i|i'm|i'll|i've|we|we're|we'll|you|he|she|they|it|it's|my|our|your|his|her|their|there|here"#
+        + #"|next|this|that|which|when|if|because|since|though|although|as|with|too|also|instead|otherwise|anyway"#
+        + #"|please|remind|not|no|only|just|even|again|still|already|yet|every|each|through|onwards|onward"#
+        + #"|o'clock|am|pm|a\.m\.|p\.m\.|morning|afternoon|evening|night|noon|midnight|tomorrow|today|tonight"#
+        + #"|get|go|come|let|make|start|call|text|email|send|pay|book|buy|check|submit|take|meet|okay|ok|right|the|a|an|some)"#
+
+    /// Refuses an ordinal that is followed by an open-class word.
+    ///
+    /// "The first draft", "the first payment", "the first aid kit", "the first
+    /// snow" and "the first appointment" all read as the 1st of next month —
+    /// which overrode the Wednesday or Friday the sentence actually named. An
+    /// ordinal naming a day stands alone or is followed by a function word;
+    /// an ordinal followed by a noun is counting that noun.
+    private static let ordinalIsADate = #"(?!\s+(?:\d|(?!"# + closedClassAfterDate + #"\b)[a-z][a-z']*\b))"#
 
     private static let ordinalWords: [String: Int] = [
         "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
@@ -2581,7 +2636,13 @@ private enum TemporalIntentParser {
         referenceDate: Date,
         calendar: Calendar
     ) -> Date? {
-        guard let weekday = weekdays.first(where: { containsWord(text, $0.name) }) else { return nil }
+        // A weekday named as something that already happened is not a plan.
+        // "The outage last Tuesday" and "the call last Thursday" resolved to
+        // the *coming* Tuesday and Thursday, dating the write-up to the wrong
+        // side of the event it describes.
+        guard let weekday = weekdays.first(where: {
+            containsWord(text, $0.name) && !isPastReference(to: $0.name, in: text)
+        }) else { return nil }
         let explicitlyNext = firstMatch(
             in: text,
             pattern: #"\bnext\s+"# + NSRegularExpression.escapedPattern(for: weekday.name) + #"\b"#
@@ -2598,11 +2659,39 @@ private enum TemporalIntentParser {
         // calendar week. Speakers genuinely differ here, so the resolved date is
         // surfaced on the receipt and a wrong reading is one tap from correct —
         // that is a better answer than a rule nobody can predict.
-        guard explicitlyNext,
-              calendar.isDate(nearest, equalTo: referenceDate, toGranularity: .weekOfYear) else {
-            return nearest
+        var resolved = nearest
+        if explicitlyNext,
+           calendar.isDate(nearest, equalTo: referenceDate, toGranularity: .weekOfYear),
+           let following = calendar.date(byAdding: .weekOfYear, value: 1, to: nearest) {
+            resolved = following
         }
-        return calendar.date(byAdding: .weekOfYear, value: 1, to: nearest)
+        if namesTheWeekAfter(weekday.name, in: text),
+           let following = calendar.date(byAdding: .day, value: 7, to: resolved) {
+            return following
+        }
+        return resolved
+    }
+
+    /// "Last Tuesday", "this past Tuesday": the Tuesday that has gone.
+    ///
+    /// "The last Tuesday" is a different phrase — the last one *of* something
+    /// ("the last Tuesday of the month") — and is left to the ordinal reader.
+    private static func isPastReference(to weekdayName: String, in text: String) -> Bool {
+        firstMatch(
+            in: text,
+            pattern: #"(?<!\bthe\s)\b(?:last|this\s+past|the\s+past)\s+"#
+                + NSRegularExpression.escapedPattern(for: weekdayName) + #"\b"#
+        ) != nil
+    }
+
+    /// "Sunday week" and "a week on Sunday" both name the Sunday after the
+    /// coming one — Irish, British and Australian English say it this way as a
+    /// matter of course. Both resolved to the nearest Sunday, a confident date
+    /// exactly one week early.
+    private static func namesTheWeekAfter(_ weekdayName: String, in text: String) -> Bool {
+        let name = NSRegularExpression.escapedPattern(for: weekdayName)
+        return firstMatch(in: text, pattern: #"\b"# + name + #"\s+week\b"#) != nil
+            || firstMatch(in: text, pattern: #"\b(?:a|one)\s+week\s+on\s+"# + name + #"\b"#) != nil
     }
 
     /// - Parameter includeToday: Whether today counts as a match.
@@ -2684,6 +2773,23 @@ private enum TemporalIntentParser {
                 )
             }
 
+            // "15 August", "15th August", "the 1st September": the day before
+            // the month with no "of" between them, which is the spoken standard
+            // in Britain, Ireland, Australia, India and essentially all of
+            // Europe, Africa and Latin America. It had no branch at all, so
+            // "the meeting is on 15 August at 11" kept the 11 and resolved the
+            // day to **today** — the worst available answer. The month has to
+            // be followed by a function word, a clock, or nothing, which is what
+            // separates "on 12 December" from "order 12 December calendars".
+            if let day = dayBeforeMonth(in: text, monthNames: names, month: month) {
+                return self.date(
+                    month: month.value,
+                    day: day,
+                    referenceDate: referenceDate,
+                    calendar: calendar
+                )
+            }
+
             // "The 3rd of December" is the same date said the other way round,
             // and only the month-first order was read. The ordinal was then
             // claimed by the day-of-month parser, which knows nothing about
@@ -2706,6 +2812,28 @@ private enum TemporalIntentParser {
             )
         }
         return nil
+    }
+
+    /// The day of "15 August" / "the 1st September", or `nil` when the number
+    /// and the month are not a date.
+    private static func dayBeforeMonth(
+        in text: String,
+        monthNames names: String,
+        month: (names: [String], value: Int)
+    ) -> Int? {
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:"# + names + #")\b\#(ordinalIsADate)(?!\s+of\b)"#
+        ), match.count >= 2, let day = Int(match[1]), (1...31).contains(day) else { return nil }
+        // "May" is also a modal verb, and "the 3 may be late" is one. A modal
+        // is followed by a bare verb or an auxiliary; a month is not.
+        if month.value == 5, firstMatch(
+            in: text,
+            pattern: #"\b\d{1,2}\s+may\s+(?:be|have|not|also|still|never|just|already|get|go|come|make|let|need|want|do|even|well|as)\b"#
+        ) != nil {
+            return nil
+        }
+        return day
     }
 
     /// A month and day in the nearest future year.
@@ -2784,6 +2912,11 @@ private enum TemporalIntentParser {
         return WallClockTime(hour: daypart.hour(for: parsed.hour), minute: parsed.minute)
     }
 
+    /// The spoken clock forms, read together. See `ThoughtOrganizer.statesAClock`.
+    static func statesASpokenClock(in text: String) -> Bool {
+        spokenClockFace(in: text) != nil || bareHalfHour(in: text) != nil || twentyFourHourSpoken(in: text) != nil
+    }
+
     private static func time(in text: String, allowsBareClock: Bool) -> ParsedTime? {
         // "First thing" is the app's one morning policy, deliberately the same
         // hour a date-only reminder alerts at. Speak It exposes one morning, so
@@ -2802,6 +2935,8 @@ private enum TemporalIntentParser {
         // "half past noon" resolved to 12:00, and "ten to midnight" landed on
         // the wrong side of the day boundary as well as the wrong minute.
         if let spoken = spokenClockFace(in: text) { return spoken }
+        if let half = bareHalfHour(in: text) { return half }
+        if let military = twentyFourHourSpoken(in: text) { return military }
 
         if containsWord(text, "noon") {
             return ParsedTime(hour: 12, minute: 0, hasMeridiem: true)
@@ -2834,7 +2969,7 @@ private enum TemporalIntentParser {
         // wrong minute.
         if let match = firstMatch(
             in: text,
-            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern
+            pattern: #"\b(?:at|by|before|around|after|for)\s+(?:sharp\s+)?("# + clockHourPattern
                 + #")"# + durationUnitGuard
                 + #"\s+((?:twenty|thirty|forty|fifty)(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|o'?\s?clock|fifteen|five|ten)\b"#
         ), match.count >= 3, let hour = number(from: match[1]), (1...12).contains(hour) {
@@ -2856,13 +2991,13 @@ private enum TemporalIntentParser {
 
         if allowsBareClock, let match = firstMatch(
             in: text,
-            pattern: #"\b(?:at|by|before|around|after|for)\s+("# + clockHourPattern + #")(?::(\d{2}))?\b"#
+            pattern: #"\b(?:at|by|before|around|after|for)\s+(?:sharp\s+)?("# + clockHourPattern + #")(?::(\d{2}))?\b"#
                 + durationUnitGuard
         ), match.count >= 3, let hour = number(from: match[1]) {
             let minute = Int(match[2]) ?? 0
             guard (1...12).contains(hour), (0...59).contains(minute) else { return nil }
             return committedAlarmHour(
-                ParsedTime(hour: hour, minute: minute, hasMeridiem: false),
+                ParsedTime(hour: hour, minute: minute, hasMeridiem: isZeroPaddedMorning(match[1])),
                 in: text
             )
         }
@@ -2882,9 +3017,12 @@ private enum TemporalIntentParser {
         // 3" names a 3 PM meeting, and nobody routinely sets a 3 AM alarm — so
         // the rule starts where alarms actually start.
         guard !time.hasMeridiem, (4...11).contains(time.hour) else { return time }
+        // "Be up at 6", "get up at 6", "wake up at 6" are the ordinary way to
+        // say what "set an alarm for 6" says, and resolved to 6 PM.
         guard firstMatch(
             in: text,
-            pattern: #"\b(?:set\s+an?\s+alarm|alarms?\s+(?:for|at)|wake\s+me)\b"#
+            pattern: #"\b(?:set\s+an?\s+alarm|alarms?\s+(?:for|at)|wake\s+(?:me|up)|waking\s+up"#
+                + #"|(?:be|get|getting|being|am|i'm)\s+up)\b"#
         ) != nil else { return time }
         // A daypart in the same sentence was explicit, so it already decided.
         guard DaypartHint(in: text) == nil else { return time }
@@ -2905,8 +3043,37 @@ private enum TemporalIntentParser {
                 + clockHourPattern + #"|noon|midnight)\b"#
                 // "Five of six people" is a proportion, not a clock reading.
                 + #"(?!\s+(?:people|percent|them|us|these|those|kids|hours|days|weeks|dollars|of))"#
-        ), match.count >= 4 else { return nil }
+        ), match.count >= 4 else { return spokenClockFaceByEar(in: text) }
 
+        return spokenClockFace(offset: match[1], connective: match[2], hour: match[3])
+    }
+
+    /// The clock face with its connective rendered by sound.
+    ///
+    /// "Ten past six" and "ten to six" are the default way most of the
+    /// English-speaking world states a time, and dictation writes the small
+    /// word between the numbers by ear: "ten pass six", "ten passed six",
+    /// "ten too six", "ten two six". Each of those fell through the face
+    /// above to the bare-clock rule, which took the **offset** as the hour —
+    /// so "ten past six" became 10 PM, a confident answer four hours out.
+    ///
+    /// A time preposition is required here where the canonical face needs
+    /// none, because "two" and "pass" are ordinary words: "the code is ten
+    /// two six" is not a clock, and "at ten two six" is.
+    private static func spokenClockFaceByEar(in text: String) -> ParsedTime? {
+        let offsets = #"(?:half|quarter|five|ten|twenty|twenty[\s-]five)"#
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:at|for|by|around|about|until|till|before|after)\s+(?:a\s+)?(\#(offsets))\s+(pass|passed|too|two)\s+("#
+                + clockHourPattern + #"|noon|midnight)\b"#
+                + #"(?!\s+(?:people|percent|them|us|these|those|kids|hours|days|weeks|dollars|of))"#
+        ), match.count >= 4 else { return nil }
+        let connective = ["pass": "past", "passed": "past", "too": "to", "two": "to"][match[2].lowercased()] ?? match[2]
+        return spokenClockFace(offset: match[1], connective: connective, hour: match[3])
+    }
+
+    private static func spokenClockFace(offset: String, connective: String, hour hourTerm: String) -> ParsedTime? {
+        let match = ["", offset, connective, hourTerm]
         let minuteWords: [String: Int] = [
             "half": 30, "quarter": 15, "five": 5, "ten": 10,
             "twenty": 20, "twenty five": 25, "twenty-five": 25,
@@ -2936,6 +3103,76 @@ private enum TemporalIntentParser {
             return ParsedTime(hour: previous, minute: 60 - offset, hasMeridiem: false)
         }
         return ParsedTime(hour: hour, minute: offset, hasMeridiem: false)
+    }
+
+    /// "Half five" is 5:30 across Britain, Ireland, Australia and New Zealand
+    /// — the "past" is simply not said. Read as a whole clock, not a fragment:
+    /// it used to drop to day-only, and a day-only *reminder* alerts at the
+    /// 09:00 default, so "remind me at half five tomorrow to call mum" rang at
+    /// nine in the morning. The preposition is required, which is what keeps
+    /// "half a dozen eggs", "half an hour" and "half the team" off the clock.
+    private static func bareHalfHour(in text: String) -> ParsedTime? {
+        guard let match = firstMatch(
+            in: text,
+            pattern: #"\b(?:at|for|by|around|about|until|till|before|after)\s+half\s+("#
+                + clockHourPattern + #")\b"#
+                + #"(?!\s*(?::|%|percent|hours?|hrs?|minutes?|mins?|seconds?|days?|weeks?|months?|years?"#
+                + #"|dollars|bucks|euros|pounds|people|of|times|kilos|pounds|litres|liters|cups|dozen))"#
+        ), match.count >= 2, let hour = number(from: match[1]), (1...12).contains(hour) else {
+            return nil
+        }
+        return committedAlarmHour(ParsedTime(hour: hour, minute: 30, hasMeridiem: false), in: text)
+    }
+
+    /// The 24-hour clock said aloud: "seventeen thirty", "eighteen hundred",
+    /// "zero nine hundred", "nine hundred hours", "oh six twenty".
+    ///
+    /// Most of Europe, India, Latin America and much of Asia speak a 24-hour
+    /// clock, and so does anyone who has served or flown. Every one of these
+    /// carries its half of the day with it, so the result is marked as having
+    /// a meridiem: nothing downstream may roll "zero nine hundred" to 9 PM.
+    private static func twentyFourHourSpoken(in text: String) -> ParsedTime? {
+        let lead = #"\b(?:at|for|by|around|about|until|till|before|after)\s+"#
+        // A number this shape followed by a unit or an "and" is an amount —
+        // "two hundred dollars", "fifteen thirty and forty" — not a clock.
+        let amountGuard = #"(?!\s+(?:and\b|\d|dollars|bucks|euros|pounds|cents|people|grams|kilos|kg|miles|km"#
+            + #"|calories|words|percent|thousand|million|steps|units|metres|meters|feet))"#
+        let afternoonHours = #"(thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[\s-](?:one|two|three))?)"#
+        let minutes = #"(hundred(?:\s+hours)?|(?:twenty|thirty|forty|fifty)(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?"#
+            + #"|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|fifteen|ten|five)"#
+
+        func minute(from word: String) -> Int? {
+            let lowered = word.lowercased()
+            if lowered.hasPrefix("hundred") { return 0 }
+            if lowered.hasPrefix("oh ") { return number(from: String(lowered.dropFirst(3))) }
+            return number(from: lowered)
+        }
+
+        // "Seventeen thirty", "eighteen hundred".
+        if let match = firstMatch(in: text, pattern: lead + afternoonHours + #"\s+"# + minutes + #"\b"# + amountGuard),
+           match.count >= 3, let hour = number(from: match[1]), (13...23).contains(hour),
+           let minute = minute(from: match[2]), (0...59).contains(minute) {
+            return ParsedTime(hour: hour, minute: minute, hasMeridiem: true)
+        }
+        // "Zero nine hundred", "nine hundred hours", "oh six twenty", "zero seven fifteen".
+        if let match = firstMatch(
+            in: text,
+            pattern: lead + #"(?:(zero|oh|o)\s+)?("# + clockHourPattern + #")\s+"# + minutes + #"\b"# + amountGuard
+        ), match.count >= 4, let hour = number(from: match[2]), (0...12).contains(hour),
+           let minute = minute(from: match[3]), (0...59).contains(minute),
+           !match[1].isEmpty || match[3].lowercased().hasPrefix("hundred") {
+            return ParsedTime(hour: hour, minute: minute, hasMeridiem: true)
+        }
+        return nil
+    }
+
+    /// "06:20" is written by someone reading a 24-hour clock, and on that clock
+    /// a leading zero is unambiguously morning. The bare-hour default used to
+    /// flip 01:00–07:59 to the afternoon on a named day, which put the early
+    /// train, the early flight and the airport taxi twelve hours late — the
+    /// most expensive band there is to be wrong in.
+    private static func isZeroPaddedMorning(_ hourToken: String) -> Bool {
+        hourToken.count == 2 && hourToken.hasPrefix("0")
     }
 
     /// A named future day removes the date ambiguity but spoken clock hours
@@ -2985,6 +3222,12 @@ private enum TemporalIntentParser {
             (#"\bafter\s+lunch\b"#, 13),
             (#"\bafter\s+(?:dinner|supper)\b"#, 19),
             (#"\bbefore\s+bed(?:time)?\b"#, 21),
+            // Breakfast, tea and supper are anchors in exactly the way lunch
+            // is; without them "remind me at breakfast" named a place.
+            (#"\b(?:at|during)\s+breakfast(?:\s+time)?\b"#, 8),
+            (#"\bafter\s+breakfast\b"#, 9),
+            (#"\b(?:at|around)\s+tea\s*time\b"#, 17),
+            (#"\b(?:at|during)\s+(?:dinner|supper)(?:\s*time)?\b"#, 18),
         ]
         for anchor in anchors where text.range(
             of: anchor.pattern,
