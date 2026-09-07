@@ -25,6 +25,21 @@ offline" line. Its stylesheet and script, `assets/styles.css` and
 anything and can be deleted too; they are left in place only because deleting
 them was not asked for.
 
+## September 2026 responsive update
+
+The orb now has a small liquid silhouette animation: two settling cycles on
+arrival, and a repeating morph only while the browser demo is listening.
+The waveform and hit target stay stable. Reduce Motion disables the effect;
+no SVG blur filter, external library, or additional rendering loop is needed.
+
+The current overrides at the end of `stage.css` supersede the earlier animation/layout notes below: the primary action and reading content are always visible, phones use normal-flow hero content and stacked example cards, and animations pause offscreen or when reduced motion is enabled. Keyboard focus, 44px actions and readable input text are explicit.
+
+Download is the primary conversion action: it occupies the persistent top-right button, the hero, and the final offer. The in-page browser demo is deliberately secondary and explicitly labeled. Until a verified public listing exists, Download opens an honest availability sheet instead of pretending that an install can complete; the browser demo remains a fallback from that sheet.
+
+Set the `speak-it-app-store-url` meta value in `index.html` to the verified `https://apps.apple.com/...` listing to enable the real App Store destination. On iPhone, Download then goes directly to that listing; on larger devices it opens the QR/App Store sheet. Regenerate the QR so its destination matches, replace the interim custom acquisition control with Apple's official badge artwork, and add Apple's Smart App Banner once the numeric App Store ID is known.
+
+Validation for this update uses local Chrome viewports, not physical iPhone/Safari certification. The checked matrix covers 320×568, current 375–440px portrait widths, and 667–956px landscape widths; it also checks the privacy, support, and invite pages. No npm dependency or hosting change is required.
+
 ## Run it locally
 
 ```bash

@@ -1,0 +1,18 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {parse}=require('../assets/demo-parser.js');
+const times=[['5:30 PM','5:30 PM'],['5:30 AM','5:30 AM'],['12 AM','12:00 AM'],['12 PM','12:00 PM'],['17:30','5:30 PM'],['00:30','12:30 AM'],['five PM','5:00 PM'],['5 p.m.','5:00 PM']];
+for(const [input,expected] of times)test(`explicit ${input} is preserved`,()=>{const r=parse(`Remind me to call Mum tomorrow at ${input}`);assert.equal(r.detail,`Tomorrow, ${expected}`);assert.equal(r.title,'Call Mum');assert.equal(r.needsReview,false);});
+for(const input of ['tomorrow at five','tomorrow at 5:99 PM','tomorrow at 25:00','tomorrow at 13 PM','next Friday at 5 PM','in 2 hours','before the 20th','at 5 PM'])test(`ambiguous or unsupported timing stays intact: ${input}`,()=>{const t=`Call Mum ${input}`,r=parse(t);assert.equal(r.needsReview,true);assert.equal(r.original,t);assert.equal(r.title,t);});
+test('arrival is a place trigger',()=>{const r=parse('Take the bins out when I get home.');assert.equal(r.detail,'Arriving at Home');assert.equal(r.title,'Take the bins out');});
+test('departure is not arrival',()=>assert.equal(parse('Call Mum when I leave work').detail,'Leaving Work'));
+test('combined place and time needs review',()=>assert.equal(parse('Call Mum tomorrow when I get home').needsReview,true));
+test('personal detail remains a memory',()=>assert.equal(parse('Daniel prefers oat milk.').destination,'Memory · People'));
+test('idea mentioning an action stays an idea',()=>assert.equal(parse('Idea — call people before their birthdays').destination,'Memory · Ideas'));
+test('a factual time does not become a reminder',()=>assert.equal(parse('The flight lands tomorrow at 9:40 PM').destination,'Memory'));
+test('a phone number stays reference',()=>assert.equal(parse('Dr. Reyes at the clinic is on 416 555 0142').destination,'Memory · Reference'));
+test('multiple actions are not silently merged',()=>assert.equal(parse('Call Mum tomorrow and buy milk').needsReview,true));
+test('original wording and markup remain literal',()=>{const t='<img src=x onerror=alert(1)>  is a test';assert.equal(parse(t).original,t);assert.equal(parse(t).title,t);});
+test('undated action has no invented time',()=>{const r=parse('Book the dentist');assert.equal(r.detail,'No date');assert.equal(r.title,'Book the dentist');});
+test('empty input has no fake result',()=>assert.equal(parse('   '),null));
+test('oversized speech remains intact',()=>{const t='a'.repeat(241);const r=parse(t);assert.equal(r.needsReview,true);assert.equal(r.original,t);});

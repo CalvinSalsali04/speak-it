@@ -255,6 +255,23 @@ a { color: inherit; text-decoration: none; }
   transform: scaleY(calc(.72 + var(--level) * .5));
   transition: transform .3s var(--ease);
 }
+
+/* Liquid feedback stays inside the existing orb footprint. Only its ink
+   silhouette changes: waveform, focus ring and hit target stay stable.
+   Avoid a blur/contrast filter over text or a full-screen compositing layer. */
+@keyframes orb-liquid {
+  0%, 100% { border-radius: 50%; }
+  22% { border-radius: 42% 58% 54% 46% / 48% 43% 57% 52%; }
+  48% { border-radius: 56% 44% 42% 58% / 55% 58% 42% 45%; }
+  74% { border-radius: 47% 53% 59% 41% / 42% 51% 49% 58%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .stage .orb__core { animation: orb-liquid 3.2s ease-in-out 2; }
+  .demo.is-listening .orb__core { animation: orb-liquid 2.4s ease-in-out infinite; }
+  .mic:active:not([disabled]) .orb__core {
+    border-radius: 44% 56% 46% 54% / 57% 45% 55% 43%;
+  }
+}
 .orb__wave rect {
   transform-box: fill-box;
   transform-origin: 50% 50%;
@@ -2394,5 +2411,169 @@ main { position: relative; z-index: 2; }
     translate: none;
     filter: none;
     transition: none;
+  }
+}
+
+/* Responsive product pass: content first, motion as supporting feedback. */
+html { font-size: 100%; scroll-padding-top: calc(var(--bar) + 1rem); }
+body { font-size: 1.0625rem; }
+button, input, textarea, select { font: inherit; }
+button, a, input, textarea { touch-action: manipulation; }
+.topbar__nav { display: flex; align-items: center; gap: clamp(1rem, 3vw, 2rem); }
+.topbar__link { font-size: .875rem; min-height: 44px; display: inline-flex; align-items: center; }
+.topbar__cta { min-height: 44px; display: inline-flex; align-items: center; padding-inline: 1.35rem; font-size: .875rem; }
+.topbar { background: rgb(var(--bg-rgb) / .88); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.wordmark { min-height: 44px; }
+.hero__get { opacity: 1; translate: none; pointer-events: auto; }
+.hint { display: none; }
+.hero__secondary { font-size: .875rem; min-height: 44px; display: inline-flex; align-items: center; gap: .5rem; color: var(--muted); }
+.hero__sub { font-size: 1rem; max-width: 42ch; }
+.opening { height: 116svh; }
+.opening__pin { min-height: 44rem; }
+.hero { max-width: 100%; }
+.hero__title { font-optical-sizing: auto; }
+.hero__slot { min-height: 4.5rem; }
+.hero__foot { margin-top: 1.5rem; gap: .625rem; }
+.appstore { min-height: 54px; }
+.appstore__small { font-size: .75rem; }
+.appstore__big { font-size: 1.0625rem; }
+.qr__label { font-size: .875rem; }
+.eyebrow, .section__eyebrow { font-size: .75rem; }
+.plan__list, .plan__note, .finale__foot, .footer__links, .demo__note { font-size: .875rem; }
+.footer__links a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.footer__legal { font-size: .75rem; }
+.chip, .ghost { min-height: 44px; font-size: .875rem; }
+.demo__form input, .demo__form textarea { font-size: 1rem; }
+.demo, .demo__stage { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.demo__stage > *, .demo > * { min-width: 0; max-width: 100%; }
+.demo__chips { margin-inline: 0; }
+.chip { white-space: normal; overflow-wrap: anywhere; }
+.dl { overflow-y: auto; }
+.dl__inner { min-height: min-content; padding-top: 5rem; padding-bottom: max(2rem, env(safe-area-inset-bottom)); }
+.dl__label { max-width: 30ch; font-size: 1.0625rem; }
+.demo__note a { display: inline-flex; align-items: center; min-height: 44px; margin-block: -12px; }
+/* Reveals never hide the thing a visitor came to read. */
+.js .reveal, .js .reveal .w { opacity: 1; filter: none; translate: none; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid currentColor; outline-offset: 4px;
+}
+@media (max-width: 700px) {
+  :root { --u: clamp(92px, 14svh, 120px); --gutter-base: 1.25rem; }
+  .topbar__link { display: none; }
+  .opening { height: auto; min-height: 100svh; }
+  .opening__pin { position: relative; height: auto; min-height: max(42rem, 100svh); padding-top: 7rem; padding-bottom: 2rem; }
+  .hero { translate: none; }
+  .hero__title { font-size: clamp(2rem, 9vw, 3rem); line-height: 1.05; }
+  .hero__sub { font-size: 1rem; max-width: 33ch; }
+  .hero__foot { margin-top: 1.25rem; }
+  .opening__eyebrow { top: calc(var(--bar) + 1rem); font-size: .75rem; }
+  .bubble:nth-child(n+7) { display: none; }
+  .get .qr { display: none; }
+  .section { padding-block: 4rem; }
+  .section__head { margin-bottom: 2rem; }
+  /* A phone-sized explanation should be read at phone-sized text. */
+  .scene { display: grid; gap: 1rem; aspect-ratio: auto; perspective: none; padding: 0; }
+  .scene__ground, .scene .tilt { display: none; }
+  .emit { position: relative; left: auto; top: auto; width: 100%; max-width: 100%; transform: none; --pad-x: 1.125rem; --pad-y: 1.125rem; }
+  .js .emit__said, .js .emit__sheet, .js .emit__app, .js .emit__where { animation: none; opacity: 1; transform: none; }
+  .emit__where, .emit__said { font-size: .875rem; }
+  .approw__title { font-size: 1rem; line-height: 1.45; }
+  .approw__meta, .approw__time { font-size: .8125rem; }
+  .emit .approw__row { grid-template-columns: auto minmax(0, 1fr); }
+  .emit .approw__time { grid-column: 2; grid-row: auto; justify-self: start; }
+  .plans { gap: 1.25rem; }
+  .plan { padding: 1.5rem; min-width: 0; }
+  .plan__price { flex-wrap: wrap; }
+  .finale { padding: 4rem var(--gutter); }
+}
+@media (max-height: 600px) {
+  .opening { height: auto; }
+  .opening__pin { position: relative; height: auto; min-height: 40rem; padding-block: 7rem 2rem; }
+  .hero { translate: none; }
+  .hero__sub { font-size: 1rem; }
+  .hero__title { font-size: clamp(2rem, 5vw, 3rem); }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .topbar, .is-past-opening .topbar { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--ink); }
+  .dl::backdrop { background: #171717; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
+  .opening { height: auto; }
+  .opening__pin { position: relative; }
+  .dl__inner { translate: none; }
+}
+
+@media (hover: hover) {
+  .topbar__link:hover { text-decoration: underline; text-underline-offset: .3em; }
+  .hero__secondary:hover { color: var(--ink); }
+}
+
+/* On an iPhone held sideways, the stacked portrait hero pushes its primary
+   action below the fold. Use the width that landscape gives us: the headline
+   and listening indicator stay centred together, while the explanation and
+   actions share the row below. All of it remains in normal flow, so browser
+   chrome changes and text enlargement can add height without overlap. */
+@media (orientation: landscape) and (min-width: 560px) and (max-height: 560px) {
+  :root { --u: clamp(64px, 19svh, 84px); }
+
+  .field { display: none; }
+
+  .topbar {
+    padding-top: max(.5625rem, env(safe-area-inset-top));
+    padding-bottom: .5625rem;
+  }
+
+  .opening,
+  .opening__pin {
+    height: auto;
+    min-height: max(100svh, 20rem);
+  }
+
+  .opening__pin {
+    padding-top: calc(var(--bar) + 2.75rem);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .opening__eyebrow {
+    top: calc(var(--bar) + .35rem);
+    padding-block: .35rem;
+  }
+
+  .hero {
+    width: min(100%, 58rem);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero__title { font-size: clamp(2rem, 4.8vw, 2.6rem); }
+  .hero__foot {
+    width: 100%;
+    margin-top: .25rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: clamp(1.5rem, 5vw, 4rem);
+    row-gap: 0;
+    align-items: center;
+    justify-items: stretch;
+    text-align: left;
+  }
+  .hero__foot::before { width: 145%; height: 190%; }
+  .hero__sub {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    max-width: 36ch;
+    font-size: .9375rem;
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+  .hero__slot {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 3.75rem;
+    place-items: center start;
+  }
+  .hero__secondary {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
   }
 }
