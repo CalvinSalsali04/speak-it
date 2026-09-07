@@ -471,6 +471,12 @@ struct RootView: View {
         }
         .onOpenURL(perform: handleDeepLink)
         .onChange(of: scenePhase) { _, phase in
+            // Going to the background is when the store is most recently
+            // right, so the morning brief is re-planned from it here as well
+            // as on the way back in.
+            if phase == .background {
+                repository?.refreshMorningBrief()
+            }
             guard phase == .active else { return }
             // A moment whose sheet never reached the screen — SwiftUI refusing
             // to present over something a descendant screen already had up —
@@ -495,6 +501,9 @@ struct RootView: View {
             // set from the saved items on every foreground repairs all of them
             // without the app needing to know which one happened.
             repository?.reconcilePendingReminders()
+            // The habit notifications get the same self-healing pass, and this
+            // foreground is also what answers a brief that fired this morning.
+            repository?.refreshMorningBrief()
             // The same argument, for the same reason, against CoreLocation:
             // regions can be orphaned by an edit, stranded by a delete that
             // happened while the app was closed, invalidated by a changed Home

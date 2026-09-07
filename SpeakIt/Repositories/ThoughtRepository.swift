@@ -334,6 +334,9 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func recoverUnorganizedCaptures()
     func recoverInterruptedCaptureDraft()
     func reconcilePendingReminders()
+    /// Re-plans the morning brief from the store as it stands, and books the
+    /// briefs that have already fired against the answer window.
+    func refreshMorningBrief()
     /// Rebuilds monitored regions from the saved place reminders. The location
     /// counterpart of `reconcilePendingReminders()`.
     @discardableResult
@@ -404,6 +407,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
 }
 
 extension ThoughtRepository {
+    func refreshMorningBrief() {}
+
     @discardableResult
     func deleteTutorialCaptures() throws -> Int { 0 }
 

@@ -7,6 +7,15 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Seven small dots beside the date on Today, one per day of the week, filled
+  on the days you kept a thought or finished a task. They appear from your
+  second active day, carry no number, and never report a loss. A clear day
+  with things still coming up now reads "All clear for today."
+- An optional morning brief: one silent notification with what's due ("2 due
+  today · 1 overdue") at a time you choose, switched on under Settings →
+  Capture & reminders. It stays inside any
+  Focus, sends nothing when nothing is due, and turns itself off after five
+  unanswered mornings.
 - Pro monthly is $2.99, and the annual plan is now guaranteed to cost less than
   twelve monthly payments. The scheduled annual increase to $29.99 would have
   made the plan the paywall pre-selects and badges `BEST VALUE` more expensive

@@ -146,6 +146,7 @@ struct SpeakItApp: App {
             for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("SpeakIt.") {
                 defaults.removeObject(forKey: key)
             }
+            HabitDefaults.reset()
         }
         if arguments.contains("--ui-testing-skip-welcome") {
             UserDefaults.standard.set(true, forKey: "SpeakIt.hasCompletedWelcome")
@@ -256,6 +257,12 @@ private final class NotificationPresentationDelegate: NSObject, UNUserNotificati
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A brief that arrives while the person is already looking at Speak
+        // It has nothing to add; reminders still present as before.
+        if HabitNotificationScheduler.isHabitIdentifier(notification.request.identifier) {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .list, .sound])
     }
 
