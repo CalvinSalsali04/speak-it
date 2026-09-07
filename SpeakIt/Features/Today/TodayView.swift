@@ -658,8 +658,13 @@ struct TodayView: View {
         }
     }
 
+    /// The ambient card is the quietest of the three Pro surfaces, and it is
+    /// deliberately the last to arrive. `pendingProMoment` being non-nil means a
+    /// sheet is still owed to this person; stacking a card underneath it would
+    /// make one capture produce two asks on the same screen.
     private var shouldShowProDiscovery: Bool {
         allItems.count >= 5 &&
+            subscriptionStore.pendingProMoment == nil &&
             subscriptionStore.hasAvailablePlans &&
             !subscriptionStore.hasProAccess &&
             !hasDismissedProDiscovery

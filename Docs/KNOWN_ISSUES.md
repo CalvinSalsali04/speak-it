@@ -4,6 +4,28 @@
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
 
+## The app cannot set what customers are charged
+
+`SpeakIt.storekit` is a local test configuration, and the paywall renders
+`product.displayPrice`. Changing the monthly plan to $2.99 in this repository
+changes what the simulator and the UI suite show; it does not change what App
+Store Connect bills. Until the monthly product is $2.99 there and the annual
+schedule is confirmed, the shipped paywall shows whatever App Store Connect
+holds — and if that is still $1.99 against a $29.99 annual, the plan the screen
+pre-selects and badges `BEST VALUE` is the more expensive one. `E12` in
+`Docs/BUILD_14_DEVICE_SMOKE.md` is the device check that catches it, and the
+gates are listed in `Docs/APP_STORE_SUBMISSION.md`.
+
+## Pro moments are offered at the next foreground, not in real time
+
+A capture made through Siri, Back Tap, a Shortcut, or the share extension runs
+outside this process, so the moment it earns cannot be shown while it happens —
+there is no Speak It window to put a sheet on. The moment stays pending and is
+offered the next time the app is on screen. In the rare case where SwiftUI
+refuses the presentation because a screen below already has a sheet up, the
+moment is not spent: the next foreground clears the stale binding and offers it
+again.
+
 ## Back Tap setup
 
 iOS does not allow Speak It to assign Back Tap automatically or deep-link directly to the Back Tap choice. The user must add the ready-made one-action **Speak It Capture** shortcut and select it under Accessibility → Touch → Back Tap → Double Tap. The shortcut now foregrounds Speak It directly into an auto-starting capture instead of attempting a fragile cold background microphone start. The app opens as close as the public Accessibility API permits and explains the remaining taps; the physical Back Tap gesture still needs end-to-end device testing across supported iOS versions.

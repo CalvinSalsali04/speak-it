@@ -57,6 +57,83 @@ at 12:00 a.m. America/Toronto on October 22, 2026 (`04:00:00Z`). That makes
 monthly payments. Sale copy is build-gated and time-gated, and App Store Connect
 must have the matching future price scheduled before the gate is enabled.
 
+## 2026-09-07 — Monthly Pro is $2.99, and annual must stay below twelve months of it
+
+The scheduled annual increase to $29.99 was going to ship against a $1.99
+monthly, which makes the annual plan $6.11 a year *more expensive* than paying
+monthly — while the paywall pre-selects it and badges it `BEST VALUE`. Under
+guideline 3.1.2 that badge is a claim a reviewer can check, and it would have
+been false the moment the price change landed.
+
+Monthly moves to $2.99. That restores the ratio the rest of the category uses:
+annual is priced at roughly ten months of monthly (Drafts Pro $1.99/$19.99, Bear
+$2.99/$29.99, Timery $0.99/$9.99, checked 2026-09-07), so $2.99 against $29.99
+is a genuine saving and the badge is true again. It also raises revenue per
+monthly subscriber by half at a price that still sits with the most respected
+indie note apps rather than above them.
+
+Aggregate benchmark data argues for far more — a $8 median monthly across
+Productivity, and roughly six times the realized first-year value per payer in
+the high-priced tier. That median is set by products with teams and paid
+acquisition, and it is not the shelf Speak It sits on. The evidence and the
+reasoning are in `Docs/PRICING_AND_CONVERSION_2026-09-07.md`.
+
+Weekly billing was considered and rejected in the same pass. No comparable
+productivity or note app sells one; weekly-dominant apps monetize an install
+worse than yearly-dominant apps; and every weekly price that would be worth
+charging annualizes above the $29.99 annual plan.
+
+The invariant this creates: **annual must stay below twelve months of monthly.**
+Changing either price without the other re-creates the defect.
+
+## 2026-09-07 — The launch price ends the offer, not the subscriber's rate
+
+The paywall said "$14.99 per year until October 22, 2026," which reads as though
+the buyer's own price expires on that date. What expires is the offer; App Store
+Connect is configured to preserve the rate for subscriptions that began inside
+the window. The caption now names which of the two ends.
+
+`speakitapp.ca` still has to agree with the sheet. The page had been printing a
+struck-through $3.99 monthly that the app never implemented, and it must not
+claim a monthly discount, because `priceColumn(product:isAnnual:alignment:)`
+only ever strikes a regular price through for annual. That correction belongs
+with the website work in flight and is not part of this change;
+`Website/README.md` carries the open item.
+
+## 2026-09-07 — Pro is offered twice before the wall, and never blocks
+
+The free-limit wall was the only place Speak It made its case. It is the worst
+one: the person has already been stopped, and the thought they were trying to
+save is what they are thinking about. It is also weeks late — roughly half of
+all paid conversions across the store happen on the day of install, and a
+lifetime allowance of ten captures that never renews puts the wall in week three
+or five by construction.
+
+`ProMoment` adds two invitations while the allowance still has room: one after
+the first capture that actually spends part of it, and one when three remain.
+Each is offered at most once for the life of the install, each is an ordinary
+dismissible sheet with "Continue using Speak It free" on it, and neither blocks
+anything. Practice captures during the tutorial are complimentary and never
+reach the rule, so nobody is asked to pay before Speak It has worked for them.
+
+Three constraints shaped the implementation:
+
+- **Delivery is marked when the sheet appears, not when the moment comes due.**
+  A capture made through Siri, Back Tap, or the share extension has no Speak It
+  window to put a sheet on. The moment stays pending and is offered at the next
+  launch instead of being lost.
+- **A quiet screen outranks it.** Onboarding, practice, an open capture, the
+  free-limit wall, and a referral invitation all defer it, and it waits rather
+  than being dropped.
+- **Entitlement state has to be settled first.** A subscriber whose cached
+  access flag was cleared reads as free for as long as the StoreKit round trip
+  takes. `canPresentProMoment` requires a resolved `.free` level, so the app
+  cannot show a paywall to somebody already paying — the same defect the cached
+  flag exists to prevent.
+
+The whole timing rule is a pure function, `ProMoment.due(forCaptureCount:alreadyDelivered:)`,
+so it is tested without a StoreKit session or the Keychain-backed ledger.
+
 ## 2026-08-03 — Voice is the default capture mode
 
 The central waveform opens an immersive voice-first screen. Typing remains one visible action away and receives partial transcription whenever recognition fails.

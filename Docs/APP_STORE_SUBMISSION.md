@@ -67,8 +67,15 @@ Do not submit until every one of these external gates is closed:
   `group.com.calvinwak.SpeakIt`, and iCloud container
   `iCloud.com.calvinwak.SpeakIt`.
 - **Todo:** Create both products in one subscription group:
-  - `com.calvinwak.SpeakIt.pro.monthly` — launch price $1.99 / month
-  - `com.calvinwak.SpeakIt.pro.annual` — summer launch price $14.99 / year
+  - `com.calvinwak.SpeakIt.pro.monthly` — $2.99 / month, not discounted
+  - `com.calvinwak.SpeakIt.pro.annual` — summer launch price $14.99 / year,
+    regularly $29.99
+  Monthly carries no sale price. It is $2.99 before and after the cutoff, and
+  the paywall never strikes a monthly regular price through. **Annual must stay
+  below twelve months of monthly** — $29.99 against $35.88 — or the plan the
+  paywall pre-selects and badges `BEST VALUE` is the more expensive one, which
+  is a guideline 3.1.2 claim a reviewer can check. See
+  `Docs/DECISIONS.md` (2026-09-07).
   App Store Connect is the source of truth for live localized prices. The app
   renders `product.displayPrice`, so whatever is configured there is shown.
   Each subscription also needs a localized display name, description, and a

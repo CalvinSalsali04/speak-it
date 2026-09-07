@@ -81,6 +81,11 @@ struct RootView: View {
     @State private var captureInitialText = ""
     @State private var capturePerformance: CapturePerformanceTrace?
     @State private var showsFreeLimit = false
+    /// The uninvited Pro moment currently on screen. Held here rather than read
+    /// straight from the store, because presenting marks the moment delivered —
+    /// a sheet bound to the store's own pending value would dismiss itself the
+    /// instant it appeared.
+    @State private var proMomentSheet: ProMoment?
     @State private var activeReferralCode: String?
     @State private var returnsToSetupAfterExternalCapture = false
     @State private var hasPerformedMaintenance = false
@@ -304,6 +309,17 @@ struct RootView: View {
         .sheet(isPresented: $showsFreeLimit) {
             SpeakItProView(context: .freeLimit)
         }
+        .sheet(item: $proMomentSheet) { moment in
+            SpeakItProView(context: moment.presentationContext)
+                // Marked delivered because it reached the screen, not because
+                // something asked for it. If presentation is refused — another
+                // sheet already up somewhere below — the moment stays pending
+                // and is offered again rather than being silently spent.
+                .onAppear { subscriptionStore.consumeProMoment() }
+        }
+        .onChange(of: proMomentGate) { _, _ in
+            presentPendingProMomentIfReady()
+        }
         .sheet(
             isPresented: Binding(
                 get: { activeReferralCode != nil },
@@ -329,6 +345,11 @@ struct RootView: View {
                 ))
             }
             handleQuickAction(quickActionRouter.pendingRequest)
+            // A moment earned outside the app — a Back Tap capture, a shared
+            // thought imported at activation — is already pending when this
+            // view first appears, and `onChange` never fires for a value that
+            // arrived before the observer did.
+            presentPendingProMomentIfReady()
             guard !hasPerformedMaintenance else { return }
             hasPerformedMaintenance = true
 #if DEBUG
@@ -451,6 +472,21 @@ struct RootView: View {
         .onOpenURL(perform: handleDeepLink)
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            // A moment whose sheet never reached the screen — SwiftUI refusing
+            // to present over something a descendant screen already had up —
+            // leaves the binding set and the store's moment unconsumed. Clear
+            // the stale binding so the offer gets another chance instead of
+            // blocking every later one.
+            if proMomentSheet != nil, subscriptionStore.pendingProMoment != nil {
+                proMomentSheet = nil
+            }
+            // Captures made outside this process — Siri, Back Tap, a Shortcut —
+            // move the Keychain ledger without this store hearing about it.
+            // Re-reading on every foreground keeps the remaining count on Today
+            // honest, and is what lets a moment those captures earned be offered
+            // without waiting for a relaunch. The shared-inbox import below only
+            // refreshes when a share-extension payload is actually waiting.
+            subscriptionStore.refreshFreeAllowance()
             repository?.reconcileSharedTodayActions()
             // Self-healing pass. SwiftData and UNUserNotificationCenter are two
             // stores that can fall out of step — a scheduling call that failed,
@@ -932,6 +968,43 @@ struct RootView: View {
             guard !hasCompletedWelcome, fullScreenDestination == nil else { return }
             fullScreenDestination = .welcome
         }
+    }
+
+    /// Everything that decides whether an uninvited Pro sheet may appear, in one
+    /// value so a single `onChange` covers all of it.
+    private struct ProMomentGate: Equatable {
+        let pending: ProMoment?
+        let isReady: Bool
+    }
+
+    private var proMomentGate: ProMomentGate {
+        ProMomentGate(pending: subscriptionStore.pendingProMoment, isReady: isReadyForProMoment)
+    }
+
+    /// A moment Speak It raises itself has to wait for a quiet screen. Anything
+    /// the person is already reading — onboarding, practice, a capture, the
+    /// free-limit wall, a referral invitation — outranks it, and the moment
+    /// stays pending until that finishes rather than being dropped.
+    private var isReadyForProMoment: Bool {
+        hasCompletedWelcome
+            && !tutorialPhase.isActive
+            && !shouldResumeFirstCaptureGuide
+            && fullScreenDestination == nil
+            && !showsFreeLimit
+            && activeReferralCode == nil
+            && proMomentSheet == nil
+            && subscriptionStore.canPresentProMoment
+    }
+
+    private func presentPendingProMomentIfReady() {
+        guard isReadyForProMoment,
+              let moment = subscriptionStore.pendingProMoment else {
+            return
+        }
+        // The store's pending moment stays set until the sheet appears. Nothing
+        // presents twice in the meantime, because `isReadyForProMoment` reads
+        // `proMomentSheet` as well.
+        proMomentSheet = moment
     }
 
     private var tutorialPhase: FirstRunTutorialPhase {

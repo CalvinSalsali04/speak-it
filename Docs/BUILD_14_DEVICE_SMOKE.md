@@ -98,7 +98,7 @@ this build.
 | **E9** | Back Tap: Settings → Accessibility → Touch → Back Tap → Double Tap → Shortcut → "Speak It Capture". Double-tap the back of the phone from the lock screen and from another app. | App opens straight into listening, from cold launch too. | Opens to the home screen without listening, or does not open. *Not a stop-ship* — it is a convenience path. |
 | **E10** | Home-screen long-press → "Start speaking" and "Type a thought". | Both open directly into the right mode. | Either opens the wrong screen. |
 | **E11** | Use up free captures to the paywall, then buy monthly in Sandbox. Then delete and reinstall and use **Restore**. | Pro unlocks; after reinstall Restore returns Pro without paying again. | Purchase does not unlock, or Restore fails. **Stop-ship** for a paid user losing access. |
-| **E12** | On the paywall, check the prices shown. | Monthly $1.99. Annual shows the sale price with $29.99 as the struck-through regular price, and a sale end date of **October 22, 2026**. | The displayed price disagrees with what App Store Connect charges. |
+| **E12** | On the paywall, check the prices shown. | Monthly $2.99, flat, with no struck-through regular price. Annual shows the sale price with $29.99 struck through, and says the offer — not the subscriber's rate — ends **October 22, 2026**. Annual is cheaper than twelve months of monthly. | The displayed price disagrees with what App Store Connect charges, monthly shows a discount, or annual costs more than twelve monthly payments while badged `BEST VALUE`. |
 
 ---
 

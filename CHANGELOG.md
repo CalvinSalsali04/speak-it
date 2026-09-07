@@ -7,6 +7,24 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Pro monthly is $2.99, and the annual plan is now guaranteed to cost less than
+  twelve monthly payments. The scheduled annual increase to $29.99 would have
+  made the plan the paywall pre-selects and badges `BEST VALUE` more expensive
+  than paying monthly. Monthly carries no sale price: the paywall only ever
+  strikes a regular price through for annual.
+- The launch-price caption says the offer ends on October 22, not the
+  subscriber's rate. The previous wording read as though $14.99 expired for
+  people already paying it.
+- Speak It now makes its case twice before the free allowance runs out, instead
+  of only at the wall: once after the first capture that spends part of the
+  allowance, and once when three remain. Each appears at most once for the life
+  of the install, each is dismissible with "Continue using Speak It free", and
+  neither blocks anything. Practice captures during the tutorial stay
+  complimentary and never trigger either. A moment earned through Siri, Back
+  Tap, or the share extension waits for the next launch rather than being lost,
+  and none appear while onboarding, practice, a capture, the free-limit wall, or
+  a referral invitation is on screen — or before Speak It has confirmed the
+  Apple Account is not already subscribed.
 - Preserve new items alongside capture operations, including a separate review row for ambiguous operations; mixed captures count toward the free allowance when they create items.
 - Carry complete portable item semantics and shopping groups through iCloud, including explicit clearing and compatibility with older payloads.
 - Preserve stacked errands and preparatory clauses; constrain optional model refinement to uncertain readings with stronger action and metadata preservation.

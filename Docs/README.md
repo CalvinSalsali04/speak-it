@@ -28,6 +28,7 @@ the app.
 | [BACKLOG.md](BACKLOG.md) | Done / Next / Later |
 | [VOICE_ENDPOINTING_DECISION.md](VOICE_ENDPOINTING_DECISION.md) | Adaptive endpointing: why a finished sentence gets 1.9 seconds |
 | [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) | Capture performance targets and measurements |
+| [PRICING_AND_CONVERSION_2026-09-07.md](PRICING_AND_CONVERSION_2026-09-07.md) | Why weekly billing was rejected, how the price ladder is set, and where the funnel leaks |
 
 ## The understanding pipeline
 

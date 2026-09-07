@@ -78,6 +78,34 @@
 4. A natural pause finalizes and saves through the shared repository.
 5. Speak It shows a visible Remembered confirmation before returning to Today.
 
+## Speak It Pro
+
+Pro sells exactly one thing: capture without a lifetime limit. Nothing already
+saved is ever locked, and no other feature is gated.
+
+1. The allowance is ten captures for the life of the install, not ten a month.
+   Practice during the first-run tutorial is complimentary, and cancelling,
+   completing or withdrawing an existing thought spends nothing.
+2. **After the first capture that spends part of the allowance**, a dismissible
+   Pro sheet appears once — the product has just visibly worked, and nine
+   captures remain. **Continue using Speak It free** closes it and nothing
+   changes.
+3. **When three free captures remain**, the sheet appears once more, saying so.
+4. Both are shown at most once for the life of the install, and both wait for a
+   quiet screen: onboarding, practice, an open capture, the free-limit wall and
+   a referral invitation all outrank them, and neither appears until Speak It
+   has confirmed the Apple Account is not already subscribed. A moment earned by
+   a capture made through Siri, Back Tap or the share extension is offered at
+   the next launch rather than lost.
+5. An ambient **Explore Speak It Pro** card can appear on Today once at least
+   five items exist and no sheet is still owed. It is dismissible for good.
+6. **At the eleventh capture**, capture is blocked and the same screen opens
+   with the free-limit wording. Everything already saved stays readable and
+   editable.
+7. Plans are annual (pre-selected, `BEST VALUE`) and monthly. Annual is always
+   cheaper than twelve monthly payments. Restore Purchases, the offer-code
+   route, the privacy summary and the legal links are on the same screen.
+
 ## Review and edit
 
 1. Open an item from Today or Memory.

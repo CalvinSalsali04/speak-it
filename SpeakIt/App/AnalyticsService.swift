@@ -36,6 +36,8 @@ enum AnalyticsCaptureSource: String, Sendable {
 enum AnalyticsPaywallContext: String, Sendable {
     case account
     case freeLimit = "free_limit"
+    case firstCapture = "first_capture"
+    case runningLow = "running_low"
 }
 
 enum AnalyticsOnboardingTutorialStep: String, Sendable {

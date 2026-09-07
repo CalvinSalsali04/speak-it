@@ -646,14 +646,24 @@ final class SpeakItUITests: XCTestCase {
     /// The Pro paywall, asserted against the plan buttons' accessibility labels
     /// rather than against the individual price texts inside them.
     ///
-    /// Rewritten for the current screen, which changed in two ways this test
-    /// had not caught up with. The scheme now carries a StoreKit configuration,
-    /// so the real product path renders instead of the developer preview; and
-    /// each plan is now one accessibility element with a combined label, so the
-    /// price no longer exists as a standalone `"$1.99 / month"` static text —
-    /// it is `"$1.99"` above `"per month"`, spoken as one phrase. The label is
-    /// also the contract that actually matters, because it is what a VoiceOver
-    /// user hears.
+    /// Each plan is one accessibility element with a combined label, so a price
+    /// does not exist as a standalone static text — it is `"$2.99"` above
+    /// `"per month"`, spoken as one phrase. The label is also the contract that
+    /// actually matters, because it is what a VoiceOver user hears.
+    ///
+    /// **No literal price is asserted, on purpose.** The paywall renders
+    /// `product.displayPrice`, and what StoreKit hands it comes from App Store
+    /// Connect and the tester's storefront — nothing this repository controls.
+    /// A test that hard-codes $2.99 is asserting somebody else's configuration
+    /// and becomes a scheduled failure the first time a price or a storefront
+    /// changes. What this asserts instead is the part the code does own: the
+    /// shape of the labels, and the invariant that **annual costs less than
+    /// twelve monthly payments**. That invariant is the whole reason monthly
+    /// moved to $2.99 — the paywall pre-selects annual and badges it
+    /// `BEST VALUE`, so an annual plan that costs more than paying monthly is
+    /// a guideline 3.1.2 claim the screen cannot support. `E12` in
+    /// `Docs/BUILD_14_DEVICE_SMOKE.md` is where the real charged prices are
+    /// checked, against App Store Connect, on a device.
     ///
     /// Sale-specific copy is asserted only while the sale is running. The
     /// launch sale has an end date, and a test that hard-codes it silently
@@ -672,9 +682,29 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(annual.waitForExistence(timeout: 4))
         XCTAssertTrue(monthly.exists)
 
-        XCTAssertEqual(monthly.label, "Monthly, $1.99 per month")
+        guard let monthlyPrice = firstPrice(in: monthly.label) else {
+            return XCTFail("Monthly plan label carried no price: \(monthly.label)")
+        }
+        guard let annualPrice = firstPrice(in: annual.label) else {
+            return XCTFail("Annual plan label carried no price: \(annual.label)")
+        }
+
+        XCTAssertEqual(
+            monthly.label,
+            "Monthly, \(currency(monthlyPrice)) per month",
+            "The monthly label is the price and its period, spoken as one phrase"
+        )
         XCTAssertEqual(annual.value as? String, "Selected", "annual is the default plan")
         XCTAssertEqual(monthly.value as? String, "Not selected")
+
+        // The reason the prices are what they are. Annual is pre-selected and
+        // badged BEST VALUE, so it has to actually be the cheaper way to pay.
+        XCTAssertLessThan(
+            annualPrice,
+            monthlyPrice * 12,
+            "Annual (\(currency(annualPrice))) must cost less than twelve monthly payments "
+                + "(\(currency(monthlyPrice * 12))) — the screen pre-selects it and calls it BEST VALUE"
+        )
 
         let saleIsRunning = app.staticTexts
             .containing(NSPredicate(format: "label CONTAINS 'SUMMER LAUNCH SALE'"))
@@ -683,13 +713,13 @@ final class SpeakItUITests: XCTestCase {
         if saleIsRunning {
             XCTAssertEqual(
                 annual.label,
-                "Annual, summer launch price $14.99 per year, regularly $29.99, 50 percent off, best value"
+                "Annual, summer launch price \(currency(annualPrice)) per year, "
+                    + "regularly $29.99, 50 percent off, best value"
             )
-            XCTAssertEqual(app.buttons["pro.purchase"].label, "Choose Annual · $14.99")
         } else {
-            XCTAssertEqual(annual.label, "Annual, $29.99 per year")
-            XCTAssertEqual(app.buttons["pro.purchase"].label, "Choose Annual · $29.99")
+            XCTAssertEqual(annual.label, "Annual, \(currency(annualPrice)) per year")
         }
+        XCTAssertEqual(app.buttons["pro.purchase"].label, "Choose Annual · \(currency(annualPrice))")
 
         // Both plans are selectable across their whole visible shape.
         for _ in 0..<3 where !monthly.isHittable {
@@ -699,20 +729,42 @@ final class SpeakItUITests: XCTestCase {
         monthly.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.5)).tap()
         app.swipeUp()
         XCTAssertTrue(
-            app.staticTexts["$1.99 per month. Auto-renews until cancelled."]
+            app.staticTexts["\(currency(monthlyPrice)) per month. Auto-renews until cancelled."]
                 .waitForExistence(timeout: 3)
         )
         XCTAssertEqual(monthly.value as? String, "Selected")
+
+        // Monthly is never discounted, so it must never print a struck-through
+        // regular price. The website used to advertise one the app did not have.
+        XCTAssertFalse(
+            monthly.label.lowercased().contains("regularly"),
+            "Monthly carries no sale price and must not claim a regular one"
+        )
 
         app.swipeDown()
         XCTAssertTrue(annual.waitForExistence(timeout: 3))
         assertMinimumTouchTarget(annual)
         annual.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         app.swipeUp()
-        let annualFootnote = saleIsRunning
-            ? "Summer launch price · $14.99 per year until October 22, 2026. Auto-renews until cancelled."
-            : "$29.99 per year. Auto-renews until cancelled."
-        XCTAssertTrue(app.staticTexts[annualFootnote].waitForExistence(timeout: 3))
+        if saleIsRunning {
+            // The offer ends on the cutoff date; the subscriber's own rate does
+            // not. The earlier wording said the opposite and was a refund.
+            let footnote = app.staticTexts.containing(
+                NSPredicate(format: "label BEGINSWITH 'Summer launch price'")
+            ).firstMatch
+            XCTAssertTrue(footnote.waitForExistence(timeout: 3))
+            XCTAssertTrue(
+                footnote.label.contains("stays that price for as long as the subscription does"),
+                "The launch price must not read as though the buyer's own rate expires"
+            )
+            XCTAssertTrue(footnote.label.contains("Offer ends October 22, 2026"))
+            XCTAssertTrue(footnote.label.contains("Auto-renews until cancelled"))
+        } else {
+            XCTAssertTrue(
+                app.staticTexts["\(currency(annualPrice)) per year. Auto-renews until cancelled."]
+                    .waitForExistence(timeout: 3)
+            )
+        }
         XCTAssertEqual(annual.value as? String, "Selected")
 
         let redeemCode = app.buttons["pro.redeem-code"]
@@ -721,6 +773,147 @@ final class SpeakItUITests: XCTestCase {
         }
         XCTAssertTrue(redeemCode.waitForExistence(timeout: 3))
         assertMinimumTouchTarget(redeemCode)
+    }
+
+    /// The first `$0.00`-shaped amount in an accessibility label, as a number.
+    ///
+    /// Only USD storefronts are parsed. A run on any other storefront returns
+    /// nil and the caller fails with the label it actually saw, rather than
+    /// asserting a comparison it cannot make.
+    private func firstPrice(in label: String) -> Double? {
+        guard let range = label.range(of: "\\$[0-9]+(\\.[0-9]{2})?", options: .regularExpression) else {
+            return nil
+        }
+        return Double(label[range].dropFirst())
+    }
+
+    /// Formats back into the shape `Product.displayPrice` uses on a USD
+    /// storefront, so a parsed amount can be compared against the label it came
+    /// from without hard-coding what that amount is.
+    private func currency(_ amount: Double) -> String {
+        String(format: "$%.2f", amount)
+    }
+
+    /// Pro is offered once the product has visibly worked, and refusing it
+    /// changes nothing.
+    ///
+    /// `--ui-testing-pro-moments` opts this method back into the uninvited
+    /// sheets that the rest of the suite suppresses. Without that opt-in a
+    /// promotional sheet would arrive in the middle of unrelated tests, which
+    /// is exactly the behaviour this one is here to pin.
+    func testProArrivesAfterTheFirstRealCaptureAndOnlyOnce() {
+        let app = launchApp(
+            "--ui-testing-skip-welcome",
+            "--ui-testing-pro-moments",
+            "--ui-testing-pro-preview"
+        )
+
+        saveTypedCapture("The spare key is inside the blue kitchen drawer.", in: app)
+
+        // The receipt dismisses itself a few seconds after a clean single-item
+        // save, and the sheet may only arrive once the capture cover is gone.
+        let paywall = app.navigationBars["Speak It Pro"]
+        XCTAssertTrue(
+            paywall.waitForExistence(timeout: 20),
+            "Pro is offered after the first capture that spends part of the allowance"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Your thought is where it belongs."].exists,
+            "The first-capture sheet must open on what just happened, not on the free-limit wall"
+        )
+        XCTAssertFalse(
+            app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS 'used all'")
+            ).element.exists,
+            "Nothing has been used up, so the wall's wording must not appear"
+        )
+
+        // The screen swaps its plan source once StoreKit answers, which
+        // rebuilds these controls. Wait for the purchase button — present in
+        // both sources — so the refusal below is read from a settled screen
+        // rather than from whichever one happened to be up first.
+        XCTAssertTrue(
+            app.buttons["pro.purchase"].waitForExistence(timeout: 10),
+            "The paywall must offer a purchase before it is asked to be refused"
+        )
+
+        // Refusing has to be a real answer, it has to be reachable, and it has
+        // to say what it does. An uninvited sheet offering only "Not now" reads
+        // as a delay, and this one is not a delay — free captures remain.
+        let dismiss = app.buttons["pro.dismiss"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 6))
+        // Scrolled on `isHittable`, not `exists`. A SwiftUI ScrollView puts its
+        // whole content in the accessibility tree, so a control below the fold
+        // exists without being reachable — and reachable is the claim here.
+        for _ in 0..<6 where !dismiss.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertEqual(
+            dismiss.label,
+            "Continue using Speak It free",
+            "Away from the wall the refusal has to say that free capture continues"
+        )
+        assertMinimumTouchTarget(dismiss)
+        dismiss.tap()
+        XCTAssertTrue(
+            app.buttons["dock.capture"].waitForExistence(timeout: 8),
+            "Dismissing returns to Today with capture still available"
+        )
+
+        // Capture still works, and the offer does not come back for it.
+        saveTypedCapture("Buy oat milk.", in: app)
+        XCTAssertFalse(
+            paywall.waitForExistence(timeout: 15),
+            "Each moment is offered at most once for the life of the install"
+        )
+    }
+
+    /// Types and saves one capture, and returns once its receipt is on screen.
+    ///
+    /// A clean single-item save shows the receipt and then dismisses itself
+    /// after a few seconds — there is no Continue button on that path, so the
+    /// caller waits for whatever should come next rather than tapping one.
+    private func saveTypedCapture(
+        _ text: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let capture = app.buttons["dock.capture"]
+        XCTAssertTrue(capture.waitForExistence(timeout: 10), "capture dock", file: file, line: line)
+        capture.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+
+        let typeInstead = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 8), "type instead", file: file, line: line)
+        typeInstead.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 6), "text editor", file: file, line: line)
+        editor.tap()
+        editor.typeText(text)
+
+        let finishTyping = app.buttons["capture.finishTyping"]
+        XCTAssertTrue(finishTyping.waitForExistence(timeout: 4), "finish typing", file: file, line: line)
+        finishTyping.tap()
+
+        let save = app.buttons["capture.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 4), "save", file: file, line: line)
+        save.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Remembered"].waitForExistence(timeout: 15),
+            "capture receipt",
+            file: file,
+            line: line
+        )
+        // The capture screen is a full-screen cover and the receipt on it has
+        // not been read yet. Nothing Speak It raises itself may cover either.
+        XCTAssertFalse(
+            app.navigationBars["Speak It Pro"].exists,
+            "Pro must never open over an unread capture receipt",
+            file: file,
+            line: line
+        )
     }
 
     func testFirstRunRemainsUsableWithAccessibilityTextAndDarkAppearance() {
