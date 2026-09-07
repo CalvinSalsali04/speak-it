@@ -29,6 +29,23 @@
     q('[data-closing-copy]').textContent='Start with your first 10 captures, free.';
     all('[data-email-note],[data-prelaunch-pricing]').forEach(function(el){el.hidden=true;});
   }
+  /* The annual launch discount, and only the annual one. It mirrors
+     SummerLaunchSale in the app, which strikes a regular price through for the
+     annual plan and never for monthly — a page claiming a monthly discount the
+     sheet does not show is a refund. Empty means no offer, which is the state
+     to stay in until App Store Connect really is charging the lower price; the
+     page then renders exactly as authored. No end date is published on purpose,
+     so the offer can be ended or extended without the page having lied. */
+  var LAUNCH_ANNUAL_PRICE='';
+  if(LAUNCH_ANNUAL_PRICE){
+    var wasPrice=q('[data-annual-was]'),nowPrice=q('[data-annual-price]');
+    if(wasPrice&&nowPrice){
+      wasPrice.textContent=nowPrice.textContent;
+      wasPrice.hidden=false;
+      nowPrice.textContent=LAUNCH_ANNUAL_PRICE;
+      q('[data-launch-note]').hidden=false;
+    }
+  }
   // No looping spectacle: the narrative plays once and leaves a readable result.
   var visual=q('[data-story]'),story=q('.story'),replay=q('[data-replay]');
   var storyTimer;
