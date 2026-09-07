@@ -182,8 +182,8 @@ struct CaptureCreationResult {
     let createdNewCapture: Bool
 
     /// Set when the capture asked the app to act on something that already
-    /// exists rather than to store a new thought. `items` is then empty for
-    /// every outcome except the ones that deliberately keep a review row.
+    /// exists. A mixed capture can also carry independently saved new items
+    /// and a separate review row for an unresolved operation.
     let operationOutcome: CaptureOperationOutcome?
 
     init(
@@ -211,7 +211,9 @@ struct CaptureCreationResult {
         if session.captureSource == .tutorial { return false }
         guard let operationOutcome else { return true }
         switch operationOutcome {
-        case .performed, .notFound, .retracted:
+        case .performed, .notFound:
+            return !items.isEmpty
+        case .retracted:
             return false
         case .ambiguous, .needsConfirmation:
             return !items.isEmpty

@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct CapturedItemRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Badge lettering follows Dynamic Type instead of staying 9 pt while the
     /// rest of the row grows.
     @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
@@ -80,7 +81,7 @@ struct CapturedItemRow: View {
                             .foregroundStyle(Color.speakInk)
                             .strikethrough(item.isCompleted)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                             .lineSpacing(1)
 
                         Text(secondaryText)

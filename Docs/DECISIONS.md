@@ -1487,6 +1487,34 @@ The general lesson is the one already recorded for the corpus elsewhere: it is a
 regression net, not a coverage measure. A defect it cannot see is not a defect
 that is absent.
 
+## 2026-09-04 — The logo is the mark raised out of paper
+
+A day of logo exploration (pencil-drawn lettering and bars, stippled bars,
+debossed paper; see `Design/Brand/Research/pencil-on-paper.md` and
+`Design/Brand/Explorations/`) ended with Calvin choosing the plainest of the
+paper directions: the five bars as clean capsules, black, raised out of light
+paper with a soft shadow, and its twin in white on black.
+
+- **The mark is unchanged in geometry** — 1 : 2.1 : 3.03, the same pitch and
+  weight — and is now a clean capsule everywhere. The hand-inked edges from
+  the 3 September refresh are retired behind `Bars.inkedByHand` in
+  `generate_brand.swift`; they were an authorship cue the emboss makes
+  redundant, and the capsule survives 60 pt better.
+- **The emboss is a treatment, not a second logo.** `generate_emboss.mjs`
+  writes it: the app icon (black on light paper, 1024, opaque), the website's
+  social card, and 4K/8K masters in both polarities for the site, listing and
+  print. Everything that must be one colour or tiny — the in-app wordmark PDF,
+  the topbar glyph, the favicon — is the flat capsule.
+- **The icon flips to light.** It had been white bars on near-black; it is now
+  black bars on light paper, matching the chosen master. The favicon follows
+  (black bars on a white tile with a hairline edge so it keeps its shape on a
+  light tab strip).
+- **Two generators, one geometry.** The Swift generator owns the wordmark,
+  lockups, mark SVG, favicon and topbar fragment; the Node generator owns the
+  relief and the files that need SVG filters. Both hard-code the same bar
+  constants (368 / 600 / 720-1512-2184); change them in both or the icon and
+  the wordmark drift.
+
 ## 2026-09-03 — The name is drawn, not typeset
 
 Speak It's wordmark used to be a `Text("Speak It")` in the caption style, and
@@ -1730,3 +1758,11 @@ How it is wired, and what it is not:
   cloning means the true figure is lower but not small) were found there on
   2026-09-04, dated 4–17 August. They are not deleted by anything in this
   change; that is a decision for the person whose disk it is.
+
+## 2026-09-07 — Product correctness before decorative redesign
+
+Preserve the existing Today/Memory hierarchy. Mixed operations must not consume unrelated creations, and portable sync data must distinguish omission by an old writer from explicit clearing. Refinement may improve uncertain segmentation but must preserve actions and deterministic behavioral meaning.
+
+Apply Apple's design principles through useful feedback, readable type and accessible materials: native SwiftUI glass only on the floating capture dock, with opaque fallbacks for increased contrast/reduced transparency. Move missing-person and missing-time controls to the start of the editor.
+
+Keep the marketing site static. Reviewed the public Apple design skill and liquid-gooey's React/SVG approach; adding React solely for decorative morphing would add complexity without improving the capture or demo workflow. Use CSS, visible actions and a readable mobile composition. No package was installed. The site remains on its existing hosting workflow; this task does not deploy it.

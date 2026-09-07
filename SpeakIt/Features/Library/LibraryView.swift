@@ -242,6 +242,33 @@ enum MemorySearch {
             fields.contains { $0.localizedStandardContains(term) }
         }
     }
+    /// Score once per item; exact people and titles outrank a coincidental
+    /// word in an old quote. Existing pin/recency ordering breaks equal scores.
+    static func ranked(_ items: [CapturedItem], query: String, pinnedIDs: Set<UUID> = []) -> [CapturedItem] {
+        let terms = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !terms.isEmpty else { return [] }
+        let foldedQuery = terms.joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let scored = items.compactMap { item -> (item: CapturedItem, score: Int)? in
+            let fields = [item.displayTitle, item.originalTextSegment, item.personName ?? "",
+                          item.category.displayName, item.itemType.displayName]
+            guard terms.allSatisfy({ term in fields.contains { $0.localizedStandardContains(term) } }) else { return nil }
+            let title = item.displayTitle.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            let person = (item.personName ?? "").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            let score = (person == foldedQuery ? 200 : 0)
+                + (title == foldedQuery ? 150 : 0)
+                + (title.hasPrefix(foldedQuery) ? 50 : 0)
+                + terms.reduce(0) { $0 + (item.displayTitle.localizedStandardContains($1) ? 10 : 0)
+                    + ((item.personName ?? "").localizedStandardContains($1) ? 15 : 0) }
+            return (item, score)
+        }
+        let scores = Dictionary(uniqueKeysWithValues: scored.map { ($0.item.id, $0.score) })
+        return MemoryItemOrdering.relevance(scored.map(\.item), pinnedIDs: pinnedIDs)
+            .enumerated().sorted {
+                let lhs = scores[$0.element.id] ?? 0, rhs = scores[$1.element.id] ?? 0
+                return lhs == rhs ? $0.offset < $1.offset : lhs > rhs
+            }.map(\.element)
+    }
+
 }
 
 enum MemoryItemOrdering {
@@ -613,8 +640,7 @@ struct LibraryView: View {
 
     private var searchResults: [CapturedItem] {
         guard !query.isEmpty else { return [] }
-        let matches = memoryItems.filter { MemorySearch.matches($0, query: query) }
-        return MemoryItemOrdering.relevance(matches, pinnedIDs: pinnedMemoryIDs)
+        return MemorySearch.ranked(memoryItems, query: query, pinnedIDs: pinnedMemoryIDs)
     }
 
     /// Pinned items are not excluded here.
@@ -635,7 +661,10 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        List {
+        let memoryItems = self.memoryItems
+        let recentItems = Array(MemoryItemOrdering.relevance(memoryItems, pinnedIDs: pinnedMemoryIDs)
+            .prefix(MemoryItemOrdering.homePreviewLimit))
+        return List {
             chromeRow(header, top: 18, bottom: 20)
                 .dockScrollTopAnchor()
             chromeRow(searchField, bottom: 18)
@@ -853,7 +882,8 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var searchContent: some View {
-        if searchResults.isEmpty {
+        let results = searchResults
+        if results.isEmpty {
             chromeRow(
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No memories found")
@@ -866,7 +896,7 @@ struct LibraryView: View {
             )
         } else {
             ForEach(MemoryGroup.allCases) { group in
-                let items = searchResults.filter(group.contains)
+                let items = results.filter(group.contains)
                 if !items.isEmpty {
                     chromeRow(sectionHeader(group.title, detail: "\(items.count) matching"), top: 12, bottom: 2)
                     ForEach(items) { item in
@@ -1293,7 +1323,7 @@ private struct MemoryCollectionView: View {
             items = items.filter { stage(for: $0) == selectedIdeaStage }
         }
         if !query.isEmpty {
-            items = items.filter { MemorySearch.matches($0, query: query) }
+            return MemorySearch.ranked(items, query: query, pinnedIDs: pinnedMemoryIDs)
         }
         return sorted(items)
     }

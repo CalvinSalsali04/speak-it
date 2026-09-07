@@ -1,29 +1,9 @@
 import XCTest
 @testable import SpeakIt
 
-/// Covers the seam where the on-device refinement model is allowed to replace
-/// the rules reading.
-///
-/// Why this suite exists
-/// ---------------------
-/// `SemanticCorpusTests` and `RenderingInvarianceTests` both call
-/// `ThoughtExtractionEngine.extractWithRules`. Production calls
-/// `ThoughtExtractionEngine.extract`, which on an Apple Intelligence device
-/// hands the capture to `IntelligentThoughtExtractor` whenever
-/// `shouldRefine` says so — and `shouldRefine` returns true for *every* capture
-/// the rules split into more than one row.
-///
-/// So the 666 corpus cases gate a path that a modern iPhone may not run, and
-/// the multi-row captures this project worked hardest on are exactly the ones
-/// whose outcome the rules no longer decide. The suite is green on the
-/// simulator because Apple Intelligence is unavailable there and the model call
-/// silently falls back to rules, which is precisely why the gap stayed
-/// invisible.
-///
-/// The model itself cannot be driven in CI. What can be gated is the contract
-/// the model's answer has to satisfy before it is allowed to win, so that is
-/// what this suite pins — with synthetic refinements standing in for the model,
-/// including the ones a model realistically gets wrong.
+/// Synthetic model responses pin the acceptance contract without requiring
+/// Apple Intelligence in CI. Clear captures bypass optional refinement;
+/// uncertain captures must retain every action and its behavioral metadata.
 @MainActor
 final class RefinementGuardTests: XCTestCase {
 
@@ -143,15 +123,38 @@ final class RefinementGuardTests: XCTestCase {
         XCTAssertTrue(RefinementGuard.preservesEverything(in: lifted, found: rules))
     }
 
-    /// A single rules row is not constrained. It cannot be dropped without
-    /// emptying the refinement — which `validate` already rejects — and holding
-    /// it to full token coverage would refuse the legitimate case of a tight
-    /// quote replacing a rambling one.
-    func testSingleRulesRowIsNotHeldToTokenCoverage() {
-        let rules = [refined("um so I really need to remember to buy milk at some point")]
+    /// Tightening a narrative can remove framing while preserving its action.
+    func testSingleRulesRowPreservesItsAction() {
+        let rules = [refined("um so I really need to remember to buy milk")]
         let tightened = [refined("buy milk")]
 
         XCTAssertTrue(RefinementGuard.preservesEverything(in: tightened, found: rules))
+    }
+
+    func testDatesWithoutTheirActionsAreRejected() {
+        let rules = [refined("call Mom tomorrow"), refined("email Alex Friday")]
+        XCTAssertFalse(RefinementGuard.preservesEverything(
+            in: [refined("tomorrow"), refined("Friday")], found: rules
+        ))
+    }
+
+    func testIndependentActionsCannotCollapseIntoOneRow() {
+        XCTAssertFalse(RefinementGuard.preservesEverything(
+            in: [refined("call Mom and email Alex")],
+            found: [refined("call Mom"), refined("email Alex")]
+        ))
+    }
+
+    func testObjectCannotDisappearIntoInheritedContext() {
+        XCTAssertFalse(RefinementGuard.preservesEverything(
+            in: [refined("call tomorrow", context: "the dentist")],
+            found: [refined("call the dentist tomorrow")]
+        ))
+    }
+
+    func testClearListDoesNotInvokeOptionalModel() {
+        let text = "Call Mom tomorrow and email Alex Friday"
+        XCTAssertFalse(RefinementPolicy.shouldRefine(text, fallback: rulesReading(of: text)))
     }
 
     // MARK: The corpus, replayed through the seam
@@ -267,12 +270,6 @@ final class RefinementGuardTests: XCTestCase {
 /// pretending the surface is smaller than it is.
 enum IntelligentThoughtExtractorExposure {
     static func wouldRefine(_ transcript: String, fallback: [ExtractedThought]) -> Bool {
-        guard transcript.count <= 1_500 else { return false }
-        if fallback.contains(where: { $0.needsReview }) { return true }
-        if fallback.count > 1 { return true }
-        return transcript.range(
-            of: #"(?i)(?:[,;]|\band\b|\balso\b|\bthen\b|\bactually\b|\bi\s+mean\b|\bnot\b|\bsaid\b)"#,
-            options: .regularExpression
-        ) != nil
+        RefinementPolicy.shouldRefine(transcript, fallback: fallback)
     }
 }

@@ -7,6 +7,19 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Preserve new items alongside capture operations, including a separate review row for ambiguous operations; mixed captures count toward the free allowance when they create items.
+- Carry complete portable item semantics and shopping groups through iCloud, including explicit clearing and compatibility with older payloads.
+- Preserve stacked errands and preparatory clauses; constrain optional model refinement to uncertain readings with stronger action and metadata preservation.
+- Reduce repeated Today/Memory projection and widget work; rank exact people/title search matches ahead of incidental mentions.
+- Bring missing-person/time controls forward, allow longer accessibility titles, and use native iOS 26 glass on the capture dock with accessible fallbacks.
+- Improve the website's phone layouts, visible primary action, readable examples, keyboard focus and reduced-motion behavior without adding a framework.
+
+- The logo is the five bars raised out of paper: the app icon is now black
+  capsules embossed on light paper (`Tools/Brand/generate_emboss.mjs`), the
+  favicon is black bars on a white tile, the website's topbar and footer glyph
+  and every brand master use the same clean capsules, and the site gained a
+  social card. The hand-inked bar edges from the 3 September refresh are
+  retired (`Bars.inkedByHand`).
 - The clock and calendar as the rest of the English-speaking world says them:
   "15 August" no longer resolves to today, "06:20 tomorrow" is morning rather
   than evening, "half five" is 5:30, "seventeen thirty" and "eighteen hundred"

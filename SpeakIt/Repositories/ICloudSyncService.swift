@@ -1,5 +1,15 @@
 import Foundation
 
+/// Presence is the version marker: nil means an older writer had no opinion;
+/// a present envelope with nil fields explicitly clears those fields.
+struct ICloudItemSemantics: Codable, Equatable, Sendable {
+    let temporalIntent: TemporalIntent?
+    let locationIntent: LocationIntent?
+    let semanticStateRawValue: String?
+    let semanticGapRawValue: String?
+    let shoppingGroup: String?
+}
+
 struct ICloudItemSnapshot: Codable, Equatable, Sendable {
     let id: UUID
     let sessionID: UUID
@@ -26,6 +36,7 @@ struct ICloudItemSnapshot: Codable, Equatable, Sendable {
     /// decode. A device receiving one reconstructs the intent from the
     /// preserved wording on its next launch instead of losing it.
     let temporalIntent: TemporalIntent?
+    var portableSemantics: ICloudItemSemantics? = nil
 }
 
 struct ICloudSessionSnapshot: Codable, Equatable, Sendable {
@@ -60,7 +71,7 @@ struct ICloudLibrarySnapshot: Codable, Equatable, Sendable {
     let ideaStageRecords: [IdeaStageRecord]?
 
     init(
-        schemaVersion: Int = 2,
+        schemaVersion: Int = 3,
         generatedAt: Date,
         sessions: [ICloudSessionSnapshot],
         items: [ICloudItemSnapshot],
@@ -258,10 +269,26 @@ enum ICloudSnapshotMerger {
 
         var items = Dictionary(uniqueKeysWithValues: cloud.items.map { ($0.id, $0) })
         for item in local.items {
-            if let existing = items[item.id], existing.lastModifiedAt > item.lastModifiedAt {
+            guard let existing = items[item.id] else {
+                items[item.id] = item
                 continue
             }
-            items[item.id] = item
+            var winner = existing.lastModifiedAt > item.lastModifiedAt ? existing : item
+            let other = existing.lastModifiedAt > item.lastModifiedAt ? item : existing
+            // An old client can edit a title without erasing fields it cannot
+            // encode. A new client's explicit nils remain authoritative.
+            if winner.portableSemantics == nil, let preserved = other.portableSemantics {
+                winner.portableSemantics = ICloudItemSemantics(
+                    // Older writers already understand temporal intent. Keep
+                    // their newer timing edit while retaining unknown fields.
+                    temporalIntent: winner.temporalIntent ?? preserved.temporalIntent,
+                    locationIntent: preserved.locationIntent,
+                    semanticStateRawValue: preserved.semanticStateRawValue,
+                    semanticGapRawValue: preserved.semanticGapRawValue,
+                    shoppingGroup: preserved.shoppingGroup
+                )
+            }
+            items[item.id] = winner
         }
         for deletion in deletions where deletion.entity == .item {
             guard let item = items[deletion.id], deletion.deletedAt >= item.lastModifiedAt else { continue }

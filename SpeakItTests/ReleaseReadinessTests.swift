@@ -201,6 +201,18 @@ final class ReleaseReadinessTests: XCTestCase {
         )
     }
 
+    func testExactPersonSearchOutranksNewerIncidentalMention() async throws {
+        let exactResult = try await capture("Maya likes oat milk")
+        let incidentalResult = try await capture("The proposal mentions Maya")
+        let exact = try XCTUnwrap(exactResult.items.first)
+        let incidental = try XCTUnwrap(incidentalResult.items.first)
+        exact.personName = "Maya"
+        incidental.personName = nil
+        incidental.lastModifiedAt = exact.lastModifiedAt.addingTimeInterval(60)
+        XCTAssertEqual(MemorySearch.ranked([incidental, exact], query: "  MAYA  ").first?.id, exact.id)
+        XCTAssertTrue(MemorySearch.ranked([exact, incidental], query: "Maya dentist").isEmpty)
+    }
+
     func testAnEmptyQueryMatchesNothing() async throws {
         try await capture("Buy milk")
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())

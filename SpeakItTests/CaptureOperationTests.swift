@@ -628,6 +628,40 @@ extension CaptureOperationTests {
         XCTAssertFalse(delivery.pendingNotifications.contains(identifier))
     }
 
+    func testSuccessfulCancellationKeepsIndependentShoppingItem() async throws {
+        _ = try await capture("Remind me to call the dentist tomorrow")
+        let result = try await capture("Cancel the dentist reminder and buy milk")
+        guard case .performed(operation: .cancel, _, _) = result.operationOutcome else {
+            return XCTFail("Expected the existing reminder to be cancelled")
+        }
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertTrue(result.items[0].displayTitle.localizedCaseInsensitiveContains("milk"))
+        XCTAssertEqual(result.items[0].itemType, .shopping)
+        XCTAssertTrue(result.consumesFreeCapture)
+        XCTAssertFalse(try activeTitles().contains { $0.localizedCaseInsensitiveContains("dentist") })
+        let retry = try await capture("Cancel the dentist reminder and buy milk")
+        XCTAssertTrue(retry.isDuplicate)
+        XCTAssertEqual(retry.items.map(\.id), result.items.map(\.id))
+    }
+
+    func testAmbiguousCancellationKeepsCreationAndSeparateReview() async throws {
+        _ = try await capture("Remind me to call the dentist tomorrow")
+        _ = try await capture("Remind me to pay the dentist Friday")
+        let result = try await capture("Cancel the dentist reminder and buy milk")
+        guard case .ambiguous = result.operationOutcome else { return XCTFail("Expected ambiguity") }
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.items.contains { $0.itemType == .shopping && !$0.needsClarification })
+        XCTAssertTrue(result.items.contains { $0.needsClarification && $0.originalTextSegment.contains("dentist") })
+        XCTAssertEqual(try activeTitles().filter { $0.localizedCaseInsensitiveContains("dentist") }.count, 3)
+    }
+
+    func testSynchronousMixedCaptureKeepsNewItem() throws {
+        _ = try repository.createCapture(text: "Remind me to call the dentist tomorrow")
+        let item = try repository.createCapture(text: "Cancel the dentist reminder and buy milk")
+        XCTAssertEqual(item.itemType, .shopping)
+        XCTAssertTrue(item.displayTitle.localizedCaseInsensitiveContains("milk"))
+    }
+
     // MARK: A misread operation must not take the capture with it
 
     /// The capture that named this defect. `CaptureOperationDetector` splits on

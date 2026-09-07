@@ -21,6 +21,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private let placeReminderCancellation: PlaceReminderCancellation
     private let requestsReminderAuthorization: Bool
     private var isApplyingCloudSnapshot = false
+    private var lastPublishedToday: SharedTodaySnapshot?
     private var iCloudReconciliationTask: Task<Void, Never>?
     private var locationDeliveriesInFlight: Set<String> = []
 
@@ -611,27 +612,36 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
         )
         let now = Date.now
-        let active = ((try? modelContext.fetch(descriptor)) ?? [])
-            .filter { $0.belongsInToday && $0.isWithinTodayHorizon(relativeTo: now) }
-            .sorted(by: todayItemOrder)
-
-        SharedTodayStore.save(
-            SharedTodaySnapshot(
-                generatedAt: now,
-                openCount: active.count,
-                items: active.prefix(8).map {
-                    SharedTodayItem(
-                        id: $0.id,
-                        title: $0.displayTitle,
-                        dueDate: $0.dueDate,
-                        isUrgent: $0.priority == .urgent
-                    )
-                },
-                showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
-            )
+        guard let candidates = try? modelContext.fetch(descriptor) else { return }
+        var count = 0
+        var first: [CapturedItem] = []
+        for item in candidates where item.belongsInToday && item.isWithinTodayHorizon(relativeTo: now) {
+            count += 1
+            let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
+            if insertion < 8 {
+                first.insert(item, at: insertion)
+                if first.count > 8 { first.removeLast() }
+            }
+        }
+        let snapshot = SharedTodaySnapshot(
+            generatedAt: now,
+            openCount: count,
+            items: first.map {
+                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
+                                isUrgent: $0.priority == .urgent)
+            },
+            showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
         )
-        WidgetCenter.shared.reloadTimelines(ofKind: "SpeakItToday")
+        if let previous = lastPublishedToday,
+           previous.openCount == snapshot.openCount, previous.items == snapshot.items,
+           previous.showsTaskNamesOnLockScreen == snapshot.showsTaskNamesOnLockScreen,
+           now.timeIntervalSince(previous.generatedAt) < 60 { return }
+        if SharedTodayStore.save(snapshot) {
+            lastPublishedToday = snapshot
+            WidgetCenter.shared.reloadTimelines(ofKind: "SpeakItToday")
+        }
     }
+
 
     func performReminderAction(itemIDs: [UUID], action: ReminderAction) throws {
         guard !itemIDs.isEmpty else { return }
@@ -857,7 +867,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         var creating = extraction
         if let request = extraction.pendingOperation {
-            let outcome = applyCaptureOperation(request, session: pending.session)
+            let retained = extraction.items.isEmpty ? [] : organizePersistedCapture(
+                session: pending.session,
+                extraction: extraction,
+                schedulesReminders: schedulesReminder
+            )
+            guard extraction.items.isEmpty || pending.session.processingStatus == .complete else {
+                return .created(retained.first ?? pending.placeholder)
+            }
+            let outcome = applyCaptureOperation(
+                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id))
+            )
             if case .notFound = outcome, !extraction.items.isEmpty {
                 creating = ThoughtExtractionEngine.extractWithRules(
                     normalizedText,
@@ -977,34 +997,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         performance?.finishSemanticParsing()
         performance?.beginPersistence()
 
-        // A cancellation, completion or retraction acts on what exists instead
-        // of adding to it.
+        // Commit the independent creations before acting on an existing row.
+        // A failed organization must never leave the operation performed but
+        // the new thoughts unsaved. A retry sees the durable capture via dedup.
         var creating = extraction
         if let request = extraction.pendingOperation {
-            let outcome = applyCaptureOperation(request, session: pending.session)
+            let retained = extraction.items.isEmpty ? [] : organizePersistedCapture(
+                session: pending.session,
+                extraction: extraction,
+                schedulesReminders: schedulesReminders,
+                performance: performance
+            )
+            guard extraction.items.isEmpty || pending.session.processingStatus == .complete else {
+                performance?.finishPersistence()
+                return CaptureCreationResult(session: pending.session, items: retained)
+            }
+            let outcome = applyCaptureOperation(
+                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id))
+            )
             if case .notFound = outcome, !extraction.items.isEmpty {
-                // The operation matched nothing, but the same capture also
-                // said things to create, and those must not go down with it.
-                // A misread "cancel the cable" inside a four-errand capture
-                // used to delete all four.
-                //
-                // Re-read the whole transcript rather than the remainder: the
-                // operation clause was carved out of it, and in some captures
-                // those words survive nowhere else — not in a title, not in a
-                // quote. Reading them as something to create is the only way
-                // they reach the person at all.
+                // An unmatched cancellation can itself be an errand. Preserve
+                // the established full-transcript fallback in that case.
                 creating = await ThoughtExtractionEngine.extract(
-                    normalizedText,
-                    referenceDate: createdAt,
-                    permitsOperations: false
+                    normalizedText, referenceDate: createdAt, permitsOperations: false
                 )
             } else {
-                // Nothing to create alongside it, so the conservative rule
-                // stands: an operation that names nothing invents nothing.
-                // See `testCancelWithNoMatchInventsNothing`.
-                if case .notFound = outcome {
-                    discardCaptureItems(for: pending.session)
-                }
+                if case .notFound = outcome { discardCaptureItems(for: pending.session) }
                 performance?.finishPersistence()
                 return CaptureCreationResult(
                     session: pending.session,
@@ -1044,11 +1062,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     @discardableResult
     func applyCaptureOperation(
         _ request: CaptureOperationRequest,
-        session: CaptureSession
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID> = []
     ) -> CaptureOperationOutcome {
         // A retraction withdraws the capture outright.
         if request.operation == .retract {
-            discardCaptureItems(for: session)
+            discardCaptureItems(for: session, preserving: preservingItemIDs)
             return .retracted
         }
 
@@ -1059,14 +1078,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // The capture stays as a review row, which is where confirmation lives.
         if request.isBroad {
             let candidateIDs = CaptureTargetMatcher.activeItems(searchable).map(\.id)
-            closeSession(session)
+            holdOperation(request, in: session, preserving: preservingItemIDs)
             // The review row itself is a generic placeholder (see
             // `beginCapture`), so what it would do if confirmed has nowhere
             // else to live. Recorded against it here so the editor can offer a
             // real confirm control instead of the dead-end "confirm in Needs
             // review" the receipt used to promise. See
             // Docs/FINAL_RELEASE_AUDIT.md F-1.
-            if let placeholderID = session.items.first?.id {
+            if let placeholderID = session.items.first(where: { !preservingItemIDs.contains($0.id) })?.id {
                 PendingOperationStore.set(
                     operation: request.operation,
                     candidateIDs: candidateIDs,
@@ -1078,7 +1097,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         // A pronoun target names nothing. Ask rather than guess.
         guard let target = request.target, !target.isEmpty, !request.needsReview else {
-            closeSession(session)
+            holdOperation(request, in: session, preserving: preservingItemIDs)
             return .ambiguous(
                 operation: request.operation,
                 candidateIDs: CaptureTargetMatcher.activeItems(searchable).map(\.id)
@@ -1123,7 +1142,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                         // The move is real but the moment could not be read.
                         // The capture stays for review with the item attached,
                         // so the person picks the time instead of the app.
-                        closeSession(session)
+                        holdOperation(request, in: session, preserving: preservingItemIDs)
                         return .ambiguous(operation: .reschedule, candidateIDs: [itemID])
                     }
                     try update(item, with: ItemEdits(
@@ -1145,14 +1164,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             } catch {
                 // The operation could not be applied, so the capture stays for
                 // review rather than silently reporting success.
-                closeSession(session)
+                holdOperation(request, in: session, preserving: preservingItemIDs)
                 return .ambiguous(operation: request.operation, candidateIDs: [itemID])
             }
-            discardCaptureItems(for: session)
+            discardCaptureItems(for: session, preserving: preservingItemIDs)
             return .performed(operation: request.operation, itemID: itemID, title: title)
 
         default:
-            closeSession(session)
+            holdOperation(request, in: session, preserving: preservingItemIDs)
             return .ambiguous(
                 operation: request.operation,
                 candidateIDs: candidates.map(\.id)
@@ -1243,11 +1262,30 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Closing matters as much as deleting: `recoverUnorganizedCaptures` rebuilds
     /// a fallback item for any session that is not `.complete`, so a retraction
     /// left open would reappear at the next launch.
-    private func discardCaptureItems(for session: CaptureSession) {
-        for item in session.items {
+    private func discardCaptureItems(for session: CaptureSession, preserving itemIDs: Set<UUID> = []) {
+        for item in session.items where !itemIDs.contains(item.id) {
             RecurrenceStore.remove(item.id)
             LocationReminderMonitor.shared.stopMonitoring(itemID: item.id)
             modelContext.delete(item)
+        }
+        closeSession(session)
+    }
+
+    private func holdOperation(
+        _ request: CaptureOperationRequest,
+        in session: CaptureSession,
+        preserving itemIDs: Set<UUID>
+    ) {
+        if !itemIDs.isEmpty, !session.items.contains(where: { !itemIDs.contains($0.id) }) {
+            let review = CapturedItem(
+                originalTextSegment: request.sourceQuote,
+                displayTitle: request.sourceQuote,
+                createdAt: session.createdAt.addingTimeInterval(0.1),
+                processingConfidence: 0,
+                needsClarification: true,
+                captureSession: session
+            )
+            modelContext.insert(review)
         }
         closeSession(session)
     }
@@ -2178,7 +2216,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     isReviewed: item.isReviewed,
                     lastModifiedAt: item.lastModifiedAt,
                     recurrenceRule: RecurrenceStore.rule(for: item.id),
-                    temporalIntent: item.temporalIntent
+                    temporalIntent: item.temporalIntent,
+                    portableSemantics: ICloudItemSemantics(
+                        temporalIntent: item.temporalIntent,
+                        locationIntent: item.locationIntent,
+                        semanticStateRawValue: item.semanticStateRawValue,
+                        semanticGapRawValue: item.semanticGapRawValue,
+                        shoppingGroup: ShoppingGroupStore.group(for: item.id)
+                    )
                 )
             },
             deletionRecords: ICloudDeletionStore.records(),
@@ -2241,7 +2286,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // Only overwrite when the incoming snapshot actually carries an
             // intent. An older device that cannot express one must not erase
             // what this device already knows.
-            if let temporalIntent = value.temporalIntent {
+            if let semantics = value.portableSemantics {
+                item.temporalIntent = semantics.temporalIntent
+                item.locationIntent = semantics.locationIntent
+                item.semanticStateRawValue = semantics.semanticStateRawValue
+                item.semanticGapRawValue = semantics.semanticGapRawValue
+            } else if let temporalIntent = value.temporalIntent {
                 item.temporalIntent = temporalIntent
             }
             item.priority = value.priority
@@ -2289,6 +2339,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     for: value.id,
                     modifiedAt: value.lastModifiedAt
                 )
+            }
+        }
+        for value in snapshot.items {
+            if let semantics = value.portableSemantics {
+                ShoppingGroupStore.set(semantics.shoppingGroup, for: value.id)
             }
         }
         MemoryPinStore.apply(snapshot.pinRecords ?? [])

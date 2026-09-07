@@ -5874,6 +5874,52 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertTrue(negated.items.allSatisfy { $0.reminderDate == nil })
     }
 
+    func testCloudSemanticsRoundTripAndLegacyMerge() throws {
+        let sessionID = UUID(), itemID = UUID()
+        var original = makeCloudItem(id: itemID, sessionID: sessionID, title: "Bins", modifiedAt: date(10))
+        let meaning = ThoughtOrganizer.organize("Remind me when I get home to take out the bins")
+        original.portableSemantics = ICloudItemSemantics(
+            temporalIntent: meaning.temporalIntent,
+            locationIntent: meaning.locationIntent,
+            semanticStateRawValue: "contested",
+            semanticGapRawValue: "splitDecision",
+            shoppingGroup: "Costco"
+        )
+        let data = try JSONEncoder().encode(original)
+        XCTAssertEqual(try JSONDecoder().decode(ICloudItemSnapshot.self, from: data), original)
+        let legacy = makeCloudItem(id: itemID, sessionID: sessionID, title: "Edited on old client", modifiedAt: date(20))
+        let session = makeCloudSession(id: sessionID)
+        let merged = ICloudSnapshotMerger.merge(
+            local: makeCloudSnapshot(sessions: [session], items: [original]),
+            cloud: makeCloudSnapshot(sessions: [session], items: [legacy])
+        )
+        XCTAssertEqual(merged.items.first?.displayTitle, legacy.displayTitle)
+        XCTAssertEqual(merged.items.first?.portableSemantics, original.portableSemantics)
+
+        let editedTiming = ThoughtOrganizer.organize("Remind me tomorrow at 9 to take out the bins").temporalIntent
+        XCTAssertNotNil(editedTiming)
+        let legacyTimingEdit = makeCloudItem(
+            id: itemID, sessionID: sessionID, title: "New timing", modifiedAt: date(25),
+            temporalIntent: editedTiming
+        )
+        let timed = ICloudSnapshotMerger.merge(
+            local: merged,
+            cloud: makeCloudSnapshot(sessions: [session], items: [legacyTimingEdit])
+        )
+        XCTAssertEqual(timed.items.first?.portableSemantics?.temporalIntent, editedTiming)
+        XCTAssertEqual(timed.items.first?.portableSemantics?.locationIntent, original.portableSemantics?.locationIntent)
+
+        var cleared = makeCloudItem(id: itemID, sessionID: sessionID, title: "Cleared", modifiedAt: date(30))
+        cleared.portableSemantics = ICloudItemSemantics(
+            temporalIntent: nil, locationIntent: nil,
+            semanticStateRawValue: nil, semanticGapRawValue: nil, shoppingGroup: nil
+        )
+        let latest = ICloudSnapshotMerger.merge(
+            local: merged, cloud: makeCloudSnapshot(sessions: [session], items: [cleared])
+        )
+        XCTAssertEqual(latest.items.first?.portableSemantics, cleared.portableSemantics)
+    }
+
     func testICloudMergeKeepsConcurrentOfflineCapturesFromBothDevices() {
         let sessionA = UUID()
         let sessionB = UUID()

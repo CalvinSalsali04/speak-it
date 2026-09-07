@@ -23,6 +23,26 @@ final class IntentConsolidationTests: XCTestCase {
         IntentConsolidator.consolidate(text, clauses: clauses(text))
     }
 
+    func testHedgedIndependentErrandsRemainIndependent() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "I keep meaning to book the dentist and I have to call the bank about the fee and honestly I should just cancel the gym membership"
+        )
+        XCTAssertEqual(result.items.count, 3)
+        for word in ["dentist", "bank", "gym"] {
+            XCTAssertTrue(result.items.contains { $0.sourceQuote.contains(word) })
+        }
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable })
+    }
+
+    func testPreparatoryPostureAndModalAdverbStayWithTheirAction() {
+        for text in [
+            "I think I need to sit down and finally do my taxes this weekend",
+            "I should rarely call Dana about the refund"
+        ] {
+            XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(text).items.count, 1, text)
+        }
+    }
+
     // MARK: It collapses narrative
 
     func testNarrativeElaborationCollapsesToItsHeadIntention() {

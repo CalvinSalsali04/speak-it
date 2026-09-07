@@ -42,6 +42,7 @@ if not candidates:
     sys.exit("simulator-id.sh: no available iPhone simulator; install one in Xcode > Settings > Components")
 candidates.sort(reverse=True)
 pooled, booted, version, udid, name = candidates[0]
-print(f"{name} (iOS {version[0]}.{version[1]}, {'booted' if booted else 'shutdown'}) {udid}", file=sys.stderr)
+state_label = "booted" if booted else "shutdown"
+print(f"{name} (iOS {version[0]}.{version[1]}, {state_label}) {udid}", file=sys.stderr)
 print(udid)
 '

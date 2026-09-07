@@ -188,8 +188,11 @@ Use this internal scale ladder:
 At 10,000 and 50,000 items, record cold launch, first usable Today render,
 Memory open, exact and non-exact search, capture-to-organized-row latency,
 iCloud snapshot encode/decode/merge duration, snapshot byte size, and peak
-memory. The capture golden path keeps its existing under-one-second acceptable
-target at every library size.
+memory. Measure manual-stop processing separately from automatic endpointing. Manual-stop
+processing retains the under-one-second target; automatic-stop latency includes
+the 1.9-second complete-speech silence window (4/8 seconds for uncertain or
+incomplete endings) plus processing. These are targets and configured windows,
+not measured iPhone results.
 
 Do not add these data sets to the routine unit-test run. Generate them only for
 the dedicated physical-device scale pass. If all-library fetching, in-memory

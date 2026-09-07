@@ -306,7 +306,13 @@ better luck last time" would be retitled **"Luck last time"**. A comparative
 reading is more common than the past-tense deontic idiom in speech, and the
 title layer refuses rather than guesses.
 
-## Stacked errands behind a hedge collapse into one row
+## Resolved in working tree: stacked errands behind a hedge
+
+The shared action-body reader now peels the same guarded obligation frames as
+the title layer. The reproduced three-errand capture produces three actionable
+rows; a regression test preserves that result. Historical diagnosis follows.
+
+### Original failure
 
 `IntentConsolidation` destroys content on a run-on carrying three errands and a
 discourse hedge:
@@ -322,7 +328,13 @@ splitter segments it correctly into three; `consolidate` then collapses it.
 Origin is `IntentConsolidation.swift` around the `isSubstantive` /
 `elaborativeMarker` path.
 
-## Clause splitting can strand a fragment that the title layer can only tidy
+## Resolved in working tree: preparatory and modal fragments
+
+Preparatory “sit down and” stays with its action, and modal adverbs such as
+“rarely” stay within their clause. Both examples below now produce one row and
+have regression coverage. This does not imply every possible fragment is solved.
+
+### Original failure
 
 Independent of the frame reducer, `ThoughtExtractor` sometimes cuts a clause
 where there is no clause boundary, and every title is downstream of that.
@@ -334,3 +346,11 @@ The reducer improved both — the first row used to read
 `I think I need to sit down and`, and the second used to read `Rarely` — but a
 title cannot repair a split that should not have happened. The origin is clause
 segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
+
+## Remaining validation after the September product fixes
+
+- FoundationModels cancellation is cooperative. Measure generation latency and fallback behavior on an Apple Intelligence device before claiming a strict two-second completion bound.
+- Portable iCloud semantics have local serialization/merge coverage. Live two-device delivery, permissions and notification behavior still require device QA.
+- Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
+- Native dock glass and editor focus compile, but Dynamic Type, VoiceOver and animation quality need hands-on review; no Xcode UI suite was run in this work.
+- The website needs a verified App Store listing URL in its metadata before download buttons can be enabled. Until then, its primary action opens the working browser demo.

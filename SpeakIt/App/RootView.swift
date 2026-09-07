@@ -556,12 +556,7 @@ struct RootView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                .stroke(Color.speakDivider, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.09), radius: 22, y: 10)
+        .modifier(CaptureDockMaterial())
         .padding(.horizontal, 22)
         .padding(.bottom, 8)
     }
@@ -1367,5 +1362,24 @@ struct RootView_Previews: PreviewProvider {
             .modelContainer(preview.container)
             .environment(\.thoughtRepository, preview.repository)
             .environmentObject(SubscriptionStore())
+    }
+}
+
+/// Glass belongs to navigation, while thought rows remain solid and readable.
+private struct CaptureDockMaterial: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), !reduceTransparency, contrast != .increased {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 25))
+        } else {
+            content
+                .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 25))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 25).stroke(Color.speakDivider, lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.09), radius: 22, y: 10)
+        }
     }
 }
