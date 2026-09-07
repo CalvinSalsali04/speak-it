@@ -6149,7 +6149,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             .purchasesRestored(hasPro: true),
             .taskCompletionChanged(completed: true),
             .memoryCollectionOpened(collection: "ideas"),
-            .memorySearchPerformed(results: .oneToFive)
+            .memorySearchPerformed(results: .oneToFive),
+            .weekRowShown(activeDays: 4),
+            .morningBriefEnabled(source: .settings),
+            .morningBriefDisabled(source: .autoStop)
         ]
         let forbiddenFragments = [
             "text", "title", "transcript", "recording", "name", "email",

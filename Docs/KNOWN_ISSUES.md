@@ -376,3 +376,23 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
 - Native dock glass and editor focus compile, but Dynamic Type, VoiceOver and animation quality need hands-on review; no Xcode UI suite was run in this work.
 - The website needs a verified App Store listing URL in its metadata before download buttons can be enabled. Until then, its primary action opens the working browser demo.
+
+## Morning brief limits
+
+- The brief is planned by the app on foreground and background. A capture
+  made through the share extension, Siri, or a Shortcut does not re-plan it
+  until Speak It is next opened; the counts for a morning before that can be
+  short by those captures. Reminders are unaffected.
+- Shopping lists appear on Today as cards, not rows, and are not counted in
+  the brief. "2 due today" can therefore be one fewer than the Now section
+  shows when a list is due.
+- "Answered" is inferred: the app was opened within twelve hours of a brief
+  firing. Reading the brief on the Lock Screen and not opening the app counts
+  as unanswered, so five such mornings in a row switch the brief off; it can
+  be turned back on in Account & Settings.
+- The brief is never announced in the app. It is found only as a switch in
+  Account & Settings under Capture & reminders, so uptake depends on people
+  opening that card.
+- Notification delivery, Scheduled Summary placement, and Focus behaviour for
+  the passive brief need hands-on iPhone QA; the simulator proves the request
+  content, not the presentation.

@@ -1843,3 +1843,85 @@ Preserve the existing Today/Memory hierarchy. Mixed operations must not consume 
 Apply Apple's design principles through useful feedback, readable type and accessible materials: native SwiftUI glass only on the floating capture dock, with opaque fallbacks for increased contrast/reduced transparency. Move missing-person and missing-time controls to the start of the editor.
 
 Keep the marketing site static. Reviewed the public Apple design skill and liquid-gooey's React/SVG approach; adding React solely for decorative morphing would add complexity without improving the capture or demo workflow. Use CSS, visible actions and a readable mobile composition. No package was installed. The site remains on its existing hosting workflow; this task does not deploy it.
+
+## 2026-09-08 — The habit loop is seven dots and one silent note
+
+Speak It gets the two things that make Duolingo work and none of the rest
+(`Docs/GAMIFICATION_PROPOSAL.md`). A first cut shipped more than this and was
+trimmed the same day after an honest look at the screen: the first action on
+Today had been pushed 40% of the way down the phone, a summary line repeated
+what the dots said, an offer card made Today a fourth place the app asks for
+something, "opened Today" filling a dot contradicted the rule that the row
+rewards outcomes rather than opens, and a "weeks kept up" number reintroduced
+a loss. What remains:
+
+- **Seven dots on Today's eyebrow line**, beside the date, today's ringed.
+  A dot fills when a capture was saved or a task was completed that day, and
+  for nothing else. The row costs the first action no height, hides until
+  the second active day ever, carries no number, and cannot be lost.
+- **All clear for today**, one line in the place of the Now section when the
+  day is clear but the app is not empty. It says nothing else; a first version
+  mentioned the brief here with a "Yes" link, which read as the app asking a
+  favour and used a control the app has nowhere else, so it was removed.
+- **The morning brief**, the only habit notification. "2 due today · 1
+  overdue" at a time the person picks, default 8:00, planned three mornings
+  ahead from the store on every foreground and background. A morning with
+  nothing due sends nothing, and there is no other message: the nudge that
+  asked "anything on your mind?" was cut because it was the one notification
+  that was not a fact about the day. The switch and its time live in Account
+  & Settings under Capture & reminders, with the reminder preferences it
+  resembles. Today never asks.
+
+Everything is derived from `CaptureSession.createdAt` and
+`CapturedItem.completedAt`; the brief's settings live in the app-group
+defaults (`HabitDefaults`) beside `ReminderDefaults`, because a settings row
+is not worth a schema migration. The `UserPreferences` briefing fields stay
+unused.
+
+### Why a brief is not a reminder, in code
+
+A reminder is something the person asked for; a brief is something the app
+thinks would help. The line is drawn where both a person and the code can see
+it: `SpeakIt.habit.` identifiers on the `speak-it-habit` thread, the
+`.passive` interruption level so it never sounds, never wakes the screen,
+lands in Scheduled Summary when that is on, and never breaks a Focus; no
+category actions; counts only, never the person's words. The reminder
+reconciler sweeps only `SpeakIt.reminder.` and `SpeakIt.session.`, so the two
+sets cannot clear each other, and the Reminder check count excludes briefs.
+
+### Why it turns itself off
+
+iOS gives no callback for a background delivery, so a brief is "answered" when
+Speak It is opened within twelve hours of it firing — a tap does that, and so
+does simply coming back that morning, which is the brief's whole purpose. Five
+unanswered in a row and the brief disables itself. That is Duolingo's best
+performing notification ("these reminders don't seem to be working") with the
+copy removed: the app just stops.
+
+### What was deliberately not built
+
+No daily streak, no freeze, no streak-at-risk notification, no XP, leagues,
+hearts, mascot, badge shelf, or sounds. A daily-capture goal on a ten-capture
+free plan is a trap, and secondary reports on a 2020 CHI study name streak
+anxiety as the top reason people abandon habit apps. Seven dots that cannot
+break need nothing to soften them.
+
+## 2026-09-08 — Transport verbs may name a person, with corroboration
+
+"Pick up Alex from school" was a shopping row: the acquisition reading sees a
+verb and an object, and nothing said the object was a person, because "pick
+up" is not a speech verb and the resolver only read those. The resolver now
+has a transport frame — pick up, drop off, collect, fetch, and "get … from /
+at" — and the organizer turns a shopping reading into a task when the acquired
+object is the person the resolver found.
+
+The frame is the one place in `PersonMention.swift` that consults
+`NLTagger`'s personal-name tag. Everywhere else that tag is refused on
+principle, because it fires on capitals and a clause boundary must not depend
+on the recognizer's casing. Here the alternative was worse: the parcel is the
+common object of these verbs and brands are capitalized ("Pick up Tylenol"),
+so a capital alone would file medicine under People. Kinship words or the
+tagger's reading are required, the tag corroborates a frame rather than
+deciding anything on its own, and a lowercased "pick up alex" stays a
+shopping row — the same cost the resolver already accepts for a name the
+recognizer has flattened.

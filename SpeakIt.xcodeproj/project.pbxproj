@@ -34,6 +34,11 @@
 		A1000000000000000000001A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* WelcomeView.swift */; };
 		A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* ThoughtOrganizer.swift */; };
 		A1000000000000000000001C /* ReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ReminderScheduler.swift */; };
+		A100000000000000000001E0 /* ActivityLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E0 /* ActivityLedger.swift */; };
+		A100000000000000000001E1 /* HabitNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E1 /* HabitNotificationScheduler.swift */; };
+		A100000000000000000001E2 /* WeekRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E2 /* WeekRowView.swift */; };
+		A100000000000000000001E3 /* ActivityLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E3 /* ActivityLedgerTests.swift */; };
+		A100000000000000000001E4 /* MorningBriefTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E4 /* MorningBriefTests.swift */; };
 		A1000000000000000000E1 /* IntentConsolidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000E1 /* IntentConsolidation.swift */; };
 		A100000000000000000000FE /* ClauseStructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FE /* ClauseStructure.swift */; };
 		A100000000000000000000FD /* TranscriptProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FD /* TranscriptProvenance.swift */; };
@@ -200,6 +205,11 @@
 		B10000000000000000000022 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* ThoughtOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtOrganizer.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
+		B100000000000000000001E0 /* ActivityLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLedger.swift; sourceTree = "<group>"; };
+		B100000000000000000001E1 /* HabitNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HabitNotificationScheduler.swift; sourceTree = "<group>"; };
+		B100000000000000000001E2 /* WeekRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekRowView.swift; sourceTree = "<group>"; };
+		B100000000000000000001E3 /* ActivityLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLedgerTests.swift; sourceTree = "<group>"; };
+		B100000000000000000001E4 /* MorningBriefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorningBriefTests.swift; sourceTree = "<group>"; };
 		B1000000000000000000E1 /* IntentConsolidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentConsolidation.swift; sourceTree = "<group>"; };
 		B100000000000000000000FE /* ClauseStructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClauseStructure.swift; sourceTree = "<group>"; };
 		B100000000000000000000FD /* TranscriptProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptProvenance.swift; sourceTree = "<group>"; };
@@ -424,6 +434,8 @@
 				B100000000000000000000F5 /* LocationIntentParser.swift */,
 				B100000000000000000000F6 /* LocationReminderMonitor.swift */,
 				B10000000000000000000024 /* ReminderScheduler.swift */,
+				B100000000000000000001E0 /* ActivityLedger.swift */,
+				B100000000000000000001E1 /* HabitNotificationScheduler.swift */,
 				B50000000000000000000003 /* ICloudSyncService.swift */,
 			);
 			path = Repositories;
@@ -487,6 +499,7 @@
 				B1000000000000000000000F /* View+ErrorAlert.swift */,
 				B10000000000000000000016 /* SpeakItTheme.swift */,
 				B10000000000000000000017 /* ListeningOrb.swift */,
+				B100000000000000000001E2 /* WeekRowView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -538,6 +551,8 @@
 				B100000000000000000001D0 /* DurabilityTests.swift */,
 				B100000000000000000000C6 /* ActionabilityTests.swift */,
 				B100000000000000000000C7 /* PersonMentionTests.swift */,
+				B100000000000000000001E3 /* ActivityLedgerTests.swift */,
+				B100000000000000000001E4 /* MorningBriefTests.swift */,
 			);
 			path = SpeakItTests;
 			sourceTree = "<group>";
@@ -881,6 +896,9 @@
 				A1000000000000000000001A /* WelcomeView.swift in Sources */,
 				A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */,
 				A1000000000000000000001C /* ReminderScheduler.swift in Sources */,
+				A100000000000000000001E0 /* ActivityLedger.swift in Sources */,
+				A100000000000000000001E1 /* HabitNotificationScheduler.swift in Sources */,
+				A100000000000000000001E2 /* WeekRowView.swift in Sources */,
 				A1000000000000000000E1 /* IntentConsolidation.swift in Sources */,
 				A100000000000000000000FE /* ClauseStructure.swift in Sources */,
 				A100000000000000000000FD /* TranscriptProvenance.swift in Sources */,
@@ -923,6 +941,8 @@
 				A100000000000000000000C2 /* SemanticCorpusDataA.swift in Sources */,
 				A100000000000000000000C6 /* ActionabilityTests.swift in Sources */,
 				A100000000000000000000C7 /* PersonMentionTests.swift in Sources */,
+				A100000000000000000001E3 /* ActivityLedgerTests.swift in Sources */,
+				A100000000000000000001E4 /* MorningBriefTests.swift in Sources */,
 				A100000000000000000000C3 /* SemanticCorpusDataB.swift in Sources */,
 				A1000000000000000000C4 /* SemanticCorpusDataC.swift in Sources */,
 				A1000000000000000000E2 /* SemanticCorpusDataE.swift in Sources */,

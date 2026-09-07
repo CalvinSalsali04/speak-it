@@ -249,6 +249,46 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
     }
 
+    /// The morning brief is planned from the same rows Today shows, so the
+    /// counts it carries are the counts the person will find when they open
+    /// the app. Shopping lists are cards on Today rather than rows, and are
+    /// not counted. Runs on every foreground and background; see
+    /// `HabitNotificationScheduler`.
+    func refreshMorningBrief() {
+        let now = Date.now
+        if HabitNotificationScheduler.settleAnswers(now: now) {
+            SpeakItAnalytics.track(.morningBriefDisabled(source: .autoStop))
+        }
+        guard HabitDefaults.morningBriefEnabled else {
+            HabitNotificationScheduler.enqueueSynchronize(entries: [])
+            return
+        }
+        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
+        let authorization = LocationReminderMonitor.shared.authorization
+        let briefItems = items
+            .filter {
+                !$0.isArchived && !$0.isCompleted &&
+                    ShoppingListProjection.belongsOnTopLevelToday(
+                        $0, authorization: authorization, relativeTo: now
+                    )
+            }
+            .map {
+                MorningBriefItem(
+                    dueDate: $0.dueDate,
+                    isDateOnly: $0.isDateOnly,
+                    calendarDay: $0.isDateOnly ? $0.temporalIntent?.day : nil
+                )
+            }
+        let calendar = Calendar.autoupdatingCurrent
+        let entries = MorningBriefPlanner.plan(
+            items: briefItems,
+            now: now,
+            time: HabitDefaults.morningBriefTime,
+            calendar: calendar
+        )
+        HabitNotificationScheduler.enqueueSynchronize(entries: entries, calendar: calendar)
+    }
+
     /// Advances a recurring reminder that has gone overdue without either a
     /// native repeating trigger to keep it firing or the person completing
     /// it — the "first Monday every month" family from
