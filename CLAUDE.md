@@ -6,7 +6,7 @@
 - **Today** is for action: tasks, reminders, overdue items, upcoming items, and things to do when there is time.
 - **Memory** is for knowledge worth finding later: pinned items, ideas, people, notes, and reference/context. Do not blur these two destinations.
 - Keep the interface minimal, professional, and predictable. Prefer clarity over adding controls or decoration.
-- The current business model is 10 free captures in total (a one-time lifetime allowance that never renews), then StoreKit Pro. Product IDs are `com.calvinwak.SpeakIt.pro.monthly` and `com.calvinwak.SpeakIt.pro.annual`. The intended monthly price is $1.99; App Store Connect remains the source of truth for live localized prices.
+- The current business model is 10 free captures in total (a one-time lifetime allowance that never renews), then StoreKit Pro. Product IDs are `com.calvinwak.SpeakIt.pro.monthly` and `com.calvinwak.SpeakIt.pro.annual`. The intended prices are $2.99 a month and $29.99 a year, with annual discounted to $14.99 until October 22, 2026. Monthly is never discounted, so the paywall only ever strikes a regular price through for annual. Annual must stay below twelve months of monthly or the plan Speak It pre-selects and badges `BEST VALUE` is the more expensive one. App Store Connect remains the source of truth for live localized prices.
 
 ## Start every task this way
 

@@ -7,6 +7,37 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Pro monthly is $2.99, and the annual plan is now guaranteed to cost less than
+  twelve monthly payments. The scheduled annual increase to $29.99 would have
+  made the plan the paywall pre-selects and badges `BEST VALUE` more expensive
+  than paying monthly. Monthly carries no sale price: the paywall only ever
+  strikes a regular price through for annual.
+- The launch-price caption says the offer ends on October 22, not the
+  subscriber's rate. The previous wording read as though $14.99 expired for
+  people already paying it.
+- Speak It now makes its case twice before the free allowance runs out, instead
+  of only at the wall: once after the first capture that spends part of the
+  allowance, and once when three remain. Each appears at most once for the life
+  of the install, each is dismissible with "Continue using Speak It free", and
+  neither blocks anything. Practice captures during the tutorial stay
+  complimentary and never trigger either. A moment earned through Siri, Back
+  Tap, or the share extension waits for the next launch rather than being lost,
+  and none appear while onboarding, practice, a capture, the free-limit wall, or
+  a referral invitation is on screen — or before Speak It has confirmed the
+  Apple Account is not already subscribed.
+- Preserve new items alongside capture operations, including a separate review row for ambiguous operations; mixed captures count toward the free allowance when they create items.
+- Carry complete portable item semantics and shopping groups through iCloud, including explicit clearing and compatibility with older payloads.
+- Preserve stacked errands and preparatory clauses; constrain optional model refinement to uncertain readings with stronger action and metadata preservation.
+- Reduce repeated Today/Memory projection and widget work; rank exact people/title search matches ahead of incidental mentions.
+- Bring missing-person/time controls forward, allow longer accessibility titles, and use native iOS 26 glass on the capture dock with accessible fallbacks.
+- Improve the website's phone layouts, visible primary action, readable examples, keyboard focus and reduced-motion behavior without adding a framework.
+
+- The logo is the five bars raised out of paper: the app icon is now black
+  capsules embossed on light paper (`Tools/Brand/generate_emboss.mjs`), the
+  favicon is black bars on a white tile, the website's topbar and footer glyph
+  and every brand master use the same clean capsules, and the site gained a
+  social card. The hand-inked bar edges from the 3 September refresh are
+  retired (`Bars.inkedByHand`).
 - The clock and calendar as the rest of the English-speaking world says them:
   "15 August" no longer resolves to today, "06:20 tomorrow" is morning rather
   than evening, "half five" is 5:30, "seventeen thirty" and "eighteen hundred"

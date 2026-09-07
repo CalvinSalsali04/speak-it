@@ -51,7 +51,7 @@ private struct CompletionUndo: Identifiable {
     let item: CapturedItem
 }
 
-enum TodayActionTiming: Equatable {
+enum TodayActionTiming: Hashable {
     case overdue
     case today
     case comingUp
@@ -329,9 +329,10 @@ struct TodayView: View {
     }
 
     private func shoppingGroups(
+        in summaries: [ShoppingGroupSummary]? = nil,
         where timing: (TodayActionTiming?) -> Bool
     ) -> [ShoppingGroupSummary] {
-        shoppingGroupSummaries.filter { summary in
+        (summaries ?? shoppingGroupSummaries).filter { summary in
             // The fire moment, not just `dueDate`: a list held by "remind me
             // in an hour" carries a reminder date and must not read as
             // undated.
@@ -385,7 +386,22 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        let grouped = Dictionary(grouping: activeActions) {
+            TodayActionTiming.group(for: $0, relativeTo: referenceNow)
+        }
+        let overdue = (grouped[.overdue] ?? []).sorted(by: chronologicalBefore)
+        let scheduledToday = (grouped[.today] ?? []).sorted(by: chronologicalBefore)
+        let comingUp = (grouped[.comingUp] ?? []).sorted(by: chronologicalBefore)
+        let noDate = (grouped[.noDate] ?? []).sorted(by: prioritizedBefore)
+        let upNext = scheduledToday.first
+        let remainingToday = Array(scheduledToday.dropFirst())
+        let needsReview = self.needsReview
+        let summaries = shoppingGroupSummaries
+        let dueNowShoppingGroups = shoppingGroups(in: summaries) { $0 == .overdue || $0 == .today }
+        let comingUpShoppingGroups = shoppingGroups(in: summaries) { $0 == .comingUp }
+        let untimedShoppingGroups = shoppingGroups(in: summaries) { $0 == nil || $0 == .noDate }
+        let isEmpty = grouped.isEmpty && needsReview.isEmpty && summaries.isEmpty
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
                 header
@@ -417,14 +433,14 @@ struct TodayView: View {
                 }
 
                 if !needsReview.isEmpty {
-                    reviewSection
+                    reviewSection(items: needsReview)
                 }
 
                 if isEmpty {
                     emptyState
                 } else {
                     if !overdue.isEmpty || upNext != nil || !dueNowShoppingGroups.isEmpty {
-                        nowSection
+                        nowSection(overdue: overdue, upNext: upNext, dueNowShoppingGroups: dueNowShoppingGroups)
                     }
 
                     if !remainingToday.isEmpty {
@@ -642,8 +658,13 @@ struct TodayView: View {
         }
     }
 
+    /// The ambient card is the quietest of the three Pro surfaces, and it is
+    /// deliberately the last to arrive. `pendingProMoment` being non-nil means a
+    /// sheet is still owed to this person; stacking a card underneath it would
+    /// make one capture produce two asks on the same screen.
     private var shouldShowProDiscovery: Bool {
         allItems.count >= 5 &&
+            subscriptionStore.pendingProMoment == nil &&
             subscriptionStore.hasAvailablePlans &&
             !subscriptionStore.hasProAccess &&
             !hasDismissedProDiscovery
@@ -900,7 +921,7 @@ struct TodayView: View {
         .padding(.top, 54)
     }
 
-    private var reviewSection: some View {
+    private func reviewSection(items needsReview: [CapturedItem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("Needs review", count: needsReview.count)
 
@@ -1079,7 +1100,9 @@ struct TodayView: View {
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
     }
 
-    private var nowSection: some View {
+    private func nowSection(
+        overdue: [CapturedItem], upNext: CapturedItem?, dueNowShoppingGroups: [ShoppingGroupSummary]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(
                 "Now",

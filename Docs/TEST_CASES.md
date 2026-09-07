@@ -51,6 +51,9 @@
 - Learn Speak It lessons open with the lesson title in the navigation bar and return to the guide list in the expected direction.
 - Plan settings provide a simple Share Speak It action beside subscription status without advertising an unavailable referral reward.
 - The Pro screen shows plans and a purchase action before the longer benefit detail, never advertises an unconfigured free trial or unsupported price comparison, and keeps the annual Best Value badge untruncated.
+- The annual plan always costs less than twelve monthly payments, so the plan the screen pre-selects and badges Best Value is genuinely the cheaper one. Monthly shows no struck-through regular price, and the launch-price caption says the *offer* ends on the cutoff date rather than the subscriber's own rate.
+- Pro is offered once after the first capture that spends part of the allowance, and once again when three free captures remain. Each appears at most once for the life of the install, both are dismissible with **Continue using Speak It free**, and neither blocks capture. Practice captures never trigger either.
+- No uninvited Pro sheet appears over onboarding, practice, an open capture, an unread capture receipt, the free-limit wall, or a referral invitation — nor before Speak It has confirmed the Apple Account is not already subscribed. A moment earned by a Siri, Back Tap, or share-extension capture is offered at the next launch instead of being lost.
 - Persistence errors leave the draft available.
 - Swiping a Today row reveals Done without interfering with vertical scrolling.
 - Swiping a Memory row reveals Archive; archived rows reveal Restore.

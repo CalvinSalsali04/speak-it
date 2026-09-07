@@ -95,6 +95,69 @@ enum FreePlanAllowance {
     }
 }
 
+/// An invitation to look at Pro that capture activity earned, rather than one
+/// a block forced. Two exist, and each is offered at most once for the life of
+/// the install.
+///
+/// The wall at capture eleven is the worst place to make the case: the person
+/// has already been stopped, and whatever they were trying to save is what they
+/// are thinking about. These two land while the allowance still has room, so
+/// "not now" is a real answer and Speak It keeps working exactly as before.
+enum ProMoment: String, CaseIterable, Equatable, Sendable, Identifiable {
+    /// The first capture that actually spent part of the allowance. Practice
+    /// during the tutorial is complimentary and never reaches here, so this is
+    /// the first time the person has seen their own words land somewhere.
+    case firstCapture
+    /// Free captures are nearly gone, but the person has not been stopped yet.
+    case runningLow
+
+    var id: String { rawValue }
+
+    /// Free captures remaining at or below which `runningLow` is due.
+    static let runningLowThreshold = 3
+
+    /// The moment a person who has spent `captureCount` captures has earned and
+    /// has not been shown yet, or `nil` if there is nothing to offer.
+    ///
+    /// When a count crosses both boundaries at once — a restored Keychain
+    /// ledger, or a batch of shared captures imported in one activation — the
+    /// later moment wins. Offering "your first capture" to somebody holding two
+    /// remaining would be describing a screen they are no longer on. The
+    /// skipped moment is not owed afterwards; each is a chance to speak at the
+    /// right time, not a quota to be delivered.
+    ///
+    /// Exhaustion returns `nil` on purpose: `ProPresentationContext.freeLimit`
+    /// already owns that moment, and it blocks rather than invites.
+    ///
+    /// The whole rule is here, pure, so the timing can be tested without a
+    /// StoreKit session, a Keychain ledger, or a live `UserDefaults` domain.
+    static func due(
+        forCaptureCount captureCount: Int,
+        alreadyDelivered: Set<ProMoment> = []
+    ) -> ProMoment? {
+        let spent = max(0, captureCount)
+        let remaining = FreePlanAllowance.remainingCaptures(after: spent)
+        guard remaining > 0 else { return nil }
+        let candidate: ProMoment?
+        if remaining <= runningLowThreshold {
+            candidate = .runningLow
+        } else if spent >= 1 {
+            candidate = .firstCapture
+        } else {
+            candidate = nil
+        }
+        guard let candidate, !alreadyDelivered.contains(candidate) else { return nil }
+        return candidate
+    }
+
+    var presentationContext: ProPresentationContext {
+        switch self {
+        case .firstCapture: .firstCapture
+        case .runningLow: .runningLow
+        }
+    }
+}
+
 enum CaptureAccessError: LocalizedError {
     case freeLimitReached
 
@@ -129,6 +192,12 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var isRestoring = false
     @Published private(set) var freeCapturesUsed: Int
     @Published private(set) var freeAllowanceStartedAt: Date
+    /// A moment that has come due and has not been shown yet. It survives until
+    /// something presents it and calls `consumeProMoment()`, so a moment earned
+    /// by a capture made through Siri or the share extension — where there is
+    /// no Speak It window to put a sheet on — is offered at the next launch
+    /// instead of being lost.
+    @Published private(set) var pendingProMoment: ProMoment?
     @Published var customerMessage: String?
 #if DEBUG
     @Published private(set) var developerAccessOverride: DeveloperAccessOverride
@@ -143,6 +212,7 @@ final class SubscriptionStore: ObservableObject {
     /// unchanged so existing installs keep the captures they have already used.
     private static let freeAllowanceStartedAtKey = "SpeakIt.freePeriodStartedAt"
     private static let cachedProAccessKey = "SpeakIt.cachedProAccess"
+    private static let proMomentDeliveredKeyPrefix = "SpeakIt.proMomentDelivered."
 #if DEBUG
     private static let developerJourneyKey = "SpeakIt.developerCustomerJourneyActive"
 #endif
@@ -156,6 +226,9 @@ final class SubscriptionStore: ObservableObject {
             defaults.removeObject(forKey: Self.cachedProAccessKey)
             defaults.removeObject(forKey: DeveloperAccessOverride.storageKey)
             defaults.removeObject(forKey: Self.developerJourneyKey)
+            for moment in ProMoment.allCases {
+                defaults.removeObject(forKey: Self.proMomentDeliveredKey(moment))
+            }
             // The Keychain deliberately survives reinstalls, so a UI test run
             // has to clear it explicitly or the allowance carries over.
             FreeCaptureLedger.reset()
@@ -192,6 +265,7 @@ final class SubscriptionStore: ObservableObject {
         if defaults.bool(forKey: Self.cachedProAccessKey) {
             accessLevel = .pro
         }
+        evaluateProMoments()
         updatesTask = observeTransactionUpdates()
         Task { await refreshEntitlements() }
     }
@@ -248,6 +322,7 @@ final class SubscriptionStore: ObservableObject {
         freeCapturesUsed = usage.captureCount
         freeAllowanceStartedAt = usage.startedAt
         Self.persistFreeUsage(usage)
+        evaluateProMoments()
     }
 
     func recordSuccessfulCapture(now: Date = .now) {
@@ -260,6 +335,65 @@ final class SubscriptionStore: ObservableObject {
         Self.persistFreeUsage(
             .init(captureCount: freeCapturesUsed, startedAt: freeAllowanceStartedAt)
         )
+        evaluateProMoments()
+    }
+
+    /// Whether an uninvited Pro sheet may be shown right now.
+    ///
+    /// Entitlement state has to be settled first. A subscriber whose cached
+    /// access flag was cleared reads as free for as long as the StoreKit round
+    /// trip takes, and putting a paywall in front of somebody already paying is
+    /// the exact defect `cachedProAccessKey` exists to prevent.
+    var canPresentProMoment: Bool {
+        guard !hasProAccess else { return false }
+#if DEBUG
+        // A sheet that Speak It raises on its own is non-deterministic by
+        // nature, and it would land in the middle of unrelated UI tests. The
+        // suite opts in explicitly on the one test that covers it.
+        if Self.suppressesProMomentsForUITesting { return false }
+        if developerAccessOverride == .free { return true }
+#endif
+        return accessLevel == .free
+    }
+
+#if DEBUG
+    private static let suppressesProMomentsForUITesting: Bool = {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--ui-testing")
+            && !arguments.contains("--ui-testing-pro-moments")
+    }()
+#endif
+
+    /// Records that `pendingProMoment` was actually put on screen.
+    ///
+    /// Delivery is marked here rather than when the moment comes due, so a
+    /// moment earned while Speak It has no window — a Back Tap capture, a
+    /// shared thought imported at activation — is still offered once the app is
+    /// next in front of somebody.
+    func consumeProMoment() {
+        guard let moment = pendingProMoment else { return }
+        UserDefaults.standard.set(true, forKey: Self.proMomentDeliveredKey(moment))
+        pendingProMoment = nil
+    }
+
+    private func evaluateProMoments() {
+        guard canPresentProMoment else {
+            pendingProMoment = nil
+            return
+        }
+        pendingProMoment = ProMoment.due(
+            forCaptureCount: freeCapturesUsed,
+            alreadyDelivered: Self.deliveredProMoments()
+        )
+    }
+
+    private static func deliveredProMoments() -> Set<ProMoment> {
+        let defaults = UserDefaults.standard
+        return Set(ProMoment.allCases.filter { defaults.bool(forKey: proMomentDeliveredKey($0)) })
+    }
+
+    private static func proMomentDeliveredKey(_ moment: ProMoment) -> String {
+        proMomentDeliveredKeyPrefix + moment.rawValue
     }
 
 #if DEBUG
@@ -283,6 +417,13 @@ final class SubscriptionStore: ObservableObject {
             .init(captureCount: freeCapturesUsed, startedAt: freeAllowanceStartedAt),
             allowingDecrease: true
         )
+        // Moving the counter by hand is how the owner replays the customer
+        // journey. Both moments have to come back with it, or the journey can
+        // only ever be walked once per install.
+        for moment in ProMoment.allCases {
+            UserDefaults.standard.removeObject(forKey: Self.proMomentDeliveredKey(moment))
+        }
+        evaluateProMoments()
     }
 
     func completeDeveloperPurchase() {
@@ -509,6 +650,11 @@ final class SubscriptionStore: ObservableObject {
         let foundProEntitlement = !activeProductIDs.isEmpty
         accessLevel = foundProEntitlement ? .pro : .free
         UserDefaults.standard.set(foundProEntitlement, forKey: Self.cachedProAccessKey)
+        // Both directions matter. Learning that this Apple Account is already
+        // subscribed withdraws a moment that `init` had queued while the check
+        // was still in flight; learning that it is not releases one that was
+        // suppressed for the same reason.
+        evaluateProMoments()
     }
 
     private func observeTransactionUpdates() -> Task<Void, Never> {

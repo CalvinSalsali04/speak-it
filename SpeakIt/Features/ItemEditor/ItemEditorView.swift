@@ -50,6 +50,7 @@ struct ItemEditorView: View {
     @State private var recurrenceFrequency: RecurrenceFrequency
     @State private var recurrenceInterval: Int
     @State private var recurrenceAfterCompletion: Bool
+    @FocusState private var personIsFocused: Bool
     @State private var personName: String
     @State private var needsClarification: Bool
     @State private var errorMessage: String?
@@ -288,6 +289,12 @@ struct ItemEditorView: View {
                     }
                 }
 
+                if requirement?.editorField == .person {
+                    Section("Who is this about?") { personField }
+                        .task { personIsFocused = true }
+                }
+                if requirement?.editorField == .time { timingSection }
+
                 Section("Thought") {
                     TextField("Title", text: $title, axis: .vertical)
                         .textInputAutocapitalization(.sentences)
@@ -335,95 +342,14 @@ struct ItemEditorView: View {
                     }
                 }
 
-                Section("Timing") {
-                    Toggle("Has a due date", isOn: $hasDueDate)
-                        .tint(Color.speakToggleTint)
-                        .accessibilityHint("Turn off to keep this item unscheduled")
-
-                    if hasDueDate {
-                        Toggle("Has a time", isOn: $dueDateHasTime)
-                            .tint(Color.speakToggleTint)
-                            .accessibilityHint("Turn off when only the day matters")
-
-                        DatePicker(
-                            "Due",
-                            selection: $dueDate,
-                            displayedComponents: dueDateHasTime
-                                ? [.date, .hourAndMinute]
-                                : [.date]
-                        )
-                    }
-
-                    Toggle(isOn: $hasReminder) {
-                        requiredLabel("Remind me", when: .time)
-                    }
-                    .tint(Color.speakToggleTint)
-                    .accessibilityHint("Schedules an alert for this thought")
-
-                    if hasReminder {
-                        DatePicker(
-                            "Reminder time",
-                            selection: $reminderDate,
-                            in: Date.now...,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-
-                        if inferredReminderDelivery == .alarm {
-                            Label(
-                                "This is an alarm because you explicitly asked for one.",
-                                systemImage: "alarm"
-                            )
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if itemType.isActionable {
-                        Toggle("Repeat", isOn: $repeats)
-                            .tint(Color.speakToggleTint)
-
-                        if repeats {
-                            Picker("Frequency", selection: $recurrenceFrequency) {
-                                ForEach(RecurrenceFrequency.allCases, id: \.self) { frequency in
-                                    Text(recurrenceTitle(frequency)).tag(frequency)
-                                }
-                            }
-
-                            Stepper(
-                                "Every \(recurrenceInterval) \(recurrenceUnit)",
-                                value: $recurrenceInterval,
-                                in: 1...30
-                            )
-
-                            Picker("Next occurrence", selection: $recurrenceAfterCompletion) {
-                                Text("From schedule").tag(false)
-                                Text("After completion").tag(true)
-                            }
-                        }
-                    }
-                }
+                if requirement?.editorField != .time { timingSection }
 
                 if let intent = editedLocationIntent {
                     locationSection(intent)
                 }
 
                 Section("Details") {
-                    HStack {
-                        if requirement?.editorField == .person {
-                            requiredLabel("Person", when: .person)
-                                .layoutPriority(1)
-                        }
-                        TextField(
-                            requirement?.editorField == .person ? "Name" : "Person (optional)",
-                            text: $personName
-                        )
-                        .multilineTextAlignment(
-                            requirement?.editorField == .person ? .trailing : .leading
-                        )
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled(false)
-                        .textContentType(.name)
-                    }
+                    if requirement?.editorField != .person { personField }
                     // Named for what the person was actually shown. Today's
                     // section, the row badge and `ItemPresentation` all say
                     // "Needs review"; this control said "Needs clarification",
@@ -803,6 +729,96 @@ struct ItemEditorView: View {
     /// whether it repeated, and the only way to stop it was to delete the whole
     /// thought.
     @ViewBuilder
+    private var personField: some View {
+        HStack {
+                        if requirement?.editorField == .person {
+                            requiredLabel("Person", when: .person)
+                                .layoutPriority(1)
+                        }
+                        TextField(
+                            requirement?.editorField == .person ? "Name" : "Person (optional)",
+                            text: $personName
+                        )
+                        .multilineTextAlignment(
+                            requirement?.editorField == .person ? .trailing : .leading
+                        )
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled(false)
+                        .textContentType(.name)
+                        .focused($personIsFocused)
+                    }
+    }
+
+    private var timingSection: some View {
+        Section("Timing") {
+                    Toggle("Has a due date", isOn: $hasDueDate)
+                        .tint(Color.speakToggleTint)
+                        .accessibilityHint("Turn off to keep this item unscheduled")
+
+                    if hasDueDate {
+                        Toggle("Has a time", isOn: $dueDateHasTime)
+                            .tint(Color.speakToggleTint)
+                            .accessibilityHint("Turn off when only the day matters")
+
+                        DatePicker(
+                            "Due",
+                            selection: $dueDate,
+                            displayedComponents: dueDateHasTime
+                                ? [.date, .hourAndMinute]
+                                : [.date]
+                        )
+                    }
+
+                    Toggle(isOn: $hasReminder) {
+                        requiredLabel("Remind me", when: .time)
+                    }
+                    .tint(Color.speakToggleTint)
+                    .accessibilityHint("Schedules an alert for this thought")
+
+                    if hasReminder {
+                        DatePicker(
+                            "Reminder time",
+                            selection: $reminderDate,
+                            in: Date.now...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+
+                        if inferredReminderDelivery == .alarm {
+                            Label(
+                                "This is an alarm because you explicitly asked for one.",
+                                systemImage: "alarm"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if itemType.isActionable {
+                        Toggle("Repeat", isOn: $repeats)
+                            .tint(Color.speakToggleTint)
+
+                        if repeats {
+                            Picker("Frequency", selection: $recurrenceFrequency) {
+                                ForEach(RecurrenceFrequency.allCases, id: \.self) { frequency in
+                                    Text(recurrenceTitle(frequency)).tag(frequency)
+                                }
+                            }
+
+                            Stepper(
+                                "Every \(recurrenceInterval) \(recurrenceUnit)",
+                                value: $recurrenceInterval,
+                                in: 1...30
+                            )
+
+                            Picker("Next occurrence", selection: $recurrenceAfterCompletion) {
+                                Text("From schedule").tag(false)
+                                Text("After completion").tag(true)
+                            }
+                        }
+                    }
+                }
+    }
+
     private func locationSection(_ intent: LocationIntent) -> some View {
         Section {
             LabeledContent("Place", value: intent.place.displayName)

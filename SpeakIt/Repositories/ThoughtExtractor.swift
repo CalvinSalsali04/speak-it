@@ -75,74 +75,77 @@ struct ThoughtExtractionResult: Equatable, Sendable {
     }
 }
 
-/// Decides whether a refinement may replace the rules reading.
-///
-/// Why this exists
-/// ---------------
-/// `ThoughtExtractionEngine.extract` used to return the refinement model's
-/// items the moment they passed `IntelligentThoughtExtractor.validate`, which
-/// checks that every quote was copied from the transcript but never compares
-/// the result against what the rules already found. A model that returned two
-/// well-formed, perfectly grounded rows for a capture the rules had read as
-/// three therefore *deleted a row*, and nothing downstream could tell.
-///
-/// That mattered more than it looks. `shouldRefine` returns true for every
-/// capture the rules split into more than one row, so on an Apple Intelligence
-/// device the multi-row captures — the ones this project spent the most effort
-/// getting right — were precisely the captures whose outcome the rules no
-/// longer decided.
-///
-/// What is allowed
-/// ---------------
-/// The model is free to do the things it is genuinely better at: re-segmenting,
-/// merging, splitting, retitling, recategorizing, spotting a person the rules
-/// missed. This guard constrains one thing only — it may not make something the
-/// rules found *disappear*.
-///
-/// Deliberately not compiled behind `canImport(FoundationModels)`: the rule has
-/// to be testable on every machine and simulator, including the ones where the
-/// model never runs and where the suite is otherwise blind to this path.
+/// Accept optional model output only when it preserves the deterministic reading.
+/// Independent actions stay separate; quotes retain actions, objects and negation.
+/// Shared timing may move into context, and resolved behavioral metadata must agree.
+/// This contract is testable without FoundationModels or an AI-capable device.
 enum RefinementGuard {
-
-    /// Whether `refined` still accounts for everything `rules` found.
-    ///
-    /// The test is per rules row, and only on the words that *distinguish* that
-    /// row from its siblings. "Call mom tomorrow" and "call Alex Friday" share
-    /// the verb, so `call` proves nothing; `mom`/`tomorrow` and `alex`/`friday`
-    /// are what make each row a separate thing to do. If a row's distinguishing
-    /// words survive nowhere in the refinement, that row was dropped.
-    ///
-    /// Checked only when the rules found more than one row. A single row cannot
-    /// be dropped without emptying the refinement, which `validate` already
-    /// rejects, and demanding full token coverage there would refuse the
-    /// legitimate case of a tight quote replacing a rambling one.
+    /// A single narrative may lose its obligation frame, but not its substance.
     static func preservesEverything(
         in refined: [ExtractedThought],
         found rules: [ExtractedThought]
     ) -> Bool {
-        guard rules.count > 1 else { return true }
         guard !refined.isEmpty else { return false }
-
-        // Quotes only, on both sides. `analysisText` carries inherited context,
-        // and the rules path routinely fills it with the *whole capture* for
-        // every row — so comparing it made every row look like it mentioned
-        // everything, and a dropped row could not be told from a kept one.
-        // "Set alarms for 7 AM and 8:30 AM" was the case that exposed it.
+        if refined == rules { return true }
+        let independentActions = rules.filter { $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }
+        guard refined.filter({ $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }).count >= independentActions.count else { return false }
         let quotes = rules.map { tokens(in: $0.sourceQuote) }
         let refinedQuotes = refined.map { tokens(in: $0.sourceQuote) }
-
-        for (index, own) in quotes.enumerated() {
-            let others = quotes.enumerated()
-                .filter { $0.offset != index }
+        for (index, rule) in rules.enumerated() {
+            let own = quotes[index]
+            let others = quotes.enumerated().filter { $0.offset != index }
                 .reduce(into: Set<String>()) { $0.formUnion($1.element) }
             let distinctive = own.subtracting(others)
-            // A row with nothing of its own cannot be judged this way.
-            guard !distinctive.isEmpty else { continue }
-            // Some refined row has to still be about this one.
-            guard refinedQuotes.contains(where: { !$0.isDisjoint(with: distinctive) }) else {
-                return false
+            let matching = refined.indices.filter { candidate in
+                let quote = refinedQuotes[candidate]
+                // Whole-capture inherited context cannot impersonate a row.
+                return distinctive.isEmpty ? own.isSubset(of: quote)
+                    : !quote.isDisjoint(with: distinctive)
+            }
+            guard !matching.isEmpty else { return false }
+            let covered = matching.reduce(into: Set<String>()) {
+                $0.formUnion(refinedQuotes[$1])
+            }
+            // Frame peeling may shorten a single narrative, but cannot remove
+            // the remaining action or its arguments.
+            let required = rules.count == 1
+                ? tokens(in: IntentConsolidator.stripFraming(rule.sourceQuote))
+                : own
+            let contextualCoverage = matching.reduce(into: covered) {
+                $0.formUnion(tokens(in: refined[$1].analysisText))
+            }
+            guard required.isSubset(of: contextualCoverage) else { return false }
+            // Only temporal words may move out of the quote into context.
+            // Objects, ownership and negation must remain in the row itself.
+            let temporalWords: Set<String> = [
+                "today", "tomorrow", "tonight", "yesterday", "monday", "tuesday", "wednesday",
+                "thursday", "friday", "saturday", "sunday", "morning", "afternoon", "evening",
+                "noon", "midnight", "am", "pm", "next", "this", "week", "weekend", "day",
+                "days", "weeks", "month", "months", "hour", "hours", "minute", "minutes"
+            ]
+            guard required.subtracting(covered).allSatisfy({ token in
+                temporalWords.contains(token) || token.allSatisfy(\.isNumber)
+            }) else { return false }
+            let actionWords = tokens(in: rule.sourceQuote).filter { token in
+                token.range(of: "^(?:" + ActionabilityReader.actionVerb + ")$",
+                            options: .regularExpression) != nil
+            }
+            guard Set(actionWords).isSubset(of: covered) else { return false }
+            if rule.organization.state.kind == .resolved {
+                // Resolved behavioral fields must still belong to a row about
+                // this action. Category and display title can improve freely.
+                guard matching.contains(where: { candidate in
+                    let result = refined[candidate].organization
+                    return result.itemType.isActionable == rule.organization.itemType.isActionable
+                        && result.personName == rule.organization.personName
+                        && result.dueDate == rule.organization.dueDate
+                        && result.reminderDate == rule.organization.reminderDate
+                        && result.locationIntent == rule.organization.locationIntent
+                        && result.recurrenceRule == rule.organization.recurrenceRule
+                }) else { return false }
             }
         }
+
         return true
     }
 
@@ -180,6 +183,15 @@ enum RefinementGuard {
 /// Separates language understanding from persistence. The rules path is always
 /// available; supported Apple Intelligence devices can refine ambiguous input
 /// without sending a private transcript to a server.
+enum RefinementPolicy {
+    static func shouldRefine(_ transcript: String, fallback: [ExtractedThought]) -> Bool {
+        guard !transcript.isEmpty, transcript.count <= 1_500 else { return false }
+        return fallback.contains { item in
+            item.needsReview && item.organization.state.kind != .unsupported
+        }
+    }
+}
+
 enum ThoughtExtractionEngine {
     static func extract(
         _ transcript: String,
@@ -217,7 +229,7 @@ enum ThoughtExtractionEngine {
         if permitsOnDeviceIntelligence,
            #available(iOS 26.0, *),
            IntelligentThoughtExtractor.shouldRefine(transcript, fallback: fallback),
-           let refined = await IntelligentThoughtExtractor.extract(
+           let refined = await IntelligentThoughtExtractor.extractWithinBudget(
                transcript,
                referenceDate: referenceDate,
                calendar: calendar
@@ -1533,6 +1545,13 @@ enum RuleBasedThoughtExtractor {
         let text = normalize(value).lowercased()
         if text.isEmpty { return true }
 
+        // A preparatory posture followed by a conjunction needs its purpose:
+        // "sit down and finally do my taxes" is one action, not a posture task.
+        if text.range(
+            of: #"\b(?:sit\s+down|settle\s+down)\s+and$"#,
+            options: .regularExpression
+        ) != nil { return true }
+
         // A dangling auxiliary: "I gotta", "I need to", "I should".
         if text.range(
             of: #"^(?:i\s+)?(?:gotta|got\s+to|need\s+to|have\s+to|want\s+to|should|must|ought\s+to|will|can)$"#,
@@ -2219,13 +2238,24 @@ enum IntelligentThoughtExtractor {
     }
 
     static func shouldRefine(_ transcript: String, fallback: [ExtractedThought]) -> Bool {
-        guard transcript.count <= 1_500 else { return false }
-        if fallback.contains(where: { $0.needsReview }) { return true }
-        if fallback.count > 1 { return true }
-        return transcript.range(
-            of: #"(?i)(?:[,;]|\band\b|\balso\b|\bthen\b|\bactually\b|\bi\s+mean\b|\bnot\b|\bsaid\b)"#,
-            options: .regularExpression
-        ) != nil
+        RefinementPolicy.shouldRefine(transcript, fallback: fallback)
+    }
+
+    static func extractWithinBudget(
+        _ transcript: String, referenceDate: Date, calendar: Calendar
+    ) async -> [ExtractedThought]? {
+        await withTaskGroup(of: [ExtractedThought]?.self) { group in
+            group.addTask {
+                await extract(transcript, referenceDate: referenceDate, calendar: calendar)
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 
     static func extract(
@@ -2303,10 +2333,8 @@ enum IntelligentThoughtExtractor {
                 calendar: calendar
             )
             let confidence = min(max(Double(candidate.confidencePercent) / 100, 0), 1)
-            let kind = itemType(candidate.kind)
-            let inferredPerson = candidate.personName
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .nilIfEmpty ?? deterministic.personName
+            let kind = deterministic.itemType
+            let inferredPerson = deterministic.personName
             let category = kind == .note && inferredPerson != nil
                 ? ItemCategory.people
                 : itemCategory(candidate.category)
@@ -2321,7 +2349,8 @@ enum IntelligentThoughtExtractor {
                 recurrenceRule: kind.isActionable ? deterministic.recurrenceRule : nil,
                 needsClarification: deterministic.needsClarification || confidence < 0.82,
                 temporalIntent: deterministic.temporalIntent,
-                locationIntent: kind.isActionable ? deterministic.locationIntent : nil
+                locationIntent: kind.isActionable ? deterministic.locationIntent : nil,
+                state: deterministic.state
             )
             let title = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
             output.append(ExtractedThought(

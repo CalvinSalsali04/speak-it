@@ -301,9 +301,24 @@ struct Bars {
         Hand(lean: -0.09, bow: -0.05, stretch: 1.03, lift: -0.04, seed: 59, down: true),
     ]
 
-    /// Closed ink outlines, one per bar; fill them.
+    /// The bars used to be inked by `Pen` (the 2026-09-03 hand-drawn cut).
+    /// Since 2026-09-04 the logo is the clean capsule, raised out of paper in
+    /// the embossed masters (`generate_emboss.mjs`) and flat everywhere else.
+    /// Flip this to get the hand-drawn cut back.
+    static let inkedByHand = false
+
+    /// Closed outlines, one per bar; fill them.
     func outlines(originX: Double, centerY: Double, detail: Double = 1) -> [[Point]] {
-        heights.enumerated().map { i, h in
+        if !Bars.inkedByHand {
+            return heights.enumerated().map { i, h in
+                let r = barWidth / 2
+                let cx = originX + Double(i) * pitch + r
+                let steps = max(Int(24 * detail), 6)
+                return arc(center: p(cx, centerY - h / 2 + r), radius: r, from: 180, to: 360, steps: steps)
+                    + arc(center: p(cx, centerY + h / 2 - r), radius: r, from: 0, to: 180, steps: steps)
+            }
+        }
+        return heights.enumerated().map { i, h in
             let hand = Bars.hands[i]
             let cx = originX + Double(i) * pitch + barWidth / 2
             let length = max(h * hand.stretch - barWidth, barWidth * 0.2)
@@ -478,7 +493,9 @@ do {
     try write(contents, to: "\(root)/SpeakIt/Assets.xcassets/Wordmark.imageset/Contents.json")
 }
 
-// 3. App icon — 1024, opaque, near-black ground with white bars.
+// 3. Icon masters. The shipped app icon itself is written by
+// Tools/Brand/generate_emboss.mjs (the embossed black-on-white cut needs SVG
+// filters); these are the flat alternates.
 func renderIcon(size: Int, withWordmark: Bool, invert: Bool = false) -> CGContext {
     let s = Double(size)
     let ctx = bitmap(width: size, height: size, opaque: true)
@@ -499,7 +516,6 @@ func renderIcon(size: Int, withWordmark: Bool, invert: Bool = false) -> CGContex
     return ctx
 }
 
-try writePNG(renderIcon(size: 1024, withWordmark: false), to: "\(root)/SpeakIt/Assets.xcassets/AppIcon.appiconset/SpeakIt-AppIcon-1024.png")
 try writePNG(renderIcon(size: 4096, withWordmark: false), to: "\(brand)/SpeakIt-AppIcon-v2-Master-4K.png")
 try writePNG(renderIcon(size: 1024, withWordmark: true), to: "\(brand)/SpeakIt-AppIcon-v2-Alt-Wordmark-1024.png")
 try writePNG(renderIcon(size: 1024, withWordmark: false, invert: true), to: "\(brand)/SpeakIt-AppIcon-v2-Alt-Light-1024.png")
@@ -511,7 +527,7 @@ do {
     let svg = """
     <?xml version="1.0" encoding="UTF-8"?>
     <svg xmlns="http://www.w3.org/2000/svg" width="4096" height="4096" viewBox="0 0 4096 4096" role="img" aria-labelledby="title">
-      <title id="title">Speak It app icon</title>
+      <title id="title">Speak It icon, flat dark alternate</title>
       <rect width="4096" height="4096" fill="\(Ink.black)"/>
     \(svgBars(bars, originX: (s - bars.width) / 2, centerY: s / 2, fill: Ink.white))
     </svg>
@@ -583,8 +599,8 @@ do {
     let bars = Bars.scaled(to: 20)
     let svg = """
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-      <rect width="32" height="32" rx="7" fill="\(Ink.black)"/>
-    \(svgBars(bars, originX: (32 - bars.width) / 2, centerY: 16, fill: Ink.white, detail: 0.5))
+      <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="\(Ink.white)" stroke="#DCDCD8"/>
+    \(svgBars(bars, originX: (32 - bars.width) / 2, centerY: 16, fill: Ink.black, detail: 0.5))
     </svg>
 
     """

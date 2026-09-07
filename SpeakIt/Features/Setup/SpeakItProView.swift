@@ -40,6 +40,24 @@ enum SpeakItSharing {
 enum ProPresentationContext: Equatable {
     case account
     case freeLimit
+    /// Shown once, on the day of the first capture that actually spent part of
+    /// the allowance. The product has just demonstrably worked, which is the
+    /// only moment before the wall where the offer is about something the
+    /// person has seen rather than something they are being promised.
+    case firstCapture
+    /// Shown once, while free captures remain. Meeting the wall is the worst
+    /// time to ask: the person has already been stopped.
+    case runningLow
+
+
+    var analyticsContext: AnalyticsPaywallContext {
+        switch self {
+        case .account: .account
+        case .freeLimit: .freeLimit
+        case .firstCapture: .firstCapture
+        case .runningLow: .runningLow
+        }
+    }
 }
 
 struct SpeakItProView: View {
@@ -107,9 +125,7 @@ struct SpeakItProView: View {
             }
         }
         .task {
-            SpeakItAnalytics.track(.paywallViewed(
-                context: context == .freeLimit ? .freeLimit : .account
-            ))
+            SpeakItAnalytics.track(.paywallViewed(context: context.analyticsContext))
             await subscriptionStore.prepare()
             if subscriptionStore.annualProduct == nil,
                let firstID = subscriptionStore.recommendedProduct?.id {
@@ -162,18 +178,46 @@ struct SpeakItProView: View {
 
     private var heroTitle: String {
         if subscriptionStore.hasProAccess { return "Your thoughts stay in motion." }
-        if context == .freeLimit { return "You’ve used your \(FreePlanAllowance.lifetimeCaptureLimit) free captures." }
-        return "More clarity from every thought."
+        switch context {
+        case .freeLimit:
+            return "You’ve used your \(FreePlanAllowance.lifetimeCaptureLimit) free captures."
+        case .firstCapture:
+            return "Your thought is where it belongs."
+        case .runningLow:
+            return "\(subscriptionStore.freeCapturesRemaining) free \(captureNoun) left."
+        case .account:
+            return "More clarity from every thought."
+        }
+    }
+
+    private var captureNoun: String {
+        subscriptionStore.freeCapturesRemaining == 1 ? "capture" : "captures"
+    }
+
+    /// Kept as one clause so the number, the noun and the verb cannot disagree.
+    /// `ProMoment` guarantees at least four remaining at `.firstCapture`, but a
+    /// changed threshold should not be able to produce "1 free captures are".
+    private var remainingCapturesClause: String {
+        let remaining = subscriptionStore.freeCapturesRemaining
+        return remaining == 1
+            ? "1 free capture is still waiting for you"
+            : "\(remaining) free captures are still waiting for you"
     }
 
     private var heroDetail: String {
         if subscriptionStore.hasProAccess {
             return "Speak It Pro is active on this Apple Account."
         }
-        if context == .freeLimit {
+        switch context {
+        case .freeLimit:
             return "Everything you saved is still yours. You’ve used all \(FreePlanAllowance.lifetimeCaptureLimit) free captures — upgrade for unlimited capture."
+        case .firstCapture:
+            return "That is the whole app: you speak, and it lands in Today or Memory. \(remainingCapturesClause) — Pro is here whenever you want the counting to stop."
+        case .runningLow:
+            return "No rush, and nothing you saved is ever locked. Pro removes the lifetime capture limit whenever you are ready."
+        case .account:
+            return "Your first \(FreePlanAllowance.lifetimeCaptureLimit) captures include the complete experience. Pro removes the capture limit so every thought can keep moving."
         }
-        return "Your first \(FreePlanAllowance.lifetimeCaptureLimit) captures include the complete experience. Pro removes the capture limit so every thought can keep moving."
     }
 
     @ViewBuilder
@@ -328,7 +372,7 @@ struct SpeakItProView: View {
             developerPlanButton(
                 .monthly,
                 title: "Monthly",
-                price: "$1.99 / month",
+                price: "$2.99 / month",
                 regularPrice: nil,
                 detail: "Flexible monthly billing"
             )
@@ -591,11 +635,16 @@ struct SpeakItProView: View {
             .disabled(subscriptionStore.isRestoring)
             .buttonStyle(.speakIt)
 
-            Button(context == .freeLimit ? "Not now" : "Continue using Speak It free") { dismiss() }
+            // Identifier after the style, the way `pro.purchase` and
+            // `pro.redeem-code` do it. `.speakIt` rebuilds the button's
+            // accessibility element, so an identifier applied above it does not
+            // survive into the tree.
+            Button(dismissTitle) { dismiss() }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.speakInk)
                 .frame(minHeight: 44)
                 .buttonStyle(.speakIt)
+                .accessibilityIdentifier("pro.dismiss")
         }
     }
 
@@ -611,7 +660,7 @@ struct SpeakItProView: View {
                 VStack(spacing: 3) {
                     Text(selectedDeveloperPlan == .annual
                          ? "Choose Annual · $14.99"
-                         : "Choose Monthly · $1.99")
+                         : "Choose Monthly · $2.99")
                         .font(.headline)
                     Text("Developer test · no charge")
                         .font(.caption)
@@ -628,24 +677,35 @@ struct SpeakItProView: View {
                 .font(.caption)
                 .foregroundStyle(Color.speakMuted)
 
-            Button("Not now") { dismiss() }
+            Button(dismissTitle) { dismiss() }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.speakInk)
                 .frame(minHeight: 44)
                 .buttonStyle(.speakIt)
+                .accessibilityIdentifier("pro.dismiss")
         }
     }
 
     private var developerPurchaseDetail: String {
         guard selectedDeveloperPlan == .annual else {
-            return "$1.99 per month. Auto-renews until cancelled."
+            return "$2.99 per month. Auto-renews until cancelled."
         }
         if SummerLaunchSale.isActive() {
-            return "Summer launch price · $14.99 per year until \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+            return "Summer launch price · $14.99 per year, and it stays that price for as long as the subscription does. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "$29.99 per year. Auto-renews until cancelled."
     }
 #endif
+
+    /// The refusal, worded the same whichever plan source is rendering.
+    ///
+    /// At the wall there is nothing left to continue with, so "Not now" is the
+    /// honest word. Everywhere else — including the two moments Speak It raises
+    /// itself — free captures remain and the screen has to say so, or a sheet
+    /// nobody asked for reads as a demand.
+    private var dismissTitle: String {
+        context == .freeLimit ? "Not now" : "Continue using Speak It free"
+    }
 
     private var purchaseButtonTitle: String {
         // Customer- and reviewer-facing. "in this build" is our word for
@@ -660,13 +720,12 @@ struct SpeakItProView: View {
         let period = product.id == SubscriptionStore.annualProductID ? "year" : "month"
         if product.id == SubscriptionStore.annualProductID,
            SummerLaunchSale.isActive() {
-            // Left exactly as it shipped. The audit is right that this reads as
-            // though the subscriber's own rate expires on the sale end date,
-            // which is not what a launch price does — but every word of it is
-            // part of the sale-pricing decision the owner still has to make,
-            // and `SpeakItUITests` pins this string. Changing half of a pricing
-            // claim is worse than leaving it whole.
-            return "Summer launch price · \(product.displayPrice) per year until \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+            // The earlier wording — "$14.99 per year until October 22, 2026" —
+            // read as though the subscriber's own rate expired on that date.
+            // What expires is the offer. App Store Connect is configured to
+            // preserve this price for subscriptions that began during the
+            // window, so the sentence now says which of the two ends.
+            return "Summer launch price · \(product.displayPrice) per year, and it stays that price for as long as the subscription does. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "\(product.displayPrice) per \(period). Auto-renews until cancelled."
     }

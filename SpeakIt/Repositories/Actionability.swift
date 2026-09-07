@@ -931,7 +931,9 @@ enum ActionabilityReader {
     /// because that one also has to survive title formatting; this one only has
     /// to expose the head verb.
     static func actionBody(_ text: String) -> String {
-        var value = text
+        // The title and consolidation readers share this guarded structural
+        // peeling, including nested present-tense obligations and hedges.
+        var value = ObligationFrame.peeled(text, using: ObligationFrame.actionable)
         if let locationAction = LocationIntentParser.actionBody(in: value) {
             value = locationAction
         }

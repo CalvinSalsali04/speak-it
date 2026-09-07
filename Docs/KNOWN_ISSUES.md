@@ -4,6 +4,28 @@
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
 
+## The app cannot set what customers are charged
+
+`SpeakIt.storekit` is a local test configuration, and the paywall renders
+`product.displayPrice`. Changing the monthly plan to $2.99 in this repository
+changes what the simulator and the UI suite show; it does not change what App
+Store Connect bills. Until the monthly product is $2.99 there and the annual
+schedule is confirmed, the shipped paywall shows whatever App Store Connect
+holds — and if that is still $1.99 against a $29.99 annual, the plan the screen
+pre-selects and badges `BEST VALUE` is the more expensive one. `E12` in
+`Docs/BUILD_14_DEVICE_SMOKE.md` is the device check that catches it, and the
+gates are listed in `Docs/APP_STORE_SUBMISSION.md`.
+
+## Pro moments are offered at the next foreground, not in real time
+
+A capture made through Siri, Back Tap, a Shortcut, or the share extension runs
+outside this process, so the moment it earns cannot be shown while it happens —
+there is no Speak It window to put a sheet on. The moment stays pending and is
+offered the next time the app is on screen. In the rare case where SwiftUI
+refuses the presentation because a screen below already has a sheet up, the
+moment is not spent: the next foreground clears the stale binding and offers it
+again.
+
 ## Back Tap setup
 
 iOS does not allow Speak It to assign Back Tap automatically or deep-link directly to the Back Tap choice. The user must add the ready-made one-action **Speak It Capture** shortcut and select it under Accessibility → Touch → Back Tap → Double Tap. The shortcut now foregrounds Speak It directly into an auto-starting capture instead of attempting a fragile cold background microphone start. The app opens as close as the public Accessibility API permits and explains the remaining taps; the physical Back Tap gesture still needs end-to-end device testing across supported iOS versions.
@@ -306,7 +328,13 @@ better luck last time" would be retitled **"Luck last time"**. A comparative
 reading is more common than the past-tense deontic idiom in speech, and the
 title layer refuses rather than guesses.
 
-## Stacked errands behind a hedge collapse into one row
+## Resolved in working tree: stacked errands behind a hedge
+
+The shared action-body reader now peels the same guarded obligation frames as
+the title layer. The reproduced three-errand capture produces three actionable
+rows; a regression test preserves that result. Historical diagnosis follows.
+
+### Original failure
 
 `IntentConsolidation` destroys content on a run-on carrying three errands and a
 discourse hedge:
@@ -322,7 +350,13 @@ splitter segments it correctly into three; `consolidate` then collapses it.
 Origin is `IntentConsolidation.swift` around the `isSubstantive` /
 `elaborativeMarker` path.
 
-## Clause splitting can strand a fragment that the title layer can only tidy
+## Resolved in working tree: preparatory and modal fragments
+
+Preparatory “sit down and” stays with its action, and modal adverbs such as
+“rarely” stay within their clause. Both examples below now produce one row and
+have regression coverage. This does not imply every possible fragment is solved.
+
+### Original failure
 
 Independent of the frame reducer, `ThoughtExtractor` sometimes cuts a clause
 where there is no clause boundary, and every title is downstream of that.
@@ -334,3 +368,11 @@ The reducer improved both — the first row used to read
 `I think I need to sit down and`, and the second used to read `Rarely` — but a
 title cannot repair a split that should not have happened. The origin is clause
 segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
+
+## Remaining validation after the September product fixes
+
+- FoundationModels cancellation is cooperative. Measure generation latency and fallback behavior on an Apple Intelligence device before claiming a strict two-second completion bound.
+- Portable iCloud semantics have local serialization/merge coverage. Live two-device delivery, permissions and notification behavior still require device QA.
+- Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
+- Native dock glass and editor focus compile, but Dynamic Type, VoiceOver and animation quality need hands-on review; no Xcode UI suite was run in this work.
+- The website needs a verified App Store listing URL in its metadata before download buttons can be enabled. Until then, its primary action opens the working browser demo.

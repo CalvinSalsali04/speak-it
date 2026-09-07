@@ -1340,7 +1340,9 @@ struct CaptureView: View {
                     let copy = CaptureOperationCopy.make(for: outcome)
                     savedConfirmationTitle = copy.title
                     savedConfirmationSymbol = copy.symbol
-                    savedConfirmationDetail = copy.detail
+                    savedConfirmationDetail = result.hasItems
+                        ? "\(copy.detail) \(result.itemCount) saved \(result.itemCount == 1 ? "item" : "items") below."
+                        : copy.detail
                 } else if result.needsInterpretationConfirmation {
                     savedConfirmationTitle = "Can you clarify?"
                     savedConfirmationSymbol = "questionmark"

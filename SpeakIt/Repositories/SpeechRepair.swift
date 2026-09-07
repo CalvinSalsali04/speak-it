@@ -1429,7 +1429,7 @@ enum ClauseJuxtaposition {
                   // but only then. Checking it unconditionally swallowed real
                   // boundaries: "after class submit my assignment" has a
                   // preposition two words back and is still two errands.
-                  !(hedgeAdverbs.contains(last)
+                  !((hedgeAdverbs.contains(last) || last.hasSuffix("ly"))
                     && recent.dropLast().last.map(clauseInternalLead.contains) == true),
                   // A clause needs a verb and an object in front of it before a
                   // second verb reads as a new instruction. Two words is the

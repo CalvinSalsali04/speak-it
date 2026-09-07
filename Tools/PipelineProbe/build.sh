@@ -42,5 +42,5 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   "$OUT/LocationIntentSlice.swift" \
   SpeakIt/Models/TemporalIntent.swift \
   SpeakIt/Models/ReminderTrigger.swift \
-  "$OUT/ReminderCopySlice.swift" "$SP/shims.swift" "$SP/main.swift" 2>&1 | grep -E 'error:' || true
+  "$OUT/ReminderCopySlice.swift" "$SP/shims.swift" "$SP/main.swift" 2> "$OUT/build-errors.log" || { cat "$OUT/build-errors.log" >&2; exit 1; }
 test -x "$OUT/probe" && echo "probe built: $OUT/probe"
