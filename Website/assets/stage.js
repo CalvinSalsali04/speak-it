@@ -17,19 +17,24 @@
   document.documentElement.classList.add('js');
 
   /* Speak It's own domain, which is also the host the app trusts for invite
-     links (`ReferralService.swift`). It is what the QR encodes and what the
-     download buttons open until there is a public App Store listing to point
-     at — a QR that resolves to nothing is worse than one that resolves to the
-     page the reader is already on. Swap both this and `tools/make_qr.py`'s
-     output for the apps.apple.com URL the day the listing goes live. */
-  var APP_STORE_URL = 'https://speakitapp.ca';
+     links (`ReferralService.swift`). It is what the QR encodes until there is
+     a public App Store listing to point at — a QR that resolves to nothing is
+     worse than one that resolves to the page the reader is already on. Swap
+     both this and `tools/make_qr.py`'s output for the apps.apple.com URL the
+     day the listing goes live. */
+  var storeMeta = document.querySelector('meta[name="speak-it-app-store-url"]');
+  var APP_STORE_URL = storeMeta ? storeMeta.content.trim() : '';
+  var hasStoreLink = /^https:\/\/apps\.apple\.com\//.test(APP_STORE_URL);
+  var isIPhone = /iPhone/i.test(window.navigator.userAgent);
 
-  /* The launch discount on Pro — half off both plans, $3.99 → $1.99 a month
-     and $29.99 → $14.99 a year. `SUMMER_SALE_ENABLED` must not be true unless
-     App Store Connect really is charging the sale prices — the page prints
-     the numbers, and a page that disagrees with the sheet is a refund. No end
-     date is published: the site states the discount, not a deadline, so the
-     offer can be ended or extended without the page having lied. */
+  /* The launch discount on Pro — half off the annual plan only, $29.99 →
+     $14.99 a year. Monthly is a flat $2.99 and is not discounted, because the
+     paywall only ever strikes a regular price through for annual.
+     `SUMMER_SALE_ENABLED` must not be true unless App Store Connect really is
+     charging the sale price — the page prints the numbers, and a page that
+     disagrees with the sheet is a refund. No end date is published: the site
+     states the discount, not a deadline, so the offer can be ended or extended
+     without the page having lied. */
   var SUMMER_SALE_ENABLED = true;
   var REFERRALS_ENABLED = false;
 
@@ -58,11 +63,26 @@
   /* ------------------------------------------------------------- links --- */
 
   document.querySelectorAll('[data-appstore]').forEach(function (el) {
-    el.href = APP_STORE_URL;
+    el.href = hasStoreLink ? APP_STORE_URL : '#try';
+    if (hasStoreLink) {
+      var small = el.querySelector('.appstore__small');
+      var big = el.querySelector('.appstore__big');
+      var glyph = el.querySelector('.appstore__glyph');
+      if (small) small.textContent = 'Download on the';
+      if (big) big.textContent = 'App Store';
+      if (glyph) glyph.hidden = false;
+      if (!big) el.textContent = 'Open App Store';
+    } else {
+      el.addEventListener('click', function () {
+        if (dlSheet && dlSheet.open) dlClose();
+      });
+    }
   });
   document.querySelectorAll('[data-appstore-url]').forEach(function (el) {
-    el.textContent = APP_STORE_URL.replace(/^https?:\/\//, '');
+    el.textContent = hasStoreLink ? 'App Store' : 'speakitapp.ca';
   });
+  var storeStatus = document.querySelector('[data-store-status]');
+  if (hasStoreLink && storeStatus) storeStatus.textContent = 'Open in the App Store';
   document.querySelectorAll('[data-sale-only]').forEach(function (el) {
     el.hidden = !SUMMER_SALE_ENABLED;
   });
@@ -78,15 +98,23 @@
 
   /* ========================== the download sheet ========================== */
 
-  /* The bar's Download opens the sheet — QR on one side, App Store on the
-     other — instead of scrolling to the offer. The <dialog> does the modal
-     work itself (focus, Escape, inertness of the page); this only opens it,
-     closes it on a backdrop click, and keeps the page from scrolling under
-     it. A browser without showModal() keeps the link's own href. */
+  /* Download is the primary conversion action. On an iPhone with a verified
+     listing it goes straight to the App Store; on a computer it opens the
+     sheet so the QR remains useful. Before launch, the same sheet states that
+     the listing is not public instead of pretending a download can complete.
+     The <dialog> does the modal work itself (focus, Escape, inertness of the
+     page); this only opens it, closes it on a backdrop click, and keeps the
+     page from scrolling under it. A browser without showModal() keeps the
+     link's own href. */
   var dlSheet = document.querySelector('[data-download]');
+
+  document.querySelectorAll('[data-download-open]').forEach(function (el) {
+    if (hasStoreLink && isIPhone) el.href = APP_STORE_URL;
+  });
 
   if (dlSheet && typeof dlSheet.showModal === 'function') {
     var dlOpen = function (event) {
+      if (hasStoreLink && isIPhone) return;
       event.preventDefault();
       dlSheet.showModal();
       document.documentElement.classList.add('is-dl-open');
@@ -326,7 +354,7 @@
 
     collapse = Math.pow(1 - ramp(p, .02, .84), 1.5);
 
-    var show = easeOut(ramp(p, .44, .76));
+    var show = 1;
 
     opening.style.setProperty('--p', p.toFixed(4));
     opening.style.setProperty('--fade', (1 - ramp(p, .58, .88)).toFixed(4));
@@ -372,7 +400,12 @@
         settleOpening();
         if (stage) stage.style.setProperty('--gone', '0');
       } else {
-        paintOpening(span > 0 ? clamp(-box.top / span, 0, 1) : 1);
+        /* A normal-flow mobile opening can be exactly one viewport tall. There
+           is no pinned scroll span in that case, so it is the opening frame,
+           not the completed frame. Treating a zero span as 1 hid the listening
+           indicator on every taller iPhone and left an empty hole in the
+           headline. */
+        paintOpening(span > 0 ? clamp(-box.top / span, 0, 1) : 0);
       }
     } else if (box.bottom <= 0) {
       restOpening();
@@ -464,6 +497,11 @@
     var energy = 0;
 
     function frame(now) {
+      if (document.hidden || reduceMotion.matches) { running = false; still(); return; }
+      var openingVisible = opening && opening.getBoundingClientRect().bottom > 0;
+      var demoVisible = demo && demo.getBoundingClientRect().top < window.innerHeight
+        && demo.getBoundingClientRect().bottom > 0;
+      if (!openingVisible && !demoVisible) { running = false; return; }
       var y = window.scrollY;
       var delta = Math.min(Math.abs(y - lastY) / 26, 1);
       lastY = y;
@@ -478,8 +516,8 @@
       }
 
       syncOpening();
-      paintField(now);
-      paintMic(now);
+      if (openingVisible) paintField(now);
+      if (demoVisible) paintMic(now);
 
       window.requestAnimationFrame(frame);
     }
@@ -522,7 +560,8 @@
     paintFloats();
   }
 
-  window.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('scroll', function () { sync(); applyMotion(); }, { passive: true });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) applyMotion(); });
   window.addEventListener('resize', function () { measure(); sync(); });
   /* an anchored URL can land the page after the first paint */
   window.addEventListener('load', function () { measure(); sync(); });

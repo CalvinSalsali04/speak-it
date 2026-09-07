@@ -10,12 +10,29 @@ Website/
   invite/index.html     validates a referral link and opens the app
   privacy/index.html    public App Store privacy-policy page
   support/index.html    public App Store support page
-  assets/stage.css      design tokens + layout for index.html
-  assets/stage.js       the opening, the emergence trigger, the demo, the reveals
+  assets/conversion.css design tokens + layout for index.html
+  assets/conversion.js  acquisition links, the story, the demo, the launch price
+  assets/demo-parser.js the in-page parser the demo runs on
+  tests/                node --test files for the parser and for pricing
+  assets/stage.css      previous page — see the note below
+  assets/stage.js       previous page — see the note below
 
   assets/img/           screenshots, QR code, favicon
   tools/make_qr.py      regenerates assets/img/qr.svg
 ```
+
+**`index.html` no longer loads `stage.css` or `stage.js`.** As of 2026-09-07 the
+page loads `conversion.css`, `demo-parser.js` and `conversion.js` and nothing
+else, and no HTML file in this folder references the `stage.*` pair any more.
+Most of the notes further down this README describe that previous page, and the
+sale mechanism it documented — `SUMMER_SALE_ENABLED` and the `data-sale-only` /
+`data-sale-price` / `data-after-sale` markup — is gone from the page along with
+it. The launch discount now lives in `LAUNCH_ANNUAL_PRICE` in
+`assets/conversion.js`; see the checklist item below. The `stage.*` files are
+left in place rather than deleted, the same way `styles.css` and `site.js` were,
+because deciding what the rewrite keeps is not a decision to make by deletion.
+Read that as: **check which file the page actually loads before editing page
+markup.**
 
 `classic.html` — the earliest section-by-section landing page — **has been
 deleted.** It was unlinked but still a reachable URL if this folder were
@@ -24,6 +41,21 @@ offline" line. Its stylesheet and script, `assets/styles.css` and
 `assets/site.js`, and `assets/img/03-Capture.png`, are now unreferenced by
 anything and can be deleted too; they are left in place only because deleting
 them was not asked for.
+
+## September 2026 responsive update
+
+The orb now has a small liquid silhouette animation: two settling cycles on
+arrival, and a repeating morph only while the browser demo is listening.
+The waveform and hit target stay stable. Reduce Motion disables the effect;
+no SVG blur filter, external library, or additional rendering loop is needed.
+
+The current overrides at the end of `stage.css` supersede the earlier animation/layout notes below: the primary action and reading content are always visible, phones use normal-flow hero content and stacked example cards, and animations pause offscreen or when reduced motion is enabled. Keyboard focus, 44px actions and readable input text are explicit.
+
+Download is the primary conversion action: it occupies the persistent top-right button, the hero, and the final offer. The in-page browser demo is deliberately secondary and explicitly labeled. Until a verified public listing exists, Download opens an honest availability sheet instead of pretending that an install can complete; the browser demo remains a fallback from that sheet.
+
+Set the `speak-it-app-store-url` meta value in `index.html` to the verified `https://apps.apple.com/...` listing to enable the real App Store destination. On iPhone, Download then goes directly to that listing; on larger devices it opens the QR/App Store sheet. Regenerate the QR so its destination matches, replace the interim custom acquisition control with Apple's official badge artwork, and add Apple's Smart App Banner once the numeric App Store ID is known.
+
+Validation for this update uses local Chrome viewports, not physical iPhone/Safari certification. The checked matrix covers 320×568, current 375–440px portrait widths, and 667–956px landscape widths; it also checks the privacy, support, and invite pages. No npm dependency or hosting change is required.
 
 ## Run it locally
 
@@ -291,22 +323,29 @@ which it stops reading as depth and starts reading as the page being uneven.
       Replace the `.appstore` markup in `index.html` with Apple's supplied asset
       from their marketing guidelines before launch. It appears twice: in the
       hero and in the offer.
-- [ ] **Confirm the launch discount in App Store Connect — the page is already
-      printing it.** `SUMMER_SALE_ENABLED` in `assets/stage.js` is now `true`,
-      so the offer shows *50% off at launch* on both plans — `$3.99` struck
-      through above `$1.99/month`, `$29.99` struck through above `$14.99/year`,
-      the line *Pro is half price while Speak It launches*, and a note giving
-      the regular prices. Monthly Pro must actually be `$1.99` (regularly
-      `$3.99`) and annual `$14.99` (regularly `$29.99`) in App Store Connect,
-      with all localized prices confirmed. **The in-app paywall
-      (`SpeakItProView.swift`) currently shows monthly as a flat `$1.99` with no
-      regular price** — either give monthly the same scheduled-price treatment
-      as annual there, or drop the monthly strike-through here. A page that
-      disagrees with the sheet is a refund.
-      **No end date is published anywhere**, deliberately — the site states the
-      discount, not a deadline, so the offer can be ended or extended without
-      the page having lied. Setting the flag back to `false` removes every trace
-      of the sale in one edit.
+- [ ] **Turn the annual launch discount on only once App Store Connect is
+      charging it.** `LAUNCH_ANNUAL_PRICE` in `assets/conversion.js` is the one
+      switch. Empty — the state it ships in — renders the page exactly as
+      authored: `$2.99 / month` and `$29.99 / year`, no offer language. Setting
+      it to a price (`'$14.99'`) moves the authored annual price into the
+      struck-through `[data-annual-was]`, puts the launch price in its place,
+      and reveals the `[data-launch-note]` line. Do not set it until annual Pro
+      really is that price in App Store Connect, with localized prices
+      confirmed. A page that disagrees with the sheet is a refund.
+      Two rules the mechanism enforces by construction, both of which this page
+      has broken before:
+      **it only ever touches the annual plan** — the page printed a
+      struck-through `$3.99` monthly for weeks that the app never implemented,
+      and `SpeakItProView.priceColumn` strikes a regular price through for
+      annual only — and **annual must stay below twelve months of monthly**,
+      because the paywall pre-selects annual and badges it `BEST VALUE`.
+      `tests/pricing.test.cjs` fails on either, on a launch price that is not
+      lower than the regular one, and on a free-tier count that drifts from
+      `FreePlanAllowance.lifetimeCaptureLimit`.
+      **No end date is published on the page**, deliberately — the site states
+      the discount, not a deadline, so the offer can be ended or extended
+      without the page having lied. The app's own caption carries the date,
+      because App Store Connect is what enforces it.
 - [x] **The free tier the site advertises matches the app.** Resolved by
       changing the app rather than the copy: `FreePlanAllowance` is a one-time
       `lifetimeCaptureLimit = 10` that never resets, matching the offer
