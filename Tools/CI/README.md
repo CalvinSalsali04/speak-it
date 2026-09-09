@@ -6,7 +6,7 @@ evidence as the CI job.
 
 | Script | What it does | Needs a simulator |
 | --- | --- | --- |
-| `corpus-gate.sh` | Builds `Tools/PipelineProbe` and `Tools/CorpusRunner`, replays the full semantic corpus, fails on any blocking regression | no |
+| `corpus-gate.sh` | Tests the scoring instrument, builds `Tools/PipelineProbe` and `Tools/CorpusRunner`, replays the full semantic corpus, fails on any blocking regression | no |
 | `unit-tests.sh [target]` | Runs `SpeakItTests` (default), one test class, or `SpeakItUITests` | yes |
 | `release-build.sh` | Compiles the Release configuration for a generic iOS device, unsigned | no |
 | `simulator-id.sh` | Picks the simulator `unit-tests.sh` uses: `SPEAKIT_SIMULATOR_ID`, else a `SpeakIt-Slim-*` pool device, else a booted iPhone | — |

@@ -144,12 +144,16 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
-    /// Skips when the simulator has not granted notification permission, so a
-    /// test that asserts a notification *was* scheduled cannot quietly become a
-    /// test that asserts nothing.
+    /// A fresh test install can grant provisional authorization without a
+    /// system prompt. This exercises actual notification-center scheduling
+    /// instead of silently skipping every integration assertion on fresh CI.
+    /// A deliberately denied installation is still skipped, not overridden.
     private func requireNotificationAuthorization() async throws {
-        let status = await UNUserNotificationCenter.current()
-            .notificationSettings().authorizationStatus
+        let center = UNUserNotificationCenter.current()
+        if await center.notificationSettings().authorizationStatus == .notDetermined {
+            _ = try await center.requestAuthorization(options: [.alert, .sound, .badge, .provisional])
+        }
+        let status = await center.notificationSettings().authorizationStatus
         try XCTSkipUnless(
             status == .authorized || status == .provisional || status == .ephemeral,
             "notification permission is not granted on this simulator"
@@ -287,8 +291,8 @@ final class TemporalFullPathTests: XCTestCase {
 
     /// Resolving an intent must never modify the intent. Asserted over every
     /// kind rather than one example, because the failure is silent.
-    func testResolvingNeverMutatesTheIntent() throws {
-        try withFixtureClock { calendar in
+    func testResolvingNeverMutatesTheIntent() {
+        withFixtureClock { calendar in
             let anchor = makeDate(year: 2026, month: 8, day: 20, hour: 10, calendar: calendar)
             let intents: [TemporalIntent] = [
                 .none,
@@ -363,6 +367,52 @@ final class TemporalFullPathTests: XCTestCase {
                 DateComponents(hour: TemporalResolver.dateOnlyAlertHour, minute: 0)
             )
         }
+    }
+
+    /// The moment a bare day alerts at is the person's to choose. Setting it
+    /// moves "remind me tomorrow" and nothing else: the intent still says no
+    /// time was expressed, and "tomorrow morning" keeps meaning the morning.
+    func testDefaultReminderTimeIsAPreference() throws {
+        XCTAssertEqual(ReminderDefaults.alertTime, ReminderDefaults.fallback, "9:00 until set")
+        ReminderDefaults.alertTime = WallClockTime(hour: 7, minute: 30)
+        defer { ReminderDefaults.reset() }
+        XCTAssertEqual(TemporalResolver.dateOnlyAlertHour, 7)
+        XCTAssertEqual(TemporalResolver.dateOnlyAlertMinute, 30)
+
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(from: DateComponents(
+                year: 2026, month: 8, day: 3, hour: 10
+            )))
+            let reminded = try repository.createCapture(
+                text: "Remind me to buy milk tomorrow",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(reminded.temporalKind, .dateOnly)
+            XCTAssertNil(reminded.temporalIntent?.time, "the preference is the notification's, not the intent's")
+            let reminderDate = try XCTUnwrap(reminded.reminderDate)
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: reminderDate),
+                DateComponents(hour: 7, minute: 30)
+            )
+
+            let morning = try repository.createCapture(
+                text: "Tomorrow morning call Dave",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            let due = try XCTUnwrap(morning.dueDate)
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: due),
+                DateComponents(hour: TemporalResolver.morningHour, minute: 0),
+                "morning is a fact about English, not the preference"
+            )
+        }
+
+        ReminderDefaults.reset()
+        XCTAssertEqual(ReminderDefaults.alertTime, ReminderDefaults.fallback)
     }
 
     /// A location phrase is understood, not unclear — the guarantee that

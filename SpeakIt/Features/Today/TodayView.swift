@@ -299,36 +299,10 @@ struct TodayView: View {
         ShoppingListProjection.openItems(in: allItems)
     }
 
-    /// One named list, summarized for a Today card. The timing item is the
-    /// open entry with the earliest fire moment — the date that decides which
-    /// section the list belongs in, exactly the way a task's own date does.
-    private struct ShoppingGroupSummary: Identifiable {
-        let name: String
-        let count: Int
-        let timingItem: CapturedItem?
-        var id: String { name }
-    }
+    private typealias ShoppingGroupSummary = ShoppingListProjection.GroupSummary
 
-    /// Derived per body pass from the already-loaded items plus the cached
-    /// group store — dictionary lookups, never a parse.
     private var shoppingGroupSummaries: [ShoppingGroupSummary] {
-        var order: [String] = []
-        var buckets: [String: [CapturedItem]] = [:]
-        for item in shoppingItems {
-            let name = ShoppingGroupStore.group(for: item.id) ?? ShoppingGroupStore.fallbackGroup
-            if buckets[name] == nil { order.append(name) }
-            buckets[name, default: []].append(item)
-        }
-        return order.map { name in
-            let items = buckets[name] ?? []
-            let timed = items
-                .compactMap { item -> (item: CapturedItem, date: Date)? in
-                    guard let date = item.reminderDate ?? item.dueDate else { return nil }
-                    return (item, date)
-                }
-                .min { $0.date < $1.date }
-            return ShoppingGroupSummary(name: name, count: items.count, timingItem: timed?.item)
-        }
+        ShoppingListProjection.groupSummaries(in: allItems)
     }
 
     private func shoppingGroups(
@@ -600,12 +574,6 @@ struct TodayView: View {
         .onChange(of: allCaptureSessions.count) { _, _ in
             refreshActivity()
         }
-        // A completion made somewhere other than this screen — the Completed
-        // log putting an item back, a reminder's Done action — moves a dot
-        // without going through `performCompletionChange`.
-        .onChange(of: completedItemCount) { _, _ in
-            refreshActivity()
-        }
         // Three signals, because none of them covers the others. The minute
         // timer only runs while the app is awake; `NSCalendarDayChanged` is the
         // system's precise "the local calendar day is now different" event;
@@ -688,10 +656,6 @@ struct TodayView: View {
     }
 
     // MARK: Habit loop
-
-    private var completedItemCount: Int {
-        allItems.reduce(0) { $0 + ($1.completedAt == nil ? 0 : 1) }
-    }
 
     /// Recomputes the week's dots from what is already loaded. Cheap: two
     /// date maps over arrays the screen holds anyway, and the result only
@@ -1429,7 +1393,20 @@ struct TodayView: View {
 
     private func prioritizedBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
         if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
-        return (lhs.dueDate ?? .distantFuture) < (rhs.dueDate ?? .distantFuture)
+        let leftDate = lhs.dueDate ?? .distantFuture
+        let rightDate = rhs.dueDate ?? .distantFuture
+        if leftDate != rightDate { return leftDate < rightDate }
+        return olderFirst(lhs, rhs)
+    }
+
+    /// The tie-break every Today ordering ends on. `sorted` is not stable, so
+    /// two undated rows of equal priority could swap places from one render
+    /// to the next; the older capture staying above the newer one is what a
+    /// person expects of a list they are working down, and the identifier
+    /// keeps two captures made in the same instant from trading places.
+    private func olderFirst(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     private func chronologicalBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
@@ -1446,7 +1423,8 @@ struct TodayView: View {
             return !lhs.isDateOnly
         }
         if leftDate != rightDate { return leftDate < rightDate }
-        return lhs.priority > rhs.priority
+        if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+        return olderFirst(lhs, rhs)
     }
 
     private func handleDockScroll(_ scrolled: CGFloat) {

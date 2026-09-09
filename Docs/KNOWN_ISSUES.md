@@ -6,15 +6,16 @@ The project builds and launches on an iPhone 13, passes Xcode static analysis, a
 
 ## The app cannot set what customers are charged
 
-`SpeakIt.storekit` is a local test configuration, and the paywall renders
-`product.displayPrice`. Changing the monthly plan to $2.99 in this repository
-changes what the simulator and the UI suite show; it does not change what App
-Store Connect bills. Until the monthly product is $2.99 there and the annual
-schedule is confirmed, the shipped paywall shows whatever App Store Connect
-holds — and if that is still $1.99 against a $29.99 annual, the plan the screen
-pre-selects and badges `BEST VALUE` is the more expensive one. `E12` in
-`Docs/BUILD_14_DEVICE_SMOKE.md` is the device check that catches it, and the
-gates are listed in `Docs/APP_STORE_SUBMISSION.md`.
+September 8 pricing follow-up: launch percentage claims now require the actual USD 14.99 product price, enabled flag and sale window. Other currencies show localized prices without an unverified discount. The future standard price and preservation of existing subscriber prices still need App Store Connect verification; the paywall no longer promises an indefinite rate.
+
+`SpeakIt.storekit` is a local test configuration; the app renders StoreKit's
+localized price. The September 9 App Store Connect review recorded USD 2.99
+monthly and USD 14.99 annual, with other storefronts preserved. The future
+annual increase remains unconfigured. See
+[the recorded pricing status](APP_STORE_PRICING_STATUS_2026-09-09.md).
+The paywall now selects and badges annual only when its actual price and
+currency demonstrate savings against twelve monthly payments. Sandbox purchase,
+renewal, restore, and physical-device price checks remain outstanding.
 
 ## Pro moments are offered at the next foreground, not in real time
 
@@ -118,6 +119,10 @@ two discovery cards, and a lazy stack builds it before it is on screen — so it
 it. That test now scrolls until the row is hittable. It looked like a
 wall-clock dependence at first (passed at 02:35, failed at 03:38); it was not.
 
+*Simulator-level defaults shadow `--ui-testing-reset` (2026-09-09).* A value seeded with `xcrun simctl spawn <udid> defaults write com.calvinwak.SpeakIt …` lands in the simulator-user plist outside the app container, and the reset flag only removes `UserDefaults.standard` keys inside it. The 2026-09-03 dark-mode walk left `SpeakIt.appearance = dark` on the stock iPhone 17 Pro simulator, which made `testFirstInstallAppearanceDefaultsToLight` fail deterministically until the key was deleted with `simctl spawn … defaults delete`. Delete seeded keys after hand QA, or use a dedicated simulator; `Tools/Screenshots/capture.sh` cleans up its own.
+
+*Share-sheet captures are retried on every foreground (2026-09-09).* Launch recovery now stops re-reading a capture after two lost launches (`CaptureRecoveryAttemptLedger`), for unorganized sessions and interrupted drafts. The share inbox in `RootView` still retries every file on every foreground with no attempt count, so a shared snippet whose words trap the pipeline would still crash each foreground until the file is removed. The rules trap that motivated the guard is fixed; the inbox guard is the remaining gap.
+
 Standard-size Today and Memory layouts now have clean-state simulator visual coverage. A dark-mode walk of Welcome, Today, Account & Settings and the Capture Anywhere method list on an iPhone 17 Pro simulator (2026-09-03) found and fixed two dark-only defects — an on switch with an invisible knob, and the selected method row's icon halo — and confirmed the new wordmark and icon in both appearances. VoiceOver, the largest accessibility Dynamic Type sizes, rotation policy, and a complete dark-mode pass still require hands-on device QA. The implementation uses semantic system controls and colours, but automated unit tests cannot replace that pass.
 
 ## Clarification reasons are inferred, not recorded
@@ -149,16 +154,32 @@ Schema version 2 records what a person said about time (`TemporalIntent`) beside
   Memory with no date, exactly as their North American controls ("my flight is
   on September 22") did — closed the same day by teaching the router's day
   cue the day-first order and asking the spoken-clock grammar beside its clock
-  cue, so those sentences are events now. "We fly out on 5 Sept" still lands
-  in Memory in either date order, because "fly out" is neither a scheduled
-  noun nor a listed verb (routing R6/R8). "Grab lunch with Sam at noon" is
-  still a shopping row (routing R7: "grab" plus a noun the tagger reads as a
-  noun). "On the 1st renew the car insurance" keeps its date on the fronted
-  day row but the clause splitter still makes the renewal a second, undated
-  row, and "we're at five" still reads a bare "at five" as 17:00. And "the first
-  appointment is at 9" no longer means the 1st of next month, but a bare 9
-  that has already passed still rolls to 21:00 (domains C4 d).
-- **The date-only alert hour is a constant, not a setting.** `TemporalResolver.dateOnlyAlertHour` is 9 AM, and it is the stated policy for "remind me tomorrow" — a day with no time still needs a moment to alert at. It should become a "Default reminder time" preference. Note the distinction it already enforces: *"buy milk tomorrow"* schedules nothing at all, while *"remind me to buy milk tomorrow"* alerts at the default hour, and neither writes a time into the intent.
+  cue, so those sentences are events now. "We fly out on 5 Sept" is an
+  event in either date order now (re-probed 2026-09-07). "Grab lunch with Sam at noon" is
+  now an event: get/grab meal and coffee plans with a confidently identified
+  companion take precedence over acquisition classification. Weak person guesses
+  (including uncapitalized names without relationship evidence) remain on the
+  existing path; food accompaniments must not become appointments.
+  "On the 1st renew the car insurance" is one dated task now
+  (2026-09-07, corpus family 55): a fronted prepositional phrase with no verb
+  and no subject in it is context for the action in both the clause splitter
+  and the actionability reader, so "after dinner call Mom", "by Friday send
+  the invoice" and "at the store buy milk" no longer leave a phantom row
+  behind. The same reading holds on the right of an "and" ("book the dentist and
+  before dinner call Mom" splits at the "and", and the date stays with the
+  errand it fronts) and for the deictic days ("tomorrow morning email the
+  landlord" is one dated task). "After I finish the essay call Dave" and
+  "as soon as I land text Mom" are one Today row each now, held in Needs
+  review with the condition named, as "When I get paid, remind me to
+  transfer money" already was (corpus family 56); the condition is
+  understood and still not enforced, which is the compound-trigger
+  limitation below. "We're at five" is a Memory note now (2026-09-08): a pronoun straight before "at" is a person stating where they are, and "we're meeting at five" keeps its event. And "the first
+  appointment is at 9" no longer means the 1st of next month; as of
+  2026-09-08 a bare 8–11 beside a meeting, appointment, dentist, doctor,
+  interview or checkup is the morning and rolls to tomorrow when it has
+  passed (domains C4 d, closed), while "call Sam at 9" still means the next
+  9 and "meeting at 7" the next 7.
+- **The date-only alert hour is a setting now.** *Resolved 2026-09-08.* `TemporalResolver.dateOnlyAlertHour` reads the **Default reminder time** under Settings → Capture & reminders (`ReminderDefaults`, shared app-group defaults, 9:00 until changed). It is the moment "remind me tomorrow" alerts at; "tomorrow morning" and "first thing" stay on `TemporalResolver.morningHour`, which is 9 AM and not a preference. The distinction the constant enforced still holds: *"buy milk tomorrow"* schedules nothing at all, while *"remind me to buy milk tomorrow"* alerts at the default time, and neither writes a time into the intent. A reminder already scheduled keeps the moment it was given; the setting applies to captures organized from then on.
 
 ## The free capture ledger is per-device, not per-person
 
@@ -227,21 +248,45 @@ The specifics:
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.
 
-## Capitalization still decides two things
+## Capitalization still decides some metadata
 
-Lowercasing the whole gating corpus costs 4 blocking failures against 0 for
-every other rendering (`corpus-run --rendering lowercased`). It was 9 before the
-Phase 2 coordination work removed the two clause-splitting gates that read
-`NLTagger.personalName` and a bare capital letter. What is left:
+Lowercasing the whole gating corpus costs 0 blocking failures as of 2026-09-08
+(`corpus-run --rendering lowercased`; 16 metadata and 2 cosmetic
+disagreements remain as of 2026-09-09, seven of them the transported-people
+cases below, whose person the flattened rendering cannot name; a flattened
+"jean-luc", "wish grandma happy birthday" and "call catherine, actually alex"
+now resolve the same person as their cased forms; and the people sweep's P2
+cluster, "call Mom tomorrow and my sister Friday" never splitting, is closed
+the same day, P1 having been closed in both casings already). It was 9 before the Phase 2 coordination work removed
+the two clause-splitting gates that read `NLTagger.personalName` and a bare
+capital letter, and 1 until the shopping list rule below. What was left:
 
-- **The shopping grouper.** "Get Coke and Sprite" produces two shopping rows and
-  "get coke and sprite" produces one shopping row and a Memory note, because
-  product recognition reads the capital. This is genuinely lexical — "sprite" is
-  a brand — so it does not have the structural fix the clause splitter had.
-- **Name casing in titles and person fields.** "let priya know…" resolves the
-  person as "Priya Know", and "remind me not to text dave tonight" titles the
-  row "Don't text dave". Both are name-boundary and display-casing problems
-  rather than routing ones.
+- **The shopping grouper.** *Resolved 2026-09-08.* "Get Coke and Sprite" was two
+  shopping rows and "get coke and sprite" one shopping row and a Memory note.
+  The cause was not product recognition but the one-word-closes-a-list rule in
+  the coordination gate, which wanted two items behind the verb; with one, the
+  lone word fell to the tagger, which calls a lowercased "sprite" a verb. A
+  one-item list now closes the same way, and the lone word is asked whether it
+  is an errand on its own ("buy milk and run" keeps its two rows).
+- **An unfamiliar head verb read as a proper noun.** *Resolved 2026-09-08.*
+  "Descale kettle" reached Memory because "descale" is outside the embedding's
+  vocabulary and the tagger takes an unfamiliar capitalized word for a name.
+  A productive prefix on a stem the vocabulary knows now reads as a verb, and
+  the padded fragment is tagged lowercased as well as written. "Reseal deck"
+  still declines ("seal" is read as a noun); the fix is measured, not a list.
+- **Transported people read the tagger's name tag.** "Pick up Alex from
+  school" is a task about Alex, but only because `NLTagger` calls the
+  capitalized "Alex" a personal name there; "pick up alex" is a shopping row,
+  and "Pick up Alex" on its own is one too, because the tagger calls that
+  "Alex" a place. Kinship words ("pick up mom") do not depend on it. See
+  `DECISIONS.md`, 2026-09-08.
+- **Name casing in titles and person fields.** *Resolved 2026-09-07.* "let
+  priya know…" resolved the person as "Priya Know" because the lowercase path
+  let the frame's own anchor join the name; the anchor now closes the name.
+  "remind me not to text dave tonight" titled the row "Don't text dave"; the
+  title now writes a resolved person the way the resolver displays it
+  (`ThoughtTitleFormatter.restoringNameCasing`), whole words only, without
+  flattening a name the speaker cased themselves. No lexicon is consulted.
 
 The lowercased rendering is reported and does not gate, for the reason
 `RenderingInvarianceTests` gives: a recognizer that lowercases a name has
@@ -318,6 +363,24 @@ authored for it.
 
 ## "I had better" keeps its frame in the row title
 
+*Addressed for clear action complements.* "I had better drop the car off on
+Thursday" now reads "Drop the car off on Thursday". The reducer checks both
+the verb and its complement instead of widening `link`: a determiner, pronoun,
+particle, or confidently named object corroborates the action. Negation,
+historical time cues, weak noun/verb readings, and manually edited titles keep
+their wording. Tests include "better luck", "better service", "better call
+quality", and "better pay last year".
+
+*Clear past comparisons now route to Memory.* "I had better luck last time",
+"I had better service at that hotel", and "We had better seats at the concert"
+no longer become tasks. A noun phrase without a verb after "I/we had better"
+is past possession, not advice. Explicit reminder requests still take priority,
+and a second actionable clause keeps its task and date. Ambiguous readings such
+as "better call quality" or "better pay last year", whose nouns are tagged as
+verbs, remain outside this conservative routing fix.
+
+Historical diagnosis:
+
 `ObligationFrame.link` admits `better` but not `had better`, so "I had better
 drop the car off on Thursday" routes and dates correctly but still reads with
 its frame attached. `'d better` works, because the clitic is part of the subject.
@@ -374,7 +437,7 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - FoundationModels cancellation is cooperative. Measure generation latency and fallback behavior on an Apple Intelligence device before claiming a strict two-second completion bound.
 - Portable iCloud semantics have local serialization/merge coverage. Live two-device delivery, permissions and notification behavior still require device QA.
 - Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
-- Native dock glass and editor focus compile, but Dynamic Type, VoiceOver and animation quality need hands-on review; no Xcode UI suite was run in this work.
+- The September 9 full UI run passed 24 tests, including its accessibility-text/dark-appearance flow. Its one stale pricing assertion was corrected and passed on rerun. Physical VoiceOver and animation quality still need hands-on review.
 - The website needs a verified App Store listing URL in its metadata before download buttons can be enabled. Until then, its primary action opens the working browser demo.
 
 ## Morning brief limits
@@ -383,10 +446,12 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
   made through the share extension, Siri, or a Shortcut does not re-plan it
   until Speak It is next opened; the counts for a morning before that can be
   short by those captures. Reminders are unaffected.
-- Shopping lists appear on Today as cards, not rows, and are not counted in
-  the brief. "2 due today" can therefore be one fewer than the Now section
-  shows when a list is due.
-- "Answered" is inferred: the app was opened within twelve hours of a brief
+- **Shopping-list counts resolved (2026-09-08).** The brief counts each dated
+  shopping list once, using the same earliest open entry as its Today card.
+  Completed and archived entries are excluded; undated lists are not counted.
+- A brief tap now selects Today, including on cold launch, without starting a
+  capture. Direct taps reset the unanswered count regardless of age.
+- For ordinary app opens, "answered" is inferred: the app was opened within twelve hours of a brief
   firing. Reading the brief on the Lock Screen and not opening the app counts
   as unanswered, so five such mornings in a row switch the brief off; it can
   be turned back on in Account & Settings.
@@ -396,3 +461,23 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - Notification delivery, Scheduled Summary placement, and Focus behaviour for
   the passive brief need hands-on iPhone QA; the simulator proves the request
   content, not the presentation.
+
+## September 8 pricing verification
+
+Release compile, focused ItemPresentationTests and the corpus gate pass. The full unit run returned 295 passed and seven process-kill/bootstrap failures. The paywall UI test failed twice; the first result points to its initial Speak It Pro navigation-bar wait (before price assertions). UI and live Sandbox purchase verification remain incomplete.
+
+## September 9 continuation verification
+
+The full UI run's only failure required the deliberately removed promise that
+a launch subscriber's renewal price would stay fixed forever. The corrected
+assertion checks the current terms and passes. Test-only provisional permission
+also enabled all six previously skipped notification-center tests: the temporal
+suite passed 25 with one expected denied-permission skip. Actual Focus, delivery,
+lock-screen and device behavior remain separate checks.
+
+The 116-case routing development set still flags three ambiguous captures as
+acted on. It also contains expectations that conflict with later contract
+decisions for reported instructions and prohibitions. Its destination score is
+not an independent release verdict. The unseen set remains 72.8% on destination
+and 7/69 acted-on ambiguous captures; the date-topic fix did not improve that
+aggregate.

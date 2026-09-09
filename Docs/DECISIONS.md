@@ -1,5 +1,9 @@
 # Decisions
 
+## 2026-09-08 — Keep monthly and annual with ten free captures
+
+Retain $2.99/month and $14.99/year launch pricing against $29.99 standard annual. No weekly product or additional auto-renewing trial for launch. The ten lifetime captures already let users try the whole app without committing to billing. A seven-day trial remains a future experiment, not something category-level correlations can decide. Paywall sale claims now require the configured USD 14.99 StoreKit price as well as the build flag and date; other currencies show localized pricing without an unverified percentage. Remove the unconditional lifetime-rate promise until price preservation is verified in App Store Connect. See `PRICING_DECISION_2026-09-08.html` for evidence, tradeoffs and launch configuration.
+
 ## 2026-08-03 — Target iOS 17+
 
 SwiftData and the selected SwiftUI APIs provide the simplest local-first foundation without compatibility layers.
@@ -1844,6 +1848,172 @@ Apply Apple's design principles through useful feedback, readable type and acces
 
 Keep the marketing site static. Reviewed the public Apple design skill and liquid-gooey's React/SVG approach; adding React solely for decorative morphing would add complexity without improving the capture or demo workflow. Use CSS, visible actions and a readable mobile composition. No package was installed. The site remains on its existing hosting workflow; this task does not deploy it.
 
+## 2026-09-07 — The site says how Speak It understands you, and says it without a number
+
+`ThoughtExtractionEngine` has two paths and the landing page named neither. A
+visitor could read the whole site and not learn that every capture is understood
+on their phone, that the rules are what do the work, or that Apple Intelligence
+is a second reading of the ambiguous ones rather than the product. That is the
+strongest thing Speak It can say about itself next to a cloud note-taker, and it
+was missing.
+
+`#intelligence` states it. Every claim in it is one the code makes good on:
+`RefinementPolicy.shouldRefine` only consults the model for a capture the rules
+already flagged for review; a capture carrying an operation returns before the
+model is reached at all, so a cancellation can never be turned into a task;
+`isGrounded` requires every returned quote to appear in the transcript;
+`RefinementGuard.preservesEverything` rejects a reading that loses part of the
+capture and keeps the rules reading instead; sampling is `.greedy`, so one
+capture gives one answer; and `ThoughtOrganizer` — not the model — sets dates and
+reminders on both paths.
+
+**No latency figure appears on the page.** `Docs/KNOWN_ISSUES.md` records that
+FoundationModels cancellation is cooperative and that the two-second race has
+never been measured on an Apple Intelligence device, and no such device has been
+available to this repository. The page therefore says a capture does not wait on
+the model and stops there. The number is the one thing here that would be a
+marketing claim rather than a reading of the source, and it stays off the page
+until somebody measures it on hardware.
+
+The compatibility block names iOS 26, an Apple Intelligence iPhone, the setting
+and the language, and then says Apple's own list is the one that counts — so a
+device list moving does not turn the page into a false statement. It also says,
+in as many words, that nothing is missing without it, because the alternative
+reading of this section is that Speak It is degraded on most iPhones, and it is
+not.
+
+## 2026-09-07 — The thoughts turn around the message again, and a rule keeps them off it
+
+The conversion rewrite replaced the ring of spoken thoughts with a two-column
+hero and a static four-bubble field. It converted better on paper and read as a
+slide: the one picture that showed what the product is for — a day's worth of
+unsorted things somebody said, circling the sentence that says what to do with
+them — was gone.
+
+The ring is back, re-implemented on `conversion.js` rather than revived from
+`stage.js`. It keeps the conversion hero's copy, its call to action and its
+trust line; what returns is the picture, not the 138svh pinned scroll, the
+scroll-driven collapse or the fixed indicator `dockStage()` had to measure a gap
+for. The indicator now sits in the flow between the two headline lines, so the
+type places it instead of script placing script.
+
+**The rule that made it work is `clear()`, not the ellipse.** Four rounds of
+geometry — a wider ring, a flatter ring, a ring measured against the copy's
+height, a `100vw` ring the shell then clipped — each fixed one width and broke
+another, because the copy fills the middle of the hero and any closed ring
+centred on it crosses it somewhere. So no ring is asked to avoid the words:
+a capsule fades out as its own edge reaches the box the words ink and fades back
+in on the far side. That single rule makes every width work, including the one
+that has no geometric answer at all — a phone, where the type takes the screen
+and the thoughts surface above and below it instead of going round.
+
+The keep-out box is measured with a `Range` over each block of the copy
+(`inkedBox()`), not taken from the copy container. The container is the full
+measure at every width; the message is centred and much narrower than that on a
+desktop, and protecting the container would have pushed the ring off the page to
+protect whitespace.
+
+Liquid glass is used where there is something moving behind it: the capsules
+carry a blur, a saturate and a specular edge drawn as a masked border gradient.
+Over flat paper the edge and the shadow are what read as glass, which is why
+`prefers-reduced-transparency` and `prefers-contrast: more` drop to solid paper
+without the ring losing its shape. Reduced motion settles the ring in place
+rather than emptying the hero — the thoughts are the picture; the turning is
+not.
+
+## 2026-09-07 — The site sets its own name in its own typeface
+
+The drawn monoline wordmark beside the five-bar mark was the only lettering on
+the site not set in the page's typeface, and next to system type at every other
+size it read as a logo with a caption rather than as one object. `index.html`
+now sets *Speak It* in the page font at the page's own weight and tracking.
+
+The mark itself is unchanged and still drawn. This is a site decision and not a
+brand one: `Design/Brand` and `Tools/Brand/generate_brand.swift` still own the
+monoline lettering for the app icon and the other brand surfaces, and nothing
+about those was touched.
+
+## 2026-09-07 — A fronted adjunct is read by its structure, in both layers
+
+"On the 1st renew the car insurance" produced an event titled "On the 1st" and
+an undated task, and the same shape took "after dinner call Mom", "by Friday
+send the invoice" and "at the store buy milk" apart. Two layers were involved.
+The clause splitter (`ClauseJuxtaposition.pieces`) cut in front of any
+instruction verb whose head had two words and did not end on a lead word, so a
+fronted prepositional phrase read as a clause. Closing that cut on its own made
+things worse: the actionability reader only knew how to look past a fronted
+*weekday* or *tomorrow*, so the whole sentence then went to Memory as a note
+with its date discarded.
+
+Both layers now ask the same structural question, through
+`SentenceContext` tagging of the whole sentence rather than a list of
+phrases: a span that opens on a preposition and holds no verb, no subject
+pronoun and no conjunction is context for the verb after it. The splitter
+declines to cut there (`isFrontedAdjunct`), and the reader removes the span
+before its imperative tests (`withoutFrontedAdjunct`). Two guards carry the
+cost of the tagger's habits. "Dinner call" and "morning call" tag as compound
+nouns, so when no verb is found the reader inserts a comma at each place the
+adjunct could end and asks the tagger again — the same trick
+`hasDeterminerlessImperative` uses — accepting the cut when the padded word
+tags as a verb or is one the reader already trusts at the head of a body. And
+a copula or auxiliary is never the verb an adjunct fronts, which is what keeps
+"Before and after photos are in the folder" a note.
+
+The same reading is applied on the right of a conjunction. The coordination
+splitter only proposed an "and" boundary when an instruction verb followed
+immediately, so "book the dentist **and before dinner** call Mom" was cut at
+"call" instead, and the first row carried the second errand's date.
+`frontedLeadPattern` lets a short adjunct — a deictic day or a preposition
+phrase of at most four words — stand between the conjunction and the verb, and
+the pieces then reach the two readers above. Three details of the tagger
+shaped the order of the reader's rules: a lowercased name behind the verb tags
+*as* the verb ("tomorrow at 9 call sarah"), so the reader's own action-verb
+list is consulted at each candidate cut before the tagger's first verb is
+trusted; a demonstrative behind the preposition ("after that") is the
+preposition's object, not a subject; and the deictic days ("tomorrow morning",
+"this weekend") front an adjunct with no preposition at all, so they open one
+too.
+
+Corpus family 55 pins the shapes and the guards. Lists were deliberately not
+extended: the weekday list in `actionBody` stays as it is, and every other
+fronted phrase is read by shape.
+
+A fronted *condition* is the neighbouring case and got the neighbouring
+treatment (family 56). "When I finish the essay call Dave" was a Memory note
+with the call lost, because the body opened on the subordinator and nothing
+looked past it; the app already knew how to hold a condition it cannot enforce
+in Needs review, it just never saw the errand. `withoutFrontedCondition` reads
+a subordinator, a subject and at least one more word, and cuts where a trusted
+action verb or a padded bare-stem verb begins; a pronoun there ("when I was
+young **I** loved the beach") means a statement, and nothing is cut. "After I",
+"before I", "until I" and "while I" join the condition vocabulary in the
+splitter, the comma-lead reader and the organizer's unsupported-condition
+test, with "before I forget" excluded by name because it is how people start
+an errand, not a condition on one. Enforcing the condition is still unbuilt;
+this only stops the errand from disappearing.
+
+## 2026-09-08 — The default reminder time is a preference; morning is not
+
+"Remind me tomorrow" names a day and no moment, and the moment it alerted at
+was a constant, 9 AM. It is now **Default reminder time** under Settings →
+Capture & reminders, kept in the shared app-group defaults by
+`ReminderDefaults` the way `SavedPlaceStore` keeps Home and Work: a settings
+row is not worth a schema migration, and the share extension organizes
+captures too, so it must read the same value. The preference is the
+notification's, never the intent's — a date-only item still records that no
+time was expressed.
+
+What it deliberately does *not* move: "tomorrow morning", "first thing", and
+the hour a repeating clock falls back to. Those read
+`TemporalResolver.morningHour`, which stays 9 AM, because they are facts about
+English rather than about the person; an evening default would otherwise turn
+"tomorrow morning" into the evening. A bare recurring day ("every Monday
+remind me…") follows the preference, since it is a bare day.
+
+The setting applies to captures organized after it changes. Reminders already
+scheduled keep their moment; re-organizing them would rewrite what the person
+was told they had.
+
 ## 2026-09-08 — The habit loop is seven dots and one silent note
 
 Speak It gets the two things that make Duolingo work and none of the rest
@@ -1869,8 +2039,8 @@ a loss. What remains:
   nothing due sends nothing, and there is no other message: the nudge that
   asked "anything on your mind?" was cut because it was the one notification
   that was not a fact about the day. The switch and its time live in Account
-  & Settings under Capture & reminders, with the reminder preferences it
-  resembles. Today never asks.
+  & Settings under Capture & reminders, directly beneath **Default reminder
+  time**, because that is the preference it resembles. Today never asks.
 
 Everything is derived from `CaptureSession.createdAt` and
 `CapturedItem.completedAt`; the brief's settings live in the app-group
@@ -1894,16 +2064,15 @@ sets cannot clear each other, and the Reminder check count excludes briefs.
 iOS gives no callback for a background delivery, so a brief is "answered" when
 Speak It is opened within twelve hours of it firing — a tap does that, and so
 does simply coming back that morning, which is the brief's whole purpose. Five
-unanswered in a row and the brief disables itself. That is Duolingo's best
-performing notification ("these reminders don't seem to be working") with the
-copy removed: the app just stops.
+unanswered in a row and the brief disables itself. This is a product choice to limit unwanted notifications; no verified
+Duolingo experiment establishes the effectiveness of this five-brief cutoff.
 
 ### What was deliberately not built
 
 No daily streak, no freeze, no streak-at-risk notification, no XP, leagues,
 hearts, mascot, badge shelf, or sounds. A daily-capture goal on a ten-capture
-free plan is a trap, and secondary reports on a 2020 CHI study name streak
-anxiety as the top reason people abandon habit apps. Seven dots that cannot
+free plan is a trap, and a daily obligation is unnecessary for a capture tool. The earlier
+secondary-source claim about a 2020 CHI study was not verified and is withdrawn. Seven dots that cannot
 break need nothing to soften them.
 
 ## 2026-09-08 — Transport verbs may name a person, with corroboration
@@ -1925,3 +2094,353 @@ tagger's reading are required, the tag corroborates a frame rather than
 deciding anything on its own, and a lowercased "pick up alex" stays a
 shopping row — the same cost the resolver already accepts for a name the
 recognizer has flattened.
+
+## 2026-09-08 — A correction may repair the object of a fact
+
+`SelfCorrectionResolver`'s object repair only ran when the prefix carried an
+instruction verb, so "Remember Alex likes golf, actually tennis" fell through
+to the punctuated discard and kept only "tennis" — the person and the fact
+gone. The repair now also accepts a prefix whose shape is a verb with a short
+noun phrase behind it, read from the tagging of the prefix, or one the person
+resolver reads as a fact about somebody (the tagger calls "prefers" a noun in
+"Alex prefers tea"). "The deploy actually went fine" still refuses: no verb,
+no object, nothing to swap.
+
+Two smaller findings from the same sentence. The bare-object test and the
+trigger repair matched a spoken hour at the *start* of a word — "tennis"
+opened with "ten" and was refused as a clock — so both alternations now end
+on a word boundary. And a preposition in front of the replaced object is
+scaffolding, kept unless the replacement brought its own: "allergic to
+peanuts, actually tree nuts" keeps its "to".
+
+## 2026-09-08 — The arguable corpus cases are decided
+
+Nine cases had sat in the corpus marked "arguable, recorded, not gated" since
+the expansion review. They were decided one at a time, on what a person who
+spoke the sentence would want to find, and each is gated now.
+
+- **"Pay the invoice within 30 days" is due on the last day of the window,
+  date-only.** A window is a deadline the way "by Friday" is. "In 30 days"
+  stays a point and keeps its clock (`deadlineWindow`). "In the next 3 days"
+  reads the same way.
+- **"Every second Tuesday" is every other Tuesday.** That is the reading in
+  the English spoken here, and the monthly one needs "of the month", which
+  `ordinalWeekday` already claims first. "Every second week" follows.
+- **"Standup moved from 9 to 9:30" is an event at the new time.** Three
+  things were wrong. "9 to 9:30" was read as nine minutes to nine, so the
+  spoken clock face now refuses a face behind "from" and a target that
+  carries its own minutes. The strip that removed the old time removed the
+  "to" with it, leaving nothing any clock rule reads. And "Standup" was a
+  person: "moved" is a life-event verb, so the resolver now declines a subject
+  whose "moved" leads to a clock. The cue is one pattern,
+  `ActionabilityReader.rescheduleCue`, read by the event rule, the resolver,
+  and the organizer, so the three cannot disagree; an address ("moved to 5
+  Main Street") is excluded by the street word behind the number. "Dinner
+  moved to 7" became an event as a consequence. A plain span, "meeting from 2
+  to 3", now starts at 2; spans are still not modelled beyond that. The
+  unpunctuated rendering, "moved from 9 to 930", is repaired to "9:30" by
+  `ClockDigitRepair` behind the same two frames — a rescheduling verb, or a
+  "from <clock>" — because a bare "to 930" is as often a quantity and could
+  not join the cue list; the phone-number, address and unit guards apply.
+- **"Remember Catherine's husband is called David" files under Catherine.**
+  She is the person the speaker knows and will look under. The actor rule had
+  read "is called" as a phone call; a contact verb behind a copula is a naming
+  or a passive, and the possessive owner rule takes over.
+- **"Give Mom's recipe to Catherine" is a task with Catherine.** Two parts.
+  The errand reached Memory because a possessive name was not accepted as
+  the object's determiner in the imperative shape; it is now, with pronoun
+  contractions ("he's") kept out by name. And the recipient of a transfer verb
+  ("give", "send", "return", "bring", "hand", "lend", "pass", "forward",
+  "deliver", "mail", "ship") is read through its "to" ahead of the direct
+  object, while a possessive owner is ranked after everybody the sentence
+  addresses — which is what `possessiveOwner`'s comment already promised.
+  "Take" and "get" are left out: they reach a place more often than a person.
+- **"Remember Catherine said I need to call Alex Friday" names Alex.** When
+  reported speech carries an obligation of its own, the resolver reads the
+  obligation first, on the same string so every range stays valid, and falls
+  back to the framing only when the obligation names nobody ("Priya said I
+  should call the landlord" stays with Priya).
+- **"Pick up the prescription at the pharmacy and gas at the station" is two
+  errands.** The conjunct repeats the left clause's place frame with a new
+  object in front, which is gapping; `sharesVerb` already handled a trailing
+  day or clock as context and now handles a determiner-led place the same
+  way, and the split rule admits the parallel frame. Each errand can be
+  ticked off on its own.
+- **"Descale kettle" is a task.** "Descale" is outside the embedding's
+  vocabulary, so the proper-name guard declined it. A productive prefix (de-,
+  re-, un-, dis-, pre-, mis-, over-) on a stem the vocabulary knows, of at
+  least four letters, is an English verb — and the padded fragment is tagged
+  lowercased as well, because the tagger takes an unfamiliar capital for a
+  proper noun ("Descale the kettle" tags Noun, "descale the kettle" tags
+  Verb). Known words keep the reading that was measured. "Devon", "Regina",
+  "Preston", "Rebecca" all still read as names.
+- **"Don't forget to call Mom" is a `personFollowUp`.** The expectation was
+  older than the type; "Call Mom" in the people family already reads that
+  way, and the lead does not change what the call is.
+
+The ten cosmetic disagreements were stale lowercase title expectations and a
+shopping split that expected the verb dropped where every other split keeps
+it; the expectations were corrected to the sentence-case rows the app shows.
+
+## 2026-09-08 — Three things found while deciding the corpus cases
+
+- **A verb behind a copula is its complement.** "Tuesday is book club" was
+  cut by the juxtaposition splitter into "Tuesday is" and a task called "Book
+  club", because "book" opens an instruction and nothing asked what stood in
+  front of it. The copulas join `clauseInternalLead`: a clause cannot start
+  right after "is". "The weather is better book the campsite" still splits,
+  because "better" is what sits in front of that verb and it has its own rule.
+- **Appointments keep business hours.** A bare hour means its next
+  occurrence, which is right for "call Sam at 9" and was giving "dentist at
+  8" an 8 PM cleaning. The `dayless` reader already committed breakfast,
+  standup and the office to the morning for 6–11; meetings, appointments and
+  the clinic words now commit 8–11 the same way, read after the evening list
+  so "dinner meeting at 8" keeps its dinner. 7 is left to the general rule: a
+  7 PM meeting is ordinary and a 7 AM one is not. This closes domains C4 d.
+- **Today's ordering is total.** `chronologicalBefore` and `prioritizedBefore`
+  ended on a comparison that two rows can tie, and `sorted` is not stable, so
+  two undated rows of equal priority could swap places from one render to the
+  next. Both now end on the older capture first, then the identifier.
+
+## 2026-09-09 — Development-set misses, read one at a time
+
+`Tools/CorpusRunner/devsets/` is the set that may be read while rules change.
+Its routing and coordination misses were taken one by one. Six were labels
+that disagree with a corpus decision and stay as they are: "Mike said to book
+the room" is an errand the corpus already routes to Today; "call the dentist
+and the plumber" is two recipients by the coordination-context family; the
+bare "don't call the plumber" family is a cancel operation first and a
+preserved Memory note when nothing matches, which "Please don't pay the
+invoice yet" pins; "decant the wine" is a vocabulary gap the tagger cannot
+close; and the two fragments given a date ("Tuesday and the dentist") are
+left as they are. The rest were rules:
+
+- **A clock with its meridiem is a calendar cue.** "Standup 9am" and
+  "dentist 2pm" were Memory notes because the bare-hour cue needs an "at" —
+  a bare "9" is as often a quantity — and nothing read "9am" without one.
+  `ActionabilityReader.meridiemClockCue`.
+- **Arrivals are history.** "The parcel arrived Friday" was next Friday's
+  event; "arrived", "landed", "came in", "showed up", "turned up" and "got
+  delivered" join `pastReportVerb`. "The guests arrive Friday" stays an event.
+- **Two dated noun phrases are two events.** "Gym at 6 and dinner at 8" was
+  one event at 6. Neither side has a verb, so neither passed the
+  subject-predicate test; `isDatedNounPhrase` reads a verbless phrase ending
+  on its own "at <clock>" with an object in front, and two of them across an
+  "and" split. A day on the last one ("…dinner at 8 tomorrow") is inherited
+  by the first, which would otherwise be today's. "Meeting at 2 and at 4" has
+  one object and stays one row.
+- **The operation detector read its own verb list.** `Docs/KNOWN_ISSUES.md`
+  recorded the four errand vocabularies as unified; `CaptureOperationDetector`
+  still held a private list of 31, which is why "don't call the plumber"
+  cancelled and "don't fix the sink" did not. It reads `actionVerb` now.
+- **Three flattened-transcript defects.** A hyphenated name is cased per part
+  ("Jean-Luc"), and the title formatter no longer mistakes its own sentence
+  case for the speaker's. A lowercase word the tagger reads as an adjective is
+  not joined onto a name, and a kinship word takes no surname, so "wish
+  grandma happy birthday" and "wish priya happy birthday" name Grandma and
+  Priya. And a correction whose replacement carries no capital is put where
+  the person stood and the resolver is asked whether it reads as one there,
+  so "call catherine tomorrow, actually alex" is a call to Alex; "actually
+  text her" and "actually tonight" still fall through to the older repairs.
+
+Development sets after: coordination 115/121 (was 114), routed destination
+74/84 (was 72), routed count 77/79.
+
+## 2026-09-09 — A batch of forty everyday captures, read one at a time
+
+Forty sentences were authored the way a person dictates on the way out the
+door and run through the probe. Thirty-two read correctly. The eight that did
+not:
+
+- **"Book a table for four at 7 on Friday" was 4 PM.** The bare-clock rule
+  takes the first of "at|by|before|around|after|for", and "for four" came
+  first. A "for" number followed by a clock or a head-count word is a count.
+- **"Physio Wednesday 10:15" was day-only.** A bare hour needs its "at"
+  because a bare "9" is as often a quantity; a number with a colon is not,
+  and now reads as a clock with no preposition. "The score was 3:1" does not:
+  the minutes must be two digits. The unpunctuated rendering, "Wednesday
+  1015", is repaired to "10:15" by `ClockDigitRepair` when a day word stands
+  on either side of the digits, under the same phone-number, address and
+  unit guards; "the invoice is 1500 Friday" is left alone.
+- **"Idea for the app: let people share lists" was two rows.** The
+  juxtaposition splitter cut at "share"; a capture that opens by naming
+  itself an idea or a note is not cut, and neither is the verb behind a
+  causative "let X".
+- **"Note to self: the garage code is 4821" was titled ": The garage code".**
+  The lead strip consumed a comma but not the colon dictation writes.
+- **"Cancel the gym membership before the end of the month" was an operation
+  on a stored row.** Read as a cancellation it would have deleted a "gym"
+  reminder and left nothing to do. `CaptureOperationDetector.cancelsAnArrangement`
+  names the arrangements a person cancels in the world (membership,
+  subscription, plan, policy, account, service, contract, insurance, trial,
+  lease, card) and the deadline frame ("by Friday") that says the same, and
+  both the detector and the extractor's safety hold read it, so the request
+  becomes an ordinary Today task. "Cancel the dentist appointment" and
+  "cancel the dentist reminder" keep their operations.
+- **"The parking pass expires Friday" was a Memory note.** "Expires" is in
+  `descriptiveVerb`, correctly, for "the store closes Sunday"; an expiry on a
+  named day or date is the last moment to act and joins "the offer ends
+  Friday" on Today. A month alone stays knowledge.
+- **"Movie night Friday" was an event at 8 PM.** "Night" in a compound names
+  the kind of evening. `DaypartHint` refuses a "night" with a noun straight
+  in front of it, and the organizer's separate copy of the daypart reader is
+  gone; both paths read `DaypartHint` now, so "Friday night" and "tomorrow
+  night" are still evenings and "movie night" is a day.
+- **"Cancel …" errands were held as "unclear".** The extractor's destructive
+  safety hold kept every "cancel" back for review; it now exempts the same
+  arrangements the detector does.
+
+Two readings were left as they are: "my sister's flight lands at 6:45
+tomorrow" resolves to the evening, which a bare 6:45 cannot settle, and
+"laundry" alone stays a note rather than guessing an errand from one noun.
+
+## 2026-09-09 — Three domain batches, and the people sweep's P2 cluster
+
+Three read-only agents each authored forty-five captures in one domain
+(work and school; family, home and health; money, travel and social), ran
+the probe, and reported only what a careful user would call wrong: 42 items,
+87 read correctly. Each was taken one at a time; about a third were
+debatable and left ("my sister's flight lands at 6:45 tomorrow" is the
+evening; a stray Memory note for "I never use it" keeps the words). The
+rest were rules, grouped by mechanism:
+
+- **People.** Departments ("recruiting", "legal", "accounts", "finance",
+  "marketing", "sales", "engineering", "ops", "facilities" …) join the
+  never-a-name list beside "hr" and "payroll". A possessive behind a
+  determiner is a common noun ("the dog's grooming"), kinship excepted. A
+  pronoun contraction never joins a name ("Sarah I'd"). "Recommended" and
+  "suggested" are person predicates. A thing moved to a day is a plan, not
+  somebody who relocated, through a shared `rescheduleDayCue` read by the
+  resolver, the past-report rule and the calendar-commitment rule alike.
+- **P2, the last open people cluster.** "Call Mom tomorrow and my sister
+  Friday" never split because the guard that keeps "Alex and his brother are
+  coming" whole reads any subjectless left as a bare noun, and an imperative
+  has no subject either. "His", "her", "their" point back at the left and
+  keep the guard; "my", "our", "your" point at the speaker and open a second
+  person when the left is an errand. "Meet" joins the shared-verb list so the
+  second row reads "Meet Marcus at noon".
+- **Boundaries.** The juxtaposition splitter no longer cuts behind a
+  possessive ("Maya's swim lesson"), an amount ("the $89 charge") or a day
+  behind a determiner ("the Friday sign off"), nor inside a capture that
+  names itself an idea within its first three words, nor after a causative
+  "let X". Two companions of one "with" are not a boundary ("with Tom and
+  Alice, it's $1200 total"), with or without the comma. A trailing condition
+  is context for verb sharing ("a travel adapter before we leave").
+- **Errands and events.** An imperative that mentions an appointment is an
+  errand unless the verb is one of attending. "I told Sarah I'd …" is a
+  promise the person keeps. A month with no day is knowledge. "Midterm",
+  "finals" and "quiz" are scheduled nouns. "Call about the warranty" is a
+  task, not a follow-up with nobody. The reschedule reader accepts spoken
+  minutes ("nine fifteen") and stays off relayed messages ("tell Nina the
+  brunch is moved to 11"). "Transfer", "deposit", "prep", "cc", "loop in",
+  "unload", "scrub" and a few more join the errand vocabulary; "review",
+  "draft" and "edit" were tried and removed, being nouns as often ("the
+  second draft is due Wednesday" split in two).
+- **Lists.** "Costco run tonight: milk, eggs, coffee" is a shopping list,
+  by the colon or by a tail that names only products, so the unpunctuated
+  rendering agrees; the groceries lead accepts a day before its colon.
+  "Some" in front of a product is a quantity, not the determiner that
+  refuses "the newspaper".
+- **Unfinished thoughts.** A demonstrative behind a preposition completes
+  the phrase ("used to work at Shopify before this", "think about this"),
+  and a distributive closes one ("$400 each").
+
+Development sets and the held-out set are unchanged by the batch. The
+four-item comma list with "some" and a two-word store ("buy chicken, rice,
+broccoli and some yogurt at the grocery store") still reads as one row; the
+two-item form splits, and the case is narrow enough to leave.
+
+## 2026-09-09 — Second agent round: a freelancer, errands, and row titles
+
+Three more read-only agents: forty-five captures from a freelancer or small
+business (invoices, clients, suppliers), forty-five about fitness, hobbies,
+the car and errands, and fifty with heavy conversational framing judged on
+their row titles alone. Forty-one items were flagged; those taken were rules
+again, and a few were noticed to be systemic:
+
+- **Continuations.** A verb-opener whose object is a pronoun that ends the
+  clause points back ("invoice 1042 is overdue chase it"); one with more
+  behind it is a new instruction ("call her Friday", "move it to Monday"),
+  and the connector splitter applies the same test to "and get it back by
+  Friday". The word behind a verb is that verb's object, read from the
+  tagging of the whole clause, since the tagger cannot read "Marcus prefers"
+  on its own; and a two-word head that is somebody and their predicate is
+  not cut, the resolver deciding who is somebody. The particle behind a
+  second name belongs to the shared verb ("invite Tom and Rachel over").
+  Verb sharing looks past an obligation frame ("I need to buy X and Y") and
+  treats a purpose ("for client calls") as context.
+- **People.** A name followed by a department or a company suffix is an
+  organisation ("Northwind accounting"). Addresses ("unit 4") join the
+  never-a-name list. An infinitive "to" leads to a verb, not a recipient
+  ("supposed to rain"); the flattened person repair requires the person to
+  be what the prefix ends on, so "remember alex likes golf, actually tennis"
+  stays the object repair's.
+- **Knowledge.** "I keep forgetting" with a fact behind it keeps the fact
+  and with "to" behind it is an errand; the obligation pattern now requires
+  the "to". A repeat makes a note a task only when the sentence is not
+  knowledge, so "the nursery closes at 6 on weekdays" is a note with no
+  series. "About" is rewritten to "around" only beside a clock, because the
+  rewrite reached the quote.
+- **Errands.** "Let's <verb>" is the errand, and the frame leaves the title.
+  "End of quarter" and "end of year" resolve like "end of month". "We need
+  eggs milk and olive oil" is a shopping list by its tail. A fronted
+  condition may close on a pronoun or a particle ("while I'm out there grab
+  stamps"). "Chase" and "invoice" are errand verbs. "Dont forget to", with
+  the apostrophe a recognizer dropped, is read like "don't forget to" — the
+  one lead list that spelled it with a fixed apostrophe now carries both.
+- **Titles.** Trailing hedges ("or whatever", "I think", "if I can", "or
+  something") leave the title and stay in the quote; a possessive name is
+  cased ("Max's medication"); every named person is cased, including a
+  lowercase name coordinated with a cased one ("Tom and rachel"), the
+  resolver deciding what is a name.
+
+Left as they are: "the plant nursery … every weekday" keeps that rewrite in
+its title (the repair that makes the recurrence readable), "reschedule my
+chem lab to Thursday, actually make that Friday" is an operation whose
+correction the repository resolves, and "Milo's teeth cleaning" cannot know
+that Milo is a dog.
+
+## 2026-09-09 — Morning brief taps route to Today
+
+The notification delegate previously handled only reminder action buttons. A
+brief tap therefore reopened whichever tab was last selected, including Memory.
+The shared router now queues a separate Today request, consumed on initial
+appearance or while running. It does not create a capture, require Pro, or
+dismiss an unsaved composer. A direct tap clears the unanswered count even
+after twelve hours; dismissing a notification does not count as an answer.
+
+Apple documents the default notification action as opening the app from the
+notification interface, delivered through the existing delegate callback:
+[UNNotificationDefaultActionIdentifier](https://developer.apple.com/documentation/usernotifications/unnotificationdefaultactionidentifier).
+Background delivery is handled by the system, so passive delivery and reopening
+remain separate observations: [local notification scheduling](https://developer.apple.com/documentation/usernotifications/scheduling-a-notification-locally-from-your-app).
+The passive brief still needs physical-device delivery QA.
+
+## 2026-09-09 — Distinguish date topics from schedules, and verify skipped paths
+
+A determiner plus a day modifying a placeholder ("that Thursday thing", "the
+whole Friday thing", "this Monday stuff") is now underspecified temporal scope.
+The complete noun phrase is required: explicit actions and prepositions, such
+as "handle that Thursday thing tomorrow" and "the thing on Tuesday", retain
+their dates. The original words survive; no date, recurrence, or reminder is
+invented. Two actionability tests cover the family and its counterexamples.
+
+The full UI run exposed an obsolete paywall assertion demanding a permanent
+renewal-price promise. The product intentionally removed that unverified
+promise; the test now checks the exact current offer terms and rejects the
+permanent-price claim. Its focused rerun passes.
+
+Fresh simulator notification tests now request provisional authorization only
+in their test helper. Apple's [permission guidance](https://developer.apple.com/documentation/usernotifications/asking-permission-to-use-notifications)
+supports this without a system prompt. Existing denial is respected. Six
+previously skipped notification-center integration tests now execute and pass;
+the denied-permission test remains a separate environmental case, already
+covered by the earlier unauthorized run. This does not verify physical delivery.
+
+The shared scorer now labels development and held-out input separately, prints
+the actual label count and missing probe count, and counts empty ambiguous
+captures in content loss. Two synthetic scorer tests run in the corpus gate.
+The development ambiguity count improved from 4/32 acted on to 3/32; the
+untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
+7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
+improvement is claimed, and no held-out failures were read.

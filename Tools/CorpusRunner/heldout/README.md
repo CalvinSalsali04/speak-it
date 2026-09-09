@@ -36,13 +36,24 @@ stays untouched and keeps measuring.
 Recorded 2026-08-25, after the contextual-semantic (Phase 2) work. The previous
 column is the speech-act scope and prohibitive-reminder baseline it replaced.
 
-| measure | before | after |
-|---|---|---|
-| destination correct | 229/320 (71.6%) | 229/320 (71.6%) |
-| thought count correct | 252/310 (81.3%) | 251/310 (81.0%) |
-| captures producing nothing | 0 | 0 |
-| genuinely ambiguous captures | 69 | 69 |
-| **acted on anyway** | **9 (13.0%)** | **8 (11.6%)** |
+| measure | before | after | 2026-09-08 |
+|---|---|---|---|
+| destination correct | 229/320 (71.6%) | 229/320 (71.6%) | 231/320 (72.2%) |
+| thought count correct | 252/310 (81.3%) | 251/310 (81.0%) | 250/310 (80.6%) |
+| captures producing nothing | 0 | 0 | 0 |
+| genuinely ambiguous captures | 69 | 69 | 69 |
+| **acted on anyway** | **9 (13.0%)** | **8 (11.6%)** | **8 (11.6%)** |
+
+The 2026-09-08 column was scored once, non-verbose, after the arguable corpus
+cases were decided (`Docs/DECISIONS.md`, same date). The failures were not
+read: the one-count movement is recorded, not chased. Scored once more on
+2026-09-09 after the development-set pass: identical on every row. Scored a
+third time the same day after the forty-capture batch (`Docs/DECISIONS.md`):
+destination 230/320, thought count 251/310, nothing produced 0, acted on
+anyway 8 — one case each way, not read. Scored again after the two agent
+rounds of 2026-09-09 (`Docs/DECISIONS.md`, same date): destination 233/320
+(72.8%), thought count 255/310 (82.3%), nothing produced 0, acted on anyway
+7 (10.1%). All three rows moved the right way; still not read.
 
 The rules that moved the last row were developed against
 `Tools/CorpusRunner/devsets/`, not against these sentences. On that development
@@ -58,3 +69,10 @@ move either way for defensible reasons; that number should only ever fall.
 `Ambiguous-preserve` labels come from the original author marking, honestly,
 that they could not tell what the speaker meant. They are not parser failures by
 construction — they are the cases where guessing is worse than abstaining.
+
+September 9 continuation: one non-verbose evaluation after the date-topic guard
+returned the same final baseline: 233/320 destination, 255/310 thought count,
+7/69 ambiguous captures acted on, zero missing outputs and zero captures lost.
+The scorer now reports dataset origin and actual size rather than calling every
+input held-out, and includes empty ambiguous captures in the content-loss count.
+The held-out examples and individual failures were not read.

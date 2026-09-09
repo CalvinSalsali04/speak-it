@@ -3,6 +3,18 @@
 Working document for the first Speak It release. Status values: **Done**,
 **Blocked** (needs an Apple account or a hosted page), **Todo**.
 
+September 9 continuation evidence is recorded in
+[CONTINUATION_REVIEW_2026-09-09.md](CONTINUATION_REVIEW_2026-09-09.md).
+The September 3 test failures below are historical observations, not current
+results. Current account pricing observations are in
+[APP_STORE_PRICING_STATUS_2026-09-09.md](APP_STORE_PRICING_STATUS_2026-09-09.md).
+Latest local verification: **802 unit/integration tests passed, zero failed,
+one expected permission-state skip**; **1,381 corpus cases clean**; Release
+build passed. Full UI run: 24 passed, one stale pricing assertion failed; that
+assertion was corrected and its focused rerun passed. This is not a claim that
+the full UI suite was rerun after the correction. The external submission gates
+remain open until individually verified.
+
 ## Current verdict — August 24, 2026
 
 **The code is a release candidate; the app is not ready to click Submit yet.**
@@ -110,7 +122,7 @@ Do not submit until every one of these external gates is closed:
 - **Done:** `MARKETING_VERSION` is `1.0` across the app, Live Activity
   extension, Share extension, and UI tests. Verified in the built product:
   `SpeakIt.app`, `SpeakItLiveActivity.appex`, and `SpeakItShareExtension.appex`
-  all report `1.0`. The current build number is `13`.
+  all report `1.0`. The current build number is `18`.
 - **Done:** `ITSAppUsesNonExemptEncryption` is `false` in `SpeakIt/Info.plist`,
   so uploads no longer stall on the export-compliance question. Verified correct:
   the iOS binary uses only HTTPS and Apple data protection. It contains no
@@ -193,6 +205,8 @@ Your App Privacy answers must match
 | Device ID | No | No | Analytics |
 | Purchase History | Yes | No | Analytics; App Functionality |
 | User ID | Yes | No | App Functionality |
+| Performance Data | No | No | Analytics (`capture_performance`, `speech_capture_quality`) |
+| Other Diagnostic Data | No | No | Analytics (`capture_failed` error category) |
 
 Answer **No** to "Do you or your third-party partners use data for tracking?"
 The client sets `$geoip_disable` and `$process_person_profile: false`, and the
@@ -282,7 +296,20 @@ or deletion requirements that do not apply.
 - Screenshots. The app is iPhone-only (`TARGETED_DEVICE_FAMILY = 1`), so the
   6.9" set is the one App Store Connect requires; confirm the current required
   sizes there before uploading, since Apple changes them.
-- Description, keywords, promotional text, subtitle
+- Description, keywords, promotional text, subtitle: written with character
+  counts in [APP_STORE_LISTING.md](APP_STORE_LISTING.md); paste from there.
+- Review Notes, age rating answers, App Privacy answers, export compliance,
+  Content Rights, the DSA trader declaration and a field-by-field App Store
+  Connect checklist: [APP_STORE_REVIEW_PACKAGE.md](APP_STORE_REVIEW_PACKAGE.md).
+  The draft below is superseded by its section 1.
+- Auto-renewable subscriptions require the Terms of Use and Privacy Policy
+  links in the metadata as well as in the app: choose the Standard EULA
+  (`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`), set
+  the Privacy Policy URL field to `https://speakitapp.ca/privacy`, and keep
+  both links in the description, as the listing file already does.
+- Screenshots: `Tools/Screenshots/capture.sh` produces the 6.9" light and
+  dark sets in `output/app-store-screenshots/` with the upload order in its
+  README.
 - Age rating questionnaire
 - Category is already set: `public.app-category.productivity`
 
@@ -293,7 +320,11 @@ or deletion requirements that do not apply.
 > reachable on first launch.
 >
 > To test the free tier, capture by tapping the microphone on the Today screen.
-> The tenth capture on the account triggers the Pro paywall. The free allowance is a one-time total, not a monthly one.
+> Ten captures are free in total, once, not per month. Tutorial practice
+> captures are not counted. A dismissible Pro sheet appears once after the
+> first counted capture and once when three remain; the eleventh capture
+> attempt shows the Pro screen with Not now, Restore Purchases, Terms and
+> Privacy Policy.
 >
 > **Referral testing.** The “Give a month. Get a month.” row is present only in
 > the connected Release build. The friend receives Apple's one-month Offer
@@ -307,6 +338,14 @@ or deletion requirements that do not apply.
 > "Speak It Capture" shortcut and select it under Settings → Accessibility →
 > Touch → Back Tap → Double Tap. All capture methods work without it.
 >
+> **Why the app declares the `audio` background mode.** A voice capture that
+> is in progress keeps recording and transcribing if the user swipes home or
+> locks the phone mid-sentence; the Live Activity shows "Listening" while the
+> microphone is live, and the session ends at the natural pause or timeout.
+> No audio is recorded outside a capture the user started. (Confirm on a
+> device with smoke case E8 before submitting; if a capture does not continue,
+> remove the mode instead of keeping this paragraph.)
+>
 > Speech transcription uses Apple's Speech framework and requires microphone and
 > speech recognition permission, both requested in context with explanation.
 >
@@ -317,7 +356,9 @@ or deletion requirements that do not apply.
 > be a reminder at all — which is why Always is needed rather than While Using.
 >
 > The permission is requested only at the moment a user creates a place reminder,
-> never at launch and never during onboarding, and it is asked for in two steps:
+> never at launch and never by onboarding (the onboarding permissions page has
+> no location card; setting Home during the readiness step asks for While
+> Using only if the user taps "Use my current location"), and it is asked for in two steps:
 > While Using first, then Always with an in-app explanation of why a reminder has
 > to reach the user when the app is closed. Declining leaves the reminder intact
 > and simply marked as not currently active — nothing is deleted or disabled. A

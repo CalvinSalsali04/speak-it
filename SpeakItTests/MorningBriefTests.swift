@@ -67,6 +67,45 @@ final class MorningBriefTests: XCTestCase {
         XCTAssertTrue(plan.isEmpty, "silence is the calm state")
     }
 
+    @MainActor
+    func testShoppingListsCountOnceUsingEarliestOpenEntryAlongsideTasks() {
+        let savedGroups = ShoppingGroupStore.snapshot()
+        defer { ShoppingGroupStore.restore(savedGroups) }
+        let now = date(2026, 9, 8, 7)
+        func item(_ type: ItemType = .shopping, due: Date? = nil, reminder: Date? = nil) -> CapturedItem {
+            CapturedItem(originalTextSegment: "Private words", displayTitle: "Private words",
+                         itemType: type, dueDate: due, reminderDate: reminder)
+        }
+        let milk = item(due: date(2026, 9, 8, 17))
+        let bread = item(due: date(2026, 9, 9, 17))
+        let overdueList = item(reminder: date(2026, 9, 7, 17))
+        let untimed = item()
+        let completed = item(due: date(2026, 9, 6))
+        completed.completedAt = now
+        let archived = item(due: date(2026, 9, 5))
+        archived.isArchived = true
+        let task = item(.task, due: date(2026, 9, 8, 18))
+        for entry in [milk, bread, completed, archived] {
+            ShoppingGroupStore.set("Groceries", for: entry.id)
+        }
+        ShoppingGroupStore.set("Hardware", for: overdueList.id)
+        ShoppingGroupStore.set("Undated", for: untimed.id)
+        let items = [milk, bread, overdueList, untimed, completed, archived, task]
+        let projection = MorningBriefPlanner.projectedItems(
+            from: items, authorization: LocationAuthorization(status: .notDetermined, isPrecise: false, isRegionMonitoringAvailable: true), now: now
+        )
+        let plan = MorningBriefPlanner.plan(items: projection, now: now, time: eight, calendar: calendar)
+        XCTAssertEqual(plan.first?.body, "2 due today · 1 overdue")
+        XCTAssertEqual(plan[1].body, "3 overdue", "a list keeps the earliest open entry's timing")
+        milk.completedAt = now
+        let updated = MorningBriefPlanner.projectedItems(
+            from: items, authorization: LocationAuthorization(status: .notDetermined, isPrecise: false, isRegionMonitoringAvailable: true), now: now
+        )
+        let updatedPlan = MorningBriefPlanner.plan(items: updated, now: now, time: eight, calendar: calendar)
+        XCTAssertEqual(updatedPlan.first?.body, "1 due today · 1 overdue")
+        XCTAssertEqual(updatedPlan[1].body, "1 due today · 2 overdue")
+    }
+
     // MARK: The request
 
     func testBriefRequestIsPassiveSilentThreadedAndCarriesNoUserText() {
@@ -91,6 +130,35 @@ final class MorningBriefTests: XCTestCase {
     }
 
     // MARK: Answers and auto-stop
+
+    @MainActor
+    func testBriefTapQueuesTodayWithoutStartingCaptureAndAnswersAnOldBrief() throws {
+        let router = QuickActionRouter()
+        HabitDefaults.unansweredBriefCount = 4
+        HabitDefaults.pendingBriefFireDates = [Date.now.addingTimeInterval(-2 * 86400)]
+        router.handleBriefResponse(identifier: "SpeakIt.habit.brief.test",
+                                   actionIdentifier: UNNotificationDefaultActionIdentifier)
+        let request = try XCTUnwrap(router.pendingTodayRequest)
+        XCTAssertNil(router.pendingRequest)
+        XCTAssertEqual(HabitDefaults.unansweredBriefCount, 0)
+        XCTAssertTrue(HabitDefaults.pendingBriefFireDates.isEmpty)
+        router.consumeTodayRequest(UUID())
+        XCTAssertEqual(router.pendingTodayRequest, request)
+        router.consumeTodayRequest(request)
+        XCTAssertNil(router.pendingTodayRequest)
+    }
+
+    @MainActor
+    func testDismissingBriefOrTappingReminderDoesNotQueueTodayOrAnswerBrief() {
+        let router = QuickActionRouter()
+        HabitDefaults.unansweredBriefCount = 4
+        router.handleBriefResponse(identifier: "SpeakIt.habit.brief.test",
+                                   actionIdentifier: UNNotificationDismissActionIdentifier)
+        router.handleBriefResponse(identifier: "SpeakIt.reminder.test",
+                                   actionIdentifier: UNNotificationDefaultActionIdentifier)
+        XCTAssertNil(router.pendingTodayRequest)
+        XCTAssertEqual(HabitDefaults.unansweredBriefCount, 4)
+    }
 
     func testABriefIsAnsweredByOpeningTheAppWithinTheWindow() {
         let fired = date(2026, 9, 8, 8, 0)

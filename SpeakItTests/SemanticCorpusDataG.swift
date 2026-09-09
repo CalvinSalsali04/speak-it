@@ -150,10 +150,10 @@ enum SemanticCorpusG {
         // belongs to. What this family still asserts is the invariant: the
         // digit and the spelled-out rendering must behave identically.
         corpusCase(.renderingLoss, "Buy 3 apples and 2 bananas", count: 2,
-                   title: ["3 apples", "2 bananas"],
+                   title: ["Buy 3 apples", "Buy 2 bananas"],
                    note: "Was 1 row with the digits deleted from title and quote."),
         corpusCase(.renderingLoss, "Buy three apples and two bananas", count: 2,
-                   title: ["three apples", "two bananas"],
+                   title: ["Buy three apples", "Buy two bananas"],
                    note: "The other rendering of the same sentence. The two must agree, and now do."),
         corpusCase(.renderingLoss, "Buy apples and bananas", count: 2,
                    note: "GUARD: with no quantity in the way, the split still happens."),

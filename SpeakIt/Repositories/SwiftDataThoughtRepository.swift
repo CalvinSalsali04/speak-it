@@ -57,41 +57,67 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
-                let extraction = ThoughtExtractionEngine.extractWithRules(
-                    session.originalTranscription,
-                    referenceDate: session.createdAt
-                )
-                // A capture that asked to cancel, complete or withdraw must not
-                // be rebuilt into an item by recovery. Re-reading the operation
-                // is safe: the words have not changed, so the reading has not
-                // either.
-                var creating = extraction
-                if let request = extraction.pendingOperation {
-                    let outcome = applyCaptureOperation(request, session: session)
-                    if case .notFound = outcome, !extraction.items.isEmpty {
-                        creating = ThoughtExtractionEngine.extractWithRules(
-                            session.originalTranscription,
-                            referenceDate: session.createdAt,
-                            permitsOperations: false
-                        )
-                    } else {
-                        if case .notFound = outcome {
-                            discardCaptureItems(for: session)
-                        }
-                        continue
-                    }
+                // Recovery re-reads the words at every launch. If those words
+                // trap the rules pipeline, one capture becomes a crash on
+                // every launch until the app is deleted. The launch is counted
+                // before the risky work and cleared after it, so a session
+                // that has already cost two launches keeps its durable
+                // fallback row in Needs review instead of being read again.
+                let attempts = CaptureRecoveryAttemptLedger.begin(session.id)
+                guard attempts <= CaptureRecoveryAttemptLedger.maximumAttempts else {
+                    quarantine(session)
+                    continue
                 }
-                ensureFallbackItem(for: session)
-                _ = organizePersistedCapture(
-                    session: session,
-                    extraction: creating,
-                    schedulesReminders: true
-                )
+                recoverOrganization(of: session)
+                CaptureRecoveryAttemptLedger.finish(session.id)
             }
         }
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
         resolveCombinedPlaceAndTimeHoldouts()
+    }
+
+    private func recoverOrganization(of session: CaptureSession) {
+        let extraction = ThoughtExtractionEngine.extractWithRules(
+            session.originalTranscription,
+            referenceDate: session.createdAt
+        )
+        // A capture that asked to cancel, complete or withdraw must not
+        // be rebuilt into an item by recovery. Re-reading the operation
+        // is safe: the words have not changed, so the reading has not
+        // either.
+        var creating = extraction
+        if let request = extraction.pendingOperation {
+            let outcome = applyCaptureOperation(request, session: session)
+            if case .notFound = outcome, !extraction.items.isEmpty {
+                creating = ThoughtExtractionEngine.extractWithRules(
+                    session.originalTranscription,
+                    referenceDate: session.createdAt,
+                    permitsOperations: false
+                )
+            } else {
+                if case .notFound = outcome {
+                    discardCaptureItems(for: session)
+                }
+                return
+            }
+        }
+        ensureFallbackItem(for: session)
+        _ = organizePersistedCapture(
+            session: session,
+            extraction: creating,
+            schedulesReminders: true
+        )
+    }
+
+    /// Leaves a capture as the words the person said, filed for review, and
+    /// stops reading them at launch. The original transcript is untouched.
+    private func quarantine(_ session: CaptureSession) {
+        ensureFallbackItem(for: session)
+        session.processingStatus = .failed
+        session.processingError = CaptureRecoveryAttemptLedger.quarantineMessage
+        CaptureRecoveryAttemptLedger.quarantine(session.id)
+        try? persistChanges()
     }
 
     /// Releases items that older builds held in review for naming a *named*
@@ -215,6 +241,27 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// case it exists for.
     func recoverInterruptedCaptureDraft() {
         while let draft = CaptureDraftStore.recoverable() {
+            // Same guard as `recoverUnorganizedCaptures`: a checkpoint whose
+            // words trap the pipeline has already cost two launches by the
+            // time this is true, so the words are committed as they are, for
+            // review, and the checkpoint is released.
+            let attempts = CaptureRecoveryAttemptLedger.begin(draft.id)
+            guard attempts <= CaptureRecoveryAttemptLedger.maximumAttempts else {
+                do {
+                    let pending = try createPendingCapture(
+                        text: draft.transcript,
+                        source: draft.captureSource,
+                        createdAt: draft.startedAt
+                    )
+                    quarantine(pending.session)
+                    CaptureDraftStore.clear(id: draft.id)
+                    CaptureRecoveryAttemptLedger.finish(draft.id)
+                } catch {
+                    // Nothing can be written; the checkpoint stays.
+                    break
+                }
+                continue
+            }
             do {
                 _ = try performSynchronousCapture(
                     text: draft.transcript,
@@ -223,8 +270,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     schedulesReminder: true
                 )
                 CaptureDraftStore.clear(id: draft.id)
+                CaptureRecoveryAttemptLedger.finish(draft.id)
             } catch {
-                // Keep the checkpoint so a later launch can try again.
+                // Keep the checkpoint so a later launch can try again. The
+                // process survived, so this launch does not count against
+                // the draft.
+                CaptureRecoveryAttemptLedger.finish(draft.id)
                 break
             }
         }
@@ -251,8 +302,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     /// The morning brief is planned from the same rows Today shows, so the
     /// counts it carries are the counts the person will find when they open
-    /// the app. Shopping lists are cards on Today rather than rows, and are
-    /// not counted. Runs on every foreground and background; see
+    /// the app. Each shopping list counts once, like its card on Today.
+    /// Runs on every foreground and background; see
     /// `HabitNotificationScheduler`.
     func refreshMorningBrief() {
         let now = Date.now
@@ -260,25 +311,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             SpeakItAnalytics.track(.morningBriefDisabled(source: .autoStop))
         }
         guard HabitDefaults.morningBriefEnabled else {
-            HabitNotificationScheduler.enqueueSynchronize(entries: [])
+            Task { await HabitNotificationScheduler.removeAll() }
             return
         }
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         let authorization = LocationReminderMonitor.shared.authorization
-        let briefItems = items
-            .filter {
-                !$0.isArchived && !$0.isCompleted &&
-                    ShoppingListProjection.belongsOnTopLevelToday(
-                        $0, authorization: authorization, relativeTo: now
-                    )
-            }
-            .map {
-                MorningBriefItem(
-                    dueDate: $0.dueDate,
-                    isDateOnly: $0.isDateOnly,
-                    calendarDay: $0.isDateOnly ? $0.temporalIntent?.day : nil
-                )
-            }
+        let briefItems = MorningBriefPlanner.projectedItems(
+            from: items, authorization: authorization, now: now
+        )
         let calendar = Calendar.autoupdatingCurrent
         let entries = MorningBriefPlanner.plan(
             items: briefItems,
@@ -286,7 +326,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             time: HabitDefaults.morningBriefTime,
             calendar: calendar
         )
-        HabitNotificationScheduler.enqueueSynchronize(entries: entries, calendar: calendar)
+        Task {
+            await HabitNotificationScheduler.synchronize(entries: entries, calendar: calendar)
+        }
     }
 
     /// Advances a recurring reminder that has gone overdue without either a
@@ -2045,7 +2087,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         let polished = ThoughtTitleFormatter.polished(
             rawTitle,
-            itemType: candidate.organization.itemType
+            itemType: candidate.organization.itemType,
+            personName: candidate.organization.personName
         )
         if !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return polished
@@ -2569,5 +2612,65 @@ private extension String {
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
             .joined(separator: " ")
+    }
+}
+
+/// Counts launches that began recovering a capture and never finished.
+///
+/// Launch recovery re-runs extraction over every capture that did not finish
+/// organizing. A capture whose words trap the rules pipeline would therefore
+/// crash the app at every launch, and the only way out was deleting it. Each
+/// launch increments a capture's count *before* the risky work and clears it
+/// *after*; a trap leaves the increment behind. Once a capture has cost
+/// `maximumAttempts` launches it is quarantined: its durable fallback row
+/// stays in Needs review and its words are never re-read at launch. A thrown
+/// error is not a trap, so the caller clears the count on that path too.
+///
+/// Lives in `UserDefaults` rather than the store on purpose: a persistent model
+/// change needs a schema version, and the ledger must survive a process that
+/// dies mid-write.
+enum CaptureRecoveryAttemptLedger {
+    static let key = "SpeakIt.captureRecoveryAttempts"
+    static let maximumAttempts = 2
+    static let quarantineMessage =
+        "Speak It couldn’t organize this capture. The words are kept exactly as they were said."
+
+    /// Overridable so a test can run against a scratch suite.
+    static var defaults: UserDefaults = .standard
+
+    static func attempts(for id: UUID) -> Int {
+        (defaults.dictionary(forKey: key) as? [String: Int])?[id.uuidString] ?? 0
+    }
+
+    /// Records that a launch is about to recover this capture and returns the
+    /// number of launches, including this one, that have tried.
+    @discardableResult
+    static func begin(_ id: UUID) -> Int {
+        var counts = (defaults.dictionary(forKey: key) as? [String: Int]) ?? [:]
+        let next = min((counts[id.uuidString] ?? 0) + 1, maximumAttempts + 1)
+        counts[id.uuidString] = next
+        defaults.set(counts, forKey: key)
+        return next
+    }
+
+    static func finish(_ id: UUID) {
+        var counts = (defaults.dictionary(forKey: key) as? [String: Int]) ?? [:]
+        guard counts.removeValue(forKey: id.uuidString) != nil else { return }
+        if counts.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else {
+            defaults.set(counts, forKey: key)
+        }
+    }
+
+    /// Marks a capture as one that must never be re-read at launch.
+    static func quarantine(_ id: UUID) {
+        var counts = (defaults.dictionary(forKey: key) as? [String: Int]) ?? [:]
+        counts[id.uuidString] = maximumAttempts + 1
+        defaults.set(counts, forKey: key)
+    }
+
+    static func reset() {
+        defaults.removeObject(forKey: key)
     }
 }

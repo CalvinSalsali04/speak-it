@@ -26,6 +26,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         UserDefaults.standard.removeObject(
             forKey: SwiftDataThoughtRepository.titlePolishVersionKey
         )
+        CaptureRecoveryAttemptLedger.reset()
         HandEditedTitleStore.removeAll()
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(
@@ -45,8 +46,103 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         MemoryPinStore.restore(previousPinRecords)
         IdeaStageStore.restore(previousIdeaStageRecords)
         ShoppingGroupStore.restore(previousShoppingGroups)
+        CaptureRecoveryAttemptLedger.reset()
         repository = nil
         container = nil
+    }
+
+    // MARK: - Launch recovery cannot become a boot loop
+
+    /// A capture whose words trap the rules pipeline used to be re-read at
+    /// every launch, so one bad sentence crashed the app until it was deleted.
+    /// Two lost launches is the limit: the third keeps the words as they were
+    /// said, filed for review, and does not read them again.
+    func testACaptureThatCostTwoLaunchesIsKeptAsItsWordsInsteadOfBeingReRead() throws {
+        let poisoned = CaptureSession(
+            originalTranscription: "Call Mom tomorrow",
+            createdAt: .now,
+            captureSource: .inAppText,
+            processingStatus: .pending
+        )
+        let healthy = CaptureSession(
+            originalTranscription: "Call Dad tomorrow",
+            createdAt: .now,
+            captureSource: .inAppText,
+            processingStatus: .pending
+        )
+        container.mainContext.insert(poisoned)
+        container.mainContext.insert(healthy)
+        try container.mainContext.save()
+        // Two launches that began recovering it and never finished.
+        CaptureRecoveryAttemptLedger.begin(poisoned.id)
+        CaptureRecoveryAttemptLedger.begin(poisoned.id)
+
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertEqual(poisoned.processingStatus, .failed)
+        XCTAssertEqual(poisoned.processingError, CaptureRecoveryAttemptLedger.quarantineMessage)
+        XCTAssertEqual(poisoned.items.count, 1, "the durable fallback row, nothing extracted")
+        let kept = try XCTUnwrap(poisoned.items.first)
+        XCTAssertTrue(kept.needsClarification, "a quarantined capture is a Needs review row")
+        XCTAssertEqual(kept.originalTextSegment, "Call Mom tomorrow", "the words are never altered")
+        XCTAssertGreaterThan(
+            CaptureRecoveryAttemptLedger.attempts(for: poisoned.id),
+            CaptureRecoveryAttemptLedger.maximumAttempts,
+            "the next launch must skip it too"
+        )
+
+        XCTAssertEqual(healthy.processingStatus, .complete, "a first-time recovery still organizes")
+        XCTAssertTrue(
+            healthy.items.contains { !$0.needsClarification },
+            "the untouched capture was read normally, got \(healthy.items.map(\.displayTitle))"
+        )
+        XCTAssertEqual(
+            CaptureRecoveryAttemptLedger.attempts(for: healthy.id), 0,
+            "a launch that finishes recovery leaves no count behind"
+        )
+    }
+
+    /// The interrupted-draft checkpoint is replayed at launch the same way, so
+    /// it gets the same limit: the third launch commits the words unread.
+    func testADraftThatCostTwoLaunchesIsCommittedUnreadAndReleased() throws {
+        defer { CaptureDraftStore.clear() }
+        let startedAt = Date().addingTimeInterval(-120)
+        let draft = CaptureDraftStore.begin(source: .inAppVoice, at: startedAt)
+        CaptureDraftStore.update(id: draft.id, transcript: "Call Mom tomorrow", at: startedAt)
+        CaptureRecoveryAttemptLedger.begin(draft.id)
+        CaptureRecoveryAttemptLedger.begin(draft.id)
+
+        repository.recoverInterruptedCaptureDraft()
+
+        XCTAssertNil(CaptureDraftStore.recoverable(), "the checkpoint is released once the words are durable")
+        XCTAssertEqual(CaptureRecoveryAttemptLedger.attempts(for: draft.id), 0)
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        let session = try XCTUnwrap(sessions.first { $0.originalTranscription == "Call Mom tomorrow" })
+        XCTAssertEqual(session.processingStatus, .failed)
+        XCTAssertEqual(session.items.count, 1)
+        XCTAssertTrue(try XCTUnwrap(session.items.first).needsClarification)
+        XCTAssertGreaterThan(
+            CaptureRecoveryAttemptLedger.attempts(for: session.id),
+            CaptureRecoveryAttemptLedger.maximumAttempts,
+            "the committed session must not be re-read at the next launch either"
+        )
+    }
+
+    /// A launch that finishes the draft leaves nothing behind in the ledger.
+    func testAFinishedDraftRecoveryLeavesNoCountBehind() throws {
+        defer { CaptureDraftStore.clear() }
+        let startedAt = Date().addingTimeInterval(-120)
+        let draft = CaptureDraftStore.begin(source: .inAppVoice, at: startedAt)
+        CaptureDraftStore.update(id: draft.id, transcript: "Call Mom tomorrow", at: startedAt)
+
+        repository.recoverInterruptedCaptureDraft()
+
+        XCTAssertNil(CaptureDraftStore.recoverable())
+        XCTAssertEqual(CaptureRecoveryAttemptLedger.attempts(for: draft.id), 0)
+        XCTAssertNil(
+            UserDefaults.standard.dictionary(forKey: CaptureRecoveryAttemptLedger.key),
+            "a finished launch leaves the ledger empty"
+        )
     }
 
     // MARK: - Named shopping lists

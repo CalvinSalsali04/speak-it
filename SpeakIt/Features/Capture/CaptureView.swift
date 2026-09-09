@@ -680,18 +680,13 @@ struct CaptureView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            ZStack {
-                Circle()
-                    .stroke(Color.speakInk.opacity(0.18), lineWidth: 1)
-                    .frame(width: 150, height: 150)
-                Circle()
-                    .fill(Color.speakInverseSurface)
-                    .frame(width: 104, height: 104)
-                    .shadow(color: Color.speakInk.opacity(0.18), radius: 28)
-                Image(systemName: savedConfirmationSymbol)
-                    .font(.system(size: 42, weight: .medium))
-                    .foregroundStyle(Color.speakInverseInk)
-            }
+            SavedCaptureSeal(
+                symbol: savedConfirmationSymbol,
+                celebratesSave: savedConfirmationSymbol == "checkmark"
+                    && savedResult?.isDuplicate == false
+                    && savedResult?.needsReviewCount == 0
+                    && savedResult?.operationOutcome == nil
+            )
             Text(savedConfirmationTitle)
                 .font(.largeTitle.weight(.semibold))
             Text(savedConfirmationDetail)

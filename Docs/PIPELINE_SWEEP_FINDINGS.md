@@ -98,8 +98,10 @@ no Apple Intelligence, so unlike the on-device model they are available to
   means subject-verb-object rather than imperative-object, and a head the
   embedding does not know is a proper name. Without them "Sarah likes sushi"
   became a task on Today. Shipped as a **union** with the existing tests, so it
-  can only ever add an actionable reading. Known boundary: a head verb outside
-  the embedding's 57,000 words ("descale") is declined.
+  can only ever add an actionable reading. Known boundary, closed 2026-09-08: a head
+  verb outside the embedding's 57,000 words ("descale") was declined; a
+  productive prefix on a stem the vocabulary knows now reads through, with the
+  padded fragment tagged lowercased as well (see `DECISIONS.md`).
 
 - **List commands were one memorised sentence.** `canonicalizedListCommand` knew
   only "add X to my shopping list", so "create a shopping list for Shoppers

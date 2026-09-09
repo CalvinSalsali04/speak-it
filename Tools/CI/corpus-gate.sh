@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
+python3 Tools/CorpusRunner/test_score.py
 Tools/PipelineProbe/build.sh
 Tools/CorpusRunner/build.sh
 

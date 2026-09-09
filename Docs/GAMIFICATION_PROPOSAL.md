@@ -28,17 +28,19 @@ data the store already holds, so it can never drift from the truth.
 
 ## Why not Duolingo's version
 
-Duolingo's numbers are real: it reports 55% of daily actives retained
-month-over-month, more than three million users on 365-day-plus streaks, and a
-10% lift in long-term retention from the Streak Freeze alone
-([Propel](https://www.trypropel.ai/resources/blogs/duolingo-customer-retention-strategy),
-[Deconstructor of Fun](https://duolingo.deconstructoroffun.com/mechanics/streaks)).
-Its reminder engine fires 23.5 hours after the last session and escalates
-emotional pressure after three idle days
-([Digia](https://www.digia.tech/post/duolingo-habit-forming-reminders-retention-architecture/)).
-The famous "these reminders don't seem to be working, we'll stop for now"
-message is widely reported as one of its best performers precisely because it
-withdraws pressure.
+Evidence review, 2026-09-09: the earlier draft's 55% retention, 10%
+Streak Freeze lift, exact reminder timing, and “best performing” withdrawal
+message claims were supported only by secondary write-ups. They are not
+verified inputs to this decision.
+
+Duolingo's own [experiment report](https://blog.duolingo.com/improving-the-streak/)
+reports a **3.3% relative increase in Day 14 retention** after separating the
+streak from the daily goal. Its [habit research article](https://blog.duolingo.com/how-duolingo-streak-builds-habit/)
+reports **0.38% relative growth in daily active learners** after allowing two
+Streak Freezes. These concern different interventions and outcomes; neither
+predicts Speak It's retention. The article also acknowledges that losing a
+streak can demotivate learners. Speak It's seven dots remain a product choice
+to test, not a proven growth mechanism.
 
 Three facts about Speak It make the daily-streak version wrong here:
 
@@ -50,13 +52,11 @@ Three facts about Speak It make the daily-streak version wrong here:
    free user into the wall in ten days and then punishes them for the wall.
    The active-day definition below deliberately counts finishing and reviewing,
    not only capturing, so a free user at the limit can still "keep it up".
-3. **Rigid streaks lose the people they were meant to keep.** Secondary
-   sources summarising a 2020 CHI study report streak anxiety as the top reason
-   people abandon habit apps and a large jump in quitting after a single missed
-   day ([EHM](https://www.ehm-tech.com/habit/blog/habit-streaks-do-they-actually-work/),
-   [Cohorty](https://blog.cohorty.app/the-psychology-of-streaks-why-they-work-and-when-they-backfire/)).
-   Duolingo answers this with purchasable freezes and a gem economy. Speak It
-   answers it by never having a streak that can break.
+3. **Rigid streaks can discourage return.** Duolingo acknowledges this risk
+   in its own article linked above. The earlier claim that a 2020 CHI study
+   ranked streak anxiety as the top abandonment reason has not been verified
+   against an identifiable primary paper and is withdrawn. Speak It's choice
+   is to show activity without a streak that breaks.
 
 ### Copied, adapted, refused
 

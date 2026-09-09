@@ -469,8 +469,32 @@ enum SemanticCorpusM {
         // it names the boundary of the rule exactly.
         corpusCase(.structuralReadings, "Descale kettle",
                    count: 1, type: [.task], route: [.today],
-                   severityCeiling: .metadata,
-                   note: "GAP: reaches Memory. 'descale' is outside the embedding vocabulary, so the proper-name guard declines it."),
+                   note: "'descale' is outside the embedding vocabulary. A productive prefix on a stem the vocabulary knows is an English verb, and the padded fragment is read lowercased as well, because the tagger takes an unfamiliar capital for a proper noun."),
+        corpusCase(.structuralReadings, "Unpack boxes", count: 1, type: [.task], route: [.today]),
+        corpusCase(.structuralReadings, "Reheat leftovers", count: 1, type: [.task], route: [.today]),
+        corpusCase(.structuralReadings, "Devon Smith", count: 1, route: [.memory],
+                   note: "A name that splits as de + von is still a name: the stem is too short, and the tagger does not read the padded word as a verb."),
+        corpusCase(.structuralReadings, "Regina King", count: 1, route: [.memory]),
+        corpusCase(.structuralReadings, "Check it's working", count: 1, route: [.today],
+                   note: "A possessive name is a determiner; a pronoun contraction is not, and this errand still reads by its verb."),
+        corpusCase(.structuralReadings, "hope he's okay", count: 1, route: [.memory],
+                   note: "\"He's\" is not a possessive, so the wish does not acquire an imperative's shape."),
+        // A verb straight behind a copula is that copula's complement, not a
+        // new clause. "Tuesday is book club" was cut into a note called
+        // "Tuesday is" and a task called "Book club".
+        corpusCase(.structuralReadings, "Tuesday is book club", count: 1, route: [.memory]),
+        corpusCase(.structuralReadings, "Idea for the app: let people share lists", count: 1,
+                   type: [.idea], route: [.memory],
+                   note: "Was cut at \"share\" into an idea called \"The app: let people\" and a task called \"Share lists\"."),
+        corpusCase(.structuralReadings, "Great idea from the offsite: run a monthly customer interview instead of the quarterly survey.",
+                   count: 1, type: [.idea], route: [.memory],
+                   note: "The word naming the capture may come a modifier or two in."),
+        corpusCase(.structuralReadings, "Note to self: the garage code is 4821", count: 1,
+                   route: [.memory], title: ["The garage code is 4821"],
+                   note: "The colon after the lead was left on the title."),
+        corpusCase(.structuralReadings, "The plan is book the hotel early", count: 1),
+        corpusCase(.structuralReadings, "The second Tuesday of every month is book club", count: 1,
+                   recurs: [CorpusRecurrence(frequency: .monthly)]),
     ]
 
     /// What the structural rules must not swallow. These are the measured
@@ -812,8 +836,8 @@ enum SemanticCorpusP {
                    count: 1, type: [.task], title: ["Bring the form not the copy"],
                    note: "Negates a noun phrase, leaves the verb alone."),
         corpusCase(.prohibitions, "Don't forget to call Mom",
-                   count: 1, type: [.task], title: ["Call Mom"],
-                   note: "\"Don't forget to X\" means do X — the oldest exception in the file."),
+                   count: 1, type: [.personFollowUp], title: ["Call Mom"], person: ["Mom"],
+                   note: "\"Don't forget to X\" means do X — the oldest exception in the file. The type follows \"Call Mom\" in the people family: a call to a named person is a follow-up, and the lead does not change what the call is."),
         corpusCase(.prohibitions, "Please don't pay the invoice yet",
                    count: 1, route: [.memory],
                    note: "A bare negative imperative statement is preserved, not inverted."),

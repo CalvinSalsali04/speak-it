@@ -47,6 +47,35 @@ struct MorningBriefEntry: Equatable, Sendable {
 enum MorningBriefPlanner {
     static let horizonDays = 3
 
+    @MainActor
+    static func projectedItems(
+        from items: [CapturedItem],
+        authorization: LocationAuthorization,
+        now: Date
+    ) -> [MorningBriefItem] {
+        let rows = items.filter {
+            !$0.isArchived && !$0.isCompleted &&
+                ShoppingListProjection.belongsOnTopLevelToday(
+                    $0, authorization: authorization, relativeTo: now
+                )
+        }.map {
+            MorningBriefItem(
+                dueDate: $0.dueDate,
+                isDateOnly: $0.isDateOnly,
+                calendarDay: $0.isDateOnly ? $0.temporalIntent?.day : nil
+            )
+        }
+        let lists = ShoppingListProjection.groupSummaries(in: items).compactMap { group -> MorningBriefItem? in
+            guard let item = group.timingItem else { return nil }
+            return MorningBriefItem(
+                dueDate: item.reminderDate ?? item.dueDate,
+                isDateOnly: item.isDateOnly,
+                calendarDay: item.isDateOnly ? item.temporalIntent?.day : nil
+            )
+        }
+        return rows + lists
+    }
+
     static func plan(
         items: [MorningBriefItem],
         now: Date,
@@ -134,11 +163,6 @@ enum HabitNotificationScheduler {
     static let identifierPrefix = "SpeakIt.habit."
     static let threadIdentifier = "speak-it-habit"
     static let userInfoKindKey = "habitKind"
-    /// Refreshes run one after another. A background transition and the
-    /// foreground that follows can both re-plan within a second; letting
-    /// their remove-and-add sequences interleave could leave a brief from
-    /// the older plan standing. Same pattern as `ReminderScheduler`.
-    @MainActor private static var synchronizationTail: Task<Void, Never>?
 
     static func isHabitIdentifier(_ identifier: String) -> Bool {
         identifier.hasPrefix(identifierPrefix)
@@ -186,37 +210,16 @@ enum HabitNotificationScheduler {
         return true
     }
 
-    /// Queues a refresh behind any refresh still running, so two plans never
-    /// interleave. Callers on the main actor use this; `synchronize` itself
-    /// stays callable directly for tests.
-    @MainActor
-    static func enqueueSynchronize(
-        entries: [MorningBriefEntry],
-        calendar: Calendar = .autoupdatingCurrent
-    ) {
-        let previous = synchronizationTail
-        synchronizationTail = Task {
-            await previous?.value
-            await synchronize(entries: entries, calendar: calendar)
-        }
-    }
-
-    /// Makes the pending habit notifications match the plan given. Nothing
+    /// Replaces every pending habit notification with the plan given. Nothing
     /// is added unless the brief is on and notifications are authorized;
     /// the brief never asks for permission by itself.
-    ///
-    /// The new requests are added *before* the stale ones are removed. This
-    /// runs as the app goes to the background, and a process suspended
-    /// between a remove and an add would leave the morning with no brief at
-    /// all; adding first means the worst case of a suspension is one extra
-    /// request that the next refresh prunes. Same identifier replaces.
     static func synchronize(
         entries: [MorningBriefEntry],
         calendar: Calendar = .autoupdatingCurrent
     ) async {
         let center = UNUserNotificationCenter.current()
+        await removeAll(from: center)
         guard HabitDefaults.morningBriefEnabled else {
-            await removeAll(from: center)
             HabitDefaults.pendingBriefFireDates = []
             return
         }
@@ -225,33 +228,17 @@ enum HabitNotificationScheduler {
         case .authorized, .provisional, .ephemeral:
             break
         default:
-            await removeAll(from: center)
             HabitDefaults.pendingBriefFireDates = []
             return
         }
 
         var fireDates: [Date] = []
-        var wanted = Set<String>()
         for entry in entries {
             if (try? await center.add(makeRequest(for: entry, calendar: calendar))) != nil {
                 fireDates.append(entry.fireDate)
-                wanted.insert(entry.identifier)
             }
         }
         HabitDefaults.pendingBriefFireDates = fireDates
-
-        let stale = await center.pendingNotificationRequests()
-            .map(\.identifier)
-            .filter { isHabitIdentifier($0) && !wanted.contains($0) }
-        if !stale.isEmpty {
-            center.removePendingNotificationRequests(withIdentifiers: stale)
-        }
-        let delivered = await center.deliveredNotifications()
-            .map(\.request.identifier)
-            .filter(isHabitIdentifier)
-        if !delivered.isEmpty {
-            center.removeDeliveredNotifications(withIdentifiers: delivered)
-        }
     }
 
     static func removeAll() async {

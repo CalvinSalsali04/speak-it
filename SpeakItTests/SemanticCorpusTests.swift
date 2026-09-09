@@ -146,6 +146,15 @@ final class SemanticCorpusTests: XCTestCase {
     func testInternationalClockGuards() { run(.internationalClock, SemanticCorpusR.internationalClockGuards) }
     func testWeekdayIdiomsAndOrdinalAdjectives() { run(.calendarIdioms, SemanticCorpusR.calendarIdioms) }
     func testCalendarIdiomGuards() { run(.calendarIdioms, SemanticCorpusR.calendarIdiomGuards) }
+    func testFrontedAdjuncts() { run(.frontedAdjuncts, SemanticCorpusR.frontedAdjuncts) }
+    func testFrontedAdjunctGuards() { run(.frontedAdjuncts, SemanticCorpusR.frontedAdjunctGuards) }
+    func testLowercasedLists() { run(.coordinationContext, SemanticCorpusR.lowercasedLists) }
+    func testTransportedPeople() { run(.people, SemanticCorpusR.transportedPeople) }
+    func testFactCorrections() { run(.corrections, SemanticCorpusR.factCorrections) }
+    func testElidedVerbTitles() { run(.multipleThoughts, SemanticCorpusR.elidedVerbTitles) }
+    func testCoordinatedRecipients() { run(.coordinationContext, SemanticCorpusR.coordinatedRecipients) }
+    func testFrontedConditions() { run(.frontedConditions, SemanticCorpusR.frontedConditions) }
+    func testFrontedConditionGuards() { run(.frontedConditions, SemanticCorpusR.frontedConditionGuards) }
 
     // MARK: Preservation
     //

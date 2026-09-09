@@ -1,5 +1,8 @@
 # Pricing and conversion research — September 7, 2026
 
+> Research correction (2026-09-08): trial-versus-direct cohort LTV is observational, not proof that trials destroy value. Changing an App Store category does not cause trial economics to change. Use the September 8 pricing decision for the current recommendation.
+
+
 Question asked: should Speak It bill weekly instead of monthly, and where else is
 the funnel leaking? This document records the evidence and the recommendation.
 Nothing here has been implemented; no price, product, or App Store Connect value

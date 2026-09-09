@@ -468,7 +468,7 @@ enum ClauseScope {
 /// confident action on a capture whose meaning nobody could pin down.
 ///
 /// The rule is narrow on purpose. It does not ask whether the sentence *feels*
-/// uncertain — it looks for three closed structures, and everything else keeps
+/// uncertain — it looks for closed structures, and everything else keeps
 /// its date. In particular a hedge is not enough on its own: "Maybe I should
 /// text Sarah tonight" is a commitment wearing a hedge, and the corpus guards
 /// it onto Today with its 8 PM intact.
@@ -484,8 +484,10 @@ enum TemporalCommitment {
         case hedgedWithoutCommitment
         /// "was the meeting Wednesday" — a question, not a plan.
         case interrogative
+        /// "that Thursday thing" identifies a topic, without saying when to act.
+        case dayAsTopic
 
-        /// The state this reason produces. All three are the same gap seen
+        /// The state this reason produces. These are the same gap seen
         /// from three angles: the sentence stated a time and did not settle it.
         var gap: SemanticGap { .ambiguousTemporalScope }
     }
@@ -500,6 +502,15 @@ enum TemporalCommitment {
     static func unsettled(in text: String) -> Unsettled? {
         let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
+
+        // A day modifying a placeholder is a topic, not a schedule. Match the
+        // whole noun phrase so explicit actions ("handle that Thursday thing
+        // tomorrow") and temporal prepositions ("the thing on Thursday") keep
+        // their existing readings.
+        if value.range(
+            of: #"^(?:the|this|that)\s+(?:whole\s+)?\#(dayWord)\s+(?:thing|stuff)\s*[.!?]*$"#,
+            options: .regularExpression
+        ) != nil { return .dayAsTopic }
 
         // Two candidate days joined by "or". Naming the alternatives is how
         // English says the choice has not been made, and picking one of them is
@@ -692,6 +703,20 @@ enum ThoughtCompletion {
         // adverb — and that is a word list, which is the thing this file exists
         // not to keep. Fragments ending in a stranded preposition are therefore
         // out of scope, and honestly so.
+        // "Marcus used to work at Shopify before this", "I need to think
+        // about this": a demonstrative behind a preposition is that
+        // preposition's object, and the thought is complete. The tagger
+        // calls "this" a determiner either way; only a determiner with
+        // nothing behind it and no preposition in front is a thought that
+        // stopped.
+        if ["this", "that", "these", "those"].contains(lastWord),
+           previous.lexicalClass == .preposition {
+            return nil
+        }
+        // "$400 each", "two for both of us": a distributive closes a phrase
+        // rather than opening one, whatever the tagger calls it.
+        if ["each", "apiece", "both", "all"].contains(lastWord) { return nil }
+
         switch last.lexicalClass {
         case .determiner?:
             return .trailingFunctionWord

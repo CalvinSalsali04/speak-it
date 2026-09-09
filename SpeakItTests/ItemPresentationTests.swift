@@ -420,6 +420,28 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertFalse(stored.contains("Alex"))
     }
 
+    func testAnnualValueUsesActualComparablePrices() {
+        func saves(_ annual: String, _ monthly: String, currency: String = "USD") -> Bool {
+            SubscriptionPricing.annualSavesMoney(
+                annual: Decimal(string: annual)!, monthly: Decimal(string: monthly)!,
+                annualCurrency: "USD", monthlyCurrency: currency
+            )
+        }
+        XCTAssertTrue(saves("14.99", "2.99"))
+        XCTAssertTrue(saves("29.99", "2.99"))
+        XCTAssertFalse(saves("29.99", "1.99"))
+        XCTAssertFalse(saves("12", "1"))
+        XCTAssertFalse(saves("14.99", "2.99", currency: "CAD"))
+        XCTAssertFalse(saves("0", "2.99"))
+    }
+
+    func testLaunchDiscountRequiresTheConfiguredPriceAndCurrency() {
+        XCTAssertTrue(SummerLaunchSale.matchesLaunchPrice(price: Decimal(string: "14.99")!, currencyCode: "USD"))
+        XCTAssertFalse(SummerLaunchSale.matchesLaunchPrice(price: Decimal(string: "29.99")!, currencyCode: "USD"))
+        XCTAssertFalse(SummerLaunchSale.matchesLaunchPrice(price: Decimal(string: "14.99")!, currencyCode: "CAD"))
+        XCTAssertFalse(SummerLaunchSale.matchesLaunchPrice(price: 0, currencyCode: "USD"))
+    }
+
     func testSummerLaunchSaleEndsAtThePublishedCutoff() {
         XCTAssertTrue(
             SummerLaunchSale.isWithinSaleWindow(

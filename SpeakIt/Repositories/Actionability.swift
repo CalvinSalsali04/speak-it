@@ -97,7 +97,14 @@ enum ActionabilityReader {
         // "Review captured thought" and the reminder inside it never fired.
         // "Honestly I'm exhausted, remind me to go to bed at ten" scheduled
         // nothing at all.
-        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel|contact|set|wake|let\s+(?!me\b|us\b|him\b|her\b|them\b|it\b)\p{L}[\p{L}'\u2019-]*\s+know)"#
+        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel|contact|set|wake|let\s+(?!me\b|us\b|him\b|her\b|them\b|it\b)\p{L}[\p{L}'\u2019-]*\s+know"#
+        // Found missing in a batch of everyday captures (2026-09-09): the
+        // office ("transfer $400", "cc Dana", "draft the memo") and the
+        // house ("unload the dishwasher", "scrub the tub").
+        // "Review", "draft" and "edit" are left out on purpose: they are
+        // nouns as often as verbs ("the second draft is due Wednesday"), and
+        // as imperatives the determiner shape already reads them.
+        + #"|transfer|deposit|withdraw|prep|finalize|finalise|proofread|rehearse|cc|bcc|loop\s+in|unload|load|empty|scrub|wipe|hang|declutter|descale|chase|chase\s+up|invoice)"#
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.
@@ -121,7 +128,13 @@ enum ActionabilityReader {
     /// A stated point on the calendar. Used only as *corroboration* — it can
     /// turn a sentence with nothing to do in it into an event, and it can never
     /// turn a report of the past into an obligation.
-    private static let calendarCue = #"(?:\b(?:monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday|today|tomorrow|tonight|january|february|march|april|june|july|august|september|october|november|december)\b|\bat\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|\#(spokenClockCue)|\#(dayOfMonthCue))"#
+    private static let calendarCue = #"(?:\b(?:monday|tuesday|wednesday|thursday|thurs|friday|saturday|sunday|today|tomorrow|tonight|january|february|march|april|june|july|august|september|october|november|december)\b|\bat\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b|\#(spokenClockCue)|\#(rescheduleCue)|\#(meridiemClockCue)|\#(dayOfMonthCue))"#
+
+    /// "Standup 9am", "dentist 2pm". A clock that carries its meridiem is a
+    /// time whatever stands in front of it; the bare-hour cue above needs an
+    /// "at" because a bare "9" is as often a quantity, and these were filed
+    /// in Memory as notes for want of that one word.
+    static let meridiemClockCue = #"\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b"#
 
     /// A clock time said the way people say clock times.
     ///
@@ -134,6 +147,19 @@ enum ActionabilityReader {
     /// Kept in step with `ThoughtOrganizer.spokenClockFace`, which parses the
     /// same shape.
     static let spokenClockCue = #"\b(?:a\s+)?(?:half|quarter|five|ten|twenty|twenty[\s-]five)\s+(?:past|after|to|till|til|before|of)\s+(?:\d{1,2}|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
+
+    /// "Standup moved to 9:30", "dinner pushed from 6 to 7". A rescheduling
+    /// verb with a clock behind its "to" states a time as plainly as "at
+    /// 9:30" does; the time behind "from" is the one that no longer applies
+    /// and is not the cue. An address is not a clock — "Alex moved to 5 Main
+    /// Street" — so a street or unit word behind the number declines it.
+    /// Shared with `ThoughtOrganizer`, which reads the same destination.
+    static let rescheduleCue = #"\b(?:moved|pushed|bumped|rescheduled|shifted|switched|changed)\s+(?:from\s+\S+\s+(?:[ap]\.?m\.?\s+)?)?to\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?!\s*(?:\p{L}+\s+)?(?:street|st|avenue|ave|road|rd|drive|dr|lane|blvd|boulevard|floor|percent|people|kids|days|weeks|months|years|hours|minutes)\b)"#
+
+    /// The same change of plan stated as a day: "Maya's swim lesson moved to
+    /// Thursday". A thing moved to a day is a commitment whatever the noun,
+    /// where a thing moved to a place ("Alex moved to Toronto") is history.
+    static let rescheduleDayCue = #"\b(?:moved|pushed|bumped|rescheduled|shifted|switched|changed)\s+(?:from\s+\S+\s+)?to\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight|next\s+\w+|the\s+\d{1,2}(?:st|nd|rd|th))\b"#
 
     /// "The 15th", "the first". A day number is as much a point on the calendar
     /// as a weekday is, and leaving it out of the cue list is why "vacation
@@ -151,7 +177,7 @@ enum ActionabilityReader {
     /// commitment on a specific day. What separates the two is the subject:
     /// a party, a deadline and a flight all happen at a time, while a password
     /// and a parking level do not.
-    private static let scheduledNoun = #"(?:party|meeting|appointment|deadline|flight|train|conference|wedding|interview|concert|game|match|exam|test|class|lecture|dinner|lunch|breakfast|brunch|reservation|standup|stand-up|ceremony|recital|rehearsal|showing|viewing|closing|hearing|launch|shift|checkup|check-up|screening|cleaning|visit|trip|vacation|holiday|deadline|due\s+date|session|call|surgery|procedure|festival|reunion|graduation|funeral|service)"#
+    private static let scheduledNoun = #"(?:party|meeting|appointment|deadline|flight|train|conference|wedding|interview|concert|game|match|exam|midterm|midterms|final|finals|quiz|test|class|lecture|dinner|lunch|breakfast|brunch|reservation|standup|stand-up|ceremony|recital|rehearsal|showing|viewing|closing|hearing|launch|shift|checkup|check-up|screening|cleaning|visit|trip|vacation|holiday|deadline|due\s+date|session|call|surgery|procedure|festival|reunion|graduation|funeral|service)"#
 
     // Deliberately absent from `scheduledNoun`: birthday and anniversary.
     // "Alex's birthday is October 12" is a fact filed under Alex, which is the
@@ -169,11 +195,14 @@ enum ActionabilityReader {
     /// the obligation family below, because `want to` is in `obligationLead`.
     /// A birthday then arrived on Today as a task. The lead is what carries the
     /// meaning, not its position in the sentence.
-    static let recordingVerb = #"(?:remember|(?:make|take|add)\s+a\s+note(?:\s+of)?|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log)"#
+    static let recordingVerb = #"(?:remember|(?:make|take|add)\s+a\s+note(?:\s+of)?|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log|forgetting(?!\s+to\b))"#
 
     /// Optional framing in front of a recording verb: "I want to remember",
     /// "I need to remember", "let's remember", "just remember".
-    static let recordingFrame = #"(?:i\s+(?:just\s+)?(?:want|need|have|wanted|would\s+like|['’]d\s+like)\s+to\s+|let['’]?s\s+|please\s+|just\s+|can\s+you\s+|could\s+you\s+)"#
+    // "I keep forgetting that the Ridgeway team signs off on Wednesdays" is
+    // a fact the person wants kept, said as a lapse; "I keep forgetting to
+    // call Mom" opens on "to" and stays an errand.
+    static let recordingFrame = #"(?:i\s+(?:just\s+)?(?:want|need|have|wanted|would\s+like|['’]d\s+like)\s+to\s+|let['’]?s\s+|please\s+|just\s+|can\s+you\s+|could\s+you\s+|i\s+(?:keep|always)\s+)"#
 
     /// Past-tense verbs that report a change that already happened.
     ///
@@ -183,7 +212,10 @@ enum ActionabilityReader {
     /// September" — where there is no "I" anywhere and the only other signal
     /// in the sentence is a month, which used to be enough to make it an
     /// appointment.
-    private static let pastReportVerb = #"(?:moved|relocated|started|began|joined|left|quit|resigned|retired|graduated|married|divorced|was\s+born|were\s+born|passed\s+away|died|switched|transferred|opened|closed|launched|sold|hired|fired|won|lost|used\s+to)"#
+    private static let pastReportVerb = #"(?:moved|relocated|started|began|joined|left|quit|resigned|retired|graduated|married|divorced|was\s+born|were\s+born|passed\s+away|died|switched|transferred|opened|closed|launched|sold|hired|fired|won|lost|used\s+to"#
+        // "The parcel arrived Friday", "the package came in Tuesday": a thing
+        // that has turned up is history however plainly the day is stated.
+        + #"|arrived|landed|came\s+in|showed\s+up|turned\s+up|got\s+here|got\s+delivered)"#
 
     /// Verbs that describe when something is *available*, as opposed to when
     /// somebody has to be somewhere.
@@ -284,6 +316,13 @@ enum ActionabilityReader {
             return .knowledge
         }
 
+        // "Let's order the new filters": a proposal to oneself with an
+        // errand in it is the errand. Read here, ahead of the leads, because
+        // "let's" is not an obligation word and the sentence was a note.
+        if matches(value, #"^\s*let['’]?s\s+(?:go\s+(?:and\s+)?)?\#(actionVerb)\b"#) {
+            return .actionable
+        }
+
         // An explicit request to be interrupted later is the least ambiguous
         // actionable signal there is, whatever the sentence is about.
         if ReminderPhrasing.requestsReminder(value)
@@ -306,6 +345,12 @@ enum ActionabilityReader {
         // own errands — someone else's commitments, on the list of things they
         // have to do, indistinguishable from the ones they took on.
         if obligationBelongsToAnotherPerson(value) { return .knowledge }
+
+        // "Had better" is also past possession plus a comparison: "I had
+        // better luck last time". Read that noun phrase before the modal word
+        // list, but after explicit reminder requests. A verb anywhere in the
+        // complement leaves this conservative rule out of the decision.
+        if isPastPossessionComparison(value) { return .knowledge }
 
         if hasObligationLead(value) { return .actionable }
         if hasActionVerbHead(value)
@@ -351,7 +396,9 @@ enum ActionabilityReader {
     private static func isUnfulfilledObligation(_ text: String) -> Bool {
         let patterns = [
             #"\bi\s+forgot\s+(?:to|about)\b"#,
-            #"\bi\s+keep\s+forgetting\b"#,
+            // With its "to": "I keep forgetting that the team signs off on
+            // Wednesdays" is a fact being kept, not an obligation.
+            #"\bi\s+keep\s+forgetting\s+to\b"#,
             // "I always forget to pay the hydro bill" is the same live
             // obligation as "I keep forgetting to" and was the only member of
             // the family missing — so it fell through to the consolidation
@@ -396,6 +443,31 @@ enum ActionabilityReader {
         matches(text, #"\bi\s+(?:need|have|['’]ve\s+got)\s+to\s+\#(actionVerb)\b"#)
             || matches(text, #"\bi\s+(?:should|must|gotta)\s+\#(actionVerb)\b"#)
             || matches(text, #"\b(?:said|told\s+me|asked\s+me|reminded\s+(?:me|us))\s+to\s+\#(actionVerb)\b"#)
+            // "I told Sarah I'd drop off the dish on Sunday": a promise the
+            // person made is theirs to keep, whoever it was made to.
+            || matches(text, #"\bi\s+(?:told|promised)\s+\S+(?:\s+\S+)?\s+(?:i['’]d|i\s+would|i['’]ll|i\s+will)\s+\#(actionVerb)\b"#)
+    }
+
+    /// The obligation inside reported speech, when the speech carries one:
+    /// for "Remember Catherine said I need to call Alex Friday" this is the
+    /// range of "call Alex Friday". `PersonMentionResolver` reads it so the
+    /// row names the person to call rather than the person who said so. The
+    /// framing is only ever ahead of the obligation, so what follows the
+    /// match is the whole of it.
+    static func reportedObligationBody(in text: String) -> Range<String.Index>? {
+        let speech = #"\b(?:said|says|told\s+me|asked\s+me|mentioned|reminded\s+(?:me|us))\s+(?:that\s+)?"#
+        let patterns = [
+            speech + #"(?:i|we)\s+(?:need|have|['’]ve\s+got)\s+to\s+(?=\#(actionVerb)\b)"#,
+            speech + #"(?:i|we)\s+(?:should|must|gotta)\s+(?=\#(actionVerb)\b)"#,
+            speech + #"to\s+(?=\#(actionVerb)\b)"#,
+            #"\bi\s+(?:told|promised)\s+\S+(?:\s+\S+)?\s+(?:i['’]d|i\s+would|i['’]ll|i\s+will)\s+(?=\#(actionVerb)\b)"#,
+        ]
+        for pattern in patterns {
+            if let match = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
+                return match.upperBound..<text.endIndex
+            }
+        }
+        return nil
     }
 
     /// "I was going to call Catherine but I didn't."
@@ -443,7 +515,11 @@ enum ActionabilityReader {
         // information, not a request for a new one. When the reported words
         // carry an obligation ("Alex reminded me to get the wrench"), the
         // carriesOwnObligation rule upstream keeps the errand alive.
-        matches(text, #"\b(?:said|says|told\s+me|reminded\s+(?:me|us)|mentioned|according\s+to)\b"#)
+        // "I told Sarah …" is speech the person reports of themselves; with
+        // a promise inside it ("I told Sarah I'd drop off the dish") the
+        // obligation rule upstream keeps the errand, and without one it is
+        // history like the rest.
+        matches(text, #"\b(?:said|says|told\s+me|reminded\s+(?:me|us)|mentioned|according\s+to|i\s+(?:told|promised)\s+\S+)\b"#)
     }
 
     /// "Remember Alex likes golf", "I want to remember that Priya's birthday is
@@ -493,7 +569,13 @@ enum ActionabilityReader {
         guard matches(text, #"\b\#(pastReportVerb)\b"#) else { return false }
         // "The meeting was moved to Thursday" reschedules something that still
         // has to be attended. A scheduled noun says the sentence is about an
-        // appointment rather than about a change that is already history.
+        // appointment rather than about a change that is already history —
+        // and so does a day or a clock behind the "to", whatever the noun:
+        // "Maya's swim lesson moved to Thursday" is not a lesson that
+        // relocated. "Alex moved to Toronto" names a place and stays history.
+        if matches(text, rescheduleCue) || matches(text, rescheduleDayCue) {
+            return false
+        }
         return !matches(text, #"\b\#(scheduledNoun)\b"#)
     }
 
@@ -586,8 +668,20 @@ enum ActionabilityReader {
     /// A description of when something is available, about a subject that is
     /// not itself an appointment. Consistent with the birthday rule: a date
     /// states when something is true and does not create an obligation.
-    private static func isDescriptiveSchedule(_ text: String) -> Bool {
+    /// Internal so the organizer can refuse a recurring series on one: the
+    /// tagger cannot be asked for a subject reliably ("log the meter reading"
+    /// reads as one), and this is the reading that actually decided the
+    /// route.
+    static func isDescriptiveSchedule(_ text: String) -> Bool {
         guard matches(text, #"\b\#(descriptiveVerb)\b"#) else { return false }
+        // An expiry on a named day is the last moment the person can act, as
+        // "the offer ends Friday" already is: "the parking pass expires
+        // Friday" belongs on Today. "My passport expires in March" names a
+        // month and stays knowledge, which is the birthday rule.
+        if matches(text, #"\b(?:expires?|runs?\s+out|lapses?)\b"#),
+           matches(text, #"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight)\b|\#(dayOfMonthCue)"#) {
+            return false
+        }
         // A scheduled noun says the sentence is about something the person
         // attends; a deadline noun says it is about the last moment they can
         // act. Either one outranks the descriptive reading, whatever the verb.
@@ -603,6 +697,20 @@ enum ActionabilityReader {
     /// thing about the person's intent without asking for a notification.
     private static func isEmphaticRemember(_ text: String) -> Bool {
         matches(text, #"\bmake\s+sure\s+(?:that\s+)?i\b|\bi\s+need\s+to\s+remember\s+to\b|\bnote\s+to\s+self\b"#)
+    }
+
+    private static func isPastPossessionComparison(_ text: String) -> Bool {
+        guard let frame = text.range(
+            of: #"^(?:i|we)\s+had\s+better\s+"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return false }
+        let complement = SentenceContextCache.context(for: text).tokens.filter {
+            $0.range.lowerBound >= frame.upperBound
+        }
+        guard let head = complement.first,
+              head.lexicalClass == .noun || head.lexicalClass == .adjective else { return false }
+        return complement.contains { $0.lexicalClass == .noun }
+            && !complement.contains { $0.isVerb }
     }
 
     private static func hasObligationLead(_ text: String) -> Bool {
@@ -726,7 +834,12 @@ enum ActionabilityReader {
         // exception keeps the real imperatives that simply end that way —
         // "press the button", "pass the salt", "address the envelope".
         guard !matches(body, #"^[\p{L}'-]*[^s\s]s\b"#) else { return false }
-        guard matches(body, #"^[\p{L}'-]+(?:\s+(?:up|out|off|down|in|on|over|back|around|with|to|for|at|into|through))?\s+(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those)\s+\S"#) else {
+        // A possessive name is a determiner: "give Mom's recipe to Catherine"
+        // and "give the recipe to Catherine" are one shape, and only the
+        // second was read as an errand — the first went to Memory as a note
+        // about Mom. Pronoun contractions are not possessives ("hope he's
+        // okay" is a wish, not an instruction) and are kept out by name.
+        guard matches(body, #"^[\p{L}'-]+(?:\s+(?:up|out|off|down|in|on|over|back|around|with|to|for|at|into|through))?\s+(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|(?!(?:it|he|she|that|there|what|who|let|here|one)['’]s\b)\p{L}+['’]s)\s+\S"#) else {
             return false
         }
         // The head has to actually be a verb. Without this, "coffee with the
@@ -790,14 +903,48 @@ enum ActionabilityReader {
         // it, while a personal name usually is not in there at all.
         guard !laterTokenIsVerb(body) else { return false }
         guard let embedding = personNameEmbedding,
-              embedding.contains(words[0].lowercased()) else { return false }
+              isOrdinaryEnglishWord(words[0].lowercased(), in: embedding) else { return false }
 
         let padded = words[0] + " the " + words.dropFirst().joined(separator: " ")
-        return headTag(of: padded) == .verb && headTag(of: body) != .noun
+        // A head the vocabulary does not know is read lowercased as well:
+        // the tagger takes an unfamiliar capitalized word for a proper noun,
+        // so "Descale the kettle" tags Noun while "descale the kettle" tags
+        // Verb, and the capital is the recognizer's sentence case, not the
+        // speaker's. Known words keep the reading that was measured.
+        let paddedReadsAsVerb = headTag(of: padded) == .verb
+            || (!embedding.contains(words[0].lowercased()) && headTag(of: padded.lowercased()) == .verb)
+        return paddedReadsAsVerb && headTag(of: body) != .noun
     }
 
     /// Held once; loading is the expensive part.
     private static let personNameEmbedding = NLEmbedding.wordEmbedding(for: .english)
+
+    /// Whether the vocabulary knows a word, reading through a productive
+    /// prefix when it does not.
+    ///
+    /// "Descale kettle" reached Memory because "descale" is not among the
+    /// 57,000 words, so the guard above treated it the way it treats
+    /// "Taylor". English builds verbs from prefixes freely — descale,
+    /// defrost, unclog, reheat, prewash — and no embedding holds every one.
+    /// A word that is a known verb stem behind one of those prefixes is an
+    /// English verb, not a personal name. The stem has to be a real word of
+    /// its own and long enough not to be a fragment ("Devon" is not "de" +
+    /// "von", "Reid" is not "re" + "id"), and the prefixed word has to read
+    /// as a verb once it has a verb phrase's shape. The stem itself is not
+    /// asked, because "scale" tags Noun on its own and "descale" does not.
+    /// The caller's own tagger reading still has to agree afterwards, so a
+    /// name that happens to split this way is not admitted on the prefix
+    /// alone.
+    private static func isOrdinaryEnglishWord(_ word: String, in embedding: NLEmbedding) -> Bool {
+        if embedding.contains(word) { return true }
+        for prefix in ["de", "re", "un", "dis", "pre", "mis", "over"] where word.hasPrefix(prefix) {
+            let stem = String(word.dropFirst(prefix.count))
+            if stem.count >= 4, embedding.contains(stem), headTag(of: word + " the thing") == .verb {
+                return true
+            }
+        }
+        return false
+    }
 
     /// See `PersonMentionResolver.preloadEmbedding`.
     static func preloadEmbedding() {
@@ -839,7 +986,31 @@ enum ActionabilityReader {
         // person"), and only the copular branch below is allowed to trust it.
         let spokenClock = ThoughtOrganizer.statesAClock(text)
         guard matches(text, calendarCue) || spokenClock || namesASpecificDay(text) else { return false }
+        // A month with no day is knowledge, not a commitment: "the lease
+        // ends in November" was a Today event with no date, since the
+        // resolver rightly refuses to pick a day. Same rule as "Catherine's
+        // birthday is in March".
+        if !spokenClock,
+           !namesASpecificDay(text),
+           matches(text, #"\b(?:january|february|march|april|june|july|august|september|october|november|december)\b"#),
+           !matches(text, #"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight|\d{1,2}(?:st|nd|rd|th)?)\b"#),
+           !matches(text, #"\bat\s+(?:\d|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#) {
+            return false
+        }
         let statesAClock = spokenClock || matches(text, clockCue)
+        // "We're at five", "I'm at 5 already": a person saying where they
+        // are, or how far along. A human is not a scheduled thing, and the
+        // "at" straight after the pronoun is what makes the number a state
+        // rather than an hour — "we're meeting at five" keeps its verb and
+        // its event.
+        if matches(text, #"^(?:i|we|you|they|he|she)(?:['’](?:m|re|s)|\s+(?:am|are|is))?\s+at\b"#) {
+            return false
+        }
+        // A thing moved to a day or a clock is a plan, whatever the noun:
+        // "Maya's swim lesson moved to Thursday" was a Memory note because
+        // "lesson" is not a scheduled noun and the copular branch below
+        // never saw a verb it knew.
+        if matches(text, rescheduleCue) || matches(text, rescheduleDayCue) { return true }
         // "Idea for tomorrow's team meeting" files a thought *about* a meeting.
         // A sentence that names what kind of thing it is has already answered
         // this question, and the day inside it is subject matter.
@@ -952,17 +1123,190 @@ enum ActionabilityReader {
         value = replace(value, #"^(?:remember\s+to|please)\s*,?\s*"#, "")
         value = replace(value, #"^(?:make\s+sure\s+(?:that\s+)?i|note\s+to\s+self\s*[:,]?)\s*,?\s*"#, "")
         value = replace(value, #"^\#(obligationLead)\s*,?\s*"#, "")
+        // Before the day list as well as after it: the list strips a bare
+        // "tomorrow" and leaves "morning email the landlord" behind, which no
+        // longer opens on anything the structural reading recognises.
+        value = withoutFrontedAdjunct(value)
         // A fronted day is context for the action, not the action.
         value = replace(
             value,
             #"^(?:(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))|(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ordinalWord)))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s*,?\s+"#,
             ""
         )
+        value = withoutFrontedAdjunct(value)
+        value = withoutFrontedCondition(value)
         // A second pass: "I need to, um, send Catherine…" leaves filler behind
         // the lead-in it just removed.
         value = replace(value, #"^(?:um+|uh+|you\s+know|like)\b[\s,]*"#, "")
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// Prepositions that front an adjunct. The subordinators that open a
+    /// clause of their own ("when", "once", "if") are deliberately absent.
+    private static let frontingPreposition: Set<String> = [
+        "on", "at", "in", "by", "before", "after", "during", "from", "until",
+        "till", "around", "over", "through", "near", "within", "under",
+        // The deictic days front an adjunct without a preposition, and the
+        // day list above only knows their bare forms: "tomorrow morning
+        // email the landlord" and "this weekend clean the garage" fell past
+        // it and were filed in Memory.
+        "today", "tomorrow", "tonight", "this", "next",
+    ]
+
+    /// A fronted adjunct is context for the action, not the action — the same
+    /// reading the day list above gives "Tomorrow", extended to the shapes
+    /// no list can finish: "on the 15th pay the rent", "by Friday send the
+    /// invoice", "after dinner call Mom", "in the morning call Dave". Each
+    /// was filed in Memory as a note with its date discarded, because the
+    /// body opened on the preposition and no verb test ever saw the errand.
+    ///
+    /// Structural rather than lexical: the span opens on a preposition and, in
+    /// the tagging of the whole sentence, holds no verb and no subject before
+    /// the first verb. "After I get paid book the trip" keeps its subject and
+    /// is left alone; so is a span with no verb behind it at all.
+    private static func withoutFrontedAdjunct(_ text: String) -> String {
+        guard let opener = text.split(whereSeparator: \.isWhitespace).first,
+              frontingPreposition.contains(opener.lowercased()) else { return text }
+        let context = SentenceContextCache.context(for: text)
+        let tokens = context.tokens
+        guard tokens.count >= 3 else { return text }
+        // A demonstrative behind the preposition is its object — "after
+        // that", "before this" — and fronts the verb like any other adjunct.
+        let hasSubject = { (span: ArraySlice<SentenceContext.Token>) -> Bool in
+            span.contains { token in
+                let word = token.text.lowercased()
+                return subjectPronoun.contains(word)
+                    || (token.lexicalClass == .pronoun && !demonstrative.contains(word))
+            }
+        }
+        // A span with a conjunction in it is coordinated, and a copula or an
+        // auxiliary behind it makes it a subject: "Before and after photos are
+        // in the folder" is a fact about photos, not an adjunct on "are".
+        let isAdjunct = { (span: ArraySlice<SentenceContext.Token>) -> Bool in
+            !hasSubject(span) && !span.contains(where: \.isConjunction)
+        }
+        // The adjunct has to end on its complement — a noun, a number, a
+        // demonstrative, or the adjective the tagger makes of "10th" — for a
+        // cut to be tried there, so "on the" is never one.
+        let complement: Set<NLTag> = [.noun, .number, .adjective, .pronoun]
+        let candidateCuts = (2...min(6, tokens.count - 1)).filter { end in
+            let span = tokens[..<end]
+            guard let lastToken = span.last, let last = lastToken.lexicalClass else { return false }
+            return (complement.contains(last)
+                || (last == .determiner && demonstrative.contains(lastToken.text.lowercased())))
+                && isAdjunct(span)
+        }
+        let rest = { (end: Int) -> String in
+            String(text[tokens[end].range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // A verb `hasActionVerbHead` already trusts at the head of a body is
+        // read first, because the tagger is not: this text is lowercased, and
+        // a lowercased name behind the verb tags as the verb itself —
+        // "tomorrow at 9 call sarah" made "sarah" the verb and "call" part
+        // of the adjunct.
+        for end in candidateCuts where matches(rest(end), #"^\#(actionVerb)\b"#) {
+            return rest(end)
+        }
+        if let verb = tokens.firstIndex(where: \.isVerb), verb > 0, verb <= 6 {
+            guard isAdjunct(tokens[..<verb]),
+                  !finiteAuxiliary.contains(tokens[verb].text.lowercased()) else { return text }
+            let remainder = rest(verb)
+            return remainder.isEmpty ? text : remainder
+        }
+        // "After dinner call Mom" tags no verb at all: the tagger reads
+        // "dinner call" as one compound noun. The same sentence with a comma
+        // after the adjunct tags "call" as the verb it is, so the comma is
+        // *inserted* at each place the adjunct could end and the tagger asked
+        // again — the trick `hasDeterminerlessImperative` uses.
+        for end in candidateCuts {
+            let cut = tokens[end].range.lowerBound
+            let head = String(text[..<cut]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let remainder = rest(end)
+            guard !remainder.isEmpty else { break }
+            let padded = SentenceContextCache.context(for: head + ", " + remainder)
+            guard padded.tokens.count > end, padded.tokens[end].isVerb else { continue }
+            return remainder
+        }
+        return text
+    }
+
+    private static let subjectPronoun: Set<String> = ["i", "we", "you", "they", "he", "she", "it"]
+
+    /// The words that open a condition on the speaker: "when I", "once we",
+    /// "after I", "as soon as I". The two-word forms are matched on tokens.
+    private static let conditionOpener: Set<String> = [
+        "when", "whenever", "once", "if", "after", "before", "until", "till", "while",
+    ]
+
+    /// A fronted condition is a trigger for the action, not the action, and
+    /// the app already knows what to do with a trigger it cannot enforce: hold
+    /// the row in Needs review with the condition named. What it could not do
+    /// was *see* the action behind one — "when I finish the essay call Dave"
+    /// and "as soon as I land text Mom" opened on the subordinator, no verb
+    /// test reached the errand, and the whole sentence was a Memory note with
+    /// the call lost. A place trigger never reached here, because
+    /// `LocationIntentParser.actionBody` strips it first.
+    ///
+    /// The clause is subordinator, subject, and at least one more word; it
+    /// has to end on its own material — a noun, a number, an adjective, an
+    /// adverb — and what follows has to be a verb the reader trusts at the
+    /// head of a body, or one the tagger calls a bare stem once a comma
+    /// separates the two. "When I was young I loved the beach" fails both:
+    /// the word after "young" is a pronoun.
+    private static func withoutFrontedCondition(_ text: String) -> String {
+        let context = SentenceContextCache.context(for: text)
+        let tokens = context.tokens
+        guard tokens.count >= 4 else { return text }
+        let words = tokens.prefix(4).map { $0.text.lowercased() }
+        let opened = conditionOpener.contains(words[0])
+            || (words[0] == "as" && words[1] == "soon" && words[2] == "as")
+            || ((words[0] == "next" || words[0] == "every") && words[1] == "time")
+        guard opened,
+              let subject = words.prefix(4).firstIndex(where: { $0 == "i" || $0 == "we" }),
+              subject >= 1 else { return text }
+        let complement: Set<NLTag> = [.noun, .number, .adjective, .adverb]
+        let rest = { (end: Int) -> String in
+            String(text[tokens[end].range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let bareStem = { (word: String) -> Bool in
+            !finiteAuxiliary.contains(word) && !matches(word, #"^[\p{L}'-]*[^s\s]s$"#)
+        }
+        // "Every time I sneeze", "as soon as I can": the subject may be the
+        // second-to-last token, and a closed range that runs backwards is a
+        // runtime trap, not an empty loop.
+        let lastEnd = min(9, tokens.count - 1)
+        guard subject + 2 <= lastEnd else { return text }
+        for end in (subject + 2)...lastEnd {
+            let lastToken = tokens[end - 1]
+            guard let last = lastToken.lexicalClass else { continue }
+            let remainder = rest(end)
+            guard !remainder.isEmpty else { break }
+            // "While I'm out there grab stamps", "when I'm back call Sam":
+            // a condition may close on a pronoun, a particle or a
+            // preposition too, and an errand verb straight after it is where
+            // the errand starts.
+            if matches(remainder, #"^\#(actionVerb)\b"#),
+               complement.contains(last) || [.verb, .pronoun, .particle, .preposition].contains(last) {
+                return remainder
+            }
+            guard complement.contains(last) else { continue }
+            let head = String(text[..<tokens[end].range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let padded = SentenceContextCache.context(for: head + ", " + remainder)
+            guard padded.tokens.count > end, padded.tokens[end].isVerb,
+                  bareStem(padded.tokens[end].text.lowercased()) else { continue }
+            return remainder
+        }
+        return text
+    }
+    private static let demonstrative: Set<String> = ["that", "this", "these", "those"]
+
+    /// Copulas and auxiliaries. An imperative is a bare stem, so a body that
+    /// opens on one of these is a statement whose subject was just removed.
+    private static let finiteAuxiliary: Set<String> = [
+        "is", "are", "am", "was", "were", "be", "been", "being", "has", "have",
+        "had", "do", "does", "did", "will", "would", "can", "could", "should",
+        "shall", "may", "might", "must",
+    ]
 
     // MARK: Matching
 

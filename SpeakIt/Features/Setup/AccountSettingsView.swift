@@ -1,5 +1,4 @@
 import SwiftUI
-import UserNotifications
 
 extension Notification.Name {
     static let speakItUseTestPrompt = Notification.Name("SpeakIt.useTestPrompt")
@@ -20,6 +19,11 @@ struct AccountSettingsView: View {
     @AppStorage(AccountProfileKeys.name) private var profileName = ""
     @AppStorage(AccountProfileKeys.email) private var profileEmail = ""
     @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
+    @State private var defaultReminderTime = ReminderDefaults.alertDate()
+    @State private var morningBriefEnabled = HabitDefaults.morningBriefEnabled
+    @State private var morningBriefTime = HabitDefaults.morningBriefDate()
+    @State private var isUpdatingMorningBrief = false
+    @State private var morningBriefNotice: String?
     @AppStorage(SpeakItAnalytics.enabledKey) private var analyticsEnabled = true
     @AppStorage(LockScreenTodayVisibility.showsTaskNamesKey)
     private var showsLockScreenTaskNames = false
@@ -33,10 +37,6 @@ struct AccountSettingsView: View {
     @State private var showsCaptureHistory = false
     @State private var showsVocabulary = false
     @State private var showsPlaces = false
-    @State private var morningBriefEnabled = HabitDefaults.morningBriefEnabled
-    @State private var morningBriefTime = HabitDefaults.morningBriefDate()
-    @State private var isUpdatingMorningBrief = false
-    @State private var morningBriefNotice: String?
     @State private var showsICloudSync = false
     @State private var showsPrivacy = false
     @State private var confirmsProfileRemoval = false
@@ -191,6 +191,7 @@ struct AccountSettingsView: View {
                     settingsButton("Places", symbol: "house") {
                         showsPlaces = true
                     }
+                    defaultReminderTimeRow
                     morningBriefRow
                 }
 
@@ -374,7 +375,30 @@ struct AccountSettingsView: View {
         return "\(remaining) of \(FreePlanAllowance.lifetimeCaptureLimit) free captures remaining"
     }
 
-    /// The one habit notification, beside the reminder preferences it
+    /// "Remind me tomorrow" names a day and no moment; this is the moment.
+    /// A wall-clock time, so it reads the same in whatever zone the phone is
+    /// in when the day comes.
+    private var defaultReminderTimeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
+                settingsSymbol("clock")
+                DatePicker(selection: $defaultReminderTime, displayedComponents: .hourAndMinute) {
+                    Text("Default reminder time")
+                        .foregroundStyle(Color.speakInk)
+                }
+                .accessibilityIdentifier("settings.default-reminder-time")
+                .accessibilityHint("Used when a reminder names a day but no time.")
+            }
+            Text("For reminders that name a day but no time, like “remind me tomorrow”.")
+                .font(.footnote)
+                .foregroundStyle(Color.speakMuted)
+        }
+        .onChange(of: defaultReminderTime) { _, newValue in
+            ReminderDefaults.setAlertTime(from: newValue)
+        }
+    }
+
+    /// The one habit notification, next to the reminder preference it
     /// resembles and nowhere else: a silent "2 due today · 1 overdue" at a
     /// wall-clock time. Off until switched on here; Today never asks.
     private var morningBriefRow: some View {
@@ -407,19 +431,8 @@ struct AccountSettingsView: View {
                 .foregroundStyle(morningBriefNotice == nil ? Color.speakMuted : Color.speakWarning)
         }
         .onAppear {
-            // The brief can switch itself off after five unanswered mornings,
-            // and permission can be revoked in iPhone Settings while it is on.
-            // Neither is re-read while a switch-on is still waiting on the
-            // permission prompt, or the row would snap back under the alert.
-            guard !isUpdatingMorningBrief else { return }
+            // The brief can switch itself off after five unanswered mornings.
             morningBriefEnabled = HabitDefaults.morningBriefEnabled
-            guard morningBriefEnabled else { return }
-            Task { @MainActor in
-                let settings = await UNUserNotificationCenter.current().notificationSettings()
-                if settings.authorizationStatus == .denied {
-                    morningBriefNotice = "Notifications are off for Speak It, so no brief will arrive until they are on in iPhone Settings."
-                }
-            }
         }
         .onChange(of: morningBriefEnabled) { _, newValue in
             setMorningBrief(enabled: newValue)

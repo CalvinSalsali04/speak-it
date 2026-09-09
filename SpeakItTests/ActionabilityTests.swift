@@ -24,6 +24,83 @@ final class ActionabilityTests: XCTestCase {
 
     // MARK: Invariant 1 — time never promotes history
 
+    func testDayNamedAsPlaceholderTopicDoesNotCreateACommitment() throws {
+        for text in ["the whole Thursday thing", "that Friday stuff", "this Monday thing"] {
+            let result = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            )
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertEqual(result.items.count, 1, text)
+            let item = try XCTUnwrap(result.items.first)
+            XCTAssertEqual(item.rawQuote, text)
+            XCTAssertEqual(item.organization.state, .underspecified(.ambiguousTemporalScope), text)
+            XCTAssertNil(item.organization.dueDate, text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertNil(item.organization.recurrenceRule, text)
+            XCTAssertTrue(item.organization.needsClarification, text)
+        }
+    }
+
+    func testExplicitTimingAndActionsAreNotPlaceholderTopics() {
+        for text in ["the thing on Tuesday", "the Tuesday meeting",
+                     "handle that Thursday thing tomorrow",
+                     "remind me tomorrow about that Friday stuff"] {
+            XCTAssertNil(TemporalCommitment.unsettled(in: text), text)
+            let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertNotNil(item.dueDate, text)
+        }
+    }
+
+    func testPastPossessionComparisonsStayInMemory() {
+        for text in [
+            "I had better luck last time",
+            "I had better service at that hotel",
+            "We had better seats at the concert",
+            "I had better reception yesterday",
+            "I had better overall results last year",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .knowledge, text)
+            let items = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertEqual(items.count, 1, text)
+            XCTAssertEqual(items.first?.analysisText, text, text)
+            XCTAssertEqual(items.first?.organization.itemType, .note, text)
+            XCTAssertNil(items.first?.organization.dueDate, text)
+            XCTAssertNil(items.first?.organization.reminderDate, text)
+        }
+    }
+
+    func testHadBetterActionsAndExplicitRemindersStillWork() throws {
+        for text in [
+            "I had better call the bank tomorrow",
+            "We had better pay the rent tomorrow",
+            "I had better not call the bank tomorrow",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .actionable, text)
+            let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(item.itemType.isActionable, text)
+            XCTAssertNotNil(item.dueDate, text)
+        }
+        let reminder = ThoughtOrganizer.organize(
+            "Remind me tomorrow that I had better luck last time",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertNotNil(reminder.reminderDate)
+        XCTAssertEqual(reminder.reminderDelivery, .notification)
+
+        let items = ThoughtExtractionEngine.extractWithRules(
+            "I had better luck last time and I need to call the bank tomorrow",
+            referenceDate: referenceDate, calendar: calendar
+        ).items
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items.first?.organization.itemType, .note)
+        let action = try XCTUnwrap(items.last)
+        XCTAssertTrue(action.organization.itemType.isActionable)
+        XCTAssertEqual(action.organization.dueDate,
+                       calendar.date(from: DateComponents(year: 2026, month: 8, day: 4)))
+    }
+
     /// A temporal expression is evidence about actionability, never a source of
     /// it. Every sentence here names a clock or a day and every one of them is
     /// a report of something that already happened.
@@ -125,6 +202,38 @@ final class ActionabilityTests: XCTestCase {
 
     // MARK: The reading is not the taxonomy
 
+    func testSocialMealsAreEventsWithoutChangingFoodPurchases() {
+        for text in [
+            "Grab lunch with Sam at noon",
+            "Get dinner with Maya tomorrow",
+            "Grab coffee with Mom tomorrow",
+            "grab coffee with mom tomorrow",
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertEqual(items.count, 1, text)
+            XCTAssertEqual(items.first?.organization.itemType, .event, text)
+            XCTAssertNotNil(items.first?.organization.dueDate, text)
+            XCTAssertNil(items.first?.organization.reminderDate, text)
+        }
+        for text in [
+            "Grab lunch with fries at noon",
+            "Grab coffee with milk tomorrow",
+            "Grab milk with Sam tomorrow",
+            "Buy lunch with Sam tomorrow",
+            "Grab lunch for Sam tomorrow",
+        ] {
+            XCTAssertEqual(ThoughtOrganizer.organize(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).itemType, .shopping, text)
+        }
+        XCTAssertEqual(ThoughtOrganizer.organize(
+            "I grabbed lunch with Sam yesterday",
+            referenceDate: referenceDate, calendar: calendar
+        ).itemType, .note)
+    }
+
     /// Actionability and type answer different questions, so they must be free
     /// to disagree. A shopping item and a bare appointment are both Today; an
     /// idea and a fact are both Memory; the type still distinguishes all four.
@@ -142,6 +251,18 @@ final class ActionabilityTests: XCTestCase {
             ThoughtOrganizer.organize("Dentist Tuesday at 2", referenceDate: referenceDate, calendar: calendar).itemType,
             .event
         )
+    }
+
+    /// A verb the embedding does not know is still a verb when it is a
+    /// productive prefix on a stem it does know, and a possessive name is a
+    /// determiner. Neither reading may admit a name or a pronoun contraction.
+    func testPrefixedVerbsAndPossessiveDeterminersReadAsErrands() {
+        for text in ["Descale kettle", "descale kettle", "Unpack boxes", "Give Mom's recipe to Catherine", "Check it's working"] {
+            XCTAssertEqual(ActionabilityReader.read(text), .actionable, text)
+        }
+        for text in ["Devon Smith", "Regina King", "Preston Hall", "Rebecca Miles", "hope he's okay"] {
+            XCTAssertNotEqual(ActionabilityReader.read(text), .actionable, text)
+        }
     }
 
     func testEpistemicIdeaLanguageIsNotAProposal() throws {
@@ -191,5 +312,101 @@ final class ActionabilityTests: XCTestCase {
             .idea,
             "an ambiguous reading must not demote a type the wording already gave"
         )
+    }
+
+    // MARK: - Fronted adjuncts
+
+    /// A prepositional phrase in front of the verb is context for the action.
+    /// The body the reader tests has to start at the verb, or "on the 15th pay
+    /// the rent" is a note about the fifteenth. The test is structural — no
+    /// verb and no subject in the span, in the tagging of the whole sentence —
+    /// so a coordinated subject or a real clause is left alone.
+    func testAFrontedAdjunctIsContextNotTheAction() {
+        XCTAssertEqual(ActionabilityReader.actionBody("on the 15th pay the rent"), "pay the rent")
+        XCTAssertEqual(ActionabilityReader.actionBody("by friday send the invoice"), "send the invoice")
+        XCTAssertEqual(ActionabilityReader.actionBody("after dinner call mom"), "call mom")
+        XCTAssertEqual(ActionabilityReader.actionBody("after lunch book the dentist"), "book the dentist")
+        XCTAssertEqual(
+            ActionabilityReader.actionBody("before the 10th submit the expense report"),
+            "submit the expense report"
+        )
+        XCTAssertEqual(
+            ActionabilityReader.actionBody("before and after photos are in the folder"),
+            "before and after photos are in the folder"
+        )
+        // A subject behind the preposition makes it a clause, which the
+        // condition reading below owns rather than this one.
+        XCTAssertEqual(ActionabilityReader.actionBody("on the fence about the job"), "on the fence about the job")
+        // Deictic days, a demonstrative object, and a lowercased name the
+        // tagger calls a verb.
+        XCTAssertEqual(ActionabilityReader.actionBody("tomorrow morning email the landlord"), "email the landlord")
+        XCTAssertEqual(ActionabilityReader.actionBody("after that book the dentist"), "book the dentist")
+        XCTAssertEqual(ActionabilityReader.actionBody("tomorrow at 9 call sarah"), "call sarah")
+    }
+
+    /// The clause splitter reads the same structure: a verbless head that
+    /// opens on a preposition is not a clause, so nothing is cut in front of
+    /// the verb that follows it. A head with a verb in it keeps its cut.
+    func testTheClauseSplitterDoesNotCutAfterAFrontedAdjunct() {
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "on the 1st renew the car insurance"),
+                       ["on the 1st renew the car insurance"])
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "in the morning call Dave"),
+                       ["in the morning call Dave"])
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "buy milk call the dentist"),
+                       ["buy milk", "call the dentist"])
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "tomorrow morning email the landlord"),
+                       ["tomorrow morning email the landlord"])
+    }
+
+    /// A condition on the speaker in front of the verb is a trigger, and the
+    /// body the reader tests starts behind it. A statement behind the
+    /// condition is not an errand, and "before I forget" is not a condition.
+    func testAFrontedConditionIsATriggerNotTheAction() {
+        XCTAssertEqual(ActionabilityReader.actionBody("when I finish the essay call dave"), "call dave")
+        XCTAssertEqual(ActionabilityReader.actionBody("after I get paid book the trip"), "book the trip")
+        XCTAssertEqual(ActionabilityReader.actionBody("as soon as I land text mom"), "text mom")
+        XCTAssertEqual(ActionabilityReader.actionBody("before I forget call dave"), "call dave")
+        XCTAssertEqual(
+            ActionabilityReader.actionBody("when I was young I loved the beach"),
+            "when I was young I loved the beach"
+        )
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "after I finish the essay call Dave"),
+                       ["after I finish the essay call Dave"])
+    }
+
+    /// A condition with nothing behind it is the whole capture. The subject
+    /// sat one token from the end here, and the range the reader walked to
+    /// find the body ran backwards — a runtime trap on every one of these at
+    /// save time, from voice, typing, Siri and the share sheet alike.
+    func testAFrontedConditionWithNoBodyIsLeftAlone() {
+        for text in [
+            "Every time I sneeze",
+            "Every time I stretch",
+            "As soon as I",
+            "As soon as I can",
+            "After that we leave",
+            "every time we",
+            "when I",
+        ] {
+            XCTAssertEqual(ActionabilityReader.actionBody(text), text, text)
+            XCTAssertNoThrow(ActionabilityReader.read(text), text)
+            let items = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertFalse(items.isEmpty, text)
+        }
+    }
+
+    /// On the right of a conjunction the boundary is the "and": "book the
+    /// dentist and before dinner call Mom" used to be cut at "call", so the
+    /// first row read "Book the dentist and before dinner" and carried the
+    /// second errand's date.
+    func testAFrontedAdjunctAfterAConjunctionStaysWithItsErrand() {
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("book the dentist and before dinner call mom"),
+                       ["book the dentist", "before dinner call mom"])
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("book the dentist and tomorrow call mom"),
+                       ["book the dentist", "tomorrow call mom"])
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("I called the plumber and he never showed"),
+                       ["I called the plumber and he never showed"])
     }
 }

@@ -8,6 +8,8 @@ Documents marked **historical** record a state that has since been superseded.
 They are kept because later decisions cite them, not because they still describe
 the app.
 
+Latest continuation review: [September 9 findings and verification](CONTINUATION_REVIEW_2026-09-09.md).
+
 ## Product
 
 | Document | What it is |
@@ -63,7 +65,13 @@ each has its own README.
 | Document | What it is |
 | --- | --- |
 | [APP_STORE_SUBMISSION.md](APP_STORE_SUBMISSION.md) | The working submission checklist for the first release |
+| [APP_STORE_LISTING.md](APP_STORE_LISTING.md) | Store listing copy with character counts: name, subtitle, description, keywords, plan names, captions |
+| [APP_STORE_REVIEW_PACKAGE.md](APP_STORE_REVIEW_PACKAGE.md) | Review Notes, age rating, App Privacy answers, export compliance, DSA, field-by-field App Store Connect checklist |
+| [APP_STORE_READINESS_2026-09-09.md](APP_STORE_READINESS_2026-09-09.md) | What the September 9 readiness pass verified, fixed, deferred, and what still needs a human |
+| [APP_STORE_PRICING_STATUS_2026-09-09.md](APP_STORE_PRICING_STATUS_2026-09-09.md) | What App Store Connect held for both subscriptions on September 9 |
 
 The repository-level release process (build numbers, tags, TestFlight) is in
 [../CONTRIBUTING.md](../CONTRIBUTING.md), and shipped changes are summarised in
 [../CHANGELOG.md](../CHANGELOG.md).
+
+- [September 8 pricing and trial decision](PRICING_DECISION_2026-09-08.html) — focused evidence, retained prices and free allowance, promotion requirements.

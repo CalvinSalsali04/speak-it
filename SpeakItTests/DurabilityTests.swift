@@ -1382,7 +1382,8 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
     func testEveryFailureAlertNamesAWayForwardWithoutRepeatingItsTitle() {
         let kinds: [CaptureRecoveryFailureKind] = [
             .noSpeechDetected, .missingRecording, .permissionRequired,
-            .recognizerUnavailable, .timedOut, .cancelled, .storageUnavailable, .unknown
+            .recognizerUnavailable, .onDeviceRecognitionUnavailable, .timedOut,
+            .cancelled, .storageUnavailable, .unknown
         ]
         for kind in kinds {
             let title = CaptureRecoveryPresentation.alertTitle(for: kind)
@@ -1420,6 +1421,44 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             message,
             "The recording is still safe. Try again, or type the thought yourself."
         )
+    }
+
+    /// Every string that names a protected recording says it stays on this
+    /// iPhone. A language with no on-device model refuses recovery rather than
+    /// uploading the file, and the refusal says so, keeps the recording, and
+    /// names the two things the person can still do.
+    func testALanguageWithoutAnOnDeviceModelRefusesRecoveryInsteadOfUploading() throws {
+        let (draft, audioURL) = try makeProtectedRecording()
+        CaptureDraftStore.markFailed(
+            id: draft.id,
+            message: "This language has no on-device speech model",
+            kind: .onDeviceRecognitionUnavailable
+        )
+        let stored = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: audioURL.path),
+            "Refusing to upload must not cost the person the recording"
+        )
+        XCTAssertEqual(stored.recoveryFailureKind, .onDeviceRecognitionUnavailable)
+        XCTAssertTrue(
+            stored.recoveryFailureKind.stopsPromisingRecovery,
+            "Tapping again cannot succeed until a local model exists, so the row must stop promising it"
+        )
+
+        let row = CaptureRecoveryPresentation.row(for: stored)
+        XCTAssertEqual(row.title, "Couldn’t recover")
+        XCTAssertTrue(row.detail.contains("won’t send the recording to Apple"))
+        XCTAssertTrue(row.detail.contains("stays safe here"))
+
+        let title = CaptureRecoveryPresentation.alertTitle(for: .onDeviceRecognitionUnavailable)
+        let message = CaptureRecoveryPresentation.alertMessage(for: .onDeviceRecognitionUnavailable)
+        XCTAssertEqual(title, "Recovery would leave this iPhone")
+        XCTAssertTrue(message.contains("Apple’s speech service"), "The refusal has to say where the audio would have gone")
+        XCTAssertTrue(message.contains("type the thought"))
+        XCTAssertTrue(message.contains("delete the recording"))
+        XCTAssertFalse(message.contains("Try again"), "A retry is not expected to work here, so the alert must not suggest one")
+        XCTAssertFalse(message.contains(title))
     }
 
     /// A header promising recovery over a row that says the opposite is exactly

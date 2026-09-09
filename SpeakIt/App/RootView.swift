@@ -345,6 +345,7 @@ struct RootView: View {
                 ))
             }
             handleQuickAction(quickActionRouter.pendingRequest)
+            handleTodayRequest(quickActionRouter.pendingTodayRequest)
             // A moment earned outside the app — a Back Tap capture, a shared
             // thought imported at activation — is already pending when this
             // view first appears, and `onChange` never fires for a value that
@@ -463,6 +464,9 @@ struct RootView: View {
         }
         .onChange(of: quickActionRouter.pendingRequest) { _, request in
             handleQuickAction(request)
+        }
+        .onChange(of: quickActionRouter.pendingTodayRequest) { _, request in
+            handleTodayRequest(request)
         }
         .onChange(of: selectedDestination) { _, destination in
             SpeakItAnalytics.track(.screenViewed(
@@ -1181,6 +1185,14 @@ struct RootView: View {
             sharedImportNotice = "Practice examples couldn’t be removed yet"
             return false
         }
+    }
+
+    private func handleTodayRequest(_ request: UUID?) {
+        guard let request else { return }
+        if selectedDestination == .today { popToRootSignal += 1 }
+        selectedDestination = .today
+        isDockVisible = true
+        quickActionRouter.consumeTodayRequest(request)
     }
 
     private func handleQuickAction(_ request: QuickActionRouter.Request?) {

@@ -171,6 +171,12 @@ enum SemanticCorpusA {
     // The same clock time means opposite things depending on tense. Treating a
     // report of the past as a future obligation is the failure to catch.
     static let tense: [CorpusCase] = [
+        corpusCase(.tense, "I had better luck last time", count: 1, type: [.note], route: [.memory],
+                   delivery: [.none], due: [nil], remind: [nil]),
+        corpusCase(.tense, "We had better seats at the concert", count: 1, type: [.note], route: [.memory],
+                   delivery: [.none], due: [nil], remind: [nil]),
+        corpusCase(.tense, "I had better call the bank tomorrow", count: 1, type: [.task], route: [.today],
+                   delivery: [.none], due: [CorpusDate(month: 8, day: 4, hour: nil)]),
         corpusCase(.tense, "Catherine called me at five", count: 1, route: [.memory], person: ["Catherine"],
                    delivery: [.none], note: "A past event is a memory and schedules nothing."),
         corpusCase(.tense, "Call Catherine at five", count: 1, route: [.today], person: ["Catherine"],

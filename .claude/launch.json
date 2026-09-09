@@ -3,9 +3,12 @@
   "configurations": [
     {
       "name": "website",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "Website"],
-      "port": 4173
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "exec python3 -m http.server \"$PORT\" --directory Website"
+      ],
+      "autoPort": true
     }
   ]
 }
