@@ -94,6 +94,12 @@ final class SpeakItSceneDelegate: NSObject, UIWindowSceneDelegate {
         _ = handle(shortcutItem)
     }
 
+    /// The window exists by now and has not drawn yet, so a Light or Dark
+    /// choice lands before the first frame instead of one frame after it.
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        SpeakItAppearance.stored.applyToWindows()
+    }
+
     func windowScene(
         _ windowScene: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem,

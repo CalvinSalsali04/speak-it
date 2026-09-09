@@ -643,6 +643,56 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(light.isSelected)
     }
 
+    /// A probe for the one thing XCUITest cannot see: whether the window is
+    /// following the iPhone's own appearance. It taps Light, then System, and
+    /// then holds the app open while the caller flips the simulator's
+    /// appearance and takes screenshots (see the appearance check in
+    /// Docs/KNOWN_ISSUES.md). Skipped unless SPEAKIT_APPEARANCE_PROBE_DIR is
+    /// set, so the ordinary suite never pays for the wait.
+    func testSystemAppearanceHandsControlBackToIOS() throws {
+        guard let dir = ProcessInfo.processInfo.environment["SPEAKIT_APPEARANCE_PROBE_DIR"] else {
+            throw XCTSkip("SPEAKIT_APPEARANCE_PROBE_DIR is unset; this is a manual probe")
+        }
+        // Control mode launches already on System and taps nothing, to show
+        // that an app which never had an override follows the simulator.
+        // "control" launches already on System and taps nothing, to show
+        // that an app which never had an override follows the simulator;
+        // "explicit" taps Dark and holds, to show a choice still wins.
+        let mode = ProcessInfo.processInfo.environment["SPEAKIT_APPEARANCE_PROBE_MODE"] ?? "system"
+        let app = mode == "control"
+            ? launchApp("--ui-testing-skip-welcome", "-SpeakIt.appearance", "system")
+            : launchApp("--ui-testing-skip-welcome")
+
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        switch mode {
+        case "system":
+            let light = app.buttons["Light"]
+            XCTAssertTrue(light.waitForExistence(timeout: 3))
+            light.tap()
+            XCTAssertTrue(light.isSelected)
+            let system = app.buttons["System"]
+            system.tap()
+            XCTAssertTrue(system.isSelected)
+        case "explicit":
+            let dark = app.buttons["Dark"]
+            XCTAssertTrue(dark.waitForExistence(timeout: 3))
+            dark.tap()
+            XCTAssertTrue(dark.isSelected)
+        default:
+            break
+        }
+
+        let marker = URL(fileURLWithPath: dir).appendingPathComponent("system-selected")
+        try Data().write(to: marker)
+        let done = URL(fileURLWithPath: dir).appendingPathComponent("done")
+        let deadline = Date().addingTimeInterval(40)
+        while !FileManager.default.fileExists(atPath: done.path), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: done.path), "the caller never finished its screenshots")
+    }
+
     func testSettingsRowsRespondAtTheirFarEdges() {
         let app = launchApp("--ui-testing-skip-welcome")
 

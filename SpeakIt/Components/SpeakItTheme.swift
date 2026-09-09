@@ -37,6 +37,13 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The stored choice, read the way `@AppStorage` reads it (launch
+    /// arguments included), for code that runs before any view exists.
+    static var stored: SpeakItAppearance {
+        SpeakItAppearance(rawValue: UserDefaults.standard.string(forKey: "SpeakIt.appearance") ?? "")
+            ?? .firstInstallDefault
+    }
+
     var userInterfaceStyle: UIUserInterfaceStyle {
         switch self {
         case .system: .unspecified
@@ -58,8 +65,58 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
             for window in scene.windows {
                 window.overrideUserInterfaceStyle = userInterfaceStyle
+                // SwiftUI writes `preferredColorScheme` onto the hosting
+                // controller rather than the window, and a controller's
+                // override outranks the window's, so the window alone was
+                // never enough to hand System back to iOS.
+                if let root = window.rootViewController {
+                    apply(to: root)
+                }
+                // Views carry the same override and outrank the controller;
+                // the hosting view is where SwiftUI's earlier Light landed.
+                apply(to: window as UIView)
             }
         }
+    }
+
+    @MainActor
+    private func apply(to controller: UIViewController) {
+        controller.overrideUserInterfaceStyle = userInterfaceStyle
+        for child in controller.children {
+            apply(to: child)
+        }
+        if let presented = controller.presentedViewController {
+            apply(to: presented)
+        }
+    }
+
+    @MainActor
+    private func apply(to view: UIView) {
+        view.overrideUserInterfaceStyle = userInterfaceStyle
+        for subview in view.subviews {
+            apply(to: subview)
+        }
+    }
+}
+
+/// Applies the appearance choice to the window tree. One modifier rather
+/// than three keeps `RootView`'s body inside the type-checker's budget.
+struct SpeakItAppearanceSync: ViewModifier {
+    let rawValue: String
+
+    private var appearance: SpeakItAppearance {
+        SpeakItAppearance(rawValue: rawValue) ?? .firstInstallDefault
+    }
+
+    // Deliberately not `preferredColorScheme`: SwiftUI keeps the last
+    // non-nil value it was given and re-asserts it whenever the traits
+    // change, so once it has been told Light it never lets System through
+    // again in the same process. Every window override is written by hand
+    // instead, here and in `SpeakItSceneDelegate` before the first frame.
+    func body(content: Content) -> some View {
+        content
+            .onAppear { appearance.applyToWindows() }
+            .onChange(of: rawValue) { _, _ in appearance.applyToWindows() }
     }
 }
 

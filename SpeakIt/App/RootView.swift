@@ -238,11 +238,7 @@ struct RootView: View {
             }
         }
         .tint(.speakInk)
-        .preferredColorScheme(appearance.preferredColorScheme)
-        // System must follow the iPhone from the moment it is chosen; see
-        // `SpeakItAppearance.applyToWindows`.
-        .onAppear { appearance.applyToWindows() }
-        .onChange(of: appearanceRawValue) { _, _ in appearance.applyToWindows() }
+        .modifier(SpeakItAppearanceSync(rawValue: appearanceRawValue))
         .overlay(alignment: .top) {
             if let sharedImportNotice {
                 Label(sharedImportNotice, systemImage: "checkmark")
