@@ -63,6 +63,7 @@ Run after the fixes and the doc edits, in sequence on an otherwise idle Mac (eve
 | `./Tools/CI/unit-tests.sh` (full, stock iPhone 17 simulator) | 806 tests: 805 passed, 0 failed, 1 skipped (`/tmp/SpeakItClaudeTests/Logs/Test/Test-SpeakIt-2026.09.09_19-14-31-+0800.xcresult`) |
 | Focused reruns of the five touched classes | `SwiftDataThoughtRepositoryTests` 300, `DurabilityTests` 34, `ReleaseReadinessTests` 11, `LocationReminderTests` 67, `ActionabilityTests` 18: all passed |
 | `./Tools/CI/release-build.sh` (unsigned, generic iOS) | passed |
+| `xcodebuild -exportArchive` with `Tools/CI/ExportOptions.plist` (destination upload) | `Upload succeeded`, `EXPORT SUCCEEDED`; build 1.0 (18) processing in App Store Connect |
 | `xcodebuild archive` (Release, automatic signing, team LZZT2A38SD) | `/tmp/SpeakItArchive18/SpeakIt.xcarchive`: `CFBundleVersion` 18, `1.0`; entitlements carry `group.com.calvinwak.SpeakIt`, `iCloud.com.calvinwak.SpeakIt`, ubiquity container and KV store; both `.appex` bundles embedded. Not exported, not uploaded. |
 | Debug build for the screenshot run and for the UI suite | passed (part of `capture.sh` and `unit-tests.sh SpeakItUITests`) |
 
@@ -125,7 +126,7 @@ Locked files were off-limits to every stage of this pass because another agent i
 9. App Privacy: enter the table from the package §3, including the two new types Performance Data and Other Diagnostic Data (not linked, not tracking, Analytics), and Audio Data as not collected by the developer.
 10. Choose the Standard EULA (`https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`) and set the Privacy Policy URL on the version page.
 11. Complete the DSA trader declaration in App Store Connect (package §6; note the public-contact caveat).
-12. Upload build 18 to TestFlight via `Tools/CI/testflight.sh` or Xcode Organizer, wait for processing, run an external TestFlight round if wanted, and attach the build to the version.
+12. (Done later the same day: build 1.0 (18) was archived from the merged branch and uploaded through `xcodebuild -exportArchive` with Xcode's signed-in account at 23:10 Hong Kong time; App Store Connect answered "Uploaded package is processing". Attach the build to the version once processed.)
 13. Review the whole version page against the package §7 field checklist, then Submit.
 14. After approval, in App Store Connect schedule the annual price change $14.99 → $29.99 effective 2026-10-22, preserving existing subscribers (cannot be done while the subscription is in Prepare for Submission).
 
