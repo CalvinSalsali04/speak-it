@@ -95,13 +95,18 @@ struct WelcomeView: View {
                             .accessibilityIdentifier("welcome.exploreFirst")
 
 #if DEBUG
-                        Button(action: onLoadExamples) {
-                            Label("Load test examples", systemImage: "sparkles")
+                        // Hidden when Tools/Screenshots/capture.sh shoots the
+                        // store set, so the Debug build's welcome screen
+                        // matches the one customers see.
+                        if !CommandLine.arguments.contains("--screenshots") {
+                            Button(action: onLoadExamples) {
+                                Label("Load test examples", systemImage: "sparkles")
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.speakInk)
+                            .buttonStyle(.speakIt)
+                            .accessibilityHint("Adds ten sample captures without using the microphone")
                         }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.speakInk)
-                        .buttonStyle(.speakIt)
-                        .accessibilityHint("Adds ten sample captures without using the microphone")
 #endif
                     }
                     }
@@ -851,13 +856,6 @@ struct FirstCaptureGuideView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await refreshPermissionState() }
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: LocationReminderMonitor.authorizationDidChangeNotification
-            )
-        ) { _ in
-            permissionRefreshToken = UUID()
-        }
     }
 
     private var tutorialHeader: some View {
@@ -1034,14 +1032,13 @@ struct FirstCaptureGuideView: View {
             pageTitle(
                 eyebrow: "PREPARE THIS IPHONE",
                 title: "Set up only what needs permission.",
-                detail: "Ideas, People, Reference, Today, shopping, and typing already work. iPhone asks you before voice or anything that can interrupt or locate you."
+                detail: "Ideas, People, Reference, Today, shopping, and typing already work. iPhone asks you before voice or anything that can interrupt you. Location is asked for only when you create a place reminder."
             )
 
             VStack(spacing: 11) {
                 voicePermissionRow
                 notificationPermissionRow
                 alarmPermissionRow
-                locationPermissionRow
             }
             .id(permissionRefreshToken)
 
@@ -1128,44 +1125,6 @@ struct FirstCaptureGuideView: View {
                 capability: .alarms,
                 action: {}
             )
-        }
-    }
-
-    private var locationPermissionRow: some View {
-        let monitor = LocationReminderMonitor.shared
-        let authorization = monitor.authorization
-        let step = monitor.authorizationStep
-        let isReady = step == .none
-        let status: String = switch step {
-        case .none: "Ready"
-        case .requestWhenInUse: "Not set up"
-        case .requestAlways: "One more step"
-        case .openSettings:
-            authorization.status == .whenInUse ? "Background off" : "Off in Settings"
-        }
-        let actionTitle: String? = switch step {
-        case .none: nil
-        case .requestWhenInUse: "Allow location"
-        case .requestAlways: "Enable in background"
-        case .openSettings: "Open Settings"
-        }
-        return permissionCard(
-            symbol: "location",
-            title: "Location reminders",
-            detail: "Used only for a place you ask about. Home, Work, and your location stay on this iPhone.",
-            status: status,
-            isReady: isReady,
-            actionTitle: actionTitle,
-            capability: .location
-        ) {
-            switch step {
-            case .requestWhenInUse, .requestAlways:
-                monitor.requestAuthorization()
-            case .openSettings:
-                openAppSettings()
-            case .none:
-                break
-            }
         }
     }
 
@@ -1512,7 +1471,6 @@ struct SpeakItReadinessView: View {
                         voiceRow
                         notificationRow
                         homeRow
-                        locationRow
                         alarmRow
                         if !isOnboarding {
                             captureAnywhereRow
@@ -1570,13 +1528,6 @@ struct SpeakItReadinessView: View {
             Task { await refresh() }
         }
         .onReceive(NotificationCenter.default.publisher(for: SavedPlaceStore.didChangeNotification)) { _ in
-            refreshToken = UUID()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: LocationReminderMonitor.authorizationDidChangeNotification
-            )
-        ) { _ in
             refreshToken = UUID()
         }
         .sheet(isPresented: $showsHomeSetup) {
@@ -1648,38 +1599,6 @@ struct SpeakItReadinessView: View {
             identifier: "home"
         ) {
             showsHomeSetup = true
-        }
-    }
-
-    private var locationRow: some View {
-        let monitor = LocationReminderMonitor.shared
-        let step = monitor.authorizationStep
-        let status: String = switch step {
-        case .none: "Allowed"
-        case .requestWhenInUse: "Not allowed"
-        case .requestAlways: "Foreground only"
-        case .openSettings: "Change in Settings"
-        }
-        let action: String? = switch step {
-        case .none: nil
-        case .requestWhenInUse: "Enable"
-        case .requestAlways: "Allow in background"
-        case .openSettings: "Open Settings"
-        }
-        return readinessRow(
-            symbol: "location",
-            title: "Location reminders",
-            detail: "Get arrival and departure reminders.",
-            status: status,
-            isReady: step == .none,
-            actionTitle: action,
-            identifier: "location"
-        ) {
-            switch step {
-            case .requestWhenInUse, .requestAlways: monitor.requestAuthorization()
-            case .openSettings: openAppSettings()
-            case .none: break
-            }
         }
     }
 
@@ -1796,20 +1715,45 @@ struct SpeakItReadinessView: View {
         }
     }
 
-    private enum RecommendedAction {
-        case voice, notifications, home, location, alarms, captureAnywhere
+    /// The steps the readiness screen can recommend, in the order they are
+    /// offered. Location authorization is deliberately absent: the When In Use
+    /// and Always prompts are raised only from the place-reminder blocker in
+    /// `ItemEditorView`, never at launch or during onboarding, which is what
+    /// the App Review notes and the privacy policy promise.
+    enum RecommendedAction: CaseIterable, Equatable {
+        case captureAnywhere, voice, notifications, home, alarms
+
+        static func next(
+            captureAnywhereReady: Bool,
+            voiceReady: Bool,
+            notificationsReady: Bool,
+            homeConfigured: Bool,
+            alarmsAuthorized: Bool
+        ) -> RecommendedAction? {
+            if !captureAnywhereReady { return .captureAnywhere }
+            if !voiceReady { return .voice }
+            if !notificationsReady { return .notifications }
+            if !homeConfigured { return .home }
+            if !alarmsAuthorized { return .alarms }
+            return nil
+        }
+    }
+
+    private var alarmsAreAuthorized: Bool {
+        if #available(iOS 26.0, *) {
+            return AlarmManager.shared.authorizationState == .authorized
+        }
+        return true
     }
 
     private var nextRecommendedAction: RecommendedAction? {
-        if !captureAnywhereIsReady { return .captureAnywhere }
-        if !voiceState.ready { return .voice }
-        if !notificationsAreReady { return .notifications }
-        if SavedPlaceStore.place(for: .home) == nil { return .home }
-        if LocationReminderMonitor.shared.authorizationStep != .none { return .location }
-        if #available(iOS 26.0, *), AlarmManager.shared.authorizationState != .authorized {
-            return .alarms
-        }
-        return nil
+        RecommendedAction.next(
+            captureAnywhereReady: captureAnywhereIsReady,
+            voiceReady: voiceState.ready,
+            notificationsReady: notificationsAreReady,
+            homeConfigured: SavedPlaceStore.place(for: .home) != nil,
+            alarmsAuthorized: alarmsAreAuthorized
+        )
     }
 
     private func performNextRecommendedAction() {
@@ -1821,10 +1765,6 @@ struct SpeakItReadinessView: View {
             if notificationAuthorization == .denied { openNotificationSettings() }
             else { Task { await requestNotifications() } }
         case .home: showsHomeSetup = true
-        case .location:
-            let monitor = LocationReminderMonitor.shared
-            if monitor.authorizationStep == .openSettings { openAppSettings() }
-            else { monitor.requestAuthorization() }
         case .alarms:
             if #available(iOS 26.0, *) {
                 if AlarmManager.shared.authorizationState == .denied { openAppSettings() }

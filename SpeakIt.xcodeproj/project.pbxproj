@@ -34,6 +34,11 @@
 		A1000000000000000000001A /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* WelcomeView.swift */; };
 		A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* ThoughtOrganizer.swift */; };
 		A1000000000000000000001C /* ReminderScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* ReminderScheduler.swift */; };
+		A100000000000000000001E0 /* ActivityLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E0 /* ActivityLedger.swift */; };
+		A100000000000000000001E1 /* HabitNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E1 /* HabitNotificationScheduler.swift */; };
+		A100000000000000000001E2 /* WeekRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E2 /* WeekRowView.swift */; };
+		A100000000000000000001E3 /* ActivityLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E3 /* ActivityLedgerTests.swift */; };
+		A100000000000000000001E4 /* MorningBriefTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E4 /* MorningBriefTests.swift */; };
 		A1000000000000000000E1 /* IntentConsolidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000E1 /* IntentConsolidation.swift */; };
 		A100000000000000000000FE /* ClauseStructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FE /* ClauseStructure.swift */; };
 		A100000000000000000000FD /* TranscriptProvenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000000FD /* TranscriptProvenance.swift */; };
@@ -116,6 +121,7 @@
 		A90000000000000000000003 /* CapturePerformance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000003 /* CapturePerformance.swift */; };
 		A90000000000000000000004 /* ReferralService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90000000000000000000004 /* ReferralService.swift */; };
 		AA0000000000000000000001 /* SpeakItUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000001 /* SpeakItUITests.swift */; };
+		AA0000000000000000000002 /* AppStoreScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB0000000000000000000003 /* AppStoreScreenshotTests.swift */; };
 		AC0000000000000000000101 /* CurrentLocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000101 /* CurrentLocationProvider.swift */; };
 		AC0000000000000000000102 /* PlaceSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000102 /* PlaceSetupView.swift */; };
 /* End PBXBuildFile section */
@@ -168,6 +174,7 @@
 
 /* Begin PBXFileReference section */
 		AB0000000000000000000001 /* SpeakItUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItUITests.swift; sourceTree = "<group>"; };
+		AB0000000000000000000003 /* AppStoreScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreScreenshotTests.swift; sourceTree = "<group>"; };
 		AB0000000000000000000002 /* SpeakItUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpeakItUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000001 /* SpeakItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakItApp.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -200,6 +207,11 @@
 		B10000000000000000000022 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* ThoughtOrganizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtOrganizer.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* ReminderScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderScheduler.swift; sourceTree = "<group>"; };
+		B100000000000000000001E0 /* ActivityLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLedger.swift; sourceTree = "<group>"; };
+		B100000000000000000001E1 /* HabitNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HabitNotificationScheduler.swift; sourceTree = "<group>"; };
+		B100000000000000000001E2 /* WeekRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekRowView.swift; sourceTree = "<group>"; };
+		B100000000000000000001E3 /* ActivityLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityLedgerTests.swift; sourceTree = "<group>"; };
+		B100000000000000000001E4 /* MorningBriefTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorningBriefTests.swift; sourceTree = "<group>"; };
 		B1000000000000000000E1 /* IntentConsolidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentConsolidation.swift; sourceTree = "<group>"; };
 		B100000000000000000000FE /* ClauseStructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClauseStructure.swift; sourceTree = "<group>"; };
 		B100000000000000000000FD /* TranscriptProvenance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptProvenance.swift; sourceTree = "<group>"; };
@@ -338,6 +350,7 @@
 			isa = PBXGroup;
 			children = (
 				AB0000000000000000000001 /* SpeakItUITests.swift */,
+				AB0000000000000000000003 /* AppStoreScreenshotTests.swift */,
 			);
 			path = SpeakItUITests;
 			sourceTree = "<group>";
@@ -424,6 +437,8 @@
 				B100000000000000000000F5 /* LocationIntentParser.swift */,
 				B100000000000000000000F6 /* LocationReminderMonitor.swift */,
 				B10000000000000000000024 /* ReminderScheduler.swift */,
+				B100000000000000000001E0 /* ActivityLedger.swift */,
+				B100000000000000000001E1 /* HabitNotificationScheduler.swift */,
 				B50000000000000000000003 /* ICloudSyncService.swift */,
 			);
 			path = Repositories;
@@ -487,6 +502,7 @@
 				B1000000000000000000000F /* View+ErrorAlert.swift */,
 				B10000000000000000000016 /* SpeakItTheme.swift */,
 				B10000000000000000000017 /* ListeningOrb.swift */,
+				B100000000000000000001E2 /* WeekRowView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -538,6 +554,8 @@
 				B100000000000000000001D0 /* DurabilityTests.swift */,
 				B100000000000000000000C6 /* ActionabilityTests.swift */,
 				B100000000000000000000C7 /* PersonMentionTests.swift */,
+				B100000000000000000001E3 /* ActivityLedgerTests.swift */,
+				B100000000000000000001E4 /* MorningBriefTests.swift */,
 			);
 			path = SpeakItTests;
 			sourceTree = "<group>";
@@ -838,6 +856,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000001 /* SpeakItUITests.swift in Sources */,
+				AA0000000000000000000002 /* AppStoreScreenshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -881,6 +900,9 @@
 				A1000000000000000000001A /* WelcomeView.swift in Sources */,
 				A1000000000000000000001B /* ThoughtOrganizer.swift in Sources */,
 				A1000000000000000000001C /* ReminderScheduler.swift in Sources */,
+				A100000000000000000001E0 /* ActivityLedger.swift in Sources */,
+				A100000000000000000001E1 /* HabitNotificationScheduler.swift in Sources */,
+				A100000000000000000001E2 /* WeekRowView.swift in Sources */,
 				A1000000000000000000E1 /* IntentConsolidation.swift in Sources */,
 				A100000000000000000000FE /* ClauseStructure.swift in Sources */,
 				A100000000000000000000FD /* TranscriptProvenance.swift in Sources */,
@@ -923,6 +945,8 @@
 				A100000000000000000000C2 /* SemanticCorpusDataA.swift in Sources */,
 				A100000000000000000000C6 /* ActionabilityTests.swift in Sources */,
 				A100000000000000000000C7 /* PersonMentionTests.swift in Sources */,
+				A100000000000000000001E3 /* ActivityLedgerTests.swift in Sources */,
+				A100000000000000000001E4 /* MorningBriefTests.swift in Sources */,
 				A100000000000000000000C3 /* SemanticCorpusDataB.swift in Sources */,
 				A1000000000000000000C4 /* SemanticCorpusDataC.swift in Sources */,
 				A1000000000000000000E2 /* SemanticCorpusDataE.swift in Sources */,
@@ -1004,7 +1028,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.0;
@@ -1020,7 +1044,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.0;
@@ -1071,20 +1095,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SpeakIt/SpeakIt.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakIt/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Speak It";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Speak It uses your microphone only while you are actively capturing a thought.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speak It converts what you say into text so it can be saved.";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio location";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1106,27 +1122,19 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SpeakIt/SpeakItRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakIt/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Speak It";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Speak It uses your location only to remind you when you arrive at or leave a place you asked about. Your location stays on your device.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Speak It uses your microphone only while you are actively capturing a thought.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Speak It converts what you say into text so it can be saved.";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio location";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.calvinwak.SpeakIt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SPEAKIT_ANALYTICS_KEY = "";
 				SPEAKIT_ICLOUD_SYNC_AVAILABLE = YES;
 				SPEAKIT_REFERRAL_API_URL = "";
-				SPEAKIT_SUMMER_SALE_ENABLED = YES;
+				SPEAKIT_SUMMER_SALE_ENABLED = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1168,7 +1176,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = SpeakItLiveActivity/SpeakItLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakItLiveActivity/Info.plist;
@@ -1190,7 +1198,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = SpeakItLiveActivity/SpeakItLiveActivity.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakItLiveActivity/Info.plist;
@@ -1212,7 +1220,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = SpeakItShareExtension/SpeakItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakItShareExtension/Info.plist;
@@ -1234,7 +1242,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = SpeakItShareExtension/SpeakItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LZZT2A38SD;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SpeakItShareExtension/Info.plist;

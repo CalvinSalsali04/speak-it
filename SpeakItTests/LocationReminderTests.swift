@@ -1348,6 +1348,17 @@ final class LocationReminderTests: XCTestCase {
                 "\(key) is missing — iOS will never show the location prompt without it"
             )
         }
+
+        // Region monitoring wakes the app through the system, so no `location`
+        // background mode is needed (`allowsBackgroundLocationUpdates` stays
+        // false). The project once carried an inert `INFOPLIST_KEY_UIBackgroundModes`
+        // of "audio location"; declaring an unused mode invites an App Review
+        // rejection, so the built bundle must only ever claim `audio`.
+        XCTAssertEqual(
+            bundle.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String],
+            ["audio"],
+            "UIBackgroundModes must come from SpeakIt/Info.plist and declare only audio"
+        )
     }
 
     // MARK: "Here" is a snapshot, not a pointer

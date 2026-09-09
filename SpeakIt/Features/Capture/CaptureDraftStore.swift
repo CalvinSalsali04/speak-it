@@ -384,6 +384,10 @@ enum CaptureRecoveryFailureKind: String, Codable, Sendable {
     case missingRecording
     case permissionRequired
     case recognizerUnavailable
+    /// The current language has no on-device speech model. Recovering would
+    /// send the recording to Apple's speech service, which every string that
+    /// names a protected recording promises never happens.
+    case onDeviceRecognitionUnavailable
     case timedOut
     case cancelled
     case storageUnavailable
@@ -428,7 +432,7 @@ extension CaptureRecoveryFailureKind {
     /// is expected to work.
     var stopsPromisingRecovery: Bool {
         switch self {
-        case .noSpeechDetected, .missingRecording:
+        case .noSpeechDetected, .missingRecording, .onDeviceRecognitionUnavailable:
             true
         default:
             false
@@ -477,6 +481,8 @@ enum CaptureRecoveryPresentation {
             "Speech Recognition access is needed to read this recording."
         case .recognizerUnavailable:
             "Speech Recognition is unavailable right now. The recording is still safe."
+        case .onDeviceRecognitionUnavailable:
+            "This language can’t be read on this iPhone, and Speak It won’t send the recording to Apple. It stays safe here."
         case .timedOut:
             "Recovery took too long to finish. The recording is still safe."
         case .cancelled:
@@ -498,6 +504,8 @@ enum CaptureRecoveryPresentation {
             "Speech Recognition is off"
         case .recognizerUnavailable:
             "Speech Recognition is unavailable"
+        case .onDeviceRecognitionUnavailable:
+            "Recovery would leave this iPhone"
         case .timedOut:
             "Recovery took too long"
         case .cancelled:
@@ -522,6 +530,8 @@ enum CaptureRecoveryPresentation {
             "Speak It needs Speech Recognition access to read this recording. Turn it on in Settings and try again, or type the thought yourself."
         case .recognizerUnavailable:
             "The recording is still safe. Try again in a moment, or type the thought yourself."
+        case .onDeviceRecognitionUnavailable:
+            "This language has no on-device speech model, so recovering the recording would send it to Apple’s speech service. It stays safe here instead. You can type the thought yourself, or delete the recording."
         case .storageUnavailable:
             "Nothing could be saved just now, and the recording is still safe. Try again in a moment."
         case .timedOut, .cancelled, .unknown:

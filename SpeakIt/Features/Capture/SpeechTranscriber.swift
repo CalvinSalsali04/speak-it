@@ -1124,24 +1124,27 @@ enum CaptureAudioRecovery {
         guard let recognizer = SFSpeechRecognizer(locale: .current), recognizer.isAvailable else {
             throw CaptureAudioRecoveryError.recognizerUnavailable
         }
+        // A protected recording never leaves this iPhone. Live capture may let
+        // iOS use its network recognizer (the privacy policy says so), but the
+        // capture screen, the Today section, and its footer all tell the
+        // person these recordings stay here. A locale with no on-device model
+        // therefore refuses, with the reason, instead of uploading the file.
+        guard recognizer.supportsOnDeviceRecognition else {
+            throw CaptureAudioRecoveryError.onDeviceRecognitionUnavailable
+        }
 
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
         request.contextualStrings = SpeechVocabularyStore.contextualPhrases
-        // Keep the protected recording on the device whenever this iPhone can
-        // read it locally.
-        //
         // The live path sets this false deliberately, because a locale asset
         // may not have finished downloading and the person is waiting on the
         // very first tap. Neither argument applies here: the audio is already
         // on disk, so a slower local model costs nothing anyone can feel, and
-        // recovery can run unattended at launch. Meanwhile the screen above it
-        // says "The temporary recording is safe on this iPhone", and the Today
-        // section under it says these recordings "stay only on this iPhone" —
-        // so uploading the file made three separate strings untrue at the
-        // moment they were on screen.
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        // recovery can run unattended at launch. The guard above has already
+        // established that a local model exists, so this is never a request
+        // the recognizer cannot honour.
+        request.requiresOnDeviceRecognition = true
 
         let completion = AudioRecoveryCompletion()
         return try await withTaskCancellationHandler {
@@ -1272,6 +1275,7 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
     case missingRecording
     case permissionRequired
     case recognizerUnavailable
+    case onDeviceRecognitionUnavailable
     case timedOut
     case cancelled
 
@@ -1283,6 +1287,8 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
             "Speech Recognition access is needed to recover this recording."
         case .recognizerUnavailable:
             "Speech Recognition is temporarily unavailable."
+        case .onDeviceRecognitionUnavailable:
+            "This language has no on-device speech model, so recovering the recording would send it to Apple’s speech service."
         case .timedOut:
             "Recovery took too long. Your recording is still safe."
         case .cancelled:
@@ -1295,6 +1301,7 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
         case .missingRecording: .missingRecording
         case .permissionRequired: .permissionRequired
         case .recognizerUnavailable: .recognizerUnavailable
+        case .onDeviceRecognitionUnavailable: .onDeviceRecognitionUnavailable
         case .timedOut: .timedOut
         case .cancelled: .cancelled
         }

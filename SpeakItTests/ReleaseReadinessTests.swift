@@ -34,6 +34,55 @@ final class ReleaseReadinessTests: XCTestCase {
         container = nil
     }
 
+    // MARK: - Location is never requested during onboarding
+
+    /// App Review is told that location access is requested only when a
+    /// person creates a place reminder, never at launch and never during
+    /// onboarding. The readiness screen used to offer a "Location reminders"
+    /// card that escalated When In Use to Always, which made the notes untrue.
+    /// The recommendation ladder now has no location step at all, and the
+    /// order of the remaining steps is pinned so the primary button keeps
+    /// walking the same path.
+    func testReadinessNeverRecommendsLocationAuthorization() {
+        typealias Action = SpeakItReadinessView.RecommendedAction
+        XCTAssertEqual(
+            Action.allCases,
+            [.captureAnywhere, .voice, .notifications, .home, .alarms],
+            "location must not appear anywhere in the readiness ladder"
+        )
+
+        XCTAssertEqual(
+            Action.next(captureAnywhereReady: false, voiceReady: false, notificationsReady: false,
+                        homeConfigured: false, alarmsAuthorized: false),
+            .captureAnywhere
+        )
+        XCTAssertEqual(
+            Action.next(captureAnywhereReady: true, voiceReady: false, notificationsReady: false,
+                        homeConfigured: false, alarmsAuthorized: false),
+            .voice
+        )
+        XCTAssertEqual(
+            Action.next(captureAnywhereReady: true, voiceReady: true, notificationsReady: false,
+                        homeConfigured: false, alarmsAuthorized: false),
+            .notifications
+        )
+        XCTAssertEqual(
+            Action.next(captureAnywhereReady: true, voiceReady: true, notificationsReady: true,
+                        homeConfigured: false, alarmsAuthorized: false),
+            .home
+        )
+        XCTAssertEqual(
+            Action.next(captureAnywhereReady: true, voiceReady: true, notificationsReady: true,
+                        homeConfigured: true, alarmsAuthorized: false),
+            .alarms,
+            "with Home saved, the next step is alarms; location authorization is not consulted"
+        )
+        XCTAssertNil(
+            Action.next(captureAnywhereReady: true, voiceReady: true, notificationsReady: true,
+                        homeConfigured: true, alarmsAuthorized: true)
+        )
+    }
+
     // MARK: - A storage failure is explained, not quoted
 
     /// Every repository failure reaches one alert. A SwiftData or Cocoa error's
@@ -220,5 +269,57 @@ final class ReleaseReadinessTests: XCTestCase {
 
         XCTAssertFalse(MemorySearch.matches(item, query: ""))
         XCTAssertFalse(MemorySearch.matches(item, query: "   "))
+    }
+
+    // MARK: - The privacy manifest declares what analytics sends
+
+    /// App Review compares the manifest against what leaves the device.
+    /// Analytics sends capture latency (`capture_performance`,
+    /// `speech_capture_quality`) and error categories (`capture_failed`),
+    /// which Apple files under Performance Data and Other Diagnostic Data.
+    /// The manifest is read from the built app so a dropped Resources-phase
+    /// entry fails here too, not in App Review.
+    func testTheBuiltAppsPrivacyManifestDeclaresDiagnosticAnalytics() throws {
+        // The events the declarations answer for. Removing them from the
+        // vocabulary is the only way the manifest may shrink again.
+        let failure = SpeakItAnalyticsEvent.captureFailed(source: .voice, category: "storage")
+        XCTAssertEqual(failure.name, "capture_failed")
+        XCTAssertEqual(failure.properties["error_category"] as? String, "storage")
+        XCTAssertTrue(SpeakItAnalyticsEvent.allowedPropertyKeys.isSuperset(of: [
+            "capture_total_ms", "semantic_parsing_ms", "persistence_ms", "error_category"
+        ]))
+
+        // Hosted test bundle, so `Bundle.main` is the app under test.
+        let url = try XCTUnwrap(
+            Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"),
+            "PrivacyInfo.xcprivacy is not in the built app bundle"
+        )
+        let plist = try PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil)
+        let manifest = try XCTUnwrap(plist as? [String: Any])
+        XCTAssertEqual(manifest["NSPrivacyTracking"] as? Bool, false)
+        XCTAssertEqual(manifest["NSPrivacyTrackingDomains"] as? [String], [])
+
+        let collected = try XCTUnwrap(manifest["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        var byType: [String: [String: Any]] = [:]
+        for entry in collected {
+            let type = try XCTUnwrap(entry["NSPrivacyCollectedDataType"] as? String)
+            XCTAssertNil(byType[type], "\(type) is declared twice")
+            byType[type] = entry
+        }
+
+        for type in [
+            "NSPrivacyCollectedDataTypeProductInteraction",
+            "NSPrivacyCollectedDataTypePerformanceData",
+            "NSPrivacyCollectedDataTypeOtherDiagnosticData"
+        ] {
+            let entry = try XCTUnwrap(byType[type], "\(type) is not declared")
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeLinked"] as? Bool, false, type)
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeTracking"] as? Bool, false, type)
+            XCTAssertEqual(
+                entry["NSPrivacyCollectedDataTypePurposes"] as? [String],
+                ["NSPrivacyCollectedDataTypePurposeAnalytics"],
+                type
+            )
+        }
     }
 }

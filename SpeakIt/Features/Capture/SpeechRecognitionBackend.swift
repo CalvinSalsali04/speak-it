@@ -74,6 +74,12 @@ final class LegacyRecognizerBackend: SpeechRecognitionBackend {
         // Let iOS choose between its on-device and network recognizers.
         // Hard-requiring the local model can fail when a locale's asset has
         // not finished downloading, even though the recognizer reports support.
+        //
+        // This is the one place Speak It lets audio leave the iPhone, and it
+        // is what the privacy policy and App Store description disclose: live
+        // dictation may be processed by Apple's speech service. Nothing in the
+        // app may call live recognition "on-device", and the protected
+        // recording behind `CaptureAudioRecovery` must never take this path.
         request.requiresOnDeviceRecognition = false
         requestBox.install(request)
 
