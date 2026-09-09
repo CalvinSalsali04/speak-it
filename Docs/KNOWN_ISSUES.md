@@ -125,6 +125,14 @@ wall-clock dependence at first (passed at 02:35, failed at 03:38); it was not.
 
 Standard-size Today and Memory layouts now have clean-state simulator visual coverage. A dark-mode walk of Welcome, Today, Account & Settings and the Capture Anywhere method list on an iPhone 17 Pro simulator (2026-09-03) found and fixed two dark-only defects — an on switch with an invisible knob, and the selected method row's icon halo — and confirmed the new wordmark and icon in both appearances. VoiceOver, the largest accessibility Dynamic Type sizes, rotation policy, and a complete dark-mode pass still require hands-on device QA. The implementation uses semantic system controls and colours, but automated unit tests cannot replace that pass.
 
+## `accessibilityHidden` removes nothing on iOS 26.5
+
+Measured on 2026-08-31 against the accessibility tree XCUITest reads, on the iOS 26.5 simulator: `.accessibilityHidden(true)` takes elements out of nothing. Not a container of rows, not a lone `Text`. `.accessibilityElement(children: .ignore)` and zero opacity do not remove them either. The modifier is reaching the view — an `.accessibilityLabel` added to the same chain in the same build changed the element's label while the element stayed in the tree — it simply has no effect on membership.
+
+Today's collapsed disclosure sections were fixed by not building their rows while closed (`TodayDisclosureContent` in `SpeakIt/Features/Today/TodayView.swift`), which is the only mechanism observed to work. `testTodayDisclosureOpensAndClosesWithoutLeakingHiddenRows` in `SpeakItUITests/SpeakItUITests.swift` asserts a hidden row's button and title both leave the tree on collapse and return on expand.
+
+The consequence elsewhere has not been measured. Every remaining `.accessibilityHidden(true)` in the app hides a decorative image — `CapturedItemRow`, `ShoppingListView`, `PlaceSetupView`, `ItemEditorView`, `RootView` — and on this OS none of them is likely to be doing what it says. XCUITest and VoiceOver read the same tree but are not the same client, so whether these images are actually *spoken* needs the hands-on VoiceOver pass, not another automated run. Nothing hidden this way carries an action, so the risk is verbosity rather than a wrong tap.
+
 ## Clarification reasons are inferred, not recorded
 
 `CapturedItem.needsClarification` is a single `Bool`, so the reason extraction had at capture time is discarded. `ThoughtOrganizer` knows when it wanted a reminder and could not parse a time, `ThoughtExtractor` knows when it kept a capture whole because splitting it looked unsafe, and the on-device model path knows when it was simply unconfident — all three collapse into one flag.

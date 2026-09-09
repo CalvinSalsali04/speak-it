@@ -7,6 +7,12 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- A collapsed Today disclosure section (Coming up, No date) no longer leaves
+  its rows in the accessibility tree. `.accessibilityHidden` is a no-op on
+  iOS 26.5, so a closed section's rows stayed reachable as inert buttons to
+  VoiceOver and XCUITest; `TodayDisclosureContent` now builds rows only while
+  expanded, keeps the measured height so later opens still animate, and
+  honours Reduce Motion.
 - Build 18. "Every time I sneeze" and "as soon as I can" no longer crash the
   app at save time: a fronted condition with no body ran a closed range
   backwards in the rules pipeline, on every capture path.
