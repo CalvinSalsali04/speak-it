@@ -2,6 +2,14 @@ import Foundation
 import Security
 import StoreKit
 
+/// Compare like-for-like localized prices before recommending a billing period.
+enum SubscriptionPricing {
+    static func annualSavesMoney(annual: Decimal, monthly: Decimal,
+                                 annualCurrency: String, monthlyCurrency: String) -> Bool {
+        annualCurrency == monthlyCurrency && annual > 0 && monthly > 0 && annual < monthly * 12
+    }
+}
+
 /// Ten free captures is a per-person allowance, so the count has to outlive a
 /// delete-and-reinstall. `UserDefaults` does not survive one; a Keychain item
 /// does. Both are written and the higher of the two always wins, so the number
@@ -455,8 +463,17 @@ final class SubscriptionStore: ObservableObject {
         products.first { $0.id == Self.monthlyProductID }
     }
 
+    var annualIsBestValue: Bool {
+        guard let annual = annualProduct, let monthly = monthlyProduct else { return false }
+        return SubscriptionPricing.annualSavesMoney(
+            annual: annual.price, monthly: monthly.price,
+            annualCurrency: annual.priceFormatStyle.currencyCode,
+            monthlyCurrency: monthly.priceFormatStyle.currencyCode
+        )
+    }
+
     var recommendedProduct: Product? {
-        annualProduct ?? monthlyProduct
+        annualIsBestValue ? annualProduct : (monthlyProduct ?? annualProduct)
     }
 
     func prepare() async {

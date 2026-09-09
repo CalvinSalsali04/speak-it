@@ -345,6 +345,7 @@ struct RootView: View {
                 ))
             }
             handleQuickAction(quickActionRouter.pendingRequest)
+            handleTodayRequest(quickActionRouter.pendingTodayRequest)
             // A moment earned outside the app — a Back Tap capture, a shared
             // thought imported at activation — is already pending when this
             // view first appears, and `onChange` never fires for a value that
@@ -464,6 +465,9 @@ struct RootView: View {
         .onChange(of: quickActionRouter.pendingRequest) { _, request in
             handleQuickAction(request)
         }
+        .onChange(of: quickActionRouter.pendingTodayRequest) { _, request in
+            handleTodayRequest(request)
+        }
         .onChange(of: selectedDestination) { _, destination in
             SpeakItAnalytics.track(.screenViewed(
                 destination == .today ? .today : .memory
@@ -471,6 +475,12 @@ struct RootView: View {
         }
         .onOpenURL(perform: handleDeepLink)
         .onChange(of: scenePhase) { _, phase in
+            // Going to the background is when the store is most recently
+            // right, so the morning brief is re-planned from it here as well
+            // as on the way back in.
+            if phase == .background {
+                repository?.refreshMorningBrief()
+            }
             guard phase == .active else { return }
             // A moment whose sheet never reached the screen — SwiftUI refusing
             // to present over something a descendant screen already had up —
@@ -495,6 +505,9 @@ struct RootView: View {
             // set from the saved items on every foreground repairs all of them
             // without the app needing to know which one happened.
             repository?.reconcilePendingReminders()
+            // The habit notifications get the same self-healing pass, and this
+            // foreground is also what answers a brief that fired this morning.
+            repository?.refreshMorningBrief()
             // The same argument, for the same reason, against CoreLocation:
             // regions can be orphaned by an edit, stranded by a delete that
             // happened while the app was closed, invalidated by a changed Home
@@ -1172,6 +1185,14 @@ struct RootView: View {
             sharedImportNotice = "Practice examples couldn’t be removed yet"
             return false
         }
+    }
+
+    private func handleTodayRequest(_ request: UUID?) {
+        guard let request else { return }
+        if selectedDestination == .today { popToRootSignal += 1 }
+        selectedDestination = .today
+        isDockVisible = true
+        quickActionRouter.consumeTodayRequest(request)
     }
 
     private func handleQuickAction(_ request: QuickActionRouter.Request?) {

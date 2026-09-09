@@ -85,6 +85,28 @@ final class PersonMentionTests: XCTestCase {
         }
     }
 
+    /// The recipient of a transfer is who the errand is with, whoever owns the
+    /// thing handed over; reported speech that carries an obligation names the
+    /// person inside it; "is called" names somebody and phones nobody; and a
+    /// thing rescheduled to a clock is not a person who moved.
+    func testRecipientsReportedObligationsAndNamingResolveTheRightPerson() {
+        let expected: [(String, String?)] = [
+            ("Give Mom's recipe to Catherine", "Catherine"),
+            ("Send Alex's invoice to Priya", "Priya"),
+            ("Return Priya's book to Sam", "Sam"),
+            ("Bring the laptop to work", nil),
+            ("Remember Catherine said I need to call Alex Friday", "Alex"),
+            ("Mom told me to call Dr. Okonkwo", "Dr. Okonkwo"),
+            ("Priya said I should call the landlord", "Priya"),
+            ("Remember Catherine's husband is called David", "Catherine"),
+            ("Standup moved from 9 to 9:30", nil),
+            ("Sarah moved to Boston", "Sarah"),
+        ]
+        for (utterance, name) in expected {
+            XCTAssertEqual(person(utterance), name, utterance)
+        }
+    }
+
     /// Today and Memory read one resolver, so the same sentence cannot name
     /// somebody on one surface and nobody on the other.
     func testTodayAndMemoryReadTheSameResolver() {
@@ -391,5 +413,30 @@ final class PersonMentionTests: XCTestCase {
         XCTAssertEqual(person("remind me to call Miles tomorrow"), "Miles")
         XCTAssertEqual(person("ask Agnes about the booking"), "Agnes")
         XCTAssertEqual(person("text Jess about dinner"), "Jess")
+    }
+
+    /// A transport verb carries a person as readily as a parcel, and the
+    /// parcel is the common case, so the object counts as a person only with
+    /// kinship or the tagger's personal-name reading behind it.
+    func testTransportVerbsCarryPeopleNotParcels() {
+        XCTAssertEqual(person("Pick up Alex from school"), "Alex")
+        XCTAssertEqual(person("pick up mom at the airport"), "Mom")
+        XCTAssertEqual(person("Drop off Sam at practice"), "Sam")
+        XCTAssertEqual(person("Collect Dad from the station"), "Dad")
+        XCTAssertEqual(person("Get Sam from the airport"), "Sam")
+        XCTAssertNil(person("pick up milk"))
+        XCTAssertNil(person("Pick up Tylenol at Shoppers"))
+        XCTAssertNil(person("Get milk from the store"))
+        XCTAssertNil(person("pick up the dry cleaning"))
+    }
+
+    /// "Let Priya know" is anchored on its "know", and the anchor is where the
+    /// name stops. Dictation writes the name in lowercase, the lowercase path
+    /// lets a second lowercase word join the name, and "know" was that word:
+    /// "let priya know the meeting moved" filed a person called Priya Know.
+    func testTheAnchorOfLetSomebodyKnowIsNotPartOfTheName() {
+        XCTAssertEqual(person("let priya know the meeting moved"), "Priya")
+        XCTAssertEqual(person("Let Priya know the trip is cancelled"), "Priya")
+        XCTAssertNil(person("let me know when you land"))
     }
 }

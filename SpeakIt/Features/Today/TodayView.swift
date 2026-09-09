@@ -132,6 +132,9 @@ struct TodayView: View {
     ) private var captureSessions: [CaptureSession]
     @Query(sort: \CaptureSession.createdAt, order: .reverse)
     private var allCaptureSessions: [CaptureSession]
+    /// Derived from the store on appear, on foreground, on save, on
+    /// completion, and at the day change; never stored.
+    @State private var weekActivity: WeekActivity?
 
     let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
@@ -296,36 +299,10 @@ struct TodayView: View {
         ShoppingListProjection.openItems(in: allItems)
     }
 
-    /// One named list, summarized for a Today card. The timing item is the
-    /// open entry with the earliest fire moment — the date that decides which
-    /// section the list belongs in, exactly the way a task's own date does.
-    private struct ShoppingGroupSummary: Identifiable {
-        let name: String
-        let count: Int
-        let timingItem: CapturedItem?
-        var id: String { name }
-    }
+    private typealias ShoppingGroupSummary = ShoppingListProjection.GroupSummary
 
-    /// Derived per body pass from the already-loaded items plus the cached
-    /// group store — dictionary lookups, never a parse.
     private var shoppingGroupSummaries: [ShoppingGroupSummary] {
-        var order: [String] = []
-        var buckets: [String: [CapturedItem]] = [:]
-        for item in shoppingItems {
-            let name = ShoppingGroupStore.group(for: item.id) ?? ShoppingGroupStore.fallbackGroup
-            if buckets[name] == nil { order.append(name) }
-            buckets[name, default: []].append(item)
-        }
-        return order.map { name in
-            let items = buckets[name] ?? []
-            let timed = items
-                .compactMap { item -> (item: CapturedItem, date: Date)? in
-                    guard let date = item.reminderDate ?? item.dueDate else { return nil }
-                    return (item, date)
-                }
-                .min { $0.date < $1.date }
-            return ShoppingGroupSummary(name: name, count: items.count, timingItem: timed?.item)
-        }
+        ShoppingListProjection.groupSummaries(in: allItems)
     }
 
     private func shoppingGroups(
@@ -441,6 +418,8 @@ struct TodayView: View {
                 } else {
                     if !overdue.isEmpty || upNext != nil || !dueNowShoppingGroups.isEmpty {
                         nowSection(overdue: overdue, upNext: upNext, dueNowShoppingGroups: dueNowShoppingGroups)
+                    } else {
+                        allClearLine
                     }
 
                     if !remainingToday.isEmpty {
@@ -567,6 +546,7 @@ struct TodayView: View {
         }
         .onAppear {
             referenceNow = .now
+            refreshActivity()
             reloadRecoveryAudioDrafts()
             reportsDockVisible = true
             onDockVisibilityChange(true)
@@ -584,6 +564,15 @@ struct TodayView: View {
         }
         .onReceive(minuteTimer) { date in
             referenceNow = date
+        }
+        .onChange(of: referenceNow) { previous, current in
+            // The dots move at midnight, not when the clock ticks.
+            if !Calendar.autoupdatingCurrent.isDate(previous, inSameDayAs: current) {
+                refreshActivity()
+            }
+        }
+        .onChange(of: allCaptureSessions.count) { _, _ in
+            refreshActivity()
         }
         // Three signals, because none of them covers the others. The minute
         // timer only runs while the app is awake; `NSCalendarDayChanged` is the
@@ -606,6 +595,7 @@ struct TodayView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             referenceNow = .now
+            refreshActivity()
             // Notification permission can be revoked in Settings while Speak It
             // is suspended. Re-reading it here is what turns the permission card
             // back on for reminders that are saved but can no longer alert.
@@ -627,9 +617,16 @@ struct TodayView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(referenceNow.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
-                    .font(SpeakItTypography.eyebrow)
-                    .foregroundStyle(Color.speakMuted)
+                // The week's dots share the eyebrow line with the date, so the
+                // habit loop costs the first action on Today no height at all.
+                HStack(spacing: 12) {
+                    Text(referenceNow.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                        .font(SpeakItTypography.eyebrow)
+                        .foregroundStyle(Color.speakMuted)
+                    if let weekActivity, weekActivity.isVisible {
+                        WeekRowView(activity: weekActivity)
+                    }
+                }
 
                 Text("Today")
                     .font(SpeakItTypography.screenTitle)
@@ -656,6 +653,43 @@ struct TodayView: View {
             .accessibilityLabel("Account and settings")
             .accessibilityIdentifier("today.account")
         }
+    }
+
+    // MARK: Habit loop
+
+    /// Recomputes the week's dots from what is already loaded. Cheap: two
+    /// date maps over arrays the screen holds anyway, and the result only
+    /// changes state when it differs.
+    private func refreshActivity() {
+        let calendar = Calendar.autoupdatingCurrent
+        let days = ActivityLedger.activeDays(
+            captureDates: allCaptureSessions.map(\.createdAt),
+            completionDates: allItems.compactMap(\.completedAt),
+            calendar: calendar
+        )
+        let activity = ActivityLedger.weekActivity(activeDays: days, now: referenceNow, calendar: calendar)
+        if activity != weekActivity {
+            weekActivity = activity
+        }
+        if activity.isVisible, HabitDefaults.shouldReportWeekRow(on: referenceNow, calendar: calendar) {
+            SpeakItAnalytics.track(.weekRowShown(activeDays: activity.activeDayCount))
+        }
+    }
+
+    /// Now holds nothing: the calmest reward there is, because it is the
+    /// absence of work. Shown only when the day is clear but the app is not
+    /// empty; an empty app gets the first-run copy instead.
+    private var allClearLine: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("All clear for today.")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+            Text("Nothing due before the day ends.")
+                .font(SpeakItTypography.sectionDetail)
+                .foregroundStyle(Color.speakMuted)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today.allClear")
     }
 
     /// The ambient card is the quietest of the three Pro surfaces, and it is
@@ -1359,7 +1393,20 @@ struct TodayView: View {
 
     private func prioritizedBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
         if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
-        return (lhs.dueDate ?? .distantFuture) < (rhs.dueDate ?? .distantFuture)
+        let leftDate = lhs.dueDate ?? .distantFuture
+        let rightDate = rhs.dueDate ?? .distantFuture
+        if leftDate != rightDate { return leftDate < rightDate }
+        return olderFirst(lhs, rhs)
+    }
+
+    /// The tie-break every Today ordering ends on. `sorted` is not stable, so
+    /// two undated rows of equal priority could swap places from one render
+    /// to the next; the older capture staying above the newer one is what a
+    /// person expects of a list they are working down, and the identifier
+    /// keeps two captures made in the same instant from trading places.
+    private func olderFirst(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 
     private func chronologicalBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
@@ -1376,7 +1423,8 @@ struct TodayView: View {
             return !lhs.isDateOnly
         }
         if leftDate != rightDate { return leftDate < rightDate }
-        return lhs.priority > rhs.priority
+        if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+        return olderFirst(lhs, rhs)
     }
 
     private func handleDockScroll(_ scrolled: CGFloat) {
@@ -1423,6 +1471,7 @@ struct TodayView: View {
             }
             SpeakItAnalytics.track(.taskCompletionChanged(completed: completed))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            refreshActivity()
             if offersUndo { showCompletionUndo(for: item) }
         } catch {
             errorMessage = error.localizedDescription
@@ -2286,8 +2335,10 @@ struct ReminderSettingsView: View {
         alertsEnabled = settings.alertSetting == .enabled
         soundsEnabled = settings.soundSetting == .enabled
         scheduledSummaryEnabled = settings.scheduledDeliverySetting == .enabled
+        // Reminders only; the morning brief is a habit notification and is
+        // counted nowhere near them.
         pendingCount = await center.pendingNotificationRequests()
-            .filter { $0.identifier.hasPrefix("SpeakIt.") }
+            .filter { $0.identifier.hasPrefix("SpeakIt.") && !HabitNotificationScheduler.isHabitIdentifier($0.identifier) }
             .count
 
         accessState = switch settings.authorizationStatus {

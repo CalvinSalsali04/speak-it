@@ -54,6 +54,11 @@ enum AnalyticsPermissionCapability: String, Sendable {
     case location
 }
 
+enum AnalyticsBriefSource: String, Sendable {
+    case settings
+    case autoStop = "auto_stop"
+}
+
 enum AnalyticsSearchResultBucket: String, Sendable {
     case none
     case oneToFive = "1_to_5"
@@ -100,6 +105,9 @@ enum SpeakItAnalyticsEvent: Sendable {
     case taskCompletionChanged(completed: Bool)
     case memoryCollectionOpened(collection: String)
     case memorySearchPerformed(results: AnalyticsSearchResultBucket)
+    case weekRowShown(activeDays: Int)
+    case morningBriefEnabled(source: AnalyticsBriefSource)
+    case morningBriefDisabled(source: AnalyticsBriefSource)
 
     var name: String {
         switch self {
@@ -132,6 +140,9 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .taskCompletionChanged: "task_completion_changed"
         case .memoryCollectionOpened: "memory_collection_opened"
         case .memorySearchPerformed: "memory_search_performed"
+        case .weekRowShown: "week_row_shown"
+        case .morningBriefEnabled: "morning_brief_enabled"
+        case .morningBriefDisabled: "morning_brief_disabled"
         }
     }
 
@@ -202,6 +213,10 @@ enum SpeakItAnalyticsEvent: Sendable {
             ["collection": Self.safeCollection(collection)]
         case .memorySearchPerformed(let results):
             ["result_bucket": results.rawValue]
+        case .weekRowShown(let activeDays):
+            ["active_days": min(7, max(0, activeDays))]
+        case .morningBriefEnabled(let source), .morningBriefDisabled(let source):
+            ["brief_source": source.rawValue]
         }
     }
 
@@ -209,7 +224,7 @@ enum SpeakItAnalyticsEvent: Sendable {
         "plan", "screen", "entry", "mode", "source", "item_count",
         "needs_review_count", "error_category", "free_captures_used",
         "context", "has_pro", "completed", "collection", "result_bucket",
-        "tutorial_step", "capability",
+        "tutorial_step", "capability", "active_days", "brief_source",
         "capture_kind", "capture_ready_ms", "speech_end_detection_ms",
         "transcription_ms", "semantic_parsing_ms", "temporal_resolution_ms",
         "persistence_ms", "render_ms", "capture_total_ms", "pipeline_complete",

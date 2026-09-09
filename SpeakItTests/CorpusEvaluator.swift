@@ -174,7 +174,11 @@ struct CorpusEvaluator {
         } else {
             raw = candidate.sourceQuote
         }
-        return ThoughtTitleFormatter.polished(raw, itemType: candidate.organization.itemType)
+        return ThoughtTitleFormatter.polished(
+            raw,
+            itemType: candidate.organization.itemType,
+            personName: candidate.organization.personName
+        )
     }
 
     /// An operation target is the person's own words, so a rendering that
@@ -391,6 +395,11 @@ extension CorpusEvaluator {
             (.prohibitions, SemanticCorpusP.prohibitions),
             (.coordinationContext, SemanticCorpusQ.coordinationContext),
             (.coordinationContext, SemanticCorpusQ.coordinationGuards),
+            (.coordinationContext, SemanticCorpusR.lowercasedLists),
+            (.people, SemanticCorpusR.transportedPeople),
+            (.corrections, SemanticCorpusR.factCorrections),
+            (.multipleThoughts, SemanticCorpusR.elidedVerbTitles),
+            (.coordinationContext, SemanticCorpusR.coordinatedRecipients),
             (.actionOwnership, SemanticCorpusQ.actionOwnership),
             (.actionOwnership, SemanticCorpusQ.actionOwnershipGuards),
             (.unsettledTime, SemanticCorpusQ.unsettledTime),
@@ -401,6 +410,10 @@ extension CorpusEvaluator {
             (.internationalClock, SemanticCorpusR.internationalClockGuards),
             (.calendarIdioms, SemanticCorpusR.calendarIdioms),
             (.calendarIdioms, SemanticCorpusR.calendarIdiomGuards),
+            (.frontedAdjuncts, SemanticCorpusR.frontedAdjuncts),
+            (.frontedAdjuncts, SemanticCorpusR.frontedAdjunctGuards),
+            (.frontedConditions, SemanticCorpusR.frontedConditions),
+            (.frontedConditions, SemanticCorpusR.frontedConditionGuards),
         ]
     }
 

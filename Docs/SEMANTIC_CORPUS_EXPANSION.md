@@ -237,7 +237,11 @@ exclusion, so it now asks instead.
 
 ## The ten remaining disagreements
 
-None gate the release. Each was reviewed individually for user consequence:
+None gated the release at the time. Each was reviewed individually for user
+consequence. *Update 2026-09-08:* the Catherine, Mom's recipe, prescription,
+invoice, standup and book club rows were decided in code and are gated now
+(`Docs/DECISIONS.md`, "The arguable corpus cases are decided"); the table is
+kept as the record of the review.
 
 | Case | Disagreement | Judgement |
 | --- | --- | --- |

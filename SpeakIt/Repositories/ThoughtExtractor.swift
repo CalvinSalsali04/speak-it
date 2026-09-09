@@ -347,6 +347,16 @@ enum RuleBasedThoughtExtractor {
         #"(?:\#(ActionabilityReader.actionVerb)|remember|save|note|delete"#
         + #"|remind\s+me\s+\#(reminderComplement)|again\s+in)\b"#
     private static let triggerLeadPattern = #"(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\s+(?:i|we)\b"#
+    /// A short adjunct that can stand between a conjunction and the verb of
+    /// the instruction it fronts: "book the dentist **and before dinner** call
+    /// Mom", "**and tomorrow** call Mom", "**and at the store** buy milk". The
+    /// coordination boundary is the "and", not the verb — cutting at the verb
+    /// left a row titled "Book the dentist and before dinner" that carried the
+    /// second errand's date. Bounded to a few words so it can never reach
+    /// across a clause; the verb it has to end on is `actionLeadPattern`.
+    private static let frontedLeadPattern =
+        #"(?:(?:today|tomorrow|tonight|(?:this|next)\s+\w+"#
+        + #"|(?:on|at|in|by|before|after|during|from|until|till|around|near|within)\s+(?:the\s+)?(?:\S+\s+){0,3}?\S+)\s+)"#
 
     static func extract(
         _ transcript: String,
@@ -796,7 +806,9 @@ enum RuleBasedThoughtExtractor {
         in title: String
     ) -> [(verb: String, product: String)] {
         let body = normalize(title.replacingOccurrences(
-            of: #"(?i)^(?:i|we)\s+(?:need|want|could\s+use)\s+(?!to\b)|^(?:we|i)'?re\s+out\s+of\s+|^(?:we|i)\s+are\s+out\s+of\s+|^need\s+(?!to\b)|^(?:grocery|shopping)\s+list\s*[:,]?\s*|^groceries\s*[:,]?\s*"#,
+            // A day or a store between the lead and the colon is context:
+            // "groceries tonight: eggs, milk", "Costco run tomorrow: …".
+            of: #"(?i)^(?:i|we)\s+(?:need|want|could\s+use)\s+(?!to\b)|^(?:we|i)'?re\s+out\s+of\s+|^(?:we|i)\s+are\s+out\s+of\s+|^need\s+(?!to\b)|^(?:(?:grocery|shopping)\s+list|groceries|\S+\s+run)(?:\s+(?:tonight|today|tomorrow|this\s+\w+|on\s+\w+|after\s+work))?\s*[:,]?\s*"#,
             with: "",
             options: .regularExpression
         )).trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
@@ -1001,8 +1013,17 @@ enum RuleBasedThoughtExtractor {
             } else {
                 analysisText = part
             }
+            // The verb the conjunct left out is still the verb the person
+            // said, so the row is titled with it: "Call Mom tomorrow and Alex
+            // Friday" used to file a second row titled "Alex Friday", which
+            // reads as a fact about Alex rather than the call it is. The
+            // spoken quote keeps the conjunct as spoken; only the title and
+            // the analysis carry the verb, and inherited day context stays
+            // out of the title as it does everywhere else.
+            var suggestedTitle: String?
             if let sharedVerb, part != contentParts[0], sharesVerb(part) {
                 analysisText = normalize("\(sharedVerb) \(analysisText)")
+                suggestedTitle = normalize("\(sharedVerb) \(part)")
             }
             // "Call Alex and Alexa tomorrow at five" states the shared time
             // once, at the end. The clause carrying it is the *last* one, so
@@ -1010,11 +1031,20 @@ enum RuleBasedThoughtExtractor {
             // the first call was scheduled for no time at all.
             if part == contentParts[0],
                let last = contentParts.last,
-               contentParts.count > 1,
-               sharesVerb(last),
-               let trailing = trailingTemporalContext(in: last),
-               !containsExplicitTiming(part) {
-                analysisText = normalize("\(analysisText) \(trailing)")
+               contentParts.count > 1 {
+                if sharesVerb(last),
+                   let trailing = trailingTemporalContext(in: last),
+                   !containsExplicitTiming(part) {
+                    analysisText = normalize("\(analysisText) \(trailing)")
+                } else if isDatedNounPhrase(part),
+                          isDatedNounPhrase(last),
+                          let day = trailingDayContext(in: last),
+                          trailingDayContext(in: part) == nil {
+                    // "Lunch at 12 and dinner at 8 tomorrow": the day at the
+                    // end scopes over both clocks, and the first would
+                    // otherwise be today's.
+                    analysisText = normalize("\(analysisText) \(day)")
+                }
             }
             // "Remind me in 20 minutes, and again in an hour" states the second
             // request by referring to the first. Without the command it is a
@@ -1024,7 +1054,7 @@ enum RuleBasedThoughtExtractor {
                let command = reminderLead(in: contentParts[0]) {
                 analysisText = normalize("\(command) \(analysisText)")
             }
-            return Segment(quote: part, analysisText: analysisText, suggestedTitle: nil)
+            return Segment(quote: part, analysisText: analysisText, suggestedTitle: suggestedTitle)
         }
     }
 
@@ -1048,11 +1078,13 @@ enum RuleBasedThoughtExtractor {
     /// nothing on screen says so. Only the text handed to the organizer gets the
     /// verb back; the quote stays exactly as it was spoken.
     private static func leadingActionVerb(in text: String) -> String? {
-        guard let range = text.range(
-            of: #"(?i)^(?:ask|call|phone|text|email|message|tell|wish|buy|order|pick\s+up)\b"#,
-            options: .regularExpression
-        ) else { return nil }
-        return normalize(String(text[range]))
+        // Past an obligation frame: "I need to buy a mic stand and a pop
+        // filter" shares its "buy" as readily as "buy a mic stand and…".
+        guard let regex = NSRegularExpression.speakItCached(
+            #"(?i)^(?:(?:i|we)\s+(?:need|have|want|got|['’]ve\s+got)\s+to\s+|(?:i|we)\s+(?:should|must|gotta)\s+|(?:please\s+)?remind\s+me\s+to\s+|don['’]?t\s+forget\s+to\s+)?(ask|call|phone|text|email|message|tell|wish|buy|order|pick\s+up|meet)\b"#
+        ), let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let verbRange = Range(match.range(at: 1), in: text) else { return nil }
+        return normalize(String(text[verbRange]))
     }
 
     /// True when a clause is a bare object with no instruction of its own.
@@ -1069,6 +1101,36 @@ enum RuleBasedThoughtExtractor {
         if let trailing = trailingTemporalContext(in: stripped) {
             stripped = normalize(String(stripped.dropLast(trailing.count)))
         }
+        // A place is context in the same way: "gas at the station" is the
+        // object "gas" and where to get it.
+        if let place = trailingPlaceContext(in: stripped) {
+            stripped = normalize(String(stripped.dropLast(place.count)))
+        }
+        // So is a trailing condition: "a travel adapter before we leave" is
+        // the object "a travel adapter" and when it is needed by. Without
+        // this the conjunct never shared "buy" and went to Memory as a note.
+        stripped = stripped.replacingOccurrences(
+            of: #"(?i)\s+(?:before|after|when|once|until|till|while|if|because|since)\s+(?:i|we|you|they|he|she|it)\b.*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        // And a purpose: "a pop filter for client calls" is the object "a
+        // pop filter" and what it is for.
+        stripped = stripped.replacingOccurrences(
+            of: #"(?i)\s+for\s+(?:\S+\s*){1,3}$"#,
+            with: "",
+            options: .regularExpression
+        )
+        // A topic complement is context in the same way: "Ask Sam and Priya
+        // about the invoice" left "Priya about the invoice" a four-word
+        // phrase, so the second row lost its verb and was filed in Memory as a
+        // note about Priya. The complement is a closed-class preposition and
+        // whatever follows it, and it is not counted as part of the object.
+        stripped = stripped.replacingOccurrences(
+            of: #"(?i)\s+(?:about|regarding|re|concerning)\s+.*$"#,
+            with: "",
+            options: .regularExpression
+        )
         let bare = stripped.replacingOccurrences(
             of: #"(?i)^(?:the|a|an|my)\s+"#,
             with: "",
@@ -1077,6 +1139,11 @@ enum RuleBasedThoughtExtractor {
         guard !bare.isEmpty else { return false }
         let words = bare.split(whereSeparator: { $0.isWhitespace })
         guard (1...2).contains(words.count) else { return false }
+        // A determiner in front settles it: "a travel adapter" is an object
+        // whatever the tagger makes of "travel" — and the simulator's tagger
+        // called it a verb where the host's called it a noun, which is not a
+        // question a row's destination may turn on.
+        if bare != stripped { return true }
         return ActionabilityReader.read(bare) == .ambiguous
             || ActionabilityReader.read(bare) == .event
     }
@@ -1084,7 +1151,47 @@ enum RuleBasedThoughtExtractor {
     /// The day and time a clause ends with, when the clause is otherwise a bare
     /// object sharing an earlier verb.
     private static func trailingTemporalContext(in text: String) -> String? {
-        let pattern = #"(?i)\b(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|\#(spokenHourWords)))?\s*$"#
+        // A bare clock is context too: "Call Priya at 2 and Marcus at 4" left
+        // "Marcus at 4" a three-word object, so it never shared the verb and
+        // became an event with nobody in it.
+        let clock = #"at\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|\#(spokenHourWords))"#
+        let pattern = #"(?i)\b(?:(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+\#(clock))?|\#(clock))\s*$"#
+        guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
+        return normalize(String(text[range]))
+    }
+
+    /// The place a clause ends with, when the clause is otherwise a bare
+    /// object sharing an earlier verb.
+    ///
+    /// "Pick up the prescription at the pharmacy and gas at the station" left
+    /// "gas at the station" a four-word object, so it never shared the verb
+    /// and both errands stayed on one row. The determiner keeps this tight:
+    /// "at the station" is a place, "at noon" is a time and is read above,
+    /// and "at Costco" is left to the shopping grouper.
+    private static func trailingPlaceContext(in text: String) -> String? {
+        let pattern = #"(?i)\b(?:at|from|in)\s+(?:the|a|an|my|our|your)\s+\p{L}+(?:\s+\p{L}+)?\s*$"#
+        guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
+        return normalize(String(text[range]))
+    }
+
+    /// A verbless phrase that ends on its own "at <clock>", with an object in
+    /// front of it and possibly a day behind it: "gym at 6", "dinner at 8
+    /// tomorrow". Two of these joined by "and" are two events.
+    private static func isDatedNounPhrase(_ text: String) -> Bool {
+        guard !SentenceContextCache.context(for: text).tokens.contains(where: \.isVerb) else { return false }
+        var stripped = normalize(text)
+        var sawClock = false
+        while let trailing = trailingTemporalContext(in: stripped) {
+            if trailing.range(of: #"(?i)\bat\b"#, options: .regularExpression) != nil { sawClock = true }
+            stripped = normalize(String(stripped.dropLast(trailing.count)))
+        }
+        return sawClock && !stripped.isEmpty
+    }
+
+    /// The day a clause ends with, without any clock: "tomorrow", "on Friday",
+    /// "next week".
+    private static func trailingDayContext(in text: String) -> String? {
+        let pattern = #"(?i)\b(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|week|weekend)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s*$"#
         guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
         return normalize(String(text[range]))
     }
@@ -1119,7 +1226,7 @@ enum RuleBasedThoughtExtractor {
 
     static func splitClauses(_ text: String) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
-        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(actionLeadPattern))|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
+        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
 
         var parts: [String] = []
         for sentence in sentenceParts {
@@ -1185,7 +1292,12 @@ enum RuleBasedThoughtExtractor {
     /// was left whole and no later boundary was ever examined. Coordination of
     /// three or more elements is ordinary speech, not a stress case.
     private static func splittableAndRanges(in part: String) -> [Range<String.Index>] {
-        guard let regex = NSRegularExpression.speakItCached(#"(?i)\s+and\s+"#) else { return [] }
+        // "And then" and "and also" are the same boundary with a step marker
+        // on it. The marker belongs to the boundary, not to the conjunct: left
+        // in, "buy milk and then bread" read "then bread" as the second item
+        // and titled it "Buy then bread", and "and then the plumber" was not
+        // a recipient because it did not open on its determiner.
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)\s+and\s+(?:(?:then|also)\s+)?"#) else { return [] }
         let idioms = idiomRanges(in: part)
         return regex
             .matches(in: part, range: NSRange(part.startIndex..., in: part))
@@ -1293,6 +1405,19 @@ enum RuleBasedThoughtExtractor {
         let leftCanStandAlone = context.hasSubjectPredicate(in: leftRange)
             || ActionabilityReader.read(left) != .ambiguous
 
+        // "Email the contract to legal and get it back by Friday": a conjunct
+        // whose object is a pronoun pointing back at the left's object is the
+        // same errand continued, and cutting it left "Get it back by Friday"
+        // with no referent. Read first, ahead of every rule that would call
+        // the conjunct a thought of its own.
+        if ActionabilityReader.read(left).belongsOnToday,
+           trimmed.range(
+               of: #"(?i)^(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b"#,
+               options: .regularExpression
+           ) != nil {
+            return false
+        }
+
         // A conjunct that points back at the clause before it is part of that
         // clause's episode, not a thought of its own.
         //
@@ -1353,26 +1478,35 @@ enum RuleBasedThoughtExtractor {
         // vocabulary away as the cause rather than the grammar.
         //
         // Gating on the vocabulary again would just move the hole, so this
-        // reads the shape: a shopping verb at the head, and *two or more items
-        // already named behind it*, mean a list is in progress and one more
-        // bare word closes it. Counting items rather than commas is deliberate
-        // — the first version of this rule required a comma and so behaved
+        // reads the shape: a shopping verb at the head with something already
+        // named behind it means a list is in progress, and one more bare word
+        // closes it. Counting items rather than commas is deliberate — the
+        // first version of this rule required a comma and so behaved
         // differently the moment a recognizer declined to emit one, which
         // `RenderingInvarianceTests` caught immediately. "Pick up Alex and Sam"
-        // names one thing before the conjunction, so it is two people rather
+        // names a person before the conjunction, so it is two people rather
         // than a list, and it still splits.
+        //
+        // The rule used to want *two* items behind the verb, so "get coke and
+        // sprite" fell through to the verb branch below — where the tagger,
+        // which had called the capitalized "Sprite" a noun, called the
+        // lowercased one a verb and filed it in Memory. A one-item list is
+        // the shape "buy milk and run" takes too, so a lone word is asked
+        // whether it is an errand on its own: "run" is, "sprite" is not.
         let leftBody = left.replacingOccurrences(
             of: #"(?i)^(?:please\s+)?(?:buy|order|get|grab|pick\s+up)\s+"#,
             with: "",
             options: .regularExpression
         )
+        let leftItemCount = leftBody.split(whereSeparator: { $0 == " " || $0 == "," }).count
         if !trimmed.contains(" "),
-           leftBody.split(whereSeparator: { $0 == " " || $0 == "," }).count >= 2,
+           leftItemCount >= 1,
            left.range(
                of: #"(?i)^(?:please\s+)?(?:buy|order|get|grab|pick\s+up)\s+"#,
                options: .regularExpression
            ) != nil,
-           PersonMentionResolver.primary(in: left) == nil {
+           PersonMentionResolver.primary(in: left) == nil,
+           leftItemCount >= 2 || !ActionabilityReader.read(trimmed).belongsOnToday {
             return false
         }
 
@@ -1411,10 +1545,38 @@ enum RuleBasedThoughtExtractor {
         // one fact about one visit, and splitting it invented a second one.
         // The tell is that the left conjunct is a bare noun with no predicate
         // of its own, so it cannot be a complete thought by itself.
+        // An imperative has no subject either, and is not a bare noun: "call
+        // Mom tomorrow and my sister Friday" is two calls, and reading "my
+        // sister" as Mom's compound subject kept it one row — and, worse,
+        // "text Alex tonight and my brother tomorrow" moved Alex's "tonight"
+        // to tomorrow. The guard is for a left conjunct that is not an errand.
+        // "Call Priya and her sister tomorrow" is one call: "her" points back
+        // at Priya. "My", "our" and "your" point at the speaker instead, so
+        // they open a second person only when the left is an errand.
         if trimmed.range(
-            of: #"(?i)^(?:his|her|their|its|my|our|your)\b"#,
+            of: #"(?i)^(?:his|her|their|its)\b"#,
             options: .regularExpression
         ) != nil, !context.hasSubjectPredicate(in: leftRange) {
+            return false
+        }
+        if trimmed.range(
+            of: #"(?i)^(?:my|our|your)\b"#,
+            options: .regularExpression
+        ) != nil, !context.hasSubjectPredicate(in: leftRange),
+           !ActionabilityReader.read(left).belongsOnToday {
+            return false
+        }
+
+        // "Split the rental with Tom and Alice, it's $1200 total": the "and"
+        // joins two companions of one "with", and the clause after the comma
+        // is about the arrangement, not a second thought about Alice.
+        if left.range(of: #"(?i)\bwith\s+[^\s,]+$"#, options: .regularExpression) != nil,
+           trimmed.range(
+               // The name closes on a comma, or on the pronoun that opens the
+               // aside when the recognizer dropped the comma.
+               of: #"(?i)^\p{L}[\p{L}'’-]*\s*(?:,|\s+(?:it['’]s|it\s+is|that|which|he|she|they|we|i)\b)"#,
+               options: .regularExpression
+           ) != nil {
             return false
         }
 
@@ -1476,7 +1638,80 @@ enum RuleBasedThoughtExtractor {
         // clause about a person is a second person to contact, and a bare
         // conjunct after anything else is one more thing on the list.
         if context.isVerbless(in: rightRange) {
-            return PersonMentionResolver.primary(in: left) != nil && leftCanStandAlone
+            // An "and" inside a topic complement coordinates topics, not
+            // recipients: "ask Priya about the invoice and the receipt" is one
+            // question about two things, and splitting it filed "The receipt"
+            // as a row of its own.
+            // Unless the conjunct is itself somebody: "tell Sam about the
+            // meeting and Priya about the deadline" is two people told two
+            // things, and the verb on the left says whether the conjunct
+            // reads as its object.
+            if left.range(
+                of: #"(?i)\s(?:about|regarding|re|concerning)\s"#,
+                options: .regularExpression
+            ) != nil {
+                guard let verb = leadingActionVerb(in: left),
+                      PersonMentionResolver.primary(in: normalize("\(verb) \(trimmed)")) != nil
+                else { return false }
+            }
+            // "Invite Tom and Rachel over for dinner": the particle behind
+            // the second name belongs to the verb both names share, so this
+            // is one invitation with two guests, not a headless row called
+            // "Rachel over for dinner".
+            if trimmed.range(
+                of: #"(?i)^\p{L}[\p{L}'’-]*\s+(?:over|out|in|up|back|along|off|around|round)\b"#,
+                options: .regularExpression
+            ) != nil {
+                return false
+            }
+            if PersonMentionResolver.primary(in: left) != nil { return leftCanStandAlone }
+            // "Pick up the prescription at the pharmacy and gas at the
+            // station": the conjunct has no verb because it is reusing the
+            // one on the left, and the sign is that it repeats the left
+            // clause's place frame with a new object in front. Two places
+            // are two errands; `sharesVerb` hands the second its verb back.
+            if leadingActionVerb(in: left) != nil,
+               trailingPlaceContext(in: left) != nil,
+               let place = trailingPlaceContext(in: trimmed),
+               trimmed.count > place.count {
+                return leftCanStandAlone
+            }
+            // "Gym at 6 and dinner at 8": two dated noun phrases, each with
+            // its own clock, are two events. Neither side has a verb, so
+            // neither "stands alone" by the subject-predicate test — the
+            // clocks are what make them whole. Both sides need an object in
+            // front of the clock: "meeting at 2 and at 4" is one meeting with
+            // a range nobody models.
+            if context.isVerbless(in: leftRange), isDatedNounPhrase(left), isDatedNounPhrase(trimmed) {
+                return true
+            }
+            // "Email the landlord and the plumber": the clause on the left is
+            // aimed at somebody it describes rather than names, and a
+            // conjunct that describes somebody the same way — a determiner
+            // and a noun — is a second recipient, not another item. "Buy milk
+            // and the newspaper" has no recipient on the left and stays one
+            // list.
+            // The left clause has to *end* on its recipient, or the "and" is
+            // inside a complement: "email the landlord about the lease and
+            // the deposit" coordinates the lease and the deposit, not two
+            // people. A trailing day on the right is context, not object.
+            var recipient = trimmed
+            if let trailing = trailingTemporalContext(in: recipient) {
+                recipient = normalize(String(recipient.dropLast(trailing.count)))
+            }
+            let describedTarget = #"(?:the|my|our|his|her|their)\s+\p{L}+(?:\s+\p{L}+)?"#
+            if case .described = PersonMentionResolver.followUpTarget(in: left),
+               left.range(
+                   of: #"(?i)^\p{L}+\s+\#(describedTarget)$"#,
+                   options: .regularExpression
+               ) != nil,
+               recipient.range(
+                   of: #"(?i)^\#(describedTarget)$"#,
+                   options: .regularExpression
+               ) != nil {
+                return leftCanStandAlone
+            }
+            return false
         }
 
         return false
@@ -1728,7 +1963,7 @@ enum RuleBasedThoughtExtractor {
     }
 
     private static func sharedCommand(in text: String) -> (prefix: String, body: String)? {
-        let command = #"(?:remind\s+me|notify\s+me|alert\s+me|don't\s+let\s+me\s+forget|do\s+not\s+let\s+me\s+forget)"#
+        let command = #"(?:remind\s+me|notify\s+me|alert\s+me|don['’]?t\s+let\s+me\s+forget|do\s+not\s+let\s+me\s+forget)"#
         let patterns = [
             #"(?i)^(?<prefix>(?:please\s+)?\#(command)\b.*?\bto)\s+(?<body>.+)$"#,
             #"(?i)^(?<prefix>.*?\b\#(command)\b.*?\bto)\s+(?<body>.+)$"#,
@@ -1908,7 +2143,11 @@ enum RuleBasedThoughtExtractor {
         if let range = text.range(of: datePattern, options: .regularExpression) {
             return normalize(String(text[range]))
         }
-        let pattern = #"(?i)^(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))(?:\s+at\s+\#(clockExpression))?\b"#
+        // "On the 1st, renew the car insurance" and "By Friday, send the
+        // invoice" front a day the same way. A bare ordinal is only a date
+        // here because the whole fronted part has to *be* this phrase for it
+        // to be inherited; "the first, ..." in a longer clause never reaches it.
+        let pattern = #"(?i)^(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+|before\s+)?the\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord)))(?:\s+at\s+\#(clockExpression))?\b"#
         guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
         return normalize(String(text[range]))
     }
@@ -1931,7 +2170,7 @@ enum RuleBasedThoughtExtractor {
         let reading = ActionabilityReader.read(text)
         guard reading != .actionable, reading != .outstanding else { return nil }
         guard text.range(
-            of: #"(?i)^(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b.+$"#,
+            of: #"(?i)^(?:(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b|(?:after|before|until|till|while)\s+(?:i|we)\b).+$"#,
             options: .regularExpression
         ) != nil else { return nil }
         return normalize(text)
@@ -2126,17 +2365,21 @@ enum RuleBasedThoughtExtractor {
             of: #"^(?:please\s+)?(?:delete|remove|erase|cancel)\b"#,
             options: .regularExpression
         ) != nil
+            // "Cancel my Netflix subscription" destroys nothing stored; it is
+            // the person's errand and reads as one.
+            && !CaptureOperationDetector.cancelsAnArrangement(lowercase)
         let isNegated = lowercase.range(
-            of: #"^(?:i\s+)?(?:do\s+not|don't|never|no\s+need\s+to)\b"#,
+            of: #"^(?:i\s+)?(?:do\s+not|don['’]?t|never|no\s+need\s+to)\b"#,
             options: .regularExpression
         ) != nil
-            && !lowercase.hasPrefix("don't forget")
-            && !lowercase.hasPrefix("do not forget")
+            // Apostrophe or not: "dont forget to charge the battery" is the
+            // same emphatic request as "don't forget".
+            && lowercase.range(of: #"^(?:don['’]?t|do\s+not)\s+forget\b"#, options: .regularExpression) == nil
             // "Don't let me forget" and "don't let Alex forget" are both
             // emphatic requests, not denials; the object of "let" changes who
             // is being nudged about it, never whether it was asked for.
             && lowercase.range(
-                of: #"^(?:don't|don’t|do\s+not)\s+let\s+[\w'’-]+(?:\s+[\w'’-]+)?\s+forget\b"#,
+                of: #"^(?:don['’]?t|do\s+not)\s+let\s+[\w'’-]+(?:\s+[\w'’-]+)?\s+forget\b"#,
                 options: .regularExpression
             ) == nil
             // "I never called Catherine" opens with a negation and denies

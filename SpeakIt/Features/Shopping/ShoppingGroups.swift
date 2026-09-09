@@ -295,7 +295,9 @@ enum ShoppingGroupParser {
             if matchedPhrase { continue }
 
             let word = words[index]
-            if word == "and" || word == "plus" || word == "some" {
+            // "then" and "also" ride on the conjunction: "bread and butter
+            // and then jam" is three items, the same as without the marker.
+            if word == "and" || word == "plus" || word == "some" || word == "then" || word == "also" {
                 index += 1
                 continue
             }
@@ -564,7 +566,12 @@ enum ShoppingGroupParser {
     /// names enters into the decision. Vocabulary appears only as positive
     /// evidence, to rescue a conjunct the tagger fumbles.
     private static func reading(_ tokens: ArraySlice<LexicalToken>) -> ConjunctReading {
-        let words = Array(tokens)
+        var words = Array(tokens)
+        // "Some yogurt", "more coffee": a quantity in front of a product is
+        // not the determiner that refuses "the newspaper" below.
+        if let first = words.first, ["some", "more"].contains(first.text.lowercased()) {
+            words.removeFirst()
+        }
         guard (1...4).contains(words.count) else { return .refused }
 
         for token in words {
@@ -690,23 +697,26 @@ enum ShoppingGroupParser {
     /// Splits on spoken "and"/"plus", leaving the compounds that use "and" as
     /// part of the noun intact.
     private static func splittingConjunctions(in body: String) -> [String] {
+        // "And then" and "and also" separate items the way "and" does; the
+        // marker is part of the separator. "Buy milk and then bread" used to
+        // yield an item called "then bread".
         let normalized = body.trimmingCharacters(in: .whitespacesAndNewlines)
         if knownProductPhrases.contains(normalized.lowercased()) { return [normalized] }
         var parts: [String] = []
         var rest = Substring(normalized)
-        while let range = rest.range(of: #"(?i)\s+(?:and|plus)\s+"#, options: .regularExpression) {
+        while let range = rest.range(of: #"(?i)\s+(?:and|plus)\s+(?:(?:then|also)\s+)?"#, options: .regularExpression) {
             let left = String(rest[..<range.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             // "bread and butter" survives only when the compound is what is
             // actually spoken; "peanut butter and grape jelly" still splits.
             let pairEnd = rest[range.upperBound...].range(
-                of: #"(?i)\s+(?:and|plus)\s+"#, options: .regularExpression
+                of: #"(?i)\s+(?:and|plus)\s+(?:(?:then|also)\s+)?"#, options: .regularExpression
             )?.lowerBound ?? rest.endIndex
             let pair = String(rest[..<pairEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
             if knownProductPhrases.contains(pair.lowercased()) {
                 parts.append(pair)
                 rest = rest[pairEnd...]
-                if let next = rest.range(of: #"(?i)^\s+(?:and|plus)\s+"#, options: .regularExpression) {
+                if let next = rest.range(of: #"(?i)^\s+(?:and|plus)\s+(?:(?:then|also)\s+)?"#, options: .regularExpression) {
                     rest = rest[next.upperBound...]
                     continue
                 }

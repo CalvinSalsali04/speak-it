@@ -23,6 +23,21 @@ final class QuickActionRouter: ObservableObject {
     static let shared = QuickActionRouter()
 
     @Published private(set) var pendingRequest: Request?
+    @Published private(set) var pendingTodayRequest: UUID?
+
+    func handleBriefResponse(identifier: String, actionIdentifier: String) {
+        guard HabitNotificationScheduler.isHabitIdentifier(identifier),
+              actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        pendingTodayRequest = UUID()
+        // A direct tap is an answer even after the inferred twelve-hour window.
+        HabitDefaults.unansweredBriefCount = 0
+        HabitDefaults.pendingBriefFireDates = HabitDefaults.pendingBriefFireDates.filter { $0 > .now }
+    }
+
+    func consumeTodayRequest(_ id: UUID) {
+        guard pendingTodayRequest == id else { return }
+        pendingTodayRequest = nil
+    }
 
     func requestTypedCapture(
         activatedAt: Date = .now,
@@ -146,6 +161,7 @@ struct SpeakItApp: App {
             for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("SpeakIt.") {
                 defaults.removeObject(forKey: key)
             }
+            HabitDefaults.reset()
         }
         if arguments.contains("--ui-testing-skip-welcome") {
             UserDefaults.standard.set(true, forKey: "SpeakIt.hasCompletedWelcome")
@@ -256,6 +272,12 @@ private final class NotificationPresentationDelegate: NSObject, UNUserNotificati
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A brief that arrives while the person is already looking at Speak
+        // It has nothing to add; reminders still present as before.
+        if HabitNotificationScheduler.isHabitIdentifier(notification.request.identifier) {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .list, .sound])
     }
 
@@ -264,6 +286,16 @@ private final class NotificationPresentationDelegate: NSObject, UNUserNotificati
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        if HabitNotificationScheduler.isHabitIdentifier(response.notification.request.identifier) {
+            Task { @MainActor in
+                QuickActionRouter.shared.handleBriefResponse(
+                    identifier: response.notification.request.identifier,
+                    actionIdentifier: response.actionIdentifier
+                )
+                completionHandler()
+            }
+            return
+        }
         let action: ReminderAction?
         switch response.actionIdentifier {
         case ReminderScheduler.completeActionIdentifier:

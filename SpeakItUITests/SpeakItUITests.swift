@@ -19,6 +19,10 @@ final class SpeakItUITests: XCTestCase {
             ).tap()
 
             XCTAssertTrue(app.staticTexts["Tap to speak"].waitForExistence(timeout: 5))
+            let capture = XCTAttachment(screenshot: app.screenshot())
+            capture.name = "Capture orb — ready"
+            capture.lifetime = .keepAlways
+            add(capture)
             app.terminate()
         }
     }
@@ -239,6 +243,10 @@ final class SpeakItUITests: XCTestCase {
         assertMinimumTouchTarget(save)
         save.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 8))
+        let receipt = XCTAttachment(screenshot: app.screenshot())
+        receipt.name = "Saved capture seal"
+        receipt.lifetime = .keepAlways
+        add(receipt)
         XCTAssertTrue(
             app.staticTexts["The spare key is inside the blue kitchen drawer"]
                 .waitForExistence(timeout: 3),
@@ -621,6 +629,25 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["One gesture. Then speak."].waitForExistence(timeout: 4))
     }
 
+    /// The default reminder time lives with the other reminder settings, as a
+    /// time picker, with its explanation beneath it.
+    func testDefaultReminderTimeRowIsInSettings() {
+        let app = launchApp("--ui-testing-skip-welcome")
+
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+
+        let picker = app.descendants(matching: .any)["settings.default-reminder-time"].firstMatch
+        for _ in 0..<6 where !picker.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(picker.waitForExistence(timeout: 4))
+        XCTAssertTrue(
+            app.staticTexts["For reminders that name a day but no time, like “remind me tomorrow”."].exists
+        )
+        captureFlowScreenshot("settings-default-reminder-time")
+    }
+
     func testLockScreenTaskNamesToggleStartsOffAndCanBeTurnedOn() {
         let app = launchApp("--ui-testing-skip-welcome")
 
@@ -671,10 +698,12 @@ final class SpeakItUITests: XCTestCase {
     func testProPaywallShowsLaunchPricingAndEachPlanIsFullySelectable() {
         let app = launchApp(
             "--ui-testing-skip-welcome",
-            "--ui-testing-pro-preview",
-            "--show-pro"
+            "--ui-testing-pro-preview"
         )
-
+        waitForLaunchWorkToFinish(in: app)
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 6))
+        app.buttons["settings.plan"].tap()
         XCTAssertTrue(app.navigationBars["Speak It Pro"].waitForExistence(timeout: 6))
 
         let annual = app.buttons["pro.plan.annual"]
@@ -714,7 +743,7 @@ final class SpeakItUITests: XCTestCase {
             XCTAssertEqual(
                 annual.label,
                 "Annual, summer launch price \(currency(annualPrice)) per year, "
-                    + "regularly $29.99, 50 percent off, best value"
+                    + "standard annual price $29.99, 50 percent off, best value"
             )
         } else {
             XCTAssertEqual(annual.label, "Annual, \(currency(annualPrice)) per year")
@@ -747,16 +776,19 @@ final class SpeakItUITests: XCTestCase {
         annual.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
         app.swipeUp()
         if saleIsRunning {
-            // The offer ends on the cutoff date; the subscriber's own rate does
-            // not. The earlier wording said the opposite and was a refund.
+            // The offer cutoff is known; preservation of a subscriber's future
+            // renewal price is not configured or verified in App Store Connect.
             let footnote = app.staticTexts.containing(
                 NSPredicate(format: "label BEGINSWITH 'Summer launch price'")
             ).firstMatch
             XCTAssertTrue(footnote.waitForExistence(timeout: 3))
-            XCTAssertTrue(
-                footnote.label.contains("stays that price for as long as the subscription does"),
-                "The launch price must not read as though the buyer's own rate expires"
+            XCTAssertEqual(
+                footnote.label,
+                "Summer launch price · \(currency(annualPrice)) per year. "
+                    + "Offer ends October 22, 2026. Auto-renews until cancelled."
             )
+            XCTAssertFalse(footnote.label.contains("stays that price"),
+                           "Do not promise an unverified permanent renewal price")
             XCTAssertTrue(footnote.label.contains("Offer ends October 22, 2026"))
             XCTAssertTrue(footnote.label.contains("Auto-renews until cancelled"))
         } else {
@@ -921,7 +953,9 @@ final class SpeakItUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
             "-AppleInterfaceStyle",
-            "Dark"
+            "Dark",
+            "-SpeakIt.appearance",
+            "dark"
         )
 
         let primaryAction = app.buttons["welcome.tryItNow"]
@@ -937,6 +971,10 @@ final class SpeakItUITests: XCTestCase {
         assertMinimumTouchTarget(endTutorial)
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
         XCTAssertTrue(app.buttons["tutorial.useExample"].isHittable)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Capture orb — accessibility text and dark appearance"
+        capture.lifetime = .keepAlways
+        add(capture)
     }
 
     func testColdLaunchPerformance() {

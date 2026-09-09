@@ -149,7 +149,15 @@ enum DisfluencyFilter {
         // Announcements that a thought is coming. They are the spoken
         // equivalent of clearing your throat, and each one used to become a row
         // of its own: a task literally titled "Note to self", "Hey", "Sorry".
-        value = replace(value, #"^(?:note|reminder|memo)\s+to\s+self\b[\s,]*"#, "")
+        // The colon is how dictation writes the pause after the lead, and it
+        // was left behind: "Note to self: the garage code is 4821" became a
+        // row titled ": The garage code is 4821".
+        value = replace(value, #"^(?:note|reminder|memo)\s+to\s+self\b[\s,:;\-–—]*"#, "")
+        // "Actually no wait, Maya's swim lesson moved to Thursday": a
+        // retraction at the very start has nothing behind it to retract, so
+        // it is the person clearing their throat. Mid-sentence "no wait"
+        // still takes back what was said before it.
+        value = replace(value, #"^(?:actually[\s,]+)?(?:no[\s,]+)?wait[\s,]+(?=\S)"#, "")
         value = replace(value, #"^(?:one|another)\s+more\s+thing\b[\s,]*"#, "")
         value = replace(value, #"^another\s+thing\b[\s,]*"#, "")
         value = replace(value, #"^do\s+me\s+a\s+favou?r\s+and\b[\s,]*"#, "")
@@ -414,6 +422,40 @@ enum ClockDigitRepair {
             options: .regularExpression
         )
 
+        // "Standup moved from 9 to 930", "meeting from 2 to 330": the new
+        // time of a rescheduled thing, and the end of a span, sit behind a
+        // "to" — which is not in the cue list above, because a bare "to 930"
+        // is as often a quantity. The rescheduling verb, or the "from <clock>"
+        // in front, is what says this "to" leads to a clock. The same guards
+        // as above keep phone numbers, addresses and quantities out.
+        value = value.replacingOccurrences(
+            of: #"\b((?i:moved|pushed|bumped|rescheduled|shifted|switched|changed)(?:\s+(?i:from)\s+\S+(?:\s+(?i:[ap]\.?m\.?))?)?\s+(?i:to)|(?i:from)\s+\d{1,2}(?::[0-5]\d)?(?:\s*(?i:[ap]\.?m\.?))?\s+(?i:to|until|till))\s+(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b"#
+                + #"(?![-\s]?\d)"#
+                + #"(?!\s+[A-Z][a-z])"#
+                + #"(?!\s+(?i:people|units?|dollars?|bucks?|percent|days?|weeks?|months?|years?|grams?|kilos?|kg|lbs?|miles?|km)\b)"#
+                + #"(?!\s+\p{Ll}+\s(?:street|avenue|ave|road|boulevard|blvd|lane|crescent|terrace)\b)"#,
+            with: "$1 $2:$3",
+            options: .regularExpression
+        )
+
+        // "Physio Wednesday 1015", "standup 930 tomorrow": a day word beside
+        // the digits is as clear a cue as "at" — nobody says "Wednesday 1015"
+        // about a quantity — and the punctuated form "10:15" already reads as
+        // a clock with no preposition. Both orders are taken; the same
+        // phone-number, address and unit guards as above apply.
+        let dayWord = #"(?i:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight)"#
+        let quantityGuard = #"(?![-\s]?\d)(?!\s+[A-Z][a-z])(?!\s+(?i:people|units?|dollars?|bucks?|percent|days?|weeks?|months?|years?|grams?|kilos?|kg|lbs?|miles?|km)\b)"#
+        value = value.replacingOccurrences(
+            of: #"\b("# + dayWord + #")\s+(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b"# + quantityGuard,
+            with: "$1 $2:$3",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(
+            of: #"\b(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b(?![-\s]?\d)(?=\s+"# + dayWord + #"\b)"#,
+            with: "$1:$2",
+            options: .regularExpression
+        )
+
         // "Set two alarms 630 and 645": the second time is joined by a
         // conjunction rather than a preposition, so it carries no cue of its
         // own. It is repaired only once the sentence has already produced a
@@ -507,9 +549,13 @@ enum SpokenShorthandRepair {
         // and dictation spells the hour out as often as not: "sixish".
         (#"\b(\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*-?ish\b"#, "around $1"),
 
+        // Only where the number is a clock — "about five quarts" and "about
+        // six kilometres" are quantities, and rewriting them put a word in
+        // the person's mouth that reached the quote.
         // "About 6" hedges exactly the way "around 6" does, and only one of the
         // two was in the vocabulary.
-        (#"\babout\s+(?=(?:\d{1,2}(?::\d{2})?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b)"#, "around "),
+        (#"\b(?<=\b(?:at|by|until|till|from|for)\s)about\s+(?=(?:\d{1,2}(?::\d{2})?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b)"#, "around "),
+        (#"\babout\s+(?=(?:\d{1,2}(?::\d{2})?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\s*(?:a\.?m\.?|p\.?m\.?|o'?clock)\b|\s+(?:tomorrow|tonight|today|this|next|on)\b|\s*(?:[,.;!?]|$)))"#, "around "),
         (#"\bin\s+about\s+(?=an?\s|\d)"#, "in "),
 
         // Repeat adverbs. Each names a cycle the recurrence parser already
@@ -1100,10 +1146,16 @@ enum SelfCorrectionResolver {
             // being rewritten to "the went fine".
             let instruction = #"(?:\#(ActionabilityReader.actionVerb)|remind\s+me"#
                 + #"|set\s+(?:an?\s+)?(?:alarm|timer|reminder)|wake\s+me)"#
+            // A fact has an object too. "Remember Alex likes golf, actually
+            // tennis" has no instruction verb in front of the marker, so it
+            // fell through to the punctuated discard and kept only "tennis":
+            // the person, and the fact, gone. The shape is a verb with a
+            // short noun phrase behind it, read from the tagging of the
+            // prefix, and "the deploy" — no verb at all — still refuses.
             guard prefix.range(
                 of: #"(?i)\b\#(instruction)\b"#,
                 options: .regularExpression
-            ) != nil else { return nil }
+            ) != nil || endsInObjectOfAVerb(prefix) else { return nil }
 
             let prefixWords = prefix.split(separator: " ").map(String.init)
             guard prefixWords.count > 1 else { return nil }
@@ -1123,13 +1175,38 @@ enum SelfCorrectionResolver {
             }) {
                 cut = determiner
             } else {
-                cut = max(1, prefixWords.count - replacement.split(separator: " ").count)
+                var guess = max(1, prefixWords.count - replacement.split(separator: " ").count)
+                // The preposition in front of the object is scaffolding, not
+                // the object: "allergic to peanuts, actually tree nuts" keeps
+                // its "to" unless the replacement brought one of its own.
+                let preposition = #"(?i)^(?:to|of|for|with|about|at|in|on|from|by)$"#
+                if guess < prefixWords.count,
+                   prefixWords[guess].range(of: preposition, options: .regularExpression) != nil,
+                   replacement.split(separator: " ").first?.range(of: preposition, options: .regularExpression) == nil {
+                    guess += 1
+                }
+                cut = guess
             }
             let kept = prefixWords.prefix(cut).joined(separator: " ")
             return normalize(kept + " " + replacement)
         }
 
         return nil
+    }
+
+    /// Whether the prefix ends on a verb's object: a verb, then one to three
+    /// words none of which is a verb. The object is what a repair replaces.
+    private static func endsInObjectOfAVerb(_ prefix: String) -> Bool {
+        let tokens = SentenceContextCache.context(for: prefix).tokens
+        if let verb = tokens.lastIndex(where: \.isVerb) {
+            let object = tokens[(verb + 1)...]
+            return (1...3).contains(object.count) && !object.contains(where: \.isVerb)
+        }
+        // The tagger calls "prefers" a noun in "Alex prefers tea". A sentence
+        // the person resolver reads as a fact about somebody has a predicate
+        // by construction, and what follows the name and the predicate is
+        // its object.
+        return tokens.count >= 3 && PersonMentionResolver.primary(in: prefix)?.role == .subject
     }
 
     /// A trailing "when I get home" / "at the pharmacy" clause: the thing that
@@ -1144,7 +1221,7 @@ enum SelfCorrectionResolver {
     /// the most destructive edit in this file.
     private static func repairTrigger(prefix: String, replacement: String) -> String? {
         let replacementIsTime = replacement.range(
-            of: #"(?i)^(?:\#(datePattern)|\#(timePattern)|\#(durationPattern)|at\s|in\s)"#,
+            of: #"(?i)^(?:(?:\#(datePattern)|\#(timePattern)|\#(durationPattern))\b|at\s|in\s)"#,
             options: .regularExpression
         ) != nil
         let replacementIsPlace = replacement.range(
@@ -1167,11 +1244,43 @@ enum SelfCorrectionResolver {
     /// The replacement must *open* with a name-shaped token, which is what
     /// separates "actually Alex" from "actually call Alex" — the second is a
     /// whole new instruction and is handled as one.
+    /// The person repair for a transcript the recognizer has flattened.
+    /// "call catherine tomorrow, actually alex" carries no capital to mark the
+    /// replacement as a name, so it fell through to the object repair, which
+    /// swapped the trailing noun phrase — the day — and filed a person called
+    /// Catherine Alex. The resolver already reads lowercase names in a
+    /// casually cased sentence, so it is asked directly: put the replacement
+    /// where the person stood and see whether it reads as one there.
+    /// "actually text her" and "actually tonight" do not, and fall through.
+    private static func repairFlattenedPerson(prefix: String, replacement: String) -> String? {
+        guard !prefix.dropFirst().contains(where: \.isUppercase),
+              replacement.range(
+                  of: #"^\p{Ll}[\p{L}'’-]*(?:\s+\p{Ll}[\p{L}'’-]*)?$"#,
+                  options: .regularExpression
+              ) != nil,
+              let target = PersonMentionResolver.mentions(in: prefix).last,
+              // The person has to be what the prefix ends on, bar a day or a
+              // clock: "call catherine tomorrow, actually alex" corrects the
+              // person, while "remember alex likes golf, actually tennis"
+              // corrects the golf and is the object repair's to make.
+              prefix[target.sourceRange.upperBound...].range(
+                  of: #"^\s*(?:(?:on\s+|at\s+|in\s+the\s+|this\s+|next\s+)?(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening|week|weekend|noon|midnight|\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*)*$"#,
+                  options: [.regularExpression, .caseInsensitive]
+              ) != nil else { return nil }
+        let candidate = prefix.replacingCharacters(in: target.sourceRange, with: replacement)
+        let expected = replacement.lowercased()
+        guard PersonMentionResolver.mentions(in: candidate).contains(where: {
+            $0.sourceRange.lowerBound == target.sourceRange.lowerBound
+                && candidate[$0.sourceRange].lowercased() == expected
+        }) else { return nil }
+        return candidate
+    }
+
     private static func repairPerson(prefix: String, replacement: String) -> String? {
         guard let head = replacement.range(
             of: #"^\p{Lu}[\p{L}'’.-]*(?:\s+\p{Lu}[\p{L}'’.-]*)?"#,
             options: .regularExpression
-        ) else { return nil }
+        ) else { return repairFlattenedPerson(prefix: prefix, replacement: replacement) }
 
         let name = String(replacement[head])
         // A pronoun names nobody. "Tell Sam sorry I missed his call" opens its
@@ -1213,8 +1322,11 @@ enum SelfCorrectionResolver {
         // A clock reading, a day, or a duration is a *slot* value. If no slot
         // of that kind was there to replace, the additive branch above has
         // already handled it; letting it reach here overwrote the object.
+        // The boundary matters: without it "tennis" opened with the spoken
+        // hour "ten" and was refused as a clock, so "Alex likes golf,
+        // actually tennis" had no object to swap and kept only "tennis".
         if value.range(
-            of: #"(?i)^(?:\#(timePattern)|\#(datePattern)|\#(durationPattern)"#
+            of: #"(?i)^(?:(?:\#(timePattern)|\#(datePattern)|\#(durationPattern))\b"#
                 + #"|(?:at|in|on|by|for|about|with|from|into|onto|over|under|after|before|during|near|through)\s)"#,
             options: .regularExpression
         ) != nil {
@@ -1325,6 +1437,15 @@ enum ClauseJuxtaposition {
         // "come see the house", "run grab the mail".
         "go", "goes", "come", "comes", "run", "stop", "swing", "head", "try",
         "make", "let's", "help",
+        // Copulas. "Tuesday is book club" was cut into "Tuesday is" and a task
+        // called "Book club", because "book" opens an instruction and nothing
+        // asked what stood in front of it. A verb straight behind "is" is the
+        // complement of that "is", not a new clause — "the plan is book the
+        // hotel early" is one thought however it is read. "Better" keeps its
+        // own rule above: "the weather is better book the campsite" still
+        // splits, because "better" is what sits in front of the verb there.
+        "is", "are", "was", "were", "am", "be", "being", "been", "isnt", "isn't",
+        "arent", "aren't", "wasnt", "wasn't", "werent", "weren't",
         // Negatives: "I didn't call Catherine" is one clause, not two.
         "didnt", "didn't", "doesnt", "doesn't", "wasnt", "wasn't", "werent",
         "weren't", "cant", "can't", "wont", "won't", "couldnt", "couldn't",
@@ -1377,9 +1498,74 @@ enum ClauseJuxtaposition {
     /// governs, and the place name absorbed the words on either side of the
     /// cut. `LocationIntentParser` already knows where a place ends and an
     /// action begins; this leaves the sentence intact so it can.
+    /// Prepositions that can front an adjunct: "on the 1st", "after class",
+    /// "in the morning", "by the 15th". The subordinators that open a clause
+    /// with a subject and a verb of their own ("when", "once", "if") are
+    /// `hasOpenTriggerClause`'s business, not this list's.
+    private static let frontingPrepositions: Set<String> = [
+        "on", "at", "in", "by", "before", "after", "during", "from", "until",
+        "till", "around", "over", "through", "near", "with", "within", "under",
+        // The deictic days front an adjunct without a preposition: "tomorrow
+        // morning email the landlord" was cut at "email", leaving a phantom
+        // "Tomorrow morning" event beside the errand.
+        "today", "tomorrow", "tonight", "this", "next",
+    ]
+
+    /// Whether the head in front of a proposed cut is a fronted adjunct rather
+    /// than a clause. "On the 1st renew the car insurance" was cut at "renew"
+    /// because the head had two words and its last one was not a lead — and
+    /// the row in front of the errand read "On the 1st", an event with a date
+    /// and nothing to do on it, while the errand lost the date. The same
+    /// shape took "in the morning call Dave", "after dinner call mom" and "by
+    /// the 15th pay the rent" apart.
+    ///
+    /// The test is structural: the head opens on a preposition and, in the
+    /// tagging of the whole sentence, carries no verb. "After I finish the
+    /// essay call Dave" keeps its cut, because "finish" is a verb and the head
+    /// is a clause of its own.
+    private static func isFrontedAdjunct(
+        _ clause: String,
+        headEnd: String.Index,
+        from lowerBound: String.Index
+    ) -> Bool {
+        let head = clause[lowerBound..<headEnd]
+        guard let opener = head.split(whereSeparator: \.isWhitespace).first else { return false }
+        let word = opener.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
+        guard frontingPrepositions.contains(word) else { return false }
+        let context = SentenceContextCache.context(for: clause)
+        return context.isVerbless(in: lowerBound..<headEnd)
+    }
+
+    /// Whether the token just before `cut` reads as a verb in the whole
+    /// clause. The whole clause, because the tagger cannot read "Marcus
+    /// prefers" on its own and calls "prefers" a noun there.
+    private static func precedingTokenIsVerb(in clause: String, before cut: String.Index) -> Bool {
+        SentenceContextCache.context(for: clause).tokens
+            .last(where: { $0.range.upperBound <= cut })?.isVerb == true
+    }
+
+    private static let dayWords: Set<String> = [
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    ]
+    private static let nounDeterminers: Set<String> = ["the", "a", "an", "my", "our", "your", "his", "her", "their", "this", "that"]
+
+    private static func opensAsIdeaOrNote(_ clause: String) -> Bool {
+        // "Great idea from the offsite: run a monthly interview" opens with
+        // a modifier or two before the word that names the capture.
+        // With or without the colon a recognizer may drop: a capture that
+        // names itself an idea within its first three words is one idea.
+        clause.range(
+            of: #"(?i)^\s*(?:[\p{L}'’-]+\s+){0,2}(?:ideas?|thoughts?|concept|note)\b"#,
+            options: .regularExpression
+        ) != nil || clause.range(
+            of: #"(?i)^\s*(?:an?\s+)?idea\s+for\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     private static func hasOpenTriggerClause(_ head: String) -> Bool {
         head.range(
-            of: #"(?i)\b(?:when|once|whenever|as\s+soon\s+as|next\s+time|every\s+time|if)\s+(?:i|we)\b[^,;]*$"#,
+            of: #"(?i)\b(?:when|once|whenever|as\s+soon\s+as|next\s+time|every\s+time|if|after|before|until|till|while)\s+(?:i|we)\b[^,;]*$"#,
             options: .regularExpression
         ) != nil
     }
@@ -1389,7 +1575,13 @@ enum ClauseJuxtaposition {
     static func pieces(in clause: String) -> [String] {
         guard let regex = NSRegularExpression.speakItCached(
             #"(?i)\s+(?=\#(instructionOpeners)\s+"#
-                + #"(?!(?:for|at|on|in|to|with|from|about|by|of|into|onto|over|under|and|or|but|then)\s)\S)"#
+                // A bare pronoun object points back at the clause before:
+                // "invoice 1042 is thirty days overdue chase it" is one
+                // thought, and "chase it" alone would name nothing.
+                + #"(?!(?:for|at|on|in|to|with|from|about|by|of|into|onto|over|under|and|or|but|then)\b)"#
+                // Only a pronoun that *ends* the clause points back: "call her
+                // Friday" and "move it to Monday" are instructions of their own.
+                + #"(?!(?:it|them|that|those|him|her)\s*[.!?]?\s*$)\S)"#
         ) else { return [clause] }
 
         var pieces: [String] = []
@@ -1411,8 +1603,34 @@ enum ClauseJuxtaposition {
             }
             guard !hasOpenTriggerClause(head),
                   !endsOnReportedSpeech(head),
+                  // "Idea for the app: let people share lists" is one idea
+                  // however many verbs it describes; a capture that opens by
+                  // naming itself an idea or a note is not cut.
+                  !opensAsIdeaOrNote(clause),
+                  // "Let people share lists", "let the kids pick": the verb
+                  // behind a causative "let X" is its complement.
+                  recent.dropLast().last != "let",
+                  !isFrontedAdjunct(clause, headEnd: range.lowerBound, from: lowerBound),
                   let last = recent.last,
                   !clauseInternalLead.contains(last),
+                  // A possessive or an amount in front of a verb-shaped word
+                  // makes it a noun: "Maya's swim lesson", "the $89 charge".
+                  !last.hasSuffix("'s"), !last.hasSuffix("’s"),
+                  last.range(of: #"^[$€£]?\d"#, options: .regularExpression) == nil,
+                  // "The Friday sign off": a day behind a determiner is an
+                  // adjective, and the verb-shaped word after it is a noun.
+                  !(dayWords.contains(last) && recent.dropLast().last.map(nounDeterminers.contains) == true),
+                  // "Marcus prefers phone calls": the word behind a verb is
+                  // its object, whatever else it could open. Read from the
+                  // tagging of the head, so "prefers", "likes" and "hates"
+                  // need no list of their own.
+                  !(precedingTokenIsVerb(in: clause, before: range.lowerBound)
+                    && !clauseInternalLead.contains(last)),
+                  // A two-word head that is somebody and their predicate
+                  // ("Marcus prefers") has not reached its object yet, whatever
+                  // the tagger calls the predicate. The resolver decides who is
+                  // somebody; a sentence-case "Buy" is not.
+                  !(words.count == 2 && PersonMentionResolver.primary(in: head)?.role == .subject),
                   // "Better" is two different words. After a subject or its
                   // auxiliary it is the obligation — "I better call the
                   // plumber" is one errand, and cutting it filed a row titled
@@ -1463,7 +1681,11 @@ enum ClauseJuxtaposition {
 /// Anything not matched here is an ordinary `.create` and returns `nil`.
 enum CaptureOperationDetector {
 
-    private static let actionVerbs = #"(?:buy|get|order|pick\s+up|call|phone|text|email|message|ask|tell|send|submit|finish|book|schedule|pay|renew|pack|check|return|start|set|bring|meet|contact|remind|water|take|wash|clean|visit)"#
+    /// The one errand vocabulary, so "don't fix the sink" cancels a matching
+    /// reminder exactly as "don't call the plumber" does. This was a private
+    /// list of 31 verbs long after `Docs/KNOWN_ISSUES.md` said the four lists
+    /// had been unified; it was the fourth.
+    private static let actionVerbs = ActionabilityReader.actionVerb
 
     /// Verbs of saying, in the imperative — the frame that asks for a message
     /// to be *relayed* rather than for anything to happen to a stored item.
@@ -1883,6 +2105,15 @@ enum CaptureOperationDetector {
             }
         }
 
+        // "Cancel the gym membership before the end of the month", "cancel my
+        // Netflix subscription": the thing cancelled is an arrangement with a
+        // company, and cancelling it is an errand for the person, not an
+        // operation on a stored row — read as one, it would have deleted a
+        // "gym" reminder and left nothing to do. A deadline frame behind the
+        // request says the same thing: nobody cancels a stored reminder "by
+        // Friday". "Cancel the dentist appointment" keeps its operation.
+        if cancelsAnArrangement(lower) { return nil }
+
         // Cancellation, in descending order of explicitness.
         let cancelPatterns = [
             #"^cancel\s+(?:the\s+)?(.+)$"#,
@@ -1910,6 +2141,18 @@ enum CaptureOperationDetector {
         }
 
         return nil
+    }
+
+    /// "Cancel the gym membership", "cancel the meeting by Friday": an errand
+    /// in the world, not an operation on a stored row. Shared with the
+    /// extractor's safety hold, which otherwise keeps every "cancel …" back
+    /// for review; the two must agree on which cancellations are the
+    /// person's own to carry out.
+    static func cancelsAnArrangement(_ lower: String) -> Bool {
+        let worldArrangement = #"\b(?:memberships?|subscriptions?|plan|policy|account|service|contract|insurance|trial|renewal|autopay|auto-pay|direct\s+debit|lease|card)\b"#
+        let deadlineFrame = #"\b(?:before|by)\s+(?:the\s+)?(?:end\s+of|\d|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight|next|this)\b"#
+        return matches(lower, #"^(?:please\s+)?cancel\b"#)
+            && (matches(lower, worldArrangement) || matches(lower, deadlineFrame))
     }
 
     /// Whether a target has any word in it that could head a noun phrase.

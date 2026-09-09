@@ -70,7 +70,11 @@ func rowTitle(_ candidate: ExtractedThought, spokenFallback: String = "") -> Str
     } else {
         rawTitle = candidate.sourceQuote
     }
-    let polished = ThoughtTitleFormatter.polished(rawTitle, itemType: candidate.organization.itemType)
+    let polished = ThoughtTitleFormatter.polished(
+        rawTitle,
+        itemType: candidate.organization.itemType,
+        personName: candidate.organization.personName
+    )
     if !polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         return polished
     }

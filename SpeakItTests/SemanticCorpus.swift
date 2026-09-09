@@ -147,6 +147,20 @@ enum CorpusFamily: String, CaseIterable {
     case dayMonthOrder = "Day-month date order"
     case internationalClock = "International clock forms"
     case calendarIdioms = "Weekday idioms and ordinal adjectives"
+
+    // Family 55. A prepositional phrase in front of the verb is the schedule
+    // or the place for what follows, not a thought of its own. Every case
+    // arrived as a phantom row reading "On the 1st" beside an errand that had
+    // lost its date, or as the whole sentence filed in Memory once the phantom
+    // was gone.
+    case frontedAdjuncts = "Fronted adjuncts"
+
+    // Family 56. A condition on the speaker in front of the verb — "when I
+    // finish the essay call Dave" — is a trigger the app cannot enforce, and
+    // it already holds such rows in Needs review with the condition named. The
+    // gap was that nothing saw the errand behind the condition, so the whole
+    // sentence was a Memory note and the call was lost.
+    case frontedConditions = "Fronted conditions"
 }
 
 

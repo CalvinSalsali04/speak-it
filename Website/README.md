@@ -11,7 +11,7 @@ Website/
   privacy/index.html    public App Store privacy-policy page
   support/index.html    public App Store support page
   assets/conversion.css design tokens + layout for index.html
-  assets/conversion.js  acquisition links, the story, the demo, the launch price
+  assets/conversion.js  acquisition links, the thought ring, the demo, the launch price
   assets/demo-parser.js the in-page parser the demo runs on
   tests/                node --test files for the parser and for pricing
   assets/stage.css      previous page — see the note below
@@ -41,6 +41,108 @@ offline" line. Its stylesheet and script, `assets/styles.css` and
 `assets/site.js`, and `assets/img/03-Capture.png`, are now unreferenced by
 anything and can be deleted too; they are left in place only because deleting
 them was not asked for.
+
+## 8 September 2026 release page
+
+The page is written for released customers. Set the verified App Store listing
+in `meta[name="speak-it-app-store-url"]` to activate all four download links.
+Until that URL is supplied, clicks open a small unavailable-link dialog with
+a demo and contact option. The page itself has no prelaunch messaging.
+
+Download controls use a lighter fill and regular font weight. The ring measures
+capsule extents, motion and shadows when sizing both radii, and reserves space
+above and below the message. A ResizeObserver keeps that space correct when
+copy wraps. The understanding section is removed. Calvin's contact card links
+to email and the supplied LinkedIn profile. Pricing is unchanged.
+
+Historical notes below describe earlier versions.
+
+## The 7 September 2026 hero and understanding pass
+
+The opening is a ring again. The two-column hero that replaced it read as a
+slide rather than as the product, so the thoughts are back — fourteen of them,
+turning around a centred message with the listening indicator in the break in
+the headline, once every 36 seconds. This is a re-implementation on
+`conversion.js`, not a revival of `stage.js`: there is no pinned scroll, no
+scroll-driven collapse and no fixed indicator to dock, because the sequence no
+longer has to survive a 138svh frame.
+
+### The ring
+
+- **Liquid glass, where there is something to refract.** The capsules are a
+  translucent white gradient with a `backdrop-filter` blur and saturate, a
+  specular edge drawn as a masked 1px border gradient, and a shadow. Over flat
+  paper it is the edge and the shadow doing the work, not the blur — which is
+  why `prefers-reduced-transparency` and `prefers-contrast: more` can drop
+  straight to solid paper without the ring losing its shape.
+- **Nothing is drawn on the message.** `clear()` in `conversion.js` fades a
+  capsule out as its own edge reaches the box the words ink, and back in on the
+  far side. It takes the capsule's half-size, not just its centre, because it is
+  the capsule that overlaps the sentence. This is what replaced a run of
+  ellipse-versus-copy geometry that never worked at every width at once: with
+  the rule in place the ring can be sized for the section, and on a phone —
+  where the type takes the screen and no ellipse goes round it — the thoughts
+  simply surface above and below.
+- **The keep-out is the inked box, not the column.** `inkedBox()` measures each
+  block of the copy with a `Range`, so it reports the width of the words rather
+  than the width of the measure they are centred in. Sizing it to the container
+  would have pushed the ring off the page to protect whitespace.
+- **The section is full-bleed.** `.hero` is not `.shell`; the ring gets the page
+  width and `overflow: clip` holds it. An earlier attempt kept the shell and
+  gave `.orbit` `width: 100vw`, which the shell then clipped 140px in on each
+  side — the widest thoughts lost their first few words.
+- **One transform per bubble per frame**, as before, composed in `paint()`.
+  Reduced motion settles the ring in place rather than emptying the hero: the
+  thoughts are the picture, the turning is not. Nothing is painted while the
+  hero is off screen or the tab is hidden, and a page whose script never runs
+  shows the hero alone — the capsules start at `opacity: 0` and only script
+  writes them.
+
+### Try it
+
+One row instead of five controls. The examples stay the fast path and work in
+every browser; the field carries typing and the microphone together, with the
+microphone inside the field where a phone keyboard puts one. Where the browser
+has no speech service the button is removed rather than left dead, and the note
+under the field says so. A finished voice capture now also fills the field, so
+what was heard is visible and editable rather than only reflected in the result.
+
+### Two screens
+
+Whole screenshots in whole phones. The frame is bezelled on four sides at
+`262px` and the image is unclipped, so the tab bar and the capture button are
+part of the picture. The previous frame cut the phone off at `430px` and asked
+the reader to take the rest on trust.
+
+### How it understands you
+
+A new section, `#intelligence`, on the two paths in `ThoughtExtractionEngine`.
+Every claim in it is one the code makes good on — `RefinementPolicy` only
+consults the model for a capture the rules flagged for review, operations never
+reach it, `RefinementGuard.preservesEverything` rejects a reading that drops
+part of the capture, quotes are checked against the transcript, sampling is
+greedy, and dates and reminders are set by deterministic code either way.
+
+**No latency number appears on the page.** `Docs/KNOWN_ISSUES.md` records that
+FoundationModels cancellation is cooperative and that the app's two-second race
+has not been measured on an Apple Intelligence device, so the site says a
+capture does not wait on the model and stops there. If that measurement is ever
+taken, the number can be added; until then it would be a claim the repository
+itself does not stand behind.
+
+The device list — iOS 26 or later, an iPhone that supports Apple Intelligence,
+the feature switched on, a supported language — is accurate as of this writing
+and the copy says Apple's own list is the one that counts, so the page does not
+have to be republished every time that list moves.
+
+### The wordmark
+
+`index.html` sets *Speak It* in the page's own typeface at the same weight and
+tracking as the rest of the page. The five-bar mark is unchanged and still
+drawn. The monoline lettering SVG that used to sit beside it is no longer
+referenced by any page; `Design/Brand` and `generate_brand.swift` still own it
+for the app icon and other brand surfaces, and this was a site decision, not a
+brand one.
 
 ## September 2026 responsive update
 

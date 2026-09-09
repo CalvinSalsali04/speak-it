@@ -11,6 +11,7 @@ Three measures, in increasing order of how much they matter:
 """
 import re, sys
 from collections import Counter
+from pathlib import Path
 
 labels_path, probe_path = sys.argv[1], sys.argv[2]
 verbose = "--verbose" in sys.argv
@@ -20,7 +21,7 @@ for line in open(labels_path):
     if line.startswith("#") or not line.strip():
         continue
     parts = line.rstrip("\n").split("\t")
-    if len(parts) >= 5:
+    if len(parts) >= 5 and parts[0] != "id":
         rows.append(parts[:5])
 
 blocks = re.split(r'\n(?=── ")', open(probe_path).read())
@@ -52,6 +53,13 @@ for cid, utt, fam, dest, n in rows:
         continue
     stats["scored"] += 1
 
+    # Preservation applies to ambiguous captures too. Count before the branch
+    # below, otherwise an ambiguous capture silently producing nothing is
+    # absent from the very metric intended to expose data loss.
+    if got["rows"] == 0 and not got["operation"]:
+        stats["produced_nothing"] += 1
+        misses.append(("EMPTY", cid, utt, dest, "no rows, no operation"))
+
     if "Ambiguous" in dest:
         stats["ambiguous"] += 1
         # The contract for an unpinnable capture: keep it, do not act on it.
@@ -79,15 +87,14 @@ for cid, utt, fam, dest, n in rows:
         else:
             misses.append(("COUNT", cid, utt, m.group(1), str(got["rows"])))
 
-    if got["rows"] == 0 and not got["operation"]:
-        stats["produced_nothing"] += 1
-        misses.append(("EMPTY", cid, utt, dest, "no rows, no operation"))
-
 d_total = stats["dest_ok"] + stats["dest_miss"]
 print()
-print("HELD-OUT SET — 389 utterances written before anyone read the parser")
+directory = Path(labels_path).resolve().parent.name
+label = {"heldout": "HELD-OUT SET", "devsets": "DEVELOPMENT SET"}.get(directory, "CAPTURE SET")
+print(f"{label} — {len(rows)} labelled utterances")
 print("=" * 66)
 print(f"  scored                     {stats['scored']}")
+print(f"  missing probe results      {stats['unseen']}")
 print(f"  destination correct        {stats['dest_ok']}/{d_total}"
       f"  ({100 * stats['dest_ok'] / max(d_total, 1):.1f}%)")
 print(f"  thought count correct      {stats['count_ok']}/{stats['count_scored']}"

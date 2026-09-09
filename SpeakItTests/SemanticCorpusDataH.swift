@@ -254,7 +254,7 @@ enum SemanticCorpusH {
                    "Tomorrow morning email the landlord and then in the afternoon pick up the prescription",
                    count: 2, type: [.task, .task], route: [.today, .today],
                    severityCeiling: .metadata,
-                   note: "GAP: yields 3 rows — a phantom \"Tomorrow morning\" and a row titled \"Email the landlord and then in the afternoon\". A fronted part-of-day is read as a thought, and a mid-chain one is not read as context at all."),
+                   note: "Closed by corpus family 55 (2026-09-08): a fronted part-of-day is context for the verb after it, on either side of the \"and then\". It used to yield a phantom \"Tomorrow morning\" and a row titled \"Email the landlord and then in the afternoon\"."),
 
         corpusCase(.paragraphs,
                    "Get advil, bandaids, and vitamins and then remind me to book the flights at 6",

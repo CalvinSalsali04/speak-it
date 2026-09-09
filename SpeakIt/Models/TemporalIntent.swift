@@ -237,10 +237,19 @@ struct TemporalIntent: Codable, Equatable, Sendable {
 /// Turns intent into instants. Kept separate from the parser so interpretation
 /// and resolution can be tested — and can happen — at different moments.
 enum TemporalResolver {
-    /// The hour used to alert about a day that carries no time of day. It is a
+    /// The hour "morning" means when no clock was stated — "tomorrow morning",
+    /// "first thing" — and the hour a repeating clock falls back to. A fact
+    /// about English, not a preference: it does not follow the person's
+    /// default reminder time, or an evening default would move "tomorrow
+    /// morning" to the evening.
+    static let morningHour = 9
+
+    /// The time used to alert about a day that carries no time of day. It is a
     /// property of the *notification*, never of the intent, so a date-only item
-    /// still knows it has no time even when it alerts at 9 AM.
-    static let dateOnlyAlertHour = 9
+    /// still knows it has no time even when it alerts at 9 AM. The person sets
+    /// it under Settings → Capture & reminders; see `ReminderDefaults`.
+    static var dateOnlyAlertHour: Int { ReminderDefaults.alertTime.hour }
+    static var dateOnlyAlertMinute: Int { ReminderDefaults.alertTime.minute }
 
     struct Resolution: Equatable {
         /// What Today sorts by: an instant, or the start of a date-only day.
@@ -283,7 +292,7 @@ enum TemporalResolver {
             let alert = wantsReminder
                 ? calendar.date(
                     bySettingHour: dateOnlyAlertHour,
-                    minute: 0,
+                    minute: dateOnlyAlertMinute,
                     second: 0,
                     of: start,
                     matchingPolicy: .nextTime,
@@ -345,5 +354,57 @@ enum TemporalResolver {
         case .none, .dateOnly, .exactDateTime, .relativeDuration:
             return nil
         }
+    }
+}
+
+
+/// The person's default reminder time: when a reminder names a day but no
+/// time — "remind me tomorrow", "remind me on the 15th" — this is the moment
+/// it alerts at. 9:00 until they change it.
+///
+/// Device-scoped configuration in the shared defaults, like `SavedPlaceStore`,
+/// for the same reason: a settings row is not worth a schema migration, and
+/// the share extension organizes captures too, so it has to read the same
+/// value. Changing it affects reminders organized from then on; a reminder
+/// already scheduled keeps the moment it was given.
+enum ReminderDefaults {
+    static let fallback = WallClockTime(hour: 9, minute: 0)
+    private static let key = "SpeakIt.defaultReminderTime.v1"
+    private static let suiteName = "group.com.calvinwak.SpeakIt"
+
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: suiteName) ?? .standard
+    }
+
+    /// Stored as minutes after midnight; anything unreadable is the fallback.
+    static var alertTime: WallClockTime {
+        get {
+            guard let stored = defaults.object(forKey: key) as? Int,
+                  (0..<(24 * 60)).contains(stored) else { return fallback }
+            return WallClockTime(hour: stored / 60, minute: stored % 60)
+        }
+        set {
+            let minutes = newValue.hour * 60 + newValue.minute
+            guard (0..<(24 * 60)).contains(minutes) else { return }
+            defaults.set(minutes, forKey: key)
+        }
+    }
+
+    /// Back to 9:00. Tests that set a time call this when they are done.
+    static func reset() {
+        defaults.removeObject(forKey: key)
+    }
+
+    /// The preference as a date on the given day, for a time picker to bind to.
+    static func alertDate(on day: Date = .now, calendar: Calendar = .autoupdatingCurrent) -> Date {
+        let time = alertTime
+        return calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: day) ?? day
+    }
+
+    /// Writes the wall-clock part of a picked date, in the calendar it was picked in.
+    static func setAlertTime(from date: Date, calendar: Calendar = .autoupdatingCurrent) {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        guard let hour = components.hour, let minute = components.minute else { return }
+        alertTime = WallClockTime(hour: hour, minute: minute)
     }
 }

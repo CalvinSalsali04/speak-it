@@ -116,6 +116,21 @@ enum PersonMentionResolver {
     static func mentions(in text: String) -> [PersonMention] {
         let source = text[...]
         guard !source.isEmpty else { return [] }
+        // "Remember Catherine said I need to call Alex Friday" is a call to
+        // Alex that Catherine happened to prompt. The rules read a sentence
+        // from its head and filed that row under Catherine, so when reported
+        // speech carries an obligation of its own the obligation is read
+        // first — on the same string, so every range stays valid — and the
+        // people in the framing are consulted only when it names nobody.
+        if let obligation = ActionabilityReader.reportedObligationBody(in: text) {
+            let inner = mentions(in: source[obligation])
+            if !inner.isEmpty { return inner }
+        }
+        return mentions(in: source)
+    }
+
+    private static func mentions(in source: Substring) -> [PersonMention] {
+        let text = String(source)
         let lowercaseOnly = isCasuallyCased(text)
         let role = participantRole(in: text)
 
@@ -130,16 +145,39 @@ enum PersonMentionResolver {
         let body = strippedLead(source)
         let bodyWords = words(in: body)
         let hadLead = body.startIndex != source.startIndex
-        if let actor = actorMention(bodyWords, allowLowercase: lowercaseOnly) {
-            found.append(actor)
+        // "Standup moved from 9 to 9:30" is a thing rescheduled to a clock,
+        // not somebody who relocated. "Moved" is the same life-event verb in
+        // both; what follows it is a time, and a person is not moved to one.
+        if !reschedulesToAClock(String(body)) {
+            if let actor = actorMention(bodyWords, allowLowercase: lowercaseOnly) {
+                found.append(actor)
+            }
+            if let subject = factSubject(bodyWords, hadMemoryLead: hadLead, allowLowercase: lowercaseOnly) {
+                found.append(subject)
+            }
         }
-        if let subject = factSubject(bodyWords, hadMemoryLead: hadLead, allowLowercase: lowercaseOnly) {
-            found.append(subject)
+        // The owner of something mentioned along the way comes after anybody
+        // the sentence addresses or is about, whatever order they were said
+        // in: "give Mom's recipe to Catherine" is a thing to do with
+        // Catherine, and it was filed under Mom because Mom came first.
+        var ranked = deduplicated(found)
+        if let owner = possessiveOwner(bodyWords, allowLowercase: lowercaseOnly),
+           !ranked.contains(where: { $0.label.lowercased() == owner.label.lowercased() }) {
+            ranked.append(owner)
         }
-        if let owner = possessiveOwner(bodyWords, allowLowercase: lowercaseOnly) {
-            found.append(owner)
-        }
-        return deduplicated(found)
+        return ranked
+    }
+
+    /// Whether the sentence's subject is a thing whose time changed. The cue
+    /// is the one `ActionabilityReader` reads to call the sentence an event,
+    /// so the two cannot disagree about which sentences qualify.
+    private static func reschedulesToAClock(_ body: String) -> Bool {
+        // A day is as much a schedule as a clock: "Maya's swim lesson moved
+        // to Thursday" filed a person called Swim Lesson.
+        return body.range(
+            of: #"^\S+(?:\s+\S+)?\s+(?:was\s+|got\s+|has\s+been\s+|is\s+)?(?:"# + ActionabilityReader.rescheduleCue + #"|"# + ActionabilityReader.rescheduleDayCue + #")"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     /// The one person a thought is about, when it is about anybody.
@@ -167,7 +205,7 @@ enum PersonMentionResolver {
         }
 
         for index in list.indices {
-            guard let objectIndex = objectIndex(after: index, in: list) else { continue }
+            guard let objectIndex = objectIndex(after: index, in: list, allowLowercase: lowercaseOnly) else { continue }
             if let described = describedTarget(list, from: objectIndex) {
                 return .described(described)
             }
@@ -186,8 +224,13 @@ enum PersonMentionResolver {
     ) -> [PersonMention] {
         var found: [PersonMention] = []
         for index in list.indices {
-            guard let objectIndex = objectIndex(after: index, in: list),
-                  let phrase = personPhrase(in: list, at: objectIndex, allowLowercase: allowLowercase)
+            guard let objectIndex = objectIndex(after: index, in: list, allowLowercase: allowLowercase),
+                  let phrase = personPhrase(
+                    in: list,
+                    at: objectIndex,
+                    allowLowercase: allowLowercase,
+                    limit: objectLimit(after: index, in: list)
+                  )
             else { continue }
             found.append(PersonMention(
                 label: phrase.label,
@@ -199,10 +242,49 @@ enum PersonMentionResolver {
         return found
     }
 
+    /// Where the object of the frame opened at `index` must stop, or `nil`
+    /// when nothing closes it. "Let Priya know" is anchored on its "know", and
+    /// the anchor is the end of the name: a dictated "let priya know the
+    /// meeting moved" otherwise joins the anchor to the name and files a person
+    /// called Priya Know.
+    private static func objectLimit(after index: Int, in list: [Word]) -> Int? {
+        if list[index].lower == "let", index + 2 < list.count, letAnchors.contains(list[index + 2].lower) {
+            return index + 2
+        }
+        return nil
+    }
+
+    /// The verbs that close the light-verb "let" frame on a person: "let
+    /// Priya know", "don't let Alex forget". "Let me think" and "let the dog
+    /// out" never reach the name rules.
+    private static let letAnchors: Set<String> = ["know", "forget"]
+
     /// Where the object of an address verb starts, or `nil` when the word at
     /// `index` is not one.
-    private static func objectIndex(after index: Int, in list: [Word]) -> Int? {
+    private static func objectIndex(after index: Int, in list: [Word], allowLowercase: Bool = false) -> Int? {
         let verb = list[index].lower
+        // "Give Mom's recipe to Catherine", "send Alex's invoice to Priya",
+        // "return the book to Sam". A transfer verb reaches its person
+        // through "to", with the thing transferred in between, and the
+        // recipient is who the errand is with — so this is read ahead of the
+        // direct object, which for "send" is the thing being sent. Scanned
+        // like `say` below, a few words only, so an unrelated "to" later in a
+        // long sentence cannot be stolen; and what follows the "to" has to be
+        // written like a name, so "bring the laptop to work" falls through.
+        if transferVerbs.contains(verb) {
+            let upperBound = min(list.count, index + 7)
+            if index + 1 < upperBound {
+                for connectorIndex in (index + 1)..<upperBound
+                where list[connectorIndex].lower == "to"
+                    && connectorIndex + 1 < list.count
+                    // "Bring an umbrella, it's supposed to rain": an
+                    // infinitive "to" leads to a verb, not a recipient.
+                    && !infinitiveHeads.contains(list[connectorIndex - 1].lower)
+                    && isNameToken(list[connectorIndex + 1], allowLowercase: allowLowercase) {
+                    return connectorIndex + 1
+                }
+            }
+        }
         if directAddressVerbs.contains(verb) {
             if index + 1 < list.count, connectors.contains(list[index + 1].lower) {
                 return index + 2
@@ -239,7 +321,7 @@ enum PersonMentionResolver {
         // object — anchored on that, so "let me think", "let's go" and "let the
         // dog out" never reach the name rules. The pronoun stoplist handles
         // "let me know", where the object is the speaker.
-        if verb == "let", index + 2 < list.count, list[index + 2].lower == "know" {
+        if verb == "let", index + 2 < list.count, letAnchors.contains(list[index + 2].lower) {
             return index + 1
         }
         // "Make sure Sam returns the books", "get Alex to sign the form".
@@ -260,6 +342,37 @@ enum PersonMentionResolver {
            list[index + 1].isCapitalized || kinship.contains(list[index + 1].lower),
            list[index + 2].lower == "to" {
             return index + 1
+        }
+        // "Pick up Alex from school", "drop off Sam", "collect Mom". A
+        // transport verb carries a person as readily as a parcel, and the
+        // parcel is the common case — "pick up Tylenol" is a capitalized
+        // brand — so the object counts as a person only with the kinship
+        // vocabulary behind it or the tagger's own reading of the word as a
+        // personal name. That reading is corroboration here, not the case:
+        // the frame is what admits it, and it is never consulted elsewhere.
+        // "Pick up Alex and Sam" therefore reads as two people, and "pick up
+        // alex" lowercased does not, which is the rendering cost the whole
+        // file accepts for a name a recognizer has already flattened.
+        let transportObject: Int? = if verb == "pick" || verb == "drop",
+                                       index + 1 < list.count,
+                                       list[index + 1].lower == "up" || list[index + 1].lower == "off" {
+            index + 2
+        } else if verb == "collect" || verb == "fetch" {
+            index + 1
+        } else if verb == "get",
+                  index + 2 < list.count,
+                  list[index + 2].lower == "from" || list[index + 2].lower == "at" {
+            // "Get Sam from the airport". "Get" alone acquires; the source
+            // phrase behind the object is what makes it a collection.
+            index + 1
+        } else {
+            nil
+        }
+        if let transportObject, transportObject < list.count {
+            let object = list[transportObject]
+            if kinship.contains(object.lower) || (object.isCapitalized && object.isPersonalName) {
+                return transportObject
+            }
         }
         // "Follow up with", "get back to", "say hi to". These verbs mean
         // nothing on their own — "get milk" must never reach the name rules —
@@ -286,6 +399,14 @@ enum PersonMentionResolver {
         var index = phrase.end
         if index < list.count, modals.contains(list[index].lower) { index += 1 }
         guard index < list.count, humanActionVerbs.contains(list[index].lower) else { return nil }
+        // "Catherine's husband is called David" names him; nobody phoned. A
+        // contact verb behind a copula is a passive or a naming, and either
+        // way the phrase in front of it did not do the thing. The sentence is
+        // still a fact about the owner, which `factSubject` reads next.
+        if index > phrase.end, ["is", "was"].contains(list[index - 1].lower),
+           ["called", "named", "texted", "emailed", "messaged", "phoned", "invited", "sent", "asked", "told", "reminded"].contains(list[index].lower) {
+            return nil
+        }
         return PersonMention(
             label: phrase.label,
             sourceRange: phrase.range,
@@ -343,8 +464,15 @@ enum PersonMentionResolver {
         // that "Priya birthday is December 4th" is how "Priya's birthday"
         // actually arrives. Relation nouns keep needing the real possessive —
         // "Priya brother" is not a shape people speak.
+        // "Sarah has no pets", "Sarah has two kids": possession is a fact
+        // about whoever has, and "has" is as ordinary a predicate as English
+        // owns — "Toronto has cold winters" — so the subject has to be one the
+        // tagger reads as a personal name. Corroboration behind a frame, as
+        // for the transport verbs; never the case on its own.
+        let possession = ["has", "have", "had"].contains(predicate) && first.isPersonalName
         let readsLikeAHumanFact = hasPeoplePredicate(list, at: predicateIndex)
             || copulaDetail
+            || possession
             || personalFactNouns.contains(predicate)
             || (first.isPossessive && relationNouns.contains(predicate))
             || (hadMemoryLead && ["is", "was", "has", "had"].contains(predicate))
@@ -399,7 +527,12 @@ enum PersonMentionResolver {
                   !word.core.isEmpty,
                   isNameToken(word, allowLowercase: allowLowercase),
                   index + 1 < list.count,
-                  !pronouns.contains(list[index + 1].lower) else { continue }
+                  !pronouns.contains(list[index + 1].lower),
+                  // "The dog's grooming appointment": a name takes no
+                  // determiner, so a possessive behind one is a common noun.
+                  // Kinship keeps its determiner ("my sister's kids").
+                  !(determiners.contains(list[index - 1].lower) && !kinship.contains(word.lower))
+            else { continue }
             return PersonMention(
                 label: display(word.core),
                 sourceRange: word.range,
@@ -437,7 +570,8 @@ enum PersonMentionResolver {
     private static func personPhrase(
         in list: [Word],
         at index: Int,
-        allowLowercase: Bool
+        allowLowercase: Bool,
+        limit: Int? = nil
     ) -> Phrase? {
         guard index < list.count else { return nil }
         let first = list[index]
@@ -445,9 +579,13 @@ enum PersonMentionResolver {
 
         // "Dr. Okonkwo", "Professor Chen". A title only makes a person when a
         // name follows it; "Professor said Chapter 7 is excluded" names nobody.
+        // The same adjective guard as the surname join below: "wish grandma
+        // happy birthday", flattened, is Grandma and a wish, not a person
+        // called Grandma Happy.
         if let title = titles[first.lower],
            !first.isPossessive,
            index + 1 < list.count,
+           !(list[index + 1].isAdjective && !list[index + 1].isCapitalized),
            let second = properName(list[index + 1], allowLowercase: allowLowercase) {
             return Phrase(
                 label: "\(title) \(second)",
@@ -458,6 +596,10 @@ enum PersonMentionResolver {
         }
 
         guard isNameToken(first, allowLowercase: allowLowercase) else { return nil }
+
+        // "Send the W9 to Northwind accounting": a name followed by a
+        // department or a company suffix is an organisation, not somebody.
+        if index + 1 < list.count, organisationSuffixes.contains(list[index + 1].lower) { return nil }
 
         // "Sam's assistant" is one specific human, reached through a name. The
         // relationship word is required: a bare possessive in the object slot
@@ -480,8 +622,15 @@ enum PersonMentionResolver {
         // too. The old rule took the next word whenever the *first* one was
         // lowercase, which is exactly how "wait, Sam's assistant" became a
         // person called Wait Sam.
-        if end < list.count,
+        // A kinship word takes no surname ("grandma smith" is not said), and
+        // a flattened word the tagger reads as an adjective is the start of
+        // what follows the name, not more of it: "wish grandma happy
+        // birthday" and "wish priya happy birthday" filed Grandma Happy and
+        // Priya Happy. A capitalized second word keeps its own evidence.
+        if end < min(list.count, limit ?? list.count),
            first.isCapitalized || allowLowercase,
+           !kinship.contains(first.lower),
+           !(list[end].isAdjective && !list[end].isCapitalized),
            let second = properName(list[end], allowLowercase: allowLowercase),
            !list[end].isPossessive,
            titles[list[end].lower] == nil {
@@ -514,6 +663,11 @@ enum PersonMentionResolver {
     private static func isNameToken(_ word: Word, allowLowercase: Bool) -> Bool {
         guard word.core.count >= 2 else { return false }
         if kinship.contains(word.lower) { return true }
+        // "I told Sarah I'd drop off the dish": a capitalized "I'd" joined
+        // the name and filed a person called Sarah I'd. A pronoun, contracted
+        // or not, is never part of a name.
+        guard !pronouns.contains(word.lower),
+              !word.lower.hasPrefix("i'"), !word.lower.hasPrefix("i’") else { return false }
         guard !namesNothing(word.lower) else { return false }
         return word.isCapitalized || allowLowercase
     }
@@ -691,7 +845,11 @@ enum PersonMentionResolver {
     /// into O'brien and Jean-Luc into Jean-luc.
     private static func display(_ core: String) -> String {
         guard !core.contains(where: \.isUppercase) else { return core }
-        return core.prefix(1).uppercased() + core.dropFirst()
+        // Each part of a hyphenated name is a name: a flattened "jean-luc"
+        // is Jean-Luc, not Jean-luc.
+        return core.split(separator: "-", omittingEmptySubsequences: false)
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: "-")
     }
 
     // MARK: Words
@@ -702,6 +860,17 @@ enum PersonMentionResolver {
         /// the token is not word-shaped at all ("4821", "$300").
         let core: String
         let isPossessive: Bool
+        /// Whether `NLTagger` called this word a personal name in the whole
+        /// sentence. Corroboration only — it fires on capitals — and it is
+        /// consulted by exactly one frame, the transport verbs.
+        var isPersonalName = false
+        /// Whether `NLTagger` read this word as an adjective in the whole
+        /// sentence. Consulted only when a lowercase word is about to be
+        /// joined onto a name: "wish grandma happy birthday" flattened by a
+        /// recognizer filed a person called Grandma Happy.
+        var isAdjective = false
+        /// Whether `NLTagger` read this word as a verb in the whole sentence.
+        var isVerb = false
 
         var lower: String { core.lowercased() }
         var isCapitalized: Bool { core.first?.isUppercase == true }
@@ -711,6 +880,17 @@ enum PersonMentionResolver {
         .union(CharacterSet(charactersIn: "-'’"))
 
     private static func words(in body: Substring) -> [Word] {
+        let base = body.base
+        let tokens = SentenceContextCache.context(for: base).tokens
+        let names = tokens
+            .filter(\.isPersonalName)
+            .map { NSRange($0.range, in: base) }
+        let adjectives = tokens
+            .filter { $0.lexicalClass == .adjective }
+            .map { NSRange($0.range, in: base) }
+        let verbs = tokens
+            .filter(\.isVerb)
+            .map { NSRange($0.range, in: base) }
         var result: [Word] = []
         var index = body.startIndex
         while index < body.endIndex {
@@ -722,7 +902,12 @@ enum PersonMentionResolver {
             while end < body.endIndex, !body[end].isWhitespace {
                 end = body.index(after: end)
             }
-            result.append(word(from: body[index..<end], range: index..<end))
+            var entry = word(from: body[index..<end], range: index..<end)
+            let span = NSRange(index..<end, in: base)
+            entry.isPersonalName = names.contains { NSIntersectionRange($0, span).length > 0 }
+            entry.isAdjective = adjectives.contains { NSIntersectionRange($0, span).length > 0 }
+            entry.isVerb = verbs.contains { NSIntersectionRange($0, span).length > 0 }
+            result.append(entry)
             index = end
         }
         return result
@@ -751,7 +936,7 @@ enum PersonMentionResolver {
 
     /// Verbs whose object is a human, said the way people say them.
     private static let directAddressVerbs: Set<String> = [
-        "call", "calls", "called", "phone", "phones", "phoned",
+        "call", "calls", "called", "phone", "phones", "phoned", "cc", "bcc", "loop",
         "text", "texts", "texted", "email", "emails", "emailed",
         "message", "messages", "messaged", "dm", "ping",
         "ask", "asks", "asked", "tell", "tells", "told",
@@ -781,6 +966,25 @@ enum PersonMentionResolver {
     ]
 
     private static let connectors: Set<String> = ["to", "with"]
+    private static let infinitiveHeads: Set<String> = [
+        "supposed", "going", "need", "needs", "have", "has", "want", "wants",
+        "able", "trying", "try", "about", "meant", "ought", "used", "got",
+        "hope", "plan", "planning", "forgot", "remember", "like", "love",
+        "hate", "decided", "start", "started", "expected", "ready", "time",
+    ]
+    private static let organisationSuffixes: Set<String> = [
+        "accounting", "legal", "hr", "sales", "support", "billing", "payroll",
+        "marketing", "finance", "team", "inc", "ltd", "llc", "corp", "co",
+        "group", "partners", "associates", "limited", "incorporated",
+    ]
+    /// Verbs that hand something to somebody. "Take" and "get" are left out:
+    /// "take the kids to school" and "get this to work" reach a place, not a
+    /// person, far more often than not.
+    private static let transferVerbs: Set<String> = [
+        "give", "gave", "hand", "handed", "send", "sent", "return", "returned",
+        "bring", "brought", "lend", "lent", "pass", "passed", "forward",
+        "forwarded", "deliver", "delivered", "mail", "mailed", "ship", "shipped",
+    ]
     private static let particles: Set<String> = ["up", "in", "out", "back", "hi", "hello", "over"]
     private static let modals: Set<String> = ["will", "is", "was", "has", "had", "just", "already"]
 
@@ -793,6 +997,7 @@ enum PersonMentionResolver {
         "says", "mentioned", "replied", "visited", "met", "sent", "invited",
         "dropped", "stopped", "came", "reached", "confirmed", "cancelled",
         "canceled", "wants", "needs", "reminded", "reminds",
+        "recommended", "recommends", "suggested", "suggests",
         // Life events. A person moving, graduating or retiring is a fact about
         // them and belongs under their name, but every one of these is also
         // past tense with a month attached — "Alex moved to Toronto in
@@ -955,6 +1160,11 @@ enum PersonMentionResolver {
         // Departments answer like people and are named like acronyms. Filing
         // one as a person puts a row under People that nobody is.
         "hr", "it", "payroll", "accounting", "billing", "reception", "admin",
+        "recruiting", "legal", "accounts", "finance", "marketing", "sales",
+        "engineering", "ops", "operations", "procurement", "compliance",
+        "facilities", "security", "management", "leadership", "dispatch",
+        // Addresses: "follow up with unit 4 landlord" filed a person called Unit.
+        "unit", "suite", "apartment", "apt", "room", "floor", "building", "block",
     ]
 
     /// A bare title names nobody, so it can never be a name on its own.

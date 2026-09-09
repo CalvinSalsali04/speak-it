@@ -4,6 +4,36 @@ import SwiftUI
 /// It intentionally projects the records already loaded by SwiftData instead
 /// of introducing a second model or a nested query for every row.
 enum ShoppingListProjection {
+    struct GroupSummary: Identifiable {
+        let name: String
+        let count: Int
+        let timingItem: CapturedItem?
+        var id: String { name }
+    }
+
+    /// One card per open list, timed by its earliest reminder or due date.
+    /// Shared with the morning brief so its counts match Today.
+    @MainActor
+    static func groupSummaries(in items: [CapturedItem]) -> [GroupSummary] {
+        var order: [String] = []
+        var buckets: [String: [CapturedItem]] = [:]
+        for item in openItems(in: items) {
+            let name = ShoppingGroupStore.group(for: item.id) ?? ShoppingGroupStore.fallbackGroup
+            if buckets[name] == nil { order.append(name) }
+            buckets[name, default: []].append(item)
+        }
+        return order.map { name in
+            let items = buckets[name] ?? []
+            let timed = items
+                .compactMap { item -> (item: CapturedItem, date: Date)? in
+                    guard let date = item.reminderDate ?? item.dueDate else { return nil }
+                    return (item, date)
+                }
+                .min { $0.date < $1.date }
+            return GroupSummary(name: name, count: items.count, timingItem: timed?.item)
+        }
+    }
+
     static func contains(_ item: CapturedItem) -> Bool {
         item.itemType == .shopping && !item.isArchived && !item.isCompleted
     }

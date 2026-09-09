@@ -127,8 +127,7 @@ struct SpeakItProView: View {
         .task {
             SpeakItAnalytics.track(.paywallViewed(context: context.analyticsContext))
             await subscriptionStore.prepare()
-            if subscriptionStore.annualProduct == nil,
-               let firstID = subscriptionStore.recommendedProduct?.id {
+            if let firstID = subscriptionStore.recommendedProduct?.id {
                 selectedProductID = firstID
             }
         }
@@ -216,7 +215,7 @@ struct SpeakItProView: View {
         case .runningLow:
             return "No rush, and nothing you saved is ever locked. Pro removes the lifetime capture limit whenever you are ready."
         case .account:
-            return "Your first \(FreePlanAllowance.lifetimeCaptureLimit) captures include the complete experience. Pro removes the capture limit so every thought can keep moving."
+            return "Try the complete experience with \(FreePlanAllowance.lifetimeCaptureLimit) free captures. They never expire, and no subscription is needed. Choose Pro when you want unlimited capture."
         }
     }
 
@@ -340,7 +339,7 @@ struct SpeakItProView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                if SummerLaunchSale.isActive() {
+                if let annual = subscriptionStore.annualProduct, showsLaunchOffer(for: annual) {
                     summerSaleHeader
                 }
                 ForEach(subscriptionStore.products, id: \.id) { product in
@@ -453,7 +452,7 @@ struct SpeakItProView: View {
                     Text(isAnnual ? "Annual" : "Monthly")
                         .font(.body.weight(.semibold))
                     Spacer(minLength: 8)
-                    if isAnnual {
+                    if isAnnual && subscriptionStore.annualIsBestValue {
                         bestValueBadge
                     }
                 }
@@ -511,9 +510,8 @@ struct SpeakItProView: View {
     ) -> some View {
         VStack(alignment: alignment, spacing: 3) {
             if isAnnual,
-               SummerLaunchSale.isActive(),
-               product.priceFormatStyle.currencyCode == "USD" {
-                Text("Regularly \(SummerLaunchSale.regularAnnualUSPrice)")
+               showsLaunchOffer(for: product) {
+                Text("Standard price \(SummerLaunchSale.regularAnnualUSPrice)")
                     .font(.caption2)
                     .foregroundStyle(Color.speakMuted)
                     .strikethrough()
@@ -561,13 +559,11 @@ struct SpeakItProView: View {
     }
 
     private func planAccessibilityLabel(product: Product, isAnnual: Bool) -> String {
-        guard isAnnual, SummerLaunchSale.isActive() else {
+        guard isAnnual, showsLaunchOffer(for: product) else {
             return "\(isAnnual ? "Annual" : "Monthly"), \(product.displayPrice) per \(isAnnual ? "year" : "month")"
         }
-        if product.priceFormatStyle.currencyCode == "USD" {
-            return "Annual, summer launch price \(product.displayPrice) per year, regularly \(SummerLaunchSale.regularAnnualUSPrice), 50 percent off, best value"
-        }
-        return "Annual, summer launch price \(product.displayPrice) per year, 50 percent off the regular annual price, best value"
+        let value = subscriptionStore.annualIsBestValue ? ", best value" : ""
+        return "Annual, summer launch price \(product.displayPrice) per year, standard annual price \(SummerLaunchSale.regularAnnualUSPrice), 50 percent off\(value)"
     }
 
     @ViewBuilder
@@ -691,7 +687,7 @@ struct SpeakItProView: View {
             return "$2.99 per month. Auto-renews until cancelled."
         }
         if SummerLaunchSale.isActive() {
-            return "Summer launch price · $14.99 per year, and it stays that price for as long as the subscription does. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+            return "Summer launch price · $14.99 per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "$29.99 per year. Auto-renews until cancelled."
     }
@@ -716,16 +712,22 @@ struct SpeakItProView: View {
             : "Choose Monthly · \(selectedProduct.displayPrice)"
     }
 
+    private func showsLaunchOffer(for product: Product) -> Bool {
+        product.id == SubscriptionStore.annualProductID
+            && SummerLaunchSale.isActive()
+            && SummerLaunchSale.matchesLaunchPrice(
+                price: product.price,
+                currencyCode: product.priceFormatStyle.currencyCode
+            )
+    }
+
     private func purchaseDetail(for product: Product) -> String {
         let period = product.id == SubscriptionStore.annualProductID ? "year" : "month"
         if product.id == SubscriptionStore.annualProductID,
-           SummerLaunchSale.isActive() {
-            // The earlier wording — "$14.99 per year until October 22, 2026" —
-            // read as though the subscriber's own rate expired on that date.
-            // What expires is the offer. App Store Connect is configured to
-            // preserve this price for subscriptions that began during the
-            // window, so the sentence now says which of the two ends.
-            return "Summer launch price · \(product.displayPrice) per year, and it stays that price for as long as the subscription does. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+           showsLaunchOffer(for: product) {
+            // The deadline applies to joining the offer. Price preservation
+            // must be configured separately in App Store Connect.
+            return "Summer launch price · \(product.displayPrice) per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "\(product.displayPrice) per \(period). Auto-renews until cancelled."
     }

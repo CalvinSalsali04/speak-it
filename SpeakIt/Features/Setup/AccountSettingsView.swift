@@ -19,6 +19,11 @@ struct AccountSettingsView: View {
     @AppStorage(AccountProfileKeys.name) private var profileName = ""
     @AppStorage(AccountProfileKeys.email) private var profileEmail = ""
     @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
+    @State private var defaultReminderTime = ReminderDefaults.alertDate()
+    @State private var morningBriefEnabled = HabitDefaults.morningBriefEnabled
+    @State private var morningBriefTime = HabitDefaults.morningBriefDate()
+    @State private var isUpdatingMorningBrief = false
+    @State private var morningBriefNotice: String?
     @AppStorage(SpeakItAnalytics.enabledKey) private var analyticsEnabled = true
     @AppStorage(LockScreenTodayVisibility.showsTaskNamesKey)
     private var showsLockScreenTaskNames = false
@@ -186,6 +191,8 @@ struct AccountSettingsView: View {
                     settingsButton("Places", symbol: "house") {
                         showsPlaces = true
                     }
+                    defaultReminderTimeRow
+                    morningBriefRow
                 }
 
                 Section("Activity") {
@@ -366,6 +373,98 @@ struct AccountSettingsView: View {
         if subscriptionStore.hasProAccess { return "Unlimited capture is active" }
         let remaining = subscriptionStore.freeCapturesRemaining
         return "\(remaining) of \(FreePlanAllowance.lifetimeCaptureLimit) free captures remaining"
+    }
+
+    /// "Remind me tomorrow" names a day and no moment; this is the moment.
+    /// A wall-clock time, so it reads the same in whatever zone the phone is
+    /// in when the day comes.
+    private var defaultReminderTimeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 14) {
+                settingsSymbol("clock")
+                DatePicker(selection: $defaultReminderTime, displayedComponents: .hourAndMinute) {
+                    Text("Default reminder time")
+                        .foregroundStyle(Color.speakInk)
+                }
+                .accessibilityIdentifier("settings.default-reminder-time")
+                .accessibilityHint("Used when a reminder names a day but no time.")
+            }
+            Text("For reminders that name a day but no time, like “remind me tomorrow”.")
+                .font(.footnote)
+                .foregroundStyle(Color.speakMuted)
+        }
+        .onChange(of: defaultReminderTime) { _, newValue in
+            ReminderDefaults.setAlertTime(from: newValue)
+        }
+    }
+
+    /// The one habit notification, next to the reminder preference it
+    /// resembles and nowhere else: a silent "2 due today · 1 overdue" at a
+    /// wall-clock time. Off until switched on here; Today never asks.
+    private var morningBriefRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $morningBriefEnabled) {
+                HStack(spacing: 14) {
+                    settingsSymbol("sun.horizon")
+                    Text("Morning brief")
+                        .foregroundStyle(Color.speakInk)
+                }
+            }
+            .tint(Color.speakToggleTint)
+            .disabled(isUpdatingMorningBrief)
+            .accessibilityIdentifier("settings.morning-brief")
+            .accessibilityHint("A silent notification each morning with how many things are due.")
+
+            if morningBriefEnabled {
+                HStack(spacing: 14) {
+                    Color.clear.frame(width: 30, height: 1)
+                    DatePicker(selection: $morningBriefTime, displayedComponents: .hourAndMinute) {
+                        Text("Time")
+                            .foregroundStyle(Color.speakInk)
+                    }
+                    .accessibilityIdentifier("settings.morning-brief-time")
+                }
+            }
+
+            Text(morningBriefNotice ?? "A silent note with what’s due, only on mornings that have something.")
+                .font(.footnote)
+                .foregroundStyle(morningBriefNotice == nil ? Color.speakMuted : Color.speakWarning)
+        }
+        .onAppear {
+            // The brief can switch itself off after five unanswered mornings.
+            morningBriefEnabled = HabitDefaults.morningBriefEnabled
+        }
+        .onChange(of: morningBriefEnabled) { _, newValue in
+            setMorningBrief(enabled: newValue)
+        }
+        .onChange(of: morningBriefTime) { _, newValue in
+            HabitDefaults.setMorningBriefTime(from: newValue)
+            repository?.refreshMorningBrief()
+        }
+    }
+
+    private func setMorningBrief(enabled: Bool) {
+        guard enabled != HabitDefaults.morningBriefEnabled else { return }
+        morningBriefNotice = nil
+        if enabled {
+            isUpdatingMorningBrief = true
+            Task { @MainActor in
+                let authorized = await ReminderScheduler.requestNotificationAuthorizationIfNeeded()
+                if authorized {
+                    HabitDefaults.morningBriefEnabled = true
+                    SpeakItAnalytics.track(.morningBriefEnabled(source: .settings))
+                    repository?.refreshMorningBrief()
+                } else {
+                    morningBriefEnabled = false
+                    morningBriefNotice = "Notifications are off for Speak It. Turn them on in iPhone Settings first."
+                }
+                isUpdatingMorningBrief = false
+            }
+        } else {
+            HabitDefaults.morningBriefEnabled = false
+            SpeakItAnalytics.track(.morningBriefDisabled(source: .settings))
+            repository?.refreshMorningBrief()
+        }
     }
 
     private func settingsButton(

@@ -7,6 +7,12 @@ enum SummerLaunchSale {
     static let endsAt = ISO8601DateFormatter().date(from: "2026-10-22T04:00:00Z")!
     static let regularAnnualUSPrice = "$29.99"
 
+    /// Only the verified US price has a configured comparison price. A build
+    /// flag alone cannot establish a discount in every localized storefront.
+    static func matchesLaunchPrice(price: Decimal, currencyCode: String) -> Bool {
+        currencyCode == "USD" && price == Decimal(string: "14.99")!
+    }
+
     static func isActive(at date: Date = .now) -> Bool {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing-pro-preview") {

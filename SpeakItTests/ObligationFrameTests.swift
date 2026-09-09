@@ -11,8 +11,53 @@ import XCTest
 @MainActor
 final class ObligationFrameTests: XCTestCase {
 
+    func testHadBetterRequiresAClearActionComplement() {
+        for (source, expected) in [
+            ("I had better drop the car off on Thursday", "Drop the car off on Thursday"),
+            ("I had better call the bank tomorrow", "Call the bank tomorrow"),
+            ("We had better pay the rent", "Pay the rent"),
+            ("I had better just book the dentist", "Book the dentist"),
+            ("I think I had better call the bank", "Call the bank"),
+        ] {
+            XCTAssertEqual(title(source), expected, source)
+            XCTAssertEqual(title(expected), expected, "Reduction must be idempotent")
+        }
+        for source in [
+            "I had better luck last time",
+            "I had better service at that hotel",
+            "I had better call quality on that phone",
+            "I had better pay last year",
+            "I had better not call the bank",
+            "I had better never call the bank",
+            "I had better call the last time",
+            "I had better",
+        ] {
+            XCTAssertEqual(title(source), source, source)
+        }
+        let source = "I had better call the bank"
+        XCTAssertEqual(ThoughtTitleFormatter.polished(source, itemType: .task, reduceFrames: false), source)
+    }
+
     private func title(_ text: String, _ type: ItemType = .task) -> String {
         ThoughtTitleFormatter.polished(text, itemType: type)
+    }
+
+    func testHadBetterCaptureKeepsItsWordsAndDate() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        let source = "I had better drop the car off on Thursday"
+        let items = ThoughtExtractionEngine.extractWithRules(
+            source, referenceDate: reference, calendar: calendar
+        ).items
+        XCTAssertEqual(items.count, 1)
+        let item = try XCTUnwrap(items.first)
+        XCTAssertEqual(item.analysisText, source)
+        XCTAssertEqual(item.organization.itemType, .task)
+        XCTAssertEqual(item.organization.dueDate,
+                       calendar.date(from: DateComponents(year: 2026, month: 8, day: 6)))
+        XCTAssertNil(item.organization.reminderDate)
+        XCTAssertEqual(title(item.analysisText), "Drop the car off on Thursday")
     }
 
     // MARK: - The frames people actually speak
@@ -363,5 +408,37 @@ final class ObligationFrameTests: XCTestCase {
                 )
             }
         }
+    }
+
+    // MARK: - Names keep the resolver's casing
+
+    /// The title keeps the speaker's words, and dictation writes names in
+    /// lowercase, so a row that resolved its person as Dave still read "Don't
+    /// text dave". The resolver already decided the word is a name; the title
+    /// writes it the way the resolver did, and touches nothing else.
+    func testAResolvedNameIsWrittenAsANameInTheTitle() {
+        XCTAssertEqual(
+            ThoughtTitleFormatter.polished("Don't text dave", itemType: .task, personName: "Dave"),
+            "Don't text Dave"
+        )
+        XCTAssertEqual(
+            ThoughtTitleFormatter.polished("call dave o'brien about the invoice", itemType: .task, personName: "Dave O'Brien"),
+            "Call Dave O'Brien about the invoice"
+        )
+        // A name the speaker cased themselves is never flattened.
+        XCTAssertEqual(
+            ThoughtTitleFormatter.restoringNameCasing(in: "Ask McKenzie about the report", person: "Mckenzie"),
+            "Ask McKenzie about the report"
+        )
+        // Only whole words: "dave" inside "davenport" is not the name.
+        XCTAssertEqual(
+            ThoughtTitleFormatter.restoringNameCasing(in: "Move the davenport", person: "Dave"),
+            "Move the davenport"
+        )
+        // No person, no change.
+        XCTAssertEqual(
+            ThoughtTitleFormatter.polished("Don't text dave", itemType: .task),
+            "Don't text dave"
+        )
     }
 }

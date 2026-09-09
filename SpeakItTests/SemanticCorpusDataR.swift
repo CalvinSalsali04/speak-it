@@ -445,5 +445,311 @@ enum SemanticCorpusR {
         // Dictation's curly apostrophe is a function word too.
         corpusCase(.calendarIdioms, "On the first don’t forget the rent",
                    count: 1, due: [CorpusDate(month: 9, day: 1, hour: nil)]),
+        // A person saying where they are, or how far along, is not a
+        // scheduled thing: the "at" straight after the pronoun makes the
+        // number a state. A verb between them keeps the event.
+        corpusCase(.calendarIdioms, "We're at five",
+                   count: 1, route: [.memory], due: [nil]),
+        corpusCase(.calendarIdioms, "I'm at 5 already",
+                   count: 1, route: [.memory], due: [nil]),
+        corpusCase(.calendarIdioms, "We're meeting at five",
+                   count: 1, route: [.today], due: [CorpusDate(month: 8, day: 3, hour: 17)]),
+        corpusCase(.calendarIdioms, "Dinner is at five",
+                   count: 1, route: [.today], due: [CorpusDate(month: 8, day: 3, hour: 17)]),
+    ]
+
+    // MARK: - Family 55: fronted adjuncts
+
+    /// "On the 1st renew the car insurance" was two rows: an event titled
+    /// "On the 1st" and an undated task. The clause splitter cut in front of
+    /// the verb because the head had two words, and once the cut was closed
+    /// the whole sentence went to Memory, because the actionability reader
+    /// only knew how to look past a fronted *weekday*. Both layers now read
+    /// the same structure: a head that opens on a preposition and carries no
+    /// verb and no subject is context for the action, whatever words it uses.
+    static let frontedAdjuncts: [CorpusCase] = [
+        corpusCase(.frontedAdjuncts, "On the 1st renew the car insurance",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 9, day: 1, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "On the 15th pay the rent",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 15, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "By Friday send the invoice",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 7, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "Before the 10th submit the expense report",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 10, hour: nil)]),
+        // With the comma the fronted day is inherited and leaves the title.
+        corpusCase(.frontedAdjuncts, "On the 1st, renew the car insurance",
+                   count: 1, route: [.today], title: ["Renew the car insurance"],
+                   due: [CorpusDate(month: 9, day: 1, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "By Friday, send the invoice",
+                   count: 1, route: [.today], title: ["Send the invoice"],
+                   due: [CorpusDate(month: 8, day: 7, hour: nil)]),
+        // The tagger reads "dinner call" and "morning call" as compound
+        // nouns; the reader asks again with a comma in the adjunct's place.
+        corpusCase(.frontedAdjuncts, "After dinner call Mom",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Mom"]),
+        corpusCase(.frontedAdjuncts, "In the morning call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Dave"]),
+        corpusCase(.frontedAdjuncts, "After class submit my assignment",
+                   count: 1, route: [.today]),
+        corpusCase(.frontedAdjuncts, "After lunch book the dentist",
+                   count: 1, route: [.today]),
+        corpusCase(.frontedAdjuncts, "At the store buy milk",
+                   count: 1, type: [.shopping], route: [.today]),
+        corpusCase(.frontedAdjuncts, "On the way home from work pick up milk",
+                   count: 1, type: [.shopping], route: [.today]),
+        // Two errands with nothing fronted still split.
+        corpusCase(.frontedAdjuncts, "Buy milk call the dentist",
+                   count: 2, route: [.today, .today]),
+        // The deictic days front an adjunct without a preposition.
+        corpusCase(.frontedAdjuncts, "Tomorrow morning email the landlord",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 4, hour: 9)]),
+        corpusCase(.frontedAdjuncts, "This weekend clean the garage",
+                   count: 1, type: [.task], route: [.today],
+                   due: [CorpusDate(month: 8, day: 8, hour: nil)]),
+        // A demonstrative behind the preposition is its object, not a subject.
+        corpusCase(.frontedAdjuncts, "After that book the dentist",
+                   count: 1, type: [.task], route: [.today]),
+        // The tagger calls a lowercased "sarah" a verb; the reader's own verb
+        // list is asked first, so "call" stays the head.
+        corpusCase(.frontedAdjuncts, "Tomorrow at 9 call Sarah",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Sarah"],
+                   due: [CorpusDate(month: 8, day: 4, hour: 9)]),
+        // On the right of a conjunction the boundary is the "and", not the
+        // verb: the adjunct and its date stay with the errand they front.
+        corpusCase(.frontedAdjuncts, "Book the dentist and before dinner call Mom",
+                   count: 2, type: [.task, .personFollowUp], route: [.today, .today],
+                   title: ["Book the dentist", "Before dinner call Mom"]),
+        corpusCase(.frontedAdjuncts, "Book the dentist and tomorrow call Mom",
+                   count: 2, route: [.today, .today],
+                   due: [nil, CorpusDate(month: 8, day: 4, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "Book the dentist and on Friday call Mom",
+                   count: 2, route: [.today, .today],
+                   due: [nil, CorpusDate(month: 8, day: 7, hour: nil)]),
+        corpusCase(.frontedAdjuncts, "Buy milk and at the store get bread",
+                   count: 2, type: [.shopping, .shopping]),
+    ]
+
+    // MARK: - Lowercased lists (coordination in context)
+
+    /// The one lowercased rendering that still blocked. "Get Coke and Sprite"
+    /// was two shopping rows and "get coke and sprite" was one row and a
+    /// Memory note, because the one-word-closes-a-list rule wanted two items
+    /// behind the verb and the tagger calls a lowercased "sprite" a verb. A
+    /// one-item list now closes the same way, and the lone word is asked
+    /// whether it is an errand on its own: "run" is, "sprite" is not.
+    static let lowercasedLists: [CorpusCase] = [
+        corpusCase(.coordinationContext, "get coke and sprite",
+                   count: 2, type: [.shopping, .shopping], route: [.today, .today],
+                   title: ["Get coke", "Get sprite"]),
+        corpusCase(.coordinationContext, "buy coke and sprite",
+                   count: 2, type: [.shopping, .shopping], title: ["Buy coke", "Buy sprite"]),
+        corpusCase(.coordinationContext, "get coke and sprite and pepsi",
+                   count: 3, type: [.shopping, .shopping, .shopping]),
+        corpusCase(.coordinationContext, "buy milk and run",
+                   count: 2, type: [.shopping, .task], title: ["Buy milk", "Run"]),
+        corpusCase(.coordinationContext, "get coke and call mom",
+                   count: 2, type: [.shopping, .personFollowUp]),
+    ]
+
+    // MARK: - Corrections of a fact's object (corrections)
+
+    /// A fact has an object too. "Remember Alex likes golf, actually tennis"
+    /// had no instruction verb in front of its marker, so the object repair
+    /// declined and the punctuated discard kept only "tennis". The repair now
+    /// reads the prefix's shape — a verb with a short noun phrase behind it —
+    /// and a preposition in front of the object stays: "allergic to peanuts,
+    /// actually tree nuts". The other defect was a missing word boundary:
+    /// "tennis" opened with the spoken hour "ten" and was refused as a clock.
+    static let factCorrections: [CorpusCase] = [
+        corpusCase(.corrections, "Sarah is allergic to peanuts, actually tree nuts",
+                   count: 1, route: [.memory], title: ["Sarah is allergic to tree nuts"],
+                   person: ["Sarah"]),
+        corpusCase(.corrections, "Alex prefers tea, actually coffee",
+                   count: 1, route: [.memory], title: ["Alex prefers coffee"],
+                   person: ["Alex"]),
+        corpusCase(.corrections, "Remind me at 7, actually ten",
+                   count: 1, remind: [CorpusDate(month: 8, day: 3, hour: 22)]),
+        // An adverb inside an ordinary sentence corrects nothing.
+        corpusCase(.corrections, "The deploy actually went fine",
+                   count: 1, route: [.memory], title: ["The deploy actually went fine"]),
+    ]
+
+    // MARK: - Transported people (people)
+
+    /// "Pick up Alex from school" was a shopping row. The acquisition reading
+    /// sees a verb and an object; the resolver now reads the transport frame —
+    /// pick up, drop off, collect, fetch, get … from — with the kinship
+    /// vocabulary or the tagger's personal-name reading behind the object, and
+    /// the organizer turns the shopping reading into an errand about that
+    /// person. The tagger only fires on a capital, so a lowercased "pick up
+    /// alex" stays where it was; that is the rendering cost the resolver
+    /// already accepts for names a recognizer has flattened.
+    static let transportedPeople: [CorpusCase] = [
+        corpusCase(.people, "Pick up Alex from school",
+                   count: 1, type: [.task], route: [.today], person: ["Alex"]),
+        corpusCase(.people, "Pick up Mom at the airport at 3",
+                   count: 1, type: [.task], route: [.today], person: ["Mom"],
+                   due: [CorpusDate(month: 8, day: 3, hour: 15)]),
+        corpusCase(.people, "Drop off Sam at practice",
+                   count: 1, type: [.task], route: [.today], person: ["Sam"]),
+        corpusCase(.people, "Collect Dad from the station",
+                   count: 1, type: [.task], route: [.today], person: ["Dad"]),
+        corpusCase(.people, "Get Sam from the airport",
+                   count: 1, type: [.task], route: [.today], person: ["Sam"]),
+        // The tagger joins "Alex and Sam" into one name span behind a
+        // capitalized "Pick", so this stays one trip about Alex rather than
+        // two rows; the point pinned here is that it is an errand, not a list.
+        corpusCase(.people, "Pick up Alex and Sam",
+                   count: 1, type: [.task], person: ["Alex"]),
+        // Parcels stay parcels: a capitalized brand is not a person, and a
+        // determiner names a thing.
+        corpusCase(.people, "Pick up Tylenol and Advil",
+                   count: 2, type: [.shopping, .shopping], person: [nil, nil]),
+        corpusCase(.people, "Pick up Coke and Sprite",
+                   count: 2, type: [.shopping, .shopping]),
+        corpusCase(.people, "Get milk from the store",
+                   count: 1, type: [.shopping], person: [nil]),
+        corpusCase(.people, "Pick up the dry cleaning",
+                   count: 1, type: [.task], person: [nil]),
+        corpusCase(.people, "Pick up the kids at 3",
+                   count: 1, type: [.task], person: [nil]),
+    ]
+
+    // MARK: - Recipients in coordination (coordination in context)
+
+    /// Two recipients of one verb are two rows, each titled with the verb,
+    /// whether the recipients are named or described; an "and" inside a topic
+    /// complement coordinates topics and stays one row. "Ask Sam and Priya
+    /// about the invoice" used to file "Priya about the invoice" in Memory,
+    /// and "Email the landlord and the plumber" was one row.
+    static let coordinatedRecipients: [CorpusCase] = [
+        corpusCase(.coordinationContext, "Ask Sam and Priya about the invoice",
+                   count: 2, type: [.personFollowUp, .personFollowUp], route: [.today, .today],
+                   title: ["Ask Sam", "Ask Priya about the invoice"], person: ["Sam", "Priya"]),
+        corpusCase(.coordinationContext, "Text Dana and the plumber about the leak",
+                   count: 2, route: [.today, .today],
+                   title: ["Text Dana", "Text the plumber about the leak"]),
+        corpusCase(.coordinationContext, "Email the landlord and the plumber",
+                   count: 2, type: [.task, .task], route: [.today, .today],
+                   title: ["Email the landlord", "Email the plumber"]),
+        corpusCase(.coordinationContext, "Call the dentist and the bank tomorrow",
+                   count: 2, route: [.today, .today],
+                   title: ["Call the dentist", "Call the bank tomorrow"]),
+        corpusCase(.coordinationContext, "Tell Sam about the meeting and Priya about the deadline",
+                   count: 2, title: ["Tell Sam about the meeting", "Tell Priya about the deadline"],
+                   person: ["Sam", "Priya"]),
+        // Topics coordinate; recipients do not multiply.
+        corpusCase(.coordinationContext, "Ask Priya about the invoice and the receipt",
+                   count: 1, person: ["Priya"]),
+        corpusCase(.coordinationContext, "Email the landlord about the lease and the deposit",
+                   count: 1, type: [.task]),
+        corpusCase(.coordinationContext, "Buy milk and the newspaper",
+                   count: 1, type: [.shopping]),
+        // "And then" is the same boundary with a step marker on it, and the
+        // marker is not part of the next item or recipient.
+        corpusCase(.coordinationContext, "Buy milk and then bread",
+                   count: 2, type: [.shopping, .shopping], title: ["Buy milk", "Buy bread"]),
+        corpusCase(.coordinationContext, "Call Mom and then Alex",
+                   count: 2, title: ["Call Mom", "Call Alex"]),
+        corpusCase(.coordinationContext, "Email the landlord and then the plumber",
+                   count: 2, title: ["Email the landlord", "Email the plumber"]),
+        corpusCase(.coordinationContext, "The train was late and then it was cancelled",
+                   count: 1, route: [.memory]),
+        // The marker rides on the conjunction inside the product walk too.
+        corpusCase(.coordinationContext, "Buy bread and butter and then jam",
+                   count: 2, type: [.shopping, .shopping], title: ["Buy bread and butter", "Buy jam"]),
+    ]
+
+    // MARK: - Elided verbs in titles (multiple thoughts)
+
+    /// A conjunct that left its verb out is titled with the verb it shares:
+    /// "Call Mom tomorrow and Alex Friday" used to title its second row "Alex
+    /// Friday", which reads as a fact about Alex rather than a call. The quote
+    /// keeps the conjunct as spoken; the title carries the verb.
+    static let elidedVerbTitles: [CorpusCase] = [
+        corpusCase(.multipleThoughts, "Call Mom tomorrow and Alex Friday",
+                   count: 2, title: ["Call Mom tomorrow", "Call Alex Friday"]),
+        corpusCase(.multipleThoughts, "Call Alex and Alexa tomorrow at five",
+                   count: 2, title: ["Call Alex", "Call Alexa tomorrow at five"]),
+        corpusCase(.multipleThoughts, "Text Dana and Priya about Friday",
+                   count: 2, title: ["Text Dana", "Text Priya about Friday"]),
+        corpusCase(.multipleThoughts, "call mom tomorrow and alex friday and priya saturday",
+                   count: 3, title: ["Call Mom tomorrow", "Call Alex friday", "Call Priya saturday"]),
+    ]
+
+    // MARK: - Family 56: fronted conditions
+
+    /// "When I finish the essay call Dave" was a Memory note. The reader now
+    /// looks past a subordinator-plus-subject clause to the imperative behind
+    /// it, and the organizer holds the row in Needs review as it already did
+    /// for "When I get paid, remind me to transfer money" — the condition is
+    /// understood, and not enforceable. "After I" and "before I" join the
+    /// condition vocabulary in the splitter, the reader and the organizer, so
+    /// the sentence stays one row. A place trigger is a different path and is
+    /// covered by the location family.
+    static let frontedConditions: [CorpusCase] = [
+        corpusCase(.frontedConditions, "When I finish the essay call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Dave"], review: [true]),
+        corpusCase(.frontedConditions, "Once I finish the essay call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], review: [true]),
+        corpusCase(.frontedConditions, "After I finish the essay call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], review: [true]),
+        corpusCase(.frontedConditions, "Before I leave call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], review: [true]),
+        corpusCase(.frontedConditions, "After I get paid book the trip",
+                   count: 1, type: [.task], route: [.today], review: [true]),
+        corpusCase(.frontedConditions, "As soon as I land text Mom",
+                   count: 1, type: [.personFollowUp], route: [.today], person: ["Mom"], review: [true]),
+        corpusCase(.frontedConditions, "If I see Dave ask about the invoice",
+                   count: 1, route: [.today], review: [true]),
+        // With the comma the condition is inherited and leaves the title.
+        corpusCase(.frontedConditions, "After I finish the essay, call Dave",
+                   count: 1, route: [.today], title: ["Call Dave"], review: [true]),
+        // A trailing condition reads the same way as a fronted one.
+        corpusCase(.frontedConditions, "Text Mom after we land",
+                   count: 1, type: [.personFollowUp], route: [.today], review: [true]),
+    ]
+
+    /// What only looks like a condition, and what a condition must not become.
+    static let frontedConditionGuards: [CorpusCase] = [
+        // "Before I forget" conditions nothing; it is how people start an errand.
+        corpusCase(.frontedConditions, "Before I forget call Dave",
+                   count: 1, type: [.personFollowUp], route: [.today], review: [false]),
+        corpusCase(.frontedConditions, "Before I forget, call Dave",
+                   count: 1, route: [.today], title: ["Call Dave"], review: [false]),
+        // A place trigger stays a place trigger.
+        corpusCase(.frontedConditions, "When I get home call Dave",
+                   count: 1, route: [.today],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [false]),
+        // A statement behind the condition is knowledge, not an errand.
+        corpusCase(.frontedConditions, "When I get home the dog needs feeding",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedConditions, "When I was young I loved the beach",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedConditions, "When I saw him I told him about the invoice",
+                   count: 1, route: [.memory]),
+    ]
+
+    /// The shapes that only look fronted. A coordinated head, a subject, or a
+    /// copula behind the phrase makes it a sentence about something, and it
+    /// stays in Memory with its words intact.
+    static let frontedAdjunctGuards: [CorpusCase] = [
+        corpusCase(.frontedAdjuncts, "Before and after photos are in the folder",
+                   count: 1, type: [.note], route: [.memory]),
+        corpusCase(.frontedAdjuncts, "At the moment nothing works",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedAdjuncts, "In the end we decided to sell the house",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedAdjuncts, "At the dentist they said I need a crown",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedAdjuncts, "During the summer the pool is closed",
+                   count: 1, route: [.memory]),
+        corpusCase(.frontedAdjuncts, "On the fence about the job",
+                   count: 1, route: [.memory]),
     ]
 }
