@@ -12,6 +12,15 @@ updates:
         update-types: [minor, patch]
       majors:
         update-types: [major]
+    ignore:
+      # typescript-eslint 8 pins typescript <6.1; lift when it supports 6+.
+      - dependency-name: typescript
+        versions: [">=6"]
+      # eslint-plugin-jsx-a11y 6 caps eslint at ^9; lift with the plugin.
+      - dependency-name: eslint
+        versions: [">=10"]
+      - dependency-name: "@eslint/js"
+        versions: [">=10"]
   - package-ecosystem: npm
     directory: /ReferralService
     schedule:
