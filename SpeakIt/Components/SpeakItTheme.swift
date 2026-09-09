@@ -36,6 +36,31 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
         case .dark: .dark
         }
     }
+
+    var userInterfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    /// Writes the choice onto every window directly.
+    ///
+    /// `preferredColorScheme` sets the window's override for Light and Dark,
+    /// but passing `nil` for System never clears it: a person who had been in
+    /// Light (the first-install default) and chose System kept a light window
+    /// that ignored the iPhone's own switch to dark until the next launch.
+    /// Setting `.unspecified` here is what actually hands the decision back
+    /// to iOS; for Light and Dark it agrees with what SwiftUI already did.
+    @MainActor
+    func applyToWindows() {
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows {
+                window.overrideUserInterfaceStyle = userInterfaceStyle
+            }
+        }
+    }
 }
 
 /// One semantic type scale for every primary Speak It screen. Keeping these
