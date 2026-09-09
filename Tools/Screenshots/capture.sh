@@ -112,8 +112,7 @@ launch() {
 # about 20 s where the on-device model refines the comma sentences, so poll
 # the app's own signal rather than sleeping a guessed number.
 wait_for_fixtures() {
-  local i
-  for i in $(seq 1 150); do
+  for _ in $(seq 1 150); do
     if [ "$(xcrun simctl spawn "$UDID" defaults read "$PREFS" SpeakIt.hasLoadedMarketingExamples 2>/dev/null || true)" = "1" ]; then
       sleep 1.5   # let the lists settle after the last insert
       return 0
