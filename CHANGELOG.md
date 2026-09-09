@@ -7,6 +7,9 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Choosing System under Appearance now follows the iPhone's light and dark
+  switch immediately. After the app had been in Light, picking System left a
+  light window in place until the next launch.
 - A collapsed Today disclosure section (Coming up, No date) no longer leaves
   its rows in the accessibility tree. `.accessibilityHidden` is a no-op on
   iOS 26.5, so a closed section's rows stayed reachable as inert buttons to
