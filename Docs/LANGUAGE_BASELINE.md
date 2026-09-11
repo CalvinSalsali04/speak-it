@@ -94,24 +94,74 @@ this file has never published it.
 Linux container** — the probe that feeds the scorer needs Apple's
 `NaturalLanguage`. What is established from source is the defect and which rows
 it touches; the fallout reading of 1 was reported by the evaluation thread from
-their run. The repaired scorer is theirs to land, and this file takes its real
-numbers from the first `language_only` run after it does.
+their run.
 
-Two smaller consequences of the same branch outlive the arithmetic:
+**The scorer is fixed** as of `b326ce8`, and the fix draws the line in the right
+place: a `KNOWN:` marker now moves the **exit status** and not the rate. A
+documented failure is counted as a failure in recall, fallout and the mixed row;
+the report then names the ids and says which part of the total somebody already
+owns; and the exit status forgives that part, so a pre-existing defect does not
+block a hand run. A marker on a row that has started passing now fails the run
+instead, because a suppression that outlives its failure is one nobody is
+watching. Both scorers gained self-tests in the same change, which found three
+gaps by mutation that no case in the set exercised.
 
-- **The gate cannot fail on a documented fallout.** The scorer ends on
+**The daggers stay until a macOS run replaces the figures**, because that fix
+changes what the scorer reports and nothing here can run it. The numbers below
+are still the old rule's.
+
+Two smaller consequences came from the same branch. Both are fixed in
+`b326ce8` and both are worth keeping written down, because the shape recurs:
+
+- **The gate could not fail on a documented fallout.** The old exit line was
   `sys.exit(1 if (stats["fallout"] or stats["unsafe"] or stats["unseen"]) else 0)`,
-  and a `KNOWN:` fallout never increments `stats["fallout"]`. A marker written to
-  document a failure also silences the exit code that would have surfaced it.
-- **`documented failures kept on purpose (KNOWN:)` counts markers, not
-  failures.** It is incremented for every marked row that was scored, whether or
-  not that row failed, so it will keep reading 4 after one of them starts
-  passing — which is the moment the marker should be removed.
+  and a `KNOWN:` fallout never incremented `stats["fallout"]`. A marker written
+  to document a failure also silenced the exit code that would have surfaced it.
+  It now gates on new fallout only, which is the same forgiveness stated
+  deliberately instead of as a side effect.
+- **`documented failures kept on purpose (KNOWN:)` counted markers, not
+  failures.** It incremented for every marked row that was scored, pass or fail,
+  so it would have kept reading 4 after one of them started passing — the moment
+  the marker should come off. The report now names the ids of the rows that
+  actually failed, and a marker on a row that has started passing fails the run.
 
-**Nothing else in this file is affected.** `KNOWN:` appears in exactly two files
-in the repository, `abandonment.tsv` and its own scorer, so the `unfinished`
-set's 34/57 recall, 0/96 fallout and 2 unsafe stand as measured, as does every
-other figure here.
+**Nothing else in this file is affected**, and that is checkable rather than
+inferred. `KNOWN:` appears in exactly two files in the repository,
+`abandonment.tsv` and its own scorer — but the stronger argument is that every
+other published denominator reconciles with the label file it came from:
+
+| published | denominator | label file says |
+|---|---|---|
+| coordination 115/121 | 121 | 121 rows, and a row the probe never emitted counts as a **failure** here, not an exclusion |
+| routed 74/84, ambiguous 3/32 | 84 and 32 | 116 rows, 32 carrying `Ambiguous` — 116 − 32 = 84 |
+| framing 41/45 | 45 | 45 rows, none ambiguous |
+| runon 41/46 | 46 | 46 rows, none ambiguous |
+| unfinished 34/57 and 0/96 | 57 and 96 | 57 `Incomplete` and 96 `Complete` of 163 rows |
+| held-out 233/320 | 320 | 389 rows, 69 carrying `Ambiguous` — 389 − 69 = 320 |
+
+All of those scorers except coordination's drop a labelled row the probe never
+emitted out of the denominator rather than failing it. So a denominator arriving
+at exactly its label count is positive evidence that none was dropped on the run
+these figures came from. That check is available for every rate above and passes
+for all of them. It is the check the abandonment figures needed and could not get, because
+there the arithmetic departs from the labels by design.
+
+**Two of the five would hide the drop next time**, and the report
+`language-metrics.sh` prints is where it would be hidden:
+
+| scorer | a labelled row the probe never emitted |
+|---|---|
+| coordination, `devsets/score.py` | counted as a **failure**. The denominator stays `len(rows)`, and `--verbose` shows `(no output)`. This is the design the others should have. |
+| held-out, `heldout/score.py` — so routed, framing and runon too | dropped from the denominator, but the count prints as `missing probe results` |
+| everyday, `everyday/score.py` | dropped, prints `missing probe results`, and `measure-gate.py` mutation-checks that the counter can still report |
+| `abandonment-score.py` | dropped, and **no counter is printed** — only an `UNSEEN` entry in the `--verbose` list, which `language-metrics.sh` never asks for. It does fail the exit status, but the same script discards that: "the scorers report; they do not gate." |
+| `unfinished-score.py` | dropped, and **nothing at all**: `stats["unseen"] += 1; continue`, no print, no miss, no exit status. |
+
+So on the report every figure in this file comes from, a dropped row is silent
+in two of the five sets, and in `unfinished` it is silent on a hand run too. The
+reconciliation above is what stands in for the missing signal today, and it is a
+hand check rather than an instrument. A scorer that printed
+`scored N of M labelled` and failed when the two differ would make it one.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
