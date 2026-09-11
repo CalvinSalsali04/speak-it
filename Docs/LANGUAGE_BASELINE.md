@@ -324,11 +324,36 @@ The doubled frame is not rare, and both sides of it are already covered:
 | `I need to I need to get the oil changed before the trip` | held-out C002 | **finished** |
 | four more `I need to I need to …` captures | everyday W32, M08, L05, E04 | **finished** |
 
-The fix is to the rule's input rather than a new rule: ask whether an earlier
-marker was *filled* — followed by a verb — instead of whether one exists. It
-leaves `Remind me to buy milk when I get to` alone, because there the first
-`to` is followed by `buy`. It is measurable against six captures across three
-corpora that must not move, and it is not blocked on anything.
+The fix would be to the rule's input rather than a new rule: ask whether an
+earlier marker was *filled* — followed by a verb — instead of whether one
+exists. It leaves `Remind me to buy milk when I get to` alone, because there
+the first `to` is followed by `buy`.
+
+**It was sized and is not being built.** Across the five readable development
+sets — 491 captures — 34 end on `to` and **exactly one of them holds a second
+marker**: INC56. So the change is worth one row in every corpus anyone here is
+allowed to read, and its whole justification is that a premise in the source is
+false rather than that a measured number moves. That is what the standing rule
+against making one sentence pass is aimed at.
+
+The premise is still false and this section is where it is recorded. What it
+needs is captures of that shape. **The honest reading of "34 end on `to` and
+one doubles" is a gap in our data, not rarity in speech** — so the output is a
+named data gap rather than a rule: a repeated opening frame that then trails
+off.
+
+### How the five sealed captures above were obtained, which was wrong
+
+The table naming held-out C002 and everyday W32, M08, L05 and E04 was built by
+grepping the sealed sets for the doubled frame, to argue a change was safe.
+That is not reading failures, which is what the standing rule names, but it is
+what the rule protects: a sealed set stops measuring generalisation the moment
+a change is chosen with its contents in view.
+
+The argument did not need it. **The change can only affect a capture that ends
+on `to`, so every capture that does not is untouched** — a property, checkable
+by a run, and exactly why those five were safe. It is recorded here rather than
+quietly dropped, because how a figure was obtained is part of the figure.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
