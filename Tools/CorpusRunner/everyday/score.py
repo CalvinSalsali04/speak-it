@@ -419,16 +419,60 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
     print("-" * 78)
     print(f"{'family':<{name}}{'n':>4}{'routing':>17}{'count':>17}{'title':>17}")
     print("-" * 78)
-    ranked = sorted(families, key=lambda f: (
-        worst(tallies["fam:" + f]), -tallies["fam:" + f]["scored"]))
+    #: A family none of whose captures were scored has no measure to rank on
+    #: -- every capture carrying the tag is missing from the probe output, a
+    #: state `missing probe results` above already counts. Held out of the
+    #: ranking entirely rather than given a stand-in rate: any stand-in seats
+    #: it somewhere, and the only honest place is nowhere.
+    ranks = {f: worst(tallies["fam:" + f]) for f in families
+             if tallies["fam:" + f]["scored"]}
+    unranked = [f for f in families if f not in ranks]
+    #: Rate first, then the denominator *of that rate* descending -- not `n`.
+    #: At an equal rate the better evidenced family is the worse finding, and
+    #: `n` does not say how well evidenced a rate is: `recurrence` carries 22
+    #: captures of which exactly one is scored for invention, so ranking its
+    #: 0/1 above a 0/8 was ranking 22 against 8 while the evidence was 1
+    #: against 8. Name last, so the order never depends on spelling.
+    ranked = sorted((f for f in families if f in ranks),
+                    key=lambda f: (ranks[f][0], -ranks[f][1], f))
     for family in ranked:
         counter = tallies["fam:" + family]
-        mark = f"  ← {only[family]} only" if family in only else ""
+        marks = []
+        #: Two of the five measures the ranking reads -- loss and invention --
+        #: have no column here, so a family can hold the top row of a
+        #: worst-first table while every figure printed on it reads 100%. The
+        #: reader cannot check that position against anything on the line, so
+        #: the line says where it came from. Rows ranked on a printed column
+        #: need no mark: the evidence is already in front of them.
+        #: `denominator` is not `counter["scored"]`, which is the `n` column.
+        #: Keeping the two under different names in the one place they sit
+        #: side by side is the whole point of the change.
+        _, denominator, measure = ranks[family]
+        if measure not in ("routing", "count", "title"):
+            marks.append(f"← ranked on {measure} "
+                         f"{counter[measure + '_ok']}/{denominator}")
+        if family in only:
+            marks.append(f"← {only[family]} only")
+        mark = ("  " + "  ".join(marks)) if marks else ""
         print(f"{family:<{name}}{counter['scored']:>4}{rate(counter, 'routing'):>17}"
               f"{rate(counter, 'count'):>17}{rate(counter, 'title'):>17}{mark}")
     print("-" * 78)
-    print("Worst family first. `n` counts captures carrying the tag, so the")
-    print("columns overlap: one capture can be filler, negation and multi-thought.")
+    print("Worst family first, ranked on its weakest measure and, at an equal")
+    print("rate, on how many captures that measure was scored over. `n` is the")
+    print("denominator of none of these columns: it counts captures carrying")
+    print("the tag, so the columns overlap -- one capture can be filler,")
+    print("negation and multi-thought -- and each rate prints its own.")
+    if unranked:
+        print()
+        print("NOT RANKED — nothing in these families was scored, because no")
+        print("capture carrying the tag appears in the probe output:")
+        for family in unranked:
+            print(f"  {family}")
+    if any(ranks[f][2] not in ("routing", "count", "title") for f in ranks):
+        print()
+        print("A row marked `← ranked on <measure>` sits where it does because")
+        print("of a measure with no column here. Its printed figures do not")
+        print("explain its position and are not meant to.")
     if only:
         print()
         print("A row marked `← <group> only` draws on one group alone, so it is")
@@ -438,13 +482,37 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
 
 
 def worst(counter):
-    """Lowest pass rate across the gated measures, for ranking families."""
+    """The family's weakest measure: `(rate, denominator, measure)`.
+
+    The denominator comes back with the rate because the two are read
+    together and only one of them is on the row. A rate is not a finding
+    until you know what it was measured over, and `n` does not tell you:
+    `n` counts captures carrying the tag, while each measure is scored over
+    whichever of them it applies to. Ties are broken on this denominator.
+
+    Where two measures tie at the same rate, the better evidenced one names
+    the row, so the mark the table prints understates nothing.
+
+    This deliberately has no answer for a family with no scorable measure at
+    all, rather than the safe-looking 1.0 it used to return -- which is where
+    a family that passes everything belongs, the wrong end of a worst-first
+    table. The caller holds those families out of the ranking instead; the
+    filter is the guard, and this raising is only what makes a caller that
+    forgets it fail loudly rather than quietly mis-sort.
+
+    Reaching it needs a family every capture of which is missing from the
+    probe output, since `title` is scored unconditionally on every capture
+    that was scored at all. That is not hypothetical -- it is one line of a
+    label file against an empty probe run, and the first draft of this
+    function asserted it could not happen.
+    """
     rates = []
     for measure in ("routing", "count", "loss", "invention", "title"):
         ok, miss = counter[measure + "_ok"], counter[measure + "_miss"]
         if ok + miss:
-            rates.append(ok / (ok + miss))
-    return min(rates) if rates else 1.0
+            rates.append((ok / (ok + miss), -(ok + miss), measure))
+    rate_, negative_denominator, measure = min(rates)
+    return rate_, -negative_denominator, measure
 
 
 def print_failures(failures):
