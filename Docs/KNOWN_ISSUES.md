@@ -1,5 +1,17 @@
 # Known Issues
 
+> **On trusting this document.** Several sessions have been ranking work from
+> it, so how far it has been checked matters. On 2026-09-11 the "Ownership does
+> not read animacy" entry was read against the source and its diagnosis
+> corrected in place: an embedding is already loaded in that file, so the
+> technique it calls a departure is established here. The "Delete and remove"
+> entry was also found to misstate its root cause — the miss is the shape of
+> the object noun phrase, not a missing verb — and is being rewritten alongside
+> the code change that fixes it rather than here. **No other entry has been
+> audited**, and at least one is believed to describe something already fixed.
+> Treat an unmarked entry as a claim to verify before ranking work from it, not
+> as a finding.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
@@ -308,7 +320,19 @@ the cost stays visible.
 `ActionabilityReader.obligationBelongsToAnotherPerson` files "Mike should call
 Sarah" in Memory, correctly, and would file "the car has to go in Tuesday" there
 too, incorrectly. Separating an animate subject from an inanimate one needs
-either a lexicon or an embedding query, and the rule deliberately does neither.
+either a lexicon or an embedding query, and the rule — a regex over a pronoun
+stoplist at `Actionability.swift:752` — does neither.
+
+*Corrected 2026-09-11:* the previous wording said "deliberately does neither",
+which reads as though querying an embedding would be a departure for this
+codebase. It would not. `Actionability.swift:920` already loads
+`NLEmbedding.wordEmbedding(for: .english)` in this same file, and
+`PersonMentionResolver.readsAsOccupation` already decides the adjacent
+role-versus-person question that way, measured over 30 trade nouns and 36
+personal names at 28 of 30 blocked with 0 of 36 names lost. So the cost of
+reading animacy here is a query against a vocabulary that is already loaded,
+not a new dependency. What is deliberate is the *priority*, not the technique —
+see the paragraph below.
 
 It is the safer wrong: the words are kept and nothing is scheduled, where the
 opposite error puts a job the person never accepted on the list they work from.

@@ -2444,3 +2444,40 @@ The development ambiguity count improved from 4/32 acted on to 3/32; the
 untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
 7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
 improvement is claimed, and no held-out failures were read.
+
+## 2026-09-11 — Measure language in CI, because the parser only runs on macOS
+
+The engine depends on Apple's `NaturalLanguage`, and `NLEmbedding` is
+load-bearing: it decides whether an unknown word is an ordinary noun or a
+person's name. So the parser cannot run on Linux or in a container, and
+stubbing the framework would produce numbers that do not match the shipping
+app. Until now the only language check CI ran was the corpus gate, and the
+development-set and held-out numbers came solely from a hand-run on one Mac.
+Anyone else changing language rules was working blind, and three sessions doing
+so at once is how unverified claims enter the record.
+
+`Tools/CI/language-metrics.sh` now produces every language number this project
+quotes in one run: the gating corpus, all four development sets, and the
+held-out set. The `language` job in `ci.yml` runs it with no simulator, no unit
+suite and no release build, which costs roughly five macOS minutes against the
+allowance's two hundred — about thirty measurements a month where the iOS job
+affords one or two. Dispatching with `language_only` skips the iOS job so the
+question "did this parser change help" never costs a unit-suite run.
+
+Two deliberate choices in it:
+
+The scorers report and do not gate. Only the corpus gate's blocking count sets
+the exit status. Destination accuracy moves either way for defensible reasons,
+and a number that blocks a merge is a number people eventually learn to game.
+
+The script refuses `--verbose` rather than forwarding it. Scoring the held-out
+set is safe; reading its failures during development is what destroys it, per
+`Tools/CorpusRunner/heldout/README.md`. Refusing the flag means running the
+metrics can never be the thing that unseals the set, and reviewing those
+failures at release stays a deliberate act with its own command.
+
+No accuracy claim is attached to this change. It alters no parsing behaviour;
+it only makes the existing measurements reachable by more than one machine.
+The script was verified for argument handling, `shellcheck` and `actionlint` on
+Linux; its macOS path is unrun here by construction and needs a Mac or a
+dispatch.

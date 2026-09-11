@@ -13,7 +13,15 @@ Tools/PipelineProbe/build.sh
 Tools/CorpusRunner/build.sh
 
 output="$(Tools/CorpusRunner/build/corpus-run)"
-echo "$output" | tail -n 8
+# As a gate, the verdict is the last eight lines and the family table is
+# noise. In a metrics report it is the opposite: the table names which family
+# moved, and a summary that cannot say where a failure is makes the reader
+# open the run log anyway. CORPUS_GATE_FULL=1 keeps the whole thing.
+if [ "${CORPUS_GATE_FULL:-0}" = "1" ]; then
+  echo "$output"
+else
+  echo "$output" | tail -n 8
+fi
 blocking="$(echo "$output" | grep -o 'BLOCKING(crit+beh) = [0-9]*' | grep -o '[0-9]*$' || true)"
 if [ -z "$blocking" ]; then
   echo "corpus gate: could not read the BLOCKING total from corpus-run" >&2

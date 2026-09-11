@@ -39,6 +39,8 @@ Latest continuation review: [September 9 findings and verification](CONTINUATION
 | --- | --- |
 | [AMBIGUITY_TAXONOMY.md](AMBIGUITY_TAXONOMY.md) | The semantic architecture specification: each family of ambiguity English forces |
 | [CLASSIFICATION_DATASET.md](CLASSIFICATION_DATASET.md) | The deterministic extraction and classification suite |
+| [PUBLIC_DATASETS.md](PUBLIC_DATASETS.md) | Licence and relevance survey of public speech corpora, and the rule that we import language but never answers |
+| [LANGUAGE_BASELINE.md](LANGUAGE_BASELINE.md) | The measured numbers a language change is judged against, and where the room actually is |
 | [SEMANTIC_CORPUS_EXPANSION.md](SEMANTIC_CORPUS_EXPANSION.md) | The corpus growing from 182 to 439 cases and the hardening it forced |
 | [SEMANTIC_CORPUS_FINDINGS.md](SEMANTIC_CORPUS_FINDINGS.md) | **Historical.** The 182-case release gate |
 | [PIPELINE_SWEEP_FINDINGS.md](PIPELINE_SWEEP_FINDINGS.md) | Seven-lane read-only sweep of the pipeline (2026-08-24) |
