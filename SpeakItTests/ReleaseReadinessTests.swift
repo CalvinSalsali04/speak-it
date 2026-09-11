@@ -1,4 +1,5 @@
 import SwiftData
+import UIKit
 import XCTest
 @testable import SpeakIt
 
@@ -321,5 +322,37 @@ final class ReleaseReadinessTests: XCTestCase {
                 type
             )
         }
+    }
+
+    /// Choosing Light or Dark was written onto the window, onto every view
+    /// controller under it, and onto every view under those. A view that
+    /// carries its own `overrideUserInterfaceStyle` ignores its window's, so
+    /// from the second change onwards the window's write reached nobody by
+    /// inheritance and the screen was repainted one view at a time in
+    /// depth-first order — visible as a flicker around controls mid-switch.
+    /// System never showed it because `.unspecified` clears those pins.
+    /// The window is the only place the style belongs.
+    func testAppearanceIsWrittenOnlyOnTheWindow() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controller = UIViewController()
+        let child = UIView()
+        controller.view.addSubview(child)
+        window.rootViewController = controller
+
+        SpeakItAppearance.dark.apply(to: window)
+
+        XCTAssertEqual(window.overrideUserInterfaceStyle, .dark)
+        XCTAssertEqual(controller.overrideUserInterfaceStyle, .unspecified)
+        XCTAssertEqual(controller.view.overrideUserInterfaceStyle, .unspecified)
+        XCTAssertEqual(child.overrideUserInterfaceStyle, .unspecified)
+
+        // System has to reach the window as `.unspecified`, or the choice is
+        // never handed back to iOS and the app stays on the last explicit one.
+        SpeakItAppearance.system.apply(to: window)
+        XCTAssertEqual(window.overrideUserInterfaceStyle, .unspecified)
+
+        SpeakItAppearance.light.apply(to: window)
+        XCTAssertEqual(window.overrideUserInterfaceStyle, .light)
+        XCTAssertEqual(child.overrideUserInterfaceStyle, .unspecified)
     }
 }

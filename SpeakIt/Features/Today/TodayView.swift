@@ -1686,7 +1686,6 @@ struct CaptureHistoryView: View {
                 await saveTypedRecovery(typedText, for: selection.draft)
             }
         }
-        .preferredColorScheme(nil)
     }
 
     /// Every protected recording carries its own way out: retry, reconstruct by

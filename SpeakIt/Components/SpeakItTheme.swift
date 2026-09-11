@@ -52,55 +52,44 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Writes the choice onto every window directly.
+    /// Writes the choice onto every window, and onto nothing below one.
     ///
-    /// `preferredColorScheme` sets the window's override for Light and Dark,
-    /// but passing `nil` for System never clears it: a person who had been in
-    /// Light (the first-install default) and chose System kept a light window
-    /// that ignored the iPhone's own switch to dark until the next launch.
-    /// Setting `.unspecified` here is what actually hands the decision back
-    /// to iOS; for Light and Dark it agrees with what SwiftUI already did.
+    /// A window's `overrideUserInterfaceStyle` is inherited by every
+    /// controller and view under it, so this single write is one atomic trait
+    /// change that UIKit and SwiftUI repaint in one pass. Writing it onto each
+    /// controller and each view as well pins every one of them to a style of
+    /// its own; a pinned view ignores the window, so the next change reached
+    /// nobody by inheritance and the screen had to be repainted view by view
+    /// in depth-first order instead — which is what made Light and Dark flicker
+    /// around controls while System, whose `.unspecified` cleared every pin,
+    /// stayed clean.
+    ///
+    /// `.unspecified` for System is what hands the decision back to iOS.
+    /// `preferredColorScheme(nil)` never cleared the override that `.light` or
+    /// `.dark` had set, so a person who had been in Light (the first-install
+    /// default) and chose System kept a light window that ignored the phone's
+    /// own switch until the next launch. Nothing passes a scheme to SwiftUI:
+    /// SwiftUI keeps the last non-nil value it was given and re-asserts it on
+    /// every trait change, which is the other half of the same bug.
     @MainActor
     func applyToWindows() {
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
             for window in scene.windows {
-                window.overrideUserInterfaceStyle = userInterfaceStyle
-                // SwiftUI writes `preferredColorScheme` onto the hosting
-                // controller rather than the window, and a controller's
-                // override outranks the window's, so the window alone was
-                // never enough to hand System back to iOS.
-                if let root = window.rootViewController {
-                    apply(to: root)
-                }
-                // Views carry the same override and outrank the controller;
-                // the hosting view is where SwiftUI's earlier Light landed.
-                apply(to: window as UIView)
+                apply(to: window)
             }
         }
     }
 
+    /// The one place the style is written. Separate from `applyToWindows` so a
+    /// test can hand it a window and check that nothing below it is touched.
     @MainActor
-    private func apply(to controller: UIViewController) {
-        controller.overrideUserInterfaceStyle = userInterfaceStyle
-        for child in controller.children {
-            apply(to: child)
-        }
-        if let presented = controller.presentedViewController {
-            apply(to: presented)
-        }
-    }
-
-    @MainActor
-    private func apply(to view: UIView) {
-        view.overrideUserInterfaceStyle = userInterfaceStyle
-        for subview in view.subviews {
-            apply(to: subview)
-        }
+    func apply(to window: UIWindow) {
+        window.overrideUserInterfaceStyle = userInterfaceStyle
     }
 }
 
-/// Applies the appearance choice to the window tree. One modifier rather
-/// than three keeps `RootView`'s body inside the type-checker's budget.
+/// Applies the appearance choice to the scene's windows. One modifier
+/// rather than three keeps `RootView`'s body inside the type-checker's budget.
 struct SpeakItAppearanceSync: ViewModifier {
     let rawValue: String
 
@@ -111,7 +100,7 @@ struct SpeakItAppearanceSync: ViewModifier {
     // Deliberately not `preferredColorScheme`: SwiftUI keeps the last
     // non-nil value it was given and re-asserts it whenever the traits
     // change, so once it has been told Light it never lets System through
-    // again in the same process. Every window override is written by hand
+    // again in the same process. The window override is written by hand
     // instead, here and in `SpeakItSceneDelegate` before the first frame.
     func body(content: Content) -> some View {
         content

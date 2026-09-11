@@ -8,6 +8,14 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- Switching Appearance to Light or Dark no longer flickers around buttons
+  part-way through the change. The choice was written onto the window, onto
+  every view controller under it, and onto every view under those; a view with
+  an override of its own ignores its window's, so from the second switch
+  onwards the screen was repainted one view at a time instead of in one pass.
+  The style is now written on the window only, which every view under it
+  inherits. System was never affected because its `.unspecified` cleared
+  those per-view overrides.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.
