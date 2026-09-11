@@ -137,6 +137,33 @@ comparisons:
 Nothing here was tuned against, and the set stays sealed: it has been scored
 non-verbose and its failures have not been read.
 
+## Adversarial held-out set — new instrument, no reading yet (2026-09-11)
+
+`Tools/CorpusRunner/adversarial/` is a third sealed set, 120 captures in 10
+pairings of 12. It is a different axis rather than more of the other two:
+
+| set | held out by | what it varies |
+|---|---|---|
+| `heldout/` (389) | mechanism | one phenomenon per capture |
+| `everyday/` (255) | content | ordinary life speech |
+| `adversarial/` (120) | interaction | two phenomena deliberately compounded |
+
+The gap it fills is specific. `heldout.tsv` carries exactly one family tag on
+all 389 rows, so nothing in the repository asked whether the pipeline's layers
+**compose**. Every pairing here is built from two ingredients `heldout/` already
+measures separately, so a pairing scoring badly while both ingredients score
+well alone is evidence about architecture rather than a missing rule.
+
+**Read a pairing against its ingredients, never on its own** — if an ingredient
+is already weak in `heldout/`, a weak pairing says nothing new.
+
+It is scored by the everyday scorer unchanged, so it needs no second
+implementation and inherits the defects already found and fixed there. It is
+discovered by the existing `score.sh` convention, so `language-metrics.sh`
+picks it up with no edit. Its baseline table is empty for the same reason
+everyday's was: the engine cannot run in a Linux container, and a number from
+anywhere else would be invented.
+
 ## How to reproduce
 
 ```bash

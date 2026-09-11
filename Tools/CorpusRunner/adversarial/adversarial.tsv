@@ -1,0 +1,125 @@
+# title: ADVERSARIAL HELD-OUT SET — phenomena in combination
+# Each capture compounds two phenomena the 389-case held-out set tests
+# one at a time. A failure here with both ingredients scoring well alone
+# is evidence about composition, not about a missing feature.
+id	pair	utterance	expect	keep	reject	families	note
+AR01	repair-x-name	text Baker about the invoice no sorry text Rose	Today:task	Rose	Baker	self-correction|name-as-noun	replaced person is also a trade name
+AR02	repair-x-name	ask Mason to look at the wall I mean ask Brook	Today:task	Brook	Mason	self-correction|name-as-noun	both names double as nouns
+AR03	repair-x-name	the keys are with Bill no wait with Pearl	Memory:note	Pearl	Bill	self-correction|name-as-noun	Bill also a common noun
+AR04	repair-x-name	call Sunny about the roof scratch that call Hazel	Today:task	Hazel	Sunny	self-correction|name-as-noun	adjective-shaped name
+AR05	repair-x-name	Robin is driving no actually Wren is driving	Memory:note	Wren	Robin	self-correction|name-as-noun	two bird nouns
+AR06	repair-x-name	send the file to Frank sorry I mean to Daisy	Today:task	Daisy	Frank	self-correction|name-as-noun	frank also an adjective
+AR07	repair-x-name	Heather has the spare no hang on Iris does	Memory:note	Iris	Heather	self-correction|name-as-noun	two plant nouns
+AR08	repair-x-name	book it with Taylor no with Miller	Today:task	Miller	Taylor	self-correction|name-as-noun	two occupation surnames
+AR09	repair-x-name	remind me to thank Grace I mean thank Ruby	Today:task	Ruby	Grace	self-correction|name-as-noun	abstract noun and gemstone
+AR10	repair-x-name	Page is covering Friday no sorry Reed is	Memory:note	Reed	Page	self-correction|name-as-noun	both everyday nouns
+AR11	repair-x-name	ping Dexter about the quote actually ping Marlow	Today:task	Marlow	Dexter	self-correction|name-as-noun	actually as the repair marker
+AR12	repair-x-name	the invoice goes to Cooper no to Fletcher	Memory:note	Fletcher	Cooper	self-correction|name-as-noun	two trade surnames
+AN01	negation-x-multi	don't call the vet today but do book the groomer for Thursday	Today:task	groomer	-	negation|multi-task	negated clause is not the action
+AN02	negation-x-multi	no need to email Priya but I do need to send the deck	Today:task	deck	-	negation|multi-task	the operative half is second
+AN03	negation-x-multi	skip the milk but get bread and eggs	Today:shopping|Today:shopping	bread|eggs	-	negation|multi-task	skip is an exclusion not a task
+AN04	negation-x-multi	don't book the hotel yet just check the flights	Today:task	flights	-	negation|multi-task	yet defers rather than cancels
+AN05	negation-x-multi	don't forget to pay the sitter and to text her the code	Today:task|Today:task	sitter|code	-	negation|multi-task	don't forget means do
+AN06	negation-x-multi	I don't need the receipt but I do need the warranty card	Today:task	warranty	-	negation|multi-task	contrast across a need
+AN07	negation-x-multi	not the blue folder the red one and bring the charger	Today:task|Today:task	red|charger	-	negation|multi-task	exclusion plus a second action
+AN08	negation-x-multi	don't let me forget the passport or the adapter	Today:task	passport|adapter	-	negation|multi-task	double negative meaning do
+AN09	negation-x-multi	no dairy for Ines but she can have the oat stuff	Memory:note	Ines|oat	-	negation|multi-task	a standing fact, not an action
+AN10	negation-x-multi	we're not going Friday we're going Saturday	Memory:note	Saturday	-	negation|multi-task	negation carrying a date switch
+AN11	negation-x-multi	I didn't finish the report so that's still open and the slides are done	Memory:note|Memory:note	report|slides	-	negation|multi-task	two states, one negated
+AN12	negation-x-multi	don't wait for the delivery but do sign for the parcel	Today:task	sign	-	negation|multi-task	near-identical verbs, opposite polarity
+AS01	reported-x-op	Mum said cancel the Friday appointment	Op:cancel	Friday appointment	-	reported-speech|operation	an instruction relayed, not authored
+AS02	reported-x-op	Priya says drop the Tuesday call	Op:cancel	Tuesday call	-	reported-speech|operation	drop as a cancel verb
+AS03	reported-x-op	the clinic rang and said move the appointment to the 19th	Today:task	19th	-	reported-speech|operation	a move, not a cancel
+AS04	reported-x-op	Dad texted saying forget the airport run	Op:cancel	airport run	-	reported-speech|operation	forget used as cancel
+AS05	reported-x-op	she said remind her about the deposit	Today:task	deposit	-	reported-speech|operation	reported request for a reminder
+AS06	reported-x-op	the landlord said don't pay until the invoice comes	Memory:note	invoice	-	reported-speech|operation	reported negated instruction
+AS07	reported-x-op	Ines told me to scrap the Thursday session	Op:cancel	Thursday session	-	reported-speech|operation	scrap as cancel
+AS08	reported-x-op	my boss said push the review to next month	Today:task	review	-	reported-speech|operation	push is a move not a delete
+AS09	reported-x-op	the garage said the car's ready and to collect it today	Today:task	collect	-	reported-speech|operation	statement plus instruction
+AS10	reported-x-op	Aurelio said cancel nothing yet	Memory:note	Aurelio	-	reported-speech|operation	cancel appears but nothing is cancelled
+AS11	reported-x-op	the school said no lunch money is needed on Wednesday	Memory:note	Wednesday|lunch money	-	reported-speech|operation	reported negation about a date
+AS12	reported-x-op	he said delete the old draft not the final one	Op:cancel	old draft	-	reported-speech|operation	reported operation with an exclusion
+AU01	runon-x-repair	pick up the dry cleaning call the bank no the credit union post Ada's letter	Today:task|Today:task|Today:task	dry cleaning|credit union|Ada	the bank	run-on|self-correction	repair inside the middle thought
+AU02	runon-x-repair	book the table for six no eight confirm the taxi text Priya the address	Today:task|Today:task|Today:task	eight|taxi|address	for six	run-on|self-correction	corrected number, no markers
+AU03	runon-x-repair	water the plants email the tutor no the coach feed the cat	Today:task|Today:task|Today:task	plants|coach|cat	the tutor	run-on|self-correction	corrected recipient mid-run
+AU04	runon-x-repair	finish the slides send them to Rose no Hazel then log off	Today:task|Today:task	slides|Hazel	Rose	run-on|self-correction	repair on a name-as-noun
+AU05	runon-x-repair	get petrol check the tyres no the oil drop the parcel	Today:task|Today:task|Today:task	petrol|the oil|parcel	the tyres	run-on|self-correction	corrected object
+AU06	runon-x-repair	call the dentist move it to the 12th no the 14th add it to the calendar	Today:task|Today:task	dentist|14th	the 12th	run-on|self-correction	corrected date mid-run
+AU07	runon-x-repair	print the forms sign them post them Tuesday no Wednesday	Today:task|Today:task	forms|Wednesday	Tuesday	run-on|self-correction	repair lands on the last word
+AU08	runon-x-repair	pack the bags charge the camera no the power bank lock the door	Today:task|Today:task|Today:task	bags|power bank|door	the camera	run-on|self-correction	corrected device
+AU09	runon-x-repair	ring Nadia confirm the venue no the caterer send the deposit	Today:task|Today:task|Today:task	Nadia|caterer|deposit	the venue	run-on|self-correction	three actions, one repaired
+AU10	runon-x-repair	buy stamps post the cheque to Miller no to Fletcher tell Dad it's done	Today:task|Today:task|Today:task	stamps|Fletcher|Dad	Miller	run-on|self-correction	repair plus a third thought
+AU11	runon-x-repair	clear the inbox reply to the landlord no the agent book the viewing	Today:task|Today:task|Today:task	inbox|the agent|viewing	the landlord	run-on|self-correction	corrected role
+AU12	runon-x-repair	take the bins out walk the dog at six no seven lock up	Today:task|Today:task|Today:task	bins|dog|seven	at six	run-on|self-correction	corrected time, no markers
+AC01	cond-x-negation	if Priya doesn't reply by five don't send the deck	Memory:note	Priya|deck	-	conditional|negation	both halves negated
+AC02	cond-x-negation	unless the parts arrive don't book the fitter	Memory:note	fitter	-	conditional|negation	unless plus a negated action
+AC03	cond-x-negation	if it's not raining Saturday we'll walk	Memory:note	Saturday	-	conditional|negation	negated condition, positive outcome
+AC04	cond-x-negation	don't pay the invoice unless Aurelio has signed it off	Memory:note	invoice|Aurelio	-	conditional|negation	order reversed
+AC05	cond-x-negation	if she can't make Thursday we move to Friday	Memory:note	Thursday|Friday	-	conditional|negation	two weekdays under a condition
+AC06	cond-x-negation	if there's no parking don't circle just use the garage	Memory:note	garage	-	conditional|negation	three clauses, two negated
+AC07	cond-x-negation	unless I hear otherwise the meeting isn't happening	Memory:note	meeting	-	conditional|negation	double uncertainty
+AC08	cond-x-negation	if the test isn't back by Wednesday call the clinic	Today:task	Wednesday|clinic	-	conditional|negation	negated condition, real action
+AC09	cond-x-negation	don't start the boiler job if the tenant hasn't moved out	Memory:note	boiler|tenant	-	conditional|negation	two negations, trailing condition
+AC10	cond-x-negation	if Ines doesn't want it don't buy the second ticket	Memory:note	second ticket	-	conditional|negation	conditional purchase
+AC11	cond-x-negation	unless it's cancelled the coach leaves at seven	Memory:note	seven|coach	-	conditional|negation	cancel word inside a condition
+AC12	cond-x-negation	if I haven't texted by noon don't wait for me	Memory:note	noon	-	conditional|negation	negated perfect plus imperative
+AO01	role-x-people	the plumber and Doctor Nwosu both need paying	Today:task	plumber|Nwosu	-	occupation-vs-person|multi-person	role and titled name together
+AO02	role-x-people	tell the dentist and Priya I'll be late	Today:task	dentist|Priya	-	occupation-vs-person|multi-person	role plus given name
+AO03	role-x-people	the electrician says Marlow has the key	Memory:note	electrician|Marlow	-	occupation-vs-person|multi-person	role as speaker
+AO04	role-x-people	Baker the accountant is meeting Rose the solicitor Thursday	Memory:note	Baker|Rose|Thursday	-	occupation-vs-person|multi-person	two names that are also nouns, each apposed to a role
+AO05	role-x-people	ask the nurse whether Ines needs the form	Today:task	nurse|Ines	-	occupation-vs-person|multi-person	role plus name in one question
+AO06	role-x-people	the driver and the tutor both cancelled	Memory:note	driver|tutor	-	occupation-vs-person|multi-person	two roles, no names
+AO07	role-x-people	Cooper is our new plumber and Miller does the roof	Memory:note	Cooper|Miller	-	occupation-vs-person|multi-person	surname-as-trade against actual trade
+AO08	role-x-people	chase the surveyor and email Aurelio about it	Today:task|Today:task	surveyor|Aurelio	-	occupation-vs-person|multi-person	two actions, role and name
+AO09	role-x-people	my optician is called Reed and her assistant is Wren	Memory:note	Reed|Wren	-	occupation-vs-person|multi-person	two noun-names in one fact
+AO10	role-x-people	the vet wants Hazel to bring the records	Memory:note	vet|Hazel	-	occupation-vs-person|multi-person	third-party obligation
+AO11	role-x-people	book the cleaner then let Fletcher know	Today:task|Today:task	cleaner|Fletcher	-	occupation-vs-person|multi-person	sequence across role and name
+AO12	role-x-people	the barber and Ines are both on Tuesday	Memory:note	barber|Ines	-	occupation-vs-person|multi-person	role and person share a date
+AB01	brand-x-multi	google that pasta recipe and grab parmesan	Today:task|Today:shopping	recipe|parmesan	-	brand-verb|multi-task	brand as verb plus a shopping item
+AB02	brand-x-multi	zoom Priya at four and send the agenda first	Today:event|Today:task	Priya|agenda	-	brand-verb|multi-task	brand verb carrying a time
+AB03	brand-x-multi	uber to the airport and book the return	Today:task|Today:task	airport|return	-	brand-verb|multi-task	brand verb of motion
+AB04	brand-x-multi	venmo Rose the rent and text her	Today:task|Today:task	Rose|rent	-	brand-verb|multi-task	brand verb with a noun-name
+AB05	brand-x-multi	facetime Mum tonight and remind her about Thursday	Today:task	Mum|Thursday	-	brand-verb|multi-task	brand verb plus a reminder
+AB06	brand-x-multi	slack the team the numbers and update the doc	Today:task|Today:task	numbers|doc	-	brand-verb|multi-task	brand verb with two objects
+AB07	brand-x-multi	hoover the stairs and put the bins out	Today:task|Today:task	stairs|bins	-	brand-verb|multi-task	genericised trademark
+AB08	brand-x-multi	whatsapp Ines the photos then delete them	Today:task|Today:task	Ines|photos	-	brand-verb|multi-task	brand verb next to a delete word
+AB09	brand-x-multi	photoshop the header then post it to the site	Today:task|Today:task	header|site	-	brand-verb|multi-task	brand verb plus an ambiguous post
+AB10	brand-x-multi	xerox the deed and file the original	Today:task|Today:task	deed|original	-	brand-verb|multi-task	dated trademark verb
+AB11	brand-x-multi	google maps the route and leave by six	Today:task	route|six	-	brand-verb|multi-task	two-word brand plus a time
+AB12	brand-x-multi	airbnb something near the station for the 14th	Today:task	station|14th	-	brand-verb|multi-task	brand verb plus a date
+AE01	ellipsis-x-date	dentist on the 12th and the car on the 19th	Today:event|Today:event	dentist|12th|car|19th	-	ellipsis|multi-date	verb elided in both halves
+AE02	ellipsis-x-date	rent on the 1st insurance on the 15th	Memory:note|Memory:note	rent|1st|insurance|15th	-	ellipsis|multi-date	no verb at all
+AE03	ellipsis-x-date	gym Monday swim Wednesday	Memory:note|Memory:note	gym|swim	-	ellipsis|multi-date	bare noun and weekday pairs
+AE04	ellipsis-x-date	school photos the 6th parents evening the 20th	Memory:note|Memory:note	photos|6th|parents evening|20th	-	ellipsis|multi-date	two events, no prepositions
+AE05	ellipsis-x-date	flights the 4th hotel the 5th	Memory:note|Memory:note	flights|hotel	-	ellipsis|multi-date	consecutive dates, elided verbs
+AE06	ellipsis-x-date	bins Tuesday recycling Thursday	Memory:note|Memory:note	bins|recycling	-	ellipsis|multi-date	two recurring chores
+AE07	ellipsis-x-date	MOT in March service in September	Memory:note|Memory:note	MOT|service	-	ellipsis|multi-date	months rather than days
+AE08	ellipsis-x-date	her birthday the 11th his the 30th	Memory:note|Memory:note	birthday|11th|30th	-	ellipsis|multi-date	possessive elided in the second
+AE09	ellipsis-x-date	deposit Friday balance the following Friday	Memory:note|Memory:note	deposit|balance	-	ellipsis|multi-date	relative second date
+AE10	ellipsis-x-date	invoice the 7th chased the 21st	Memory:note|Memory:note	invoice|7th	-	ellipsis|multi-date	elided subject across a tense change
+AE11	ellipsis-x-date	Priya Tuesday Aurelio Thursday	Ambiguous	-	-	ellipsis|multi-date	two names two days and no verb; not decidable
+AE12	ellipsis-x-date	mine's the 9th hers is the 23rd	Ambiguous	-	-	ellipsis|multi-date	referent of mine and hers is not recoverable
+AI01	idiom-x-op	kill the Friday meeting	Op:cancel	Friday meeting	-	idiom|operation	violent verb meaning cancel
+AI02	idiom-x-op	drop the Tuesday session	Op:cancel	Tuesday session	-	idiom|operation	drop as cancel
+AI03	idiom-x-op	drop me at the station at six	Today:task	station|six	-	idiom|operation	same verb, not an operation
+AI04	idiom-x-op	bin the old drafts	Op:cancel	old drafts	-	idiom|operation	bin as delete
+AI05	idiom-x-op	cut the Thursday slot	Op:cancel	Thursday slot	-	idiom|operation	cut as cancel
+AI06	idiom-x-op	cut the grass before Saturday	Today:task	grass|Saturday	-	idiom|operation	same verb, ordinary task
+AI07	idiom-x-op	pull the listing	Op:cancel	listing	-	idiom|operation	pull as withdraw
+AI08	idiom-x-op	axe the newsletter	Op:cancel	newsletter	-	idiom|operation	axe as cancel
+AI09	idiom-x-op	that meeting killed me	Memory:note	meeting	-	idiom|operation	kill as idiom, nothing to cancel
+AI10	idiom-x-op	I could murder a coffee	Memory:note	coffee	-	idiom|operation	violent verb, no operation at all
+AI11	idiom-x-op	scrap the whole idea	Ambiguous	-	-	idiom|operation	no referent to act on
+AI12	idiom-x-op	pull over at the next services	Ambiguous	-	-	idiom|operation	operation verb in a phrasal with no object
+AT01	nottime-x-date	give me a second I'll book the Thursday slot	Today:task	Thursday	-	not-a-time|date	a second is not a duration here
+AT02	nottime-x-date	in a minute remind me about the 14th	Today:task	14th	-	not-a-time|date	in a minute is not the reminder time
+AT03	nottime-x-date	at the end of the day it's due Friday	Today:task	Friday	-	not-a-time|date	idiom that looks like a deadline
+AT04	nottime-x-date	one of these days I'll sort it but rent is due the 1st	Memory:note	rent|1st	-	not-a-time|date	vague phrase beside a real date
+AT05	nottime-x-date	for the time being keep Wednesday free	Today:task	Wednesday	-	not-a-time|date	hedging phrase plus a weekday
+AT06	nottime-x-date	in no time at all it'll be the 20th	Memory:note	20th	-	not-a-time|date	no time is not a time
+AT07	nottime-x-date	a minute's silence at eleven on the 11th	Memory:note	eleven|11th	-	not-a-time|date	minute as a noun, real time and date
+AT08	nottime-x-date	half the time I forget but the MOT is the 9th	Memory:note	MOT|9th	-	not-a-time|date	half the time is a frequency idiom
+AT09	nottime-x-date	any day now the parts arrive and fitting is Tuesday	Memory:note	Tuesday	-	not-a-time|date	any day now is not a date
+AT10	nottime-x-date	on the hour every hour until Friday	Memory:note	Friday	-	not-a-time|date	real recurrence with an end date
+AT11	nottime-x-date	the other day she mentioned the 17th	Memory:note	17th	-	not-a-time|date	the other day is past and vague
+AT12	nottime-x-date	second thoughts aside book it for the 6th	Today:task	6th	-	not-a-time|date	second as an ordinal, not a unit

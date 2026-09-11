@@ -555,22 +555,111 @@ class SpanMatchTests(unittest.TestCase):
         self.assertTrue(self.score.carries("night", self.score.norm("three nights")))
 
 
+class SealedRegistryTests(unittest.TestCase):
+    """Adding a held-out set must not mean remembering to protect it."""
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_every_set_in_this_format_is_registered_as_sealed(self):
+        """A sealed set missing from the registry is never leak-checked.
+
+        The failure is silent and permanent: the set keeps being reported as
+        held out while nothing verifies that it still is. So membership is
+        derived from the file's own shape — a `reject` column means it is
+        scored by this scorer — rather than from anyone's memory.
+        """
+        registered = {p.resolve() for p in self.leak.SEALED}
+        for path in sorted((HERE.parent).glob("*/*.tsv")):
+            header = ""
+            for line in open(path):
+                if "utterance" in line.lower():
+                    header = line.lstrip("#").lower()
+                    break
+            if "reject" not in header:
+                continue
+            self.assertIn(
+                path.resolve(), registered,
+                f"{path.parent.name}/{path.name} is scored as a held-out set "
+                f"but is not in leak-check.py's SEALED list, so nothing checks "
+                f"that it stays unseen")
+
+    def test_each_sealed_set_is_checked_against_the_others(self):
+        """Two sealed sets sharing a capture is one measurement counted twice.
+
+        `others()` returns normalised capture text, so the property is checked
+        by looking for a sibling's actual capture in the comparison corpus.
+        """
+        everyday, sibling = self.leak.SEALED[0], self.leak.SEALED[1]
+        compared = self.leak.others(exclude=everyday)
+        a_sibling_capture = self.leak.norm(self.leak.harvest(sibling)[0])
+        self.assertIn(
+            a_sibling_capture, compared,
+            "a sealed set must be compared against its siblings, or the same "
+            "capture can sit in two sets and be counted as two measurements")
+
+    def test_a_set_excluded_from_the_comparison_is_not_compared_to_itself(self):
+        """Otherwise every capture collides with itself and the check is noise."""
+        everyday = self.leak.SEALED[0]
+        compared = self.leak.others(exclude=everyday)
+        own_capture = self.leak.norm(self.leak.harvest(everyday)[0])
+        self.assertNotIn(own_capture, compared)
+
+
+class SetTitleTests(unittest.TestCase):
+    """The shared scorer must print the name of the set it actually scored."""
+
+    def setUp(self):
+        self.score = score_module()
+
+    def test_a_set_declares_its_own_banner(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "s.tsv"
+            path.write_text("# title: A DIFFERENT SET\nid\tdomain\tutterance\n")
+            self.assertEqual(self.score.set_title(path), "A DIFFERENT SET")
+
+    def test_a_set_without_a_banner_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "s.tsv"
+            path.write_text("id\tdomain\tutterance\n")
+            self.assertIn("EVERYDAY", self.score.set_title(path))
+
+    def test_the_two_committed_sets_do_not_share_a_banner(self):
+        titles = {self.score.set_title(p) for p in CorpusTests.CORPORA}
+        self.assertEqual(len(titles), 2,
+                         "two sets printing one name makes a quoted report "
+                         "impossible to attribute")
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 
+    #: Every labelled set scored by this file's scorer. Structural guards run
+    #: over all of them, so a set added later inherits them instead of being
+    #: the one nobody checked.
+    CORPORA = (HERE / "everyday.tsv", HERE.parent / "adversarial" / "adversarial.tsv")
+
+    def corpora(self):
+        out = {}
+        for path in self.CORPORA:
+            self.assertTrue(path.exists(), f"{path} is listed but missing")
+            rows = []
+            for line in open(path):
+                parts = line.rstrip("\n").split("\t")
+                if line.startswith("#") or parts[0] == "id" or not line.strip():
+                    continue
+                self.assertEqual(len(parts), 8,
+                                 f"{path.name}: wrong column count: {parts[0]}")
+                rows.append(parts)
+            out[path.name] = rows
+        return out
+
     def rows(self):
-        rows = []
-        for line in open(HERE / "everyday.tsv"):
-            parts = line.rstrip("\n").split("\t")
-            if parts[0] == "id" or not line.strip():
-                continue
-            self.assertEqual(len(parts), 8, f"wrong column count: {parts[0]}")
-            rows.append(parts)
-        return rows
+        return [r for rows in self.corpora().values() for r in rows]
 
     def test_every_case_is_well_formed_and_unique(self):
         rows = self.rows()
-        self.assertGreaterEqual(len(rows), 200)
+        self.assertGreaterEqual(len(rows), 300)
         ids = [r[0] for r in rows]
         self.assertEqual(len(ids), len(set(ids)), "duplicate case id")
         utterances = [r[2].lower() for r in rows]
@@ -579,11 +668,27 @@ class CorpusTests(unittest.TestCase):
 
     def test_every_domain_carries_a_comparable_number_of_captures(self):
         from collections import Counter
-        counts = Counter(r[1] for r in self.rows())
-        self.assertGreaterEqual(len(counts), 5)
-        self.assertLessEqual(max(counts.values()) - min(counts.values()), 5,
-                             "domains must stay comparable or the by-domain "
-                             "rates cannot be read against each other")
+        for name, rows in self.corpora().items():
+            with self.subTest(corpus=name):
+                counts = Counter(r[1] for r in rows)
+                self.assertGreaterEqual(len(counts), 5)
+                self.assertLessEqual(
+                    max(counts.values()) - min(counts.values()), 5,
+                    f"{name}: groups must stay comparable or the by-group "
+                    f"rates cannot be read against each other")
+
+    def test_every_group_label_fits_the_report_column(self):
+        """A label wider than the column silently misaligns every row after it.
+
+        The table pads the name to 18 and the reader's eye relies on that; an
+        over-long group name shifts its own row's figures out of their columns,
+        which reads as a rendering glitch rather than as the data error it is.
+        """
+        for name, rows in self.corpora().items():
+            for row in rows:
+                self.assertLessEqual(
+                    len(row[1]), 17,
+                    f"{name}: group {row[1]!r} is too wide for the report column")
 
     def test_expectations_use_the_closed_vocabulary(self):
         routes = {"Today", "Memory"}
