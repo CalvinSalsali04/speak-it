@@ -130,6 +130,13 @@ jobs:
         run: python3 -m unittest discover -v
       - name: Corpus scorer self-tests
         run: python3 Tools/CorpusRunner/test_score.py
+      # The everyday scorer's own tests are pure Python too. They ran only
+      # inside the macOS corpus gate, which meant a scorer defect waited for a
+      # Mac to be noticed and cost a macOS minute to find.
+      - name: Everyday scorer self-tests
+        run: python3 Tools/CorpusRunner/everyday/test_score.py
+      - name: Everyday held-out leak check
+        run: python3 Tools/CorpusRunner/everyday/leak-check.py
 
   dashboard:
     name: Founder dashboard
