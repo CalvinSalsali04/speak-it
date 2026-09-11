@@ -400,6 +400,69 @@ class TitleHygieneTests(unittest.TestCase):
         self.assertIn("lower bound", result)
 
 
+def leak_check_module():
+    """leak-check.py has a hyphen in its name, so it needs loading by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "leak_check", HERE / "leak-check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class LeakCheckTests(unittest.TestCase):
+    """The boundary guard has to read the right field to mean anything.
+
+    A leak check comparing the wrong column passes for the wrong reason, which
+    is worse than failing: it reads as proof that nothing leaked.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_utterance_column_is_read_from_the_header(self):
+        for header, expected in (
+            ("id\tutterance\tfamily\texpected_destination\texpected_thoughts", 1),
+            ("id\tdomain\tutterance\texpect\tkeep", 2),
+            ("# id\tutterance\tfamily", 1),
+            ("utterance\tnote", 0),
+        ):
+            with self.subTest(header=header):
+                self.assertEqual(
+                    self.leak.utterance_column(header.split("\n")), expected)
+
+    def test_a_corpus_laid_out_differently_is_still_read_correctly(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "odd.tsv"
+            path.write_text(
+                "# a corpus that puts the capture fourth\n"
+                "id\tfamily\tnote\tutterance\n"
+                "X1\tnegation\twhy\tSarah has no dairy at all\n")
+            self.assertEqual(self.leak.harvest(path),
+                             ["Sarah has no dairy at all"])
+
+    def test_a_corpus_with_no_utterance_header_fails_loudly(self):
+        """Silently skipping it would leave that corpus unchecked forever."""
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "headerless.tsv"
+            path.write_text("X1\tsome capture text\tnegation\n")
+            with self.assertRaises(SystemExit):
+                self.leak.harvest(path)
+
+    def test_the_header_row_is_not_harvested_as_a_capture(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "set.tsv"
+            path.write_text("id\tutterance\nX1\tbuy milk\n")
+            self.assertEqual(self.leak.harvest(path), ["buy milk"])
+
+    def test_the_existing_held_out_set_harvests_its_documented_size(self):
+        """An anchor against a real file: heldout/README.md says 389."""
+        path = HERE.parent / "heldout" / "heldout.tsv"
+        if not path.exists():
+            self.skipTest("heldout.tsv not present")
+        self.assertEqual(len(self.leak.harvest(path)), 389)
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 

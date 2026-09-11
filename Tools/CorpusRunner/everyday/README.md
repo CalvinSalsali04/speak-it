@@ -175,7 +175,12 @@ capture stays untouched and keeps measuring.
 `leak-check.py` makes that boundary mechanical rather than a promise. It fails
 if any capture here also appears — verbatim, or as a near-paraphrase at Jaccard
 0.70 or above — in the gating corpus, in a development set, or in the older
-held-out set. It runs as part of `test_score.py`, which the corpus gate runs, so
+held-out set. It locates each corpus's capture by reading its header rather
+than assuming a column, because these files do not agree on layout — `heldout`
+and the development sets put the utterance second, this set puts it third — and
+a guard comparing the wrong field passes for the wrong reason, which is worse
+than failing. A corpus file with no `utterance` header stops the check rather
+than being skipped. It runs as part of `test_score.py`, which the corpus gate runs, so
 a capture cannot leak in unnoticed. It has already caught two: `E04` was a
 verbatim copy of a `heldout.tsv` case and `F28` was a paraphrase of one, both
 introduced while this set was being written, and both were replaced.
@@ -192,7 +197,46 @@ read during development — say so instead, and treat the number as spent.
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
 |---|---|---|---|---|---|---|---|
-| _not yet scored_ | | | | | | | |
+| 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%) | 217/235 (92.3%) | **0 / 15** |
+
+First reading, from `language_only` run 34586389323 on `macos-26`. Scored
+non-verbose; the failures were not read. Over-segmented 17, under-segmented 23,
+captures producing nothing 0, item type agreed on 132/212.
+
+By domain, routing and loss:
+
+| domain | routing | count | loss | title |
+|---|---|---|---|---|
+| work-school | 33/44 (75.0%) | 35/42 (83.3%) | 38/43 (88.4%) | 42/47 (89.4%) |
+| family-health | 27/44 (61.4%) | 35/43 (81.4%) | 45/45 (100.0%) | 44/47 (93.6%) |
+| money-travel | 29/44 (65.9%) | 35/43 (81.4%) | 42/45 (93.3%) | 45/47 (95.7%) |
+| freelance | 29/44 (65.9%) | 33/42 (78.6%) | 41/45 (91.1%) | 41/47 (87.2%) |
+| fitness-errands | 34/44 (77.3%) | 34/42 (81.0%) | 44/46 (95.7%) | 45/47 (95.7%) |
+
+Three things to carry forward rather than the headline.
+
+**Nothing was acted on that should not have been.** 0 of 15 ambiguous captures
+were scheduled, dated or modified, and no capture produced nothing at all. The
+harm measure is clean on its first reading, which is the row that should only
+ever fall.
+
+**Under-segmentation is larger than over-segmentation here** — 23 merges against
+17 splits. That runs opposite to the clause-segmentation reading on the older
+held-out set, where five of six failures were over-splits. Both can be true:
+they are different sets measuring different content. It means neither direction
+should be assumed to be *the* segmentation problem without saying which set the
+claim comes from.
+
+**`invention` is the weakest measure at 5/19, and n=19 is too small to rank
+families by.** It says superseded values are surviving into the interpretation
+rather than being replaced. That is a real signal and a thin one; the honest
+next step is more cases carrying a `reject` span, not a conclusion.
+
+Worst families by routing: `run-on` 0/8, `rambling-intro` 1/6,
+`trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. On title
+hygiene, `trailing-goodbye` is 0/7 — "bye" reaches the title every time it is
+spoken. Families below about eight captures are pointers to write more, not
+measurements.
 
 The set and the scorer were built in a Linux container, where the pipeline
 cannot be executed at all. The instrument has been tested against hand-written

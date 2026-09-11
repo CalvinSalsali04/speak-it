@@ -64,7 +64,7 @@ def parse_labels(path):
 
 
 def parse_probe(path):
-    """Reads `probe` output into one record per utterance.
+    r"""Reads `probe` output into one record per utterance.
 
     Field patterns use `[ \t]` rather than `\s` on purpose: `\s` matches a
     newline, so a field printed with an empty value let the capture run on into

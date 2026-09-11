@@ -34,6 +34,48 @@ def mine():
     return out
 
 
+def utterance_column(lines):
+    """Finds the column a corpus file keeps its utterances in.
+
+    Corpora in this repository do not agree on layout: `heldout.tsv` and the
+    development sets put the utterance second, `everyday.tsv` puts it third,
+    and `heldout.tsv` writes its header inside a comment. Hard-coding a column
+    is how this check silently starts comparing the wrong field and passing for
+    the wrong reason — which is worse than failing, because a leak check that
+    cannot fail reads as proof. So the header is read instead.
+    """
+    for line in lines:
+        fields = [f.strip().lower() for f in line.lstrip("#").strip().split("\t")]
+        if "utterance" in fields:
+            return fields.index("utterance")
+    return None
+
+
+def harvest(path):
+    """Every utterance in one corpus file."""
+    text = path.read_text(errors="ignore")
+    if path.suffix != ".tsv":
+        # Swift corpus sources: any string literal long enough to be a capture.
+        return re.findall(r'"([^"\\]{12,})"', text)
+
+    lines = text.splitlines()
+    column = utterance_column(lines)
+    if column is None:
+        raise SystemExit(
+            f"leak check: {path.name} has no column headed 'utterance', so the "
+            f"capture to compare cannot be identified. Add the header rather "
+            f"than letting this file go unchecked.")
+    out = []
+    for line in lines:
+        if line.startswith("#") or not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) <= column or fields[column].strip().lower() == "utterance":
+            continue
+        out.append(fields[column])
+    return out
+
+
 def others():
     sources = list((ROOT / "SpeakItTests").glob("SemanticCorpusData*.swift"))
     sources += list((ROOT / "Tools/CorpusRunner/devsets").glob("*.tsv"))
@@ -42,13 +84,7 @@ def others():
     for path in sources:
         if not path.exists():
             continue
-        text = path.read_text(errors="ignore")
-        if path.suffix == ".tsv":
-            candidates = [line.split("\t")[1] for line in text.splitlines()
-                          if len(line.split("\t")) > 1 and not line.startswith("#")]
-        else:
-            candidates = re.findall(r'"([^"\\]{12,})"', text)
-        for candidate in candidates:
+        for candidate in harvest(path):
             found.setdefault(norm(candidate), path.name)
     return found
 
