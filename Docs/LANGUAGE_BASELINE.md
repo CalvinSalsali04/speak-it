@@ -537,6 +537,25 @@ defect wearing a title-shaped coat, not a hygiene defect.
 | question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
 | ambiguous | 15 | — | — | 14/15 (93.3%) |
 
+**How these rows are ordered, because it is not how the scorer orders them.**
+Ascending by the printed `routing` column, with `ambiguous` last because it has
+no routing rate at all (`—` in routing and count, the everyday equivalent of the
+held-out set's `NOT RANKED` block). That is *not* `worst()`, the key
+`everyday/score.py` ranks by, which takes the minimum across five measures —
+`routing`, `count`, `loss`, `invention`, `title` — of which the table prints
+three. In this table two rows sit at 0.000 under that key — `run-on` on
+routing 0/8 and `operation` on **count 0/2** — and they are published first and
+sixth, which is the proof. In the two earlier sections, where the farewell fix
+had not yet landed, a third joins them: `trailing-goodbye` at **title 0/7**,
+published third. That one is the example to reach for, because its 0/7 is
+printed in the table, so the argument does not need the invisible columns at
+all — a reader can see three zeros and see they are not adjacent.
+
+Whoever transcribed these re-sorted them by a column the reader can see, which
+is the right instinct and is why the ranking defect fixed in
+`everyday/score.py` does not reach this file. Do not "correct" these tables
+back to the scorer's order.
+
 The `negation` row is the 51-capture family after PR #33 added the tag to W09,
 F05 and F14. It does not compare with the 48-capture row in the 10:57 section.
 
@@ -714,6 +733,10 @@ remove.
 | repetition | 10 | 10/10 (100%) | 10/10 (100%) | 10/10 (100%) |
 | question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
 | ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+Ordered ascending by the printed `routing` column, `ambiguous` last for want of
+a routing rate — not by the scorer's `worst()` key. See the note under
+"Everyday per family, worst routing first" above.
 
 `n` counts captures carrying the tag, so the rows overlap: one capture can be
 filler, negation and multi-thought at once. The negation row here is the
@@ -956,6 +979,13 @@ filler, negation and multi-thought at once.
 | repetition | 10 | 10/10 (100.0%) | 10/10 (100.0%) | 10/10 (100.0%) |
 | question | 9 | 1/1 (100.0%) | 1/1 (100.0%) | 9/9 (100.0%) |
 | ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+Ordered ascending by the printed `routing` column, `ambiguous` last for want of
+a routing rate — not by the scorer's `worst()` key. See the note under
+"Everyday per family, worst routing first" above.
+
+One hairline inversion in this table: `reference` at 79.4% precedes `quantity`
+at 79.3%. Left as transcribed rather than silently corrected.
 
 ### 3. Held-out set — 389 utterances, held out by mechanism
 
