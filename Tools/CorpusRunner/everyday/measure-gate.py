@@ -52,6 +52,14 @@ FORCED = ["routing", "count", "loss", "title", "invention", "empty"]
 #: Counters tallied straight into `tallies`. Suppressed entirely.
 SUPPRESSED = ["unsafe", "split", "merge", "ambiguous", "unseen"]
 
+#: Measures that are neither, listed as (name, pattern, replacement). This file
+#: claims to cover every measure the scorer reports, so a reported number that
+#: does not fit the two shapes above has to be written out rather than left
+#: off -- otherwise the claim is true only of the measures that were easy.
+REWRITTEN = [
+    ("item type", r"agreed = want_types == have_types", "agreed = True"),
+]
+
 
 ROOT = HERE.parents[2]
 
@@ -140,6 +148,11 @@ def main():
         unprotected += [] if ok else [counter]
         print(f"{counter:<12} {'suppressed entirely':<24} "
               f"{'protected' if ok else 'UNPROTECTED'}")
+    for name, pattern, replacement in REWRITTEN:
+        ok = suite_notices(re.escape(pattern), replacement)
+        unprotected += [] if ok else [name]
+        print(f"{name:<12} {'always agrees':<24} "
+              f"{'protected' if ok else 'UNPROTECTED'}")
 
     print()
     if unprotected:
@@ -147,7 +160,8 @@ def main():
               f"without the suite noticing, so a silent zero there would read "
               f"as a clean score.", file=sys.stderr)
         return 1
-    print(f"measure gate ok: all {len(FORCED) + len(SUPPRESSED)} measures are "
+    total = len(FORCED) + len(SUPPRESSED) + len(REWRITTEN)
+    print(f"measure gate ok: all {total} measures are "
           f"protected by the suite.")
     return 0
 

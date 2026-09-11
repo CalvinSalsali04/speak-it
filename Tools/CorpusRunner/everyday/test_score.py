@@ -230,6 +230,41 @@ class ScoreTests(unittest.TestCase):
         self.assertIn("want 2 rows · got 1", result)
         self.assertIn("under-segmented (merge)     1", result)
 
+    def test_type_agreement_is_also_reported_free_of_the_count_failure(self):
+        """The plain figure cannot separate a type error from a count error.
+
+        `want_types` and `have_types` are Counters over rows, so a capture the
+        pipeline split or merged wrongly differs by a whole row and can never
+        match, whatever types it chose. The plain line therefore carries every
+        `count` failure inside it and reads as though types were the problem.
+        The second line conditions on correct segmentation and is the only one
+        that says anything about types.
+
+        The fixture proves both halves at once: one capture merged (right type,
+        wrong row count) and one segmented correctly with a wrong type. The
+        plain line sees two failures, the conditioned line sees the one that is
+        actually about a type.
+        """
+        result = self.score(
+            "A1\tfreelance\tcall Sam and email Jo\tToday:task|Today:task\t-\t-\tmulti-thought\tn\n"
+            "A2\tfreelance\tthe exam is open book\tMemory:note\t-\t-\treference\tn\n",
+            block("call Sam and email Jo",
+                  {"title": "Call Sam and email Jo", "type": "task"})
+            + block("the exam is open book",
+                    {"title": "Exam is open book", "route": "Memory", "type": "task"}),
+        )
+        self.assertIn("item type matched the label 0/2", result)
+        self.assertIn("of those segmented right  0/1", result)
+
+    def test_type_agreement_conditioned_figure_counts_a_clean_capture(self):
+        """A correctly segmented, correctly typed capture reaches both lines."""
+        result = self.score(
+            "A1\tfreelance\tcall Sam\tToday:task\t-\t-\tfiller\tn\n",
+            block("call Sam", {"title": "Call Sam", "type": "task"}),
+        )
+        self.assertIn("item type matched the label 1/1", result)
+        self.assertIn("of those segmented right  1/1", result)
+
     # --- operations -------------------------------------------------------
 
     def test_an_expected_operation_is_scored_on_the_operation_line(self):

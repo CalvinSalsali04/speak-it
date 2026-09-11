@@ -107,6 +107,25 @@ Today versus Memory is the product contract's hard line and is scored. Whether a
 particular capture is an `idea` or a `note` is a judgement call a label cannot
 settle, so type agreement is printed and never counted as a failure.
 
+It prints on two lines, and the second is the one to read:
+
+```
+  item type matched the label 145/232  (reported, never gated)
+    of those segmented right  145/192  ← the one that is about types
+```
+
+The plain figure cannot separate a type error from a count error. Both sides are
+`Counter`s over rows, so a capture the pipeline split or merged wrongly differs
+by a whole row and can never match, whatever types it chose — the generation-3
+reading has 40 `count` failures and all 40 are inside its 87 type mismatches.
+Quoted alone, 62.5% reads as a type problem when a third of it is the
+segmentation problem already reported two lines above. Conditioned on correct
+segmentation the figure is 75.5%, and the residue is 47 real type
+disagreements.
+
+The plain line is unchanged and no generation boundary is crossed; the second
+line is additive.
+
 ## The label format
 
 One tab-separated row per capture:

@@ -275,9 +275,17 @@ def main():
                 for scope in scopes:
                     tallies[scope]["merge"] += 1
 
+            # Reported two ways on purpose. A capture the pipeline segmented
+            # wrongly cannot match this comparison whatever types it chose --
+            # the Counters differ by a whole row -- so the plain figure carries
+            # every `count` failure inside it and reads as a type problem. The
+            # conditioned figure is the one that says anything about types.
             want_types = Counter(e.split(":")[1] for e in case["expect"] if ":" in e)
             have_types = Counter(r["type"] for r in got["rows"])
-            type_agreement["ok" if want_types == have_types else "differs"] += 1
+            agreed = want_types == have_types
+            type_agreement["ok" if agreed else "differs"] += 1
+            if produced == expected_rows:
+                type_agreement["segmented_ok" if agreed else "segmented_differs"] += 1
 
         if case["keep"]:
             surface = visible(got)
@@ -354,8 +362,11 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
     print(f"  under-segmented (merge)     {overall['merge']}")
     print(f"  produced nothing at all     {overall['empty_miss']}")
     print(f"  missing probe results       {overall['unseen']}")
+    segmented = type_agreement["segmented_ok"] + type_agreement["segmented_differs"]
     print(f"  item type matched the label {type_agreement['ok']}"
           f"/{type_agreement['ok'] + type_agreement['differs']}  (reported, never gated)")
+    print(f"    of those segmented right  {type_agreement['segmented_ok']}"
+          f"/{segmented}  ← the one that is about types")
     print()
     print(f"  genuinely ambiguous         {overall['ambiguous']}")
     print(f"  ACTED ON ANYWAY             {overall['unsafe']}"
