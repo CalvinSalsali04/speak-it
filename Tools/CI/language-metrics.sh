@@ -89,7 +89,10 @@ section() {
 # scorer below then reuses. Its status is captured rather than fatal so that a
 # regression still produces the rest of the picture in the same run.
 section "GATING CORPUS — regression net, authored from the product contract"
-Tools/CI/corpus-gate.sh >> "$OUT" 2>&1
+# The gate prints its last eight lines, which is right for a pass/fail check
+# and wrong here: the first real run showed four family rows and nothing else,
+# so a future failure would be invisible in the family it belongs to.
+CORPUS_GATE_FULL=1 Tools/CI/corpus-gate.sh >> "$OUT" 2>&1
 GATE=$?
 
 section "DEVELOPMENT SETS — where rules are worked out; not a gate, not held out"
