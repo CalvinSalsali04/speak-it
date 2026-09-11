@@ -1478,14 +1478,25 @@ enum RuleBasedThoughtExtractor {
             || ActionabilityReader.read(left) != .ambiguous
 
         // A resultive coordinator attaches a consequence to a cause, so there
-        // has to be a cause: something on the left that is already a thought.
-        // "Okay so I need to call Catherine tomorrow" and "So basically I need
-        // to submit the report Friday" have a discourse marker in front of the
-        // request, not a clause, and both are in the corpus at one thought
-        // each. This is the whole guard against reading a spoken lead-in as a
-        // second capture, and it is deliberately stricter than what "and"
-        // requires, because "and" cannot open an utterance and "so" can.
-        if resultive, !leftCanStandAlone { return false }
+        // has to be a cause: a statement on the left. "Okay so I need to call
+        // Catherine tomorrow" and "So basically I need to submit the report
+        // Friday" have a discourse marker in front of the request, not a
+        // clause, and both are in the corpus at one thought each. This is the
+        // whole guard against reading a spoken lead-in as a second capture,
+        // and it is deliberately stricter than what "and" requires, because
+        // "and" cannot open an utterance and "so" can.
+        //
+        // It reads `hasSubjectPredicate` alone rather than `leftCanStandAlone`,
+        // and the difference is the point: that value is an OR whose second arm
+        // is true of a bare imperative, so it would let an *instruction* count
+        // as a cause. "Pick up the dry cleaning so I need to bring the ticket"
+        // is one errand and the note that goes with it — the ticket is how the
+        // dry cleaning gets collected, not a second thing to do — and splitting
+        // it strands "bring the ticket" as a row that means nothing alone. A
+        // commitment is not a property of the fact that prompted it, which is
+        // the whole argument for this boundary, and an imperative is not a
+        // fact.
+        if resultive, !context.hasSubjectPredicate(in: leftRange) { return false }
 
         // "Email the contract to legal and get it back by Friday": a conjunct
         // whose object is a pronoun pointing back at the left's object is the

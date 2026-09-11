@@ -339,6 +339,26 @@ enum SemanticCorpusH {
                    "Sarah said I need to rebook the flights",
                    count: 1,
                    note: "GUARD: a reported obligation with no resultive boundary stays one thought. Keeps the complement rule from reading every reported \"I need to\" as the speaker's own."),
+
+        // "and so" is the one shape where this change alters a boundary that
+        // already existed rather than adding one. The resultive alternative is
+        // written to consume both words, so the boundary becomes "and so"
+        // rather than "and", and the left-side requirement then applies where
+        // it did not before. There is exactly one "and so" in all readable
+        // material in this repository and it is not this shape, so nothing
+        // else here would catch a mistake in it. Both directions are pinned.
+        corpusCase(.paragraphs,
+                   "The lease ends in March and so I need to draft the renewal",
+                   count: 2,
+                   note: "The redundant \"and\" does not change what the speaker said. Same two thoughts as the bare \"so\" form, so the boundary has to survive being widened to \"and so\"."),
+        corpusCase(.paragraphs,
+                   "Okay and so I need to call Catherine tomorrow",
+                   count: 1,
+                   note: "GUARD: the mirror of the row above, and the reason it needs pinning. Widening the boundary to \"and so\" brings the resultive left-side requirement to a boundary that \"and\" alone never applied it to; here that is correct and the row must stay whole, so the same mechanism has to give opposite answers on these two."),
+        corpusCase(.paragraphs,
+                   "Pick up the dry cleaning so I need to bring the ticket",
+                   count: 1,
+                   note: "GUARD: an imperative is not a cause. The licence for a resultive boundary is that a commitment is not a property of the fact that prompted it, and an instruction is not a fact — the ticket is how the dry cleaning gets collected, not a second errand, and splitting strands \"bring the ticket\" as a row meaning nothing alone."),
     ]
 
 }
