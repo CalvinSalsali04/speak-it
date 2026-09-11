@@ -157,9 +157,9 @@ for fam, counter in sorted(by_family.items(),
           f"{cell(counter['dest_ok'], counter['dest_ok'] + counter['dest_miss'])}"
           f"{cell(counter['count_ok'], counter['count_scored'])}")
 print("-" * WIDTH)
-print("  Worst destination rate first. A family scoring badly here is the")
-print("  ingredient to check before reading any adversarial pairing that")
-print("  compounds it: a weak pairing over a weak ingredient says nothing new.")
+print("  Worst destination rate first. A whole-set average hides the family")
+print("  that is broken, and these rates are what an adversarial pairing has")
+print("  to be read against — see Tools/CorpusRunner/adversarial/README.md.")
 
 if verbose:
     print()
