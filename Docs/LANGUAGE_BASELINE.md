@@ -164,6 +164,28 @@ picks it up with no edit. Its baseline table is empty for the same reason
 everyday's was: the engine cannot run in a Linux container, and a number from
 anywhere else would be invented.
 
+## Family denominators moved on 2026-09-11, after the generation-3 note
+
+Separate from any generation: five captures gained a `negation` family tag in
+PR #33, because they exclude a value with `not` and had never been tagged. That
+moves the `negation` row of the per-family tables and nothing else — no capture
+was added or removed, and no `reject` span changed, so every headline measure is
+untouched.
+
+| set | `negation` from | to |
+|---|---|---|
+| everyday | 48 | **51** |
+| adversarial | 24 | **26** |
+
+Costs nothing today: the last published everyday numbers are the 235-capture
+generation, so no `negation` rate from generation 3 has been quoted yet, and the
+adversarial set has never been scored. **The next reading is the first for both,
+and should be recorded against 51 and 26.**
+
+A generation is about a measure changing. A family denominator can move without
+one, which is why it is recorded separately rather than folded into the
+generation table.
+
 ## How to reproduce
 
 ```bash

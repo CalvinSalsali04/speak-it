@@ -33,13 +33,38 @@ def norm(text):
 
 
 def mine(path):
+    """The sealed set's own captures, keyed by normalised text.
+
+    Reads the utterance column from the header for the same reason `harvest`
+    does: a hard-coded index is correct until a set is laid out differently,
+    and then this compares the wrong field and passes for the wrong reason.
+    The registry test will happily register such a set, so this side has to be
+    layout-independent too.
+    """
+    lines = Path(path).read_text().splitlines()
+    column = column_of(lines, "utterance")
+    if column is None:
+        raise SystemExit(
+            f"leak check: {Path(path).name} has no column headed 'utterance'")
+    ids = column_of(lines, "id") or 0
     out = {}
-    for line in open(path):
-        parts = line.rstrip("\n").split("\t")
-        if len(parts) < 3 or parts[0] == "id" or line.startswith("#"):
+    for line in lines:
+        parts = line.split("\t")
+        if line.startswith("#") or not line.strip() or len(parts) <= column:
             continue
-        out[norm(parts[2])] = parts[0]
+        if parts[column].strip().lower() == "utterance":
+            continue
+        out[norm(parts[column])] = parts[ids] if len(parts) > ids else "?"
     return out
+
+
+def column_of(lines, name):
+    """Index of a named column, read from whichever line carries the header."""
+    for line in lines:
+        fields = [f.strip().lower() for f in line.lstrip("#").strip().split("\t")]
+        if name in fields:
+            return fields.index(name)
+    return None
 
 
 def utterance_column(lines):
@@ -52,11 +77,7 @@ def utterance_column(lines):
     the wrong reason — which is worse than failing, because a leak check that
     cannot fail reads as proof. So the header is read instead.
     """
-    for line in lines:
-        fields = [f.strip().lower() for f in line.lstrip("#").strip().split("\t")]
-        if "utterance" in fields:
-            return fields.index("utterance")
-    return None
+    return column_of(lines, "utterance")
 
 
 def harvest(path):
@@ -98,6 +119,23 @@ def others(exclude):
     return found
 
 
+def verdict(sources):
+    """Which failure this is, in the words that send the reader to the right place.
+
+    An overlap with a tuned corpus means the set has stopped measuring
+    generalisation. An overlap between two sealed sets means no such thing —
+    nothing has been tuned against either — it means one measurement is being
+    counted twice. Printing the first message for the second case sends
+    someone hunting a leak that does not exist.
+    """
+    if sources - {q.name for q in SEALED}:
+        return ("leak check FAILED: a held-out capture overlaps a corpus that "
+                "is developed against, so it no longer measures generalisation.")
+    return ("leak check FAILED: a capture appears in two sealed sets, so one "
+            "measurement is being counted as two. Neither set is "
+            "contaminated; remove the duplicate from one of them.")
+
+
 def main():
     """Checks every sealed set, so adding one cannot mean forgetting to check it."""
     failed = 0
@@ -137,8 +175,8 @@ def check(path):
         print(f"  NEAR  {cid}  j={overlap}  {source}\n    held out: {utterance}"
               f"\n    tuned:    {other}")
     if exact or near:
-        print("\nleak check FAILED: a held-out capture overlaps a corpus that is "
-              "developed against.", file=sys.stderr)
+        sources = {src for _, _, src in exact} | {src for _, _, src, _, _ in near}
+        print("\n" + verdict(sources), file=sys.stderr)
         return 1
     print("\nleak check ok: nothing held out appears in a tuned corpus.")
     return 0
