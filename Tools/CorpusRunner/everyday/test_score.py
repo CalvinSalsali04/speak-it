@@ -965,6 +965,148 @@ class GenerationCheckTests(unittest.TestCase):
                      if not l.startswith("#") and l.strip()]
             self.assertEqual(lines, sorted(lines))
 
+    @contextlib.contextmanager
+    def a_scratch_world(self, sets):
+        """Sealed sets of our own, already recorded, with the module aimed at them.
+
+        `main` reads module-level paths, so without this a test exercising the
+        check's own verdict would read the committed sets and write beside
+        them. The committed data is never touched here, whatever the code
+        under test does.
+        """
+        sealed = self.gen.SEALED, self.gen.MANIFEST, self.gen.HASHES
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            self.gen.SEALED = {}
+            for name, captures in sets.items():
+                (root / name).mkdir()
+                path = root / name / f"{name}.tsv"
+                path.write_text(
+                    "id\tdomain\tutterance\texpect\tkeep\treject\tfamilies\tnote\n"
+                    + "".join(f"{name[:2].upper()}{i:02}\tg\t{c}\tToday:task"
+                              f"\t-\t-\tf\tn\n"
+                              for i, c in enumerate(captures)))
+                self.gen.SEALED[name] = path
+            self.gen.MANIFEST = root / "generations.tsv"
+            self.gen.HASHES = root / "captures.sha256"
+            here = self.gen.present()
+            self.gen.write(here, {
+                name: {"set": name, "generation": "1",
+                       "captures": str(len(values)), "recorded": "2026-09-11",
+                       "note": "first record"}
+                for name, values in here.items()})
+            try:
+                yield root
+            finally:
+                self.gen.SEALED, self.gen.MANIFEST, self.gen.HASHES = sealed
+
+    def check(self):
+        """(exit status, what it printed, what it complained)."""
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = self.gen.main([])
+        return status, out.getvalue(), err.getvalue()
+
+    #: Two sets, so deleting one leaves the check with something to report.
+    WORLD = {"alpha": ["call the vet", "book the car in"],
+             "beta": ["email Nadia the invoice"]}
+
+    def test_an_untouched_world_passes(self):
+        """The control. Without it every test below could pass on a broken rig."""
+        with self.a_scratch_world(self.WORLD):
+            status, said, complained = self.check()
+        self.assertEqual(status, 0, complained)
+        self.assertIn("generation check ok", said)
+        self.assertIn("alpha", said)
+        self.assertIn("beta", said)
+
+    def test_a_deleted_set_is_a_failure_and_not_an_absence(self):
+        """The defect this replaced: `present()` only reports a set whose file
+        exists, so iterating it made a deleted set invisible. Removing all 120
+        adversarial captures printed the other two sets and "no sealed capture
+        has been edited since it was scored", exit 0. Reproduced before fixing.
+        """
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            status, said, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("alpha", complained)
+        self.assertIn("2 removed", complained)
+        self.assertIn("0 captures now against 2 recorded", complained)
+        self.assertNotIn("generation check ok", said)
+
+    def test_a_vanished_set_is_told_to_be_restored_not_recorded(self):
+        """`--record` would write a generation of zero captures and turn this
+        green over a set that is not there, so the failure must not offer it.
+        """
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            _, _, complained = self.check()
+        self.assertIn("Restore it", complained)
+        self.assertNotIn("--record", complained)
+
+    def test_the_recorder_refuses_a_set_with_no_captures(self):
+        """Mechanical, rather than advice in a failure message."""
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = self.gen.record("alpha", 2, "2026-09-11")
+            recorded_still = self.gen.generations()["alpha"]["captures"]
+        self.assertEqual(status, 1)
+        self.assertIn("no captures", err.getvalue())
+        self.assertEqual(recorded_still, "2",
+                         "a refused record must leave the manifest alone")
+
+    def test_a_set_still_on_disk_but_never_recorded_is_a_failure(self):
+        """The other side of the union: added, not removed."""
+        with self.a_scratch_world(self.WORLD) as root:
+            (root / "gamma").mkdir()
+            path = root / "gamma" / "gamma.tsv"
+            path.write_text("id\tdomain\tutterance\texpect\tkeep\treject"
+                            "\tfamilies\tnote\nGA00\tg\tnew capture"
+                            "\tToday:task\t-\t-\tf\tn\n")
+            self.gen.SEALED["gamma"] = path
+            status, _, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("gamma", complained)
+        self.assertIn("1 added", complained)
+        self.assertIn("1 capture now against 0 recorded", complained)
+
+    def test_a_duplicated_capture_is_not_blamed_on_the_manifest(self):
+        """`difference` is set-based, so a duplicate moves only the count.
+
+        Without its own branch that lands on "the manifest has been edited by
+        hand", which sends someone to correct a file that is correct. No set
+        has a duplicate today, so the wrong sentence was waiting for the first
+        one.
+        """
+        world = dict(self.WORLD, alpha=["call the vet", "call the vet"])
+        with self.a_scratch_world(self.WORLD):
+            recorded_alpha = self.gen.recorded()["alpha"]
+        with self.a_scratch_world(world):
+            #: Recorded from the duplicated set, so the hashes agree and only
+            #: the count can differ — which is the state being tested.
+            status, _, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("identical to another capture", complained)
+        self.assertNotIn("edited by hand", complained)
+        self.assertEqual(len(recorded_alpha), 2)
+
+    def test_a_malformed_hash_line_names_itself(self):
+        """766 lines of hex; an unpack error sends someone scrolling."""
+        with self.a_scratch_world(self.WORLD):
+            good = self.gen.HASHES.read_text()
+            self.gen.HASHES.write_text(good + "alpha no tab here\n")
+            expected = len(good.splitlines()) + 1
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                with self.assertRaises(SystemExit):
+                    self.gen.recorded()
+        self.assertIn(f"line {expected}", err.getvalue())
+        self.assertIn("set<TAB>hash", err.getvalue())
+
     def test_the_manifest_holds_no_capture_text(self):
         """It is committed, so it must reveal nothing the sets are sealing."""
         hashes = self.gen.HASHES.read_text()

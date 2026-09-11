@@ -32,10 +32,14 @@ To open a new generation, having decided to, name the set and the number:
 
     python3 Tools/CorpusRunner/everyday/generation-check.py --record everyday 4
 
-It refuses any number that is not the next one, and refuses to record when the
-captures have not actually changed, so recording is a decision rather than a
-reflex. Then write the generation's row in that set's README saying what
-changed and which numbers no longer compare.
+It refuses an unknown set, any number that is not the next one, a set whose
+captures have not actually changed, and a set whose captures are all gone, so
+recording is a decision rather than a reflex. Then write the generation's row
+in that set's README saying what changed and which numbers no longer compare.
+
+The check reads the union of the sets on disk and the sets on record, not the
+ones on disk. A set that has been deleted is absent from disk, and iterating
+disk made its disappearance invisible rather than a failure.
 """
 import hashlib
 import importlib.util
@@ -114,10 +118,18 @@ def recorded():
     """
     out = {}
     if HASHES.exists():
-        for line in HASHES.read_text().splitlines():
+        for number, line in enumerate(HASHES.read_text().splitlines(), 1):
             if line.startswith("#") or not line.strip():
                 continue
-            name, value = line.split("\t")
+            try:
+                name, value = line.split("\t")
+            except ValueError:
+                #: Naming the line matters more here than anywhere: this file
+                #: is 766 lines of hex, so "not enough values to unpack" sends
+                #: someone scrolling through it looking for nothing.
+                print(f"generation-check: {HASHES} line {number} is not "
+                      f"`set<TAB>hash`: {line!r}", file=sys.stderr)
+                raise SystemExit(1)
             out.setdefault(name, []).append(value)
     return out
 
@@ -184,6 +196,15 @@ def record(name, number, today):
               f"no generation to open. Recording anyway would make this check "
               f"something people run to turn red green.", file=sys.stderr)
         return 1
+    if not here.get(name):
+        #: The fourth refusal, and the one the failure path now points at. A
+        #: set whose file is missing or empty is not a later version of
+        #: itself, and recording it would write a generation of zero captures
+        #: and turn the check green over a set that is not there.
+        print(f"generation-check: {name} has no captures — its file is "
+              f"missing or empty. Restore it rather than recording a "
+              f"generation over it.", file=sys.stderr)
+        return 1
     gone, added = difference(there.get(name, []), here.get(name, []))
     rows[name] = {"set": name, "generation": str(number),
                   "captures": str(len(here.get(name, []))), "recorded": today,
@@ -209,8 +230,17 @@ def main(argv):
 
     here, there, rows = present(), recorded(), generations()
     failed = False
-    for name in sorted(here):
-        gone, added = difference(there.get(name, []), here[name])
+    #: The union, not what is on disk. `present()` only reports a set whose
+    #: file exists, so iterating it meant a deleted set was not a failure but
+    #: an absence: remove `adversarial.tsv` entirely and this printed the other
+    #: two and "no sealed capture has been edited since it was scored", exit 0,
+    #: with 120 captures gone. Removal is squarely inside what the READMEs say
+    #: opens a generation, so the sentence was false in a state the check was
+    #: written to cover. Reproduced, then fixed. CI was never blind to it —
+    #: leak-check.py and test_score.py both fail on the same tree — but a check
+    #: whose own verdict is wrong is the thing this file exists to prevent.
+    for name in sorted(set(here) | set(there)):
+        gone, added = difference(there.get(name, []), here.get(name, []))
         if gone or added:
             failed = True
             # A capture whose text was edited leaves its old hash and gains a
@@ -221,8 +251,20 @@ def main(argv):
             print(f"generation-check FAILED: {name} — "
                   f"{captures(edited)} changed text, "
                   f"{len(added) - edited} added, {len(gone) - edited} removed "
-                  f"({captures(len(here[name]))} now against "
+                  f"({captures(len(here.get(name, [])))} now against "
                   f"{len(there.get(name, []))} recorded).", file=sys.stderr)
+            if there.get(name) and not here.get(name):
+                #: Every capture is gone. The advice below would be actively
+                #: wrong here: `--record` would happily write a generation of
+                #: zero captures and turn the check green over a set that no
+                #: longer exists. There is one correct response to this.
+                print(f"  Every capture in {name} is gone, and its file is "
+                      f"missing or empty. Restore it. Do not record a "
+                      f"generation: a set with no captures is not a later "
+                      f"version of one, and recording it would turn this "
+                      f"check green over a set that is not there.",
+                      file=sys.stderr)
+                continue
             nxt = int(rows[name]["generation"]) + 1 if name in rows else 1
             print(f"  Editing a capture of a set that has already been scored "
                   f"opens a new generation. If that is what this is, run\n"
@@ -232,9 +274,22 @@ def main(argv):
                   f"what changed, and which numbers no longer compare across "
                   f"it. If it is not what this is, put the captures back.",
                   file=sys.stderr)
-        elif name in rows and int(rows[name]["captures"]) != len(here[name]):
+        elif len(set(here.get(name, []))) != len(here.get(name, [])):
+            #: Two captures with identical text. `difference` is set-based, so
+            #: the hashes still match and only the count moves — which would
+            #: otherwise land in the branch below and blame the manifest for
+            #: an edit to the set. No set has a duplicate today; the sentence
+            #: would have been wrong the first time one did.
             failed = True
-            print(f"generation-check FAILED: {name} has {len(here[name])} "
+            duplicates = len(here[name]) - len(set(here[name]))
+            print(f"generation-check FAILED: {name} has "
+                  f"{captures(duplicates)} whose text is identical to another "
+                  f"capture in the same set. Two copies of one capture are one "
+                  f"measurement counted twice; give it its own wording or "
+                  f"remove it. The manifest is not at fault.", file=sys.stderr)
+        elif name in rows and int(rows[name]["captures"]) != len(here.get(name, [])):
+            failed = True
+            print(f"generation-check FAILED: {name} has {len(here.get(name, []))} "
                   f"captures but generations.tsv records "
                   f"{rows[name]['captures']}, while every capture hash "
                   f"matches. The manifest has been edited by hand; correct "
