@@ -24,9 +24,14 @@ change. The 10:12 section below measured that change against the 235-capture
 generation, so those two sets of everyday figures do not compare with each
 other. These do, once the branch is measured again.
 
-At the time of writing the unit suite in this same run is still going. If it
-fails on unchanged `main`, every number in this section was taken against a
-build whose own tests do not pass, and that has to be said next to them.
+**The unit suite in this same run failed**, and so does the suite on the
+framing branch, with an identical list of 57 failing assertions. That is the
+state of the suite on a GitHub-hosted `macos-26` runner; the `ios` job had
+never run there before today. It does not make the numbers above wrong — they
+come from `Tools/CorpusRunner`, a host-side binary that passed its own gate at
+1381/1381 in the same job — but they were taken on a commit whose simulator
+suite does not pass on that runner, and that belongs next to them until the
+failure is understood.
 
 ### Everyday held-out set — 255 captures, nothing tuned against them
 
