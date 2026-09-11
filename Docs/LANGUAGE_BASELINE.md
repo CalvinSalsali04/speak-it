@@ -211,8 +211,31 @@ finding, and the per-family gaps are:
 | knowledge-action (3) | 3/3 → 2/3 | 3/3 → **0/3** |
 | long (3) | 3/3 → 3/3 | 1/3 → **2/3** |
 
-`coherent-long`, the seven guards that must stay one row however long they get,
-is 7/7 on destination and **5/7 on count**.
+`coherent-long`, the guards that must stay one row however long they get, is
+7/7 on destination and **5/7 on count**. Those seven rows are **five distinct
+contents**, two of them written twice — the set was reviewed after this run and
+the guard count above overstates what is being guarded.
+
+**Two corrections to this section, from that review.** Neither changes a
+measured figure; both change what the figures are worth.
+
+*The `restart` result is weaker than it reads.* In three of its four pairs, and
+in all four `decision` pairs, the clean twin is a **literal suffix** of its
+rambling twin. "Return the final clause" therefore scores 7/7 on those rows and
+produces a twin gap of exactly zero — which is this instrument's signal for
+"filler cost nothing". So the headline stands on `errand` (8 pairs) and
+`chained` (3), where the filler is interleaved and no suffix heuristic helps;
+`restart`'s 4/4 → 4/4 is consistent with it but is not evidence for it. Five
+new pairs put the disfluency mid-utterance with a committed errand in front of
+it, so the heuristic returns one row where two are wanted.
+
+*The destination column cannot discriminate on this set.* 51 of the 57 rows
+here want Today, so answering "Today" to everything scores 89%, and every
+destination twin gap above is a ceiling effect. The count column carries the
+signal. The set has since gained rows wanting Memory **and** two thoughts,
+because previously every Memory row was `coherent-long` and every
+`coherent-long` row wanted one thought — so a single over-splitting defect
+would have moved both columns and read as two independent findings.
 
 **The headline is that filler is not the problem.** Errands, false starts and
 discourse adjuncts carry their filler at no cost at all — three families, 15

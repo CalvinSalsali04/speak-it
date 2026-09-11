@@ -43,7 +43,12 @@
 # ----------------------------------------------------
 # Each `*-clean` row has a twin `*-rambling` row with the SAME id stem, the
 # same expected destination and the same expected thought count: RB04C and
-# RB04R are one capture written twice. The clean twin is the control. Its rate
+# RB04R are one capture written twice. **The `C`/`R` suffix is the pairing
+# key**, so a row without one is a deliberate singleton (RB25, RB26, RB27) and
+# not half of a dropped pair — an earlier draft had two guard pairs carrying no
+# suffix, which a stem-pairing scorer would have silently discarded, and they
+# were precisely the rows guarding against the fix the gap is meant to
+# motivate. The clean twin is the control. Its rate
 # is not the finding — the GAP between the two rates is, because it isolates
 # what filler and disfluency cost, with content held fixed by construction.
 #
@@ -54,6 +59,33 @@
 #
 # Do NOT quote a single number over this file. The clean rows are deliberately
 # easy and would flatter any average taken across both halves.
+#
+# What this set cannot tell you, established by review on 2026-09-11
+# ----------------------------------------------------
+# 1. **Read the thought-count column, not the destination column.** 59 of the
+#    73 rows want Today, so answering "Today" to everything scores 81% and the
+#    destination twin gap is a ceiling effect. Count is what discriminates
+#    here. A flat destination gap is NOT evidence that rambling does not hurt
+#    routing; it is evidence this set cannot see routing.
+# 2. **Seven pairs are trivially passable and are named so nobody counts them
+#    twice.** In RB09-RB11 and RB13-RB16 the clean twin is a literal suffix of
+#    its rambling twin, so "return the final clause" scores 7/7 on them and
+#    produces a twin gap of zero — which is this instrument's signal for
+#    "filler cost nothing". They stay, because real deliberation and real
+#    restarts do end on the resolution and the rows are natural. RB12 and
+#    RB33-RB36 are the antidote: the disfluency sits mid-utterance with a
+#    committed errand in front of it, so the last-clause heuristic returns one
+#    row where two are wanted. **Any result on `restart` or `decision` must be
+#    read against those, not against the suffix rows.**
+# 3. **RB16R leans on `honestly`**, which everyday's title hygiene deliberately
+#    does not treat as filler because it is an ordinary word often enough that
+#    flagging it manufactures failures. If a future change reads it as a filler
+#    marker, this set rewards it and the everyday set punishes it. It is not
+#    wrong, but it is the row nobody should cite as proof.
+# 4. **The set is tilted toward finding boundaries**: roughly twice as many
+#    long captures reward emitting two or more rows as punish it. The `coherent`
+#    and `two-facts` rows are the counterweight and the honest fix is more
+#    one-thought *contents*, not more guards over the same few.
 #
 # The guard families
 # ----------------------------------------------------
@@ -115,8 +147,8 @@ RB20R	pay the water bill and while I'm at it collect the parcel	chained-rambling
 RB21R	drop the donation bags off and while I'm out there fill the car up	chained-rambling	Today	2
 RB22R	return the drill and after that buy the picture hooks	chained-rambling	Today	2
 # --- Guard: one thought, however long it gets --------------------------------
-RB23	the leak under the kitchen sink turned out to be the shut off valve rather than the trap which is why the cupboard floor swelled	coherent-long	Memory	1
-RB24	um so the leak under the kitchen sink turned out to be you know the shut off valve rather than the trap which is I guess why the cupboard floor swelled	coherent-long	Memory	1
+RB23C	the leak under the kitchen sink turned out to be the shut off valve rather than the trap which is why the cupboard floor swelled	coherent-long	Memory	1
+RB23R	um so the leak under the kitchen sink turned out to be you know the shut off valve rather than the trap which is I guess why the cupboard floor swelled	coherent-long	Memory	1
 RB25	Rosa said the committee wants the budget in two parts now one for staffing and one for everything else which changes how I write the summary	coherent-long	Memory	1
 RB26	the reason the bread keeps collapsing is the second proof is too warm not the yeast which I had assumed all along	coherent-long	Memory	1
 RB27	I need to finish the grant narrative before the portal closes and it still needs the budget table and the two letters	coherent-long	Today	1
@@ -128,5 +160,36 @@ RB28R	okay so um the contractor is coming Tuesday morning to look at the back st
 RB29R	so the school sent the trip form home today and it um it needs signing and I think the payment is due by the end of the month and I also want to ask whether Nadia can sit with Priya on the coach because you know last year she was on her own the whole way	long-rambling	Today	3
 RB30R	right so I picked up the blood work results and um the iron is low again so I need to book a follow up with Doctor Adeyemi and uh start the supplements again and I should probably tell Mum because I mean hers was the same thing two years ago	long-rambling	Today	3
 # --- Long and coherent: one thought, no matter the length --------------------
-RB31	the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
-RB32	um so the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
+RB31C	the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
+RB31R	um so the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
+# --- Resolution mid-utterance: the last clause is NOT the whole answer -------
+# Written 2026-09-11 after review. In RB09-RB11 and RB13-RB16 the clean twin is
+# a literal suffix of its rambling twin, so "return the final clause" scores
+# 7/7 on them and manufactures a twin gap of zero — the instrument's own signal
+# for "filler cost nothing". These rows put a committed errand IN FRONT of the
+# disfluency, so that heuristic returns one row where two are wanted and the
+# families stop being trivially passable.
+RB33C	order the projector bulb and pay the framing invoice	decision-clean	Today	2
+RB34C	call the surveyor and book the loft inspection	restart-clean	Today	2
+RB35C	post the deposit cheque and email Rosa the meter readings	decision-clean	Today	2
+RB36C	collect the dry cleaning and renew the parking permit	restart-clean	Today	2
+RB33R	order the projector bulb and then, I could pay the framing invoice now or wait for the purchase order, no, now, so pay the framing invoice	decision-rambling	Today	2
+RB34R	call the, um, call the surveyor and book the, book the loft inspection	restart-rambling	Today	2
+RB35R	post the deposit cheque and, do I email Rosa the meter readings or ring her, email is better, so email Rosa the meter readings	decision-rambling	Today	2
+RB36R	collect the dry, the dry cleaning and renew the, uh, renew the parking permit	restart-rambling	Today	2
+# --- More long one-thought CONTENTS, not more guards over the same five ------
+RB37C	the reason the upstairs radiator never heats is that the system was refilled without bleeding it so the air sits at the highest point in the loop	coherent-long	Memory	1
+RB37R	so um the reason the upstairs radiator never heats is that you know the system was refilled without bleeding it so basically the air sits at the highest point in the loop	coherent-long	Memory	1
+RB38C	the reason the nursery keeps asking for the second form is that the funding year restarts in April and the one on file was signed against the old year	coherent-long	Memory	1
+RB38R	okay so the reason the nursery keeps asking for the second form is I mean the funding year restarts in April and the one on file was signed against the old year	coherent-long	Memory	1
+# --- Memory that is NOT one thought, so the two columns stop moving together -
+# Added 2026-09-11 after review. Every Memory row above is `coherent-long` and
+# every `coherent-long` row wants one thought, so a boundary-happy change that
+# shatters coherent speech would lose the destination and the count on the same
+# rows — one defect moving two metrics, and a 2x penalty that reads as two
+# independent signals. These want Memory AND two rows, which only agree if the
+# split was right.
+RB39C	the boiler service is booked for the fourteenth and the loft hatch key lives in the hall drawer	two-facts-clean	Memory	2
+RB40C	Ines drives the blue estate now and the side gate code changed to 7731	two-facts-clean	Memory	2
+RB39R	um so the boiler service is booked for the fourteenth and you know the loft hatch key lives in the hall drawer	two-facts-rambling	Memory	2
+RB40R	okay so Ines drives the blue estate now and uh the side gate code changed to 7731	two-facts-rambling	Memory	2
