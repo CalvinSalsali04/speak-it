@@ -35,6 +35,40 @@ The reverse reading matters too and is the honest caveat: if an ingredient
 scores badly on its own in `heldout/`, a bad score here tells you nothing new.
 **Read a pairing against its ingredients, never on its own.**
 
+That instruction was not executable until 2026-09-11. `heldout.tsv` carries
+exactly one family tag per row so that a failure names its phenomenon, and its
+scorer read that column and dropped it, printing four aggregate numbers. It now
+prints a per-family table — rates only, still sealed, still non-verbose — so an
+ingredient can actually be looked up.
+
+### And check the lengths before comparing
+
+A pairing and its ingredient have to be comparable **inputs**, not just share a
+name. The first reading made that concrete. `runon-x-repair` scored 8/12 on
+routing where the everyday `run-on` family scored 0/8, which looks like
+combination being *easier* than its ingredient. It is not:
+
+| set | family | n | median words | range |
+|---|---|---|---|---|
+| `heldout/` | `run-on` | 10 | 22.5 | 19–37 |
+| `everyday/` | `run-on` | 8 | 22.0 | 18–33 |
+| `adversarial/` | `runon-x-repair` | 12 | **13.0** | **10–16** |
+
+The two sets that measure run-on independently agree on length; this pairing was
+written at roughly half of it, and the ranges do not overlap at all. So the
+comparison says nothing about whether run-on composes with repair — the pairing
+is a shorter capture, not a harder one. **A pairing whose length range is
+disjoint from its ingredient's cannot be read against that ingredient.**
+
+Counted from the labels alone (word count and the number of rows a label
+expects), so nothing was unsealed to establish it. Thought count is *not* the
+confounded axis here and goes the other way: the everyday captures expect fewer
+rows at the median, 2.5 against 3.0.
+
+`ellipsis-x-date` passes the same check — median 6 words against ingredients at
+3 and 8.5, sitting between them — so its 0/10 routing is not a length artefact
+and is the reading to take seriously.
+
 ## The pairings
 
 | pair | ingredients | the interaction being tested |

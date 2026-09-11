@@ -230,6 +230,41 @@ class ScoreTests(unittest.TestCase):
         self.assertIn("want 2 rows · got 1", result)
         self.assertIn("under-segmented (merge)     1", result)
 
+    def test_type_agreement_is_also_reported_free_of_the_count_failure(self):
+        """The plain figure cannot separate a type error from a count error.
+
+        `want_types` and `have_types` are Counters over rows, so a capture the
+        pipeline split or merged wrongly differs by a whole row and can never
+        match, whatever types it chose. The plain line therefore carries every
+        `count` failure inside it and reads as though types were the problem.
+        The second line conditions on correct segmentation and is the only one
+        that says anything about types.
+
+        The fixture proves both halves at once: one capture merged (right type,
+        wrong row count) and one segmented correctly with a wrong type. The
+        plain line sees two failures, the conditioned line sees the one that is
+        actually about a type.
+        """
+        result = self.score(
+            "A1\tfreelance\tcall Sam and email Jo\tToday:task|Today:task\t-\t-\tmulti-thought\tn\n"
+            "A2\tfreelance\tthe exam is open book\tMemory:note\t-\t-\treference\tn\n",
+            block("call Sam and email Jo",
+                  {"title": "Call Sam and email Jo", "type": "task"})
+            + block("the exam is open book",
+                    {"title": "Exam is open book", "route": "Memory", "type": "task"}),
+        )
+        self.assertIn("item type matched the label 0/2", result)
+        self.assertIn("of those segmented right  0/1", result)
+
+    def test_type_agreement_conditioned_figure_counts_a_clean_capture(self):
+        """A correctly segmented, correctly typed capture reaches both lines."""
+        result = self.score(
+            "A1\tfreelance\tcall Sam\tToday:task\t-\t-\tfiller\tn\n",
+            block("call Sam", {"title": "Call Sam", "type": "task"}),
+        )
+        self.assertIn("item type matched the label 1/1", result)
+        self.assertIn("of those segmented right  1/1", result)
+
     # --- operations -------------------------------------------------------
 
     def test_an_expected_operation_is_scored_on_the_operation_line(self):
@@ -670,6 +705,81 @@ class DevsetScorerSealTests(unittest.TestCase):
             "a bare development set name must pass the name check")
         self.assertNotIn("is not a development set name",
                          result.stdout + result.stderr)
+
+
+class HeldOutFamilyReportTests(unittest.TestCase):
+    """The 389-capture set's per-family table, added so pairings can be read.
+
+    `adversarial/README.md` tells the reader to judge each pairing against its
+    ingredients, and those ingredients are families of `heldout.tsv`. The
+    scorer parsed the family column and discarded it, so that instruction could
+    not be followed. These tests cover the table and, more importantly, that
+    adding it did not unseal the set.
+    """
+
+    HELDOUT = HERE.parent / "heldout"
+
+    def score(self, route="Today"):
+        if not (self.HELDOUT / "heldout.tsv").exists():
+            self.skipTest("heldout.tsv not present")
+        rows = [l.split("\t") for l in
+                (self.HELDOUT / "heldout.tsv").read_text().splitlines()
+                if not l.startswith("#") and l.strip()
+                and l.split("\t")[0] != "id"]
+        blocks = []
+        for r in rows:
+            blocks.append(
+                f'── "{r[1]}"\n   item 1 of 1:\n     row title:  X\n'
+                f"     route:      {route}   type: task   category: general"
+                f"   priority: normal\n     due:        nil\n"
+                f"     remind:     nil   delivery: notification\n"
+                f"     temporal:   none\n     state:      resolved")
+        with tempfile.TemporaryDirectory() as d:
+            probe = pathlib.Path(d) / "probe.txt"
+            probe.write_text("\n".join(blocks) + "\n")
+            return subprocess.check_output(
+                [sys.executable, str(self.HELDOUT / "score.py"),
+                 str(self.HELDOUT / "heldout.tsv"), str(probe)], text=True)
+
+    def test_the_family_table_still_prints_no_capture_text(self):
+        """The whole point of the set. A finer number is still only a number."""
+        result = self.score()
+        self.assertIn("PER FAMILY", result)
+        # A capture from the top of the file, and one from the middle.
+        self.assertNotIn("remind me to uh remind me to call the vet", result)
+        for line in result.splitlines():
+            self.assertLess(len(line), 100,
+                            f"a line long enough to be a capture: {line!r}")
+
+    def test_every_family_tag_reaches_the_table_untruncated(self):
+        """A fixed column silently renamed `occupation-vs-person`.
+
+        Truncation is worse than a wide table: the row still looks like a
+        family, so nobody checks it twice.
+        """
+        result = self.score()
+        table = result[result.index("PER FAMILY"):]
+        families = {r.split("\t")[2].strip() for r in
+                    (self.HELDOUT / "heldout.tsv").read_text().splitlines()
+                    if not r.startswith("#") and r.strip()
+                    and r.split("\t")[0] != "id"}
+        rows = {line.split()[0] for line in table.splitlines()
+                if line and not line[0].isspace() and line.split()}
+        for family in families:
+            self.assertIn(family, rows, f"{family} is missing or truncated")
+
+    def test_a_family_with_no_scorable_row_reads_as_a_dash(self):
+        """`ambiguous` captures skip destination and count by design.
+
+        Printing 0/0 as 0.0% would put a whole family at the top of a table
+        sorted worst-first, which is where the eye goes.
+        """
+        table = self.score()
+        table = table[table.index("PER FAMILY"):]
+        ambiguous = [l for l in table.splitlines() if l.startswith("ambiguous")]
+        self.assertTrue(ambiguous, "no ambiguous row in the table")
+        self.assertIn("—", ambiguous[0])
+        self.assertNotIn("0.0%", ambiguous[0])
 
 
 def score_module():
