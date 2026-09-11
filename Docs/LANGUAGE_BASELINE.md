@@ -29,6 +29,15 @@ mutation harness that ran in an already-broken copy so every measure read as
 protected. Run the instrument, read what it prints, and check that a reader
 who has only that output can act on it.
 
+A fifth joined them on 2026-09-11, and it is the one that got furthest:
+`abandonment-score.py` reads a `KNOWN:` note in the data — a marker written to
+*document* a failure — and scores the row as a pass. The report printed
+`recall 24/24`, `FALLOUT 0/24` and `documented failures kept on purpose 4` on
+adjacent lines, so the contradiction was in the output the whole time and was
+read past twice, here and in this file. A figure can come from a real run on a
+real Mac, as every figure here does, and still be wrong about the parser. See
+"Correction — 2026-09-11" below.
+
 **Every number in this file is the rules path.** `Tools/PipelineProbe` says so
 itself: it "runs the **rules path only** … It does not run the Foundation Models
 refinement", and `language-metrics.sh` scores through the probe. So 233/320 on
@@ -49,6 +58,60 @@ the whole population that gate newly covers — and stays wrong until an
 instrument exists that can run the refined path. Nothing here can measure that
 today; `PipelineProbe` has no way to reach it. Whoever widens that gate owns
 producing the instrument first.
+
+## Correction — 2026-09-11: the abandonment figures in this file are not what the set scored
+
+**`24/24` and `0/24` are the scorer's numbers, not the set's.** Every place this
+file quotes them is marked `†`, and each should be read as unverified until a
+macOS run with a repaired scorer replaces it.
+
+`Tools/CorpusRunner/devsets/abandonment-score.py` accepts a fifth column, and a
+note beginning `KNOWN:` marks a row documented as failing today and kept on
+purpose. The scorer neither excludes such a row from the denominator nor reports
+it separately: it credits the row as a **pass**. Recall (lines 83–87) and the
+mixed row (116–120) increment the same counter a genuine pass increments, and a
+marked `Kept` row (99–102) is credited to its family while skipping
+`stats["fallout"] += 1` entirely. Each of those three branches is reached only
+*because* the case failed. Four rows of `abandonment.tsv` carry the marker:
+
+| row | expected | what its marker says fails today | figure it inflates |
+|---|---|---|---|
+| ABN20 `I was going to call Mike scratch that` | Abandoned | no licence catches this without also destroying "I need to scratch that" | recall |
+| ABN38 `Never mind the gap` | Kept | the cancel pattern reads a named object as managing an item | **fallout** |
+| ABN40 `Never mind, buy milk` | Mixed | a leading withdrawal takes the whole capture, milk included | mixed — not published here |
+| ABN46 `Call the dentist and I was going to actually never mind` | Mixed | an earlier "call" makes `ClauseScope` read the whole capture as a message | mixed — not published here |
+
+So if the four markers still describe what the parser does, the figures this
+file should carry are **recall 23/24 and fallout 1/24** — and the second is the
+one that matters. The scorer's own docstring calls fallout "the number that
+decides whether this ships", for the stated reason that a missed withdrawal
+leaves a row the person can delete while a wrong one deletes a thought they
+meant to keep. A documented fallout of 1, printed as 0, is exactly the reading
+that decision must not be made on. The mixed row would move from 7/7 to 5/7;
+this file has never published it.
+
+**Neither figure is corrected in place, because neither can be measured from a
+Linux container** — the probe that feeds the scorer needs Apple's
+`NaturalLanguage`. What is established from source is the defect and which rows
+it touches; the fallout reading of 1 was reported by the evaluation thread from
+their run. The repaired scorer is theirs to land, and this file takes its real
+numbers from the first `language_only` run after it does.
+
+Two smaller consequences of the same branch outlive the arithmetic:
+
+- **The gate cannot fail on a documented fallout.** The scorer ends on
+  `sys.exit(1 if (stats["fallout"] or stats["unsafe"] or stats["unseen"]) else 0)`,
+  and a `KNOWN:` fallout never increments `stats["fallout"]`. A marker written to
+  document a failure also silences the exit code that would have surfaced it.
+- **`documented failures kept on purpose (KNOWN:)` counts markers, not
+  failures.** It is incremented for every marked row that was scored, whether or
+  not that row failed, so it will keep reading 4 after one of them starts
+  passing — which is the moment the marker should be removed.
+
+**Nothing else in this file is affected.** `KNOWN:` appears in exactly two files
+in the repository, `abandonment.tsv` and its own scorer, so the `unfinished`
+set's 34/57 recall, 0/96 fallout and 2 unsafe stand as measured, as does every
+other figure here.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
@@ -76,7 +139,9 @@ governs the clause behind it.
 
 Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
-recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 **The held-out 389 is back to the baseline figure exactly**, which retires the
 −1/+2 seen in the two withdrawn runs: all of that movement belonged to the
@@ -184,7 +249,9 @@ boundary, and none of them was a guard repair.
 
 Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
-recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 **The everyday set is bit-identical for the third run running.** Neither the
 statement boundary nor the guard repairs changed a single one of 255 natural
@@ -502,10 +569,12 @@ opens on `that`.
 | routed (116) | acted on anyway | 3 | 3 at 10:12 and 09:56 |
 | framing (45) | destination / count | 41/45 (91.1%) / 43/44 (97.7%) | 41/45 at 10:12; the set is newer than 09:56 |
 | unfinished | recall / fallout / unsafe | 34/57 / 0/96 / 2 | same at 10:12 and 09:56 |
-| abandonment | recall / fallout | 24/24 / 0/24 | same at 10:12 and 09:56 |
+| abandonment † | recall / fallout | 24/24 / 0/24 | same at 10:12 and 09:56 |
 | **runon (46)** | destination | **41/46 (89.1%)** | first reading |
 | **runon (46)** | thought count | **33/44 (75.0%)** | first reading |
 | **runon (46)** | acted on anyway | **0** | first reading |
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 The right-hand column names where each comparison figure came from rather than
 calling it "before": the 10:57 run on `2c5ac5b` reported its gating-corpus
@@ -640,10 +709,12 @@ difference: no other change landed between them.
 | routed | destination | 74/84 (88.1%) | 74/84 (88.1%) |
 | routed | acted on anyway | 3 | 3 |
 | unfinished | recall / fallout | 34/57 / 0/96 | 34/57 / 0/96 |
-| abandonment | recall / fallout | 24/24 / 0/24 | 24/24 / 0/24 |
+| abandonment † | recall / fallout | 24/24 / 0/24 | 24/24 / 0/24 |
 | **framing** (new) | destination | — | 41/45 (91.1%) |
 | **framing** (new) | thought count | — | 43/44 (97.7%) |
 | **framing** (new) | acted on anyway | — | 0 |
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 **Nothing regressed.** Not one everyday family lost ground on any of its three
 measures, no development set moved down, and the gating corpus stayed at zero
@@ -860,8 +931,10 @@ the parser. Failures were not read; the job cannot read them.
 | unfinished | unfinished flagged (recall) | 34/57 (59.6%) |
 | unfinished | finished misflagged (fallout) | 0/96 (0.0%) |
 | unfinished | fragment given a date or reminder | 2 |
-| abandonment | withdrawals recognised | 24/24 (100%) |
-| abandonment | kept words wrongly withdrawn | 0/24 (0.0%) |
+| abandonment † | withdrawals recognised | 24/24 (100%) |
+| abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
 (over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
@@ -971,14 +1044,17 @@ Not held out. Failures here may be read.
 | unfinished | unfinished flagged (recall) | 34/57 (59.6%) |
 | unfinished | finished misflagged (fallout) | 0/96 (0.0%) |
 | unfinished | fragment given a date or reminder | 2 |
-| abandonment | withdrawals recognised | 24/24 (100%) |
-| abandonment | kept words wrongly withdrawn | 0/24 (0.0%) |
+| abandonment † | withdrawals recognised | 24/24 (100%) |
+| abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
 | abandonment | withdrawn thought acted on | 0 |
+
+† Overstated by the scorer; see "Correction — 2026-09-11" above.
 
 ### The weakest families, by measurement rather than by impression
 
 Recall is where the room is; fallout is already zero, which is the safer place
-for it to be.
+for it to be. That holds for `unfinished` as written. For `abandonment` it was
+the scorer talking: see "Correction — 2026-09-11" above.
 
 | family | set | score |
 |---|---|---|
