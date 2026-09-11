@@ -11,6 +11,7 @@ corpus, the development sets, and the older held-out set (a capture shared with
 that one is not contaminated, but it is a duplicate measurement, so it is
 reported too).
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -192,18 +193,31 @@ SEALED_ALL = SEALED + [ROOT / "Tools/CorpusRunner/heldout/heldout.tsv"]
 PROSE_SKIP = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
 
 
-def prose_files():
+def prose_files(root=None):
     """Every Markdown file in the repository, which is where prose goes.
 
     Deliberately not narrowed to `Docs/`. The leak this was written for landed
     in `Docs/LANGUAGE_BASELINE.md`, but a README beside a corpus is the more
     tempting place to quote a capture, and `CLAUDE.md` is read by every agent
     that touches this repository.
+
+    Walked rather than globbed because `rglob` does not descend into a
+    symlinked directory, and "every Markdown file in the repository" is the
+    claim this function's name makes. The repository has no symlinks today, so
+    this changes nothing about what is read here -- it keeps the sentence true
+    the day somebody adds one. The retired-claim scan in `test_score.py` had
+    the same traversal and it was already reading one directory out of many
+    wherever it was measured.
     """
-    for path in sorted(ROOT.rglob("*.md")):
-        if PROSE_SKIP & set(path.relative_to(ROOT).parts):
-            continue
-        yield path
+    root = Path(root) if root else ROOT
+    seen = set()
+    for here, folders, files in os.walk(root, followlinks=True):
+        folders[:] = [f for f in folders if f not in PROSE_SKIP
+                      and os.path.realpath(os.path.join(here, f)) not in seen]
+        seen.update(os.path.realpath(os.path.join(here, f)) for f in folders)
+        for name in sorted(files):
+            if name.endswith(".md"):
+                yield Path(here) / name
 
 
 def flatten(text):

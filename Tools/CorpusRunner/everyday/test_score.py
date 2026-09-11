@@ -741,6 +741,27 @@ class LeakCheckReachTests(unittest.TestCase):
 
     WORKFLOW = HERE.parents[2] / ".github" / "workflows" / "ci.yml"
 
+    def test_the_prose_scan_descends_into_a_linked_directory(self):
+        """`prose_files` claims every Markdown file in the repository.
+
+        It globbed, and `rglob` does not descend into a symlinked directory --
+        the same traversal that left the retired-claim scan reading one folder
+        wherever it was measured. Nothing changes in this repository, which has
+        no symlinks; the point is that the sentence in the docstring stays true
+        if one ever appears.
+        """
+        leak = leak_check_module()
+        with tempfile.TemporaryDirectory() as room:
+            root = pathlib.Path(room)
+            (root / "real").mkdir()
+            (root / "real" / "quoted.md").write_text("x", encoding="utf-8")
+            (root / "tree").mkdir()
+            (root / "tree" / "linked").symlink_to(root / "real",
+                                                  target_is_directory=True)
+            found = {p.name for p in leak.prose_files(root / "tree")}
+            self.assertIn("quoted.md", found,
+                          "a document behind a link is still a document")
+
     def globs(self):
         """The `ios` filter, read from the workflow rather than assumed.
 
@@ -1347,13 +1368,25 @@ class RetiredClaimTests(unittest.TestCase):
     def test_the_check_reads_generated_output_too_not_only_prose(self):
         """The half that would have caught the one that got away.
 
-        The surviving copy was in a shell script, not a document. A check
-        scanning `*.md` only would have reported the claim retired while it
-        was still being printed at the top of every report.
+        The surviving copy was in `Tools/CI/language-metrics.sh`, not in a
+        document. A check scanning `*.md` only would have reported the claim
+        retired while it was still being printed at the top of every report.
+
+        Naming the directory rather than the suffix, because a `.sh` anywhere
+        satisfies a suffix check -- there is one in this very folder -- and the
+        property worth holding is that the scan reaches the scripts that
+        GENERATE reports. `measure-gate.py` mirrors this suite into a scratch
+        tree, and until this assertion existed its link to `Tools/CI` was an
+        entry no test needed: a mutation removing it changed nothing, which is
+        how a list stops being read.
         """
-        suffixes = {p.suffix for p in self.tracked_files()}
+        read = list(self.tracked_files())
+        suffixes = {p.suffix for p in read}
         self.assertIn(".sh", suffixes)
         self.assertIn(".py", suffixes)
+        self.assertTrue(
+            any(p.suffix == ".sh" and "CI" in p.parts for p in read),
+            "the scan must reach Tools/CI, where the copy that survived lived")
 
 
 class DevsetScorerSealTests(unittest.TestCase):
