@@ -62,8 +62,8 @@ producing the instrument first.
 ## Correction — 2026-09-11: the abandonment figures in this file are not what the set scored
 
 **`24/24` and `0/24` are the scorer's numbers, not the set's.** Every place this
-file quotes them is marked `†`, and each should be read as unverified until a
-macOS run with a repaired scorer replaces it.
+file quotes them is marked `†`. They were unverified until 15:45, when a macOS
+run with the repaired scorer replaced them.
 
 `Tools/CorpusRunner/devsets/abandonment-score.py` accepts a fifth column, and a
 note beginning `KNOWN:` marks a row documented as failing today and kept on
@@ -106,9 +106,12 @@ instead, because a suppression that outlives its failure is one nobody is
 watching. Both scorers gained self-tests in the same change, which found three
 gaps by mutation that no case in the set exercised.
 
-**The daggers stay until a macOS run replaces the figures**, because that fix
-changes what the scorer reports and nothing here can run it. The numbers below
-are still the old rule's.
+**The run happened at 15:45 and the figures are now measured: recall 23/24,
+fallout 1/24, mixed 5/7** — see the 15:45 section above. All three match what
+was derived from the scorer's source before any run could check them. The
+daggered numbers below stay as each run printed them, because an older section
+records what was true when it was measured; the footnote at each site now says
+what replaced it.
 
 Two smaller consequences came from the same branch. Both are fixed in
 `b326ce8` and both are worth keeping written down, because the shape recurs:
@@ -180,6 +183,289 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 16:54 — the rambling set's first reading, and it is not filler
+
+Branch `claude/hearth-thread-tod920` at `d9366f1`,
+[run 34623965550](https://github.com/CalvinSalsali04/speak-it/actions/runs/34623965550),
+`macos-26`. No parser code has changed since `2cc2ac5`, so every other figure
+in the 15:45 section below still stands; this section adds one set.
+
+**Why the set exists.** The five readable development sets are at or near their
+ceilings — coordination 115/121, routed 74/84, framing 41/45 — while sealed
+everyday routes 168/240 and adversarial 52/116. Instruments that almost
+everything passes have stopped discriminating, and parser work steered by them
+is steered blind. `Tools/CorpusRunner/devsets/rambling.tsv` writes every capture
+twice under one id stem, `RB04C` clean and `RB04R` the same content spoken with
+filler, so the clean family is a control and **the measurement is the gap
+between the twins**, with content held fixed by construction.
+
+Whole set: destination 54/57, thought count 46/57. Neither number is the
+finding, and the per-family gaps are:
+
+| pair | destination (clean → rambling) | thought count (clean → rambling) |
+|---|---|---|
+| errand (8) | 8/8 → 8/8 | 8/8 → **8/8** |
+| restart (4) | 4/4 → 4/4 | 4/4 → **4/4** |
+| chained (3) | 3/3 → 3/3 | 3/3 → **3/3** |
+| decision (4) | 3/4 → 3/4 | 4/4 → **1/4** |
+| knowledge-action (3) | 3/3 → 2/3 | 3/3 → **0/3** |
+| long (3) | 3/3 → 3/3 | 1/3 → **2/3** |
+
+`coherent-long`, the guards that must stay one row however long they get, is
+7/7 on destination and **5/7 on count**. Those seven rows are **five distinct
+contents**, two of them written twice — the set was reviewed after this run and
+the guard count above overstates what is being guarded.
+
+**Two corrections to this section, from that review.** Neither changes a
+measured figure; both change what the figures are worth.
+
+*The `restart` result is weaker than it reads.* In three of its four pairs, and
+in all four `decision` pairs, the clean twin is a **literal suffix** of its
+rambling twin. "Return the final clause" therefore scores 7/7 on those rows and
+produces a twin gap of exactly zero — which is this instrument's signal for
+"filler cost nothing". So the headline stands on `errand` (8 pairs) and
+`chained` (3), where the filler is interleaved and no suffix heuristic helps;
+`restart`'s 4/4 → 4/4 is consistent with it but is not evidence for it. Five
+new pairs put the disfluency mid-utterance with a committed errand in front of
+it, so the heuristic returns one row where two are wanted.
+
+*The destination column cannot discriminate on this set.* 51 of the 57 rows
+here want Today, so answering "Today" to everything scores 89%, and every
+destination twin gap above is a ceiling effect. The count column carries the
+signal. The set has since gained rows wanting Memory **and** two thoughts,
+because previously every Memory row was `coherent-long` and every
+`coherent-long` row wanted one thought — so a single over-splitting defect
+would have moved both columns and read as two independent findings.
+
+**The headline is that filler is not the problem.** Errands, false starts and
+discourse adjuncts carry their filler at no cost at all — three families, 15
+pairs, not one row lost between the clean twin and the spoken one. That is a
+real result and it contradicts the assumption the set was built to test. It
+also independently confirms what the source reading found earlier today: the
+2026-08 rambling analysis's C1, C4, C5 and C11 are fixed, and C6's mid-sentence
+`like` is handled for the shapes these rows use.
+
+**What does cost rows is structure.** Knowledge-action — a fact and the errand
+it implies — goes 3/3 to 0/3 on count once it is spoken, and deliberation that
+lands on a decision goes 4/4 to 1/4. Both are clause-structure problems that
+filler merely accompanies.
+
+**One family reports that its own label is suspect, which is the design
+working.** `long` is 1/3 clean against 2/3 rambling: the clean twin does worse
+than the spoken one, so filler cannot be what breaks it and the honest reading
+is that either long captures fail on length regardless, or my thought counts
+for those three are wrong. It is listed rather than quietly dropped.
+
+**Do not quote any of these as rates.** The families are three and four
+captures wide; 0/3 is three captures. What the set gives on a first reading is
+a direction and a named set of rows, not a measurement anybody should put in
+front of a decision. The per-row failures were not printed on this run —
+`devset-failures.sh` kept its own hardcoded list and the set was only wired into
+`language-metrics.sh`, fixed in `178dd05`.
+
+## 2026-09-11 15:45 — `main` at `2cc2ac5`, the abandonment figures measured
+
+Branch `main`,
+[run 34617253884](https://github.com/CalvinSalsali04/speak-it/actions/runs/34617253884),
+`macos-26`, `language_only` with `devset_failures`. **This is the current
+baseline.** No parser code changed between `9d91a0b` and `2cc2ac5`, and that
+is checkable rather than asserted: `git diff 9d91a0b 2cc2ac5 -- SpeakIt/
+SpeakItTests/` is empty, and the last commit touching `SpeakIt/` at all is
+`4739dd8`, an ancestor of `9d91a0b`. The thirteen pull requests in between are
+scorers, self-tests and documentation. So the one instrument that moved is the
+one that was repaired.
+
+| instrument | 12:34 (`9d91a0b`) | now (`2cc2ac5`) |
+|---|---|---|
+| **abandonment recall** | 24/24 † | **23/24 (95.8%)** |
+| **abandonment fallout** | 0/24 † | **1/24 (4.2%)** |
+| **abandonment mixed** | never published | **5/7** |
+| abandonment unsafe | not reported | 0 |
+| gating corpus | 1393, 0 failing | 1393, 0 failing |
+| held-out destination / count | 233/320 · 255/310 | 233/320 · 255/310 |
+| held-out acted on anyway | 7 | 7 |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| everyday acted on anyway | 0 | 0 |
+| adversarial routing / count | 52/116 · 78/105 | 52/116 · 78/105 |
+| adversarial over- / under-split | 9 · 18 | 9 · 18 |
+| adversarial acted on anyway | 1 | 1 |
+| coordination | 115/121 | 115/121 |
+| routed destination / count / acted on anyway | 74/84 · 77/79 · 3 | 74/84 · 77/79 · 3 |
+| framing | 41/45 · 43/44 | 41/45 · 43/44 |
+| runon | 42/46 · 35/44 | 42/46 · 35/44 |
+| unfinished recall / fallout / unsafe | 34/57 · 0/96 · 2 | 34/57 · 0/96 · 2 |
+
+**The correction was right in all three places, including the one this file had
+never printed.** `recall 23/24`, `FALLOUT 1/24`, `mixed 5/7` — derived from
+reading the scorer's source on 2026-09-11, before any run could check them. The
+fallout is `ABN38 Never mind the gap`, returning `rows=0 retracted=False`: the
+cancel pattern reads a named object as an item being managed and deletes words
+the speaker kept. All four documented rows are now named in the report itself
+rather than counted into a total.
+
+Both scorers' new `scored N of M labelled` lines print on a clean run —
+`55 of 55` and `163 of 163` — which is the point of putting them on every run
+rather than only on failure. The everyday ranking marks from `2cc2ac5` print
+live too: `location 12 9/12 ... ← ranked on invention 0/1` is a family holding
+a table position that nothing printed on its line explains, now saying so.
+
+### The two `unsafe` captures, and why they are not a defect of their own
+
+`unfinished` has carried **2 unsafe** — a fragment given a date, reminder or
+operation — in every baseline section in this file, with no ids attached and
+nothing gating it. They are **INC33 `Tomorrow I want`** and
+**INC49 `Tomorrow I need to, um, wait, I forgot`**, both returning
+`due=['Tue'] remind=[] op=False`.
+
+Both are also among the 23 recall misses: `rows=1 state=resolved`. Nothing
+decided either capture was unfinished, so no guard was asked to decline
+anything.
+
+**The scorer cannot establish that, and it reads as though it can.** In
+`unfinished-score.py` the `if committed:` branch sits outside the
+`if flagged:` / `else:` pair, so a correctly flagged capture still carrying a
+date would count as unsafe too. `UNSAFE 2` cannot distinguish "the guard held
+on the others" from "there was nothing for it to hold".
+
+**The source settles it, and the capture counts do not.** In
+`ThoughtOrganizer.organize`, the `ThoughtCompletion.unfinished` check is the
+**first `return` in the function**, and its return names every commitment
+field: `dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+recurrenceRule: nil, locationIntent: nil`, with the words kept. No path reaches
+a commitment without passing it.
+
+That is a proof rather than an association. A flagged capture returns with
+every commitment nil, so `committed` is false, so it cannot be counted unsafe.
+**`unsafe` therefore reaches 0 when recall reaches 57/57, whatever else is
+true.**
+
+**A first draft of this section gave the wrong reason for it, quoting the
+guard's own comment: "checked before anything reads a date".** That comment was
+false. `dueDate`, `reminderDate`, `reminderDelivery` and `recurrenceRule` are
+all resolved forty lines earlier; the guard discards them rather than
+preceding them. The conclusion survives because what protects the capture is
+the exhaustive `nil` list, not an ordering — but the guard is therefore only as
+durable as somebody's memory: `OrganizedThought.init` defaults three fields,
+so a future commitment-carrying field with a default would compile at that call
+site unchanged and be adopted silently. The comment is corrected in this
+change. Removing the defaults is the real fix and is not in this change: it is
+**eight construction sites across four files**, and it needs the unit suite.
+
+Found by the evaluation thread reading the source rather than accepting the
+quotation — which is the rule this file opens with, applied to this file. It is the recall miss's blast radius, not a hole beside it.
+
+That decides what gets written down. `unsafe` is not its own
+`Docs/KNOWN_ISSUES.md` entry — a second entry would double-count one defect,
+the way a farewell once counted as both a title defect and an invention. But
+the recall gap had no entry either, so the behaviour a person actually meets —
+"Tomorrow I want" arriving as a Today task dated tomorrow — was documented
+nowhere. It has one now, **"A verb with no object is not read as an unfinished
+thought"**, carrying the dated-fragment consequence inside it as the severity.
+Close the gap and both halves retire together.
+
+The set corroborates that, and a first draft of this section overstated how
+much. The pair is real:
+
+| capture | flagged? | unsafe? |
+|---|---|---|
+| INC01 `Tomorrow I want to` | yes | no |
+| INC33 `Tomorrow I want` | **no** | **yes**, `due=['Tue']` |
+
+**The count around it was wrong, and it was wrong the way a paraphrased
+predicate is always wrong.** A regex over the 57 `Incomplete` rows matched
+fourteen, and the draft then described them as carrying "a resolvable temporal
+expression" and listed eight. Ten are flagged; **four are unflagged — INC05
+`Later I should`, INC33, INC49 and INC50 `Next week I should, wait, I lost
+it`** — and only two of the four are unsafe. So "the only two unflagged
+captures carrying a resolvable temporal are the only two unsafe" was false. The
+regex matched `later` and `at some point`, which resolve to no day at all; what
+was run and what was reported were different predicates, and the narrowing
+happened in the prose rather than in the code.
+
+Why INC05 and INC50 are undated is a hypothesis, not a finding: `later` and
+`next week` name no single day, and `wait, I lost it` may reach the abandonment
+path and produce no row. Neither has been checked. **Nothing in the conclusion
+rests on it**, because the conclusion rests on the early return above.
+
+This also corrects a sizing argument recorded earlier in this workstream — that
+26 of the 67 non-`Complete` captures carry a temporal expression, so the guard
+declines 24 of 26 and these are two leaks in a working guard. The denominator
+was wrong and the mechanism was wrong: nothing declined these two.
+
+### What this makes the next target — narrower than it first looked
+
+`incomplete-complement` is **1/10** and `dangling-infinitive` is **18/20**. The
+first reading of that was that nine captures of one shape are undetected and
+none of them is declined anywhere. **Reading `ClauseStructure.swift` says
+otherwise: four of the nine are recorded declines in the source, with the
+measurement that produced each one written beside it.**
+
+| capture | what the detector does |
+|---|---|
+| `I want`, `I need`, `Tomorrow I want`, `I have to get`, `I should buy` | ends on a verb; **no rule reaches it** |
+| `Can you remind me about` | ends on a preposition — excluded because `Meet Mike at` and `remind me an hour before` are the same shape and the second is finished. Three classes were tried and cost four blocking corpus failures. |
+| `I need to pick up` | ends on a particle behind a verb — the `previous.isVerb` guard, which is what keeps `follow up`, `check in` and `head out` whole |
+| `Add`, `Buy` | a bare imperative verb, **tried and removed**: `NLTagger` calls a one-word "Add" a verb on macOS and something else on iOS |
+
+So the uncovered set is five captures, all one shape: a finite clause ending on
+a verb whose object never came. And closing it needs a transitivity judgement —
+`I should buy` is unfinished and `I already ate` is not — which is lexical, and
+a word list is the thing this file exists not to keep. It may well be another
+"out of scope, and honestly so"; it is not the clean unblocked target the first
+reading made it look like.
+
+### A better candidate, and it is a false premise rather than a missing rule
+
+The infinitive rule fires only when the clause holds exactly one `to`, on the
+stated ground that *"an earlier `to` is exactly the evidence that the frame got
+its content"*. That premise is false under a doubled false start.
+
+`INC56 I need to I need to` — tagged `repeated frame, still empty` — holds two
+markers, so the rule stands down and the capture is missed. The premise fails
+because the first `to` is followed by `I`, not by a verb: the frame it opened
+was never filled, so its presence is not evidence of anything.
+
+The doubled frame is not rare, and both sides of it are already covered:
+
+| capture | set | must be |
+|---|---|---|
+| `I need to I need to` | dev `unfinished` INC56 | flagged |
+| a capture opening `I need to I need to …` and then finishing | held-out C002 | **finished** |
+| four more opening the same way | everyday W32, M08, L05, E04 | **finished** |
+
+The fix would be to the rule's input rather than a new rule: ask whether an
+earlier marker was *filled* — followed by a verb — instead of whether one
+exists. It leaves `Remind me to buy milk when I get to` alone, because there
+the first `to` is followed by `buy`.
+
+**It was sized and is not being built.** Across the five readable development
+sets — 491 captures — 34 end on `to` and **exactly one of them holds a second
+marker**: INC56. So the change is worth one row in every corpus anyone here is
+allowed to read, and its whole justification is that a premise in the source is
+false rather than that a measured number moves. That is what the standing rule
+against making one sentence pass is aimed at.
+
+The premise is still false and this section is where it is recorded. What it
+needs is captures of that shape. **The honest reading of "34 end on `to` and
+one doubles" is a gap in our data, not rarity in speech** — so the output is a
+named data gap rather than a rule: a repeated opening frame that then trails
+off.
+
+### How the five sealed captures above were obtained, which was wrong
+
+The table naming held-out C002 and everyday W32, M08, L05 and E04 was built by
+grepping the sealed sets for the doubled frame, to argue a change was safe.
+That is not reading failures, which is what the standing rule names, but it is
+what the rule protects: a sealed set stops measuring generalisation the moment
+a change is chosen with its contents in view.
+
+The argument did not need it. **The change can only affect a capture that ends
+on `to`, so every capture that does not is untouched** — a property, checkable
+by a run, and exactly why those five were safe. It is recorded here rather than
+quietly dropped, because how a figure was obtained is part of the figure.
+
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
 Branch `claude/hearth-thread-tod920`,
@@ -208,7 +494,8 @@ Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
 recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **The held-out 389 is back to the baseline figure exactly**, which retires the
 −1/+2 seen in the two withdrawn runs: all of that movement belonged to the
@@ -318,7 +605,8 @@ Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
 recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **The everyday set is bit-identical for the third run running.** Neither the
 statement boundary nor the guard repairs changed a single one of 255 natural
@@ -660,7 +948,8 @@ opens on `that`.
 | **runon (46)** | thought count | **33/44 (75.0%)** | first reading |
 | **runon (46)** | acted on anyway | **0** | first reading |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 The right-hand column names where each comparison figure came from rather than
 calling it "before": the 10:57 run on `2c5ac5b` reported its gating-corpus
@@ -804,7 +1093,8 @@ difference: no other change landed between them.
 | **framing** (new) | thought count | — | 43/44 (97.7%) |
 | **framing** (new) | acted on anyway | — | 0 |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **Nothing regressed.** Not one everyday family lost ground on any of its three
 measures, no development set moved down, and the gating corpus stayed at zero
@@ -1031,7 +1321,8 @@ the parser. Failures were not read; the job cannot read them.
 | abandonment † | withdrawals recognised | 24/24 (100%) |
 | abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
 (over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
@@ -1112,7 +1403,17 @@ static read. The measured size is 1,381.
 
 ### Held-out set — generalisation
 
-389 utterances written before anyone read the parser.
+389 utterances written before anyone read the parser.§
+
+§ **That sentence is not supportable and was retired on 2026-09-11.** It is
+left standing here because this section records what was reported at the time.
+`heldout.tsv` arrived in `cb2b630`, a commit that also rewrote six parser
+sources, seventeen hours after the seven `Docs/PipelineSweep/*.md` analyses of
+this parser's behaviour. Commit order is not authoring order, so the claim is
+uncheckable rather than false — and three of the 389 are demonstrably not
+unseen, two of them in the gating corpus itself. The figures below are
+unchanged and the rows are still counted;
+`Tools/CorpusRunner/heldout/README.md` sets out the evidence.
 
 | measure | value |
 |---|---|
@@ -1150,7 +1451,8 @@ Not held out. Failures here may be read.
 | abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
 | abandonment | withdrawn thought acted on | 0 |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 ### The weakest families, by measurement rather than by impression
 

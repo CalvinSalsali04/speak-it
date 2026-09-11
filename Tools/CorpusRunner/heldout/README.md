@@ -1,7 +1,9 @@
 # Held-out set
 
-389 utterances written **before anyone read the parser**, from the product
-description alone.
+389 utterances, scored separately from the corpus the rules are tuned against.
+What that separation is actually worth is set out in "What this set's history
+does and does not support" below — read it before quoting the number as
+generalisation.
 
 ```bash
 ./Tools/CorpusRunner/heldout/score.sh
@@ -16,8 +18,66 @@ poor progress meter: it can tell you the app still agrees with itself, and it
 cannot tell you whether the app generalises. It currently runs at 999 of 1,022
 clean with zero blocking failures, so as an instrument it is at ceiling.
 
-This set is the other half. Nobody consulted the implementation while writing
-it, so agreement here is evidence about language rather than about memory.
+This set is the other half — that is the intent behind it, and it is the reason
+the number is worth printing. How far the repository actually backs that intent
+is the next section, and the honest answer is: less far than this file used to
+claim.
+
+## What this set's history does and does not support
+
+This file used to open by saying the 389 utterances were written "before anyone
+read the parser, from the product description alone." That sentence is the whole
+reason the destination rate reads as generalisation rather than memorisation, and
+nothing in the repository supports it.
+
+`heldout.tsv` arrived on 2026-08-25 at 20:30 in commit `cb2b630`, which in the
+same commit rewrote six parser sources — `Actionability`, `PersonMention`,
+`ReminderScheduler`, `SpeechRepair`, `ThoughtExtractor`, `ThoughtOrganizer` —
+and added 307 lines to the gating corpus. Seventeen hours earlier, at 03:28 on
+the same day, the seven `Docs/PipelineSweep/*.md` analyses landed, each a table
+of this parser's answers on example utterances.
+
+Commit order is not authoring order, so none of that proves the sentence false.
+It proves it **uncheckable**, which is the relevant fact about a claim that a
+benchmark's meaning rests on. It is replaced here rather than restated smaller,
+because a provenance claim nobody can check should not be swapped for a milder
+provenance claim nobody can check.
+
+**Three of the 389 are demonstrably not unseen**, and two of those three sit in
+the gating corpus itself — the regression net the rules are deliberately tuned
+to pass:
+
+| id | also appears in |
+|---|---|
+| `C049` | `SemanticCorpusDataQ.swift`, `devsets/routed.tsv` (RC02), `devsets/coordination.tsv` (RS04) |
+| `C100` | four `SemanticCorpusData*.swift` files and six hand-written test files |
+| `C342` | `SpeakItTests/LocationReminderTests.swift` |
+
+C100 is not an incidental duplicate; it is a workhorse fixture the suite reaches
+for in ten places. C342 has also been the standard location-reminder demo in
+hand-QA documents for weeks. Eight more captures match tuned material at a
+Jaccard of 0.70 or above without being identical.
+
+Those rows are still scored and still counted. Retiring them would treat a
+provenance problem as a data problem: it opens a new generation, breaks
+comparability with every figure already published, and destroys the evidence.
+The denominator carries them, and a reader quoting the rate should know it.
+
+**Evidence the other way, so this note does not overstate.** Compared against
+`SemanticCorpusDataI.swift` — the 307 lines added in that very commit, the
+material most in front of whoever wrote this set — there is no exact match at
+all. The single hit at the 0.70 threshold is a three-word capture sharing three
+words with a four-word corpus string, which is what short reminder phrasings do
+to a set-overlap measure, not a fingerprint. If this set had been assembled out
+of what its author was looking at, that is where it would show.
+
+Reproduce all of it:
+
+```bash
+git log --diff-filter=A --format='%ad %H' --date=iso -- Tools/CorpusRunner/heldout/heldout.tsv
+git log --diff-filter=A --format='%ad' --date=iso -- Docs/PipelineSweep/domains.md
+git show --stat cb2b630
+```
 
 ## The rule
 
