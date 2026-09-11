@@ -187,6 +187,49 @@ class ScoreTests(unittest.TestCase):
         )
         self.assertIn("produced nothing at all     1", result)
 
+    def test_the_ambiguous_denominator_is_reported(self):
+        """The safety rate is a fraction, and this is its denominator.
+
+        `ACTED ON ANYWAY` is printed as a percentage `of them`, so a silent
+        zero here does not read as a missing number — it divides by a floor of
+        one and reports a single unsafe action as 100%. Two ambiguous captures
+        rather than one, so the assertion cannot pass on that floor.
+        """
+        result = self.score(
+            "A1\tmoney-travel\tthe flight is 7:05 or 7:50\tAmbiguous\t-\t-\tambiguous\tnote\n"
+            "A2\tmoney-travel\tit is either Thursday or Friday\tAmbiguous\t-\t-\tambiguous\tnote\n",
+            block("the flight is 7:05 or 7:50",
+                  {"title": "Flight", "remind": "Mon Aug 3 19:05"})
+            + block("it is either Thursday or Friday",
+                    {"title": "Either Thursday or Friday", "route": "Memory",
+                     "type": "note"}),
+        )
+        self.assertIn("genuinely ambiguous         2", result)
+        self.assertIn("ACTED ON ANYWAY             1  (50.0% of them)", result)
+
+    def test_a_wrong_thought_count_is_reported_on_the_count_column(self):
+        """`count` has its own column, and split/merge do not stand in for it.
+
+        Over- and under-segmentation are tallied next to this measure and are
+        already asserted elsewhere, so a `count` that always passed would leave
+        those tallies intact and report every capture correctly segmented while
+        the merge line beside it says otherwise.
+
+        The assertion is on the failure line rather than on the count column,
+        because the two rate columns cannot move independently: routing
+        compares a Counter of wanted routes against produced ones, so any
+        wrong row count fails routing as well and the column alone does not
+        say which measure noticed. The named failure entry does.
+        """
+        result = self.score(
+            "A1\tfreelance\tcall Sam and email Jo\tToday:task|Today:task\t-\t-\tmulti-thought\tnote\n",
+            block("call Sam and email Jo", {"title": "Call Sam and email Jo"}),
+            "--failures",
+        )
+        self.assertIn("COUNT      A1", result)
+        self.assertIn("want 2 rows · got 1", result)
+        self.assertIn("under-segmented (merge)     1", result)
+
     # --- operations -------------------------------------------------------
 
     def test_an_expected_operation_is_scored_on_the_operation_line(self):
@@ -486,6 +529,82 @@ class LeakCheckTests(unittest.TestCase):
         # A mixed failure is the serious one and must read as contamination.
         self.assertIn("developed against",
                       self.leak.verdict(sealed | {"routed.tsv"}))
+
+    def test_the_closest_miss_is_ranked_and_reported(self):
+        """A pass/fail answer cannot show a set drifting toward the line.
+
+        Two sets both reported clean are in different states if one tops out at
+        0.31 and the other at 0.68. This asserts the ranking finds the right
+        nearest neighbour and orders by it, so the number printed on a clean
+        run is the one a reader should be watching.
+        """
+        ours = {"book the small meeting room for the standup": "A1",
+                "the spare key is under the planter by the door": "A2"}
+        theirs = {"book the small meeting room for the review": "near.tsv",
+                  "nothing whatever to do with any of that text": "far.tsv"}
+        ranked, near = self.leak.similarities(ours, theirs)
+        self.assertEqual([row[1] for row in ranked], ["A1", "A2"])
+        self.assertGreater(ranked[0][0], 0.6)
+        self.assertEqual(ranked[0][3], "near.tsv")
+        self.assertLess(ranked[1][0], 0.2)
+
+    def test_the_closest_miss_never_gates(self):
+        """Reporting, not a second threshold.
+
+        A warning band would become a number people tune against, which is the
+        reason the scorers in this repository report rather than gate. A
+        capture sitting just under the line must still exit zero, and the
+        reader is the one who decides it is too close.
+        """
+        ours = {"pick up the dry cleaning and drop the parcel at the "
+                "post office before six today": "A1"}
+        theirs = {"pick up the dry cleaning and drop the parcel at the "
+                  "post office on saturday": "devset.tsv"}
+        ranked, near = self.leak.similarities(ours, theirs)
+        self.assertGreater(ranked[0][0], self.leak.THRESHOLD - 0.05)
+        self.assertLess(ranked[0][0], self.leak.THRESHOLD)
+        # The gate is near duplicates only, and this pair is not one.
+        self.assertEqual(near, [])
+
+    def test_every_near_duplicate_source_is_kept_not_just_the_closest(self):
+        """One capture can be close to two corpora, and only one of them matters.
+
+        `verdict` decides between contamination and double-counting from the
+        set of sources a capture collided with. If near duplicates were reduced
+        to the best match per capture, a tuned corpus scoring just below a
+        sealed one would vanish from that set and the check would report "the
+        same capture counted twice" for what is actually a leak — the milder of
+        the two messages, for the more serious failure.
+        """
+        stem = "pick up the dry cleaning and drop the parcel at the post"
+        ours = {f"{stem} office": "A1"}
+        theirs = {f"{stem} office now": "adversarial.tsv",  # the closer one
+                  f"{stem} box": "routed.tsv"}              # tuned, but lower
+        _, near = self.leak.similarities(ours, theirs)
+        sources = {src for _, _, src, _, _ in near}
+        self.assertEqual(sources, {"adversarial.tsv", "routed.tsv"})
+        self.assertIn("developed against", self.leak.verdict(sources))
+
+    def test_ranking_ignores_captures_too_short_to_compare(self):
+        """Short strings collide by accident, which is why the check skips them.
+
+        `harvest` pulls bare fragments out of Swift sources, and a three-word
+        one shares most of its tokens with plenty of captures. Including them
+        would make the reported closest miss a permanent false alarm and teach
+        the reader to ignore the line. Nothing is lost by skipping them: a
+        short string that genuinely appears on both sides is an exact
+        collision, which is counted separately and fails the check outright.
+
+        Both sides are skipped, so this fixture keeps one long string on each
+        side. Testing only our side would pass even if a short tuned string
+        were still a comparison target.
+        """
+        ours = {"buy milk": "A1", "the spare key is under the planter": "A2"}
+        theirs = {"buy milk": "devset.tsv",
+                  "the spare key is under the doormat": "devset.tsv"}
+        ranked, near = self.leak.similarities(ours, theirs)
+        self.assertEqual([row[1] for row in ranked], ["A2"])
+        self.assertEqual(ranked[0][4], "the spare key is under the doormat")
 
     def test_the_existing_held_out_set_harvests_its_documented_size(self):
         """An anchor against a real file: heldout/README.md says 389."""
