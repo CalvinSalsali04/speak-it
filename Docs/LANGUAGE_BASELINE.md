@@ -183,6 +183,63 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 16:54 — the rambling set's first reading, and it is not filler
+
+Branch `claude/hearth-thread-tod920` at `d9366f1`,
+[run 34623965550](https://github.com/CalvinSalsali04/speak-it/actions/runs/34623965550),
+`macos-26`. No parser code has changed since `2cc2ac5`, so every other figure
+in the 15:45 section below still stands; this section adds one set.
+
+**Why the set exists.** The five readable development sets are at or near their
+ceilings — coordination 115/121, routed 74/84, framing 41/45 — while sealed
+everyday routes 168/240 and adversarial 52/116. Instruments that almost
+everything passes have stopped discriminating, and parser work steered by them
+is steered blind. `Tools/CorpusRunner/devsets/rambling.tsv` writes every capture
+twice under one id stem, `RB04C` clean and `RB04R` the same content spoken with
+filler, so the clean family is a control and **the measurement is the gap
+between the twins**, with content held fixed by construction.
+
+Whole set: destination 54/57, thought count 46/57. Neither number is the
+finding, and the per-family gaps are:
+
+| pair | destination (clean → rambling) | thought count (clean → rambling) |
+|---|---|---|
+| errand (8) | 8/8 → 8/8 | 8/8 → **8/8** |
+| restart (4) | 4/4 → 4/4 | 4/4 → **4/4** |
+| chained (3) | 3/3 → 3/3 | 3/3 → **3/3** |
+| decision (4) | 3/4 → 3/4 | 4/4 → **1/4** |
+| knowledge-action (3) | 3/3 → 2/3 | 3/3 → **0/3** |
+| long (3) | 3/3 → 3/3 | 1/3 → **2/3** |
+
+`coherent-long`, the seven guards that must stay one row however long they get,
+is 7/7 on destination and **5/7 on count**.
+
+**The headline is that filler is not the problem.** Errands, false starts and
+discourse adjuncts carry their filler at no cost at all — three families, 15
+pairs, not one row lost between the clean twin and the spoken one. That is a
+real result and it contradicts the assumption the set was built to test. It
+also independently confirms what the source reading found earlier today: the
+2026-08 rambling analysis's C1, C4, C5 and C11 are fixed, and C6's mid-sentence
+`like` is handled for the shapes these rows use.
+
+**What does cost rows is structure.** Knowledge-action — a fact and the errand
+it implies — goes 3/3 to 0/3 on count once it is spoken, and deliberation that
+lands on a decision goes 4/4 to 1/4. Both are clause-structure problems that
+filler merely accompanies.
+
+**One family reports that its own label is suspect, which is the design
+working.** `long` is 1/3 clean against 2/3 rambling: the clean twin does worse
+than the spoken one, so filler cannot be what breaks it and the honest reading
+is that either long captures fail on length regardless, or my thought counts
+for those three are wrong. It is listed rather than quietly dropped.
+
+**Do not quote any of these as rates.** The families are three and four
+captures wide; 0/3 is three captures. What the set gives on a first reading is
+a direction and a named set of rows, not a measurement anybody should put in
+front of a decision. The per-row failures were not printed on this run —
+`devset-failures.sh` kept its own hardcoded list and the set was only wired into
+`language-metrics.sh`, fixed in `178dd05`.
+
 ## 2026-09-11 15:45 — `main` at `2cc2ac5`, the abandonment figures measured
 
 Branch `main`,
@@ -1323,7 +1380,17 @@ static read. The measured size is 1,381.
 
 ### Held-out set — generalisation
 
-389 utterances written before anyone read the parser.
+389 utterances written before anyone read the parser.§
+
+§ **That sentence is not supportable and was retired on 2026-09-11.** It is
+left standing here because this section records what was reported at the time.
+`heldout.tsv` arrived in `cb2b630`, a commit that also rewrote six parser
+sources, seventeen hours after the seven `Docs/PipelineSweep/*.md` analyses of
+this parser's behaviour. Commit order is not authoring order, so the claim is
+uncheckable rather than false — and three of the 389 are demonstrably not
+unseen, two of them in the gating corpus itself. The figures below are
+unchanged and the rows are still counted;
+`Tools/CorpusRunner/heldout/README.md` sets out the evidence.
 
 | measure | value |
 |---|---|
