@@ -17,6 +17,14 @@
 # is held out. `Tools/CorpusRunner/heldout/` and `Tools/CorpusRunner/everyday/`
 # are the two that exist today, and neither is reachable from this file.
 #
+# That was not enough on its own. The scorers this calls used to take a set
+# *name* and build a path from it without checking, so
+# `route-score.sh ../heldout/heldout --verbose` resolved to a real file and
+# printed every held-out failure. Guarding the entry points — this file, and
+# `language-metrics.sh` refusing --verbose — left the hole one level down,
+# where a name was trusted to be a name. Both scorers now refuse anything but
+# a bare name. Found by the evaluation thread reviewing this file.
+#
 # Tools/CI/language-metrics.sh is the opposite instrument: it scores everything
 # and prints no failure text at all. Keep it that way. If you want a held-out
 # failure at release, run its scorer directly and knowingly:

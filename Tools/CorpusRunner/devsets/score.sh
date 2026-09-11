@@ -12,6 +12,16 @@ ROOT="$(cd "$SP/../../.." && pwd)"
 cd "$ROOT"
 NAME="${1:?usage: score.sh <devset-name> [--verbose]}"
 shift || true
+# A development set is named, not pathed. Without this, `../heldout/heldout`
+# resolves to a real file and this script prints every held-out failure with
+# the matching scorer — a complete unseal from a tool whose whole premise is
+# that it only reads sets meant to be read.
+case "$NAME" in
+  *[!A-Za-z0-9_-]* | "" | -*)
+    echo "score.sh: '$NAME' is not a development set name; pass a bare name such as coordination" >&2
+    exit 2
+    ;;
+esac
 SET="$SP/$NAME.tsv"
 [ -f "$SET" ] || { echo "no such dev set: $SET" >&2; exit 2; }
 [ -x Tools/PipelineProbe/build/probe ] || ./Tools/PipelineProbe/build.sh >/dev/null
