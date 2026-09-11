@@ -513,6 +513,83 @@ class LeakCheckTests(unittest.TestCase):
                 self.assertEqual(
                     self.leak.utterance_column(header.split("\n")), expected)
 
+    def prose_world(self, docs, captures=("alpha bravo charlie delta echo foxtrot",)):
+        """A repository-shaped fixture: one sealed set, some Markdown.
+
+        The real check walks `ROOT`, so the module's `ROOT`, `SEALED_ALL` and
+        `PROSE_DOCUMENTED` are pointed at the temporary tree for the duration.
+        """
+        root = pathlib.Path(tempfile.mkdtemp())
+        sealed = root / "sealed.tsv"
+        sealed.write_text("id\tutterance\n" + "".join(
+            f"S{i}\t{c}\n" for i, c in enumerate(captures)))
+        for name, body in docs.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body)
+        self.leak.ROOT = root
+        self.leak.SEALED_ALL = [sealed]
+        self.leak.PROSE_DOCUMENTED = {}
+        return root
+
+    def test_a_sealed_capture_quoted_in_a_document_is_a_leak(self):
+        self.prose_world({"Docs/notes.md": "We saw `alpha bravo charlie delta "
+                                           "echo foxtrot` go wrong.\n"})
+        self.assertFalse(self.leak.check_prose())
+
+    def test_a_quotation_wrapped_across_lines_is_still_caught(self):
+        """The failure mode that would have made this check decorative.
+
+        Prose wraps. A capture quoted inside a paragraph is routinely split
+        over two lines, so a check that normalised line by line would pass on
+        exactly the leaks a human would call most obvious.
+        """
+        self.prose_world({"Docs/wrapped.md":
+                          "the sentence was alpha bravo charlie\n"
+                          "delta echo foxtrot and it failed\n"})
+        self.assertFalse(self.leak.check_prose())
+
+    def test_a_capture_too_short_to_protect_is_counted_not_flagged(self):
+        """Stated coverage rather than implied coverage.
+
+        A three-word capture appears in ordinary prose by accident, so it is
+        out of scope -- and the count of what is out of scope prints on every
+        run, so the size of the gap is visible instead of inferred.
+        """
+        root = self.prose_world({"Docs/short.md": "I said call mum today.\n"},
+                                captures=("call mum today",))
+        self.assertTrue(self.leak.check_prose())
+
+    def test_a_documented_leak_is_still_counted_but_does_not_gate(self):
+        """Same rule as a `KNOWN:` row: the marker moves the exit, not the count.
+
+        These captures cannot be un-leaked -- the text is in git history -- so
+        the list exists to let the check gate on anything new. If it removed
+        them from the count instead, the report would say the sets are clean
+        when they are not.
+        """
+        self.prose_world({"Docs/notes.md": "quoting alpha bravo charlie delta "
+                                           "echo foxtrot here\n"})
+        self.leak.PROSE_DOCUMENTED = {("sealed.tsv", "S0"): "known"}
+        import io, contextlib
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            ok = self.leak.check_prose()
+        self.assertTrue(ok, "a documented leak must not gate")
+        self.assertIn("1 documented", said.getvalue())
+        self.assertIn("sealed text in prose      1", said.getvalue())
+
+    def test_the_report_never_prints_the_capture_it_found(self):
+        """A leak detector that quotes its finding copies the leak to every log."""
+        self.prose_world({"Docs/notes.md": "alpha bravo charlie delta echo "
+                                           "foxtrot\n"})
+        import io, contextlib
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.leak.check_prose()
+        self.assertNotIn("alpha bravo charlie", said.getvalue())
+        self.assertIn("sealed.tsv S0", said.getvalue())
+
     def test_a_corpus_laid_out_differently_is_still_read_correctly(self):
         with tempfile.TemporaryDirectory() as root:
             path = pathlib.Path(root) / "odd.tsv"

@@ -19,6 +19,50 @@ ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 THRESHOLD = 0.70
 
+#: Prose is checked for *verbatim* sealed captures, and only for captures at
+#: least this many words long. A short capture -- "call mum", "buy milk" -- can
+#: appear in a sentence somebody wrote about something else, and a check that
+#: cries leak on those gets switched off. So the coverage is stated rather than
+#: implied: **a sealed capture shorter than this is not protected in prose.**
+#: Every capture in all three sealed sets that is shorter than this is counted
+#: and printed on every run, so the size of the gap is visible instead of
+#: inferred.
+PROSE_MIN_WORDS = 6
+
+#: Captures already public in tracked prose when this check was written, each
+#: with where it is and why it is forgiven rather than fixed. **The marker moves
+#: the exit status, never the count**: every one is still reported as a leak on
+#: every run, for the same reason a `KNOWN:` row in `abandonment.tsv` is still
+#: counted as a failure -- a rate a marker can improve is a rate people learn to
+#: write markers for.
+#:
+#: These cannot be un-leaked. The text is in git history, so deleting it from
+#: the document restores nothing; the only real remedy is to retire the captures
+#: from the sealed sets and re-record the generation, which moves published
+#: figures and is therefore Calvin's call rather than this file's. Until that is
+#: decided they are listed here so the check can gate on anything *new* instead
+#: of being switched off for being red on arrival.
+PROSE_DOCUMENTED = {
+    # The everyday set (authored 2026-09-11) reuses sentences from a sweep
+    # written 2026-08-25. These were development material first and sealed
+    # captures second, which is the direction that costs a measurement.
+    ("everyday.tsv", "F02"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F06"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F19"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F29"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "M04"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "W17"): "PipelineSweep/domains.md",
+    ("everyday.tsv", "W20"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "W51"): "PipelineSweep/domains.md, LANGUAGE_BASELINE.md, "
+                             "and this set's own README",
+    # The held-out set (2026-08-25) came first and later documentation
+    # reproduced these. C342 is the standard location-reminder example in the
+    # App Store and hand-QA documents, so it has been run by hand repeatedly.
+    ("heldout.tsv", "C236"): "PipelineSweep/routing.md — question table",
+    ("heldout.tsv", "C342"): "five App Store and hand-QA documents",
+    ("heldout.tsv", "C358"): "AMBIGUITY_TAXONOMY.md",
+}
+
 # Every set that must stay unseen. Each is checked against the tuned corpora
 # and against the other sealed sets: an overlap with another sealed set is not
 # contamination, but it is the same capture measured twice under two names.
@@ -105,6 +149,146 @@ def harvest(path):
     return out
 
 
+#: All three, and `heldout.tsv` deliberately among them. The overlap check
+#: below treats the held-out set as one more corpus to compare against, which
+#: is right for *that* question -- a shared capture there is a duplicate
+#: measurement, not contamination. It is wrong for this one. The first sealed
+#: capture ever committed into a tracked document was a held-out row, and a
+#: list that left it out would have watched the other two.
+SEALED_ALL = SEALED + [ROOT / "Tools/CorpusRunner/heldout/heldout.tsv"]
+
+#: Where prose lives. Not "every tracked file": the corpora themselves are full
+#: of capture text by design, and so is any file this check already reads.
+PROSE_SKIP = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
+
+
+def prose_files():
+    """Every Markdown file in the repository, which is where prose goes.
+
+    Deliberately not narrowed to `Docs/`. The leak this was written for landed
+    in `Docs/LANGUAGE_BASELINE.md`, but a README beside a corpus is the more
+    tempting place to quote a capture, and `CLAUDE.md` is read by every agent
+    that touches this repository.
+    """
+    for path in sorted(ROOT.rglob("*.md")):
+        if PROSE_SKIP & set(path.relative_to(ROOT).parts):
+            continue
+        yield path
+
+
+def flatten(text):
+    """Normalised to one line, so a capture wrapped across lines still matches.
+
+    This is the part that is easy to get wrong and impossible to notice: prose
+    wraps, and a capture quoted in a paragraph is routinely split over two
+    lines. Normalising per line would let every wrapped quotation through, and
+    the check would pass on exactly the cases a human reader would call the
+    most obvious leaks.
+    """
+    return " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
+
+
+def check_prose():
+    """Sealed capture text committed into the repository's prose.
+
+    Separate from the overlap check above because it answers a different
+    question. That one asks whether a sealed capture was tuned against; this
+    asks whether it is still sealed at all. A capture pasted into a document is
+    not contaminating a corpus -- it is simply public, in git history, for good.
+
+    Prints ids and files and never the capture text. A leak detector whose
+    output quotes the thing it found would copy the leak into every CI log.
+    """
+    short = 0
+    captures = []
+    for path in SEALED_ALL:
+        if not path.exists():
+            continue
+        for cid, text in harvest_ids(path):
+            words = norm(text).split()
+            if len(words) < PROSE_MIN_WORDS:
+                short += 1
+                continue
+            captures.append((path.name, cid, " " + " ".join(words) + " "))
+
+    hits = []
+    for doc in prose_files():
+        try:
+            body = flatten(doc.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+        for set_name, cid, needle in captures:
+            if needle in body:
+                hits.append((doc.relative_to(ROOT), set_name, cid,
+                             len(needle.split())))
+
+    print()
+    print("=== sealed capture text in tracked prose")
+    print(f"documents scanned        {len(list(prose_files()))}")
+    print(f"captures long enough     {len(captures)}")
+    print(f"too short to protect     {short}  (under {PROSE_MIN_WORDS} words)")
+    documented = [h for h in hits if (h[1], h[2]) in PROSE_DOCUMENTED]
+    fresh = [h for h in hits if (h[1], h[2]) not in PROSE_DOCUMENTED]
+    print(f"sealed text in prose      {len(hits)}"
+          f"  ({len(documented)} documented, {len(fresh)} new)")
+    if not hits:
+        print("prose check ok: no sealed capture appears verbatim in a "
+              "tracked document.")
+        return True
+
+    print()
+    for doc, set_name, cid, length in sorted(fresh) + sorted(documented):
+        mark = "" if (set_name, cid) in PROSE_DOCUMENTED else "  ← NEW"
+        print(f"  LEAK  {doc}  <-  {set_name} {cid}  ({length} words){mark}")
+
+    if documented:
+        print()
+        print(f"  {len(documented)} of these were already public when this check")
+        print("  was written, and are counted above rather than excused:")
+        for (set_name, cid), where in sorted(PROSE_DOCUMENTED.items()):
+            print(f"    {set_name} {cid}  {where}")
+        print("  They cannot be un-leaked -- the text is in history -- so the")
+        print("  remedy is to retire them from the sealed sets, which moves")
+        print("  published figures and is a decision rather than an edit.")
+
+    if not fresh:
+        print()
+        print("prose check ok: no NEW sealed capture has been committed into a")
+        print("tracked document. The documented ones above still count.")
+        return True
+
+    print()
+    print("prose check FAILED: a sealed capture is committed into a tracked")
+    print("document, which unseals it permanently and in history. Remove the")
+    print("text; the id and the shape carry the argument without it.")
+    return False
+
+
+def harvest_ids(path):
+    """`(id, utterance)` for one sealed set.
+
+    `harvest` returns utterances alone, which is right for the overlap check --
+    it compares text against text. The prose check has to *name* what it found
+    without printing it, so it needs the id travelling beside the capture.
+    """
+    lines = path.read_text(errors="ignore").splitlines()
+    column = utterance_column(lines)
+    if column is None:
+        raise SystemExit(
+            f"leak check: {path.name} has no column headed 'utterance', so "
+            f"its captures cannot be identified. Add the header rather than "
+            f"letting this file go unchecked.")
+    out = []
+    for line in lines:
+        if line.startswith("#") or not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) <= column or fields[column].strip().lower() == "utterance":
+            continue
+        out.append((fields[0].strip(), fields[column]))
+    return out
+
+
 def others(exclude):
     sources = list((ROOT / "SpeakItTests").glob("SemanticCorpusData*.swift"))
     sources += list((ROOT / "Tools/CorpusRunner/devsets").glob("*.tsv"))
@@ -143,6 +327,14 @@ def main():
         if not path.exists():
             raise SystemExit(f"leak check: {path} is listed as sealed but missing")
         failed |= check(path)
+    #: Runs whatever the overlap check said. The two answer different questions
+    #: and a set can pass one while failing the other -- a capture quoted in a
+    #: document is still absent from every tuned corpus, which is exactly the
+    #: state that let one through.
+    for path in SEALED_ALL:
+        if not path.exists():
+            raise SystemExit(f"leak check: {path} is listed as sealed but missing")
+    failed |= 0 if check_prose() else 1
     return failed
 
 
