@@ -400,6 +400,161 @@ class TitleHygieneTests(unittest.TestCase):
         self.assertIn("lower bound", result)
 
 
+def leak_check_module():
+    """leak-check.py has a hyphen in its name, so it needs loading by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "leak_check", HERE / "leak-check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class LeakCheckTests(unittest.TestCase):
+    """The boundary guard has to read the right field to mean anything.
+
+    A leak check comparing the wrong column passes for the wrong reason, which
+    is worse than failing: it reads as proof that nothing leaked.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_utterance_column_is_read_from_the_header(self):
+        for header, expected in (
+            ("id\tutterance\tfamily\texpected_destination\texpected_thoughts", 1),
+            ("id\tdomain\tutterance\texpect\tkeep", 2),
+            ("# id\tutterance\tfamily", 1),
+            ("utterance\tnote", 0),
+        ):
+            with self.subTest(header=header):
+                self.assertEqual(
+                    self.leak.utterance_column(header.split("\n")), expected)
+
+    def test_a_corpus_laid_out_differently_is_still_read_correctly(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "odd.tsv"
+            path.write_text(
+                "# a corpus that puts the capture fourth\n"
+                "id\tfamily\tnote\tutterance\n"
+                "X1\tnegation\twhy\tSarah has no dairy at all\n")
+            self.assertEqual(self.leak.harvest(path),
+                             ["Sarah has no dairy at all"])
+
+    def test_a_corpus_with_no_utterance_header_fails_loudly(self):
+        """Silently skipping it would leave that corpus unchecked forever."""
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "headerless.tsv"
+            path.write_text("X1\tsome capture text\tnegation\n")
+            with self.assertRaises(SystemExit):
+                self.leak.harvest(path)
+
+    def test_the_header_row_is_not_harvested_as_a_capture(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "set.tsv"
+            path.write_text("id\tutterance\nX1\tbuy milk\n")
+            self.assertEqual(self.leak.harvest(path), ["buy milk"])
+
+    def test_the_existing_held_out_set_harvests_its_documented_size(self):
+        """An anchor against a real file: heldout/README.md says 389."""
+        path = HERE.parent / "heldout" / "heldout.tsv"
+        if not path.exists():
+            self.skipTest("heldout.tsv not present")
+        self.assertEqual(len(self.leak.harvest(path)), 389)
+
+
+class DevsetScorerSealTests(unittest.TestCase):
+    """A development scorer must not be aimable at a held-out set.
+
+    `route-score.sh` and `score.sh` take a set NAME and build a path from it.
+    Until this guard, `../heldout/heldout` resolved to a real file, and because
+    `route-score.sh` already uses the held-out scorer on the same five columns,
+    `route-score.sh ../heldout/heldout --verbose` printed every held-out
+    failure. The entry points that refuse arguments do not help: the hole was
+    one level down, in the scorer they call.
+    """
+
+    DEVSETS = HERE.parent / "devsets"
+
+    def run_scorer(self, script, name):
+        path = self.DEVSETS / script
+        if not path.exists():
+            self.skipTest(f"{script} not present")
+        return subprocess.run([str(path), name, "--verbose"],
+                              capture_output=True, text=True)
+
+    def test_a_pathed_name_cannot_reach_a_held_out_set(self):
+        for script in ("route-score.sh", "score.sh"):
+            for name in ("../heldout/heldout", "../everyday/everyday",
+                         "/etc/passwd", "../../../etc/passwd"):
+                with self.subTest(script=script, name=name):
+                    result = self.run_scorer(script, name)
+                    self.assertEqual(result.returncode, 2,
+                                     f"{script} accepted {name!r}")
+                    combined = result.stdout + result.stderr
+                    self.assertNotIn("HELD-OUT SET", combined)
+                    self.assertNotIn("remind me to uh remind me", combined)
+
+    def test_an_empty_or_flag_like_name_is_refused(self):
+        """Refused, not necessarily by the same route.
+
+        An empty name is caught by the shell's own `${1:?}` check and exits 1;
+        a flag-like one is caught by the name guard and exits 2. Both refuse
+        and neither reaches a corpus, which is what matters — asserting the
+        exact code would make this test about bash rather than about sealing.
+        """
+        for script in ("route-score.sh", "score.sh"):
+            for name in ("", "--verbose", "-rf"):
+                with self.subTest(script=script, name=name):
+                    result = self.run_scorer(script, name)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("HELD-OUT SET",
+                                     result.stdout + result.stderr)
+
+    def test_a_real_development_set_name_is_still_accepted(self):
+        """The guard must not break the thing it protects."""
+        result = self.run_scorer("route-score.sh", "routed")
+        self.assertNotEqual(
+            result.returncode, 2,
+            "a bare development set name must pass the name check")
+        self.assertNotIn("is not a development set name",
+                         result.stdout + result.stderr)
+
+
+def score_module():
+    """score.py is a script; the matcher is unit-testable in process."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("score_mod", HERE / "score.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class SpanMatchTests(unittest.TestCase):
+    """Span matching anchors its left edge and tolerates its right one."""
+
+    def setUp(self):
+        self.score = score_module()
+
+    def test_a_number_does_not_match_inside_a_longer_number(self):
+        # The bug this exists to prevent: a capture corrected 6:40 to 7:40, the
+        # pipeline rendered the evening time 16:40 for some other thought, and
+        # the discarded 6:40 was reported as invented.
+        self.assertFalse(self.score.carries("6:40", self.score.norm("meet at 16:40")))
+        self.assertFalse(self.score.carries("8:45", self.score.norm("closes 18:45")))
+
+    def test_a_number_still_matches_itself(self):
+        self.assertTrue(self.score.carries("6:40", self.score.norm("train at 6:40")))
+
+    def test_a_word_does_not_match_inside_a_longer_word(self):
+        self.assertFalse(self.score.carries("oslo", self.score.norm("konsoslo")))
+
+    def test_a_label_still_matches_an_inflected_rendering(self):
+        # Labels are written in the spoken form; renderings pluralise.
+        self.assertTrue(self.score.carries("500 gram", self.score.norm("buy 500 grams")))
+        self.assertTrue(self.score.carries("night", self.score.norm("three nights")))
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 
@@ -450,6 +605,22 @@ class CorpusTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     len(span), 3,
                     f"{row[0]}: reject span {span!r} is too short to be meaningful")
+
+    def test_contrast_captures_assert_no_rejected_value(self):
+        """Invention means one thing: a value the repair discarded.
+
+        `book the small room not the big one` mentions the big room on purpose.
+        A title that keeps the contrast is faithful, not inventive, so a
+        substring test over the reading cannot tell `excluded the big room`
+        from `booked the big room`. Captures in the `negation` family therefore
+        carry no `reject` span; they still exercise routing, count and loss.
+        """
+        for row in self.rows():
+            if "negation" in row[6].split("|"):
+                self.assertEqual(
+                    row[5], "-",
+                    f"{row[0]}: a contrast capture cannot assert invention; "
+                    f"the excluded value was spoken deliberately")
 
     def test_keep_spans_are_long_enough_to_match_deliberately(self):
         for row in self.rows():
@@ -524,6 +695,29 @@ class CorpusTests(unittest.TestCase):
                         f"{row[0]}: {kind} span {span!r} is neither in the "
                         f"capture nor a date or time the probe derives, so it "
                         f"can never match: {row[2]!r}")
+
+    def test_no_reject_span_is_material_title_hygiene_already_measures(self):
+        """Two measures must not both move on one fix.
+
+        Seven captures once listed "bye" as a rejected value. A farewell left
+        in a title is a title defect, and `title` already counts it, so the
+        discourse-framing change of 2026-09-11 moved `invention` from 5/19 to
+        12/19 without a single superseded value being resolved — one fix
+        counted twice, which is exactly how apparent progress gets
+        manufactured. Farewells belong to title hygiene; `invention` is for a
+        value the reading asserts that the speaker superseded or never meant.
+        """
+        farewells = {"bye", "goodbye", "byebye", "thanks", "thank you",
+                     "cheers", "see you", "that's it", "ta"}
+        for row in self.rows():
+            for span in row[5].split("|"):
+                if span in ("", "-"):
+                    continue
+                self.assertNotIn(
+                    span.strip().lower(), farewells,
+                    f"{row[0]}: {span!r} is a farewell, which `title` already "
+                    f"measures. Counting it here too makes one fix move two "
+                    f"metrics.")
 
     def test_the_set_does_not_overlap_a_corpus_that_is_tuned_against(self):
         result = subprocess.run(

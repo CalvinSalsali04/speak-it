@@ -1,6 +1,6 @@
 # Everyday speech — held-out set
 
-235 captures of ordinary adult life, 47 in each of five domains, written from
+255 captures of ordinary adult life, 51 in each of five domains, written from
 the product description and from how people actually dictate. **Nothing here has
 been tuned against, and nothing here may be tuned against.**
 
@@ -175,7 +175,12 @@ capture stays untouched and keeps measuring.
 `leak-check.py` makes that boundary mechanical rather than a promise. It fails
 if any capture here also appears — verbatim, or as a near-paraphrase at Jaccard
 0.70 or above — in the gating corpus, in a development set, or in the older
-held-out set. It runs as part of `test_score.py`, which the corpus gate runs, so
+held-out set. It locates each corpus's capture by reading its header rather
+than assuming a column, because these files do not agree on layout — `heldout`
+and the development sets put the utterance second, this set puts it third — and
+a guard comparing the wrong field passes for the wrong reason, which is worse
+than failing. A corpus file with no `utterance` header stops the check rather
+than being skipped. It runs as part of `test_score.py`, which the corpus gate runs, so
 a capture cannot leak in unnoticed. It has already caught two: `E04` was a
 verbatim copy of a `heldout.tsv` case and `F28` was a paraphrase of one, both
 introduced while this set was being written, and both were replaced.
@@ -188,11 +193,119 @@ the per-domain routing and loss rates, and the `ACTED ON ANYWAY` count. Add a
 row to the baseline table below. Do not add a row for a run whose failures were
 read during development — say so instead, and treat the number as spent.
 
+## Generations
+
+The set grows, and a measure whose denominator moved is not comparable across
+the move. Each change below opens a new generation; compare rows within one,
+never across.
+
+| generation | from | captures | invention cases | span matching |
+|---|---|---|---|---|
+| 1 | 2026-09-11 | 235 | 19, of which 7 were farewells | substring |
+| 2 | 2026-09-11 | 235 | 12 (farewell cases cleared) | substring |
+| 3 | 2026-09-11 | 255 | 22 | left-anchored |
+
+Generation 3 changed two things at once, deliberately, at a pause between runs
+rather than between two comparisons:
+
+- **Twenty captures added**, four per domain, each carrying a genuine superseded
+  value: a corrected number, time, weekday, person, place, or a contrast the
+  reading must not invert. The other measures gain 20 captures and shift
+  slightly for that reason alone.
+- **Contrast captures no longer assert invention.** Ten captures phrase an
+  exclusion rather than a repair — `book the small meeting room not the big
+  one`. The excluded value is spoken deliberately, so a title that preserves the
+  contrast is faithful, and a substring test over the reading cannot tell
+  `excluded the big room` from `booked the big room`. Two of them were worse
+  than ambiguous: W38 and E20 rejected the strings `not 2D` and `not 6`, which a
+  *correct* title contains. All ten keep their captures and their `negation`
+  family label, and `test_score.py` now fails if a `negation` capture is given a
+  `reject` span.
+
+**What is now unmeasured is narrower than "negation", and the distinction
+matters.** All 48 negation-family captures are still scored for routing, count,
+loss and title — negation is one of the weaker routing families in the set, and
+that signal is intact. What no measure here reports is **invention on a negated
+or superseded value**: whether the reading treated the operative value as the
+operative one. That needs a judgement a span test cannot make, so its home is a
+readable development set. Do not close this gap by re-adding a `reject` span to
+a contrast capture — that is the defect this section exists to record.
+
+Between the twenty added and the ten withdrawn, `invention` moves from 12 cases
+to 22, all of them genuine supersessions, so its rate sits on a different
+denominator from every earlier row.
+- **Span matching now anchors its left edge.** It was a plain substring test over
+  normalised text, where `6:40` folds to `6 40` — which sits inside `16 40`. A
+  pipeline that read a corrected time *correctly* could be reported for inventing
+  the value it had discarded. The right edge stays open, because labels are
+  written in the spoken form (`500 gram`) and a rendering may inflect it
+  (`500 grams`); a suffix match cannot manufacture a failure. The fix is in
+  `carries()` and is covered four ways in `test_score.py`.
+
+The direction of the matching change is known even though it has not yet been
+re-run: `loss` can only get stricter and `invention` can only get less false. It
+also fixes a latent case that predates the new captures — F33 rejects `8:45`,
+which the old matcher would have found inside a rendered `18:45`.
+
 ## Baseline
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
 |---|---|---|---|---|---|---|---|
-| _not yet scored_ | | | | | | | |
+| 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%)* | 217/235 (92.3%) | **0 / 15** |
+
+*Generation 1. The invention column used the 19-case measure, 7 of whose cases
+were farewells; it is not comparable to any later row. The whole row predates
+generation 3, so every column in it is a generation-1 reading.
+
+First reading, from `language_only` run 34586389323 on `macos-26`. Scored
+non-verbose; the failures were not read. Over-segmented 17, under-segmented 23,
+captures producing nothing 0, item type agreed on 132/212.
+
+By domain, routing and loss:
+
+| domain | routing | count | loss | title |
+|---|---|---|---|---|
+| work-school | 33/44 (75.0%) | 35/42 (83.3%) | 38/43 (88.4%) | 42/47 (89.4%) |
+| family-health | 27/44 (61.4%) | 35/43 (81.4%) | 45/45 (100.0%) | 44/47 (93.6%) |
+| money-travel | 29/44 (65.9%) | 35/43 (81.4%) | 42/45 (93.3%) | 45/47 (95.7%) |
+| freelance | 29/44 (65.9%) | 33/42 (78.6%) | 41/45 (91.1%) | 41/47 (87.2%) |
+| fitness-errands | 34/44 (77.3%) | 34/42 (81.0%) | 44/46 (95.7%) | 45/47 (95.7%) |
+
+Three things to carry forward rather than the headline.
+
+**Nothing was acted on that should not have been.** 0 of 15 ambiguous captures
+were scheduled, dated or modified, and no capture produced nothing at all. The
+harm measure is clean on its first reading, which is the row that should only
+ever fall.
+
+**Under-segmentation is larger than over-segmentation here** — 23 merges against
+17 splits. That runs opposite to the clause-segmentation reading on the older
+held-out set, where five of six failures were over-splits. Both can be true:
+they are different sets measuring different content. It means neither direction
+should be assumed to be *the* segmentation problem without saying which set the
+claim comes from.
+
+**`invention` was measuring two things and has been corrected.** Seven of its
+nineteen cases listed `bye` as the rejected value. A farewell left in a title is
+a title defect, and `title` already counts it — so when the discourse-framing
+change of 2026-09-11 removed farewells, `invention` moved 5/19 → 12/19 with the
+jump being exactly those seven captures and not one superseded value resolved.
+On the twelve cases that actually test a superseded value, the score was 5/12
+before that change and 5/12 after: **unchanged**. One fix had been counted
+twice.
+
+`reject` now carries only values the reading must not assert — a superseded
+number, a corrected weekday, an inverted negation — and `test_score.py` fails if
+a farewell is ever added back. The measure is 22 cases, thickened as described
+below, and should be
+done as a deliberate, announced addition rather than silently between two
+comparisons.
+
+Worst families by routing: `run-on` 0/8, `rambling-intro` 1/6,
+`trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. On title
+hygiene, `trailing-goodbye` is 0/7 — "bye" reaches the title every time it is
+spoken. Families below about eight captures are pointers to write more, not
+measurements.
 
 The set and the scorer were built in a Linux container, where the pipeline
 cannot be executed at all. The instrument has been tested against hand-written
@@ -202,7 +315,7 @@ then this directory is an instrument with no reading, and saying otherwise would
 be inventing a result.
 
 The runner itself has been exercised end to end against a stand-in probe: the
-shell plumbing extracts all 235 captures, invokes the probe and renders the full
+shell plumbing extracts all 255 captures, invokes the probe and renders the full
 report, so the only unrun link in the chain is the pipeline. If this block is
 missing or empty in a language-metrics report, the cause is the engine or the
 build, not this script.

@@ -41,6 +41,19 @@ def norm(text):
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def carries(span, surface):
+    """Does `surface` contain `span`, starting at a token boundary?
+
+    A plain substring test folds `6:40` to `6 40`, which sits inside `16 40` —
+    so a pipeline that read the time correctly gets reported for inventing the
+    one it discarded. Anchoring the left edge removes that whole class. The
+    right edge is deliberately left open, because a label says `500 gram` and a
+    rendering may say `500 grams`; a suffix match is the tolerance the labels
+    were written with and it cannot manufacture a failure.
+    """
+    return re.search(r"(?<![a-z0-9])" + re.escape(norm(span)), surface) is not None
+
+
 def parse_labels(path):
     rows = []
     for line in open(path):
@@ -64,7 +77,7 @@ def parse_labels(path):
 
 
 def parse_probe(path):
-    """Reads `probe` output into one record per utterance.
+    r"""Reads `probe` output into one record per utterance.
 
     Field patterns use `[ \t]` rather than `\s` on purpose: `\s` matches a
     newline, so a field printed with an empty value let the capture run on into
@@ -268,7 +281,7 @@ def main():
 
         if case["keep"]:
             surface = visible(got)
-            lost = [k for k in case["keep"] if norm(k) not in surface]
+            lost = [k for k in case["keep"] if not carries(k, surface)]
             hit("loss", not lost, "gone: " + ", ".join(lost) if lost else "")
 
         defects = []
@@ -282,7 +295,7 @@ def main():
 
         if case["reject"]:
             reading = interpretation(got)
-            found = [r for r in case["reject"] if norm(r) in reading]
+            found = [r for r in case["reject"] if carries(r, reading)]
             hit("invention", not found,
                 "reading still shows: " + ", ".join(found) if found else "")
 
