@@ -149,6 +149,26 @@ class RecordedLimitTests(unittest.TestCase):
         if not self.SET.exists():
             self.skipTest("unfinished.tsv not present")
 
+    def require_declarations(self):
+        """Skip when the set declares no limit, rather than fail.
+
+        Five of the six tests in this class used to go red the day every
+        recorded limit was implemented and the declarations came off -- the
+        good outcome. That is the same shape as a `KNOWN:` marker test
+        asserting a marker still exists, and as a ranking fallback that seats
+        an unrankable family where a perfect one goes: a check that cannot be
+        satisfied by success. Measured rather than reasoned about, by running
+        the class against a copy of the set with the header stripped.
+
+        It cannot tell "every limit was implemented" from "somebody lost the
+        header line" -- both are a file with no `# limit:` in it, the same
+        ambiguity the generation check has between a legitimate generation and
+        a quiet edit. So the one assertion that holds in both states stays
+        live below rather than being skipped with the rest.
+        """
+        if not self.declarations():
+            self.skipTest("no limit is declared, so there is nothing to check")
+
     def declarations(self):
         """Parsed here as data. The scorer's own parser is exercised by running
         it below; this is the citation check, which needs the repository."""
@@ -199,7 +219,7 @@ class RecordedLimitTests(unittest.TestCase):
         declaration goes with it. Without this the citation is a claim of the
         kind this directory exists to stop making.
         """
-        self.assertTrue(self.declarations(), "no limit is declared any more")
+        self.require_declarations()
         for source, phrase, _ in self.declarations():
             with self.subTest(source=source):
                 path = self.ROOT / source
@@ -210,6 +230,10 @@ class RecordedLimitTests(unittest.TestCase):
 
     def test_every_declared_capture_exists_and_is_an_unfinished_one(self):
         """A declaration must not quietly cover a row that is not a miss."""
+        #: Skipped rather than left to loop over nothing: a test that reports
+        #: green having asserted nothing is the vacuous half of the same
+        #: defect as one that reports red on the good outcome.
+        self.require_declarations()
         rows = self.captures()
         for _, _, ids in self.declarations():
             for cid in ids:
@@ -221,6 +245,7 @@ class RecordedLimitTests(unittest.TestCase):
 
     def test_a_limit_changes_the_reading_and_never_the_rate(self):
         """The rule that removes any incentive to declare one falsely."""
+        self.require_declarations()
         with_limit = self.score()
         without = self.score("\n".join(
             line for line in self.SET.read_text().splitlines()
@@ -248,6 +273,7 @@ class RecordedLimitTests(unittest.TestCase):
         decision taken with the signals to hand, not a property of the
         language.
         """
+        self.require_declarations()
         rows = self.captures()
         unfinished = sum(1 for r in rows.values() if r[3] == "Incomplete")
         declared = {c for _, _, ids in self.declarations() for c in ids}
@@ -265,6 +291,7 @@ class RecordedLimitTests(unittest.TestCase):
         A family that is mostly declined reads as the largest available win
         from the table alone.
         """
+        self.require_declarations()
         line = next(l for l in self.score().splitlines()
                     if l.startswith("trailing-function-word"))
         self.assertIn("recorded as a limit", line)
@@ -282,8 +309,16 @@ class RecordedLimitTests(unittest.TestCase):
         declared = {c for _, _, ids in self.declarations() for c in ids}
         family = {cid for cid, r in rows.items()
                   if r[2] == "trailing-function-word"}
-        self.assertEqual(sorted(family - declared), ["INC45"])
+        #: Deliberately not behind `require_declarations`. "INC45 is never
+        #: declared" is true whether or not anything else is, so this is the
+        #: assertion that survives the state the others skip -- otherwise the
+        #: whole class goes quiet on a lost header line and nothing notices.
+        self.assertNotIn("INC45", declared,
+                         "INC45 ends on a determiner, which the cited comment "
+                         "does not cover")
         self.assertIn("dangling article", rows["INC45"][4])
+        if declared:
+            self.assertEqual(sorted(family - declared), ["INC45"])
 
 
 class DevsetScorerTests(unittest.TestCase):
@@ -299,14 +334,15 @@ class DevsetScorerTests(unittest.TestCase):
 
     DEV = pathlib.Path(__file__).parent / "devsets"
 
-    def run_scorer(self, scorer, header, rows, blocks):
+    def run_scorer(self, scorer, header, rows, blocks, *flags):
         with tempfile.TemporaryDirectory() as root:
             labels = pathlib.Path(root) / "set.tsv"
             labels.write_text(header + "".join(rows))
             probe = pathlib.Path(root) / "probe.txt"
             probe.write_text("".join(blocks))
             done = subprocess.run(
-                [sys.executable, str(self.DEV / scorer), str(labels), str(probe)],
+                [sys.executable, str(self.DEV / scorer), str(labels), str(probe),
+                 *flags],
                 capture_output=True, text=True)
             return done.returncode, done.stdout
 
@@ -324,10 +360,10 @@ class DevsetScorerTests(unittest.TestCase):
             out += f"  operation: {operation}\n"
         return out
 
-    def unfinished(self, rows, blocks):
+    def unfinished(self, rows, blocks, *flags):
         return self.run_scorer(
             "unfinished-score.py",
-            "id\tutterance\tfamily\texpectation\tnote\n", rows, blocks)
+            "id\tutterance\tfamily\texpectation\tnote\n", rows, blocks, *flags)
 
     def test_recall_counts_only_flagged_unfinished_captures(self):
         _, report = self.unfinished(
@@ -360,13 +396,80 @@ class DevsetScorerTests(unittest.TestCase):
             [self.unfinished_block("one", gap=True, due="2026-08-04")])
         self.assertIn("date/reminder/operation   1", invented)
 
-    def test_a_capture_the_probe_never_saw_is_not_scored_as_anything(self):
-        """Otherwise a truncated probe run reads as a set that got easier."""
-        _, report = self.unfinished(
+    def test_a_capture_the_probe_never_saw_is_visible_in_the_report(self):
+        """The exclusion was never the property worth pinning.
+
+        The old version of this test asserted `scored 1` and `recall 1/1` on a
+        set of two labelled rows, and its docstring said that was what stopped
+        "a truncated probe run reading as a set that got easier". It was not:
+        dropping the row from the denominator *is* a set that got easier. The
+        rate really is over what survived, and the only defence is that the
+        report says so and the run fails. That is what this pins now.
+        """
+        status, report = self.unfinished(
             ["A\tone\tf\tIncomplete\t\n", "B\tmissing\tf\tIncomplete\t\n"],
             [self.unfinished_block("one", gap=True)])
-        self.assertIn("scored                        1", report)
+        self.assertIn("1 of 2 labelled", report)
+        self.assertIn("1 with no probe result", report)
         self.assertIn("recall   unfinished flagged   1/1", report)
+        self.assertEqual(status, 1, "a dropped row must fail the run")
+
+    def test_a_complete_run_says_the_denominator_reconciles(self):
+        """Both numbers print even when they agree -- that is the check.
+
+        A scorer here drops an unseen row instead of failing it, so the
+        denominator matching the label count is the only evidence anyone gets
+        that nothing was lost between the label file and the probe run. A
+        line that appears only on failure cannot be that evidence.
+        """
+        status, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "B\ttwo\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True),
+             self.unfinished_block("two", gap=True)])
+        self.assertIn("2 of 2 labelled", report)
+        self.assertNotIn("no probe result", report)
+        self.assertEqual(status, 0)
+
+    def test_the_report_names_which_capture_went_missing(self):
+        """A count says one is gone; only the id says which.
+
+        Found by mutation: deleting the miss entirely left every assertion
+        above still passing, because they all read the summary line.
+        """
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "ZQ07\tvanished line\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)], "--verbose")
+        self.assertIn("UNSEEN", report)
+        self.assertIn("ZQ07", report)
+        self.assertIn("vanished line", report)
+
+    def test_the_abandonment_scorer_reconciles_on_a_clean_run_too(self):
+        """The branch a mismatch never reaches.
+
+        Also found by mutation: every other assertion here builds a set with
+        a row missing, so nothing covered what the line says when nothing is.
+        """
+        status, report = self.abandonment(
+            ["A\tone\tf\tAbandoned\t\n", "B\ttwo\tf\tAbandoned\t\n"],
+            [self.abandonment_block("one", rows=0),
+             self.abandonment_block("two", rows=0)])
+        self.assertIn("2 of 2 labelled", report)
+        self.assertNotIn("no probe result", report)
+        self.assertEqual(status, 0)
+
+    def test_the_abandonment_scorer_prints_it_too_and_not_only_in_verbose(self):
+        """It counted and gated on this, and never printed it.
+
+        `language-metrics.sh` never passes `--verbose`, so on the report every
+        published figure comes from, a dropped row was as silent here as in
+        the other scorer.
+        """
+        status, report = self.abandonment(
+            ["A\tone\tf\tAbandoned\t\n", "B\tmissing\tf\tAbandoned\t\n"],
+            [self.abandonment_block("one", rows=0)])
+        self.assertIn("1 of 2 labelled", report)
+        self.assertIn("1 with no probe result", report)
+        self.assertEqual(status, 1)
 
     def test_a_mixed_capture_needs_the_finished_half_to_survive(self):
         _, one_row = self.unfinished(
@@ -392,10 +495,10 @@ class DevsetScorerTests(unittest.TestCase):
             out += "  operation: retract target=x\n"
         return out
 
-    def abandonment(self, rows, blocks):
+    def abandonment(self, rows, blocks, *flags):
         return self.run_scorer(
             "abandonment-score.py",
-            "id\tutterance\tfamily\texpectation\tnote\n", rows, blocks)
+            "id\tutterance\tfamily\texpectation\tnote\n", rows, blocks, *flags)
 
     def test_a_documented_failure_is_still_counted_in_the_rate(self):
         """It used to be counted as a pass.
@@ -497,7 +600,14 @@ class DevsetScorerTests(unittest.TestCase):
             self.skipTest("abandonment.tsv not present")
         marked = [line.split("\t") for line in path.read_text().splitlines()
                   if "\tKNOWN:" in line]
-        self.assertTrue(marked, "no documented failure is declared any more")
+        #: Skipped, not failed, when there are none left. `assertTrue(marked)`
+        #: meant this test went red the day all four documented defects were
+        #: fixed and the markers came off -- a test that cannot be satisfied
+        #: by the good outcome, which is the same family as a fallback that
+        #: makes an unrankable family look perfect. The assertion with teeth
+        #: is the per-row one below: a marker must say why.
+        if not marked:
+            self.skipTest("no documented failure is declared any more")
         for row in marked:
             with self.subTest(capture=row[0]):
                 reason = row[4][len("KNOWN:"):].strip()
