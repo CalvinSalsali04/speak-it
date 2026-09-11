@@ -10,6 +10,70 @@ that records a change which did not ship says so in its first lines. Older
 sections stay as written; they are the record of what was true when they were
 measured, not a claim about today.
 
+## Two standing rules, both learned by paying for them
+
+**Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
+33/44 to 35/45 on thought count — an improvement by any reading of the total —
+while containing a regression that the per-family table made obvious at a
+glance: `statement-runon` at 0 of 6 beside `errand-runon` at 6 of 8. The
+change that produced the total also broke four cases of the gating corpus. A
+total is a weighted average of things that moved in both directions, and it is
+the one number that cannot tell you which.
+
+**An instrument's output is the thing under test, not its source.** Four
+checks in this repository reported a verdict nobody could act on, and every
+one of them had been reviewed by reading its code: a step that wrote failures
+to a path nothing collected, the same step skipped on the only run that needed
+it, a gate that printed a count and named a command requiring a Mac, and a
+mutation harness that ran in an already-broken copy so every measure read as
+protected. Run the instrument, read what it prints, and check that a reader
+who has only that output can act on it.
+
+## 2026-09-11 12:25 — why the unit suite fails on a GitHub-hosted Mac: answered
+
+Same run, [34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
+`iOS app` job, `macos-26`. `SpeakItTests/NaturalLanguageEnvironmentTests` asks
+Apple's framework directly instead of inferring it from a behaviour that
+failed, and this is the first run in which it has ever executed.
+
+**The lexical-class tagger returns nothing on that runner's simulator.** The
+failure messages carry the tagging of each sentence, so the answer is in the
+job log rather than in an `.xcresult` nobody can download:
+
+```
+on:OtherWord the:OtherWord 15th:OtherWord pay:OtherWord the:OtherWord rent:OtherWord
+when:OtherWord I:OtherWord finish:OtherWord the:OtherWord essay:OtherWord call:OtherWord dave:OtherWord
+I:OtherWord had:OtherWord better:OtherWord luck:OtherWord last:OtherWord time:OtherWord
+```
+
+Every token, in every sentence, is `OtherWord`. Not tagged differently — not
+tagged. And the two embedding tests **passed**, so `NLEmbedding.wordEmbedding`
+loads on the same machine in the same process. It is specifically `NLTagger`'s
+`.lexicalClass` that has no model.
+
+That explains every behavioural failure beside it, and each one is a rule
+reading the tagger's silence as a fact:
+
+| assertion | what the rule needed |
+|---|---|
+| `("on the 15th pay the rent") != ("pay the rent")` | "pay" to be a verb |
+| `("when I finish the essay call dave") != ("call dave")` | "finish" to be a verb |
+| `("actionable") != ("knowledge")` — *I had better luck last time* | "luck" to be a noun |
+| `("ambiguous") != ("actionable")` — *Unpack boxes* | the embedding path, reached only after the tag |
+| `"buy the milk tomorrow call the dentist"` arrived as one row | "buy" to be a verb |
+
+The corpus gate passes on the same runner minutes earlier because
+`Tools/CorpusRunner` runs on the **host**, where the tagger works. The
+difference between the two has never been anyone's diff.
+
+**What this does and does not say.** It says the suite cannot be trusted on a
+GitHub-hosted `macos-26` simulator for any tagger-dependent assertion, and that
+the author's Mac remains the reference environment. It does **not** establish
+that a real iPhone can reach the same state; that is a separate question and
+this run cannot answer it. What it does establish is the failure *mode* if one
+ever did: not a crash and not an error, but every capture quietly reading as
+though it had no verbs in it. Recorded in `Docs/KNOWN_ISSUES.md`.
+
 ## 2026-09-11 12:20 — branch at `4af3af9`, the three guard repairs alone
 
 Branch `claude/hearth-thread-tod920`,
@@ -80,51 +144,6 @@ into one row it routes to **Memory**, so `Actionability` does not read
 The same fronting vocabulary is the cause in both places; fixing it in the
 router is what would make the capture correct, and the over-split was the
 symptom rather than the disease.
-
-## 2026-09-11 12:25 — why the unit suite fails on a GitHub-hosted Mac: answered
-
-Same run, [34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
-`iOS app` job, `macos-26`. `SpeakItTests/NaturalLanguageEnvironmentTests` asks
-Apple's framework directly instead of inferring it from a behaviour that
-failed, and this is the first run in which it has ever executed.
-
-**The lexical-class tagger returns nothing on that runner's simulator.** The
-failure messages carry the tagging of each sentence, so the answer is in the
-job log rather than in an `.xcresult` nobody can download:
-
-```
-on:OtherWord the:OtherWord 15th:OtherWord pay:OtherWord the:OtherWord rent:OtherWord
-when:OtherWord I:OtherWord finish:OtherWord the:OtherWord essay:OtherWord call:OtherWord dave:OtherWord
-I:OtherWord had:OtherWord better:OtherWord luck:OtherWord last:OtherWord time:OtherWord
-```
-
-Every token, in every sentence, is `OtherWord`. Not tagged differently — not
-tagged. And the two embedding tests **passed**, so `NLEmbedding.wordEmbedding`
-loads on the same machine in the same process. It is specifically `NLTagger`'s
-`.lexicalClass` that has no model.
-
-That explains every behavioural failure beside it, and each one is a rule
-reading the tagger's silence as a fact:
-
-| assertion | what the rule needed |
-|---|---|
-| `("on the 15th pay the rent") != ("pay the rent")` | "pay" to be a verb |
-| `("when I finish the essay call dave") != ("call dave")` | "finish" to be a verb |
-| `("actionable") != ("knowledge")` — *I had better luck last time* | "luck" to be a noun |
-| `("ambiguous") != ("actionable")` — *Unpack boxes* | the embedding path, reached only after the tag |
-| `"buy the milk tomorrow call the dentist"` arrived as one row | "buy" to be a verb |
-
-The corpus gate passes on the same runner minutes earlier because
-`Tools/CorpusRunner` runs on the **host**, where the tagger works. The
-difference between the two has never been anyone's diff.
-
-**What this does and does not say.** It says the suite cannot be trusted on a
-GitHub-hosted `macos-26` simulator for any tagger-dependent assertion, and that
-the author's Mac remains the reference environment. It does **not** establish
-that a real iPhone can reach the same state; that is a separate question and
-this run cannot answer it. What it does establish is the failure *mode* if one
-ever did: not a crash and not an error, but every capture quietly reading as
-though it had no verbs in it. Recorded in `Docs/KNOWN_ISSUES.md`.
 
 ## 2026-09-11 12:03 — branch at `90434e9`, the statement-boundary attempt, withdrawn
 
