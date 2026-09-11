@@ -21,6 +21,7 @@ if nobody looked. Iterating needs somewhere else to iterate.
 | `routed.tsv` | full rules path | `../heldout/score.py` | destination, and unsafe action on an ambiguous capture |
 | `framing.tsv` | full rules path | `../heldout/score.py` | whether the frame around speech is read as frame: sign-offs, enumeration |
 | `runon.tsv` | full rules path | `../heldout/score.py` | several thoughts in one breath with no marker, and the boundaries that must not be cut |
+| `rambling.tsv` | full rules path | `../heldout/score.py` | whether filler, false starts and length change the reading, measured against a clean twin of the same content |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
 
@@ -28,6 +29,23 @@ if nobody looked. Iterating needs somewhere else to iterate.
 0/8, `rambling-intro` 1/6, `trailing-goodbye` 2/7, `sequencing` 6/17 — and from
 no capture in it. A rate says which family to look at; a sentence would have
 ended the set's usefulness.
+
+`rambling.tsv` is the one set here whose headline is a **difference rather than
+a rate**. Every capture is written twice under one id stem — `RB04C` clean,
+`RB04R` the same content spoken with filler — and both twins carry the same
+label, so the clean family is a control and the gap between the two families is
+what filler and disfluency actually cost. A clean family at 20/20 beside its
+rambling twin at 11/20 names nine captures the app understands typed and loses
+spoken; two families failing equally means the label is wrong and rambling is
+not what broke it. Do not average across the halves: the clean rows are
+deliberately easy and would flatter any single number taken over the file.
+
+It exists because the other five sets stopped discriminating. They sit at or
+near their ceilings while the sealed everyday set routes 168/240 and the
+adversarial set 52/116, so development steered by them is steered by
+instruments that can no longer see the remaining failures. Long, filler-heavy,
+multi-errand speech is the material none of them carry, and it is the material
+the product is for.
 
 `runon.tsv` has the same provenance and goes further than measuring: it states
 what the app should do with speech nobody punctuated. Two halves are two rows

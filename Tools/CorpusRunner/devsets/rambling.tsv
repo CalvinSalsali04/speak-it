@@ -1,0 +1,132 @@
+# Rambling speech development set: long, unrehearsed captures, paired with a
+# clean twin carrying the same content.
+#
+# Written 2026-09-11 for the gap the readable sets no longer cover. The five
+# development sets sit at or near their ceilings (coordination 115/121, routed
+# 74/84, framing 41/45) while the sealed everyday set routes 168/240 and the
+# adversarial set 52/116. A set that almost everything passes has stopped
+# discriminating, so development steered by those sets is steered by
+# instruments that cannot see the remaining failures.
+#
+# Provenance, stated so it can be checked rather than trusted: every utterance
+# below was written from scratch for this file. Nothing was copied from a
+# sealed set, from `Docs/PipelineSweep/*.md`, or from any other corpus in this
+# repository, and the finished file was compared against all three sealed sets
+# with a character-scanning overlap check before it was committed. The
+# `Docs/PipelineSweep/rambling.md` lane analysed 376 rambling captures in
+# August; that corpus lived in an ignored scratch directory and is gone, which
+# is the capability this file restores.
+#
+# NOT held out: these are for iteration. Read the failures, fix the layer, run
+# it again.
+#
+# What this set asserts, so that it can be argued with
+# ----------------------------------------------------
+# The product contract says Today is for action and Memory is for knowledge
+# worth finding later, and that a capture keeps the speaker's words. Four
+# claims follow from that and are what this file labels:
+#
+#   1. Filler does not change meaning. "Buy milk" and "um, so, yeah, buy
+#      milk" are the same instruction, so they must produce the same rows.
+#      This is the whole point of a voice-first app: the person is talking,
+#      not typing, and talking carries filler.
+#   2. A false start is not content. A speaker who begins, stops, and begins
+#      again has said one thing, not two.
+#   3. Deliberation that arrives at a decision is the decision. "I could do X
+#      or Y, no, Y" is one errand, Y — the alternatives are not errands and
+#      must not become rows.
+#   4. Length is not a licence to split. A single coherent thought stays one
+#      row at eighty words, and a run of errands stays several rows at eighty
+#      words. The failure modes are opposite and both are here.
+#
+# How the pairing works, and why it is the measurement
+# ----------------------------------------------------
+# Each `*-clean` row has a twin `*-rambling` row with the SAME id stem, the
+# same expected destination and the same expected thought count: RB04C and
+# RB04R are one capture written twice. The clean twin is the control. Its rate
+# is not the finding — the GAP between the two rates is, because it isolates
+# what filler and disfluency cost, with content held fixed by construction.
+#
+# Read them as pairs. A clean family at 20/20 and its rambling twin at 11/20
+# means nine captures the app understands when typed and loses when spoken,
+# which is the product's whole risk. Two families failing equally means the
+# content is wrong for both and the rambling is not what broke it.
+#
+# Do NOT quote a single number over this file. The clean rows are deliberately
+# easy and would flatter any average taken across both halves.
+#
+# The guard families
+# ----------------------------------------------------
+# `coherent-*` rows must produce ONE row however long they get, and they are
+# here because every fix that finds more boundaries threatens them. A run that
+# improves the errand families and breaks these has not improved anything.
+#
+# Columns: id, utterance, family, expected_destination, expected_thoughts
+#
+id	utterance	family	expected_destination	expected_thoughts
+# --- Several errands, clean twin --------------------------------------------
+RB01C	book the car in for its safety check and order the new wiper blades	errand-clean	Today	2
+RB02C	email Rosa the signed lease and pay the deposit before Friday	errand-clean	Today	2
+RB03C	pick up the prescription and drop the library books off	errand-clean	Today	2
+RB04C	call the roofer about the estimate and book the gutter cleaning	errand-clean	Today	2
+RB05C	renew the parking permit and update the address on my licence	errand-clean	Today	2
+RB06C	buy a card for Nadia and post it before the weekend	errand-clean	Today	2
+RB07C	cancel the magazine subscription and move the savings transfer to the fifteenth	errand-clean	Today	2
+RB08C	take the cat in for her shots and pick up the flea treatment	errand-clean	Today	2
+# --- The same captures, spoken ----------------------------------------------
+RB01R	um so I need to book the car in for its safety check and uh also order the new wiper blades	errand-rambling	Today	2
+RB02R	okay so email Rosa the signed lease and then I guess pay the deposit before Friday	errand-rambling	Today	2
+RB03R	right I should pick up the prescription and uh you know drop the library books off	errand-rambling	Today	2
+RB04R	so yeah call the roofer about the estimate and then like book the gutter cleaning	errand-rambling	Today	2
+RB05R	um I keep meaning to renew the parking permit and also update the address on my licence	errand-rambling	Today	2
+RB06R	oh I should buy a card for Nadia and uh post it before the weekend	errand-rambling	Today	2
+RB07R	okay so basically cancel the magazine subscription and um move the savings transfer to the fifteenth	errand-rambling	Today	2
+RB08R	so I need to take the cat in for her shots and then also pick up the flea treatment	errand-rambling	Today	2
+# --- A false start, then the real sentence -----------------------------------
+RB09C	send Yusuf the updated quote	restart-clean	Today	1
+RB10C	book a table for six on Saturday	restart-clean	Today	1
+RB11C	order the replacement filter for the furnace	restart-clean	Today	1
+RB12C	ask Marguerite about the committee minutes	restart-clean	Today	1
+RB09R	send Yusuf the I mean send Yusuf the updated quote	restart-rambling	Today	1
+RB10R	book a table for book a table for six on Saturday	restart-rambling	Today	1
+RB11R	order the order the replacement filter for the furnace	restart-rambling	Today	1
+RB12R	ask Marguerite about the uh about the committee minutes	restart-rambling	Today	1
+# --- Thinking aloud that lands on a decision ---------------------------------
+RB13C	take the bus to the airport on Sunday	decision-clean	Today	1
+RB14C	give Dimitri the blue chair	decision-clean	Today	1
+RB15C	cook the salmon on Thursday	decision-clean	Today	1
+RB16C	book the afternoon session	decision-clean	Today	1
+RB13R	I could drive to the airport Sunday or take the bus actually no take the bus to the airport on Sunday	decision-rambling	Today	1
+RB14R	should I give Dimitri the blue chair or the grey one no the blue chair give Dimitri the blue chair	decision-rambling	Today	1
+RB15R	maybe cook the salmon Wednesday or Thursday I think Thursday cook the salmon on Thursday	decision-rambling	Today	1
+RB16R	there's a morning session and an afternoon one and honestly the afternoon is better so book the afternoon session	decision-rambling	Today	1
+# --- A fact and the errand it implies ----------------------------------------
+RB17C	the furnace warranty expires in November and I need to book the service before then	knowledge-action-clean	Today	2
+RB18C	Nadia's recital is on the twelfth and I need to order the flowers	knowledge-action-clean	Today	2
+RB19C	the tenant's lease ends in March and I need to draft the renewal	knowledge-action-clean	Today	2
+RB17R	so the guy said the furnace warranty expires in November which is sooner than I thought so I need to book the service before then	knowledge-action-rambling	Today	2
+RB18R	okay so Nadia's recital is on the twelfth I think it's the twelfth anyway so I need to order the flowers	knowledge-action-rambling	Today	2
+RB19R	the property manager mentioned the tenant's lease ends in March so I should draft the renewal at some point	knowledge-action-rambling	Today	2
+# --- Errands chained with a discourse adjunct --------------------------------
+RB20C	pay the water bill and collect the parcel	chained-clean	Today	2
+RB21C	drop the donation bags off and fill the car up	chained-clean	Today	2
+RB22C	return the drill and buy the picture hooks	chained-clean	Today	2
+RB20R	pay the water bill and while I'm at it collect the parcel	chained-rambling	Today	2
+RB21R	drop the donation bags off and while I'm out there fill the car up	chained-rambling	Today	2
+RB22R	return the drill and after that buy the picture hooks	chained-rambling	Today	2
+# --- Guard: one thought, however long it gets --------------------------------
+RB23	the leak under the kitchen sink turned out to be the shut off valve rather than the trap which is why the cupboard floor swelled	coherent-long	Memory	1
+RB24	um so the leak under the kitchen sink turned out to be you know the shut off valve rather than the trap which is I guess why the cupboard floor swelled	coherent-long	Memory	1
+RB25	Rosa said the committee wants the budget in two parts now one for staffing and one for everything else which changes how I write the summary	coherent-long	Memory	1
+RB26	the reason the bread keeps collapsing is the second proof is too warm not the yeast which I had assumed all along	coherent-long	Memory	1
+RB27	I need to finish the grant narrative before the portal closes and it still needs the budget table and the two letters	coherent-long	Today	1
+# --- Sixty to ninety words, which is where the lane analysis said it breaks --
+RB28C	the contractor is coming Tuesday morning to look at the back steps and I need to move the bikes out of the way before he arrives and I should also get a second quote from the company Rosa used because his first number seemed high and the deck boards need pricing separately	long-clean	Today	3
+RB29C	the school sent the trip form home today and it needs signing and the payment is due by the end of the month and I want to ask whether Nadia can sit with Priya on the coach because last year she was on her own the whole way	long-clean	Today	3
+RB30C	I picked up the blood work results and the iron is low again so I need to book a follow up with Doctor Adeyemi and start the supplements again and I should tell Mum because hers was the same thing two years ago	long-clean	Today	3
+RB28R	okay so um the contractor is coming Tuesday morning to look at the back steps so I need to like move the bikes out of the way before he arrives and uh I should also get a second quote from the company Rosa used because honestly his first number seemed high and yeah the deck boards need pricing separately	long-rambling	Today	3
+RB29R	so the school sent the trip form home today and it um it needs signing and I think the payment is due by the end of the month and I also want to ask whether Nadia can sit with Priya on the coach because you know last year she was on her own the whole way	long-rambling	Today	3
+RB30R	right so I picked up the blood work results and um the iron is low again so I need to book a follow up with Doctor Adeyemi and uh start the supplements again and I should probably tell Mum because I mean hers was the same thing two years ago	long-rambling	Today	3
+# --- Long and coherent: one thought, no matter the length --------------------
+RB31	the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
+RB32	um so the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
