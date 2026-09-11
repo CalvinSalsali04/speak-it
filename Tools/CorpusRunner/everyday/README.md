@@ -346,12 +346,11 @@ never across.
 
 `Tools/CorpusRunner/generations.tsv` records this set at generation 3, and
 `generation-check.py` reports whether a capture's text has changed without a
-new row above. **It does not run in CI yet** — wiring it needs a one-step
-change to `.github/workflows/ci.yml`, split into its own pull request because
-this repository's automation cannot merge a workflow edit. Until that lands it
-is a command somebody has to remember to run. It also cannot tell a legitimate
-generation from a quiet edit — they are the same diff — so the rows above still
-do the real work; the check only makes the edit impossible to make silently.
+new row above. **It runs on every pull request that touches
+`Tools/CorpusRunner/**`**, in the `language-tools` job beside the leak check.
+It still cannot tell a legitimate generation from a quiet edit — they are the
+same diff — so the rows above do the real work; the check makes the edit
+impossible to make silently, which is a different and smaller claim.
 
 Generation 3 changed two things at once, deliberately, at a pause between runs
 rather than between two comparisons:
