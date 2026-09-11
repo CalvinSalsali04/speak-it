@@ -791,6 +791,112 @@ def score_module():
     return module
 
 
+def lengths_module():
+    """The comparability report lives beside the set it describes."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "lengths", HERE.parent / "adversarial" / "lengths.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ComparabilityTests(unittest.TestCase):
+    """A pairing may only be read against an ingredient of comparable length.
+
+    `adversarial/README.md` says to judge each pairing against the families it
+    is built from. The set's first reading showed that instruction can be
+    followed and still be wrong: `runon-x-repair` scored 8/12 where the
+    everyday `run-on` family scored 0/8, and the reason was that the pairing
+    was written at half the length, not that composition was easier. The rule
+    was written down after that. These tests make it mechanical, because a rule
+    that lives only in a README goes stale the first time someone edits a
+    capture.
+    """
+
+    #: Comparisons known to be unmakeable, and named as such in the README.
+    #: Each is a defect in the set rather than in the parser: the pairing wants
+    #: rewriting at its ingredient's length. Entries stay until that happens,
+    #: and the test below fails in both directions — a new one that nobody
+    #: declared, and a declared one that is no longer true.
+    UNREADABLE = {("runon-x-repair", "run-on")}
+
+    def setUp(self):
+        self.lengths = lengths_module()
+        if not self.lengths.SETS["adversarial"][0].exists():
+            self.skipTest("adversarial.tsv not present")
+
+    def test_the_unreadable_comparisons_are_exactly_the_declared_ones(self):
+        self.assertEqual(
+            self.lengths.unreadable(), self.UNREADABLE,
+            "a pairing's length range moved relative to an ingredient's. "
+            "Either a row that nobody can read was introduced, or a declared "
+            "one was fixed and this list is now stale.")
+
+    def test_every_ingredient_tag_can_be_looked_up_somewhere(self):
+        """A tag no set carries is a comparison that cannot be made at all.
+
+        Different from disjoint lengths and worse: there is no ingredient row
+        to put beside the pairing, so the reader has nothing to compare and no
+        sign that anything is missing.
+        """
+        tables = {name: self.lengths.families(name)
+                  for name in self.lengths.SOURCES}
+        for pair, tags in sorted(self.lengths.ingredients().items()):
+            for tag in sorted(tags):
+                with self.subTest(pair=pair, family=tag):
+                    self.assertTrue(
+                        any(tag in table for table in tables.values()),
+                        f"{pair} is tagged {tag!r}, which no ingredient set "
+                        f"carries, so that pairing cannot be read against it")
+
+    def test_one_comparable_source_is_enough_to_keep_a_pairing_readable(self):
+        """The branch the committed sets do not currently exercise.
+
+        `heldout/` writes short single-mechanism sentences and `everyday/`
+        writes natural-length ones, so the same family can be disjoint in one
+        and overlapping in the other. That pairing is still readable — against
+        the source that overlaps — and calling it unreadable would discard a
+        usable row.
+        """
+        short, natural, pairing = [3, 4], [9, 14], [8, 12]
+        both_disjoint = [("p", pairing, "f", "heldout", short),
+                         ("p", pairing, "f", "everyday", [40, 50])]
+        one_overlaps = [("p", pairing, "f", "heldout", short),
+                        ("p", pairing, "f", "everyday", natural)]
+        self.assertEqual(self.lengths.unreadable(both_disjoint), {("p", "f")})
+        self.assertEqual(self.lengths.unreadable(one_overlaps), set())
+
+    def test_the_readme_names_every_unreadable_comparison(self):
+        """Otherwise the table says one thing and the prose says another."""
+        readme = (HERE.parent / "adversarial" / "README.md").read_text()
+        for pair, family in sorted(self.UNREADABLE):
+            with self.subTest(pair=pair):
+                self.assertIn(pair, readme)
+                self.assertIn(family, readme)
+        self.assertIn("disjoint", readme)
+
+    def test_counting_reads_the_capture_and_not_the_note(self):
+        """Every column of these files is prose; the wrong one still counts.
+
+        A word count taken from `note` would produce a full, plausible table
+        that measures nothing about the captures at all.
+        """
+        import statistics
+        pairs = self.lengths.pairings()
+        self.assertIn("runon-x-repair", pairs)
+        self.assertEqual(len(pairs["runon-x-repair"]), 12)
+        rows = list(self.lengths.read("adversarial"))
+        self.assertEqual(sorted(pairs["runon-x-repair"]),
+                         sorted(len(r["utterance"].split()) for r in rows
+                                if r["pair"] == "runon-x-repair"))
+        # Pinned to the figures the README prints, so that a reading taken
+        # from some other column cannot agree with itself and pass.
+        self.assertEqual(statistics.median(pairs["runon-x-repair"]), 13)
+        self.assertEqual((min(pairs["runon-x-repair"]),
+                          max(pairs["runon-x-repair"])), (10, 16))
+
+
 class SpanMatchTests(unittest.TestCase):
     """Span matching anchors its left edge and tolerates its right one."""
 
