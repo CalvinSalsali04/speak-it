@@ -396,20 +396,44 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
     print("-" * 78)
 
     families = sorted({f for c in rows for f in c["families"]})
+    #: Which groups each family's captures come from. A family drawn from a
+    #: single group is not an independent reading of that phenomenon -- it is
+    #: that group's row printed under a second name, and quoting both, or
+    #: averaging them, counts one measurement twice. On the adversarial set
+    #: twelve of sixteen families are in that position, and three pairs of them
+    #: (ellipsis/multi-date, date/not-a-time, multi-person/occupation-vs-person)
+    #: cover the very same captures as each other.
+    sources = {}
+    for case in rows:
+        for family in case["families"]:
+            sources.setdefault(family, set()).add(case["domain"])
+    only = {f: next(iter(g)) for f, g in sources.items() if len(g) == 1}
+
+    #: Sized to the longest tag present rather than to a constant. A fixed
+    #: width does not truncate here, it pushes the row right, so every figure
+    #: on `occupation-vs-person` left its column while still looking like data.
+    name = max([len(f) for f in families] + [len("family")]) + 1
+
     print()
     print("PER FAMILY — a whole-set average hides the family that is broken")
     print("-" * 78)
-    print(f"{'family':<18}{'n':>4}{'routing':>17}{'count':>17}{'title':>17}")
+    print(f"{'family':<{name}}{'n':>4}{'routing':>17}{'count':>17}{'title':>17}")
     print("-" * 78)
     ranked = sorted(families, key=lambda f: (
         worst(tallies["fam:" + f]), -tallies["fam:" + f]["scored"]))
     for family in ranked:
         counter = tallies["fam:" + family]
-        print(f"{family:<18}{counter['scored']:>4}{rate(counter, 'routing'):>17}"
-              f"{rate(counter, 'count'):>17}{rate(counter, 'title'):>17}")
+        mark = f"  ← {only[family]} only" if family in only else ""
+        print(f"{family:<{name}}{counter['scored']:>4}{rate(counter, 'routing'):>17}"
+              f"{rate(counter, 'count'):>17}{rate(counter, 'title'):>17}{mark}")
     print("-" * 78)
     print("Worst family first. `n` counts captures carrying the tag, so the")
     print("columns overlap: one capture can be filler, negation and multi-thought.")
+    if only:
+        print()
+        print("A row marked `← <group> only` draws on one group alone, so it is")
+        print("that group's row under a second name. Read it there; do not quote")
+        print("both, and never average them.")
     print()
 
 

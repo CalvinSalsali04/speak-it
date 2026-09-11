@@ -124,7 +124,28 @@ other way: the everyday captures expect fewer rows at the median, 2.5 against
 
 `ellipsis-x-date` passes against both its ingredients — 2.0× the held-out
 `ellipsis` family and 0.7× `multi-date`, overlapping both — so its 0/10 routing
-is not a length artefact and is the reading to take seriously.
+is not a length artefact. What it is instead, the ingredient rate settles
+below.
+
+### What the `ellipsis` ingredient rate settled
+
+The comparability check says `ellipsis-x-date` may be read against `ellipsis`;
+it took a Mac run to say what that reading is. Held-out `ellipsis`, run
+34596594804: destination **0 of 4**, thought count 4 of 4.
+
+So `ellipsis-x-date` at 0/10 is **confirmation, not news**. The pairing is not
+composing two partial failures into a total one — it is carrying one total
+failure. That is weaker evidence about composition than it first looked, and
+stronger evidence about ellipsis itself: nothing recovers an elided verb or
+object from the previous clause, with or without a date beside it. The missing
+stage is real; this set is not what establishes it.
+
+**And read that 0 of 4 as four named cases, not as 0%.** The `ellipsis`
+family is twelve captures, of which four carry a scorable destination
+expectation; the other eight are ambiguous or produce none. A rate computed on
+a denominator of four is a direction, and quoting "0%" for ellipsis anywhere
+would be the family-health error this README warns about in the other
+direction.
 
 ## The pairings
 
@@ -166,6 +187,21 @@ information, invented information, title hygiene, and confident action on an
 unpinnable capture kept separate as harm. The `pair` column takes the place of
 everyday's `domain`, so the per-group table reports per pairing while the
 per-family table still reports per ingredient. Both axes come out of one run.
+
+**But on this set the two axes are mostly the same axis, and the report now
+says so.** Twelve of the sixteen families here are carried by a single
+pairing, so their per-family rows are that pairing's row under a second name.
+Three pairs of them cover the identical captures as each other:
+`ellipsis`/`multi-date` (both only `ellipsis-x-date`), `date`/`not-a-time`
+(both only `nottime-x-date`), and `multi-person`/`occupation-vs-person` (both
+only `role-x-people`) — so one measurement can print three times. Only
+`negation`, `self-correction`, `operation` and `multi-task` aggregate across
+pairings and are readings in their own right.
+
+Each confined row is marked `← <pairing> only` in the table. **Do not quote a
+marked row beside its pairing, and never average the two**: counting one
+phenomenon twice is how a fake gain was manufactured here once already. The
+everyday set carries no marks, because every family there spans domains.
 
 Sharing the scorer is the point: a second implementation would be a second set
 of bugs, and the everyday scorer has had three real defects found in it already.
