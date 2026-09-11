@@ -412,12 +412,13 @@ Two caveats that belong next to these numbers rather than in a message:
    unrelated branch, so it is the state of the suite on that image rather than
    anyone's diff. Until that is understood, every figure here was taken on a
    commit whose simulator tests do not pass on that runner.
-2. **`item type matched the label` is 145/232 (62.5%)**, against 132/212
-   (62.3%) in generation 1 — the same figure, on a set that grew and a measure
-   that changed around it. It is reported and never gated, and nothing is
-   currently looking at it. Either the type vocabulary in the labels is looser than the
-   pipeline's, or item type is a real defect family nobody has costed. It is
-   worth one investigation before it is quoted as a defect rate.
+2. **`item type matched the label` is 145/232 (62.5%)** — and a third of that
+   gap is the `count` failure printed two lines above it, not a type problem.
+   See *Item types are reported, never gated* for why the comparison cannot
+   separate them. Conditioned on correct segmentation it is 145/192 (75.5%),
+   leaving 47 genuine type disagreements. Still reported, still never gated,
+   and still nobody's investigation — but 62.5% is not the number to
+   investigate.
 
 **`invention` was measuring two things and has been corrected.** Seven of its
 nineteen cases listed `bye` as the rejected value. A farewell left in a title is
