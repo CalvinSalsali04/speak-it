@@ -62,8 +62,8 @@ producing the instrument first.
 ## Correction — 2026-09-11: the abandonment figures in this file are not what the set scored
 
 **`24/24` and `0/24` are the scorer's numbers, not the set's.** Every place this
-file quotes them is marked `†`, and each should be read as unverified until a
-macOS run with a repaired scorer replaces it.
+file quotes them is marked `†`. They were unverified until 15:45, when a macOS
+run with the repaired scorer replaced them.
 
 `Tools/CorpusRunner/devsets/abandonment-score.py` accepts a fifth column, and a
 note beginning `KNOWN:` marks a row documented as failing today and kept on
@@ -106,9 +106,12 @@ instead, because a suppression that outlives its failure is one nobody is
 watching. Both scorers gained self-tests in the same change, which found three
 gaps by mutation that no case in the set exercised.
 
-**The daggers stay until a macOS run replaces the figures**, because that fix
-changes what the scorer reports and nothing here can run it. The numbers below
-are still the old rule's.
+**The run happened at 15:45 and the figures are now measured: recall 23/24,
+fallout 1/24, mixed 5/7** — see the 15:45 section above. All three match what
+was derived from the scorer's source before any run could check them. The
+daggered numbers below stay as each run printed them, because an older section
+records what was true when it was measured; the footnote at each site now says
+what replaced it.
 
 Two smaller consequences came from the same branch. Both are fixed in
 `b326ce8` and both are worth keeping written down, because the shape recurs:
@@ -180,6 +183,109 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 15:45 — `main` at `2cc2ac5`, the abandonment figures measured
+
+Branch `main`,
+[run 34617253884](https://github.com/CalvinSalsali04/speak-it/actions/runs/34617253884),
+`macos-26`, `language_only` with `devset_failures`. **This is the current
+baseline.** No parser code changed between `9d91a0b` and `2cc2ac5`, and that
+is checkable rather than asserted: `git diff 9d91a0b 2cc2ac5 -- SpeakIt/
+SpeakItTests/` is empty, and the last commit touching `SpeakIt/` at all is
+`4739dd8`, an ancestor of `9d91a0b`. The thirteen pull requests in between are
+scorers, self-tests and documentation. So the one instrument that moved is the
+one that was repaired.
+
+| instrument | 12:34 (`9d91a0b`) | now (`2cc2ac5`) |
+|---|---|---|
+| **abandonment recall** | 24/24 † | **23/24 (95.8%)** |
+| **abandonment fallout** | 0/24 † | **1/24 (4.2%)** |
+| **abandonment mixed** | never published | **5/7** |
+| abandonment unsafe | not reported | 0 |
+| gating corpus | 1393, 0 failing | 1393, 0 failing |
+| held-out destination / count | 233/320 · 255/310 | 233/320 · 255/310 |
+| held-out acted on anyway | 7 | 7 |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| everyday acted on anyway | 0 | 0 |
+| adversarial routing / count | 52/116 · 78/105 | 52/116 · 78/105 |
+| adversarial over- / under-split | 9 · 18 | 9 · 18 |
+| adversarial acted on anyway | 1 | 1 |
+| coordination | 115/121 | 115/121 |
+| routed destination / count / acted on anyway | 74/84 · 77/79 · 3 | 74/84 · 77/79 · 3 |
+| framing | 41/45 · 43/44 | 41/45 · 43/44 |
+| runon | 42/46 · 35/44 | 42/46 · 35/44 |
+| unfinished recall / fallout / unsafe | 34/57 · 0/96 · 2 | 34/57 · 0/96 · 2 |
+
+**The correction was right in all three places, including the one this file had
+never printed.** `recall 23/24`, `FALLOUT 1/24`, `mixed 5/7` — derived from
+reading the scorer's source on 2026-09-11, before any run could check them. The
+fallout is `ABN38 Never mind the gap`, returning `rows=0 retracted=False`: the
+cancel pattern reads a named object as an item being managed and deletes words
+the speaker kept. All four documented rows are now named in the report itself
+rather than counted into a total.
+
+Both scorers' new `scored N of M labelled` lines print on a clean run —
+`55 of 55` and `163 of 163` — which is the point of putting them on every run
+rather than only on failure. The everyday ranking marks from `2cc2ac5` print
+live too: `location 12 9/12 ... ← ranked on invention 0/1` is a family holding
+a table position that nothing printed on its line explains, now saying so.
+
+### The two `unsafe` captures, and why they are not a defect of their own
+
+`unfinished` has carried **2 unsafe** — a fragment given a date, reminder or
+operation — in every baseline section in this file, with no ids attached and
+nothing gating it. They are **INC33 `Tomorrow I want`** and
+**INC49 `Tomorrow I need to, um, wait, I forgot`**, both returning
+`due=['Tue'] remind=[] op=False`.
+
+Both are also among the 23 recall misses: `rows=1 state=resolved`. Nothing
+decided either capture was unfinished, so no guard was asked to decline
+anything.
+
+**The scorer cannot establish that, and it reads as though it can.** In
+`unfinished-score.py` the `if committed:` branch sits outside the
+`if flagged:` / `else:` pair, so a correctly flagged capture still carrying a
+date would count as unsafe too. `UNSAFE 2` cannot distinguish "the guard held
+on the others" from "there was nothing for it to hold".
+
+The set settles it with a minimal pair already in it. Fourteen of the 57
+`Incomplete` captures carry a resolvable temporal expression:
+
+| capture | flagged? | unsafe? |
+|---|---|---|
+| INC01 `Tomorrow I want to` | yes | no |
+| INC33 `Tomorrow I want` | **no** | **yes**, `due=['Tue']` |
+
+One trailing `to` apart, and it holds across the rest: INC01, INC12, INC13,
+INC15, INC23, INC29, INC30 and INC54 all carry `tomorrow`, `next week` or
+`at five`, all are flagged, and none is unsafe. The only two unflagged captures
+carrying a resolvable temporal are the only two unsafe.
+
+**So flagging does suppress the commitment, and `unsafe` is the blast radius of
+the recall miss rather than a hole beside it.** It reaches 0 when
+`incomplete-complement` and `abandoned-midthought` recall improves, with no
+guard work at all. It does not belong in `Docs/KNOWN_ISSUES.md` as a limitation
+in its own right; written there it would describe a hole that does not exist.
+
+This also corrects a sizing argument recorded earlier in this workstream — that
+26 of the 67 non-`Complete` captures carry a temporal expression, so the guard
+declines 24 of 26 and these are two leaks in a working guard. The denominator
+was wrong and the mechanism was wrong: nothing declined these two.
+
+### What this makes the next target
+
+`incomplete-complement` is **1/10** and `dangling-infinitive` is **18/20**, and
+INC01 against INC33 is the reason. A clause left hanging on an infinitive
+marker is detected; a transitive verb with no object is not. The nine
+`incomplete-complement` misses are one shape — `I want`, `I need`,
+`Tomorrow I want`, `I have to get`, `I should buy`, `Can you remind me about`,
+`I need to pick up`, `Add`, `Buy`.
+
+None of them is in the recorded-limit list in `unfinished.tsv`, so this is not
+the `ClauseStructure.swift` "out of scope, and honestly so" boundary. It is a
+detector built for one half of a distinction and never extended to the other.
+
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
 Branch `claude/hearth-thread-tod920`,
@@ -208,7 +314,8 @@ Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
 recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **The held-out 389 is back to the baseline figure exactly**, which retires the
 −1/+2 seen in the two withdrawn runs: all of that movement belonged to the
@@ -318,7 +425,8 @@ Every other development set is unchanged: coordination 115/121, routed 74/84
 and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
 recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24 †.
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **The everyday set is bit-identical for the third run running.** Neither the
 statement boundary nor the guard repairs changed a single one of 255 natural
@@ -660,7 +768,8 @@ opens on `that`.
 | **runon (46)** | thought count | **33/44 (75.0%)** | first reading |
 | **runon (46)** | acted on anyway | **0** | first reading |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 The right-hand column names where each comparison figure came from rather than
 calling it "before": the 10:57 run on `2c5ac5b` reported its gating-corpus
@@ -804,7 +913,8 @@ difference: no other change landed between them.
 | **framing** (new) | thought count | — | 43/44 (97.7%) |
 | **framing** (new) | acted on anyway | — | 0 |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 **Nothing regressed.** Not one everyday family lost ground on any of its three
 measures, no development set moved down, and the gating corpus stayed at zero
@@ -1031,7 +1141,8 @@ the parser. Failures were not read; the job cannot read them.
 | abandonment † | withdrawals recognised | 24/24 (100%) |
 | abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
 (over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
@@ -1150,7 +1261,8 @@ Not held out. Failures here may be read.
 | abandonment † | kept words wrongly withdrawn | 0/24 (0.0%) |
 | abandonment | withdrawn thought acted on | 0 |
 
-† Overstated by the scorer; see "Correction — 2026-09-11" above.
+† Overstated by the scorer. The repaired scorer measured 23/24 and 1/24
+on unchanged parser code at 15:45; see "Correction — 2026-09-11" above.
 
 ### The weakest families, by measurement rather than by impression
 
