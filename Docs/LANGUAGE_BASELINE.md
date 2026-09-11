@@ -249,17 +249,32 @@ anything.
 date would count as unsafe too. `UNSAFE 2` cannot distinguish "the guard held
 on the others" from "there was nothing for it to hold".
 
-**The source settles it, and the capture counts do not.** `ThoughtOrganizer`
-calls `ThoughtCompletion.unfinished` **before anything reads a date**, and on a
-hit returns `dueDate: nil, reminderDate: nil, recurrenceRule: nil,
-locationIntent: nil` with the words kept. The comment above it names this exact
-case: *"'Tomorrow I want to' resolved its 'tomorrow' perfectly and then hung it
-on a sentence that never said what to do."*
+**The source settles it, and the capture counts do not.** In
+`ThoughtOrganizer.organize`, the `ThoughtCompletion.unfinished` check is the
+**first `return` in the function**, and its return names every commitment
+field: `dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+recurrenceRule: nil, locationIntent: nil`, with the words kept. No path reaches
+a commitment without passing it.
 
 That is a proof rather than an association. A flagged capture returns with
 every commitment nil, so `committed` is false, so it cannot be counted unsafe.
 **`unsafe` therefore reaches 0 when recall reaches 57/57, whatever else is
-true.** It is the recall miss's blast radius, not a hole beside it.
+true.**
+
+**A first draft of this section gave the wrong reason for it, quoting the
+guard's own comment: "checked before anything reads a date".** That comment was
+false. `dueDate`, `reminderDate`, `reminderDelivery` and `recurrenceRule` are
+all resolved forty lines earlier; the guard discards them rather than
+preceding them. The conclusion survives because what protects the capture is
+the exhaustive `nil` list, not an ordering — but the guard is therefore only as
+durable as somebody's memory: `OrganizedThought.init` defaults three fields,
+so a future commitment-carrying field with a default would compile at that call
+site unchanged and be adopted silently. The comment is corrected in this
+change. Removing the defaults is the real fix and is not in this change: it is
+**eight construction sites across four files**, and it needs the unit suite.
+
+Found by the evaluation thread reading the source rather than accepting the
+quotation — which is the rule this file opens with, applied to this file. It is the recall miss's blast radius, not a hole beside it.
 
 That decides what gets written down. `unsafe` is not its own
 `Docs/KNOWN_ISSUES.md` entry — a second entry would double-count one defect,
