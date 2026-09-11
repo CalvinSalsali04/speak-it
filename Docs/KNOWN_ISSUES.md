@@ -12,6 +12,36 @@
 > Treat an unmarked entry as a claim to verify before ranking work from it, not
 > as a finding.
 
+## Every routing rule rests on one framework answer, and it can be absent
+
+**Verified 2026-09-11**, against the framework rather than inferred from a
+behaviour. `SpeakItTests/NaturalLanguageEnvironmentTests` in
+`RenderingInvarianceTests.swift` asks `NLTagger` and `NLEmbedding` directly.
+
+On a GitHub-hosted `macos-26` runner's simulator, `NLTagger` returns
+`OtherWord` for **every token of every sentence** while
+`NLEmbedding.wordEmbedding(for: .english)` loads normally in the same process
+([run 34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006)).
+The lexical-class model is simply not there.
+
+Almost every routing rule is a structural query over that one answer.
+`Actionability.withoutFrontedAdjunct` cuts "on the 15th" off "pay the rent"
+only because the tagger calls "pay" a verb; "I had better luck last time" is
+knowledge rather than an errand only because "luck" is a noun;
+`ClauseJuxtaposition` refuses a cut in front of an adjunct only because the
+head is verbless. With the tagger silent the app does not crash and does not
+report an error — **every capture quietly reads as though it contained no
+verbs**, errands stop being errands, and boundaries move.
+
+What is confirmed: the unit suite cannot be trusted on that runner image for
+any tagger-dependent assertion, and the author's Mac is the reference
+environment. `Tools/CorpusRunner` is unaffected because it runs on the host.
+
+What is **not** established: whether a real iPhone can reach the same state.
+That needs a device check. What this entry records is the failure mode if one
+ever does — silent degradation rather than an error — which is the part worth
+knowing before anyone designs a fallback.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
