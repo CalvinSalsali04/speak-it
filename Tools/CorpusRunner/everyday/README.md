@@ -181,8 +181,8 @@ Any scorer added to this directory must stay on that side of the line.
 
 ## Checking the instrument itself
 
-Two checks run on every pull request, on Linux, in about twenty seconds. Neither
-needs a Mac.
+Two checks run on every pull request, on Linux, in about twenty seconds, and a
+third is written but not yet wired into CI. None needs a Mac.
 
 `leak-check.py` compares each sealed set against every corpus development
 touches, and against the other sealed sets. It fails on an exact collision or a
@@ -253,10 +253,13 @@ never across.
 | 3 | 2026-09-11 | 255 | 22 | left-anchored |
 
 `Tools/CorpusRunner/generations.tsv` records this set at generation 3, and
-`generation-check.py` fails on every pull request if a capture's text changes
-without a new row above. It cannot tell a legitimate generation from a quiet
-edit — they are the same diff — so the rows above still do the real work; the
-check only makes the edit impossible to make silently.
+`generation-check.py` reports whether a capture's text has changed without a
+new row above. **It does not run in CI yet** — wiring it needs a one-step
+change to `.github/workflows/ci.yml`, split into its own pull request because
+this repository's automation cannot merge a workflow edit. Until that lands it
+is a command somebody has to remember to run. It also cannot tell a legitimate
+generation from a quiet edit — they are the same diff — so the rows above still
+do the real work; the check only makes the edit impossible to make silently.
 
 Generation 3 changed two things at once, deliberately, at a pause between runs
 rather than between two comparisons:

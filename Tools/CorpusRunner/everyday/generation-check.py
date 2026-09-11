@@ -40,6 +40,13 @@ in that set's README saying what changed and which numbers no longer compare.
 The check reads the union of the sets on disk and the sets on record, not the
 ones on disk. A set that has been deleted is absent from disk, and iterating
 disk made its disappearance invisible rather than a failure.
+
+**It is not wired into CI yet**, so today it is a command somebody has to
+remember to run — which is the state it exists to end. The one step that wires
+it into the Linux job is a `.github/workflows/ci.yml` edit, and this
+repository's automation cannot merge a workflow change, so that step is its own
+pull request. Anything written here about what the check prevents is true only
+once that lands.
 """
 import hashlib
 import importlib.util
