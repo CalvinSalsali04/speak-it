@@ -130,6 +130,46 @@ a safe gap for an unsafe one, which is a judgement with no line of source to
 cite, so the citation rule does not fit them as written. Until it does, that
 rate carries two declined cases with nothing in the report saying so.
 
+## `unsafe` was one number answering two questions
+
+`unfinished-score.py` counts a fragment that came back carrying a date, a
+reminder or an operation. The commitment test sat outside the recall test, so
+two different things landed in one count:
+
+- a capture the app **recognised** as unfinished and dated anyway — something
+  ran and let the commitment through, which is harm on the path meant to stop
+  it;
+- a capture it **never recognised** — nothing decided the fragment was
+  unfinished, so nothing was ever asked to withhold the date.
+
+The second is not an independent defect. It is the recall miss showing through,
+and it goes to zero when recall improves with no guard written. The report now
+prints the split on every run, clean or not:
+
+```
+  UNSAFE   fragment given a date/reminder/operation   2
+    recognised, and committed anyway  0   ← a guard let a commitment through
+    never recognised at all           2   ← the recall miss showing through
+```
+
+**The total does not move.** A breakdown that changed the number it breaks down
+would be worth nothing.
+
+The set settles which kind the real ones are, with a minimal pair already in
+it. `INC01 Tomorrow I want to` is flagged and not unsafe; `INC33 Tomorrow I
+want` is missed and unsafe, one trailing `to` apart. Eight `Incomplete`
+captures carry a resolvable temporal and are flagged, and not one of them is
+unsafe; the only two that are unsafe are the only two carrying a temporal that
+were never flagged. So flagging does suppress the commitment, and the two
+`unsafe` in `Docs/LANGUAGE_BASELINE.md` are a consequence of the recall miss
+rather than a hole in a guard. Recording them in `Docs/KNOWN_ISSUES.md` as
+their own limitation would have described a hole that does not exist.
+
+That is also why the exit status now fails on the **recognised** half and not
+on the total. Gating the total would redden every hand run on a number this
+scorer cannot move on its own; gating the recognised half stops the run for the
+one thing that is a defect in its own right, and it is at zero today.
+
 ## The denominator is the only evidence that nothing was lost
 
 Every scorer here drops a labelled row the probe never emitted, rather than

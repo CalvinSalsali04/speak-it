@@ -350,12 +350,12 @@ class DevsetScorerTests(unittest.TestCase):
     #: reads are written, so a test that passes for the wrong reason has to get
     #: past the real parser rather than a stub of it.
     def unfinished_block(self, utt, gap=False, due="nil", remind="nil",
-                         rows=1, operation=None):
+                         rows=1, operation=None, review=False):
         out = f'\u2500\u2500 "{utt}"\n'
         for _ in range(rows):
             out += f"  row title: X\n  route: Today\n  due: {due}\n  remind: {remind}\n"
         out += f"  state: {'incomplete gap=incompleteThought' if gap else 'complete'}\n"
-        out += "  needsReview: false\n"
+        out += f"  needsReview: {'true' if review else 'false'}\n"
         if operation:
             out += f"  operation: {operation}\n"
         return out
@@ -395,6 +395,99 @@ class DevsetScorerTests(unittest.TestCase):
             ["A\tone\tf\tIncomplete\t\n"],
             [self.unfinished_block("one", gap=True, due="2026-08-04")])
         self.assertIn("date/reminder/operation   1", invented)
+
+    def test_a_flagged_capture_dated_anyway_is_the_guard_failing(self):
+        """The half of `unsafe` that is harm on the path meant to prevent it.
+
+        The app decided this fragment was unfinished and attached a date to it
+        regardless, so something ran and let the commitment past.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           0", report)
+        self.assertEqual(code, 1, "a guard letting a commitment through gates")
+
+    def test_a_capture_never_flagged_is_the_recall_miss_showing_through(self):
+        """The other half, and the shape both real ones turned out to be.
+
+        Nothing decided this was unfinished, so nothing was ever asked to
+        withhold the date. It is the recall miss with a date attached, and it
+        goes when recall goes -- there is no guard here to write. `INC33
+        Tomorrow I want` is this, one trailing `to` away from `INC01 Tomorrow
+        I want to`, which is flagged and not unsafe.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=False, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertIn("never recognised at all           1", report)
+        self.assertEqual(code, 0, "gating this blocks on a number recall owns")
+
+    def test_the_split_prints_on_a_clean_run(self):
+        """A line that shows up only when it is non-zero is not evidence.
+
+        Same reasoning as `scored N of M labelled` printing when N == M: a
+        reader of a quiet run has to be able to tell the split was computed.
+        """
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertIn("date/reminder/operation   0", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertIn("never recognised at all           0", report)
+
+    def test_the_split_does_not_move_the_total_it_splits(self):
+        """A breakdown that changed its own subject would be worth nothing.
+
+        One of each: the total stays 2 and the two halves account for it.
+        """
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "B\ttwo\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True, due="2026-08-04"),
+             self.unfinished_block("two", gap=False, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   2", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           1", report)
+
+    def test_an_abandoned_capture_splits_on_handled_not_on_flagged(self):
+        """This branch's recall test is wider than `flagged`.
+
+        A withdrawal the app acted on is handled too, so asking `flagged` here
+        would file a handled-and-dated capture under "never recognised" and
+        hide the guard failure this split exists to surface.
+        """
+        #: Handled but *not* flagged, which is the only shape that separates
+        #: `handled` from `flagged`. A fixture where both are true passes
+        #: either way -- the first draft of this test used one, and a mutation
+        #: swapping `handled` for `flagged` went unnoticed until it was
+        #: measured. A guard tested only where its two candidates agree is not
+        #: tested at all.
+        code, report = self.unfinished(
+            ["A\tone\tf\tAbandoned\t\n"],
+            [self.unfinished_block("one", gap=False, review=True,
+                                   due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           0", report)
+        self.assertEqual(code, 1)
+
+    def test_an_unseen_row_still_gates_beside_the_new_condition(self):
+        """The condition grew; it did not get replaced.
+
+        Both halves of the exit status have to survive the other being added,
+        and a scorer that stopped failing on a dropped row would have traded
+        one silent failure for another.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "B\tmissing\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertIn("1 of 2 labelled", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertEqual(code, 1, "a dropped row gates on its own")
 
     def test_a_capture_the_probe_never_saw_is_visible_in_the_report(self):
         """The exclusion was never the property worth pinning.
