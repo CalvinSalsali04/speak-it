@@ -153,12 +153,12 @@ RB25	Rosa said the committee wants the budget in two parts now one for staffing 
 RB26	the reason the bread keeps collapsing is the second proof is too warm not the yeast which I had assumed all along	coherent-long	Memory	1
 RB27	I need to finish the grant narrative before the portal closes and it still needs the budget table and the two letters	coherent-long	Today	1
 # --- Sixty to ninety words, which is where the lane analysis said it breaks --
-RB28C	the contractor is coming Tuesday morning to look at the back steps and I need to move the bikes out of the way before he arrives and I should also get a second quote from the company Rosa used because his first number seemed high and the deck boards need pricing separately	long-clean	Today	3
+RB28C	the contractor is coming Tuesday morning to look at the back steps and I need to move the bikes out of the way before he arrives and I should also get a second quote from the company Rosa used because his first number seemed high and the deck boards need pricing separately	long-clean	Today	4
 RB29C	the school sent the trip form home today and it needs signing and the payment is due by the end of the month and I want to ask whether Nadia can sit with Priya on the coach because last year she was on her own the whole way	long-clean	Today	3
-RB30C	I picked up the blood work results and the iron is low again so I need to book a follow up with Doctor Adeyemi and start the supplements again and I should tell Mum because hers was the same thing two years ago	long-clean	Today	3
-RB28R	okay so um the contractor is coming Tuesday morning to look at the back steps so I need to like move the bikes out of the way before he arrives and uh I should also get a second quote from the company Rosa used because honestly his first number seemed high and yeah the deck boards need pricing separately	long-rambling	Today	3
+RB30C	I picked up the blood work results and the iron is low again so I need to book a follow up with Doctor Adeyemi and start the supplements again and I should tell Mum because hers was the same thing two years ago	long-clean	Today	4
+RB28R	okay so um the contractor is coming Tuesday morning to look at the back steps so I need to like move the bikes out of the way before he arrives and uh I should also get a second quote from the company Rosa used because honestly his first number seemed high and yeah the deck boards need pricing separately	long-rambling	Today	4
 RB29R	so the school sent the trip form home today and it um it needs signing and I think the payment is due by the end of the month and I also want to ask whether Nadia can sit with Priya on the coach because you know last year she was on her own the whole way	long-rambling	Today	3
-RB30R	right so I picked up the blood work results and um the iron is low again so I need to book a follow up with Doctor Adeyemi and uh start the supplements again and I should probably tell Mum because I mean hers was the same thing two years ago	long-rambling	Today	3
+RB30R	right so I picked up the blood work results and um the iron is low again so I need to book a follow up with Doctor Adeyemi and uh start the supplements again and I should probably tell Mum because I mean hers was the same thing two years ago	long-rambling	Today	4
 # --- Long and coherent: one thought, no matter the length --------------------
 RB31C	the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
 RB31R	um so the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over	coherent-long	Memory	1
@@ -193,3 +193,32 @@ RB39C	the boiler service is booked for the fourteenth and the loft hatch key liv
 RB40C	Ines drives the blue estate now and the side gate code changed to 7731	two-facts-clean	Memory	2
 RB39R	um so the boiler service is booked for the fourteenth and you know the loft hatch key lives in the hall drawer	two-facts-rambling	Memory	2
 RB40R	okay so Ines drives the blue estate now and uh the side gate code changed to 7731	two-facts-rambling	Memory	2
+#
+# --- Label corrections, 2026-09-11 19:17, recorded rather than quietly applied
+# RB28 and RB30 (both twins) wanted 3 thoughts and now want 4. I miscounted
+# when I wrote them: RB28 enumerates the contractor's visit, moving the bikes,
+# the second quote and the deck boards, and RB30 the blood work, the follow up,
+# the supplements and telling Mum. Four units each, by the same reading of the
+# product contract the other rows use.
+#
+# This is the change a dataset author should be most suspicious of, because
+# three of the four rows were FAILING at 3 and pass at 4. The reason to believe
+# it anyway is the fourth: RB28R returned 3 and passed against the wrong label,
+# and at the corrected label it FAILS. Correcting the count converted a false
+# pass into a real under-split, which tuning-to-pass cannot do.
+#
+# It also exposes what this column cannot see. RB30C's four rows are the right
+# NUMBER and the wrong BOUNDARIES -- it cuts "I picked up the blood work
+# results" away from "the iron is low again", then fuses that finding to the
+# errand it caused. A count metric scores that identical to a correct split.
+# Boundary correctness needs its own column; until it has one, do not read a
+# passing count on a four-way split as evidence the split was right.
+#
+# RB14 is a known-bad row, kept and labelled rather than deleted. "give
+# Dimitri the blue chair" routes to Memory because `give` is not in
+# ActionabilityReader.actionVerb and the shape rule cannot see past the
+# recipient to the determiner. Checked against 3,020 readable utterances: every
+# other double-object dative in the corpus uses a verb already on the list
+# (tell, text, email, send, remind), so the only capture this costs is the one
+# I wrote. It measures a vocabulary boundary, not how anyone rambles, and its
+# twin gap is 0 -- both halves fail identically. Do not fix the parser for it.
