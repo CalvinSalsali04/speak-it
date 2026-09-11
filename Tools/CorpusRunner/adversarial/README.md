@@ -104,6 +104,17 @@ never used to steer a fix.
 The frame of reference is Monday 2026-08-03 10:00 America/Toronto. Every
 asserted ordinal falls inside August, which has 31 days.
 
+## Family denominators
+
+| date | family | from | to | why |
+|---|---|---|---|---|
+| 2026-09-11 | `negation` | 24 | 26 | AS06 and AS12 exclude a value with `not` and carried no tag |
+
+No capture and no `reject` span changed, so every headline measure is
+untouched; only the `negation` row of the per-family table moves. Since this
+set has never been scored, the change costs nothing — the first reading will
+be taken at 26.
+
 ## Baseline
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
