@@ -14,6 +14,7 @@ python3 Tools/CorpusRunner/test_score.py
 # they cost nothing here and catch a leak on the commit that introduces it
 # rather than at the release that trusts the number.
 python3 Tools/CorpusRunner/everyday/test_score.py
+python3 Tools/CorpusRunner/everyday/measure-gate.py
 Tools/PipelineProbe/build.sh
 Tools/CorpusRunner/build.sh
 
