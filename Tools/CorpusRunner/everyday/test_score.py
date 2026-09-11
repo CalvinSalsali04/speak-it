@@ -9,6 +9,7 @@ That separation is the point. A measuring instrument that has never been
 checked against a known input is not evidence about anything.
 """
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -711,21 +712,53 @@ class CorpusTests(unittest.TestCase):
                     len(span), 3,
                     f"{row[0]}: reject span {span!r} is too short to be meaningful")
 
+    #: Words that mark an exclusion rather than a repair.
+    CONTRAST = re.compile(r"\b(not|rather than|instead of)\b", re.I)
+
+    def test_the_contrast_rule_catches_exclusions_and_spares_repairs(self):
+        """The guard above is only worth having if it separates the two.
+
+        An exclusion names a value the speaker meant to keep out of the
+        reading; a repair replaces one. A faithful title carries the first and
+        must not carry the second, which is why only the second may assert
+        invention.
+        """
+        for exclusion in ("book the small meeting room not the big one",
+                          "the blue inhaler not the brown one",
+                          "pay by card rather than by transfer",
+                          "use the side door instead of the front"):
+            self.assertTrue(self.CONTRAST.search(exclusion), exclusion)
+        for repair in ("the deadline is the 14th sorry I mean the 15th",
+                       "we need eight licences no sorry twelve licences",
+                       "send it to Okonjo I mean to Vasquez",
+                       "I honestly dont know whether to raise rates"):
+            self.assertIsNone(self.CONTRAST.search(repair), repair)
+
     def test_contrast_captures_assert_no_rejected_value(self):
         """Invention means one thing: a value the repair discarded.
 
         `book the small room not the big one` mentions the big room on purpose.
         A title that keeps the contrast is faithful, not inventive, so a
         substring test over the reading cannot tell `excluded the big room`
-        from `booked the big room`. Captures in the `negation` family therefore
-        carry no `reject` span; they still exercise routing, count and loss.
+        from `booked the big room`.
+
+        The rule is derived from the capture's own words rather than from its
+        `negation` tag. Keying it to the tag left a hole: a contrast capture
+        nobody happened to tag was unprotected, and five such captures were
+        already in the set. A tag is a label someone remembered to write; the
+        sentence is the evidence.
         """
         for row in self.rows():
-            if "negation" in row[6].split("|"):
+            contrast = self.CONTRAST.search(row[2])
+            if contrast or "negation" in row[6].split("|"):
                 self.assertEqual(
                     row[5], "-",
-                    f"{row[0]}: a contrast capture cannot assert invention; "
-                    f"the excluded value was spoken deliberately")
+                    f"{row[0]}: this capture excludes a value with "
+                    f"{contrast.group(0)!r} rather than superseding it, so it "
+                    f"cannot assert invention — a faithful title contains the "
+                    f"excluded value"
+                    if contrast else
+                    f"{row[0]}: a negation capture cannot assert invention")
 
     def test_keep_spans_are_long_enough_to_match_deliberately(self):
         for row in self.rows():

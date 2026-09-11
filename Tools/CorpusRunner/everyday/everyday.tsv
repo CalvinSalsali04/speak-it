@@ -7,7 +7,7 @@ W05	work-school	so the thing is I gotta the thing is I gotta finish the migratio
 W06	work-school	email Dr Okonkwo about the thesis committee and then also book the library room	Today:task|Today:task	Okonkwo|library room	-	multi-thought|person|sequencing	two genuinely separate actions
 W07	work-school	my student number is 20419883 in case I need it for the portal	Memory:note	20419883	-	reference|quantity	reference detail, nothing actionable
 W08	work-school	standup moved to 9:15 starting next week	Memory:note	9:15	-	time	a fact about a recurring meeting, not a new task
-W09	work-school	I need to review the pull request um the one from Sam not the other one	Today:task	Sam	-	filler|self-correction|person	the correction narrows which PR, it is not a new thought
+W09	work-school	I need to review the pull request um the one from Sam not the other one	Today:task	Sam	-	filler|self-correction|person|negation	the correction narrows which PR, it is not a new thought
 W10	work-school	cancel the one on one with Marcus I already talked to him	Op:cancel	Marcus	-	cancellation|operation|person	withdraws something previously captured
 W11	work-school	we should uh actually lets push the launch to the fifteenth	Today:task	fifteenth	-	false-start|date	false start then the real intent
 W12	work-school	the quarterly numbers actually improved which nobody expected	Memory:note	actually improved	-	self-correction	actually as adverb again, different sentence shape
@@ -50,7 +50,7 @@ F01	family-health	remind me to pick up Imogen from swimming at 5:30 tomorrow	Tod
 F02	family-health	Sarah has no dairy at all	Memory:note	no dairy	-	negation	allergy note whose entire value is the negation
 F03	family-health	um so the pediatrician said uh give her the amoxicillin twice a day for ten days	Today:task	amoxicillin|twice a day	-	filler|recurrence|quantity	dosage detail must stay with the action
 F04	family-health	book the dentist for the kids and also my own cleaning is overdue	Today:task|Today:task	dentist|cleaning	-	multi-thought	two appointments
-F05	family-health	mums blood pressure meds are the little white ones not the pink	Memory:note	white	-	self-correction|reference	a caregiving detail
+F05	family-health	mums blood pressure meds are the little white ones not the pink	Memory:note	white	-	self-correction|reference|negation	a caregiving detail
 F06	family-health	the class has no birthday treats policy	Memory:note	no birthday treats	-	negation	policy note, negation carries the meaning
 F07	family-health	so today after work I need to grab the prescription and then swing by my mums and then take the recycling out	Today:task|Today:task|Today:task	prescription|recycling	-	multi-thought|sequencing	three errands chained with and then
 F08	family-health	Theos parent teacher thing is on the 19th at 6	Today:event	Theo|18:00	-	person|date|time	school event
@@ -59,7 +59,7 @@ F10	family-health	physio every Tuesday and Thursday at 7am until October	Today:t
 F11	family-health	dont let Nana take the stairs on her own	Memory:note	dont|stairs	-	negation	a standing instruction, prohibition
 F12	family-health	what was the name of that physiotherapist again	Ambiguous	physiotherapist	-	question|ambiguous	a question with no answer in the capture
 F13	family-health	Ravis birthday is March 3rd he likes those ginger cookies	Memory:note	Ravi|ginger cookies	-	person|date|reference	person knowledge worth finding later
-F14	family-health	actually make it two puffs of the inhaler not one	Today:task	two puffs	-	self-correction|quantity	correction of a dosage
+F14	family-health	actually make it two puffs of the inhaler not one	Today:task	two puffs	-	self-correction|quantity|negation	correction of a dosage
 F15	family-health	sign the field trip form pay the twelve dollars and send back the allergy sheet	Today:task|Today:task|Today:task	field trip|allergy sheet	-	list|multi-thought|quantity	three school admin actions
 F16	family-health	my appointment with Dr Achterberg got moved to the 26th	Today:event	Achterberg|26th	-	person|date	an appointment with a date belongs on Today, not filed as a note
 F17	family-health	we have no milk left	Today:shopping	no milk	-	negation	a shopping trigger stated negatively
