@@ -78,6 +78,7 @@ jobs:
               - 'Shared/**'
               - 'SpeakIt.xcodeproj/**'
               - 'Tools/CorpusRunner/**'
+              - 'Tools/LanguageMutations/**'
               - 'Tools/PipelineProbe/**'
               - 'Tools/CI/**'
               - '.github/workflows/ci.yml'
@@ -111,6 +112,23 @@ jobs:
         with:
           scandir: ./Tools
           severity: warning
+
+  language-tools:
+    name: Language tooling (no Mac needed)
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The mutation generator and its reporter are pure Python, so the half of
+      # the language tooling that does not link NaturalLanguage is checked on
+      # every pull request rather than waiting for a Mac.
+      - name: Mutation generator and reporter
+        working-directory: Tools/LanguageMutations
+        run: python3 -m unittest discover -v
+      - name: Corpus scorer self-tests
+        run: python3 Tools/CorpusRunner/test_score.py
 
   dashboard:
     name: Founder dashboard

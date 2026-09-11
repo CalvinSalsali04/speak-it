@@ -82,6 +82,12 @@ Every language number in one report (corpus gate, the four development sets, the
 ./Tools/CI/language-metrics.sh
 ```
 
+Find candidate defects without needing labels: rewrite a set in ways that must not change the answer, and report where the answer changed anyway (consistency, never accuracy; refuses to read the held-out set):
+
+```bash
+./Tools/LanguageMutations/invariance.sh Tools/CorpusRunner/devsets/routed.tsv
+```
+
 Fast answers about what the pipeline does with a sentence, without a simulator run (rules path only, no store, fixed 2026-08-03 10:00 America/Toronto frame; see `Tools/PipelineProbe/README.md` for what it cannot tell you):
 
 ```bash
