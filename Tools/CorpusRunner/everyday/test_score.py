@@ -467,6 +467,64 @@ class CorpusTests(unittest.TestCase):
                 self.assertEqual(tokens, ["Ambiguous"],
                                  f"{row[0]}: ambiguous cases carry no other expectation")
 
+    def test_every_asserted_date_matches_the_real_calendar(self):
+        """A wrong weekday here would be a false failure forever.
+
+        The reference frame is Monday 2026-08-03 America/Toronto. Every `Aug N`
+        span is checked against the actual calendar: the utterance must name
+        that weekday, say "tomorrow" for the following day, or name the day
+        number outright. Contested readings — "next Tuesday" spoken on a Monday
+        — are deliberately not asserted anywhere in the set, because baking an
+        argument into a held-out label makes the baseline wrong rather than
+        strict.
+        """
+        import datetime
+        import re
+        reference = datetime.date(2026, 8, 3)
+        self.assertEqual(reference.strftime("%A"), "Monday")
+        checked = 0
+        for row in self.rows():
+            spoken = row[2].lower()
+            for column in (4, 5):
+                for span in row[column].split("|"):
+                    match = re.fullmatch(r"Aug (\d+)", span.strip())
+                    if not match:
+                        continue
+                    checked += 1
+                    day = datetime.date(2026, 8, int(match.group(1)))
+                    weekday = day.strftime("%A").lower()
+                    named = weekday in spoken
+                    tomorrow = ("tomorrow" in spoken
+                                and day == reference + datetime.timedelta(days=1))
+                    numbered = re.search(rf"\b{day.day}(st|nd|rd|th)?\b", spoken)
+                    self.assertTrue(
+                        named or tomorrow or numbered,
+                        f"{row[0]}: {span} is a {weekday}, which the capture "
+                        f"never names: {row[2]!r}")
+        self.assertGreaterEqual(checked, 10,
+                                "date assertions have gone missing from the set")
+
+    def test_every_span_could_actually_match(self):
+        """A span that appears nowhere is a dead check that reads as a pass."""
+        import re
+        derived = re.compile(r"^(aug \d+|\d{1,2} \d{2})$")
+
+        def norm(text):
+            return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+        for row in self.rows():
+            spoken = norm(row[2])
+            for column, kind in ((4, "keep"), (5, "reject")):
+                for span in row[column].split("|"):
+                    if span in ("", "-"):
+                        continue
+                    folded = norm(span)
+                    self.assertTrue(
+                        folded in spoken or derived.match(folded),
+                        f"{row[0]}: {kind} span {span!r} is neither in the "
+                        f"capture nor a date or time the probe derives, so it "
+                        f"can never match: {row[2]!r}")
+
     def test_the_set_does_not_overlap_a_corpus_that_is_tuned_against(self):
         result = subprocess.run(
             [sys.executable, str(HERE / "leak-check.py")],

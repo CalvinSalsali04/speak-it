@@ -23,7 +23,7 @@ W21	work-school	I have to submit the ethics form by Friday at five	Today:task	Au
 W22	work-school	print the handouts order the whiteboard markers and book the projector	Today:task|Today:task|Today:task	handouts|markers|projector	-	list|multi-thought	three actions in one breath, no conjunction cues beyond and
 W23	work-school	what if we ran the workshop as two shorter sessions instead	Memory:idea	two shorter sessions	-	hedged	an idea, not an action
 W24	work-school	follow up with the TA about my grade on assignment three	Today:task	assignment three	-	reference	person follow-up shape
-W25	work-school	meeting with the dean next Tuesday at 2 in the admin building	Today:event	Aug 11|14:00	-	date|time|location	calendar shaped, next Tuesday from Aug 3 is Aug 11
+W25	work-school	meeting with the dean next Tuesday at 2 in the admin building	Today:event	14:00|admin building	-	date|time|location	calendar shaped; next Tuesday is not asserted, a Monday speaker may mean either Tuesday
 W26	work-school	I keep forgetting the printer code its 4471	Memory:note	4471	-	reference|quantity	the code is the payload
 W27	work-school	reschedule the design sync it clashes with the all hands	Today:task	design sync	-	operation|cancellation	rescheduling something not named as a stored item is a new action, not an operation on one
 W28	work-school	so basically what happened was the deploy went out early and now the docs are wrong so I need to update the docs	Today:task	update the docs	-	rambling-intro|run-on	long preamble, one real action at the end
@@ -88,7 +88,7 @@ F39	family-health	um yeah so I guess just remember that Uncle Rasheed is allergi
 F40	family-health	water the plants feed the fish and bring in the parcel	Today:task|Today:task|Today:task	plants|fish|parcel	-	list|multi-thought	three household actions
 F41	family-health	reschedule the ultrasound I cannot do mornings that week	Today:task	ultrasound	-	operation|negation	change with a constraint
 F42	family-health	his shoe size is a 12 actually a 13 now	Memory:note	13	a 12	self-correction|quantity	corrected number
-F43	family-health	school photos are next Wednesday wear the green jumper	Today:event|Memory:note	Aug 12|green jumper	-	date|multi-thought	an event and an instruction
+F43	family-health	school photos are next Wednesday wear the green jumper	Today:event|Memory:note	green jumper	-	date|multi-thought	an event and an instruction; next Wednesday is not asserted, the reading is contested
 F44	family-health	there is no parking at the clinic so leave early	Today:task	no parking	-	negation	known good guard, keep as control
 F45	family-health	put the specialist referral letter somewhere I can find it	Today:task	referral letter	-	hedged	vague but actionable
 F46	family-health	Mateus has football Saturday mornings all season	Memory:note	Mateus|football	-	recurrence|person	standing schedule fact

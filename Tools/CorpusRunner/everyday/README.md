@@ -138,6 +138,17 @@ Frame of reference is **Monday 2026-08-03 10:00 America/Toronto**, matching
 `SemanticCorpusTests` and the probe exactly, so anything seen here reproduces as
 a corpus case.
 
+Every `Aug N` span is checked against the real calendar by `test_score.py`: the
+capture must name that weekday, say "tomorrow" for the following day, or name
+the day number outright. A wrong weekday in a held-out label is a false failure
+that never goes away, and nobody would think to doubt it.
+
+**Contested readings are not asserted.** "next Tuesday" spoken on a Monday can
+honestly mean tomorrow or the week after, so no case in this set turns that
+argument into a label. Where a capture contains one, the date is simply left
+unasserted and the other properties are scored. A held-out label should be a
+thing a careful reader would agree with on sight, not a position.
+
 ## Sealed by default
 
 `score.py` prints rates and nothing else unless `--failures` or `--verbose` is
