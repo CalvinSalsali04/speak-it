@@ -29,6 +29,69 @@ mutation harness that ran in an already-broken copy so every measure read as
 protected. Run the instrument, read what it prints, and check that a reader
 who has only that output can act on it.
 
+## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
+
+Branch `claude/hearth-thread-tod920`,
+[run 34598981239](https://github.com/CalvinSalsali04/speak-it/actions/runs/34598981239),
+`macos-26`, `language_only`. **This is the current baseline** once the branch
+merges. Two causes: an ordinal is not an amount, and a complement-taking verb
+governs the clause behind it.
+
+| instrument | baseline (`2d8fe760`) | shipped (`9d91a0b`) |
+|---|---|---|
+| gating corpus | 1393, **0 failing** | 1393, **0 failing** |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| everyday acted on anyway | 0 | 0 |
+| held-out destination / count | 233/320 · 255/310 | **233/320 · 255/310** |
+| held-out acted on anyway | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | **52/116** · **78/105** |
+| adversarial over- / under-split | 8 · 18 | **9** · 18 |
+| adversarial titles / loss / invention | 117/120 · 113/116 · 10/24 | unchanged |
+| adversarial acted on anyway | 1 | 1 |
+| **runon dev destination** | 41/46 | **42/46** |
+| **runon dev thought count** | 33/44 | **35/44** |
+
+Every other development set is unchanged: coordination 115/121, routed 74/84
+and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+
+**The held-out 389 is back to the baseline figure exactly**, which retires the
+−1/+2 seen in the two withdrawn runs: all of that movement belonged to the
+causes that came out.
+
+### What it fixed, and what it cost
+
+| row | before | after |
+|---|---|---|
+| RM03 | destination and count both wrong | **passes both** |
+| RO05 "remind me the bins go out on Tuesday" | over-split into 2 | **1 row** |
+| one capture in `runon-x-repair` | correct | **over-split** |
+
+`errand-runon` is now 8/8 on destination and 7/7 on thought count.
+`object-guard` holds at 10/10 on count with RO05's over-split gone.
+
+**The cost is one sealed capture and it is in the direction that matters
+most.** Adversarial over-segmentation went from 8 to 9; a wrongly severed row
+retrieves under nothing. The capture cannot be inspected — the set reports
+rates only — but the cause can be reasoned to: of the two changes only the
+ordinal exemption *enables* a cut, so the complement guard cannot have caused
+an over-split.
+
+**It was merged anyway, and this is the reason.** The guard being relaxed is
+wrong on its own terms: "the 26th" is a complete noun phrase and "$89" is not,
+and keeping a rule that cannot tell them apart because one hard composition
+capture happens to benefit from the confusion is the wrong trade. The harm it
+was causing is worse than the harm it now causes — a capture that lost its
+errand entirely ("Priya starts on the 14th order her a laptop" arriving as one
+Memory row) costs the user the task, while an extra row on a hard sentence
+leaves both halves visible. The everyday set and the 389 are untouched either
+way.
+
+Watch adversarial over-segmentation on the next change. If it moves again, the
+ordinal exemption is the first thing to re-examine.
+
 ## 2026-09-11 12:25 — why the unit suite fails on a GitHub-hosted Mac: answered
 
 Same run, [34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
