@@ -269,6 +269,137 @@ class ScoreTests(unittest.TestCase):
         self.assertIn("Do NOT use them to steer a fix", result)
 
 
+class SealTests(unittest.TestCase):
+    """The set must stay sealed unless a flag explicitly unseals it.
+
+    A scorer that needs a flag to stay sealed is safe to run from a harness; one
+    that prints failures by default is not, because the harness cannot un-print
+    them. This test holds the scorer on the safe side of that line.
+    """
+
+    LABELS = ("A1\twork-school\tthe exam is open book\tMemory:note\tno exam\t-\treference\tn\n")
+    PROBE = None
+
+    def run_score(self, *flags):
+        return ScoreTests.score(
+            self, self.LABELS,
+            block("the exam is open book", {"title": "Exam", "route": "Today"}),
+            *flags)
+
+    def test_default_output_reveals_no_failure_detail(self):
+        result = self.run_score()
+        self.assertNotIn("FAILURES", result)
+        self.assertNotIn("the exam is open book", result)
+        self.assertNotIn("ROUTING", result)
+        # The rates themselves are still reported.
+        self.assertIn("0/1    (  0.0%)", result)
+
+    def test_failures_flag_unseals_and_says_so(self):
+        for flag in ("--failures", "--verbose"):
+            with self.subTest(flag=flag):
+                result = self.run_score(flag)
+                self.assertIn("FAILURES", result)
+                self.assertIn("the exam is open book", result)
+
+    def test_an_unrecognised_flag_does_not_unseal(self):
+        result = self.run_score("--summary")
+        self.assertNotIn("FAILURES", result)
+
+
+class TitleHygieneTests(unittest.TestCase):
+    """The title measure must only fire on material that is never content.
+
+    Its value depends entirely on its false-positive rate: a hygiene number
+    that flags ordinary words is worse than no number, because someone will
+    chase it.
+    """
+
+    def score(self, utterance, title, keep="-"):
+        return ScoreTests.score(
+            self,
+            f"A1\twork-school\t{utterance}\tToday:task\t{keep}\t-\tfiller\tn\n",
+            block(utterance, {"title": title}),
+            "--failures",
+        )
+
+    def assert_clean(self, utterance, title):
+        result = self.score(utterance, title)
+        self.assertNotIn("TITLE      A1", result,
+                         f"false positive on title {title!r}")
+
+    def assert_defect(self, utterance, title, defect):
+        result = self.score(utterance, title)
+        self.assertIn("TITLE      A1", result)
+        self.assertIn(defect, result)
+
+    # --- fires where it should -------------------------------------------
+
+    def test_hesitation_left_in_the_title(self):
+        self.assert_defect("um send the deck", "Um send the deck",
+                           "hesitation kept")
+
+    def test_farewell_left_in_the_title(self):
+        self.assert_defect("redo the deck bye", "Redo the deck bye",
+                           "farewell kept")
+
+    def test_title_opening_on_a_conjunction(self):
+        self.assert_defect("call Sam and email Jo", "And email Jo",
+                           "opens on 'and'")
+
+    def test_numbered_preamble_left_in_the_title(self):
+        self.assert_defect("number one finalize the budget",
+                           "Number one finalize the budget",
+                           "preamble 'number one' kept")
+
+    def test_stutter_left_in_the_title(self):
+        self.assert_defect("I need to I need to finish the doc",
+                           "I need to I need to finish the doc",
+                           "stutter kept: i need to")
+
+    def test_an_empty_title_is_a_defect(self):
+        self.assert_defect("um yeah so", "", "empty title")
+
+    def test_a_long_capture_titled_with_itself_was_never_summarised(self):
+        utterance = ("so basically the deploy went out early and now the docs "
+                     "are wrong so I need to update the docs")
+        self.assert_defect(utterance, utterance, "title is the whole capture")
+
+    # --- stays quiet where it should -------------------------------------
+
+    def test_an_ordinary_title_is_clean(self):
+        self.assert_clean("send Priya the deck", "Send Priya the deck")
+
+    def test_a_short_capture_titled_with_itself_is_not_a_defect(self):
+        """Most captures are short, and their own words are the right title."""
+        self.assert_clean("call the vet", "Call the vet")
+
+    def test_a_business_name_that_starts_with_a_filler_sound_is_clean(self):
+        self.assert_clean("go to Umberto's for bread", "Go to Umberto's for bread")
+
+    def test_ordinary_words_that_double_as_fillers_are_not_flagged(self):
+        """like, basically and honestly are real words often enough."""
+        self.assert_clean("things I like about the new plan",
+                          "Things I like about the new plan")
+        self.assert_clean("write the basically finished draft",
+                          "Write the basically finished draft")
+
+    def test_a_repeated_word_that_is_not_a_stutter_is_clean(self):
+        self.assert_clean("the report on the report format",
+                          "The report on the report format")
+
+    def test_that_used_as_a_determiner_mid_title_is_clean(self):
+        self.assert_clean("buy that oat cereal", "Buy that oat cereal")
+
+    def test_a_title_ending_in_a_word_containing_bye_is_clean(self):
+        self.assert_clean("email Abye Okafor", "Email Abye Okafor")
+
+    def test_title_hygiene_appears_in_the_report_with_a_breakdown(self):
+        result = self.score("um send the deck", "Um send the deck")
+        self.assertIn("TITLE HYGIENE", result)
+        self.assertIn("hesitation kept", result)
+        self.assertIn("lower bound", result)
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 

@@ -66,6 +66,7 @@ that.
 | `merge` | fewer rows than the speaker meant — separate thoughts run together |
 | `loss` | something the speaker said is gone from everything they can see |
 | `invention` | the structured reading shows a value the speaker did not mean |
+| `title` | the shown title still carries something the pipeline should have removed |
 | `unsafe` | a capture no careful reader could pin down was scheduled, dated or modified anyway |
 
 `unsafe` is harm rather than accuracy. Routing can move either way for
@@ -83,6 +84,22 @@ quote is supposed to hold the speaker's own words, superseded ones and all.
 Counting that as invention would punish the pipeline for keeping its promise.
 So the case labels `chocolate` as a rejected value and the check looks at what
 the row decided, not at what the row quotes.
+
+### Title hygiene is a lower bound, not a verdict
+
+`title` does not score whether a title reads well. That is a judgement no label
+can settle, and a number pretending to measure it is a number nobody should
+trust. It scores something narrower and checkable: whether the title still
+carries material the pipeline is supposed to have removed — a hesitation, a
+trailing "bye", a numbered preamble, a stutter, an opening conjunction, or a
+long capture whose title is simply the whole capture back.
+
+Every rule fires only on material that is never content in title position.
+Ambiguous fillers — `like`, `basically`, `honestly` — are deliberately absent,
+because they are ordinary words often enough that flagging them would
+manufacture failures. So everything this reports is real, and it misses some:
+read it as a floor on title defects, never as a ceiling. Fifteen of the
+instrument's tests exist to hold its false-positive rate at zero.
 
 ### Item types are reported, never gated
 
@@ -121,6 +138,17 @@ Frame of reference is **Monday 2026-08-03 10:00 America/Toronto**, matching
 `SemanticCorpusTests` and the probe exactly, so anything seen here reproduces as
 a corpus case.
 
+## Sealed by default
+
+`score.py` prints rates and nothing else unless `--failures` or `--verbose` is
+passed. That is a contract, not a convenience: a scorer that needs a flag to
+stay sealed can be run from any harness safely, and a scorer that prints
+failures by default cannot, because the harness has no way to un-print them.
+`test_score.py` asserts it — default output contains no capture text, no failure
+detail, and an unrecognised flag does not unseal it either.
+
+Any scorer added to this directory must stay on that side of the line.
+
 ## The rule
 
 **Do not read the failures while you are changing rules.**
@@ -151,13 +179,20 @@ read during development — say so instead, and treat the number as spent.
 
 ## Baseline
 
-| date | commit | routing | count | loss | invention | unsafe / ambiguous |
-|---|---|---|---|---|---|---|
-| _not yet scored_ | | | | | | |
+| date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
+|---|---|---|---|---|---|---|---|
+| _not yet scored_ | | | | | | | |
 
 The set and the scorer were built in a Linux container, where the pipeline
 cannot be executed at all. The instrument has been tested against hand-written
-probe output — 28 cases covering every measure, in `test_score.py` — but no
+probe output — 46 cases covering every measure, in `test_score.py` — but no
 number in this table can be filled in until `score.sh` is run on a Mac. Until
 then this directory is an instrument with no reading, and saying otherwise would
 be inventing a result.
+
+Those tests are not ceremony. Three of them caught real defects in the scorer
+while it was being written: operation targets were not counted as visible
+output, so every correctly handled cancellation scored as data loss; a field
+pattern used `\s`, which matches a newline, so an empty field read the next
+line's value as its own; and two captures written for this set turned out to be
+a copy and a paraphrase of `heldout.tsv` cases.

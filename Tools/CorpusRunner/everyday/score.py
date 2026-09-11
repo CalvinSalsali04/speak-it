@@ -64,7 +64,12 @@ def parse_labels(path):
 
 
 def parse_probe(path):
-    """Reads `probe` output into one record per utterance."""
+    """Reads `probe` output into one record per utterance.
+
+    Field patterns use `[ \t]` rather than `\s` on purpose: `\s` matches a
+    newline, so a field printed with an empty value let the capture run on into
+    the following line and read the next field's text as this one's value.
+    """
     blocks = re.split(r'\n(?=── ")', Path(path).read_text())
     seen = {}
     for block in blocks:
@@ -74,26 +79,26 @@ def parse_probe(path):
         rows = []
         for chunk in re.split(r"\n(?=     row title:)", block)[1:]:
             rows.append({
-                "title": (re.search(r"row title:\s*(.*)", chunk) or [None, ""])[1]
-                if re.search(r"row title:\s*(.*)", chunk) else "",
-                "route": (re.search(r"route:\s*(\S+)", chunk).group(1)
-                          if re.search(r"route:\s*(\S+)", chunk) else ""),
-                "type": (re.search(r"type:\s*(\S+)", chunk).group(1)
-                         if re.search(r"type:\s*(\S+)", chunk) else ""),
-                "due": (re.search(r"due:\s*(.*)", chunk).group(1).strip()
-                        if re.search(r"due:\s*(.*)", chunk) else "nil"),
-                "remind": (re.search(r"remind:\s*(.*?)\s{2,}delivery:", chunk).group(1).strip()
-                           if re.search(r"remind:\s*(.*?)\s{2,}delivery:", chunk) else "nil"),
-                "person": (re.search(r"person:\s*(.*)", chunk).group(1).strip()
-                           if re.search(r"person:\s*(.*)", chunk) else ""),
-                "recurs": (re.search(r"recurs:\s*(.*)", chunk).group(1).strip()
-                           if re.search(r"recurs:\s*(.*)", chunk) else ""),
-                "location": (re.search(r"location:\s*(.*)", chunk).group(1).strip()
-                             if re.search(r"location:\s*(.*)", chunk) else ""),
-                "list": (re.search(r"list:\s*(.*)", chunk).group(1).strip()
-                         if re.search(r"list:\s*(.*)", chunk) else ""),
-                "quote": (re.search(r"quote:\s*(.*)", chunk).group(1).strip()
-                          if re.search(r"quote:\s*(.*)", chunk) else ""),
+                "title": (re.search(r"row title:[ \t]*(.*)", chunk) or [None, ""])[1]
+                if re.search(r"row title:[ \t]*(.*)", chunk) else "",
+                "route": (re.search(r"route:[ \t]*(\S+)", chunk).group(1)
+                          if re.search(r"route:[ \t]*(\S+)", chunk) else ""),
+                "type": (re.search(r"type:[ \t]*(\S+)", chunk).group(1)
+                         if re.search(r"type:[ \t]*(\S+)", chunk) else ""),
+                "due": (re.search(r"due:[ \t]*(.*)", chunk).group(1).strip()
+                        if re.search(r"due:[ \t]*(.*)", chunk) else "nil"),
+                "remind": (re.search(r"remind:[ \t]*(.*?)[ \t]{2,}delivery:", chunk).group(1).strip()
+                           if re.search(r"remind:[ \t]*(.*?)[ \t]{2,}delivery:", chunk) else "nil"),
+                "person": (re.search(r"person:[ \t]*(.*)", chunk).group(1).strip()
+                           if re.search(r"person:[ \t]*(.*)", chunk) else ""),
+                "recurs": (re.search(r"recurs:[ \t]*(.*)", chunk).group(1).strip()
+                           if re.search(r"recurs:[ \t]*(.*)", chunk) else ""),
+                "location": (re.search(r"location:[ \t]*(.*)", chunk).group(1).strip()
+                             if re.search(r"location:[ \t]*(.*)", chunk) else ""),
+                "list": (re.search(r"list:[ \t]*(.*)", chunk).group(1).strip()
+                         if re.search(r"list:[ \t]*(.*)", chunk) else ""),
+                "quote": (re.search(r"quote:[ \t]*(.*)", chunk).group(1).strip()
+                          if re.search(r"quote:[ \t]*(.*)", chunk) else ""),
             })
         for row in rows:
             # The row title doubles as the quote when the probe suppresses the
@@ -102,7 +107,7 @@ def parse_probe(path):
                 row["quote"] = row["title"]
         seen[header.group(1)] = {
             "rows": rows,
-            "operations": re.findall(r"operation:\s*(\S+)", block),
+            "operations": re.findall(r"operation:[ \t]*(\S+)", block),
             # The target is the part of an operation a person can see: a
             # withdrawal that named the wrong thought, or none at all, is a
             # real defect, and a cancellation whose target survived is not
@@ -127,6 +132,62 @@ def interpretation(got):
 
 def visible(got):
     return norm(interpretation(got) + " " + " ".join(r["quote"] for r in got["rows"]))
+
+
+# --- title hygiene -------------------------------------------------------
+#
+# This does NOT score whether a title reads well. That is a judgement no label
+# can settle, and pretending to measure it would produce a number nobody should
+# trust. What it scores is narrower and checkable: whether the title still
+# carries something the pipeline is supposed to have removed.
+#
+# Every rule below fires only on material that is never content in title
+# position. Ambiguous fillers — "like", "basically", "honestly" — are
+# deliberately absent, because they are ordinary words often enough that
+# flagging them would manufacture failures. The result is a LOWER BOUND on
+# title defects: everything it reports is real, and it will miss some.
+
+HESITATION = {"um", "uh", "erm", "er", "uhh", "umm"}
+FAREWELL = {"bye", "goodbye", "byebye"}
+# A title may not open on a word that only ever joins one clause to another.
+DANGLING_OPENER = {"and", "then", "but", "also", "or", "because", "which",
+                   "that", "so"}
+PREAMBLE = ("the thing is", "what happened was", "number one", "number two",
+            "number three", "basically what", "so basically")
+
+
+def title_defects(title, utterance):
+    """Names every removable thing the title still carries."""
+    words = norm(title).split()
+    if not words:
+        return ["empty title"]
+
+    found = []
+    if set(words) & HESITATION:
+        found.append("hesitation kept")
+    if words[-1] in FAREWELL:
+        found.append("farewell kept")
+    if words[0] in DANGLING_OPENER:
+        found.append(f"opens on '{words[0]}'")
+    reading = norm(title)
+    for phrase in PREAMBLE:
+        if reading.startswith(phrase) or f" {phrase}" in reading:
+            found.append(f"preamble '{phrase}' kept")
+            break
+    # A doubled phrase is a stutter the repair chain should have rejoined.
+    for size in (4, 3, 2):
+        for i in range(len(words) - 2 * size + 1):
+            if words[i:i + size] == words[i + size:i + 2 * size]:
+                found.append("stutter kept: " + " ".join(words[i:i + size]))
+                break
+        else:
+            continue
+        break
+    # A long capture whose title is the whole utterance was never summarised.
+    spoken = norm(utterance)
+    if len(spoken.split()) > 12 and reading == spoken:
+        found.append("title is the whole capture")
+    return found
 
 
 def main():
@@ -210,6 +271,15 @@ def main():
             lost = [k for k in case["keep"] if norm(k) not in surface]
             hit("loss", not lost, "gone: " + ", ".join(lost) if lost else "")
 
+        defects = []
+        for row in got["rows"]:
+            defects += [(row["title"], d)
+                        for d in title_defects(row["title"], case["utterance"])]
+        hit("title", not defects,
+            "; ".join(f"{d} — \"{title}\"" for title, d in defects))
+        for _, defect in defects:
+            tallies["ALL"]["defect:" + defect.split(":")[0].split(" — ")[0]] += 1
+
         if case["reject"]:
             reading = interpretation(got)
             found = [r for r in case["reject"] if norm(r) in reading]
@@ -268,18 +338,36 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
     print("  one row that should only ever fall.")
     print("=" * 78)
 
+    print()
+    print("TITLE HYGIENE — does the shown title still carry something the")
+    print("pipeline should have removed? A lower bound on defects, never a")
+    print("judgement about how well a title reads.")
+    print("-" * 78)
+    print(f"{'':<18}{'clean titles':>20}")
+    for scope in ["ALL"] + domains:
+        counter = tallies[scope]
+        name = "ALL DOMAINS" if scope == "ALL" else scope
+        print(f"{name:<18}{rate(counter, 'title'):>20}")
+    breakdown = sorted(((k[len('defect:'):], v) for k, v in tallies["ALL"].items()
+                        if k.startswith("defect:")), key=lambda kv: -kv[1])
+    if breakdown:
+        print()
+        for defect, count in breakdown:
+            print(f"    {count:>4}  {defect}")
+    print("-" * 78)
+
     families = sorted({f for c in rows for f in c["families"]})
     print()
     print("PER FAMILY — a whole-set average hides the family that is broken")
     print("-" * 78)
-    print(f"{'family':<18}{'n':>4}{'routing':>17}{'count':>17}{'loss':>17}")
+    print(f"{'family':<18}{'n':>4}{'routing':>17}{'count':>17}{'title':>17}")
     print("-" * 78)
     ranked = sorted(families, key=lambda f: (
         worst(tallies["fam:" + f]), -tallies["fam:" + f]["scored"]))
     for family in ranked:
         counter = tallies["fam:" + family]
         print(f"{family:<18}{counter['scored']:>4}{rate(counter, 'routing'):>17}"
-              f"{rate(counter, 'count'):>17}{rate(counter, 'loss'):>17}")
+              f"{rate(counter, 'count'):>17}{rate(counter, 'title'):>17}")
     print("-" * 78)
     print("Worst family first. `n` counts captures carrying the tag, so the")
     print("columns overlap: one capture can be filler, negation and multi-thought.")
@@ -289,7 +377,7 @@ def report(rows, tallies, failures, type_agreement, seen, labels_path):
 def worst(counter):
     """Lowest pass rate across the gated measures, for ranking families."""
     rates = []
-    for measure in ("routing", "count", "loss", "invention"):
+    for measure in ("routing", "count", "loss", "invention", "title"):
         ok, miss = counter[measure + "_ok"], counter[measure + "_miss"]
         if ok + miss:
             rates.append(ok / (ok + miss))
@@ -307,7 +395,7 @@ def print_failures(failures):
     print("# Tools/CorpusRunner/devsets/ and work there instead.")
     print("#" * 78)
     order = {"unsafe": 0, "empty": 1, "invention": 2, "loss": 3,
-             "routing": 4, "count": 5}
+             "routing": 4, "count": 5, "title": 6}
     for measure, case, got, detail in sorted(failures, key=lambda f: order.get(f[0], 9)):
         print()
         print(f"{measure.upper():<10} {case['id']}  [{case['domain']}]  "
