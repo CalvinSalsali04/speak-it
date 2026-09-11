@@ -1553,9 +1553,11 @@ left standing here because this section records what was reported at the time.
 `heldout.tsv` arrived in `cb2b630`, a commit that also rewrote six parser
 sources, seventeen hours after the seven `Docs/PipelineSweep/*.md` analyses of
 this parser's behaviour. Commit order is not authoring order, so the claim is
-uncheckable rather than false — and three of the 389 are demonstrably not
-unseen, two of them in the gating corpus itself. The figures below are
-unchanged and the rows are still counted;
+uncheckable rather than false — and five of the 389 are demonstrably not
+unseen, two of them in the gating corpus itself and three verbatim in
+documents. (This annotation said "three" until 19:54, having counted the
+exact-match column and not the union with the prose column.) The figures below
+are unchanged and the rows are still counted;
 `Tools/CorpusRunner/heldout/README.md` sets out the evidence.
 
 | measure | value |

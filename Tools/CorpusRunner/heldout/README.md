@@ -43,20 +43,50 @@ benchmark's meaning rests on. It is replaced here rather than restated smaller,
 because a provenance claim nobody can check should not be swapped for a milder
 provenance claim nobody can check.
 
-**Three of the 389 are demonstrably not unseen**, and two of those three sit in
-the gating corpus itself — the regression net the rules are deliberately tuned
-to pass:
+**Five of the 389 are demonstrably not unseen**, and two of them sit in the
+gating corpus itself — the regression net the rules are deliberately tuned to
+pass. There are two ways a capture stops being unseen and they have to be
+counted as a union, not a column:
 
-| id | also appears in |
-|---|---|
-| `C049` | `SemanticCorpusDataQ.swift`, `devsets/routed.tsv` (RC02), `devsets/coordination.tsv` (RS04) |
-| `C100` | four `SemanticCorpusData*.swift` files and six hand-written test files |
-| `C342` | `SpeakItTests/LocationReminderTests.swift` |
+| id | in tuned material | verbatim in a document |
+|---|---|---|
+| `C049` | `SemanticCorpusDataQ.swift`, `devsets/routed.tsv` (RC02), `devsets/coordination.tsv` (RS04) | — |
+| `C100` | four `SemanticCorpusData*.swift` files and six hand-written test files | — |
+| `C342` | `SpeakItTests/LocationReminderTests.swift` | five App Store and hand-QA documents |
+| `C236` | — | `Docs/PipelineSweep/routing.md` |
+| `C358` | — | `Docs/AMBIGUITY_TAXONOMY.md` |
 
 C100 is not an incidental duplicate; it is a workhorse fixture the suite reaches
-for in ten places. C342 has also been the standard location-reminder demo in
-hand-QA documents for weeks. Eight more captures match tuned material at a
-Jaccard of 0.70 or above without being identical.
+for in ten places. C342 is the only capture compromised both ways, and has been
+the standard location-reminder demo in hand-QA documents for weeks. Eight more
+captures match tuned material at a Jaccard of 0.70 or above without being
+identical.
+
+**This count said three until 2026-09-11 19:54, and the way it was wrong is the
+point.** The exact-match column was computed and the prose column was not, so
+the total was a column rather than a union — and `C342` appearing in both is
+what let the mistake look consistent. The same slip was made independently in
+PR #55's body on the same day. A count over a definition with two limbs needs
+the union computed and printed as such, or whichever limb nobody re-ran becomes
+the number everybody quotes. Reproduce with:
+
+```
+python3 - <<'EOF'
+# prints ids and sources only, never a capture
+import re, glob, unicodedata
+norm = lambda s: re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]+"," ",
+        unicodedata.normalize("NFKD",s).lower())).strip()
+caps = [(c[0], norm(c[1])) for c in
+        (l.rstrip("\n").split("\t") for l in open("Tools/CorpusRunner/heldout/heldout.tsv"))
+        if len(c) >= 2 and not c[0].startswith("#") and c[0].lower() != "id"]
+docs = {p: norm(open(p, errors="ignore").read())
+        for p in glob.glob("**/*.md", recursive=True) if "/heldout/" not in p}
+for cid, t in caps:
+    if len(t.split()) >= 6:
+        hit = [p for p, b in docs.items() if t in b]
+        if hit: print(cid, "->", ", ".join(sorted(hit)))
+EOF
+```
 
 Those rows are still scored and still counted. Retiring them would treat a
 provenance problem as a data problem: it opens a new generation, breaks
