@@ -1644,20 +1644,6 @@ enum ClauseJuxtaposition {
         "today", "tomorrow", "tonight", "this", "next",
     ]
 
-    /// The words a bare temporal adjunct ends on. A head with no preposition
-    /// in front of it is still an adjunct when it is a time and carries no
-    /// verb: "first thing tomorrow email the landlord about the damp" was cut
-    /// at "email", leaving a phantom row called "First thing tomorrow" beside
-    /// an errand that had lost its day. No list of openers can finish, because
-    /// the opener is whatever the speaker chose — "first thing", "late",
-    /// "early", "sometime" — while the *end* of the phrase is the time itself.
-    private static let temporalTail: Set<String> = [
-        "today", "tomorrow", "tonight", "morning", "afternoon", "evening",
-        "night", "week", "weekend", "month", "year",
-        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-        "sunday",
-    ]
-
     /// Whether the head in front of a proposed cut is a fronted adjunct rather
     /// than a clause. "On the 1st renew the car insurance" was cut at "renew"
     /// because the head had two words and its last one was not a lead — and
@@ -1666,24 +1652,30 @@ enum ClauseJuxtaposition {
     /// shape took "in the morning call Dave", "after dinner call mom" and "by
     /// the 15th pay the rent" apart.
     ///
-    /// The test is structural: the head opens on a preposition **or ends on a
-    /// time**, and, in the tagging of the whole sentence, carries no verb.
-    /// "After I finish the essay call Dave" keeps its cut, because "finish" is
-    /// a verb and the head is a clause of its own.
+    /// The test is structural: the head opens on a preposition and, in the
+    /// tagging of the whole sentence, carries no verb. "After I finish the
+    /// essay call Dave" keeps its cut, because "finish" is a verb and the head
+    /// is a clause of its own.
+    ///
+    /// **The preposition is load-bearing and was measured to be.** Dropping it
+    /// — accepting any verbless head that *ends* on a time, so that "first
+    /// thing tomorrow email the landlord" would stop being cut — reads the
+    /// tagger's uncertainty as a fact. "Book the car in for Thursday renew my
+    /// passport" and "text Marcus about Saturday move the standup to 9:15"
+    /// both lost their boundary under that rule, because `NLTagger` does not
+    /// reliably call a sentence-initial "book" or "text" a verb, so a head
+    /// that is an instruction reads as verbless and ends on a day. An adjunct
+    /// has no verb *and* announces itself with a preposition; only the second
+    /// half is something the tagger cannot be wrong about.
     private static func isFrontedAdjunct(
         _ clause: String,
         headEnd: String.Index,
         from lowerBound: String.Index
     ) -> Bool {
         let head = clause[lowerBound..<headEnd]
-        let words = head.split(whereSeparator: \.isWhitespace)
-        guard let opener = words.first else { return false }
-        let strip = { (piece: Substring) in
-            piece.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
-        }
-        let opensOnPreposition = frontingPrepositions.contains(strip(opener))
-        let endsOnATime = words.last.map { temporalTail.contains(strip($0)) } ?? false
-        guard opensOnPreposition || endsOnATime else { return false }
+        guard let opener = head.split(whereSeparator: \.isWhitespace).first else { return false }
+        let word = opener.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
+        guard frontingPrepositions.contains(word) else { return false }
         let context = SentenceContextCache.context(for: clause)
         return context.isVerbless(in: lowerBound..<headEnd)
     }

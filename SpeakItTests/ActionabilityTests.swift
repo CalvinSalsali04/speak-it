@@ -381,17 +381,31 @@ final class ActionabilityTests: XCTestCase {
         )
     }
 
-    /// A time in front of the verb is context for it, whatever the phrase
-    /// opens on. No list of openers finishes — "first thing", "late", "early",
-    /// "sometime" — but the end of the phrase is the time itself.
-    func testAVerblessTemporalHeadIsAnAdjunctWithNoPrepositionInFrontOfIt() {
-        for text in [
-            "first thing tomorrow email the landlord about the damp",
-            "late tonight book the taxi",
-            "first thing monday send the invoice",
-        ] {
-            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
-        }
+    /// An adjunct in front of a cut has to announce itself with a preposition,
+    /// and a verbless head ending on a time is not enough on its own.
+    ///
+    /// Measured on 2026-09-11 (run 34597902006). Accepting any verbless head
+    /// that ends on a time — so that "first thing tomorrow email the landlord"
+    /// would stop being cut — lost the boundary in both captures below.
+    /// `NLTagger` does not reliably call a sentence-initial "book" or "text" a
+    /// verb, so a head that is plainly an instruction reads as verbless and
+    /// ends on a day, and the rule swallowed the errand behind it. The
+    /// preposition is the half of the test the tagger cannot be wrong about.
+    ///
+    /// The over-split that relaxation was aimed at is real and still open:
+    /// "first thing tomorrow email the landlord about the damp" arrives as two
+    /// rows. Its root cause is the same vocabulary in `Actionability`, which
+    /// routes the merged capture to Memory rather than Today, so the fix
+    /// belongs there and wants its own measurement.
+    func testAnAdjunctInFrontOfACutNeedsAPrepositionAndNotJustATime() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "book the car in for Thursday renew my passport"),
+            ["book the car in for Thursday", "renew my passport"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "text Marcus about Saturday move the standup to 9:15"),
+            ["text Marcus about Saturday", "move the standup to 9:15"]
+        )
         // A head with a verb in it is a clause and keeps its cut.
         XCTAssertEqual(
             ClauseJuxtaposition.pieces(in: "buy the milk tomorrow call the dentist"),

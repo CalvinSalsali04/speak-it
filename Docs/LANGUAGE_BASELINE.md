@@ -10,6 +10,77 @@ that records a change which did not ship says so in its first lines. Older
 sections stay as written; they are the record of what was true when they were
 measured, not a claim about today.
 
+## 2026-09-11 12:20 — branch at `4af3af9`, the three guard repairs alone
+
+Branch `claude/hearth-thread-tod920`,
+[run 34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
+`macos-26`. **Not a baseline.** It is the control for the section below: the
+same branch with the statement boundary removed, so every figure here is the
+three guard repairs and nothing else.
+
+**The gating corpus is back to 1393 cases, 0 failing at every severity**, which
+settles the attribution: all four CRITICAL regressions were the statement
+boundary, and none of them was a guard repair.
+
+| instrument | baseline (`2d8fe760`) | four causes (`90434e9`) | three guards (`4af3af9`) |
+|---|---|---|---|
+| gating corpus failing | 0 | **4 CRITICAL** | 0 |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 | 16 · 23 |
+| held-out destination / count | 233/320 · 255/310 | 232 · 256 | **232** · **257** |
+| held-out acted on anyway | 7 | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | 51 · 76 | **52** · **77** |
+| adversarial over- / under-split | 8 · 18 | — | **9** · **19** |
+| runon dev destination | 41/46 | 41/46 | 41/46 |
+| runon dev thought count | 33/44 | 35/45 | **35/45** |
+
+Every other development set is unchanged: coordination 115/121, routed 74/84
+and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+
+**The everyday set is bit-identical for the third run running.** Neither the
+statement boundary nor the guard repairs changed a single one of 255 natural
+captures.
+
+### What actually changed, row by row
+
+The `Development-set failures` step now runs on a red run as well as a green
+one, so this is read off the log rather than inferred.
+
+| row | before | after | cause |
+|---|---|---|---|
+| RM03 | count and destination both wrong | **passes** | ordinal is not an amount |
+| RO05 "remind me the bins go out on Tuesday" | over-split into 2 | **1 row** | clausal complement |
+| RF04 "first thing tomorrow email the landlord about the damp" | over-split into 2 | 1 row, **routed to Memory** | verbless temporal head |
+| RE03 "book the car in for Thursday renew my passport" | passes | **merged into 1** | verbless temporal head |
+| RE08 "text Marcus about Saturday move the standup to 9:15" | passes | **merged into 1** | verbless temporal head |
+
+Two of the three causes are clean. The third is not, and the row-level view is
+the only reason that is visible: at the set level it reads as +2.
+
+### The verbless-temporal-head relaxation is wrong, and why generalises
+
+It accepted any head that carries no verb and ends on a time word, on the
+argument that no list of openers can finish while the end of the phrase is
+always the time. The argument about openers is right. The conclusion is not,
+because **"carries no verb" is the tagger's answer, not a fact.** `NLTagger`
+does not reliably call a sentence-initial "book" or "text" a verb, so
+"book the car in for Thursday" reads as verbless and ends on a day — an adjunct
+by that test, and the errand behind it is swallowed.
+
+The original rule was safe because it *also* demanded a fronting preposition,
+which an imperative clause does not have. The preposition is the half of the
+test the tagger cannot be wrong about, and it is load-bearing. Removed, with
+both captures above kept as the guard in
+`ActionabilityTests.testAnAdjunctInFrontOfACutNeedsAPrepositionAndNotJustATime`.
+
+**RF04's real root cause is elsewhere and is the better next target.** Merged
+into one row it routes to **Memory**, so `Actionability` does not read
+"first thing tomorrow email the landlord about the damp" as an errand at all.
+The same fronting vocabulary is the cause in both places; fixing it in the
+router is what would make the capture correct, and the over-split was the
+symptom rather than the disease.
+
 ## 2026-09-11 12:03 — branch at `90434e9`, the statement-boundary attempt, withdrawn
 
 Branch `claude/hearth-thread-tod920`,
