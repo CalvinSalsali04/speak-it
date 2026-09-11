@@ -1,8 +1,10 @@
 # Everyday speech — held-out set
 
 255 captures of ordinary adult life, 51 in each of five domains, written from
-the product description and from how people actually dictate. **Nothing here has
-been tuned against, and nothing here may be tuned against.**
+the product description and from how people actually dictate. **Nothing here may be
+tuned against.** Nine of the 255 turned out not to have been unseen when the set
+was authored; see [Nine of these captures were not held out](#nine-of-these-captures-were-not-held-out)
+before quoting a rate from here.
 
 ```bash
 ./Tools/CorpusRunner/everyday/score.sh              # the numbers
@@ -179,6 +181,81 @@ detail, and an unrecognised flag does not unseal it either.
 
 Any scorer added to this directory must stay on that side of the line.
 
+## Nine of these captures were not held out
+
+`leak-check.py` was widened on 2026-09-11, in two steps, and each step found
+captures the previous version could not see.
+
+**Widening one, prose.** The check compared sealed captures against the other
+corpora and never against the repository's documents. Eight everyday captures
+turned out to be committed verbatim in tracked prose:
+
+    W17  W20  W51  F02  F06  F19  F29  M04
+
+All eight appear in `Docs/PipelineSweep/domains.md`, which is dated 2026-08-25 —
+**three weeks before this set was authored** — and which tabulates each sentence
+beside the answer the pipeline gave for it. They were development
+failure-analysis material first and held-out captures second. W51 is also in
+`Docs/LANGUAGE_BASELINE.md` and in this README's own baseline section.
+
+**Widening two, the tuned side.** The overlap check did read Swift, but its
+harvest was one regular expression run over a whole file, pairing quote
+characters without knowing which of them opened a literal. It fell out of phase
+and returned the code *between* strings. On `SemanticCorpusData*.swift` it
+returned 2,465 strings while missing **1,128 of the 1,380 `corpusCase`
+utterances, 82% of the gating corpus** — and the inflated count is what hid it,
+because 2,465 reads as more thorough than the 2,101 literals actually there.
+
+It also globbed `SemanticCorpusData*.swift` alone, so every hand-written test
+fixture — tuned by definition, since somebody iterated on the rules until that
+exact sentence went green — sat outside the comparison.
+
+With both repaired, five everyday captures are exact matches for tuned strings:
+
+| capture | where |
+|---|---|
+| F02 | `SemanticCorpusDataG.swift` (a `corpusCase`) and `SpeechRepairTests.swift` |
+| W17 | `SemanticCorpusDataG.swift` (a `corpusCase`) |
+| F17, F29, W20 | `SpeechRepairTests.swift` |
+
+F02, W17, F29 and W20 were already in the prose list. **F17 is new**, which
+brings this set to nine captures that were not held out. One more, M36, is a
+near-duplicate at the 0.70 line.
+
+`heldout/` was never checked for this at all — it was a corpus to compare
+*against* and never a set under check, so the set carrying the published
+destination figure was the one set nobody looked at. It has three exact matches
+(C049, C100, C342) and nine near-duplicates. `adversarial/` has no exact match
+and one near-duplicate, and is the one sealed set that comes through this clean.
+
+What it does to a rate here, stated exactly: the denominator is not 255 captures
+of unseen content. It is 246, plus nine that were looked at while rules were
+being changed. Nobody has re-scored the set without them, so every figure below
+this line still includes all nine, and none has been adjusted by hand — an
+adjusted number needs a macOS run, not arithmetic.
+
+The leak is not repairable by editing a file, because the exposure already
+happened and deleting a row from a tuned corpus does not un-tune the rules. The
+nine stay in the set and stay counted; they are listed in `PROSE_DOCUMENTED` and
+`OVERLAP_DOCUMENTED`, which move the exit status and never the count, so the
+check gates on anything new instead of being switched off for being red the
+first time it could see properly. Retiring them opens a new generation and moves
+published figures, which is a decision somebody takes rather than an edit. That
+decision is open.
+
+Two lessons worth more than the nine rows.
+
+**Direction.** A check that compares the sealed sets against each other cannot
+catch a leak that travelled out of a document written earlier into a set written
+later. A set's authoring date is not evidence that its content was unseen.
+
+**Coverage is not a property you can assert.** This file said the boundary was
+mechanical rather than a promise, and it was — mechanically reading 18% of the
+gating corpus. The count it printed was the only thing that could have shown
+that, and it was inflated by the same defect. A check's own denominator needs an
+anchor that must agree with something already published, which is why
+`test_score.py` now asserts the harvest against a fixture the old pattern fails.
+
 ## Checking the instrument itself
 
 Two checks run on every pull request, on Linux, in about twenty seconds, and a
@@ -220,17 +297,84 @@ If a held-out failure looks important enough to fix, reproduce the *family* in
 capture stays untouched and keeps measuring.
 
 `leak-check.py` makes that boundary mechanical rather than a promise. It fails
-if any capture here also appears — verbatim, or as a near-paraphrase at Jaccard
-0.70 or above — in the gating corpus, in a development set, or in the older
-held-out set. It locates each corpus's capture by reading its header rather
-than assuming a column, because these files do not agree on layout — `heldout`
-and the development sets put the utterance second, this set puts it third — and
-a guard comparing the wrong field passes for the wrong reason, which is worse
-than failing. A corpus file with no `utterance` header stops the check rather
-than being skipped. It runs as part of `test_score.py`, which the corpus gate runs, so
-a capture cannot leak in unnoticed. It has already caught two: `E04` was a
-verbatim copy of a `heldout.tsv` case and `F28` was a paraphrase of one, both
-introduced while this set was being written, and both were replaced.
+on a *new* capture appearing — verbatim, or as a near-paraphrase at Jaccard 0.70
+or above — anywhere on the tuned side: the gating corpus, any file under
+`SpeakItTests/`, a development set, another sealed set, or the repository's
+prose. All three sealed sets are checked, this one included and `heldout.tsv`
+with them.
+
+It locates each corpus's capture by reading its header rather than assuming a
+column, because these files do not agree on layout — `heldout` and the
+development sets put the utterance second, this set puts it third — and a guard
+comparing the wrong field passes for the wrong reason, which is worse than
+failing. A corpus file with no `utterance` header stops the check rather than
+being skipped.
+
+Where it runs, stated so a reader can check it rather than believe it: its own
+step, `Held-out boundary`, in the `language-tools` job of
+`.github/workflows/ci.yml`. Not only inside `test_score.py` and not only inside
+the corpus gate, because the gate needs a Mac and is dispatch-only, so a guard
+living there does not run on the pull request that introduces the leak it
+exists to catch.
+
+**And that same argument has a hole one level up, which is open as this is
+written.** `language-tools` is gated on `if: needs.changes.outputs.ios ==
+'true'`, and the `ios` filter is twelve globs: the app targets, the Xcode
+project, `Tools/CorpusRunner/**`, `Tools/LanguageMutations/**`,
+`Tools/PipelineProbe/**`, `Tools/CI/**` and `.github/workflows/ci.yml`.
+**`Docs/**` is not among them.** So a pull request that only edits
+documentation never runs this check — and a capture quoted into a document is
+exactly what the prose half of it exists to catch. The one such leak caught so
+far was caught by luck: that pull request also touched a Swift file, so the job
+ran.
+
+The corpus half is genuinely covered, because every file it reads lives under
+`Tools/CorpusRunner/**`. The prose half reads all 73 Markdown files in the
+repository, most of them under `Docs/`, and is only as good as whatever else
+the pull request happened to touch. Adding `Docs/**` and `**/*.md` to that
+filter is the fix; it is an edit to `.github/workflows/ci.yml`, which our
+automation cannot merge, so it is written down here rather than quietly
+assumed.
+
+It has caught leaks in both directions. Two while this set was being written:
+`E04` was a verbatim copy of a `heldout.tsv` case and `F28` a paraphrase of one,
+both replaced. One arriving: a held-out capture's full text in a pull request to
+`Docs/LANGUAGE_BASELINE.md`, cut before it merged. And, once it was widened to
+read prose and to read the tuned side properly, the nine above that were already
+public and had been since before this set existed.
+
+**Read that last group as the warning it is.** For most of its life this file
+said the boundary was mechanical rather than a promise, and it was — mechanically
+reading 18% of the gating corpus, and never looking at prose or at `heldout.tsv`
+at all. A check is only as wide as what it reads, and "it is mechanical" is not
+a claim anyone can check. Ask what it reads, and whether anything forces the
+count it prints to agree with a number you already know.
+
+## Sizing a change without spending the set
+
+A rule for the other direction, which the leak check cannot enforce: reading
+sealed captures to *choose* a change is as damaging as reading them to fix one,
+and it does not feel like it at the time. Grepping the sealed sets to show a
+proposed change is safe is a sound-looking argument that costs the thing the
+argument was for — the set stops measuring generalisation the moment a change
+is selected with its contents in view.
+
+Three steps, in order:
+
+1. **Size it against readable sets only.** `devsets/`, the gating corpus, a
+   sweep document. If the change is not worth building on the evidence you are
+   allowed to read, it is not worth building.
+2. **State the property that bounds it.** Not "I checked and the sealed rows
+   are fine", but something a run can falsify: *this change can only affect a
+   capture ending on `to`, so every capture that does not is untouched.*
+3. **Let the sealed run be the test, never the input.** Build, then measure.
+
+The tell that you have crossed the line is when reading sealed rows is what
+makes your case. It never is: a bounding property is checkable without reading
+a single sealed capture, and where one exists it is also the real reason the
+sealed rows were safe. If you cannot state one, the case is not yet made — and
+if you have already looked, say so where the figure is published, because how a
+number was obtained is part of the number.
 
 ## Comparing runs
 
@@ -346,12 +490,11 @@ never across.
 
 `Tools/CorpusRunner/generations.tsv` records this set at generation 3, and
 `generation-check.py` reports whether a capture's text has changed without a
-new row above. **It does not run in CI yet** — wiring it needs a one-step
-change to `.github/workflows/ci.yml`, split into its own pull request because
-this repository's automation cannot merge a workflow edit. Until that lands it
-is a command somebody has to remember to run. It also cannot tell a legitimate
-generation from a quiet edit — they are the same diff — so the rows above still
-do the real work; the check only makes the edit impossible to make silently.
+new row above. **It runs on every pull request that touches
+`Tools/CorpusRunner/**`**, in the `language-tools` job beside the leak check.
+It still cannot tell a legitimate generation from a quiet edit — they are the
+same diff — so the rows above do the real work; the check makes the edit
+impossible to make silently, which is a different and smaller claim.
 
 Generation 3 changed two things at once, deliberately, at a pause between runs
 rather than between two comparisons:

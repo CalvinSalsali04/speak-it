@@ -1,5 +1,9 @@
 """Regression coverage for the evaluation instrument, independent of parser output."""
+import collections
+import csv
+import io
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -350,12 +354,12 @@ class DevsetScorerTests(unittest.TestCase):
     #: reads are written, so a test that passes for the wrong reason has to get
     #: past the real parser rather than a stub of it.
     def unfinished_block(self, utt, gap=False, due="nil", remind="nil",
-                         rows=1, operation=None):
+                         rows=1, operation=None, review=False):
         out = f'\u2500\u2500 "{utt}"\n'
         for _ in range(rows):
             out += f"  row title: X\n  route: Today\n  due: {due}\n  remind: {remind}\n"
         out += f"  state: {'incomplete gap=incompleteThought' if gap else 'complete'}\n"
-        out += "  needsReview: false\n"
+        out += f"  needsReview: {'true' if review else 'false'}\n"
         if operation:
             out += f"  operation: {operation}\n"
         return out
@@ -395,6 +399,99 @@ class DevsetScorerTests(unittest.TestCase):
             ["A\tone\tf\tIncomplete\t\n"],
             [self.unfinished_block("one", gap=True, due="2026-08-04")])
         self.assertIn("date/reminder/operation   1", invented)
+
+    def test_a_flagged_capture_dated_anyway_is_the_guard_failing(self):
+        """The half of `unsafe` that is harm on the path meant to prevent it.
+
+        The app decided this fragment was unfinished and attached a date to it
+        regardless, so something ran and let the commitment past.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           0", report)
+        self.assertEqual(code, 1, "a guard letting a commitment through gates")
+
+    def test_a_capture_never_flagged_is_the_recall_miss_showing_through(self):
+        """The other half, and the shape both real ones turned out to be.
+
+        Nothing decided this was unfinished, so nothing was ever asked to
+        withhold the date. It is the recall miss with a date attached, and it
+        goes when recall goes -- there is no guard here to write. `INC33
+        Tomorrow I want` is this, one trailing `to` away from `INC01 Tomorrow
+        I want to`, which is flagged and not unsafe.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=False, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertIn("never recognised at all           1", report)
+        self.assertEqual(code, 0, "gating this blocks on a number recall owns")
+
+    def test_the_split_prints_on_a_clean_run(self):
+        """A line that shows up only when it is non-zero is not evidence.
+
+        Same reasoning as `scored N of M labelled` printing when N == M: a
+        reader of a quiet run has to be able to tell the split was computed.
+        """
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertIn("date/reminder/operation   0", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertIn("never recognised at all           0", report)
+
+    def test_the_split_does_not_move_the_total_it_splits(self):
+        """A breakdown that changed its own subject would be worth nothing.
+
+        One of each: the total stays 2 and the two halves account for it.
+        """
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "B\ttwo\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True, due="2026-08-04"),
+             self.unfinished_block("two", gap=False, due="2026-08-04")])
+        self.assertIn("date/reminder/operation   2", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           1", report)
+
+    def test_an_abandoned_capture_splits_on_handled_not_on_flagged(self):
+        """This branch's recall test is wider than `flagged`.
+
+        A withdrawal the app acted on is handled too, so asking `flagged` here
+        would file a handled-and-dated capture under "never recognised" and
+        hide the guard failure this split exists to surface.
+        """
+        #: Handled but *not* flagged, which is the only shape that separates
+        #: `handled` from `flagged`. A fixture where both are true passes
+        #: either way -- the first draft of this test used one, and a mutation
+        #: swapping `handled` for `flagged` went unnoticed until it was
+        #: measured. A guard tested only where its two candidates agree is not
+        #: tested at all.
+        code, report = self.unfinished(
+            ["A\tone\tf\tAbandoned\t\n"],
+            [self.unfinished_block("one", gap=False, review=True,
+                                   due="2026-08-04")])
+        self.assertIn("date/reminder/operation   1", report)
+        self.assertIn("recognised, and committed anyway  1", report)
+        self.assertIn("never recognised at all           0", report)
+        self.assertEqual(code, 1)
+
+    def test_an_unseen_row_still_gates_beside_the_new_condition(self):
+        """The condition grew; it did not get replaced.
+
+        Both halves of the exit status have to survive the other being added,
+        and a scorer that stopped failing on a dropped row would have traded
+        one silent failure for another.
+        """
+        code, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n", "B\tmissing\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertIn("1 of 2 labelled", report)
+        self.assertIn("recognised, and committed anyway  0", report)
+        self.assertEqual(code, 1, "a dropped row gates on its own")
 
     def test_a_capture_the_probe_never_saw_is_visible_in_the_report(self):
         """The exclusion was never the property worth pinning.
@@ -615,6 +712,352 @@ class DevsetScorerTests(unittest.TestCase):
                     len(reason), 20,
                     f"{row[0]} is marked KNOWN: without saying why, which is a "
                     f"suppression rather than a documented failure")
+
+
+
+
+class RamblingPairingTests(unittest.TestCase):
+    """The rambling set's headline is the GAP between twins, so the pairing is
+    the instrument.
+
+    `RB04C` and `RB04R` carry the same content, one written and one spoken, and
+    the number worth reading is the difference between them. That only measures
+    anything while both halves carry the same labels and differ only in how the
+    content is said. Nothing here reads parser output: these are properties of
+    the label file, so they hold on a Linux container, and they fail the moment
+    somebody edits one side of a pair.
+    """
+
+    SET = pathlib.Path(__file__).parent / "devsets" / "rambling.tsv"
+
+    #: Ids with no twin, declared rather than tolerated: a dropped row and a
+    #: deliberate singleton are indistinguishable from here, and the failure
+    #: mode of a silently tolerated singleton is a gap headline computed over
+    #: fewer pairs than the reader thinks.
+    UNPAIRED = {
+        "RB25": "coherent-long, written as one long unrehearsed capture with "
+                "no clean counterpart by design",
+        "RB26": "coherent-long, same design",
+        "RB27": "coherent-long, same design",
+    }
+
+    #: Pairs whose rambling half ends with its clean half word for word, split
+    #: by WHY, because one of these is a property of the family and the other
+    #: is a habit of whoever typed it, and a single flag over both gets quoted
+    #: as whichever is convenient.
+    #:
+    #: A restart IS the speaker saying the whole thing again. A restart capture
+    #: that did not end with the complete utterance would be the mislabelled
+    #: one, so there is nothing here to fix.
+    RESTART_ENDS_WITH_TWIN = {
+        "RB09": "restart: 'send Yusuf the I mean send Yusuf the updated quote'",
+        "RB10": "restart: 'book a table for book a table for six on Saturday'",
+        "RB11": "restart: 'order the order the replacement filter for the furnace'",
+    }
+
+    #: A decision is different. The speaker weighs options and then states the
+    #: outcome -- and in these four the outcome is phrased as the canonical
+    #: sentence rather than as a person resolving a choice ('no, the bus').
+    #: So "return the final clause" scores them correctly with no deliberation
+    #: handling at all, which is the rate improving without the capability.
+    #: Counted, not excused: these are the rows to rewrite, and the family is
+    #: 4/4 clean to 1/4 rambling even WITH the answer handed over.
+    DECISION_ENDS_WITH_TWIN = {
+        "RB13": "decision resolves as 'take the bus to the airport on Sunday' verbatim",
+        "RB14": "decision resolves as 'give Dimitri the blue chair' verbatim",
+        "RB15": "decision resolves as 'cook the salmon on Thursday' verbatim",
+        "RB16": "decision resolves as 'so book the afternoon session'",
+    }
+
+    @classmethod
+    def rows(cls):
+        body = cls.SET.read_text(encoding="utf-8")
+        lines = [l for l in body.splitlines() if l and not l.startswith("#")]
+        return list(csv.DictReader(io.StringIO("\n".join(lines)), delimiter="\t"))
+
+    @staticmethod
+    def flatten(text):
+        return re.sub(r"[^a-z0-9 ]", " ", text.lower()).split()
+
+    @classmethod
+    def ends_with(cls, rambling, clean):
+        """Whether the rambling half finishes with its clean twin word for word.
+
+        A function with a fixture rather than an inline `endswith`, because an
+        end-to-end test cannot check its own matcher: mutating the comparison
+        and mutating the thing that would notice are the same edit. The last
+        guard written in this repository shipped with a comparison that could
+        never fire, and it was a mutation that found it, not a reading.
+        """
+        return cls.flatten(rambling)[-len(cls.flatten(clean)):] == cls.flatten(clean)
+
+    def pairs(self):
+        by = {r["id"]: r for r in self.rows()}
+        for rid, row in sorted(by.items()):
+            match = re.fullmatch(r"(RB\d+)C", rid)
+            if match and match.group(1) + "R" in by:
+                yield match.group(1), row, by[match.group(1) + "R"]
+
+    def test_the_matcher_sees_a_trailing_twin_and_only_a_trailing_twin(self):
+        self.assertTrue(self.ends_with("honestly the afternoon so book the session",
+                                       "book the session"))
+        self.assertTrue(self.ends_with("Book the Session.", "book the session"),
+                        "case and punctuation must not hide a verbatim ending")
+        self.assertFalse(self.ends_with("book the session and then go home",
+                                        "book the session"),
+                         "a twin in the middle is not a twin at the end")
+        self.assertFalse(self.ends_with("book the", "book the session"))
+
+    def test_every_capture_is_paired_or_declared_unpaired(self):
+        by = {r["id"]: r for r in self.rows()}
+        for rid in by:
+            match = re.fullmatch(r"(RB\d+)([CR])", rid)
+            with self.subTest(id=rid):
+                if not match:
+                    self.assertIn(rid, self.UNPAIRED,
+                                  "a capture with no C/R suffix must say why")
+                    continue
+                twin = match.group(1) + ("R" if match.group(2) == "C" else "C")
+                self.assertIn(twin, by, f"{rid} lost its twin; the gap headline "
+                                        "is computed over pairs")
+        for rid in self.UNPAIRED:
+            with self.subTest(declared=rid):
+                self.assertIn(rid, by, "a declared singleton that is gone must "
+                                       "leave the list with it")
+                self.assertNotIn(rid + "C", by,
+                                 "a declared singleton that gained a twin is no "
+                                 "longer a singleton")
+
+    def test_twins_agree_on_destination_and_thought_count(self):
+        """The one assertion that survives a relabel.
+
+        Deliberately not pinned to literal counts: RB28 and RB30 were relabelled
+        from 3 thoughts to 4 after they were written, and a test carrying the old
+        number would have had to be edited to accept the correction -- which is
+        the shape where a wrong label and a wrong test agree with each other.
+        Agreement between halves holds whatever the right answer turns out to be.
+        """
+        for stem, clean, rambling in self.pairs():
+            with self.subTest(pair=stem):
+                self.assertEqual(clean["expected_destination"],
+                                 rambling["expected_destination"],
+                                 "a pair split across destinations measures "
+                                 "routing, not rambling")
+                self.assertEqual(clean["expected_thoughts"],
+                                 rambling["expected_thoughts"],
+                                 "a pair that disagrees on thought count has a "
+                                 "gap built into its labels")
+
+    def test_a_rambling_twin_ending_in_its_clean_twin_is_declared_and_reasoned(self):
+        """Whether a trivial rule scores well here is part of the measurement.
+
+        If the rambling half ends with the clean half word for word, "return the
+        final clause" answers the pair with no structural recovery whatsoever.
+        That is worth knowing about a set whose purpose is to show structural
+        recovery failing.
+        """
+        documented = dict(self.RESTART_ENDS_WITH_TWIN, **self.DECISION_ENDS_WITH_TWIN)
+        self.assertEqual(
+            len(documented),
+            len(self.RESTART_ENDS_WITH_TWIN) + len(self.DECISION_ENDS_WITH_TWIN),
+            "an id in both lists is an id whose reason nobody has decided")
+
+        found = [stem for stem, clean, rambling in self.pairs()
+                 if self.ends_with(rambling["utterance"], clean["utterance"])]
+        self.assertTrue(found, "the matcher found nothing at all, which on this "
+                               "set means it stopped working")
+        for stem in found:
+            with self.subTest(pair=stem):
+                self.assertIn(stem, documented,
+                              "a new pair hands the answer to a trivial rule; "
+                              "say which population it belongs to")
+        for stem, reason in documented.items():
+            with self.subTest(documented=stem):
+                self.assertIn(stem, found,
+                              "documented as ending with its twin and no longer "
+                              "does; a list that outlives its rows is a list "
+                              "nobody is reading")
+                self.assertGreater(len(reason.strip()), 20,
+                                   "a documented row needs the reason, not a mark")
+
+    def test_the_two_populations_are_not_interchangeable(self):
+        """A marker standing in for the judgement it approximates is the bug.
+
+        Parking a decision row in the restart list would make an artefact look
+        constitutive, which is the whole reason the two lists exist separately.
+        """
+        by = {r["id"]: r for r in self.rows()}
+        for stem in self.RESTART_ENDS_WITH_TWIN:
+            with self.subTest(restart=stem):
+                self.assertIn("restart", by[stem + "R"]["family"])
+        for stem in self.DECISION_ENDS_WITH_TWIN:
+            with self.subTest(decision=stem):
+                self.assertIn("decision", by[stem + "R"]["family"])
+
+    def test_each_paired_family_has_the_same_number_of_halves(self):
+        """A dropped row shows up as a family that is heavier on one side."""
+        counts = collections.Counter(r["family"] for r in self.rows())
+        for family, total in sorted(counts.items()):
+            if not family.endswith("-clean"):
+                continue
+            other = family[: -len("-clean")] + "-rambling"
+            with self.subTest(family=family):
+                self.assertEqual(total, counts[other],
+                                 f"{family} and {other} must stay matched")
+
+
+class ControlPairTests(unittest.TestCase):
+    """A guard family's rate, read against the thing it guards against.
+
+    `runon.tsv` labels `bridging-guard` "do not split" and `statement-runon`
+    "split here", and both are juxtaposed clauses with no connector. A parser
+    with no boundary logic passes every guard row and fails every target row,
+    so `bridging-guard 4/4` beside `statement-runon 0/6` is what the ABSENCE
+    of the mechanism looks like -- and the family table sorts that 4/4 in
+    among the healthy rows. Nobody is building bridging logic, so left alone
+    it reads as coverage indefinitely.
+
+    The rows stay counted. They are a real regression guard against an
+    over-split; it is the reading that was wrong, not the data.
+    """
+
+    LABELS = ("G1\tguard one here\tbridging-guard\tMemory\t1\n"
+              "G2\tguard two here\tbridging-guard\tMemory\t1\n"
+              "T1\ttarget one here\tstatement-runon\tMemory\t2\n"
+              "T2\ttarget two here\tstatement-runon\tMemory\t2\n")
+
+    def block(self, utterance, rows):
+        out = f'\u2500\u2500 "{utterance}"\n'
+        return out + "  row title: X\n  route: Memory\n" * rows
+
+    def score(self, labels, probe):
+        with tempfile.TemporaryDirectory() as root:
+            directory = pathlib.Path(root) / "devsets"
+            directory.mkdir()
+            cases = directory / "runon.tsv"
+            cases.write_text("id\tutterance\tfamily\texpected_destination"
+                             "\texpected_thoughts\n" + labels)
+            output = directory / "probe.txt"
+            output.write_text(probe)
+            scorer = pathlib.Path(__file__).parent / "heldout" / "score.py"
+            return subprocess.check_output(
+                [sys.executable, str(scorer), str(cases), str(output)], text=True)
+
+    def never_splits(self):
+        return "".join(self.block(u, 1) for u in
+                       ["guard one here", "guard two here",
+                        "target one here", "target two here"])
+
+    def test_a_guard_at_ceiling_beside_a_target_at_zero_is_not_a_pass(self):
+        report = self.score(self.LABELS, self.never_splits())
+        self.assertIn("NOT INFORMATIVE", report)
+        self.assertIn("bridging-guard", report.split("CONTROL PAIRS")[1])
+
+    def test_it_becomes_informative_the_moment_the_target_leaves_zero(self):
+        """The marker has to retire itself, or it is a permanent excuse."""
+        probe = (self.block("guard one here", 1) + self.block("guard two here", 1)
+                 + self.block("target one here", 2) + self.block("target two here", 1))
+        section = self.score(self.LABELS, probe).split("CONTROL PAIRS")[1]
+        self.assertIn("informative", section)
+        self.assertNotIn("NOT INFORMATIVE", section)
+
+    def test_a_guard_that_is_not_at_ceiling_is_informative_on_its_own(self):
+        """Zero on the target is not by itself the condition.
+
+        A guard the parser fails somewhere is telling you something real about
+        where it splits, whatever the target does -- so the verdict must turn
+        on both halves, not on the target alone. Tested because a check whose
+        two conditions always agree in the data is a check on one condition.
+        """
+        probe = (self.block("guard one here", 1) + self.block("guard two here", 2)
+                 + self.block("target one here", 1) + self.block("target two here", 1))
+        section = self.score(self.LABELS, probe).split("CONTROL PAIRS")[1]
+        self.assertNotIn("NOT INFORMATIVE", section)
+
+    def test_half_a_declared_pair_is_reported_rather_than_skipped(self):
+        """A renamed family must not quietly remove the contrast.
+
+        Printing nothing when one side is missing is how a declared pair stops
+        being read: the section simply gets shorter and the guard goes back to
+        being a healthy-looking row in the table above.
+        """
+        report = self.score("G1\tguard one here\tbridging-guard\tMemory\t1\n",
+                            self.block("guard one here", 1))
+        self.assertIn("is not in this set, so the other half is being read alone",
+                      report)
+
+
+class CorpusPathTests(unittest.TestCase):
+    """Which files a scan is allowed to open, decided once rather than per scan.
+
+    Both directions have now cost something. Too narrow: `leak-check.py` looped
+    a list that did not contain `heldout.tsv`, and `devset-failures.sh` kept its
+    own list of development sets, so `rambling.tsv` reached one runner and not
+    the other. Too wide: a scan asking a question about readable material was
+    pointed at every `*.tsv` here and printed a sealed capture into an agent's
+    session.
+
+    The repair is a total classification rather than a convention, because a
+    shared list still silently omits a set nobody added to it.
+    """
+
+    def paths(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def test_readable_and_sealed_share_nothing(self):
+        paths = self.paths()
+        self.assertFalse(set(paths.readable()) & set(paths.sealed()))
+
+    def test_every_corpus_file_is_classified(self):
+        """The guard that makes this more than a convention.
+
+        A set nobody classified is a set every scan decides about on its own,
+        which is the state this replaces.
+        """
+        stray = self.paths().unclassified()
+        self.assertEqual(stray, [], "classify these in corpus_paths.py: "
+                                    f"{[p.name for p in stray]}")
+
+    def test_a_stray_corpus_file_is_actually_detected(self):
+        """A check that treats absence as success cannot fail on addition."""
+        paths = self.paths()
+        with tempfile.TemporaryDirectory() as room:
+            room = pathlib.Path(room)
+            (room / "newset.tsv").write_text("id\tutterance\n", encoding="utf-8")
+            found = [p.name for p in paths.unclassified(room)]
+            self.assertIn("newset.tsv", found)
+
+    def test_a_declared_file_that_is_gone_is_reported(self):
+        """Deleting a corpus must not pass as quietly as adding one."""
+        self.assertEqual(self.paths().missing(), [])
+
+    def test_readable_refuses_a_sealed_path_even_if_the_list_is_wrong(self):
+        """The seam, with a fixture on it.
+
+        `readable()` filters its own output against `sealed()` rather than
+        trusting whoever last edited the name list. Without a test reaching
+        that filter, the two would have to disagree in the repository before
+        anybody found out — and the whole point is that they never should.
+        """
+        paths = self.paths()
+        original = paths.READABLE_NAMES
+        try:
+            paths.READABLE_NAMES = original | {"heldout/heldout.tsv"}
+            self.assertNotIn("heldout.tsv",
+                             [p.name for p in paths.readable()],
+                             "a sealed path reached a caller asking for "
+                             "readable material")
+        finally:
+            paths.READABLE_NAMES = original
+
+    def test_the_sealed_list_is_the_three_sealed_sets(self):
+        self.assertEqual(sorted(p.name for p in self.paths().sealed()),
+                         ["adversarial.tsv", "everyday.tsv", "heldout.tsv"])
 
 
 if __name__ == "__main__":

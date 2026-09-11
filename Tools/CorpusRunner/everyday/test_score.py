@@ -11,6 +11,7 @@ checked against a known input is not evidence about anything.
 import collections
 import contextlib
 import io
+import os
 import pathlib
 import re
 import subprocess
@@ -19,6 +20,7 @@ import tempfile
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
 HEADER = "id\tdomain\tutterance\texpect\tkeep\treject\tfamilies\tnote\n"
 
 
@@ -513,6 +515,83 @@ class LeakCheckTests(unittest.TestCase):
                 self.assertEqual(
                     self.leak.utterance_column(header.split("\n")), expected)
 
+    def prose_world(self, docs, captures=("alpha bravo charlie delta echo foxtrot",)):
+        """A repository-shaped fixture: one sealed set, some Markdown.
+
+        The real check walks `ROOT`, so the module's `ROOT`, `SEALED_ALL` and
+        `PROSE_DOCUMENTED` are pointed at the temporary tree for the duration.
+        """
+        root = pathlib.Path(tempfile.mkdtemp())
+        sealed = root / "sealed.tsv"
+        sealed.write_text("id\tutterance\n" + "".join(
+            f"S{i}\t{c}\n" for i, c in enumerate(captures)))
+        for name, body in docs.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body)
+        self.leak.ROOT = root
+        self.leak.SEALED_ALL = [sealed]
+        self.leak.PROSE_DOCUMENTED = {}
+        return root
+
+    def test_a_sealed_capture_quoted_in_a_document_is_a_leak(self):
+        self.prose_world({"Docs/notes.md": "We saw `alpha bravo charlie delta "
+                                           "echo foxtrot` go wrong.\n"})
+        self.assertFalse(self.leak.check_prose())
+
+    def test_a_quotation_wrapped_across_lines_is_still_caught(self):
+        """The failure mode that would have made this check decorative.
+
+        Prose wraps. A capture quoted inside a paragraph is routinely split
+        over two lines, so a check that normalised line by line would pass on
+        exactly the leaks a human would call most obvious.
+        """
+        self.prose_world({"Docs/wrapped.md":
+                          "the sentence was alpha bravo charlie\n"
+                          "delta echo foxtrot and it failed\n"})
+        self.assertFalse(self.leak.check_prose())
+
+    def test_a_capture_too_short_to_protect_is_counted_not_flagged(self):
+        """Stated coverage rather than implied coverage.
+
+        A three-word capture appears in ordinary prose by accident, so it is
+        out of scope -- and the count of what is out of scope prints on every
+        run, so the size of the gap is visible instead of inferred.
+        """
+        root = self.prose_world({"Docs/short.md": "I said call mum today.\n"},
+                                captures=("call mum today",))
+        self.assertTrue(self.leak.check_prose())
+
+    def test_a_documented_leak_is_still_counted_but_does_not_gate(self):
+        """Same rule as a `KNOWN:` row: the marker moves the exit, not the count.
+
+        These captures cannot be un-leaked -- the text is in git history -- so
+        the list exists to let the check gate on anything new. If it removed
+        them from the count instead, the report would say the sets are clean
+        when they are not.
+        """
+        self.prose_world({"Docs/notes.md": "quoting alpha bravo charlie delta "
+                                           "echo foxtrot here\n"})
+        self.leak.PROSE_DOCUMENTED = {("sealed.tsv", "S0"): "known"}
+        import io, contextlib
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            ok = self.leak.check_prose()
+        self.assertTrue(ok, "a documented leak must not gate")
+        self.assertIn("1 documented", said.getvalue())
+        self.assertIn("sealed text in prose      1", said.getvalue())
+
+    def test_the_report_never_prints_the_capture_it_found(self):
+        """A leak detector that quotes its finding copies the leak to every log."""
+        self.prose_world({"Docs/notes.md": "alpha bravo charlie delta echo "
+                                           "foxtrot\n"})
+        import io, contextlib
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.leak.check_prose()
+        self.assertNotIn("alpha bravo charlie", said.getvalue())
+        self.assertIn("sealed.tsv S0", said.getvalue())
+
     def test_a_corpus_laid_out_differently_is_still_read_correctly(self):
         with tempfile.TemporaryDirectory() as root:
             path = pathlib.Path(root) / "odd.tsv"
@@ -558,7 +637,7 @@ class LeakCheckTests(unittest.TestCase):
 
     def test_the_verdict_distinguishes_contamination_from_double_counting(self):
         """The two failures need different words or the reader hunts the wrong one."""
-        sealed = {p.name for p in self.leak.SEALED}
+        sealed = {p.name for p in self.leak.SEALED_ALL}
         tuned = self.leak.verdict({"routed.tsv"})
         self.assertIn("developed against", tuned)
         duplicate = self.leak.verdict(sealed)
@@ -567,6 +646,11 @@ class LeakCheckTests(unittest.TestCase):
         # A mixed failure is the serious one and must read as contamination.
         self.assertIn("developed against",
                       self.leak.verdict(sealed | {"routed.tsv"}))
+        # Named rather than left to the set above: this question was asked
+        # against a list of two, so a capture shared by heldout.tsv and another
+        # sealed set was reported as contamination and would have sent someone
+        # to find a tuning leak that was not there.
+        self.assertIn("counted as two", self.leak.verdict({"heldout.tsv"}))
 
     def test_the_closest_miss_is_ranked_and_reported(self):
         """A pass/fail answer cannot show a set drifting toward the line.
@@ -650,6 +734,660 @@ class LeakCheckTests(unittest.TestCase):
         if not path.exists():
             self.skipTest("heldout.tsv not present")
         self.assertEqual(len(self.leak.harvest(path)), 389)
+
+
+class LeakCheckReachTests(unittest.TestCase):
+    """A check is only as good as the pull requests it runs on.
+
+    `leak-check.py` has its own step in the `language-tools` job, which was
+    the fix for it living only inside the Mac-only corpus gate. But that job
+    is gated on a path filter, and a guard that does not run on the pull
+    request carrying the leak is no better than one that runs nowhere.
+    """
+
+    WORKFLOW = HERE.parents[2] / ".github" / "workflows" / "ci.yml"
+
+    def test_the_prose_scan_descends_into_a_linked_directory(self):
+        """`prose_files` claims every Markdown file in the repository.
+
+        It globbed, and `rglob` does not descend into a symlinked directory --
+        the same traversal that left the retired-claim scan reading one folder
+        wherever it was measured. Nothing changes in this repository, which has
+        no symlinks; the point is that the sentence in the docstring stays true
+        if one ever appears.
+        """
+        leak = leak_check_module()
+        with tempfile.TemporaryDirectory() as room:
+            root = pathlib.Path(room)
+            (root / "real").mkdir()
+            (root / "real" / "quoted.md").write_text("x", encoding="utf-8")
+            (root / "tree").mkdir()
+            (root / "tree" / "linked").symlink_to(root / "real",
+                                                  target_is_directory=True)
+            found = {p.name for p in leak.prose_files(root / "tree")}
+            self.assertIn("quoted.md", found,
+                          "a document behind a link is still a document")
+
+    def globs(self):
+        """The `ios` filter, read from the workflow rather than assumed.
+
+        Parsed with a regex rather than a YAML library on purpose: this runs
+        on a CI image whose Python may not carry PyYAML, and a test that
+        errors on an import tells nobody anything. If the block cannot be
+        found the test fails rather than passing vacuously, for the same
+        reason a corpus with no `utterance` header stops the check.
+        """
+        if not self.WORKFLOW.exists():
+            self.skipTest("ci.yml not present")
+        block = re.search(r"^\s*ios:\s*\n((?:\s*-\s*'[^']*'\s*\n)+)",
+                          self.WORKFLOW.read_text(), re.M)
+        self.assertIsNotNone(block, "the ios path filter could not be found")
+        return re.findall(r"'([^']+)'", block.group(1))
+
+    @staticmethod
+    def covered(path, globs):
+        for pattern in globs:
+            if pattern.endswith("/**"):
+                if path.startswith(pattern[:-2]):
+                    return True
+            elif path == pattern:
+                return True
+        return False
+
+    def test_every_corpus_the_overlap_check_reads_is_inside_the_filter(self):
+        """The half that is genuinely covered, enumerated rather than assumed."""
+        globs = self.globs()
+        for path in ("SpeakItTests/SemanticCorpusDataG.swift",
+                     "SpeakItTests/SpeechRepairTests.swift",
+                     "Tools/CorpusRunner/devsets/routed.tsv",
+                     "Tools/CorpusRunner/everyday/everyday.tsv",
+                     "Tools/CorpusRunner/heldout/heldout.tsv",
+                     "Tools/CorpusRunner/adversarial/adversarial.tsv"):
+            with self.subTest(path=path):
+                self.assertTrue(self.covered(path, globs),
+                                f"{path} can change without running the check")
+
+    @unittest.expectedFailure
+    def test_the_documents_the_prose_check_reads_are_inside_the_filter(self):
+        """Open defect, recorded as a test rather than only as a sentence.
+
+        `Docs/**` is not in the `ios` filter, so a pull request that only
+        edits documentation never runs this check — and a capture quoted into
+        a document is exactly what the prose half exists to catch. The one
+        such leak caught so far was caught by luck: that pull request also
+        touched a Swift file.
+
+        Marked expected-failure rather than skipped so it cannot outlive the
+        defect. Add `Docs/**` to the filter and this reports an *unexpected
+        success*, which fails the run until the marker comes off — the same
+        contract as a `KNOWN:` row that starts passing. Fixing it is an edit
+        to `.github/workflows/ci.yml`, which this repository's automation
+        cannot merge.
+        """
+        globs = self.globs()
+        self.assertTrue(self.covered("Docs/LANGUAGE_BASELINE.md", globs),
+                        "a documentation-only pull request skips the leak check")
+
+
+class SwiftLiteralHarvestTests(unittest.TestCase):
+    """The tuned side of the boundary is only as wide as what it reads.
+
+    This check spent its life reporting `exact collisions 0` for everyday
+    while two everyday captures sat in `SemanticCorpusDataG.swift` as
+    `corpusCase` rows. Nothing was wrong with the comparison; the harvest
+    never handed it the strings.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_a_literal_is_found_whatever_precedes_it(self):
+        """The regression that let two everyday captures into the gating corpus.
+
+        The old harvest was one regex over the whole file, pairing quote
+        characters left to right with no idea which of them opens a literal.
+        A literal too short to match leaves its two quotes unconsumed, the
+        scan falls out of phase, and from there it reads the *gaps between*
+        strings instead of the strings. Here it returns the source text
+        `)\\ncorpusCase(.x, ` and never sees the capture at all.
+        """
+        text = 'foo("ok")\ncorpusCase(.x, "Sarah has no dairy at all", count: 1)\n'
+        self.assertIn("Sarah has no dairy at all", self.leak.swift_literals(text))
+
+    def test_the_code_between_two_literals_is_not_harvested_as_one(self):
+        """The other half of the same defect, and the half that hid it.
+
+        Harvesting gaps does not merely lose captures, it inflates the count
+        that is supposed to show coverage. The real file reported 2,465
+        strings while holding 2,101 literals, so the number a reader would
+        check read as *more* thorough than the truth.
+        """
+        text = 'foo("ok")\ncorpusCase(.x, "Sarah has no dairy at all", count: 1)\n'
+        for found in self.leak.swift_literals(text):
+            self.assertNotIn("corpusCase", found)
+
+    def test_an_escaped_quote_does_not_end_a_literal(self):
+        text = r'let s = "he said \"buy the milk\" and left the room"'
+        self.assertEqual(len(self.leak.swift_literals(text)), 1)
+
+    def test_a_literal_shorter_than_a_capture_is_skipped(self):
+        """Identifiers and keys are strings too, and matching them is noise."""
+        self.assertEqual(self.leak.swift_literals('let k = "id"'), [])
+
+    def test_an_unbalanced_quote_does_not_swallow_the_rest_of_the_file(self):
+        """Why this scans per line rather than over the whole text."""
+        text = ('// the user says "buy milk\n'
+                'corpusCase(.x, "Sarah has no dairy at all", count: 1)\n')
+        self.assertIn("Sarah has no dairy at all", self.leak.swift_literals(text))
+
+
+class TunedSideWidthTests(unittest.TestCase):
+    """What counts as tuned material, and what was being left out of it."""
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_a_hand_written_test_fixture_counts_as_tuned_material(self):
+        """`SemanticCorpusData*.swift` was not the only tuned corpus.
+
+        A fixture in an ordinary test file is tuned by definition: somebody
+        iterated on the rules until that exact sentence went green. Held-out
+        C342 is the fixture in eight assertions of `LocationReminderTests`,
+        and while this globbed one filename pattern none of that was visible.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "LocationReminderTests.swift").write_text(
+                'func t() { assert(text: "the spare key is under the doormat") }\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\nS0\th\tunrelated capture here\n")
+            self.leak.ROOT = root
+            self.leak.SEALED_ALL = [sealed]
+            found = self.leak.others(sealed)
+        self.assertIn(self.leak.norm("the spare key is under the doormat"), found)
+
+    def test_the_held_out_set_is_checked_and_not_only_compared_against(self):
+        """It was on the tuned side of the loop only.
+
+        `heldout.tsv` was a corpus to compare *against* and never a set under
+        check, so the set carrying the published destination figure was the
+        one set whose overlap with tuned material nothing ever looked at.
+        Three of its captures are exact matches for tuned strings.
+        """
+        script = HERE / "leak-check.py"
+        if not (HERE.parent / "heldout" / "heldout.tsv").exists():
+            self.skipTest("heldout.tsv not present")
+        out = subprocess.run([sys.executable, str(script)],
+                             capture_output=True, text=True).stdout
+        self.assertIn("=== heldout/heldout.tsv", out)
+
+    def test_a_documented_overlap_is_counted_but_does_not_gate(self):
+        """Red on arrival is how a check gets switched off.
+
+        The marker moves the exit status and never the count, for the same
+        reason a `KNOWN:` row is still counted as a failure: a number a
+        marker can improve is a number people learn to write markers for.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("the spare key is under the doormat")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED_ALL = [sealed]
+
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                undocumented = self.leak.check(sealed)
+
+            self.leak.OVERLAP_DOCUMENTED = {("everyday.tsv", "S0"): "known"}
+            buf2 = io.StringIO()
+            with contextlib.redirect_stdout(buf2), contextlib.redirect_stderr(buf2):
+                documented = self.leak.check(sealed)
+
+        self.assertEqual(undocumented, 1, "a new overlap must fail the run")
+        self.assertEqual(documented, 0, "a documented overlap must not gate")
+        self.assertIn("exact collisions         1", buf2.getvalue())
+        self.assertIn("S0", buf2.getvalue())
+
+        #: **No sealed capture text in any automated output, ever**, on a
+        #: failing run as much as a green one. A leak detector that prints the
+        #: leak has copied it somewhere new: a CI log is a different surface
+        #: from the sealed file, retained and readable by anyone with
+        #: repository access. Nothing is lost, because whoever fixes a finding
+        #: has to open both rows anyway and cannot judge a 0.78 without
+        #: reading them; the check's job is to say *which two rows*.
+        self.assertNotIn("doormat", buf.getvalue())
+        self.assertNotIn("doormat", buf2.getvalue())
+        self.assertIn("(documented)", buf2.getvalue())
+        self.assertIn("COLLISION  S0", buf.getvalue())
+        self.assertIn("T.swift", buf.getvalue())
+
+
+    def test_a_documented_near_duplicate_does_not_print_its_text_either(self):
+        """The near branch needed its own fixture to be tested at all.
+
+        The collision test above only ever produces an exact match, so the
+        near branch was never reached by it: a mutation putting the capture
+        text back into the documented-near line went unnoticed. A branch no
+        fixture reaches is not defence in depth, it is a branch nobody is
+        checking.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("the spare key is under the doormat now")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {("everyday.tsv", "S0"): "known"}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                code = self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertEqual(code, 0, "a documented near duplicate must not gate")
+        self.assertIn("near duplicates (>=0.7)  1  (1 documented, 0 new)", out)
+        self.assertIn("NEAR  S0", out)
+        self.assertIn("(documented)", out)
+        self.assertNotIn("doormat", out)
+
+
+    def test_every_place_a_collision_lives_is_reported_not_just_the_first(self):
+        """`setdefault` reported one location and hid the other nine.
+
+        Held-out C100 sits in four gating-corpus files and six hand-written
+        test files. Reported as one, it reads as an incidental duplicate; the
+        ten say it is a workhorse fixture the suite reaches for, which is a
+        different amount of damage to the same number.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            for name in ("A.swift", "B.swift"):
+                (root / "SpeakItTests" / name).write_text(
+                    'assert("the spare key is under the doormat")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertIn("COLLISION  S0  in 2: A.swift, B.swift", out)
+        self.assertNotIn("doormat", out)
+
+    def test_a_clean_run_prints_no_sealed_capture_either(self):
+        """The closest-miss report was the case that settled the rule.
+
+        On a green run, with nothing wrong, the old report printed the three
+        nearest sealed captures into the log. There is no failure being
+        explained there, so there is no cost being paid for. It still prints
+        the drift signal — the score, the id, the corpus — because that is
+        what a reader watching a set creep toward the line needs, and none of
+        it requires the sentence.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("post the parcel on the way to work")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                code = self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("closest, no leak", out)
+        self.assertIn("S0", out)
+        self.assertNotIn("doormat", out)
+        self.assertNotIn("parcel", out)
+
+    def test_a_capture_too_short_to_compare_is_not_compared(self):
+        """Recorded because the artefact is real in other scanners.
+
+        Jaccard over content words clears 0.70 easily at three or four words —
+        two ordinary reminder phrases sharing three of them is not evidence of
+        anything. `similarities` skips both sides below four tokens, so the
+        short-capture artefact cannot reach this report. That is a deliberate
+        floor and it belongs in a test rather than in a reader's memory: the
+        coverage it costs is real, and stating it is the same contract as
+        `PROSE_MIN_WORDS` printing how many captures it cannot protect.
+        """
+        ours = {self.leak.norm("call the dentist"): "S0"}
+        theirs = {self.leak.norm("call the dentist now"): ["T.swift"]}
+        ranked, near = self.leak.similarities(ours, theirs)
+        self.assertEqual(near, [], "a three-word capture must not be compared")
+        self.assertEqual(ranked, [])
+
+
+#: A claim is not retired when the sentence is deleted from the file somebody
+#: happened to be editing. It is retired when it is gone from everywhere it is
+#: written *and* everywhere it is generated.
+#:
+#: The case that produced this list: `Tools/CorpusRunner/heldout/README.md`
+#: claimed the 389 utterances were "written before anyone read the parser",
+#: the repository's history turned out not to support it, and the sentence was
+#: rewritten. It was still printed at the top of every language report by
+#: `Tools/CI/language-metrics.sh`, and from there copied into every baseline
+#: quoting one. Removed where a person was reading, left standing where a
+#: script was writing.
+#:
+#: So the step is: grep the retired claim across the repository before calling
+#: it retired, and then keep grepping, which is what this does. Each entry is
+#: a phrase, the commit that retired it, and why — because a bare list of
+#: forbidden strings reads as censorship rather than as a decayed claim that
+#: somebody replaced with a checkable one.
+RETIRED_CLAIMS = {
+    "does not run in CI yet":
+        "8c83dd4 wired generation-check.py into the language-tools job. Four "
+        "files said it ran nowhere and one asserted the opposite; they now "
+        "state the property and cite the filter that makes it hold.",
+    "not run in CI yet":
+        "Same retirement, shorter phrasing, listed separately because the "
+        "grep that misses a variant is the grep that lets it survive.",
+    "before anyone read the parser":
+        "Retired by #56 (4ddb573). heldout.tsv arrived in cb2b630, a commit "
+        "that in the same breath rewrote six parser sources, seventeen hours "
+        "after the PipelineSweep analyses of this parser landed. Commit order "
+        "is not authoring order, so the sentence is uncheckable rather than "
+        "false, which is the relevant fact about a claim the held-out rate's "
+        "meaning rests on.",
+}
+
+#: Occurrences where the sentence is QUOTED rather than claimed.
+#:
+#: Two kinds, and both are the retirement working rather than failing. An
+#: archived baseline section records what was reported at the time, so editing
+#: it would be rewriting the record instead of correcting a claim. And the
+#: retraction itself has to quote the sentence it retracts, or a reader cannot
+#: tell what was withdrawn.
+#:
+#: Worth saying that the first two things this list ever met were both
+#: legitimate: a guard with no exemption mechanism gets switched off the first
+#: time it is right about something.
+#:
+#: Keyed by (phrase, repository-relative path), and it forgives THE OCCURRENCE,
+#: not the file. The exemption holds only while the retraction is still written
+#: next to the claim: delete it, or restate the claim somewhere else in the
+#: same file, and this stops forgiving anything.
+RETIRED_CLAIM_QUOTED = {
+    ("before anyone read the parser", "Docs/LANGUAGE_BASELINE.md"):
+        "That sentence is not supportable and was retired",
+    ("before anyone read the parser", "Tools/CorpusRunner/heldout/README.md"):
+        "nothing in the repository supports it",
+}
+
+#: How close the retraction has to sit to the claim, in characters of flattened
+#: text. A file-level search would let one footnote at the bottom of a long
+#: document excuse a fresh assertion at the top, and `LANGUAGE_BASELINE.md` is
+#: 1,400 lines of exactly that shape.
+QUOTE_WINDOW = 400
+
+#: `Tools/CorpusRunner/heldout/README.md` line 3, `Docs/LANGUAGE_BASELINE.md`
+#: and `Tools/CI/language-metrics.sh` line 131 still carry "before anyone read
+#: the parser" on `main`. All three are rewritten on the core language
+#: thread's branch. That phrase joins the list above the moment that lands —
+#: one line, and the point of building the list now is that adding it is one
+#: line. It is named here rather than added early, because a list whose
+#: entries are aspirations is a list people learn to ignore.
+
+
+class RetiredClaimTests(unittest.TestCase):
+    """Claims somebody retired, asserted gone rather than believed gone."""
+
+    SKIP_DIRS = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
+
+    def tracked_files(self, root=None):
+        """Every file this check reads, following directory symlinks.
+
+        `rglob` does not descend into a symlinked directory, and that turned a
+        correct check into a blind one where it mattered: `measure-gate.py`
+        mirrors this suite into a scratch tree with `Docs` and `heldout`
+        linked rather than copied, so the scan walked the one copied directory
+        and found nothing to check. It reported a pass having read almost
+        nothing -- the shape this whole file exists to catch, in this file.
+
+        The real repository has no symlinks today, so following them changes
+        what is read only in the mirror. `seen` is the cycle guard that makes
+        that safe to keep true tomorrow.
+        """
+        root = pathlib.Path(root) if root else HERE.parents[2]
+        seen = set()
+        for here, folders, files in os.walk(root, followlinks=True):
+            folders[:] = [f for f in folders if f not in self.SKIP_DIRS
+                          and os.path.realpath(os.path.join(here, f)) not in seen]
+            seen.update(os.path.realpath(os.path.join(here, f)) for f in folders)
+            for name in files:
+                path = pathlib.Path(here) / name
+                if path.suffix not in {".md", ".sh", ".py", ".swift", ".yml", ".txt"}:
+                    continue
+                if path.resolve() == pathlib.Path(__file__).resolve():
+                    continue  # the file naming the claims cannot be its own leak
+                yield path
+
+    def test_the_scan_descends_into_a_linked_directory(self):
+        """Pinned because the blind version passed everywhere except the mirror.
+
+        A check is only ever as wide as what it reads, and the one place this
+        was measured against a control is the one place it read nothing.
+        """
+        with tempfile.TemporaryDirectory() as room:
+            root = pathlib.Path(room)
+            (root / "real").mkdir()
+            (root / "real" / "deep.md").write_text("x", encoding="utf-8")
+            (root / "tree").mkdir()
+            (root / "tree" / "linked").symlink_to(root / "real",
+                                                  target_is_directory=True)
+            found = {p.name for p in self.tracked_files(root / "tree")}
+            self.assertIn("deep.md", found,
+                          "a linked directory is still a directory to read")
+
+    @staticmethod
+    def carries(body, phrase):
+        """Whether a file body still carries a retired claim.
+
+        A function rather than an inline `in`, because the end-to-end test
+        cannot check its own matcher: mutating the comparison and mutating
+        the thing that would notice are the same edit. This is the seam where
+        the case bug lived, so this is where a fixture can reach it.
+        """
+        return phrase.lower() in body.lower()
+
+    def test_the_matcher_ignores_case(self):
+        """The bug this guard shipped with for ten minutes.
+
+        The first version lowered the body and compared it against phrases
+        containing "CI", so it could never fire. It reported a pass on a
+        repository with the claim in three files.
+        """
+        self.assertTrue(self.carries("it Does Not Run In CI Yet, sadly",
+                                     "does not run in CI yet"))
+        self.assertFalse(self.carries("it runs in CI", "does not run in CI yet"))
+
+    def test_the_claim_list_is_not_empty_and_every_entry_says_why(self):
+        """A list that can be emptied silently is a suppression.
+
+        Emptying `RETIRED_CLAIMS` made every mutation above pass, which is the
+        same shape as a `KNOWN:` marker forgiving a rate: the guard reports
+        success because it was asked nothing.
+        """
+        self.assertTrue(RETIRED_CLAIMS, "the retired-claim list must not be empty")
+        for phrase, reason in RETIRED_CLAIMS.items():
+            with self.subTest(phrase=phrase):
+                self.assertTrue(phrase.strip())
+                self.assertGreater(len(reason.strip()), 40,
+                                   "a retired claim needs the commit that "
+                                   "retired it and why, not a bare string")
+
+    @staticmethod
+    def flatten(text):
+        """Collapse whitespace so a claim wrapped across lines is still one claim.
+
+        The prose half of `leak-check.py` learned this the expensive way: a
+        per-line matcher skips exactly the wrapped sentences and indented block
+        quotations most likely to carry the thing you are looking for. A
+        retired claim is prose, and prose wraps -- `git grep` missed the
+        occurrence in `heldout/README.md` for precisely this reason, and so
+        would this check without the collapse.
+        """
+        return re.sub(r"\s+", " ", text)
+
+    @classmethod
+    def occurrences(cls, path, root):
+        """Every occurrence of a retired claim in `path`, and its exemption if any.
+
+        Yields `(phrase, exempt)`. `exempt` is the retraction text when this
+        particular occurrence is a documented quotation AND the retraction is
+        still written beside it; `None` otherwise. Forgiving one occurrence
+        never forgives a second one in the same file.
+        """
+        flat = cls.flatten(path.read_text(encoding="utf-8", errors="ignore"))
+        lowered = flat.lower()
+        try:
+            relative = str(path.relative_to(root))
+        except ValueError:                      # pragma: no cover - defensive
+            relative = str(path)
+        for phrase in RETIRED_CLAIMS:
+            evidence = RETIRED_CLAIM_QUOTED.get((phrase, relative))
+            start = 0
+            while True:
+                at = lowered.find(phrase.lower(), start)
+                if at < 0:
+                    break
+                start = at + len(phrase)
+                window = flat[at:start + QUOTE_WINDOW]
+                if evidence and cls.carries(window, cls.flatten(evidence)):
+                    yield phrase, evidence
+                else:
+                    yield phrase, None
+
+    def test_a_claim_wrapped_across_lines_is_still_one_claim(self):
+        """The defect this check would have shipped with as a line-wise grep."""
+        wrapped = "389 utterances written before anyone\nread the parser."
+        self.assertTrue(self.carries(self.flatten(wrapped),
+                                     "before anyone read the parser"))
+        self.assertFalse(self.carries(wrapped, "before anyone read the parser"),
+                         "unflattened, the wrap hides it -- which is the point")
+
+    def test_no_retired_claim_is_still_written_anywhere(self):
+        root = HERE.parents[2]
+        live = collections.defaultdict(list)
+        quoted = 0
+        for path in self.tracked_files():
+            for phrase, exempt in self.occurrences(path, root):
+                if exempt:
+                    quoted += 1
+                else:
+                    live[phrase].append(str(path.relative_to(root)))
+        self.assertEqual(quoted, len(RETIRED_CLAIM_QUOTED),
+                         "every quoted entry must match exactly one live "
+                         "occurrence: an entry matching none has outlived its "
+                         "row, and one matching several is forgiving in bulk")
+        for phrase, files in live.items():
+            with self.subTest(phrase=phrase):
+                self.fail(f"retired claim still present in {len(files)} file(s): "
+                          f"{', '.join(sorted(files))}\n  retired by: "
+                          f"{RETIRED_CLAIMS[phrase]}")
+
+    def test_a_quoted_occurrence_needs_its_retraction_beside_it(self):
+        """The marker has to be able to stop applying, or it is an off switch.
+
+        Four states, because a check tested only where its conditions agree is
+        not tested at all: annotated, retraction deleted, retraction too far to
+        be read as attached, and the claim restated fresh below an annotated
+        one.
+        """
+        phrase = "before anyone read the parser"
+        retraction = RETIRED_CLAIM_QUOTED[(phrase, "Docs/LANGUAGE_BASELINE.md")]
+
+        def exemptions(body):
+            with tempfile.TemporaryDirectory() as room:
+                root = pathlib.Path(room)
+                (root / "Docs").mkdir()
+                path = root / "Docs" / "LANGUAGE_BASELINE.md"
+                path.write_text(body, encoding="utf-8")
+                return [e for _, e in self.occurrences(path, root)]
+
+        annotated = (f"389 utterances written {phrase}.\n\n"
+                     f"\u00a7 **{retraction} on 2026-09-11.**\n")
+        self.assertEqual(exemptions(annotated), [retraction],
+                         "the quoted occurrence carries its retraction")
+
+        self.assertEqual(exemptions(f"389 utterances written {phrase}.\n"), [None],
+                         "retraction deleted, so nothing excuses the sentence")
+
+        far = (f"389 utterances written {phrase}.\n" + "filler line\n" * 60
+               + f"\u00a7 **{retraction} on 2026-09-11.**\n")
+        self.assertEqual(exemptions(far), [None],
+                         "a retraction the reader never reaches is not a retraction")
+
+        second = annotated + f"\nAnd again: written {phrase}, stated fresh.\n"
+        self.assertEqual(exemptions(second), [retraction, None],
+                         "forgiving one occurrence must not forgive the next")
+
+    def test_every_quoted_entry_names_a_retired_phrase_and_a_real_file(self):
+        root = HERE.parents[2]
+        self.assertTrue(RETIRED_CLAIM_QUOTED,
+                        "an empty exemption list and a guard nobody has tested "
+                        "look the same from here")
+        for (phrase, relative), evidence in RETIRED_CLAIM_QUOTED.items():
+            with self.subTest(entry=relative):
+                self.assertIn(phrase, RETIRED_CLAIMS,
+                              "an exemption for a phrase nobody retired")
+                self.assertTrue((root / relative).exists(),
+                                "an exemption for a file that is gone")
+                self.assertGreater(len(evidence.strip()), 20,
+                                   "the evidence has to be specific enough that "
+                                   "deleting the retraction removes it")
+
+    def test_the_check_reads_generated_output_too_not_only_prose(self):
+        """The half that would have caught the one that got away.
+
+        The surviving copy was in `Tools/CI/language-metrics.sh`, not in a
+        document. A check scanning `*.md` only would have reported the claim
+        retired while it was still being printed at the top of every report.
+
+        Naming the directory rather than the suffix, because a `.sh` anywhere
+        satisfies a suffix check -- there is one in this very folder -- and the
+        property worth holding is that the scan reaches the scripts that
+        GENERATE reports. `measure-gate.py` mirrors this suite into a scratch
+        tree, and until this assertion existed its link to `Tools/CI` was an
+        entry no test needed: a mutation removing it changed nothing, which is
+        how a list stops being read.
+        """
+        read = list(self.tracked_files())
+        suffixes = {p.suffix for p in read}
+        self.assertIn(".sh", suffixes)
+        self.assertIn(".py", suffixes)
+        self.assertTrue(
+            any(p.suffix == ".sh" and "CI" in p.parts for p in read),
+            "the scan must reach Tools/CI, where the copy that survived lived")
 
 
 class DevsetScorerSealTests(unittest.TestCase):
@@ -1584,24 +2322,35 @@ class SealedRegistryTests(unittest.TestCase):
         """A sealed set missing from the registry is never leak-checked.
 
         The failure is silent and permanent: the set keeps being reported as
-        held out while nothing verifies that it still is. So membership is
-        derived from the file's own shape — a `reject` column means it is
-        scored by this scorer — rather than from anyone's memory.
+        held out while nothing verifies that it still is.
+
+        This used to derive membership from the file's own shape — a `reject`
+        column meant it was scored by this scorer — which sounds like the safe
+        way to do it and was not. `heldout.tsv` has no `reject` column, so the
+        one set that was genuinely missing from the registry was also the one
+        this test declined to look at. A derivation is only as total as its
+        predicate, and a predicate that excludes the failing case passes
+        forever while looking rigorous.
+
+        Membership now comes from the classification that is required to be
+        total (`corpus_paths`), whose own guard fails the run on any `*.tsv`
+        here that is in neither list.
         """
-        registered = {p.resolve() for p in self.leak.SEALED}
-        for path in sorted((HERE.parent).glob("*/*.tsv")):
-            header = ""
-            for line in open(path):
-                if "utterance" in line.lower():
-                    header = line.lstrip("#").lower()
-                    break
-            if "reject" not in header:
-                continue
+        sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        registered = {p.resolve() for p in self.leak.SEALED_ALL}
+        for path in corpus_paths.sealed():
             self.assertIn(
                 path.resolve(), registered,
-                f"{path.parent.name}/{path.name} is scored as a held-out set "
-                f"but is not in leak-check.py's SEALED list, so nothing checks "
-                f"that it stays unseen")
+                f"{path.parent.name}/{path.name} is classified as sealed but "
+                f"is not in leak-check.py's list, so nothing checks that it "
+                f"stays unseen")
+        self.assertEqual(corpus_paths.unclassified(), [],
+                         "a .tsv here is in neither the sealed nor the "
+                         "readable list, so this test cannot see it either")
 
     def test_each_sealed_set_is_checked_against_the_others(self):
         """Two sealed sets sharing a capture is one measurement counted twice.
@@ -1609,7 +2358,8 @@ class SealedRegistryTests(unittest.TestCase):
         `others()` returns normalised capture text, so the property is checked
         by looking for a sibling's actual capture in the comparison corpus.
         """
-        everyday, sibling = self.leak.SEALED[0], self.leak.SEALED[1]
+        by_name = {p.name: p for p in self.leak.SEALED_ALL}
+        everyday, sibling = by_name["everyday.tsv"], by_name["heldout.tsv"]
         compared = self.leak.others(exclude=everyday)
         a_sibling_capture = self.leak.norm(self.leak.harvest(sibling)[0])
         self.assertIn(
@@ -1619,7 +2369,7 @@ class SealedRegistryTests(unittest.TestCase):
 
     def test_a_set_excluded_from_the_comparison_is_not_compared_to_itself(self):
         """Otherwise every capture collides with itself and the check is noise."""
-        everyday = self.leak.SEALED[0]
+        everyday = {p.name: p for p in self.leak.SEALED_ALL}["everyday.tsv"]
         compared = self.leak.others(exclude=everyday)
         own_capture = self.leak.norm(self.leak.harvest(everyday)[0])
         self.assertNotIn(own_capture, compared)
@@ -1881,6 +2631,169 @@ class CorpusTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0,
                          f"leak check failed:\n{result.stdout}\n{result.stderr}")
+
+
+class ExposureRecordTests(unittest.TestCase):
+    """The record of sealed captures that were displayed but never inspected.
+
+    Nothing can detect these. A scan finds a capture committed into a file; it
+    cannot find one that was printed to a terminal and scrolled away. So the
+    record is hand-written, and what these tests defend is the only thing tests
+    can defend about a hand-written record: that it cannot quietly shrink, that
+    it never carries the text it is about, and that it is not silently
+    reclassified as one of the two populations it is deliberately not.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_exposure_that_happened_is_still_recorded(self):
+        """A record that can be deleted without failing is not a record.
+
+        This is the same rule as a `KNOWN:` row in a development set: an
+        annotation that documents a cost must not be removable by whoever finds
+        it inconvenient. The entry names one held-out capture that was printed
+        into a session on 2026-09-11.
+        """
+        self.assertIn(("heldout.tsv", "C283"),
+                      self.leak.EXPOSED_WITHOUT_INSPECTION,
+                      "the recorded exposure of heldout C283 has been removed; "
+                      "it happened, and the set's claim to be unseen is exactly "
+                      "as weak as it was before the entry was deleted")
+
+    def test_the_record_never_carries_the_text_it_is_about(self):
+        """The id is the record. Storing the sentence would repeat the harm.
+
+        Checked against the sealed sets themselves rather than by reading the
+        reasons for anything that looks like a quotation, because "looks like a
+        quotation" is a judgement and this is a fact: no sealed utterance, from
+        any of the three sets, appears in any reason string.
+        """
+        sealed_text = []
+        for path in self.leak.SEALED_ALL:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            column = self.leak.utterance_column(lines)
+            for row in lines[1:]:
+                cells = row.split("\t")
+                if len(cells) > column:
+                    sealed_text.append(cells[column].strip())
+
+        blob = self.leak.flatten(
+            " ".join(self.leak.EXPOSED_WITHOUT_INSPECTION.values())).lower()
+
+        #: Windows rather than whole utterances, at the same length the prose
+        #: check protects. A mutation put half a sealed capture in a reason
+        #: string and this test did not move, because it was asking whether a
+        #: complete capture appeared -- and half a capture is exactly as much
+        #: text in the repository as all of it. `leak-check.py` is not a `.md`
+        #: file, so the prose scan never reads these strings; this is the only
+        #: thing looking at them.
+        window = self.leak.PROSE_MIN_WORDS
+        for utterance in sealed_text:
+            words = self.leak.flatten(utterance).lower().split()
+            for i in range(len(words) - window + 1):
+                run = " ".join(words[i:i + window])
+                self.assertNotIn(run, blob,
+                                 f"a reason string in EXPOSED_WITHOUT_"
+                                 f"INSPECTION reproduces {window} consecutive "
+                                 f"words of a sealed capture, which puts the "
+                                 f"text in the repository -- the id is the "
+                                 f"whole record")
+
+    def test_an_exposed_capture_is_not_filed_as_contamination(self):
+        """Three populations, and collapsing them misreports in both directions.
+
+        A capture in `OVERLAP_DOCUMENTED` is in material the rules were tuned
+        against. One in `PROSE_DOCUMENTED` is public and cannot be recalled.
+        This one is neither: reading it changed no rule and the text is not in
+        any tracked file. Filing it with either overstates it; leaving it out
+        understates it.
+        """
+        for key in self.leak.EXPOSED_WITHOUT_INSPECTION:
+            self.assertNotIn(key, self.leak.PROSE_DOCUMENTED,
+                             f"{key} is recorded as both exposed-without-"
+                             f"inspection and public in prose; if the text is "
+                             f"genuinely committed somewhere, it belongs in the "
+                             f"prose table alone, where the check can find it")
+            self.assertNotIn(key, self.leak.OVERLAP_DOCUMENTED,
+                             f"{key} is recorded as both exposed-without-"
+                             f"inspection and present in a tuned corpus; those "
+                             f"are different costs and the second is worse")
+
+    def test_the_exposure_record_does_not_move_the_exit_status(self):
+        """There is nothing to fix, so there is nothing to gate on.
+
+        The reading already happened. A check that can only ever be red is one
+        people route around, and this record has to survive being inconvenient
+        for years. It changes the reader's denominator, not the build.
+        """
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.leak.report_exposure()
+        self.assertIn("C283", said.getvalue())
+
+        real = dict(self.leak.EXPOSED_WITHOUT_INSPECTION)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                status_with = self.leak.main()
+                self.leak.EXPOSED_WITHOUT_INSPECTION.clear()
+                status_without = self.leak.main()
+        finally:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.update(real)
+        self.assertEqual(status_with, status_without,
+                         "the exposure record changed the leak check's exit "
+                         "status; it is a record, not a gate")
+
+    def test_an_empty_record_still_says_it_is_hand_kept(self):
+        """Absence of entries is not evidence of absence of exposure.
+
+        The failure this guards against is a future reader seeing a section
+        with no rows and concluding nothing has ever been seen. Nothing scans
+        for these, so an empty section means only that nobody wrote one down.
+        """
+        real = dict(self.leak.EXPOSED_WITHOUT_INSPECTION)
+        said = io.StringIO()
+        try:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.clear()
+            with contextlib.redirect_stdout(said):
+                self.leak.report_exposure()
+        finally:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.update(real)
+        printed = said.getvalue()
+        self.assertIn("sealed captures exposed without inspection", printed,
+                      "the section disappears when it is empty, so a reader "
+                      "never learns the record exists")
+        self.assertIn("not the same as", printed,
+                      "an empty record prints without saying that nothing "
+                      "scans for these, which reads as an all-clear")
+
+
+class SealedListSourceTests(unittest.TestCase):
+    """Where the leak check gets its idea of which files are sealed.
+
+    It used to hold two lists, one of two sets and one of three, and the
+    two-set one was the one the verdict message consulted. That is how
+    `heldout.tsv` was compared against on every run and checked on none.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_sealed_list_comes_from_the_path_module(self):
+        sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(sorted(self.leak.SEALED_ALL), sorted(corpus_paths.sealed()),
+                         "the leak check keeps its own idea of which sets are "
+                         "sealed, which is the arrangement that lost heldout.tsv")
+
+    def test_every_sealed_set_is_actually_checked(self):
+        """The list is only useful if the loop reads all of it."""
+        self.assertEqual(len(self.leak.SEALED_ALL), 3)
+        names = {p.name for p in self.leak.SEALED_ALL}
+        self.assertEqual(names, {"everyday.tsv", "adversarial.tsv", "heldout.tsv"})
 
 
 if __name__ == "__main__":
