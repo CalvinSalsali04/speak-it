@@ -73,6 +73,38 @@ recognised as operations. They are not, and they fail closed to a Memory row
 that nothing acts on. Widening the destructive vocabulary to close them would
 trade a safe gap for an unsafe one.
 
+## `KNOWN:` markers, and the numbers that change because of them
+
+Four rows of `abandonment.tsv` carry a note beginning `KNOWN:` — a failure
+somebody documented rather than fixed, each with its reason. Until now the
+marker moved the row into the **pass** column, so `recall`, `fallout` and the
+mixed row all reported better than the set actually did. `fallout` is the
+number this scorer's own docstring calls the shipping decision, and a
+documented fallout of 1 printed as 0.
+
+**The marker now moves the exit status, not the rate.** A documented failure is
+counted as a failure everywhere it is counted at all; the report then names the
+ids and says which part of the total somebody already owns, and the exit status
+forgives that part so a pre-existing defect does not block a hand run. A rate a
+marker can improve is a rate people learn to write markers for.
+
+**So these numbers will read differently from any previously quoted.** Nothing
+about the parser changed — the earlier figures were the same behaviour scored
+with four rows excused. Anything recorded before this should be treated as
+scored under the old rule and not compared across it.
+
+**A `KNOWN:` row that starts passing now fails the run.** Removing the marker
+costs one line and leaving it is a suppression nobody is watching: it silently
+forgives a defect that no longer exists. Same reasoning as a recorded limit
+whose source comment has gone.
+
+Both scorers now have self-tests in `../test_score.py`, which runs on every
+pull request. They had none, and `34 of 57` and `24 of 24` had both been
+quoted from them. Writing the tests found three real gaps by mutation rather
+than by reading: a Mixed capture that produced no rows at all, one retracted
+whole, and a withdrawal that came back as its own row beside the surviving
+half — none of which any case in the set happened to exercise.
+
 ## Why abandonment is its own file
 
 `unfinished.tsv` asks whether a sentence stopped. `abandonment.tsv` asks
