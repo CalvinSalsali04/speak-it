@@ -9,6 +9,90 @@ cannot run.
 they are the record of what was true when they were measured, not a claim about
 today.
 
+## 2026-09-11 10:57 — `main` at generation 3, with no parser change in it
+
+Commit `2c5ac5b` on `main`,
+[run 34591348628](https://github.com/CalvinSalsali04/speak-it/actions/runs/34591348628),
+`macos-26`. This run exists because the unit suite failed on the framing
+branch and the same suite had to be run on unchanged `main` to find out whose
+failure it was; the language job came free with it.
+
+**This is the before-picture the framing change has to be compared against**,
+and it is the first everyday reading at the set's third generation (255
+captures, 22 invention cases). It does **not** contain the discourse-framing
+change. The 10:12 section below measured that change against the 235-capture
+generation, so those two sets of everyday figures do not compare with each
+other. These do, once the branch is measured again.
+
+At the time of writing the unit suite in this same run is still going. If it
+fails on unchanged `main`, every number in this section was taken against a
+build whose own tests do not pass, and that has to be said next to them.
+
+### Everyday held-out set — 255 captures, nothing tuned against them
+
+| measure | all domains | family-health | fitness-errands | freelance | money-travel | work-school |
+|---|---|---|---|---|---|---|
+| routing | 167/240 (69.6%) | 30/48 (62.5%) | 37/48 (77.1%) | 33/48 (68.8%) | 32/48 (66.7%) | 35/48 (72.9%) |
+| count | 192/232 (82.8%) | 39/47 (83.0%) | 38/46 (82.6%) | 37/46 (80.4%) | 39/47 (83.0%) | 39/46 (84.8%) |
+| nothing lost | 230/244 (94.3%) | 49/49 (100%) | 48/50 (96.0%) | 45/49 (91.8%) | 46/49 (93.9%) | 42/47 (89.4%) |
+| nothing invented | 14/22 (63.6%) | 0/4 (0%) | 3/4 (75.0%) | 3/5 (60.0%) | 4/5 (80.0%) | 4/4 (100%) |
+
+Over-segmented 17, under-segmented 23, produced nothing 0, missing probe
+results 0. Genuinely ambiguous 15, **acted on anyway 0**. Item type matched the
+label 145/232, reported and never gated.
+
+Clean titles 237/255 (92.9%). The 18 defects: 8 where the title is the whole
+capture, 7 farewells kept, 5 numbered preambles kept (`number one` ×2,
+`number two` ×2, `number three` ×1), 1 `what happened was`. Fourteen of the
+eighteen are framing left in place, which is what the branch change exists to
+remove.
+
+### Per family, worst first
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | 0/8 (0%) | 0/8 (0%) | 4/8 (50.0%) |
+| rambling-intro | 6 | 1/6 (16.7%) | 1/6 (16.7%) | 3/6 (50.0%) |
+| trailing-goodbye | 7 | 2/7 (28.6%) | 4/7 (57.1%) | 0/7 (0%) |
+| sequencing | 17 | 6/17 (35.3%) | 7/17 (41.2%) | 12/17 (70.6%) |
+| multi-thought | 40 | 19/40 (47.5%) | 22/40 (55.0%) | 36/40 (90.0%) |
+| operation | 10 | 5/10 (50.0%) | 0/2 (0%) | 10/10 (100%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 (25.0%) | 12/12 (100%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 19/24 (79.2%) |
+| list | 20 | 12/20 (60.0%) | 13/20 (65.0%) | 17/20 (85.0%) |
+| filler | 18 | 9/14 (64.3%) | 12/14 (85.7%) | 15/18 (83.3%) |
+| relative-date | 6 | 4/6 (66.7%) | 5/6 (83.3%) | 6/6 (100%) |
+| person | 33 | 23/33 (69.7%) | 26/32 (81.2%) | 32/33 (97.0%) |
+| date | 38 | 26/37 (70.3%) | 30/37 (81.1%) | 36/38 (94.7%) |
+| negation | 48 | 34/48 (70.8%) | 38/44 (86.4%) | 46/48 (95.8%) |
+| location | 12 | 9/12 (75.0%) | 10/12 (83.3%) | 11/12 (91.7%) |
+| self-correction | 39 | 30/39 (76.9%) | 37/39 (94.9%) | 39/39 (100%) |
+| time | 28 | 21/27 (77.8%) | 26/27 (96.3%) | 27/28 (96.4%) |
+| quantity | 34 | 27/34 (79.4%) | 32/34 (94.1%) | 31/34 (91.2%) |
+| reference | 34 | 27/34 (79.4%) | 28/34 (82.4%) | 33/34 (97.1%) |
+| false-start | 14 | 12/14 (85.7%) | 12/14 (85.7%) | 13/14 (92.9%) |
+| recurrence | 22 | 19/22 (86.4%) | 21/22 (95.5%) | 22/22 (100%) |
+| proper-noun | 15 | 13/15 (86.7%) | 12/14 (85.7%) | 13/15 (86.7%) |
+| repetition | 10 | 10/10 (100%) | 10/10 (100%) | 10/10 (100%) |
+| question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
+| ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+`n` counts captures carrying the tag, so the rows overlap: one capture can be
+filler, negation and multi-thought at once. The negation row here is the
+48-capture family; PR #33 later added the tag to W09, F05 and F14, so the next
+reading's negation row is out of 51 and does not compare with this one.
+
+### Held-out set — 389 utterances, sealed
+
+Destination 233/320 (72.8%), thought count 255/310 (82.3%), producing nothing
+0, genuinely ambiguous 69, **acted on anyway 7 (10.1%)**. Identical to every
+previous run. Nothing has moved this number yet.
+
+### Adversarial set
+
+Not in this run: it merged after the run started. Its first reading is still
+outstanding.
+
 ## 2026-09-11 10:12 — after the discourse-framing change
 
 First measured language change since the baseline. Commit `412a1a8` on
