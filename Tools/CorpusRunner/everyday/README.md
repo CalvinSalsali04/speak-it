@@ -1,6 +1,6 @@
 # Everyday speech — held-out set
 
-235 captures of ordinary adult life, 47 in each of five domains, written from
+255 captures of ordinary adult life, 51 in each of five domains, written from
 the product description and from how people actually dictate. **Nothing here has
 been tuned against, and nothing here may be tuned against.**
 
@@ -193,14 +193,63 @@ the per-domain routing and loss rates, and the `ACTED ON ANYWAY` count. Add a
 row to the baseline table below. Do not add a row for a run whose failures were
 read during development — say so instead, and treat the number as spent.
 
+## Generations
+
+The set grows, and a measure whose denominator moved is not comparable across
+the move. Each change below opens a new generation; compare rows within one,
+never across.
+
+| generation | from | captures | invention cases | span matching |
+|---|---|---|---|---|
+| 1 | 2026-09-11 | 235 | 19, of which 7 were farewells | substring |
+| 2 | 2026-09-11 | 235 | 12 (farewell cases cleared) | substring |
+| 3 | 2026-09-11 | 255 | 22 | left-anchored |
+
+Generation 3 changed two things at once, deliberately, at a pause between runs
+rather than between two comparisons:
+
+- **Twenty captures added**, four per domain, each carrying a genuine superseded
+  value: a corrected number, time, weekday, person, place, or a contrast the
+  reading must not invert. The other measures gain 20 captures and shift
+  slightly for that reason alone.
+- **Contrast captures no longer assert invention.** Ten captures phrase an
+  exclusion rather than a repair — `book the small meeting room not the big
+  one`. The excluded value is spoken deliberately, so a title that preserves the
+  contrast is faithful, and a substring test over the reading cannot tell
+  `excluded the big room` from `booked the big room`. Two of them were worse
+  than ambiguous: W38 and E20 rejected the strings `not 2D` and `not 6`, which a
+  *correct* title contains. All ten keep their captures and their `negation`
+  family label, and `test_score.py` now fails if a `negation` capture is given a
+  `reject` span. **Negation is consequently unmeasured by `invention` and by
+  nothing else either — that is a real gap in this instrument, named rather than
+  papered over.** Measuring it needs a judgement about which value the reading
+  treated as operative, which a span test cannot make.
+
+Between the twenty added and the ten withdrawn, `invention` moves from 12 cases
+to 22, all of them genuine supersessions, so its rate sits on a different
+denominator from every earlier row.
+- **Span matching now anchors its left edge.** It was a plain substring test over
+  normalised text, where `6:40` folds to `6 40` — which sits inside `16 40`. A
+  pipeline that read a corrected time *correctly* could be reported for inventing
+  the value it had discarded. The right edge stays open, because labels are
+  written in the spoken form (`500 gram`) and a rendering may inflect it
+  (`500 grams`); a suffix match cannot manufacture a failure. The fix is in
+  `carries()` and is covered four ways in `test_score.py`.
+
+The direction of the matching change is known even though it has not yet been
+re-run: `loss` can only get stricter and `invention` can only get less false. It
+also fixes a latent case that predates the new captures — F33 rejects `8:45`,
+which the old matcher would have found inside a rendered `18:45`.
+
 ## Baseline
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
 |---|---|---|---|---|---|---|---|
 | 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%)* | 217/235 (92.3%) | **0 / 15** |
 
-*The invention column in that row used the pre-correction 19-case measure. It is
-not comparable to later rows, which use the 12-case measure described below.
+*Generation 1. The invention column used the 19-case measure, 7 of whose cases
+were farewells; it is not comparable to any later row. The whole row predates
+generation 3, so every column in it is a generation-1 reading.
 
 First reading, from `language_only` run 34586389323 on `macos-26`. Scored
 non-verbose; the failures were not read. Over-segmented 17, under-segmented 23,
@@ -241,8 +290,8 @@ twice.
 
 `reject` now carries only values the reading must not assert — a superseded
 number, a corrected weekday, an inverted negation — and `test_score.py` fails if
-a farewell is ever added back. The measure is 12 cases, which is thin; thickening
-it with genuine superseded-value captures is the clearest next gap, and should be
+a farewell is ever added back. The measure is 22 cases, thickened as described
+below, and should be
 done as a deliberate, announced addition rather than silently between two
 comparisons.
 
@@ -260,7 +309,7 @@ then this directory is an instrument with no reading, and saying otherwise would
 be inventing a result.
 
 The runner itself has been exercised end to end against a stand-in probe: the
-shell plumbing extracts all 235 captures, invokes the probe and renders the full
+shell plumbing extracts all 255 captures, invokes the probe and renders the full
 report, so the only unrun link in the chain is the pipeline. If this block is
 missing or empty in a language-metrics report, the cause is the engine or the
 build, not this script.

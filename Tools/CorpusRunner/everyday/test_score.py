@@ -521,6 +521,40 @@ class DevsetScorerSealTests(unittest.TestCase):
                          result.stdout + result.stderr)
 
 
+def score_module():
+    """score.py is a script; the matcher is unit-testable in process."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("score_mod", HERE / "score.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class SpanMatchTests(unittest.TestCase):
+    """Span matching anchors its left edge and tolerates its right one."""
+
+    def setUp(self):
+        self.score = score_module()
+
+    def test_a_number_does_not_match_inside_a_longer_number(self):
+        # The bug this exists to prevent: a capture corrected 6:40 to 7:40, the
+        # pipeline rendered the evening time 16:40 for some other thought, and
+        # the discarded 6:40 was reported as invented.
+        self.assertFalse(self.score.carries("6:40", self.score.norm("meet at 16:40")))
+        self.assertFalse(self.score.carries("8:45", self.score.norm("closes 18:45")))
+
+    def test_a_number_still_matches_itself(self):
+        self.assertTrue(self.score.carries("6:40", self.score.norm("train at 6:40")))
+
+    def test_a_word_does_not_match_inside_a_longer_word(self):
+        self.assertFalse(self.score.carries("oslo", self.score.norm("konsoslo")))
+
+    def test_a_label_still_matches_an_inflected_rendering(self):
+        # Labels are written in the spoken form; renderings pluralise.
+        self.assertTrue(self.score.carries("500 gram", self.score.norm("buy 500 grams")))
+        self.assertTrue(self.score.carries("night", self.score.norm("three nights")))
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 
@@ -571,6 +605,22 @@ class CorpusTests(unittest.TestCase):
                 self.assertGreaterEqual(
                     len(span), 3,
                     f"{row[0]}: reject span {span!r} is too short to be meaningful")
+
+    def test_contrast_captures_assert_no_rejected_value(self):
+        """Invention means one thing: a value the repair discarded.
+
+        `book the small room not the big one` mentions the big room on purpose.
+        A title that keeps the contrast is faithful, not inventive, so a
+        substring test over the reading cannot tell `excluded the big room`
+        from `booked the big room`. Captures in the `negation` family therefore
+        carry no `reject` span; they still exercise routing, count and loss.
+        """
+        for row in self.rows():
+            if "negation" in row[6].split("|"):
+                self.assertEqual(
+                    row[5], "-",
+                    f"{row[0]}: a contrast capture cannot assert invention; "
+                    f"the excluded value was spoken deliberately")
 
     def test_keep_spans_are_long_enough_to_match_deliberately(self):
         for row in self.rows():

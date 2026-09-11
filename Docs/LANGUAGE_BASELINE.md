@@ -103,6 +103,37 @@ is worth treating as one question rather than six.
   app with its store. See `Tools/PipelineProbe/README.md` for what that cannot
   tell you.
 
+## Everyday corpus — generation 3 (2026-09-11)
+
+The everyday held-out set grew from 235 captures to 255, and its `invention`
+measure from 12 cases to 22, so **everyday numbers from before this change are
+not comparable to numbers after it.** Compare within a generation, never across.
+`Tools/CorpusRunner/everyday/README.md` holds the generation table and the
+reasoning.
+
+Two things changed together, deliberately at a pause rather than between two
+comparisons:
+
+- Twenty captures added, four per domain. Fifteen carry a genuine superseded
+  value — a corrected number, time, weekday, person or place. `invention` had
+  been the thinnest measure in the set.
+- Ten captures were withdrawn from `invention` (five of them pre-existing). They
+  phrase an exclusion, not a repair — `book the small meeting room not the big
+  one` — and the excluded value is spoken deliberately, so a faithful title
+  contains it. Two of the old ones rejected `not 2D` and `not 6`, strings a
+  *correct* title carries. Net effect 12 → 22 cases, all genuine supersessions.
+  **Negation is now measured by nothing in this instrument.** That gap is real
+  and is stated in the everyday README; closing it needs a judgement about which
+  value the reading treated as operative, which a span test cannot make.
+- Span matching now anchors its left edge. The old test was a plain substring
+  match over normalised text, where `6:40` folds to `6 40` and sits inside
+  `16 40`, so a pipeline that correctly discarded a superseded time could be
+  reported for inventing it. Direction of the correction is known: `loss` can
+  only get stricter, `invention` only less false.
+
+Nothing here was tuned against, and the set stays sealed: it has been scored
+non-verbose and its failures have not been read.
+
 ## How to reproduce
 
 ```bash

@@ -36,7 +36,7 @@ W34	work-school	five slides actually six slides for the board update	Today:task	
 W35	work-school	lunch and learn Wednesday topic is accessibility	Today:event	Aug 5|accessibility	-	date|reference	event with a topic
 W36	work-school	remind me every morning to check the on call handover	Today:task	-	-	recurrence|time	daily recurrence
 W37	work-school	I should probably maybe look into whether we still need the staging cluster	Today:task	staging cluster	-	hedged|filler	heavily hedged but still an intent to act
-W38	work-school	the workshop is in room 2B not 2D	Memory:note	2B	not 2D	self-correction|reference	correction of a reference detail
+W38	work-school	the workshop is in room 2B not 2D	Memory:note	2B	-	self-correction|reference|negation	correction of a reference detail
 W39	work-school	send the contract to Nkechi and cc Priya and also put the renewal date in the calendar	Today:task|Today:task	Nkechi|renewal	-	multi-thought|person	cc is part of the first action, the calendar entry is separate
 W40	work-school	never mind about the poster session I am not going	Op:cancel	poster session	-	cancellation|operation|negation	taking a previous capture back
 W41	work-school	my advisor wants the draft by the end of the month	Today:task	draft	-	relative-date	vague but real deadline
@@ -78,7 +78,7 @@ F29	family-health	the venue has no wheelchair access	Memory:note	no wheelchair	-
 F30	family-health	pack swimsuits towels sunscreen and the inflatable thing for Saturday	Today:task	sunscreen|Aug 8	-	list|date	one packing task with several details that belong together
 F31	family-health	did the results come back or am I imagining that	Ambiguous	results	-	question|ambiguous	speaker is unsure a thing happened
 F32	family-health	take the cat to the vet on Thursday and get the flea stuff while I am there	Today:task|Today:task	vet|Aug 6|flea	-	multi-thought|date	two errands, one trip
-F33	family-health	Dr Whitcombes office opens at 8:15 not 8:45	Memory:note	8:15	8:45	self-correction|time	corrected time, wrong one must not survive
+F33	family-health	Dr Whitcombes office opens at 8:15 not 8:45	Memory:note	8:15	-	self-correction|time|negation	corrected time, wrong one must not survive
 F34	family-health	I want to start walking in the mornings before everyone gets up	Today:task	walking	-	recurrence|time	intention shaped as a habit
 F35	family-health	remind me on the 9th to renew the health card	Today:task	health card	-	date	explicit day of month
 F36	family-health	she said it was fine but honestly I dunno I might call back	Ambiguous	-	-	ambiguous|hedged	no resolved intent
@@ -141,7 +141,7 @@ M45	money-travel	subscription audit in January cancel anything I have not opened
 M46	money-travel	book the ferry for the 3rd of September two adults one child	Today:task	ferry|two adults	-	date|quantity	one booking with details that belong together
 M47	money-travel	the apartment has no washing machine	Memory:note	no washing machine	-	negation	has no X shape
 L01	freelance	invoice Halvorsen Studio for the July retainer	Today:task	Halvorsen	-	proper-noun	business name must survive as spoken
-L02	freelance	um so the client wants uh three concepts not two	Memory:note	three concepts	two	filler|self-correction|quantity	corrected scope figure
+L02	freelance	um so the client wants uh three concepts not two	Memory:note	three concepts	-	filler|self-correction|quantity|negation	corrected scope figure
 L03	freelance	send the proposal to Beaumont and then follow up Thursday if they go quiet	Today:task|Today:task	Beaumont|Aug 6	-	multi-thought|date|sequencing	an action and a conditional follow up
 L04	freelance	the contract has no kill fee	Memory:note	no kill fee	-	negation	a contract term that is entirely negative
 L05	freelance	I need to I need to write up the scope change before I do any more work	Today:task	scope change	-	false-start|repetition	restart
@@ -206,7 +206,7 @@ E16	fitness-errands	the 5k is on the 30th registration closes the 20th	Today:eve
 E17	fitness-errands	cancel my Saturday class I will be away	Op:cancel	Saturday class	-	cancellation|operation	withdrawing a booking
 E18	fitness-errands	get a new filter for the vacuum its a Hoverline 400	Today:shopping	Hoverline 400	-	proper-noun|reference	unknown product model must survive verbatim
 E19	fitness-errands	run three times actually four times a week until the race	Today:task	four times	three times	self-correction|recurrence|quantity	corrected frequency
-E20	fitness-errands	the hardware shop closes at 4 on Saturdays not 6	Memory:note	at 4	not 6	self-correction|time	corrected closing time
+E20	fitness-errands	the hardware shop closes at 4 on Saturdays not 6	Memory:note	at 4	-	self-correction|time|negation	corrected closing time
 E21	fitness-errands	wash the car sort the garage and take the old paint to the depot	Today:task|Today:task|Today:task	garage|old paint|depot	-	list|multi-thought	three weekend jobs
 E22	fitness-errands	is the bike service included or is that extra	Ambiguous	bike service	-	question|ambiguous	unresolved question
 E23	fitness-errands	remind me Wednesday to put the bins out	Today:task	Aug 5|bins	-	date	explicit weekday
@@ -214,7 +214,7 @@ E24	fitness-errands	Bartholomew at the shop said the part is on backorder	Memory
 E25	fitness-errands	there is no step class this month	Memory:note	no step class	-	negation	known good guard as control
 E26	fitness-errands	so basically the thing with the treadmill is it makes that noise again and I should probably call someone	Today:task	treadmill	-	rambling-intro|hedged|run-on	preamble then a hedged action
 E27	fitness-errands	swim Monday lift Wednesday rest Friday	Today:task|Today:task|Today:task	swim|lift|rest	-	list|recurrence	a three day split
-E28	fitness-errands	buy the protein powder the vanilla one not chocolate	Today:shopping	vanilla	chocolate	self-correction	corrected flavour, wrong one must not survive
+E28	fitness-errands	buy the protein powder the vanilla one not chocolate	Today:shopping	vanilla	-	self-correction|negation	corrected flavour, wrong one must not survive
 E29	fitness-errands	my PB on the deadlift is 140 from March	Memory:note	140	-	quantity|reference	a record worth finding later
 E30	fitness-errands	collect the keys from Ingeborg then meet the plumber at two	Today:task|Today:task	Ingeborg|14:00	-	multi-thought|person|time|sequencing	two appointments in sequence
 E31	fitness-errands	um okay yeah so I dunno whether to cancel the membership or just pause it	Ambiguous	membership	-	filler|ambiguous|hedged	weighing two options, deciding neither
@@ -234,3 +234,23 @@ E44	fitness-errands	drop the shoes at the cobbler on Roncesvalles before Friday	
 E45	fitness-errands	did I already put the bins out or was that last week	Ambiguous	bins	-	question|ambiguous	unresolved memory question
 E46	fitness-errands	swap the smoke alarm batteries all three of them	Today:task	three	-	quantity	one job, a quantity that belongs to it
 E47	fitness-errands	so today when I go shopping I want to go to or actually first I wanna go to Solstice Market and then Fernwood Bakery for bread and then the pharmacy bye	Today:task|Today:task|Today:task	Solstice Market|Fernwood Bakery|pharmacy	-	false-start|sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	the shape Calvin described, with different stores so it is not his sentence
+W48	work-school	the deadline is the 14th sorry I mean the 15th	Today:task	15th	14th|Aug 14	self-correction|date	the second date replaces the first
+W49	work-school	we need eight licences no sorry twelve licences	Today:task	twelve	eight	self-correction|quantity	corrected count
+W50	work-school	the review is with Priya scratch that its with Aurelio	Today:task	Aurelio	Priya	self-correction|person	the person is replaced, not added
+W51	work-school	book the small meeting room not the big one	Today:task	small	-	negation	a contrast, not a correction
+F48	family-health	the appointment is at 9 sorry it got moved to 11	Today:event	to 11	at 9|09:00	self-correction|time	corrected time
+F49	family-health	give her half a tablet no wait a whole one	Today:task	whole one	half a tablet	self-correction|quantity	corrected dose
+F50	family-health	pick him up from football or rather from swimming	Today:task	swimming	football	self-correction	or rather as the repair marker
+F51	family-health	its the blue inhaler not the brown one	Memory:note	blue inhaler	-	negation	a distinguishing contrast
+M48	money-travel	the train leaves at 6:40 sorry I mean 7:40	Memory:note	7:40	6:40	self-correction|time	corrected departure
+M49	money-travel	book two nights actually make it three nights	Today:task	three nights	two nights	self-correction|quantity	corrected length of stay
+M50	money-travel	we fly into Bergen no sorry into Oslo	Memory:note	Oslo	Bergen	self-correction|location	corrected destination
+M51	money-travel	pay it by card not by transfer	Today:task	by card	-	negation	method contrast
+L48	freelance	the deposit is 30 percent sorry 40 percent	Memory:note	40 percent	30 percent	self-correction|quantity	corrected percentage
+L49	freelance	send it to Okonjo I mean to Vasquez	Today:task	Vasquez	Okonjo	self-correction|person|proper-noun	corrected recipient
+L50	freelance	the call is Tuesday no hang on Thursday	Today:event	Thursday	Aug 4|Tuesday	self-correction|date	corrected weekday, both named
+L51	freelance	invoice for the full day not the half day	Today:task	full day	-	negation	billing contrast
+E48	fitness-errands	get the 500 gram bag no the kilo one	Today:shopping	kilo	500 gram	self-correction|quantity	corrected size
+E49	fitness-errands	the class is at 6 no sorry at 7	Memory:note	at 7	at 6|18:00	self-correction|time	corrected class time
+E50	fitness-errands	swap the front tyre I mean the rear one	Today:task	rear one	front tyre	self-correction	corrected wheel
+E51	fitness-errands	book the Tuesday slot not the Thursday one	Today:task	Tuesday slot	-	negation	slot contrast
