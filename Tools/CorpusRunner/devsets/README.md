@@ -73,6 +73,63 @@ recognised as operations. They are not, and they fail closed to a Memory row
 that nothing acts on. Widening the destructive vocabulary to close them would
 trade a safe gap for an unsafe one.
 
+## Recorded limits, and why they never move a number
+
+A miss and a decision not to try read identically in a rate. `unfinished.tsv`
+scores 34 of 57 on recall, and seven of those captures are a limit somebody
+already measured and wrote down: trailing preposition, conjunction and adverb
+were each tried as a class and each removed, because "Meet Mike at" and
+"we're almost out" are the same tag shape and only one of them is unfinished.
+A reader triaging that table sees 23 misses and reads 23 as 23 available.
+
+The set's header now declares them:
+
+```
+# limit: SpeakIt/Repositories/ClauseStructure.swift | out of scope, and honestly so | INC41 INC42 INC43 INC44 INC46 INC47 INC48
+```
+
+and the report gains a block naming those seven captures, plus a mark on the
+family row, because the table is what gets quoted.
+
+**It deliberately computes no ceiling.** "Recall cannot pass 50 of 57" was the
+first draft and it was wrong twice. A ceiling is a denominator in waiting: once
+50 is in the report, 34 of 50 is in the reader's head, and 68% is a nicer
+number than 59.6% that nobody earned — which is the rule below being broken in
+the one place it cannot be tested. And it would be false. What
+`ClauseStructure.swift` records is that three *tagger classes* were tried and
+each cost more than it recovered, which is a statement about one signal.
+`Docs/SEGMENTATION_ARCHITECTURE.md` names another the app already measures and
+throws away: the speaker's pause, asked for at `SpeechRecognitionBackend.swift`
+and flattened out of the transcript a line later. A boundary that read timings
+would not meet the ambiguity that `Noun Conjunction` creates. A recorded limit
+is a decision taken with the signals to hand; calling it a ceiling promotes it
+to a property of the language.
+
+Three rules stop this becoming a machine for excusing failures, and
+`../test_score.py` holds all three:
+
+1. **A limit never changes a rate.** Those seven are still misses in the 34 of
+   57. Declaring one makes a number more visible rather than better, so there
+   is nothing to gain by declaring one falsely.
+2. **The citation is verified, not stated.** The phrase must still appear in
+   the named source, so a limit cannot outlive the decision that made it:
+   implement the thing and delete the comment, and the declaration fails until
+   somebody removes it.
+3. **A declared capture must exist and be a miss**, so a declaration cannot
+   quietly cover a row that was passing anyway.
+
+`INC45` is deliberately outside the declaration and a test pins that. "I need
+to talk to Sarah about the" ends on a determiner, which the cited comment does
+not cover and the code below it handles separately; sweeping it in would be a
+label standing in for the judgement it approximates.
+
+**What is not mechanical yet.** `DO02` and `DO03` in `routed.tsv`, above, are
+the same shape — expected to fail, kept deliberately — and are recorded only in
+this prose. They are a harder case: the reason is that closing them would trade
+a safe gap for an unsafe one, which is a judgement with no line of source to
+cite, so the citation rule does not fit them as written. Until it does, that
+rate carries two declined cases with nothing in the report saying so.
+
 ## `KNOWN:` markers, and the numbers that change because of them
 
 Four rows of `abandonment.tsv` carry a note beginning `KNOWN:` — a failure
@@ -104,6 +161,7 @@ quoted from them. Writing the tests found three real gaps by mutation rather
 than by reading: a Mixed capture that produced no rows at all, one retracted
 whole, and a withdrawal that came back as its own row beside the surviving
 half — none of which any case in the set happened to exercise.
+
 
 ## Why abandonment is its own file
 
