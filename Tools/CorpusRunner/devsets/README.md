@@ -40,6 +40,40 @@ spoken; two families failing equally means the label is wrong and rambling is
 not what broke it. Do not average across the halves: the clean rows are
 deliberately easy and would flatter any single number taken over the file.
 
+**A family can be passed by a rule that has none of the capability.** The
+decision family's four original pairs (`RB13`–`RB16`) were written by the
+thread that was about to work on deliberation, and all four resolve by
+repeating the clean twin word for word: "maybe cook the salmon Wednesday or
+Thursday I think Thursday **cook the salmon on Thursday**". Returning the final
+clause and discarding everything before it scores that family correctly while
+understanding nothing, so the 1-of-6 rate was measured with the answer already
+sitting in the input — which makes it a floor on the real capability and not a
+measurement of it. `RamblingPairingTests` declares those four and fails the run
+if a new pair joins them without saying which population it is in; a restart
+(`RB09`–`RB11`) ending with its twin is the family behaving correctly and needs
+no fix, and collapsing the two under one flag is how such a marker gets quoted
+as whichever is convenient.
+
+`RB41`–`RB46` are the rows that ask the question without handing over the
+answer, written by the evaluation thread on 2026-09-11 at the core thread's
+request, and deliberately by a different hand. They cover the three shapes the
+original four do not: the outcome landing mid-utterance with a reason after it
+(`RB41`, `RB42`), a deliberation resolving to **both** options so the count is
+the answer (`RB43`, `RB44`), and one resolving to **nothing** (`RB45`, `RB46`).
+None ends with its clean twin. Read them against `RB13`–`RB16` rather than
+pooled with them: a large gap between the two groups is the trivial rule
+showing, and that is the number worth having.
+
+The open-deliberation pair carries a **proposed** label, not a settled one.
+`RB45` and `RB46` are filed as Memory, one thought, no date, on the argument
+that a speaker who has not decided has no action to record and that a Today
+item would invent an obligation the capture does not contain — the same
+invention the everyday set counts 22 of. The argument the other way is that
+someone thinking aloud about a decision may want to be reminded to make it.
+This is a product question rather than a scoring one; the rows exist so it is
+at least measurable, and answering it the other way changes those two labels
+and nothing else in the file.
+
 **The count column can be right for the wrong reason, and on this set it has
 been.** It compares how many thoughts came out, not where they were cut. The
 core language thread found RB30 rating correct for a week on four thoughts

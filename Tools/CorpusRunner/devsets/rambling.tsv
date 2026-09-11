@@ -193,3 +193,49 @@ RB39C	the boiler service is booked for the fourteenth and the loft hatch key liv
 RB40C	Ines drives the blue estate now and the side gate code changed to 7731	two-facts-clean	Memory	2
 RB39R	um so the boiler service is booked for the fourteenth and you know the loft hatch key lives in the hall drawer	two-facts-rambling	Memory	2
 RB40R	okay so Ines drives the blue estate now and uh the side gate code changed to 7731	two-facts-rambling	Memory	2
+# --- Deliberation whose outcome is not the canonical sentence ----------------
+#
+# Written 2026-09-11 by the evaluation thread, at the core language thread's
+# request, and therefore by a different hand than everything above. Recorded
+# because provenance is part of a measurement: RB13-16 were written by whoever
+# was about to work on the parser, and they resolve by repeating the clean twin
+# word for word, so "return the final clause" scores that family correctly with
+# no deliberation handling at all. The 1-of-6 rate was measured with the answer
+# already in the input.
+#
+# None of the six below ends with its clean twin verbatim. That is the whole
+# point of them, and RamblingPairingTests fails the run if one ever does.
+#
+# Three shapes, because "the speaker decided" is not one behaviour:
+#
+#   RB41-42  the outcome lands mid-utterance and the speaker keeps going,
+#            with a reason rather than a second thought. Filing the trailing
+#            clause as a separate item is the failure to watch for here, and
+#            so is keeping the option that was talked away.
+#   RB43-44  the deliberation resolves to BOTH options. The count is the
+#            answer: a parser that takes the last clause files one thought and
+#            loses the other, and that is indistinguishable from success on
+#            RB13-16.
+#   RB45-46  the deliberation resolves to NOTHING. See the note below.
+#
+# RB45 and RB46 are labelled Memory with one thought and no date, and that is
+# a PROPOSAL from this thread rather than a settled answer, flagged here
+# because it is a product question and not a scoring one. The argument for it:
+# the speaker has not decided, so there is no action to take, and a Today item
+# invents an obligation the capture does not contain -- the invention failure
+# the everyday set already counts 22 of. The argument against: someone who
+# says this out loud may well want to be reminded to decide. The rows are
+# written so the question is at least measurable; if Calvin reads it the other
+# way, the fix is these two labels and nothing else in the file.
+RB41C	book the Tuesday slot with the physio	decision-clean	Today	1
+RB42C	take the coastal road to Perrin's place	decision-clean	Today	1
+RB41R	I could do the Tuesday slot with the physio or the Friday one and Tuesday is better so book the Tuesday slot with the physio because I'm off that afternoon anyway	decision-rambling	Today	1
+RB42R	it's either the motorway or the coastal road to Perrin's and honestly take the coastal road to Perrin's place the motorway is shut at the junction anyway	decision-rambling	Today	1
+RB43C	call the dentist and the optician	decision-clean	Today	2
+RB44C	book the van for Saturday and ask Theo to help	decision-clean	Today	2
+RB43R	I thought it was the dentist or the optician today but there's time for both so call the dentist and then the optician before they shut	decision-rambling	Today	2
+RB44R	I can't decide if I need the van or just Theo's car and thinking about it it's both so book the van for Saturday and ask Theo to help me load it	decision-rambling	Today	2
+RB45C	still deciding between the March intake and the September one	deliberation-open-clean	Memory	1
+RB46C	undecided whether to repoint the chimney or re-render the whole gable	deliberation-open-clean	Memory	1
+RB45R	I keep going back and forth on whether to do the March intake or wait for September and I genuinely don't know yet	deliberation-open-rambling	Memory	1
+RB46R	so the chimney needs repointing or maybe it's the whole gable that needs re-rendering and I'll have to get someone to look before I can call it	deliberation-open-rambling	Memory	1
