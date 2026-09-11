@@ -40,6 +40,27 @@ spoken; two families failing equally means the label is wrong and rambling is
 not what broke it. Do not average across the halves: the clean rows are
 deliberately easy and would flatter any single number taken over the file.
 
+**The count column can be right for the wrong reason, and on this set it has
+been.** It compares how many thoughts came out, not where they were cut. The
+core language thread found RB30 rating correct for a week on four thoughts
+produced by two errors cancelling — a boundary it should have cut and did not,
+against one it cut and should not have. Every capture here splitting three or
+more ways is unfalsifiable on placement for the same reason, so a count that
+agrees is evidence the number is right and not evidence the split is. The
+column that would settle it does not exist yet: expected cut points, or
+expected titles, beside the count.
+
+`bridging-guard` in `runon.tsv` is the other half of that lesson. Its four
+rows want one thought, `statement-runon`'s six want two, and both are
+juxtaposed clauses with no connector — so a parser with no boundary logic at
+all scores the guard 4/4 and the target 0/6. The scorer now prints the two
+beside each other under `CONTROL PAIRS` and marks that combination NOT
+INFORMATIVE, because the guard's pass says the mechanism is absent rather than
+correct. The rows stay counted; they are a genuine regression guard against an
+over-split, and the set's own header calling bridging "the row that will still
+be failing last" is the clearest evidence of how the rate reads to someone
+scanning it.
+
 It exists because the other five sets stopped discriminating. They sit at or
 near their ceilings while the sealed everyday set routes 168/240 and the
 adversarial set 52/116, so development steered by them is steered by

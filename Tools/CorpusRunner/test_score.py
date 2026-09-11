@@ -906,5 +906,86 @@ class RamblingPairingTests(unittest.TestCase):
                                  f"{family} and {other} must stay matched")
 
 
+class ControlPairTests(unittest.TestCase):
+    """A guard family's rate, read against the thing it guards against.
+
+    `runon.tsv` labels `bridging-guard` "do not split" and `statement-runon`
+    "split here", and both are juxtaposed clauses with no connector. A parser
+    with no boundary logic passes every guard row and fails every target row,
+    so `bridging-guard 4/4` beside `statement-runon 0/6` is what the ABSENCE
+    of the mechanism looks like -- and the family table sorts that 4/4 in
+    among the healthy rows. Nobody is building bridging logic, so left alone
+    it reads as coverage indefinitely.
+
+    The rows stay counted. They are a real regression guard against an
+    over-split; it is the reading that was wrong, not the data.
+    """
+
+    LABELS = ("G1\tguard one here\tbridging-guard\tMemory\t1\n"
+              "G2\tguard two here\tbridging-guard\tMemory\t1\n"
+              "T1\ttarget one here\tstatement-runon\tMemory\t2\n"
+              "T2\ttarget two here\tstatement-runon\tMemory\t2\n")
+
+    def block(self, utterance, rows):
+        out = f'\u2500\u2500 "{utterance}"\n'
+        return out + "  row title: X\n  route: Memory\n" * rows
+
+    def score(self, labels, probe):
+        with tempfile.TemporaryDirectory() as root:
+            directory = pathlib.Path(root) / "devsets"
+            directory.mkdir()
+            cases = directory / "runon.tsv"
+            cases.write_text("id\tutterance\tfamily\texpected_destination"
+                             "\texpected_thoughts\n" + labels)
+            output = directory / "probe.txt"
+            output.write_text(probe)
+            scorer = pathlib.Path(__file__).parent / "heldout" / "score.py"
+            return subprocess.check_output(
+                [sys.executable, str(scorer), str(cases), str(output)], text=True)
+
+    def never_splits(self):
+        return "".join(self.block(u, 1) for u in
+                       ["guard one here", "guard two here",
+                        "target one here", "target two here"])
+
+    def test_a_guard_at_ceiling_beside_a_target_at_zero_is_not_a_pass(self):
+        report = self.score(self.LABELS, self.never_splits())
+        self.assertIn("NOT INFORMATIVE", report)
+        self.assertIn("bridging-guard", report.split("CONTROL PAIRS")[1])
+
+    def test_it_becomes_informative_the_moment_the_target_leaves_zero(self):
+        """The marker has to retire itself, or it is a permanent excuse."""
+        probe = (self.block("guard one here", 1) + self.block("guard two here", 1)
+                 + self.block("target one here", 2) + self.block("target two here", 1))
+        section = self.score(self.LABELS, probe).split("CONTROL PAIRS")[1]
+        self.assertIn("informative", section)
+        self.assertNotIn("NOT INFORMATIVE", section)
+
+    def test_a_guard_that_is_not_at_ceiling_is_informative_on_its_own(self):
+        """Zero on the target is not by itself the condition.
+
+        A guard the parser fails somewhere is telling you something real about
+        where it splits, whatever the target does -- so the verdict must turn
+        on both halves, not on the target alone. Tested because a check whose
+        two conditions always agree in the data is a check on one condition.
+        """
+        probe = (self.block("guard one here", 1) + self.block("guard two here", 2)
+                 + self.block("target one here", 1) + self.block("target two here", 1))
+        section = self.score(self.LABELS, probe).split("CONTROL PAIRS")[1]
+        self.assertNotIn("NOT INFORMATIVE", section)
+
+    def test_half_a_declared_pair_is_reported_rather_than_skipped(self):
+        """A renamed family must not quietly remove the contrast.
+
+        Printing nothing when one side is missing is how a declared pair stops
+        being read: the section simply gets shorter and the guard goes back to
+        being a healthy-looking row in the table above.
+        """
+        report = self.score("G1\tguard one here\tbridging-guard\tMemory\t1\n",
+                            self.block("guard one here", 1))
+        self.assertIn("is not in this set, so the other half is being read alone",
+                      report)
+
+
 if __name__ == "__main__":
     unittest.main()
