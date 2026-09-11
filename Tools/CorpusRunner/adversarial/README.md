@@ -97,8 +97,24 @@ python3 Tools/CorpusRunner/adversarial/lengths.py
 `run-on`, and in both sets that measure that family. Every other pairing can be
 read against every ingredient it carries, so the ordering across pairings — the
 finding this set exists to produce — survives intact with that one row set
-aside. It is a defect in the set rather than in the parser, and the fix is to
-rewrite those twelve captures at their ingredient's length.
+aside. It is a defect in the set rather than in the parser.
+
+**That row stays exactly as it is, and this is its finished state rather than
+a deferred one.** Do not rewrite those twelve captures to match the
+ingredient's length. The provenance paragraph below claims nothing here has
+ever been scored and then edited, and that claim is load-bearing for all 120
+rows; a reader checks the paragraph, not the git history that would
+distinguish a length-only edit from a post-failure one. The moment it needs an
+exception for twelve captures it stops being a claim and becomes something to
+take on trust. One comparison out of 21 is not worth that, and the pairing is
+not dead in any case — it still reads against its other ingredient,
+`self-correction`, at 1.6× and 1.4× with both ranges overlapping.
+
+If the `run-on` comparison is ever genuinely wanted, the way to get it is
+**additional** captures written at the ingredient's length, as a new pairing —
+never edits to these twelve. New rows have never been scored, so provenance
+stays exact. That costs a generation boundary on this set, which the everyday
+README already has the machinery to express.
 
 Overlapping ranges are **not** a clean bill of health. They only fail to prove
 two sets incomparable, which is why the last column prints the ratio of the
