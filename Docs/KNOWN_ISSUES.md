@@ -12,6 +12,71 @@
 > Treat an unmarked entry as a claim to verify before ranking work from it, not
 > as a finding.
 
+## "Don't buy milk" and "remind me not to buy milk" are opposite captures
+
+**Measured 2026-09-11**, from the corpus and the source, not inferred from a
+behaviour report.
+
+Speak It already knows what a prohibition is. The `prohibitions` family is 17
+cases of the gating corpus and passes. `Remind me not to buy milk` becomes a
+Today task titled **Don't buy milk**; so does `Remind me to not buy milk`, and
+the same for the plants, the tickets and Dave
+(`SemanticCorpusDataI.swift:812-824`). `Please don't pay the invoice yet` is
+kept as a Memory note, with the corpus saying why: *"A bare negative imperative
+statement is preserved, not inverted"* (`:841`).
+
+Say it the way people usually say it — `Don't buy milk`, `Don't fix the sink` —
+and it is read instead as a **cancel operation** aimed at an existing reminder,
+extracting no items at all (`SemanticCorpusDataA.swift:148`,
+`SemanticCorpusDataD.swift:394`). So the corpus holds bare prohibitives that
+behave in two opposite ways, and what separates them is not documented anywhere
+and is not the speaker's intent. When no reminder matches, and for a capture
+that is nothing but the prohibitive, the extraction carries no items, so the
+"unmatched cancellation can itself be an errand" fallback is skipped at all
+three of its sites — each guarded on `!extraction.items.isEmpty`
+(`SwiftDataThoughtRepository.swift:92`, `:963`, `:1100`) — and
+`discardCaptureItems` runs.
+
+The person is told *"Couldn't find that — Nothing to cancel matching 'buy
+milk'"* (`CaptureOperationCopy.swift:34`) and the capture does not spend one of
+their ten free ones (`ThoughtRepository.swift:206`). The original transcript is
+still on the `CaptureSession`. So nothing is destroyed and nothing is silent —
+but Today and Memory are both empty, and which of the two outcomes the speaker
+gets turns on a boundary nobody has written down.
+
+**This is deliberate, not an oversight.** `testCancelWithNoMatchInventsNothing`
+asserts it: after an unmatched cancellation, "no fake reminder, and no Memory
+item standing in for the request". That test's case is `Cancel the dentist
+reminder`, which names an item and is a command aimed at the app's own database.
+`Don't buy milk` names an action. The app does not currently separate those two,
+and the development set says it should: `routed.tsv` wants `delete the reminder
+to call Dave` and `remove the dentist appointment` to be operations (both are
+read as Memory today) and `don't call the plumber`, `don't fix the sink`,
+`don't text Dave`, `don't reply to Dave` to be Today. The `prohibitive` family
+scores **1 of 5** on destination, the worst in that set
+([run 34601150638](https://github.com/CalvinSalsali04/speak-it/actions/runs/34601150638)).
+
+**Why this is worth ranking above what looks worse.** It is the one remaining
+family that is common everywhere rather than only in the set written for it. A
+prohibitive opens 20 of the 1,393 gating cases, 5 of 116 in `routed`, and by
+prevalence count alone — no rows read — 10 of 255 everyday captures, 7 of 389
+held-out and 7 of 120 adversarial.
+
+**What is not established:** what a person actually wants when they say it.
+Both readings are defensible and the choice is a product decision, not an
+engineering one. Also unestablished is whether `routed.tsv`'s expectation is
+right or is mis-specified for an instrument that cannot see the repository:
+`Tools/PipelineProbe` runs without a store, so every cancellation is unmatched
+there by construction, and "got nothing" in that report is the extraction's
+answer rather than what the person would see.
+
+Finally, one note in the gating corpus overstates the current behaviour.
+`SemanticCorpusDataD.swift:396` says a prohibitive "is preserved as a note when
+nothing matches" — true only when the capture produced another item as well,
+which is the case the guard above is written for. Nothing tests the claim as
+written, because the gate scores the extraction and this happens in the
+repository.
+
 ## Every routing rule rests on one framework answer, and it can be absent
 
 **Verified 2026-09-11**, against the framework rather than inferred from a
@@ -41,6 +106,23 @@ What is **not** established: whether a real iPhone can reach the same state.
 That needs a device check. What this entry records is the failure mode if one
 ever does — silent degradation rather than an error — which is the part worth
 knowing before anyone designs a fallback.
+
+**And the app has no way to notice.** Nothing in the pipeline asks whether the
+tagger answered at all. Every rule asks its own narrow question — is this token
+a verb, is this head verbless — and an absent model answers each of them
+plausibly and wrongly, so no rule sees anything unusual and there is no place
+where the answers are compared against a case whose answer is known. The check
+that would catch it is one sentence: tag a fixed string once and see whether any
+token comes back as anything but `OtherWord`. `NaturalLanguageEnvironmentTests`
+already does exactly that through `SentenceContext` — the diagnostic exists and
+nothing in the app runs it.
+
+That is worth separating from what the app should then *do*, which is a product
+decision and not an engineering one: carry on and route worse, tell the person
+something is wrong, or fall back to a purely lexical reading. None of the three
+is obviously right, and the detection is worth nothing until one is chosen. The
+detection is also untested against a device that has actually lost the model,
+because no such device has been observed — only the runner image.
 
 ## Physical-device voice validation
 
