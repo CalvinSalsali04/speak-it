@@ -160,6 +160,15 @@ enum DisfluencyFilter {
         value = replace(value, #"^(?:actually[\s,]+)?(?:no[\s,]+)?wait[\s,]+(?=\S)"#, "")
         value = replace(value, #"^(?:one|another)\s+more\s+thing\b[\s,]*"#, "")
         value = replace(value, #"^another\s+thing\b[\s,]*"#, "")
+        // "Number one, call the dentist. Number two, …": the first enumerator
+        // has nothing in front of it to end, so the clause splitter — which
+        // only sees a boundary *between* two clauses — never reaches it, and
+        // the marker stayed in the title of the first row.
+        value = replace(
+            value,
+            #"^(?:number\s+(?:one|1)|first\s+(?:of\s+all|off)|firstly)\b[\s,:;\-–—]*(?=\S)"#,
+            ""
+        )
         value = replace(value, #"^do\s+me\s+a\s+favou?r\s+and\b[\s,]*"#, "")
         value = replace(value, #"^hey\s+speak\s+it\b[\s,]*"#, "")
         value = replace(value, #"^you\s+know\s+what\b[\s,]*"#, "")
@@ -208,6 +217,9 @@ enum DisfluencyFilter {
         )
         value = replace(value, #"\s+(?:\#(ambiguousFillers))\s*$"#, "")
 
+        // How the recording ends. See `DiscourseFrame`.
+        value = DiscourseFrame.strippingSignOff(value)
+
         return normalize(value)
     }
 
@@ -253,6 +265,94 @@ enum DisfluencyFilter {
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\s+([,.;])"#, with: "$1", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Discourse frame
+
+/// How people close a recording.
+///
+/// Speech is framed at both ends. The opening frame — "okay so", "note to
+/// self", "right" — has been handled since the first sweep, in
+/// `DisfluencyFilter` above. The closing frame had no owner at all: a search
+/// of the app for a farewell of any kind returned nothing, and the everyday
+/// held-out set measured the consequence at **0 of 7 clean titles** for
+/// captures that end the way people end a voice note.
+///
+/// A sign-off is a discourse move, not an argument of a verb, and that is the
+/// whole distinction this makes. "Call the dentist tomorrow, thanks" ends with
+/// a sign-off; "call Dana and tell her thanks" ends with the thing Dana is to
+/// be told. The test is government: if the words in front of the farewell are
+/// a verb that takes it as an object, the farewell is content and stays.
+///
+/// The original wording is never touched. This runs on the repaired copy, and
+/// `TranscriptProvenance` keeps what the person actually said.
+enum DiscourseFrame {
+    /// Closings that cannot be the object of anything.
+    private static let pureSignOff =
+        #"(?:bye(?:\s*bye)?|goodbye|good\s*bye"#
+        + #"|see\s+(?:you|ya)(?:\s+(?:later|soon|then|around))?"#
+        + #"|talk\s+(?:to\s+you\s+)?(?:soon|later)|catch\s+you\s+later"#
+        + #"|over\s+and\s+out|that['’]?s\s+(?:it|all|everything)"#
+        + #"|that\s+is\s+(?:it|all|everything))"#
+
+    /// Closings that are also ordinary objects, and so need the guard below.
+    private static let gratitudeSignOff =
+        #"(?:thanks(?:\s+a\s+(?:lot|million|bunch))?|thank\s+you(?:\s+very\s+much)?"#
+        + #"|cheers|ta)"#
+
+    /// The throat-clearing people put in front of a farewell.
+    private static let closingLeadIn =
+        #"(?:ok|okay|alright|right|well|and|so|anyway|anyways|um|uh|yeah)"#
+
+    /// Words an English clause cannot end on. A farewell behind one of these
+    /// was part of the sentence rather than the end of the recording.
+    private static let danglingRemainder =
+        #"(?:to|and|or|but|so|the|an?|my|your|our|their|his|her|its|of|for|with"#
+        + #"|in|on|at|from|that|i|i['’]ll|we|we['’]ll|you|you['’]ll|he|she|they"#
+        + #"|it|is|are|was|were|will|need|want|have|has|gotta|gonna|going|say"#
+        + #"|said|tell|told)"#
+
+    /// A verb that would take a farewell as its object. Three tokens of reach,
+    /// which covers "tell her", "tell the team" and "say".
+    private static let governingVerb =
+        #"(?:say|says|said|saying|tell|tells|told|telling|send|sends|sent|sending"#
+        + #"|give|gives|gave|giving|wish|wishes|wished|owe|owes|owed"#
+        + #"|text|texts|texted|email|emails|emailed|write|writes|wrote|pass\s+on)"#
+
+    /// Removes the farewell a recording ends on, if it has one.
+    ///
+    /// Nothing is removed when the farewell is all there is — a capture of
+    /// nothing but "bye" is still the person's words, and an empty row is
+    /// worse than an odd one.
+    static func strippingSignOff(_ text: String) -> String {
+        let signOff = #"(?:\#(pureSignOff)|\#(gratitudeSignOff))"#
+        let pattern = #"(?i)[\s,.;!—–-]+(?:\#(closingLeadIn)[\s,]+)*"#
+            + #"\#(signOff)(?:[\s,.!]+\#(signOff))*[\s,.!]*$"#
+        guard let range = text.range(of: pattern, options: .regularExpression) else {
+            return text
+        }
+        let remainder = String(text[text.startIndex..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty else { return text }
+        // "I'll see you later" is a sentence, not an errand followed by a
+        // farewell, and cutting it leaves "I'll". A closing frame sits behind
+        // something that finished; a remainder that cannot end an English
+        // clause is the evidence that these words were the clause.
+        if remainder.range(
+            of: #"(?i)(?:^\S+$|\b\#(danglingRemainder)$)"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
+        // "Call Dana and tell her thanks": the farewell is what Dana is told.
+        if remainder.range(
+            of: #"(?i)\b\#(governingVerb)(?:\s+\S+){0,2}$"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
+        return remainder
     }
 }
 

@@ -1,0 +1,71 @@
+# Discourse-framing development set.
+#
+# Written to develop the closing-frame and enumeration work, from the everyday
+# per-family table rather than from any capture in it: `run-on` 0/8,
+# `rambling-intro` 1/6, `trailing-goodbye` 2/7 and `sequencing` 6/17 on routing,
+# with merges outnumbering splits 23 to 17. Not one sealed failure was read to
+# write this file, and nothing here was copied from a held-out set.
+#
+# NOT held out: these are for iteration. Read the failures, fix the layer, run
+# it again.
+#
+# Same five columns and the same scorer as `heldout/` and `routed.tsv`.
+#
+#   Today               belongs on Today, actionable
+#   Memory              belongs in Memory, keep it, do not act
+#   Ambiguous-preserve  meaning cannot be pinned down: keep the words, schedule
+#                       nothing, date nothing, mutate nothing
+#
+# Columns: id, utterance, family, expected_destination, expected_thoughts
+#
+id	utterance	family	expected_destination	expected_thoughts
+# --- Closing frame: a farewell is how a recording ends, not what it says -----
+SF01	call the dentist tomorrow bye	sign-off	Today	1
+SF02	pick up the dry cleaning thanks	sign-off	Today	1
+SF03	remind me to water the plants ok thanks bye	sign-off	Today	1
+SF04	book the flights on Friday cheers	sign-off	Today	1
+SF05	the garage code is 4821 thanks	sign-off	Memory	1
+SF06	email Priya the invoice talk soon	sign-off	Today	1
+SF07	call mom tomorrow see you	sign-off	Today	1
+SF08	Alex's birthday is October 4th thanks a lot	sign-off	Memory	1
+SF09	pay the hydro bill goodbye	sign-off	Today	1
+SF10	pick up the parcel that's it	sign-off	Today	1
+SF11	renew the passport ok bye	sign-off	Today	1
+SF12	the wifi password is maple syrup thank you	sign-off	Memory	1
+SF13	book the car in for Thursday and pay the hydro bill thanks bye	sign-off	Today	2
+SF14	cancel the gym membership alright thanks	sign-off	Today	1
+# --- The same words, doing work. These must keep every word they have -------
+SG01	call Dana and tell her thanks	sign-off-guard	Today	1
+SG02	text Mom and say thank you for the flowers	sign-off-guard	Today	1
+SG03	remember to thank Priya for covering my shift	sign-off-guard	Today	1
+SG04	the goodbye party for Sam is Friday at 6	sign-off-guard	Today	1
+SG05	I'll see you later	sign-off-guard	Memory	1
+SG06	say goodbye to the neighbours before we move	sign-off-guard	Today	1
+SG07	that's all I need from the store	sign-off-guard	Memory	1
+SG08	tell the team thanks for the late night	sign-off-guard	Today	1
+SG09	send Priya a thank you note	sign-off-guard	Today	1
+SG10	we went over and out of budget on the kitchen	sign-off-guard	Memory	1
+# --- Enumeration: the speaker says out loud where the boundary is -----------
+EN01	number one call the dentist number two pick up the dry cleaning	enumerated	Today	2
+EN02	number one book the flights number two renew my passport number three call the bank	enumerated	Today	3
+EN03	first of all email Priya the invoice	enumerated	Today	1
+EN04	pay the hydro bill secondly call the plumber	enumerated	Today	2
+EN05	firstly book the car in and lastly cancel the gym	enumerated	Today	2
+EN06	call the vet another thing pick up the dog food	enumerated	Today	2
+EN07	email the landlord the other thing is book the car in	enumerated	Today	2
+EN08	first off call mom then buy milk	enumerated	Today	2
+EN09	number one call the dentist tomorrow number two pay the hydro bill number three email Priya	enumerated	Today	3
+EN10	water the plants lastly take the bins out	enumerated	Today	2
+# --- The same words identifying a thing, not announcing a thought -----------
+EG01	the flight is gate number two	enumerated-guard	Memory	1
+EG02	we are in apartment number three	enumerated-guard	Memory	1
+EG03	the spare key is under plant pot number two	enumerated-guard	Memory	1
+EG04	I need another thing from the hardware store	enumerated-guard	Today	1
+EG05	the first of the month is when rent is due	enumerated-guard	Memory	1
+EG06	take the second exit off the roundabout	enumerated-guard	Today	1
+EG07	my locker is number four	enumerated-guard	Memory	1
+EG08	the other thing broke again	enumerated-guard	Memory	1
+# --- Opening frame in front of several thoughts -----------------------------
+OP01	okay so number one call the dentist number two buy milk	opener	Today	2
+OP02	right so book the flights and renew my passport thanks	opener	Today	2
+OP03	note to self number one the garage code is 4821	opener	Memory	1

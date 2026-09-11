@@ -1224,9 +1224,48 @@ enum RuleBasedThoughtExtractor {
     // also, pick up the dry cleaning", and a pattern demanding whitespace
     // after the connector no longer matched it.
 
+    /// Markers a speaker uses to say out loud where one thought ends and the
+    /// next begins.
+    ///
+    /// Enumeration is how people keep several errands straight in one breath —
+    /// "number one call the dentist number two pick up the dry cleaning" — and
+    /// nothing in the pipeline read it. The marker was left in the title and
+    /// the boundary it announced was not taken, so a capture that told the app
+    /// exactly where to cut came out as one run-on row. `second`, `third`,
+    /// `finally` and `one more thing` were already in the pattern below; these
+    /// are the rest of the vocabulary, kept separate so widening the gate on
+    /// them cannot change what the existing four do.
+    ///
+    /// These carry no other reading in English, so what follows only has to
+    /// look like the start of a clause.
+    ///
+    /// A connector in front of the marker is consumed with it — "and lastly
+    /// cancel the gym" would otherwise leave the row before it ending on a
+    /// stranded "and", which is the defect `connectorRun` exists to prevent.
+    private static let strongEnumerator =
+        #"(?:first\s+of\s+all|first\s+off|firstly|secondly|thirdly|lastly"#
+        + #"|another\s+thing|the\s+other\s+thing(?:\s+is)?)"#
+
+    /// "Number two" announcing the second thought.
+    ///
+    /// Held to a stricter gate than the words above, because this shape is
+    /// also how English identifies one thing among many — "gate number two",
+    /// "apartment number three". A post-nominal number is not followed by an
+    /// instruction, so requiring one is what separates the two readings
+    /// without naming the nouns it could attach to.
+    private static let numberedEnumerator =
+        #"(?:number\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}))"#
+
+    /// What has to follow an enumerator for it to be announcing a clause
+    /// rather than modifying the noun in front of it: an instruction, a noun
+    /// phrase opening on its determiner, or a pronoun subject.
+    private static let clauseOpenerPattern =
+        #"(?:\#(actionLeadPattern)|(?:the|a|an|my|our|your|his|her|their|its)\s+\p{L}"#
+        + #"|(?:i|we|you|he|she|they|it)\b)"#
+
     static func splitClauses(_ text: String) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
-        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
+        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|\s+(?:\#(connectorRun)\s+)?\#(strongEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?\#(numberedEnumerator)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
 
         var parts: [String] = []
         for sentence in sentenceParts {

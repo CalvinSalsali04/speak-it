@@ -5,6 +5,7 @@ Where rules are worked out. **Not a gate, and not held out.**
 ```bash
 ./Tools/CorpusRunner/devsets/score.sh coordination [--verbose]
 ./Tools/CorpusRunner/devsets/route-score.sh routed [--verbose]
+./Tools/CorpusRunner/devsets/route-score.sh framing [--verbose]
 ./Tools/CorpusRunner/devsets/unfinished-score.sh [--verbose]
 ./Tools/CorpusRunner/devsets/abandonment-score.sh [--verbose]
 ```
@@ -18,12 +19,18 @@ if nobody looked. Iterating needs somewhere else to iterate.
 |---|---|---|---|
 | `coordination.tsv` | `probe --clauses` | `score.py` | where clause boundaries fall |
 | `routed.tsv` | full rules path | `../heldout/score.py` | destination, and unsafe action on an ambiguous capture |
+| `framing.tsv` | full rules path | `../heldout/score.py` | whether the frame around speech is read as frame: sign-offs, enumeration |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
 
-`routed.tsv` is deliberately scored by the **held-out scorer**, on the same five
-columns, so the number being developed against is the same number being reported
-at the end. Only the data differs.
+`framing.tsv` was written from the everyday set's per-family *rates* — `run-on`
+0/8, `rambling-intro` 1/6, `trailing-goodbye` 2/7, `sequencing` 6/17 — and from
+no capture in it. A rate says which family to look at; a sentence would have
+ended the set's usefulness.
+
+`routed.tsv` and `framing.tsv` are deliberately scored by the **held-out
+scorer**, on the same five columns, so the number being developed against is the
+same number being reported at the end. Only the data differs.
 
 ## Reading the coordination set
 

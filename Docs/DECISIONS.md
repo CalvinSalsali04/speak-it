@@ -1,5 +1,42 @@
 # Decisions
 
+## 2026-09-11 — Speech is framed at both ends, and the second end now has an owner
+
+The everyday held-out set (235 captures, never tuned against) put the worst
+routing families in one place: `run-on` 0/8, `rambling-intro` 1/6,
+`trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. Merges
+outnumbered splits 23 to 17, and 14 of the 18 title defects were framing
+material still sitting in the shown title. The families that read what a
+sentence *means*, once it has been cut out correctly, scored in the eighties
+and nineties. The problem was the cutting, not the reading.
+
+Two things were missing rather than wrong. Nothing in the app handled a
+farewell — a search for one returned no code at all — so every "bye", "thanks"
+and "that's it" a person ends a voice note with became the last word of a
+title. And nothing treated enumeration as a boundary, although "number one …
+number two …" is a speaker saying out loud where one thought ends.
+`IntentConsolidation` owns the elaborative frame but stands down by design the
+moment two substantive clauses are present, so it collapses rambling with a
+single point and never sees a recording with three.
+
+`DiscourseFrame` in `SpeechRepair.swift` owns the closing frame, and the clause
+splitter gained the enumeration vocabulary it did not have. Both are decided
+structurally rather than by phrase. A sign-off is a discourse move, not an
+argument of a verb: "call Dana and tell her thanks" keeps its message because
+the farewell is governed by `tell`, and a remainder that cannot end an English
+clause blocks the cut so "I'll see you later" is not reduced to "I'll". An
+enumerator is a discourse move rather than a post-nominal modifier: "number
+two" only opens a clause when an instruction follows it, which is what leaves
+"gate number two" and "apartment number three" alone without naming the nouns
+they attach to.
+
+`second`, `third`, `finally` and `one more thing` were already in the splitter
+and are deliberately untouched. The new vocabulary is a separate alternation so
+that widening the gate cannot change what those four do.
+
+This is measured by `Tools/CorpusRunner/devsets/framing.tsv`, written from the
+everyday set's per-family *rates* and from none of its sentences.
+
 ## 2026-09-08 — Keep monthly and annual with ten free captures
 
 Retain $2.99/month and $14.99/year launch pricing against $29.99 standard annual. No weekly product or additional auto-renewing trial for launch. The ten lifetime captures already let users try the whole app without committing to billing. A seven-day trial remains a future experiment, not something category-level correlations can decide. Paywall sale claims now require the configured USD 14.99 StoreKit price as well as the build flag and date; other currencies show localized pricing without an unverified percentage. Remove the unconditional lifetime-rate promise until price preservation is verified in App Store Connect. See `PRICING_DECISION_2026-09-08.html` for evidence, tradeoffs and launch configuration.

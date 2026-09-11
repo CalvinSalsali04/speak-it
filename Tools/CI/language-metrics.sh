@@ -99,6 +99,7 @@ section "DEVELOPMENT SETS — where rules are worked out; not a gate, not held o
 {
   Tools/CorpusRunner/devsets/score.sh coordination
   Tools/CorpusRunner/devsets/route-score.sh routed
+  Tools/CorpusRunner/devsets/route-score.sh framing
   Tools/CorpusRunner/devsets/unfinished-score.sh
   Tools/CorpusRunner/devsets/abandonment-score.sh
 } >> "$OUT" 2>&1
