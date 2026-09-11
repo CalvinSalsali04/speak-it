@@ -228,6 +228,42 @@ not move at all. That is consistent with the bound the change was designed to
 have, and it is still a real loss on the only set that stands in for unseen
 speech.
 
+### The over-split risk, bounded from readable material alone
+
+Since which held-out capture moved cannot be looked up, the next best thing is
+to bound the rule's reach where the text *can* be read. Over every readable
+sentence in the repository — development sets, the unit tests, and prose in
+`Docs/` — **13,396 sentences, of which 258 contain the word "so"**:
+
+| | |
+| --- | --- |
+| readable sentences scanned | 13,396 |
+| containing the word `so` | 258 |
+| matching the new admission | **14** |
+| left untouched | 244 |
+
+So the rule declines 95% of the `so` sentences it sees. One of the fourteen is
+a `GUARD:` note scraped out of a test file rather than an utterance, leaving
+thirteen, and every one is accounted for:
+
+- **Four are held by the left-side guard and did not split** — "Okay so I need
+  to call Catherine tomorrow", "Um so I need to, uh, call the dentist…", "Right
+  so I should email the landlord", RB01R. Verified, not assumed: the gate is at
+  0 failing over 1,401 cases and `errand-rambling` stayed 8/8.
+- **Five split and are correct** — RB17R, RB18R, RB19R (the target family, now
+  3/3) and the two new corpus rows, all at their labelled counts.
+- **Two rows now over-count, and in both the new boundary is right** — RB30C
+  and RB30R, for the reason below.
+- **Two split correctly inside rows that already passed** — RB28R and the
+  `and then also` corpus row, both still at their labelled counts.
+
+**Zero of the thirteen produced a wrong new boundary by the labels in this
+repository.** That does not explain the held-out row and is not offered as
+though it did — the held-out set exists precisely because readable material
+runs out. It does say the loss is not a systematic over-split: if the rule
+fired loosely, 258 `so` sentences and 13,396 readable ones is enough material
+for it to show, and it does not.
+
 ### RB30 went 4 rows to 5, and the count column was hiding the reason
 
 RB30C and RB30R now over-produce. The boundaries tell a different story from
