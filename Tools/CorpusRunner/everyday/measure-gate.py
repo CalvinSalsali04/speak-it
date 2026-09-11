@@ -75,9 +75,15 @@ ROOT = HERE.parents[2]
 #: protected measures it had not measured — which is the control working. The
 #: list was already short of the truth before that: the prose half of the leak
 #: check reads every document in the repository, and this tree had none.
+#: A third time now, so the list itself is the defect: it was "the directories
+#: the tree needs", and the tree needed a file. `corpus_paths.py` is imported by
+#: `leak-check.py`, sits beside `everyday/` rather than inside it, and is not a
+#: directory, so it fell out of a list that only ever linked directories.
+#: Entries may now be either.
 LINKED = [ROOT / "SpeakItTests",
           ROOT / "Docs",
           ROOT / "Tools/CI",
+          ROOT / "Tools/CorpusRunner/corpus_paths.py",
           ROOT / "Tools/CorpusRunner/devsets",
           ROOT / "Tools/CorpusRunner/heldout",
           ROOT / "Tools/CorpusRunner/adversarial"]
@@ -101,7 +107,7 @@ def scratch_tree():
             if path.exists():
                 link = root / path.relative_to(ROOT)
                 link.parent.mkdir(parents=True, exist_ok=True)
-                link.symlink_to(path, target_is_directory=True)
+                link.symlink_to(path, target_is_directory=path.is_dir())
         yield root / "Tools/CorpusRunner" / HERE.name
 
 

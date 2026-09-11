@@ -987,5 +987,78 @@ class ControlPairTests(unittest.TestCase):
                       report)
 
 
+class CorpusPathTests(unittest.TestCase):
+    """Which files a scan is allowed to open, decided once rather than per scan.
+
+    Both directions have now cost something. Too narrow: `leak-check.py` looped
+    a list that did not contain `heldout.tsv`, and `devset-failures.sh` kept its
+    own list of development sets, so `rambling.tsv` reached one runner and not
+    the other. Too wide: a scan asking a question about readable material was
+    pointed at every `*.tsv` here and printed a sealed capture into an agent's
+    session.
+
+    The repair is a total classification rather than a convention, because a
+    shared list still silently omits a set nobody added to it.
+    """
+
+    def paths(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def test_readable_and_sealed_share_nothing(self):
+        paths = self.paths()
+        self.assertFalse(set(paths.readable()) & set(paths.sealed()))
+
+    def test_every_corpus_file_is_classified(self):
+        """The guard that makes this more than a convention.
+
+        A set nobody classified is a set every scan decides about on its own,
+        which is the state this replaces.
+        """
+        stray = self.paths().unclassified()
+        self.assertEqual(stray, [], "classify these in corpus_paths.py: "
+                                    f"{[p.name for p in stray]}")
+
+    def test_a_stray_corpus_file_is_actually_detected(self):
+        """A check that treats absence as success cannot fail on addition."""
+        paths = self.paths()
+        with tempfile.TemporaryDirectory() as room:
+            room = pathlib.Path(room)
+            (room / "newset.tsv").write_text("id\tutterance\n", encoding="utf-8")
+            found = [p.name for p in paths.unclassified(room)]
+            self.assertIn("newset.tsv", found)
+
+    def test_a_declared_file_that_is_gone_is_reported(self):
+        """Deleting a corpus must not pass as quietly as adding one."""
+        self.assertEqual(self.paths().missing(), [])
+
+    def test_readable_refuses_a_sealed_path_even_if_the_list_is_wrong(self):
+        """The seam, with a fixture on it.
+
+        `readable()` filters its own output against `sealed()` rather than
+        trusting whoever last edited the name list. Without a test reaching
+        that filter, the two would have to disagree in the repository before
+        anybody found out — and the whole point is that they never should.
+        """
+        paths = self.paths()
+        original = paths.READABLE_NAMES
+        try:
+            paths.READABLE_NAMES = original | {"heldout/heldout.tsv"}
+            self.assertNotIn("heldout.tsv",
+                             [p.name for p in paths.readable()],
+                             "a sealed path reached a caller asking for "
+                             "readable material")
+        finally:
+            paths.READABLE_NAMES = original
+
+    def test_the_sealed_list_is_the_three_sealed_sets(self):
+        self.assertEqual(sorted(p.name for p in self.paths().sealed()),
+                         ["adversarial.tsv", "everyday.tsv", "heldout.tsv"])
+
+
 if __name__ == "__main__":
     unittest.main()

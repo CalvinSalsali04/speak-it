@@ -14,10 +14,14 @@ reported too).
 import os
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
+
+sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+import corpus_paths  # noqa: E402  (needs ROOT resolved first)
 THRESHOLD = 0.70
 
 #: Prose is checked for *verbatim* sealed captures, and only for captures at
@@ -64,13 +68,67 @@ PROSE_DOCUMENTED = {
     ("heldout.tsv", "C358"): "AMBIGUITY_TAXONOMY.md",
 }
 
+#: Sealed captures whose text was **displayed to an agent** working on the
+#: parser, where no pass or fail was read and no rule changed as a result.
+#:
+#: This is a third population and must not be folded into either of the other
+#: two. `OVERLAP_DOCUMENTED` says a capture is in material the rules were tuned
+#: against; `PROSE_DOCUMENTED` says the text is public in a tracked document and
+#: cannot be recalled. Neither is true here: the text was read once, in one
+#: session, and is not in the repository. Filing it with those would overstate
+#: it -- it would read as a capture the rules were fitted to. Leaving it
+#: unrecorded would understate it just as badly, because "unseen" is a claim
+#: about what has been seen, and this was seen.
+#:
+#: The id and the set are the whole record. The **text is never stored here**,
+#: which is also why nothing can detect these: a scan can find a capture
+#: committed into a document, but it cannot find one that was printed to a
+#: terminal. The entries are written by hand by whoever did it, and
+#: `Tools/CorpusRunner/test_score.py` pins the ones that exist, so removing one
+#: quietly fails the run rather than shrinking the denominator.
+#:
+#: These do not move the exit status. There is nothing to fix -- the reading
+#: already happened -- and a gate that can only ever stay red teaches people to
+#: switch it off. What they change is the reader's denominator.
+EXPOSED_WITHOUT_INSPECTION = {
+    ("heldout.tsv", "C283"): (
+        "2026-09-11. Answering a question about how many readable sentences a "
+        "rule could admit, this thread scanned every *.tsv under "
+        "Tools/CorpusRunner/ instead of the development sets, and one held-out "
+        "row printed into the session. No pass or fail was read, no failure "
+        "was inspected and no rule changed. Repaired at the path layer rather "
+        "than in the one scan: see Tools/CorpusRunner/corpus_paths.py, where "
+        "asking for readable() cannot return a sealed file."
+    ),
+}
+
+
+def report_exposure():
+    """Print the exposure record. Always, and never the capture text."""
+    print()
+    print("=== sealed captures exposed without inspection")
+    if not EXPOSED_WITHOUT_INSPECTION:
+        print("none recorded. This section is a hand-kept record, not a scan:")
+        print("empty means nobody wrote an entry, which is not the same as")
+        print("nothing having happened.")
+        return
+    print(f"captures displayed        {len(EXPOSED_WITHOUT_INSPECTION)}"
+          "  (id only; the text is deliberately not stored)")
+    print()
+    for (set_name, cid), why in sorted(EXPOSED_WITHOUT_INSPECTION.items()):
+        print(f"  SEEN  {set_name} {cid}")
+        for line in textwrap.wrap(why, 68):
+            print(f"        {line}")
+    print()
+    print("  These are not counted as contamination: the rules were not tuned")
+    print("  against them and the text is not in the repository. They are")
+    print("  counted as seen, because that is what the sealed sets claim not")
+    print("  to be.")
+
+
 # Every set that must stay unseen. Each is checked against the tuned corpora
 # and against the other sealed sets: an overlap with another sealed set is not
 # contamination, but it is the same capture measured twice under two names.
-SEALED = [
-    HERE / "everyday.tsv",
-    ROOT / "Tools/CorpusRunner/adversarial/adversarial.tsv",
-]
 
 
 def norm(text):
@@ -186,7 +244,12 @@ def harvest(path):
 #: measurement, not contamination. It is wrong for this one. The first sealed
 #: capture ever committed into a tracked document was a held-out row, and a
 #: list that left it out would have watched the other two.
-SEALED_ALL = SEALED + [ROOT / "Tools/CorpusRunner/heldout/heldout.tsv"]
+#: The sealed sets, from the one place that classifies corpus files. Written
+#: out here twice before, once as two sets and once as three, which is how
+#: `heldout.tsv` ended up compared against and never checked -- and how
+#: `verdict` below ended up asking whether a source was one of *two* sealed
+#: sets when the question it means is whether it is sealed at all.
+SEALED_ALL = corpus_paths.sealed()
 
 #: Where prose lives. Not "every tracked file": the corpora themselves are full
 #: of capture text by design, and so is any file this check already reads.
@@ -421,7 +484,7 @@ def verdict(sources):
     counted twice. Printing the first message for the second case sends
     someone hunting a leak that does not exist.
     """
-    if sources - {q.name for q in SEALED}:
+    if sources - {q.name for q in SEALED_ALL}:
         return ("leak check FAILED: a held-out capture overlaps a corpus that "
                 "is developed against, so it no longer measures generalisation.")
     return ("leak check FAILED: a capture appears in two sealed sets, so one "
@@ -445,10 +508,8 @@ def main():
     #: and a set can pass one while failing the other -- a capture quoted in a
     #: document is still absent from every tuned corpus, which is exactly the
     #: state that let one through.
-    for path in SEALED_ALL:
-        if not path.exists():
-            raise SystemExit(f"leak check: {path} is listed as sealed but missing")
     failed |= 0 if check_prose() else 1
+    report_exposure()
     return failed
 
 

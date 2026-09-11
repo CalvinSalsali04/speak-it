@@ -20,6 +20,7 @@ import tempfile
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
 HEADER = "id\tdomain\tutterance\texpect\tkeep\treject\tfamilies\tnote\n"
 
 
@@ -636,7 +637,7 @@ class LeakCheckTests(unittest.TestCase):
 
     def test_the_verdict_distinguishes_contamination_from_double_counting(self):
         """The two failures need different words or the reader hunts the wrong one."""
-        sealed = {p.name for p in self.leak.SEALED}
+        sealed = {p.name for p in self.leak.SEALED_ALL}
         tuned = self.leak.verdict({"routed.tsv"})
         self.assertIn("developed against", tuned)
         duplicate = self.leak.verdict(sealed)
@@ -645,6 +646,11 @@ class LeakCheckTests(unittest.TestCase):
         # A mixed failure is the serious one and must read as contamination.
         self.assertIn("developed against",
                       self.leak.verdict(sealed | {"routed.tsv"}))
+        # Named rather than left to the set above: this question was asked
+        # against a list of two, so a capture shared by heldout.tsv and another
+        # sealed set was reported as contamination and would have sent someone
+        # to find a tuning leak that was not there.
+        self.assertIn("counted as two", self.leak.verdict({"heldout.tsv"}))
 
     def test_the_closest_miss_is_ranked_and_reported(self):
         """A pass/fail answer cannot show a set drifting toward the line.
@@ -899,7 +905,6 @@ class TunedSideWidthTests(unittest.TestCase):
             sealed.parent.mkdir(parents=True)
             sealed.write_text("id\tdomain\tutterance\nS0\th\tunrelated capture here\n")
             self.leak.ROOT = root
-            self.leak.SEALED = [sealed]
             self.leak.SEALED_ALL = [sealed]
             found = self.leak.others(sealed)
         self.assertIn(self.leak.norm("the spare key is under the doormat"), found)
@@ -937,7 +942,6 @@ class TunedSideWidthTests(unittest.TestCase):
             sealed.write_text("id\tdomain\tutterance\n"
                               "S0\th\tthe spare key is under the doormat\n")
             self.leak.ROOT = root
-            self.leak.SEALED = [sealed]
             self.leak.SEALED_ALL = [sealed]
 
             self.leak.OVERLAP_DOCUMENTED = {}
@@ -989,7 +993,6 @@ class TunedSideWidthTests(unittest.TestCase):
             sealed.write_text("id\tdomain\tutterance\n"
                               "S0\th\tthe spare key is under the doormat\n")
             self.leak.ROOT = root
-            self.leak.SEALED = [sealed]
             self.leak.SEALED_ALL = [sealed]
             self.leak.OVERLAP_DOCUMENTED = {("everyday.tsv", "S0"): "known"}
             buf = io.StringIO()
@@ -1023,7 +1026,6 @@ class TunedSideWidthTests(unittest.TestCase):
             sealed.write_text("id\tdomain\tutterance\n"
                               "S0\th\tthe spare key is under the doormat\n")
             self.leak.ROOT = root
-            self.leak.SEALED = [sealed]
             self.leak.SEALED_ALL = [sealed]
             self.leak.OVERLAP_DOCUMENTED = {}
             buf = io.StringIO()
@@ -1054,7 +1056,6 @@ class TunedSideWidthTests(unittest.TestCase):
             sealed.write_text("id\tdomain\tutterance\n"
                               "S0\th\tthe spare key is under the doormat\n")
             self.leak.ROOT = root
-            self.leak.SEALED = [sealed]
             self.leak.SEALED_ALL = [sealed]
             self.leak.OVERLAP_DOCUMENTED = {}
             buf = io.StringIO()
@@ -2321,24 +2322,35 @@ class SealedRegistryTests(unittest.TestCase):
         """A sealed set missing from the registry is never leak-checked.
 
         The failure is silent and permanent: the set keeps being reported as
-        held out while nothing verifies that it still is. So membership is
-        derived from the file's own shape — a `reject` column means it is
-        scored by this scorer — rather than from anyone's memory.
+        held out while nothing verifies that it still is.
+
+        This used to derive membership from the file's own shape — a `reject`
+        column meant it was scored by this scorer — which sounds like the safe
+        way to do it and was not. `heldout.tsv` has no `reject` column, so the
+        one set that was genuinely missing from the registry was also the one
+        this test declined to look at. A derivation is only as total as its
+        predicate, and a predicate that excludes the failing case passes
+        forever while looking rigorous.
+
+        Membership now comes from the classification that is required to be
+        total (`corpus_paths`), whose own guard fails the run on any `*.tsv`
+        here that is in neither list.
         """
-        registered = {p.resolve() for p in self.leak.SEALED}
-        for path in sorted((HERE.parent).glob("*/*.tsv")):
-            header = ""
-            for line in open(path):
-                if "utterance" in line.lower():
-                    header = line.lstrip("#").lower()
-                    break
-            if "reject" not in header:
-                continue
+        sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        registered = {p.resolve() for p in self.leak.SEALED_ALL}
+        for path in corpus_paths.sealed():
             self.assertIn(
                 path.resolve(), registered,
-                f"{path.parent.name}/{path.name} is scored as a held-out set "
-                f"but is not in leak-check.py's SEALED list, so nothing checks "
-                f"that it stays unseen")
+                f"{path.parent.name}/{path.name} is classified as sealed but "
+                f"is not in leak-check.py's list, so nothing checks that it "
+                f"stays unseen")
+        self.assertEqual(corpus_paths.unclassified(), [],
+                         "a .tsv here is in neither the sealed nor the "
+                         "readable list, so this test cannot see it either")
 
     def test_each_sealed_set_is_checked_against_the_others(self):
         """Two sealed sets sharing a capture is one measurement counted twice.
@@ -2346,7 +2358,8 @@ class SealedRegistryTests(unittest.TestCase):
         `others()` returns normalised capture text, so the property is checked
         by looking for a sibling's actual capture in the comparison corpus.
         """
-        everyday, sibling = self.leak.SEALED[0], self.leak.SEALED[1]
+        by_name = {p.name: p for p in self.leak.SEALED_ALL}
+        everyday, sibling = by_name["everyday.tsv"], by_name["heldout.tsv"]
         compared = self.leak.others(exclude=everyday)
         a_sibling_capture = self.leak.norm(self.leak.harvest(sibling)[0])
         self.assertIn(
@@ -2356,7 +2369,7 @@ class SealedRegistryTests(unittest.TestCase):
 
     def test_a_set_excluded_from_the_comparison_is_not_compared_to_itself(self):
         """Otherwise every capture collides with itself and the check is noise."""
-        everyday = self.leak.SEALED[0]
+        everyday = {p.name: p for p in self.leak.SEALED_ALL}["everyday.tsv"]
         compared = self.leak.others(exclude=everyday)
         own_capture = self.leak.norm(self.leak.harvest(everyday)[0])
         self.assertNotIn(own_capture, compared)
@@ -2618,6 +2631,157 @@ class CorpusTests(unittest.TestCase):
             capture_output=True, text=True)
         self.assertEqual(result.returncode, 0,
                          f"leak check failed:\n{result.stdout}\n{result.stderr}")
+
+
+class ExposureRecordTests(unittest.TestCase):
+    """The record of sealed captures that were displayed but never inspected.
+
+    Nothing can detect these. A scan finds a capture committed into a file; it
+    cannot find one that was printed to a terminal and scrolled away. So the
+    record is hand-written, and what these tests defend is the only thing tests
+    can defend about a hand-written record: that it cannot quietly shrink, that
+    it never carries the text it is about, and that it is not silently
+    reclassified as one of the two populations it is deliberately not.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_exposure_that_happened_is_still_recorded(self):
+        """A record that can be deleted without failing is not a record.
+
+        This is the same rule as a `KNOWN:` row in a development set: an
+        annotation that documents a cost must not be removable by whoever finds
+        it inconvenient. The entry names one held-out capture that was printed
+        into a session on 2026-09-11.
+        """
+        self.assertIn(("heldout.tsv", "C283"),
+                      self.leak.EXPOSED_WITHOUT_INSPECTION,
+                      "the recorded exposure of heldout C283 has been removed; "
+                      "it happened, and the set's claim to be unseen is exactly "
+                      "as weak as it was before the entry was deleted")
+
+    def test_the_record_never_carries_the_text_it_is_about(self):
+        """The id is the record. Storing the sentence would repeat the harm.
+
+        Checked against the sealed sets themselves rather than by reading the
+        reasons for anything that looks like a quotation, because "looks like a
+        quotation" is a judgement and this is a fact: no sealed utterance, from
+        any of the three sets, appears in any reason string.
+        """
+        sealed_text = []
+        for path in self.leak.SEALED_ALL:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            column = self.leak.utterance_column(lines)
+            for row in lines[1:]:
+                cells = row.split("\t")
+                if len(cells) > column:
+                    sealed_text.append(cells[column].strip())
+
+        blob = " ".join(self.leak.EXPOSED_WITHOUT_INSPECTION.values()).lower()
+        for utterance in sealed_text:
+            if len(utterance.split()) < self.leak.PROSE_MIN_WORDS:
+                continue
+            self.assertNotIn(self.leak.flatten(utterance).lower(), blob,
+                             "a reason string in EXPOSED_WITHOUT_INSPECTION "
+                             "contains a sealed capture verbatim, which puts "
+                             "the text in the repository -- the id is the whole "
+                             "record")
+
+    def test_an_exposed_capture_is_not_filed_as_contamination(self):
+        """Three populations, and collapsing them misreports in both directions.
+
+        A capture in `OVERLAP_DOCUMENTED` is in material the rules were tuned
+        against. One in `PROSE_DOCUMENTED` is public and cannot be recalled.
+        This one is neither: reading it changed no rule and the text is not in
+        any tracked file. Filing it with either overstates it; leaving it out
+        understates it.
+        """
+        for key in self.leak.EXPOSED_WITHOUT_INSPECTION:
+            self.assertNotIn(key, self.leak.PROSE_DOCUMENTED,
+                             f"{key} is recorded as both exposed-without-"
+                             f"inspection and public in prose; if the text is "
+                             f"genuinely committed somewhere, it belongs in the "
+                             f"prose table alone, where the check can find it")
+            self.assertNotIn(key, self.leak.OVERLAP_DOCUMENTED,
+                             f"{key} is recorded as both exposed-without-"
+                             f"inspection and present in a tuned corpus; those "
+                             f"are different costs and the second is worse")
+
+    def test_the_exposure_record_does_not_move_the_exit_status(self):
+        """There is nothing to fix, so there is nothing to gate on.
+
+        The reading already happened. A check that can only ever be red is one
+        people route around, and this record has to survive being inconvenient
+        for years. It changes the reader's denominator, not the build.
+        """
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.leak.report_exposure()
+        self.assertIn("C283", said.getvalue())
+
+        real = dict(self.leak.EXPOSED_WITHOUT_INSPECTION)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                status_with = self.leak.main()
+                self.leak.EXPOSED_WITHOUT_INSPECTION.clear()
+                status_without = self.leak.main()
+        finally:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.update(real)
+        self.assertEqual(status_with, status_without,
+                         "the exposure record changed the leak check's exit "
+                         "status; it is a record, not a gate")
+
+    def test_an_empty_record_still_says_it_is_hand_kept(self):
+        """Absence of entries is not evidence of absence of exposure.
+
+        The failure this guards against is a future reader seeing a section
+        with no rows and concluding nothing has ever been seen. Nothing scans
+        for these, so an empty section means only that nobody wrote one down.
+        """
+        real = dict(self.leak.EXPOSED_WITHOUT_INSPECTION)
+        said = io.StringIO()
+        try:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.clear()
+            with contextlib.redirect_stdout(said):
+                self.leak.report_exposure()
+        finally:
+            self.leak.EXPOSED_WITHOUT_INSPECTION.update(real)
+        printed = said.getvalue()
+        self.assertIn("sealed captures exposed without inspection", printed,
+                      "the section disappears when it is empty, so a reader "
+                      "never learns the record exists")
+        self.assertIn("not the same as", printed,
+                      "an empty record prints without saying that nothing "
+                      "scans for these, which reads as an all-clear")
+
+
+class SealedListSourceTests(unittest.TestCase):
+    """Where the leak check gets its idea of which files are sealed.
+
+    It used to hold two lists, one of two sets and one of three, and the
+    two-set one was the one the verdict message consulted. That is how
+    `heldout.tsv` was compared against on every run and checked on none.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_the_sealed_list_comes_from_the_path_module(self):
+        sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(sorted(self.leak.SEALED_ALL), sorted(corpus_paths.sealed()),
+                         "the leak check keeps its own idea of which sets are "
+                         "sealed, which is the arrangement that lost heldout.tsv")
+
+    def test_every_sealed_set_is_actually_checked(self):
+        """The list is only useful if the loop reads all of it."""
+        self.assertEqual(len(self.leak.SEALED_ALL), 3)
+        names = {p.name for p in self.leak.SEALED_ALL}
+        self.assertEqual(names, {"everyday.tsv", "adversarial.tsv", "heldout.tsv"})
 
 
 if __name__ == "__main__":
