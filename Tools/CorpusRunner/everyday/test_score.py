@@ -2678,15 +2678,27 @@ class ExposureRecordTests(unittest.TestCase):
                 if len(cells) > column:
                     sealed_text.append(cells[column].strip())
 
-        blob = " ".join(self.leak.EXPOSED_WITHOUT_INSPECTION.values()).lower()
+        blob = self.leak.flatten(
+            " ".join(self.leak.EXPOSED_WITHOUT_INSPECTION.values())).lower()
+
+        #: Windows rather than whole utterances, at the same length the prose
+        #: check protects. A mutation put half a sealed capture in a reason
+        #: string and this test did not move, because it was asking whether a
+        #: complete capture appeared -- and half a capture is exactly as much
+        #: text in the repository as all of it. `leak-check.py` is not a `.md`
+        #: file, so the prose scan never reads these strings; this is the only
+        #: thing looking at them.
+        window = self.leak.PROSE_MIN_WORDS
         for utterance in sealed_text:
-            if len(utterance.split()) < self.leak.PROSE_MIN_WORDS:
-                continue
-            self.assertNotIn(self.leak.flatten(utterance).lower(), blob,
-                             "a reason string in EXPOSED_WITHOUT_INSPECTION "
-                             "contains a sealed capture verbatim, which puts "
-                             "the text in the repository -- the id is the whole "
-                             "record")
+            words = self.leak.flatten(utterance).lower().split()
+            for i in range(len(words) - window + 1):
+                run = " ".join(words[i:i + window])
+                self.assertNotIn(run, blob,
+                                 f"a reason string in EXPOSED_WITHOUT_"
+                                 f"INSPECTION reproduces {window} consecutive "
+                                 f"words of a sealed capture, which puts the "
+                                 f"text in the repository -- the id is the "
+                                 f"whole record")
 
     def test_an_exposed_capture_is_not_filed_as_contamination(self):
         """Three populations, and collapsing them misreports in both directions.
