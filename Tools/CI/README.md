@@ -7,6 +7,7 @@ evidence as the CI job.
 | Script | What it does | Needs a simulator |
 | --- | --- | --- |
 | `corpus-gate.sh` | Tests the scoring instrument, builds `Tools/PipelineProbe` and `Tools/CorpusRunner`, replays the full semantic corpus, fails on any blocking regression | no |
+| `language-metrics.sh` | Runs `corpus-gate.sh`, then all four development-set scorers and the held-out scorer, into one report. Refuses `--verbose` so it can never unseal the held-out set | no |
 | `unit-tests.sh [target]` | Runs `SpeakItTests` (default), one test class, or `SpeakItUITests` | yes |
 | `release-build.sh` | Compiles the Release configuration for a generic iOS device, unsigned | no |
 | `simulator-id.sh` | Picks the simulator `unit-tests.sh` uses: `SPEAKIT_SIMULATOR_ID`, else a `SpeakIt-Slim-*` pool device, else a booted iPhone | — |
@@ -26,6 +27,34 @@ or two unit-suite runs. The iOS job in `ci.yml` therefore runs on GitHub-hosted 
 only when dispatched by hand. To run it on every pull request, register a
 self-hosted runner on a Mac that has Xcode installed (see `CONTRIBUTING.md`) and set
 the repository variable `IOS_RUNNER` to that runner's label.
+
+The `language` job is the cheap half. It runs `language-metrics.sh` and nothing
+else: no simulator, no release build, no unit suite. At roughly five macOS
+minutes it fits the monthly allowance about thirty times over, where the iOS
+job fits once or twice. Dispatching `ci.yml` with `language_only` skips the
+iOS job entirely, which is the way to ask whether a parser change helped
+without spending the month's budget on it.
+
+That matters more than it sounds. The parser depends on Apple's
+`NaturalLanguage`, so it cannot run on Linux or in a container: before this
+job, the development-set and held-out numbers existed only as a hand-run on
+one Mac, and anyone else changing language rules was working blind.
+
+### Adding a corpus to the report
+
+`language-metrics.sh` picks up new corpora by convention, so adding one needs
+no edit to the script or the workflow: put the set in its own directory under
+`Tools/CorpusRunner/` with an executable `score.sh` that takes no arguments and
+prints its own numbers. `devsets/` takes a set name and `heldout/` is scored
+last deliberately, so those two are invoked explicitly instead.
+
+The one rule a new scorer must keep: default to non-verbose. The report is read
+by people who may be midway through changing rules, and a held-out or
+adversarial set that prints its failures there stops being a measure of
+generalisation the first time it runs. `language-metrics.sh` never forwards a
+flag — it refuses `--verbose` and `--failures` at its own command line — so a
+scorer that needs a flag to stay sealed is already safe here, and one that
+prints failures by default is not.
 
 ## Slim simulators
 

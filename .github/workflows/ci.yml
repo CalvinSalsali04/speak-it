@@ -7,6 +7,12 @@
 # by hand, and on every pull request once the repository variable IOS_RUNNER
 # names a self-hosted Mac (see CONTRIBUTING.md).
 #
+# The language job is the cheap half of that: the corpus gate and every
+# language scorer, with no simulator and no release build. It exists because
+# the parser only runs on macOS, so a session without a Mac would otherwise be
+# changing language rules against numbers it cannot produce. Dispatch it with
+# language_only to get those numbers without paying for the unit suite.
+#
 # Every check is a script under Tools/CI so the same command runs locally.
 name: CI
 
@@ -26,6 +32,10 @@ on:
         default: false
       ui_tests:
         description: "Also run the XCUITest suite (slow)"
+        type: boolean
+        default: false
+      language_only:
+        description: "Only measure language: skip the unit suite and the release build"
         type: boolean
         default: false
 
@@ -148,6 +158,7 @@ jobs:
     # every change. See the header comment for the cost reasoning.
     if: >-
       needs.changes.outputs.ios == 'true' &&
+      inputs.language_only != true &&
       (github.event_name == 'workflow_dispatch' || vars.IOS_RUNNER != '')
     runs-on: ${{ inputs.runner || vars.IOS_RUNNER || 'macos-26' }}
     timeout-minutes: 90
@@ -215,4 +226,40 @@ jobs:
           name: SpeakItUITests.xcresult
           path: ${{ runner.temp }}/SpeakItUITests.xcresult
           retention-days: 7
+          if-no-files-found: ignore
+
+  language:
+    name: Language metrics
+    needs: changes
+    # Same availability rule as the iOS job — a Mac is required either way —
+    # but a fraction of the cost, so this is the one to dispatch when the
+    # question is whether a parser change helped. It repeats the iOS job's
+    # corpus gate on a full dispatch; ninety seconds is the right price for
+    # the gate not depending on this job existing.
+    if: >-
+      needs.changes.outputs.ios == 'true' &&
+      (github.event_name == 'workflow_dispatch' || vars.IOS_RUNNER != '')
+    runs-on: ${{ inputs.runner || vars.IOS_RUNNER || 'macos-26' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode 26.6 on a GitHub-hosted image
+        if: runner.environment == 'github-hosted'
+        run: |
+          echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      # Gating corpus, the four development sets and the held-out set. The
+      # held-out set is scored non-verbose and the script refuses --verbose,
+      # so a CI run can never be the thing that unseals it.
+      - name: Measure
+        run: Tools/CI/language-metrics.sh --report "${{ runner.temp }}/language-metrics.txt"
+
+      - name: Upload the metrics report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: language-metrics
+          path: ${{ runner.temp }}/language-metrics.txt
+          retention-days: 30
           if-no-files-found: ignore

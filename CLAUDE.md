@@ -76,6 +76,12 @@ Fast answer about what the rules do with the whole corpus (about 90 seconds incl
 ./Tools/CI/corpus-gate.sh
 ```
 
+Every language number in one report (corpus gate, the four development sets, the held-out set scored non-verbose; no simulator). This is also what the `language` CI job runs, and dispatching `ci.yml` with `language_only` gets it without paying for the unit suite:
+
+```bash
+./Tools/CI/language-metrics.sh
+```
+
 Fast answers about what the pipeline does with a sentence, without a simulator run (rules path only, no store, fixed 2026-08-03 10:00 America/Toronto frame; see `Tools/PipelineProbe/README.md` for what it cannot tell you):
 
 ```bash
