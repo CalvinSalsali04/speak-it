@@ -197,7 +197,10 @@ read during development — say so instead, and treat the number as spent.
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
 |---|---|---|---|---|---|---|---|
-| 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%) | 217/235 (92.3%) | **0 / 15** |
+| 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%)* | 217/235 (92.3%) | **0 / 15** |
+
+*The invention column in that row used the pre-correction 19-case measure. It is
+not comparable to later rows, which use the 12-case measure described below.
 
 First reading, from `language_only` run 34586389323 on `macos-26`. Scored
 non-verbose; the failures were not read. Over-segmented 17, under-segmented 23,
@@ -227,10 +230,21 @@ they are different sets measuring different content. It means neither direction
 should be assumed to be *the* segmentation problem without saying which set the
 claim comes from.
 
-**`invention` is the weakest measure at 5/19, and n=19 is too small to rank
-families by.** It says superseded values are surviving into the interpretation
-rather than being replaced. That is a real signal and a thin one; the honest
-next step is more cases carrying a `reject` span, not a conclusion.
+**`invention` was measuring two things and has been corrected.** Seven of its
+nineteen cases listed `bye` as the rejected value. A farewell left in a title is
+a title defect, and `title` already counts it — so when the discourse-framing
+change of 2026-09-11 removed farewells, `invention` moved 5/19 → 12/19 with the
+jump being exactly those seven captures and not one superseded value resolved.
+On the twelve cases that actually test a superseded value, the score was 5/12
+before that change and 5/12 after: **unchanged**. One fix had been counted
+twice.
+
+`reject` now carries only values the reading must not assert — a superseded
+number, a corrected weekday, an inverted negation — and `test_score.py` fails if
+a farewell is ever added back. The measure is 12 cases, which is thin; thickening
+it with genuine superseded-value captures is the clearest next gap, and should be
+done as a deliberate, announced addition rather than silently between two
+comparisons.
 
 Worst families by routing: `run-on` 0/8, `rambling-intro` 1/6,
 `trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. On title

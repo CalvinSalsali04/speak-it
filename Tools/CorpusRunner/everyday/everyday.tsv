@@ -17,7 +17,7 @@ W15	work-school	number one we need to finalize the budget and number two we need
 W16	work-school	did I already send the invoice to accounting	Ambiguous	invoice	-	question|ambiguous	a question to self; acting on it would be a guess
 W17	work-school	tell Priya no changes after Thursday	Today:task	Priya|no changes	-	negation|person	the instruction is the prohibition
 W18	work-school	set up the sprint review recurring every second Tuesday	Today:task	-	-	recurrence	recurring setup
-W19	work-school	um so yeah I think I want to redo the onboarding deck at some point bye	Today:task	onboarding deck	bye	filler|trailing-goodbye|hedged	trailing goodbye must not become content
+W19	work-school	um so yeah I think I want to redo the onboarding deck at some point bye	Today:task	onboarding deck	-	filler|trailing-goodbye|hedged	trailing goodbye must not become content
 W20	work-school	the office is closed this week so no standup	Memory:note	no standup	-	negation	negation after a causal so
 W21	work-school	I have to submit the ethics form by Friday at five	Today:task	Aug 7|17:00	-	date|time	explicit deadline
 W22	work-school	print the handouts order the whiteboard markers and book the projector	Today:task|Today:task|Today:task	handouts|markers|projector	-	list|multi-thought	three actions in one breath, no conjunction cues beyond and
@@ -63,7 +63,7 @@ F14	family-health	actually make it two puffs of the inhaler not one	Today:task	t
 F15	family-health	sign the field trip form pay the twelve dollars and send back the allergy sheet	Today:task|Today:task|Today:task	field trip|allergy sheet	-	list|multi-thought|quantity	three school admin actions
 F16	family-health	my appointment with Dr Achterberg got moved to the 26th	Today:event	Achterberg|26th	-	person|date	an appointment with a date belongs on Today, not filed as a note
 F17	family-health	we have no milk left	Today:shopping	no milk	-	negation	a shopping trigger stated negatively
-F18	family-health	okay so like I should probably get the car seat checked at some point bye	Today:task	car seat	bye	filler|hedged|trailing-goodbye	hedged intent plus sign off
+F18	family-health	okay so like I should probably get the car seat checked at some point bye	Today:task	car seat	-	filler|hedged|trailing-goodbye	hedged intent plus sign off
 F19	family-health	Noor is fasting this month so no lunch meetings	Memory:note	Noor|no lunch	-	negation|person	negation after so
 F20	family-health	cancel Fridays babysitter we are staying home	Op:cancel	babysitter	-	cancellation|operation	withdrawing an arrangement
 F21	family-health	the hospital parking is free after 8pm on weekends	Memory:note	free|8pm	-	reference|time	useful reference fact
@@ -92,7 +92,7 @@ F43	family-health	school photos are next Wednesday wear the green jumper	Today:e
 F44	family-health	there is no parking at the clinic so leave early	Today:task	no parking	-	negation	known good guard, keep as control
 F45	family-health	put the specialist referral letter somewhere I can find it	Today:task	referral letter	-	hedged	vague but actionable
 F46	family-health	Mateus has football Saturday mornings all season	Memory:note	Mateus|football	-	recurrence|person	standing schedule fact
-F47	family-health	okay so um for the weekend I wanna first go to the farmers market and then I wanna take the kids to the splash pad and then maybe dinner at Aunt Colettes bye	Today:task|Today:task|Today:task	farmers market|splash pad|Colette	bye	rambling-intro|sequencing|multi-thought|trailing-goodbye|run-on	long chained plan, matches the shape Calvin called out
+F47	family-health	okay so um for the weekend I wanna first go to the farmers market and then I wanna take the kids to the splash pad and then maybe dinner at Aunt Colettes bye	Today:task|Today:task|Today:task	farmers market|splash pad|Colette	-	rambling-intro|sequencing|multi-thought|trailing-goodbye|run-on	long chained plan, matches the shape Calvin called out
 M01	money-travel	cancel the gym membership before they charge me again on the 15th	Today:task	gym membership|15th	-	cancellation|date	an action about cancelling, not an operation on a stored item
 M02	money-travel	our flight is BA2196 landing at 6:40am	Memory:note	BA2196|6:40	-	reference|time	flight code must survive verbatim
 M03	money-travel	um so I need to uh move like two grand into the savings account before the rent goes out	Today:task	savings	-	filler|quantity	one transfer action
@@ -115,7 +115,7 @@ M19	money-travel	check in opens 24 hours before so Thursday morning	Today:task	A
 M20	money-travel	um okay so like the mortgage renewal thing I honestly havent decided anything yet	Ambiguous	mortgage renewal	-	filler|ambiguous|hedged	explicitly undecided
 M21	money-travel	set aside 200 a month for the car fund	Today:task	200	-	recurrence|quantity	recurring saving
 M22	money-travel	Ingrid says the train from Malmo is cheaper than flying	Memory:note	Ingrid|Malmo	-	person|location|reference	reported advice, uncommon place name
-M23	money-travel	email the landlord about the deposit and then also chase the utilities refund bye	Today:task|Today:task	landlord|utilities	bye	multi-thought|trailing-goodbye	two chases plus sign off
+M23	money-travel	email the landlord about the deposit and then also chase the utilities refund bye	Today:task|Today:task	landlord|utilities	-	multi-thought|trailing-goodbye	two chases plus sign off
 M24	money-travel	the annual fee is waived the first year only	Memory:note	waived|first year	-	reference	a qualified fact
 M25	money-travel	pack the passports charge the power bank and download the offline maps	Today:task|Today:task|Today:task	passports|power bank|offline maps	-	list|multi-thought	three prep actions
 M26	money-travel	I should probably compare the two credit cards at some point	Today:task	credit cards	-	hedged	when-there's-time
@@ -156,7 +156,7 @@ L13	freelance	Sundberg pays net 15 everyone else is net 30	Memory:note	Sundberg|
 L14	freelance	remind me every Friday to send the weekly update to clients	Today:task	-	-	recurrence	weekly recurrence
 L15	freelance	the shoot is at the Distillery District on the 11th from 8 til 2	Today:event	Distillery District|Aug 11	-	location|date|time	event with place and a window
 L16	freelance	cancel the discovery call with Ashbourne they went with someone else	Op:cancel	Ashbourne	-	cancellation|operation|proper-noun	withdrawing a booked thing
-L17	freelance	okay yeah so I might do a newsletter thing eventually bye	Memory:idea	newsletter	bye	filler|hedged|trailing-goodbye	a vague idea with a sign off
+L17	freelance	okay yeah so I might do a newsletter thing eventually bye	Memory:idea	newsletter	-	filler|hedged|trailing-goodbye	a vague idea with a sign off
 L18	freelance	the file they sent actually opens fine in Figma	Memory:note	actually opens	-	self-correction|proper-noun	actually as adverb, product name
 L19	freelance	quote the rebrand at 12k and if they push back the floor is 9	Today:task	12k|is 9	-	quantity	one decision with two numbers that belong together
 L20	freelance	email Tomasz the revised timeline and cc his producer and attach the new deck	Today:task	Tomasz|deck	-	person|multi-thought	one email with three details that belong together
@@ -194,7 +194,7 @@ E04	fitness-errands	I need to I need to get the brakes looked at before winter	T
 E05	fitness-errands	milk eggs bread and that oat cereal Sofia likes	Today:shopping|Today:shopping|Today:shopping|Today:shopping	milk|eggs|bread|Sofia	-	list|person	four shopping items, last one carries a name
 E06	fitness-errands	the pool has no lane swim on Sundays	Memory:note	no lane swim	-	negation|recurrence	has no X plus a recurring day
 E07	fitness-errands	book the boiler service its been two years	Today:task	boiler service	-	quantity	one booking
-E08	fitness-errands	so um today when I go out I wanna first hit Kinsmen Hardware then Greenhouse Juice then the framers on Dundas bye	Today:task|Today:task|Today:task	Kinsmen Hardware|Greenhouse Juice|Dundas	bye	sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	three stops, store names kept as spoken, goodbye dropped
+E08	fitness-errands	so um today when I go out I wanna first hit Kinsmen Hardware then Greenhouse Juice then the framers on Dundas bye	Today:task|Today:task|Today:task	Kinsmen Hardware|Greenhouse Juice|Dundas	-	sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	three stops, store names kept as spoken, goodbye dropped
 E09	fitness-errands	squats 5 by 5 at 80 kilos next session	Today:task	80	-	quantity	one plan whose numbers belong together
 E10	fitness-errands	dont run on the ankle until the physio clears it	Today:task	dont run|physio	-	negation|sequencing	prohibition with a condition
 E11	fitness-errands	my locker combination is 27 14 33	Memory:note	27|14|33	-	reference|quantity	three numbers that must not become times
@@ -233,4 +233,4 @@ E43	fitness-errands	my resting heart rate was 58 this morning down from 64	Memor
 E44	fitness-errands	drop the shoes at the cobbler on Roncesvalles before Friday	Today:task	Roncesvalles|Aug 7	-	location|date|proper-noun	one errand with place and deadline
 E45	fitness-errands	did I already put the bins out or was that last week	Ambiguous	bins	-	question|ambiguous	unresolved memory question
 E46	fitness-errands	swap the smoke alarm batteries all three of them	Today:task	three	-	quantity	one job, a quantity that belongs to it
-E47	fitness-errands	so today when I go shopping I want to go to or actually first I wanna go to Solstice Market and then Fernwood Bakery for bread and then the pharmacy bye	Today:task|Today:task|Today:task	Solstice Market|Fernwood Bakery|pharmacy	bye	false-start|sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	the shape Calvin described, with different stores so it is not his sentence
+E47	fitness-errands	so today when I go shopping I want to go to or actually first I wanna go to Solstice Market and then Fernwood Bakery for bread and then the pharmacy bye	Today:task|Today:task|Today:task	Solstice Market|Fernwood Bakery|pharmacy	-	false-start|sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	the shape Calvin described, with different stores so it is not his sentence

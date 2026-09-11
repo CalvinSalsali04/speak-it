@@ -588,6 +588,29 @@ class CorpusTests(unittest.TestCase):
                         f"capture nor a date or time the probe derives, so it "
                         f"can never match: {row[2]!r}")
 
+    def test_no_reject_span_is_material_title_hygiene_already_measures(self):
+        """Two measures must not both move on one fix.
+
+        Seven captures once listed "bye" as a rejected value. A farewell left
+        in a title is a title defect, and `title` already counts it, so the
+        discourse-framing change of 2026-09-11 moved `invention` from 5/19 to
+        12/19 without a single superseded value being resolved — one fix
+        counted twice, which is exactly how apparent progress gets
+        manufactured. Farewells belong to title hygiene; `invention` is for a
+        value the reading asserts that the speaker superseded or never meant.
+        """
+        farewells = {"bye", "goodbye", "byebye", "thanks", "thank you",
+                     "cheers", "see you", "that's it", "ta"}
+        for row in self.rows():
+            for span in row[5].split("|"):
+                if span in ("", "-"):
+                    continue
+                self.assertNotIn(
+                    span.strip().lower(), farewells,
+                    f"{row[0]}: {span!r} is a farewell, which `title` already "
+                    f"measures. Counting it here too makes one fix move two "
+                    f"metrics.")
+
     def test_the_set_does_not_overlap_a_corpus_that_is_tuned_against(self):
         result = subprocess.run(
             [sys.executable, str(HERE / "leak-check.py")],
