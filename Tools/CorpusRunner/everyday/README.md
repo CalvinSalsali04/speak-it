@@ -160,6 +160,34 @@ detail, and an unrecognised flag does not unseal it either.
 
 Any scorer added to this directory must stay on that side of the line.
 
+## Checking the instrument itself
+
+Two checks run on every pull request, on Linux, in about twenty seconds. Neither
+needs a Mac.
+
+`leak-check.py` compares each sealed set against every corpus development
+touches, and against the other sealed sets. It fails on an exact collision or a
+Jaccard overlap at or above 0.70. On a clean run it also prints the **closest
+miss**, because pass/fail cannot show a set drifting: two sets both reported
+clean are in different states if one tops out at 0.31 and the other at 0.68, and
+only the second is one careless capture away. That number is reported, never
+gated — a warning band would become a number people write captures to stay under,
+which is the reason nothing else here gates either.
+
+`measure-gate.py` breaks each of the eleven measures on purpose and requires the
+suite to fail. "Protected" means *some* test fails when that measure breaks, not
+necessarily the one named after it; that is the property worth having, since it
+says a broken measure cannot reach a report.
+
+A mutation harness is only as good as its control. The first version of that
+file copied this directory alone into a scratch tree, which left 14 tests
+failing before any mutation was applied — so every measure came back
+"protected" whatever the mutation did. It reported eleven; the truth was nine,
+with `count` and `ambiguous` uncovered until tests were written for them. The
+control now runs first and the gate refuses to report if it is red. **If you add
+a mutation harness anywhere in this repository, assert its unmutated baseline
+passes before trusting a single verdict it prints.**
+
 ## The rule
 
 **Do not read the failures while you are changing rules.**

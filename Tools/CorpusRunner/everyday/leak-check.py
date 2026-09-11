@@ -146,23 +146,42 @@ def main():
     return failed
 
 
+def similarities(ours, theirs):
+    """One pass over the cross-product, returning what both readers need.
+
+    `ranked` is each capture with the single tuned string it most resembles,
+    highest first — the closest-miss report. `near` is every pair at or above
+    the threshold, which is a different thing and must stay so: one capture can
+    near-duplicate strings in two corpora at once, and `verdict` decides which
+    failure to name from the set of sources. Reducing that to the best match
+    per capture would drop a tuned source behind a higher-scoring sealed one
+    and print "counted twice" for what is actually contamination.
+    """
+    tuned = [(set(other.split()), other, source)
+             for other, source in theirs.items() if len(other.split()) >= 4]
+    ranked, near = [], []
+    for utterance, cid in ours.items():
+        tokens = set(utterance.split())
+        if len(tokens) < 4:
+            continue
+        best = None
+        for other_tokens, other, source in tuned:
+            overlap = len(tokens & other_tokens) / len(tokens | other_tokens)
+            if best is None or overlap > best[0]:
+                best = (overlap, other, source)
+            if overlap >= THRESHOLD and utterance not in theirs:
+                near.append((cid, round(overlap, 2), source, utterance, other))
+        if best is not None:
+            ranked.append((best[0], cid, utterance, best[2], best[1]))
+    return sorted(ranked, reverse=True), near
+
+
 def check(path):
     ours, theirs = mine(path), others(path)
     exact = [(cid, utterance, theirs[utterance])
              for utterance, cid in ours.items() if utterance in theirs]
 
-    near = []
-    for utterance, cid in ours.items():
-        tokens = set(utterance.split())
-        if len(tokens) < 4:
-            continue
-        for other, source in theirs.items():
-            other_tokens = set(other.split())
-            if len(other_tokens) < 4:
-                continue
-            overlap = len(tokens & other_tokens) / len(tokens | other_tokens)
-            if overlap >= THRESHOLD and utterance not in theirs:
-                near.append((cid, round(overlap, 2), source, utterance, other))
+    ranked, near = similarities(ours, theirs)
 
     print(f"=== {path.parent.name}/{path.name}")
     print(f"held-out captures        {len(ours)}")
@@ -178,8 +197,31 @@ def check(path):
         sources = {src for _, _, src in exact} | {src for _, _, src, _, _ in near}
         print("\n" + verdict(sources), file=sys.stderr)
         return 1
+    report_closest(ranked)
     print("\nleak check ok: nothing held out appears in a tuned corpus.")
     return 0
+
+
+def report_closest(ranked, show=3):
+    """The nearest misses, printed on a clean run.
+
+    A pass/fail answer cannot show a set drifting. Two sets both reported
+    "clean" are in different states if one tops out at 0.31 and the other at
+    0.68, and only the second is one careless capture away from a leak. So the
+    closest few are printed even when nothing crosses the line.
+
+    Deliberately not a second threshold. There is no warning band and no
+    non-zero exit here, because a number that blocks a merge is a number people
+    learn to game — the same reason the scorers in this repository report
+    rather than gate. This is for the reader, who can see a set getting closer
+    over successive runs and ask why before the check ever fails.
+    """
+    if not ranked:
+        return
+    print(f"closest, no leak         j={ranked[0][0]:.2f} (line is {THRESHOLD})")
+    for overlap, cid, utterance, source, other in ranked[:show]:
+        print(f"  {cid}  j={overlap:.2f}  nearest in {source}"
+              f"\n    held out: {utterance}\n    tuned:    {other}")
 
 
 if __name__ == "__main__":
