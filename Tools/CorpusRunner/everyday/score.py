@@ -312,10 +312,25 @@ def rate(counter, measure):
     return f"{ok:>4}/{total:<4} ({100 * ok / total:5.1f}%)"
 
 
+def set_title(labels_path):
+    """The banner a set prints, from its own `# title:` line.
+
+    The scorer is shared: everyday and adversarial hold out different things
+    and must not print each other's name in a report someone later quotes.
+    """
+    for line in open(labels_path):
+        if not line.startswith("#"):
+            break
+        key, sep, value = line.lstrip("#").strip().partition(":")
+        if sep and key.strip().lower() == "title":
+            return value.strip()
+    return "EVERYDAY SPEECH HELD-OUT SET"
+
+
 def report(rows, tallies, failures, type_agreement, seen, labels_path):
     directory = Path(labels_path).resolve().parent.name
     print()
-    print(f"EVERYDAY SPEECH HELD-OUT SET — {len(rows)} captures, "
+    print(f"{set_title(labels_path)} — {len(rows)} captures, "
           f"{len(seen)} probe results, directory `{directory}`")
     print("=" * 78)
     print("Human-written held-out data. Not tuned against. Frame of reference")
