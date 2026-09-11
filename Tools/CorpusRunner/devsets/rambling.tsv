@@ -227,6 +227,13 @@ RB40R	okay so Ines drives the blue estate now and uh the side gate code changed 
 # says this out loud may well want to be reminded to decide. The rows are
 # written so the question is at least measurable; if Calvin reads it the other
 # way, the fix is these two labels and nothing else in the file.
+#
+# Scored under the Memory reading meanwhile, and the reason to hold that one
+# rather than split the difference is that **the error is recoverable in only
+# one direction**: a note that should have been a task is found by searching
+# for it, while a task the speaker never committed to has to be noticed and
+# dismissed, and until it is it is wrong on the screen they opened for what
+# they actually owe. Pending a product decision, not settled.
 RB41C	book the Tuesday slot with the physio	decision-clean	Today	1
 RB42C	take the coastal road to Perrin's place	decision-clean	Today	1
 RB41R	I could do the Tuesday slot with the physio or the Friday one and Tuesday is better so book the Tuesday slot with the physio because I'm off that afternoon anyway	decision-rambling	Today	1

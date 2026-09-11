@@ -72,7 +72,16 @@ invention the everyday set counts 22 of. The argument the other way is that
 someone thinking aloud about a decision may want to be reminded to make it.
 This is a product question rather than a scoring one; the rows exist so it is
 at least measurable, and answering it the other way changes those two labels
-and nothing else in the file.
+and nothing else in the file. It is open with Calvin alongside the bare
+prohibitive from PR #44 ("don't call the plumber" with nothing to cancel),
+because both are the same question: what the app does with an utterance that
+states no obligation.
+
+They stay scored under the Memory reading while it is open, so the figure does
+not move when it is answered, and because **the error is recoverable in only
+one direction**. A note that should have been a task is found by searching for
+it. A task the speaker never committed to has to be noticed and dismissed, and
+until then it is wrong on the one screen they opened to see what they owe.
 
 **The count column can be right for the wrong reason, and on this set it has
 been.** It compares how many thoughts came out, not where they were cut. The
