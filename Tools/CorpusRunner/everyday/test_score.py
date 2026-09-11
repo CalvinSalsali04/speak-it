@@ -729,6 +729,78 @@ class LeakCheckTests(unittest.TestCase):
         self.assertEqual(len(self.leak.harvest(path)), 389)
 
 
+class LeakCheckReachTests(unittest.TestCase):
+    """A check is only as good as the pull requests it runs on.
+
+    `leak-check.py` has its own step in the `language-tools` job, which was
+    the fix for it living only inside the Mac-only corpus gate. But that job
+    is gated on a path filter, and a guard that does not run on the pull
+    request carrying the leak is no better than one that runs nowhere.
+    """
+
+    WORKFLOW = HERE.parents[2] / ".github" / "workflows" / "ci.yml"
+
+    def globs(self):
+        """The `ios` filter, read from the workflow rather than assumed.
+
+        Parsed with a regex rather than a YAML library on purpose: this runs
+        on a CI image whose Python may not carry PyYAML, and a test that
+        errors on an import tells nobody anything. If the block cannot be
+        found the test fails rather than passing vacuously, for the same
+        reason a corpus with no `utterance` header stops the check.
+        """
+        if not self.WORKFLOW.exists():
+            self.skipTest("ci.yml not present")
+        block = re.search(r"^\s*ios:\s*\n((?:\s*-\s*'[^']*'\s*\n)+)",
+                          self.WORKFLOW.read_text(), re.M)
+        self.assertIsNotNone(block, "the ios path filter could not be found")
+        return re.findall(r"'([^']+)'", block.group(1))
+
+    @staticmethod
+    def covered(path, globs):
+        for pattern in globs:
+            if pattern.endswith("/**"):
+                if path.startswith(pattern[:-2]):
+                    return True
+            elif path == pattern:
+                return True
+        return False
+
+    def test_every_corpus_the_overlap_check_reads_is_inside_the_filter(self):
+        """The half that is genuinely covered, enumerated rather than assumed."""
+        globs = self.globs()
+        for path in ("SpeakItTests/SemanticCorpusDataG.swift",
+                     "SpeakItTests/SpeechRepairTests.swift",
+                     "Tools/CorpusRunner/devsets/routed.tsv",
+                     "Tools/CorpusRunner/everyday/everyday.tsv",
+                     "Tools/CorpusRunner/heldout/heldout.tsv",
+                     "Tools/CorpusRunner/adversarial/adversarial.tsv"):
+            with self.subTest(path=path):
+                self.assertTrue(self.covered(path, globs),
+                                f"{path} can change without running the check")
+
+    @unittest.expectedFailure
+    def test_the_documents_the_prose_check_reads_are_inside_the_filter(self):
+        """Open defect, recorded as a test rather than only as a sentence.
+
+        `Docs/**` is not in the `ios` filter, so a pull request that only
+        edits documentation never runs this check — and a capture quoted into
+        a document is exactly what the prose half exists to catch. The one
+        such leak caught so far was caught by luck: that pull request also
+        touched a Swift file.
+
+        Marked expected-failure rather than skipped so it cannot outlive the
+        defect. Add `Docs/**` to the filter and this reports an *unexpected
+        success*, which fails the run until the marker comes off — the same
+        contract as a `KNOWN:` row that starts passing. Fixing it is an edit
+        to `.github/workflows/ci.yml`, which this repository's automation
+        cannot merge.
+        """
+        globs = self.globs()
+        self.assertTrue(self.covered("Docs/LANGUAGE_BASELINE.md", globs),
+                        "a documentation-only pull request skips the leak check")
+
+
 class SwiftLiteralHarvestTests(unittest.TestCase):
     """The tuned side of the boundary is only as wide as what it reads.
 

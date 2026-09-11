@@ -297,17 +297,84 @@ If a held-out failure looks important enough to fix, reproduce the *family* in
 capture stays untouched and keeps measuring.
 
 `leak-check.py` makes that boundary mechanical rather than a promise. It fails
-if any capture here also appears — verbatim, or as a near-paraphrase at Jaccard
-0.70 or above — in the gating corpus, in a development set, or in the older
-held-out set. It locates each corpus's capture by reading its header rather
-than assuming a column, because these files do not agree on layout — `heldout`
-and the development sets put the utterance second, this set puts it third — and
-a guard comparing the wrong field passes for the wrong reason, which is worse
-than failing. A corpus file with no `utterance` header stops the check rather
-than being skipped. It runs as part of `test_score.py`, which the corpus gate runs, so
-a capture cannot leak in unnoticed. It has already caught two: `E04` was a
-verbatim copy of a `heldout.tsv` case and `F28` was a paraphrase of one, both
-introduced while this set was being written, and both were replaced.
+on a *new* capture appearing — verbatim, or as a near-paraphrase at Jaccard 0.70
+or above — anywhere on the tuned side: the gating corpus, any file under
+`SpeakItTests/`, a development set, another sealed set, or the repository's
+prose. All three sealed sets are checked, this one included and `heldout.tsv`
+with them.
+
+It locates each corpus's capture by reading its header rather than assuming a
+column, because these files do not agree on layout — `heldout` and the
+development sets put the utterance second, this set puts it third — and a guard
+comparing the wrong field passes for the wrong reason, which is worse than
+failing. A corpus file with no `utterance` header stops the check rather than
+being skipped.
+
+Where it runs, stated so a reader can check it rather than believe it: its own
+step, `Held-out boundary`, in the `language-tools` job of
+`.github/workflows/ci.yml`. Not only inside `test_score.py` and not only inside
+the corpus gate, because the gate needs a Mac and is dispatch-only, so a guard
+living there does not run on the pull request that introduces the leak it
+exists to catch.
+
+**And that same argument has a hole one level up, which is open as this is
+written.** `language-tools` is gated on `if: needs.changes.outputs.ios ==
+'true'`, and the `ios` filter is twelve globs: the app targets, the Xcode
+project, `Tools/CorpusRunner/**`, `Tools/LanguageMutations/**`,
+`Tools/PipelineProbe/**`, `Tools/CI/**` and `.github/workflows/ci.yml`.
+**`Docs/**` is not among them.** So a pull request that only edits
+documentation never runs this check — and a capture quoted into a document is
+exactly what the prose half of it exists to catch. The one such leak caught so
+far was caught by luck: that pull request also touched a Swift file, so the job
+ran.
+
+The corpus half is genuinely covered, because every file it reads lives under
+`Tools/CorpusRunner/**`. The prose half reads all 73 Markdown files in the
+repository, most of them under `Docs/`, and is only as good as whatever else
+the pull request happened to touch. Adding `Docs/**` and `**/*.md` to that
+filter is the fix; it is an edit to `.github/workflows/ci.yml`, which our
+automation cannot merge, so it is written down here rather than quietly
+assumed.
+
+It has caught leaks in both directions. Two while this set was being written:
+`E04` was a verbatim copy of a `heldout.tsv` case and `F28` a paraphrase of one,
+both replaced. One arriving: a held-out capture's full text in a pull request to
+`Docs/LANGUAGE_BASELINE.md`, cut before it merged. And, once it was widened to
+read prose and to read the tuned side properly, the nine above that were already
+public and had been since before this set existed.
+
+**Read that last group as the warning it is.** For most of its life this file
+said the boundary was mechanical rather than a promise, and it was — mechanically
+reading 18% of the gating corpus, and never looking at prose or at `heldout.tsv`
+at all. A check is only as wide as what it reads, and "it is mechanical" is not
+a claim anyone can check. Ask what it reads, and whether anything forces the
+count it prints to agree with a number you already know.
+
+## Sizing a change without spending the set
+
+A rule for the other direction, which the leak check cannot enforce: reading
+sealed captures to *choose* a change is as damaging as reading them to fix one,
+and it does not feel like it at the time. Grepping the sealed sets to show a
+proposed change is safe is a sound-looking argument that costs the thing the
+argument was for — the set stops measuring generalisation the moment a change
+is selected with its contents in view.
+
+Three steps, in order:
+
+1. **Size it against readable sets only.** `devsets/`, the gating corpus, a
+   sweep document. If the change is not worth building on the evidence you are
+   allowed to read, it is not worth building.
+2. **State the property that bounds it.** Not "I checked and the sealed rows
+   are fine", but something a run can falsify: *this change can only affect a
+   capture ending on `to`, so every capture that does not is untouched.*
+3. **Let the sealed run be the test, never the input.** Build, then measure.
+
+The tell that you have crossed the line is when reading sealed rows is what
+makes your case. It never is: a bounding property is checkable without reading
+a single sealed capture, and where one exists it is also the real reason the
+sealed rows were safe. If you cannot state one, the case is not yet made — and
+if you have already looked, say so where the figure is published, because how a
+number was obtained is part of the number.
 
 ## Comparing runs
 
