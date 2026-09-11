@@ -20,6 +20,7 @@ if nobody looked. Iterating needs somewhere else to iterate.
 | `coordination.tsv` | `probe --clauses` | `score.py` | where clause boundaries fall |
 | `routed.tsv` | full rules path | `../heldout/score.py` | destination, and unsafe action on an ambiguous capture |
 | `framing.tsv` | full rules path | `../heldout/score.py` | whether the frame around speech is read as frame: sign-offs, enumeration |
+| `runon.tsv` | full rules path | `../heldout/score.py` | several thoughts in one breath with no marker, and the boundaries that must not be cut |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
 
@@ -28,7 +29,15 @@ if nobody looked. Iterating needs somewhere else to iterate.
 no capture in it. A rate says which family to look at; a sentence would have
 ended the set's usefulness.
 
-`routed.tsv` and `framing.tsv` are deliberately scored by the **held-out
+`runon.tsv` has the same provenance and goes further than measuring: it states
+what the app should do with speech nobody punctuated. Two thoughts about
+different things are two rows; two statements about the same thing are one
+note, because splitting a single fact in half makes a person find only half of
+it later. That line is a product decision rather than a measurement, and the
+`same-topic-guard` and `object-guard` rows are where it is drawn — argue with
+those rows, not with the rate.
+
+`routed.tsv`, `framing.tsv` and `runon.tsv` are deliberately scored by the **held-out
 scorer**, on the same five columns, so the number being developed against is the
 same number being reported at the end. Only the data differs.
 

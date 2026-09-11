@@ -1,0 +1,75 @@
+# Run-on speech development set: several thoughts in one breath, no marker.
+#
+# Written for the largest remaining framing family. The everyday table reports
+# `run-on` at 0/8 on routing and `multi-thought` at 19/40; the sentences behind
+# those rates were not read to write this file, and nothing here was copied
+# from a held-out set. It is the same provenance as `framing.tsv`.
+#
+# NOT held out: these are for iteration. Read the failures, fix the layer, run
+# it again.
+#
+# What this set asserts, so that it can be argued with
+# ----------------------------------------------------
+# A recording carrying two thoughts about DIFFERENT things is two rows, even
+# when nothing separates them but a breath. Two statements about the SAME
+# thing are one note — "the dentist is on Pine Street the parking is round the
+# back" is one thing a person will want to find later, and splitting it makes
+# them find half. That line is a product decision, not a measurement, and the
+# guards below are where it is drawn.
+#
+# On the destination column: the scorer asks whether the wanted destination is
+# among the routes produced, so a capture holding a fact and an errand is
+# marked `Today`. A missed errand is the visible harm; the count column is what
+# actually discriminates on those rows.
+#
+# Columns: id, utterance, family, expected_destination, expected_thoughts
+#
+id	utterance	family	expected_destination	expected_thoughts
+# --- Errands run together, nothing between them -----------------------------
+RE01	pick up the dry cleaning call the bank about the overdraft	errand-runon	Today	2
+RE02	water the plants take the recycling out	errand-runon	Today	2
+RE03	book the car in for Thursday renew my passport	errand-runon	Today	2
+RE04	email Priya the invoice order more printer paper	errand-runon	Today	2
+RE05	pay the hydro bill cancel the gym membership	errand-runon	Today	2
+RE06	call the dentist buy milk post Ada's letter	errand-runon	Today	3
+RE07	drop the parcel at the post office collect the prescription	errand-runon	Today	2
+RE08	text Marcus about Saturday move the standup to 9:15	errand-runon	Today	2
+# --- A statement and an errand, in one breath -------------------------------
+RM01	the boiler is making that noise again book the plumber	mixed-runon	Today	2
+RM02	the conference moved to Halifax I need to rebook the flights	mixed-runon	Today	2
+RM03	Priya starts on the 14th order her a laptop	mixed-runon	Today	2
+RM04	the warranty ran out in June call the shop about a repair quote	mixed-runon	Today	2
+RM05	our wifi drops every evening replace the router	mixed-runon	Today	2
+RM06	the gym closes at ten on Sundays move my session to the morning	mixed-runon	Today	2
+RM07	Dad's appointment is on the 26th arrange a lift for him	mixed-runon	Today	2
+RM08	the chili needs two cans of tomatoes add them to the shopping list	mixed-runon	Today	2
+# --- Two statements about different things ----------------------------------
+RS01	the rent goes up sixty dollars in April my lease renews in March	statement-runon	Memory	2
+RS02	Maya's new number ends in 4417 the office moved to the third floor	statement-runon	Memory	2
+RS03	the flight lands at 6:40 Ines is bringing the projector	statement-runon	Memory	2
+RS04	Dad's blood type is O negative the spare key is under the planter	statement-runon	Memory	2
+RS05	the conference is in Halifax this year Okonkwo is chairing the panel	statement-runon	Memory	2
+RS06	our recycling goes out on Tuesdays the garage code is 4821	statement-runon	Memory	2
+# --- Guards: two statements about ONE thing stay one note -------------------
+RG01	the dentist is on Pine Street the parking is round the back	same-topic-guard	Memory	1
+RG02	the boiler pressure sits at one bar the manual says one and a half	same-topic-guard	Memory	1
+RG03	the recipe takes an hour it serves six	same-topic-guard	Memory	1
+RG04	Priya moved to the Toronto office she starts on the 14th	same-topic-guard	Memory	1
+RG05	the router is five years old it drops every evening	same-topic-guard	Memory	1
+RG06	our lease runs to March the rent is fixed until then	same-topic-guard	Memory	1
+# --- Guards: a second noun phrase that is an object, not a subject ----------
+RO01	I put the milk in the fridge	object-guard	Memory	1
+RO02	Sarah gave me her new number	object-guard	Memory	1
+RO03	send Marcus the updated deck	object-guard	Today	1
+RO04	I told Ines the meeting moved to Thursday	object-guard	Memory	1
+RO05	remind me the bins go out on Tuesday	object-guard	Today	1
+RO06	I think the car needs an oil change	object-guard	Today	1
+RO07	book the small meeting room the one with the whiteboard	object-guard	Today	1
+RO08	the dog that lives next door barks all night	object-guard	Memory	1
+RO09	she asked whether the invoice went out	object-guard	Memory	1
+RO10	leave the keys with the neighbour who has the blue door	object-guard	Today	1
+# --- Guards: a fronted adjunct is not a second thought ----------------------
+RF01	after the school run drop the parcel at the post office	adjunct-guard	Today	1
+RF02	on the 15th the mortgage payment comes out	adjunct-guard	Today	1
+RF03	when I get to Costco buy the beef	adjunct-guard	Today	1
+RF04	first thing tomorrow email the landlord about the damp	adjunct-guard	Today	1

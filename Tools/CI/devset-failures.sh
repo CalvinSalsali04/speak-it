@@ -62,6 +62,9 @@ Tools/CorpusRunner/devsets/route-score.sh routed --verbose 2>&1
 section "FRAMING — the frame around speech: sign-offs, enumeration"
 Tools/CorpusRunner/devsets/route-score.sh framing --verbose 2>&1
 
+section "RUN-ON — several thoughts in one breath, with no marker between them"
+Tools/CorpusRunner/devsets/route-score.sh runon --verbose 2>&1
+
 section "UNFINISHED — whether a thought was finished at all"
 Tools/CorpusRunner/devsets/unfinished-score.sh --verbose 2>&1
 
