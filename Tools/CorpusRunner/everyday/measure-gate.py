@@ -64,10 +64,20 @@ REWRITTEN = [
 ROOT = HERE.parents[2]
 
 #: Sibling directories the suite reaches for: corpora to check the sealed sets
-#: against, and the Swift sources the leak check harvests. They are linked
+#: against, the Swift sources the leak check harvests, the documents its prose
+#: half reads, and the scripts the retired-claim check scans. They are linked
 #: rather than copied, so the scratch tree differs from the real one in exactly
 #: one file — the mutated scorer.
+#:
+#: `Docs` and `Tools/CI` joined this list on the day a test started asserting
+#: that a documented exemption names a file that exists. It failed here and
+#: nowhere else, and the gate refused to report rather than reporting twelve
+#: protected measures it had not measured — which is the control working. The
+#: list was already short of the truth before that: the prose half of the leak
+#: check reads every document in the repository, and this tree had none.
 LINKED = [ROOT / "SpeakItTests",
+          ROOT / "Docs",
+          ROOT / "Tools/CI",
           ROOT / "Tools/CorpusRunner/devsets",
           ROOT / "Tools/CorpusRunner/heldout",
           ROOT / "Tools/CorpusRunner/adversarial"]

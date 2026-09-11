@@ -11,6 +11,7 @@ checked against a known input is not evidence about anything.
 import collections
 import contextlib
 import io
+import os
 import pathlib
 import re
 import subprocess
@@ -1140,19 +1141,50 @@ class RetiredClaimTests(unittest.TestCase):
 
     SKIP_DIRS = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
 
-    def tracked_files(self):
-        root = HERE.parents[2]
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            parts = set(path.relative_to(root).parts)
-            if self.SKIP_DIRS & parts:
-                continue
-            if path.suffix not in {".md", ".sh", ".py", ".swift", ".yml", ".txt"}:
-                continue
-            if path.resolve() == pathlib.Path(__file__).resolve():
-                continue  # the file that names the claims cannot be its own leak
-            yield path
+    def tracked_files(self, root=None):
+        """Every file this check reads, following directory symlinks.
+
+        `rglob` does not descend into a symlinked directory, and that turned a
+        correct check into a blind one where it mattered: `measure-gate.py`
+        mirrors this suite into a scratch tree with `Docs` and `heldout`
+        linked rather than copied, so the scan walked the one copied directory
+        and found nothing to check. It reported a pass having read almost
+        nothing -- the shape this whole file exists to catch, in this file.
+
+        The real repository has no symlinks today, so following them changes
+        what is read only in the mirror. `seen` is the cycle guard that makes
+        that safe to keep true tomorrow.
+        """
+        root = pathlib.Path(root) if root else HERE.parents[2]
+        seen = set()
+        for here, folders, files in os.walk(root, followlinks=True):
+            folders[:] = [f for f in folders if f not in self.SKIP_DIRS
+                          and os.path.realpath(os.path.join(here, f)) not in seen]
+            seen.update(os.path.realpath(os.path.join(here, f)) for f in folders)
+            for name in files:
+                path = pathlib.Path(here) / name
+                if path.suffix not in {".md", ".sh", ".py", ".swift", ".yml", ".txt"}:
+                    continue
+                if path.resolve() == pathlib.Path(__file__).resolve():
+                    continue  # the file naming the claims cannot be its own leak
+                yield path
+
+    def test_the_scan_descends_into_a_linked_directory(self):
+        """Pinned because the blind version passed everywhere except the mirror.
+
+        A check is only ever as wide as what it reads, and the one place this
+        was measured against a control is the one place it read nothing.
+        """
+        with tempfile.TemporaryDirectory() as room:
+            root = pathlib.Path(room)
+            (root / "real").mkdir()
+            (root / "real" / "deep.md").write_text("x", encoding="utf-8")
+            (root / "tree").mkdir()
+            (root / "tree" / "linked").symlink_to(root / "real",
+                                                  target_is_directory=True)
+            found = {p.name for p in self.tracked_files(root / "tree")}
+            self.assertIn("deep.md", found,
+                          "a linked directory is still a directory to read")
 
     @staticmethod
     def carries(body, phrase):
