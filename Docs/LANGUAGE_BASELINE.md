@@ -10,7 +10,7 @@ that records a change which did not ship says so in its first lines. Older
 sections stay as written; they are the record of what was true when they were
 measured, not a claim about today.
 
-## Two standing rules, both learned by paying for them
+## Three standing rules, two of them learned by paying for them
 
 **Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
 33/44 to 35/45 on thought count — an improvement by any reading of the total —
@@ -28,6 +28,27 @@ it, a gate that printed a count and named a command requiring a Mac, and a
 mutation harness that ran in an already-broken copy so every measure read as
 protected. Run the instrument, read what it prints, and check that a reader
 who has only that output can act on it.
+
+**Every number in this file is the rules path.** `Tools/PipelineProbe` says so
+itself: it "runs the **rules path only** … It does not run the Foundation Models
+refinement", and `language-metrics.sh` scores through the probe. So 233/320 on
+held-out destination is a rules-path figure, and a sentence quoting it as what
+an iOS 26 user receives is quoting it wrong.
+
+Today that is exact rather than approximate, and the reason is worth knowing
+rather than taking on trust. `RefinementPolicy.shouldRefine`
+(`ThoughtExtractor.swift:187`) runs the on-device model only where an item is
+already `needsReview`, and not at all above 1,500 characters. For every capture
+the rules answered confidently, no refinement happens, so the rules answer *is*
+the product answer and the number is the product number.
+
+That makes the caveat a trigger rather than a hedge, and the trigger is one
+line of code: **if `shouldRefine` ever fires on anything beyond `needsReview`,
+every figure in this file stops describing the product** — not slightly, but for
+the whole population that gate newly covers — and stays wrong until an
+instrument exists that can run the refined path. Nothing here can measure that
+today; `PipelineProbe` has no way to reach it. Whoever widens that gate owns
+producing the instrument first.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
