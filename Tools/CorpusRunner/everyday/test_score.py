@@ -801,6 +801,112 @@ def lengths_module():
     return module
 
 
+class PerFamilyTableTests(unittest.TestCase):
+    """The per-family table has to say when a row is not its own reading.
+
+    A family whose captures all come from one group is that group's row under
+    a second name. On the adversarial set twelve of sixteen families are in
+    that position, and three pairs of them cover the identical captures, so
+    `ellipsis`, `multi-date` and `ellipsis-x-date` print the same figures three
+    times with nothing saying so. Quoting two of them, or averaging them, is
+    the one-phenomenon-counted-twice error that has already manufactured a
+    fake gain once in this repository.
+    """
+
+    def score(self, labels, group="pair"):
+        with tempfile.TemporaryDirectory() as root:
+            directory = pathlib.Path(root) / "set"
+            directory.mkdir()
+            cases = directory / "s.tsv"
+            cases.write_text(HEADER.replace("domain", group) + labels)
+            probe = directory / "probe.txt"
+            probe.write_text("".join(
+                block(row.split("\t")[2], {"title": "X", "route": "Today"})
+                for row in labels.splitlines()))
+            return subprocess.check_output(
+                [sys.executable, str(HERE / "score.py"), str(cases), str(probe)],
+                text=True)
+
+    def family_rows(self, report):
+        """The table's data lines, between its rule and the closing rule."""
+        lines = report.splitlines()
+        start = next(i for i, l in enumerate(lines) if "PER FAMILY" in l)
+        body = lines[start:]
+        header = next(i for i, l in enumerate(body) if l.startswith("family"))
+        end = next(i for i, l in enumerate(body[header + 2:]) if set(l) == {"-"})
+        return body[header + 2:header + 2 + end]
+
+    def test_a_family_confined_to_one_group_says_which(self):
+        report = self.score(
+            "A1\tpair-one\tcall the vet\tToday:task\t-\t-\tellipsis\tn\n"
+            "A2\tpair-one\tcall the dentist\tToday:task\t-\t-\tellipsis\tn\n")
+        rows = [r for r in self.family_rows(report) if r.startswith("ellipsis")]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("← pair-one only", rows[0])
+
+    def test_a_family_spanning_groups_is_not_marked(self):
+        """Otherwise the mark is decoration and nobody reads it."""
+        report = self.score(
+            "A1\tpair-one\tcall the vet\tToday:task\t-\t-\tellipsis\tn\n"
+            "A2\tpair-two\tcall the dentist\tToday:task\t-\t-\tellipsis\tn\n")
+        rows = [r for r in self.family_rows(report) if r.startswith("ellipsis")]
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn("only", rows[0])
+
+    def test_the_note_appears_only_when_some_row_carries_the_mark(self):
+        spanning = self.score(
+            "A1\tpair-one\tcall the vet\tToday:task\t-\t-\tellipsis\tn\n"
+            "A2\tpair-two\tcall the dentist\tToday:task\t-\t-\tellipsis\tn\n")
+        confined = self.score(
+            "A1\tpair-one\tcall the vet\tToday:task\t-\t-\tellipsis\tn\n"
+            "A2\tpair-one\tcall the dentist\tToday:task\t-\t-\tellipsis\tn\n")
+        self.assertNotIn("never average them", spanning)
+        self.assertIn("never average them", confined)
+
+    def test_every_family_row_keeps_its_figures_in_column(self):
+        """A name wider than the column pushes the row right, not off.
+
+        `occupation-vs-person` is 20 characters against a column of 18, so
+        every figure on that row sat two places out while still looking like
+        data. Truncating instead would be worse; the column is sized to the
+        longest tag present.
+        """
+        report = self.score(
+            "A1\tpair-one\tcall the vet\tToday:task\t-\t-\toccupation-vs-person\tn\n"
+            "A2\tpair-two\tcall the dentist\tToday:task\t-\t-\tidiom\tn\n")
+        offsets = {r.index("1/1") for r in self.family_rows(report)}
+        self.assertEqual(len(offsets), 1, "family rows are not in column")
+
+    def test_the_committed_sets_are_marked_as_the_data_requires(self):
+        """Real data, because the point is which rows may be quoted.
+
+        Every everyday family spans domains, so nothing there is marked; the
+        adversarial set carries `ellipsis` and `multi-date` on one pairing
+        each, and on the same one.
+        """
+        for name, path in (("everyday", HERE / "everyday.tsv"),
+                           ("adversarial",
+                            HERE.parent / "adversarial" / "adversarial.tsv")):
+            if not path.exists():
+                self.skipTest(f"{path.name} not present")
+            with self.subTest(corpus=name):
+                rows = [line.split("\t") for line in path.read_text().splitlines()
+                        if not line.startswith("#") and line.strip()
+                        and line.split("\t")[0] != "id"]
+                groups = {}
+                for row in rows:
+                    for family in row[6].split("|"):
+                        groups.setdefault(family, set()).add(row[1])
+                confined = {f for f, g in groups.items() if len(g) == 1}
+                if name == "everyday":
+                    self.assertEqual(confined, set(),
+                                     "an everyday family stopped spanning domains")
+                else:
+                    self.assertEqual(groups["ellipsis"], {"ellipsis-x-date"})
+                    self.assertEqual(groups["multi-date"], {"ellipsis-x-date"})
+                    self.assertIn("run-on", confined)
+
+
 class ComparabilityTests(unittest.TestCase):
     """A pairing may only be read against an ingredient of comparable length.
 
