@@ -282,6 +282,15 @@ make silently.
 
 ## Family denominators
 
+The per-family table's *order* is explained in `../everyday/README.md`, which
+documents the scorer this set shares. The short version: a family is ranked on
+its weakest of five measures while the table prints three, so a row ranked on
+`loss` or `invention` is marked with the measure and its denominator; ties
+break on that denominator rather than on `n`. Nothing here is thin enough for
+the tie-break to matter — every `invention` denominator in this set is 0, 12
+or 24 — but the marks will appear, and they are not a defect in this set.
+
+
 | date | family | from | to | why |
 |---|---|---|---|---|
 | 2026-09-11 | `negation` | 24 | 26 | AS06 and AS12 exclude a value with `not` and carried no tag |

@@ -240,6 +240,98 @@ the per-domain routing and loss rates, and the `ACTED ON ANYWAY` count. Add a
 row to the baseline table below. Do not add a row for a run whose failures were
 read during development — say so instead, and treat the number as spent.
 
+## Reading the per-family table
+
+Worst family first, so somebody starts at the top. Two things made that order
+a wrong claim, and both are the same mistake the held-out table made: a rate
+read without the denominator underneath it.
+
+**A family is ranked on its weakest of five measures, and the table prints
+three.** `loss` and `invention` have no column here. So a family could hold the
+top row of a worst-first list with `routing`, `count` and `title` all reading
+100% — a position nothing on the line explains. A row in that situation now
+says so:
+
+```
+<family>   18   <routing>   <count>   <title>   ← ranked on invention 0/1
+```
+
+The three printed rates in a row like that can each read in the nineties. The
+mark is what says the row is not there because of them. (The shape is written
+out rather than filled in on purpose: no reading of this set has been taken
+since the change, so there is no real row to quote.)
+
+Rows ranked on a printed column carry no mark, because the evidence is already
+in front of the reader and a mark on every row is decoration.
+
+**Ties broke on `n`, which is the denominator of nothing here.** `n` counts
+captures carrying the tag; each measure is scored over whichever of those it
+applies to, and the two are far apart:
+
+| family | n | captures scored for invention |
+|---|---|---|
+| `person` | 33 | 2 |
+| `recurrence` | 22 | 1 |
+| `filler` | 18 | 1 |
+| `proper-noun` | 15 | 1 |
+| `false-start` | 14 | 1 |
+| `location` | 12 | 1 |
+
+Six of the set's 25 families are in that position, and fifteen have no
+invention denominator at all. Under the old key, `recurrence` at `invention
+0/1` outranked `run-on` at `routing 0/8` — 22 against 8 on paper, 1 against 8
+in evidence. The tie is now broken on the denominator of the ranking measure
+itself, then on the family name so the order never depends on spelling.
+
+**A family with nothing scored at all is not ranked.** It used to score 1.0,
+which is where a family that passes everything belongs. Reaching that needs
+every capture carrying the tag to be missing from the probe output — which is
+not hypothetical: one label against an empty probe run does it, and the first
+draft of the fix asserted it could not happen and was corrected by the suite.
+
+The adversarial set is scored by this same file and is not affected in
+practice: its invention denominators are 0, 12 or 24, never thin.
+
+**The published worst-families table below is not in this order and never
+was**, so nothing in it needs revisiting and nobody should "fix" it to match.
+The rule for every hand-transcribed table of this set is: **ascending by the
+printed `routing` column, with `ambiguous` last for want of one.**
+
+Checkable from the figures rather than taken on trust. In the generation-3
+table below — which predates the discourse-framing fix — three of its eight
+rows sit at 0.000 under the scorer's key: `run-on` on routing 0/8,
+`trailing-goodbye` on **title 0/7**, `operation` on count 0/2. They are
+published first, third and sixth, and the scorer would have led with
+`operation`. `trailing-goodbye` is the example to reach for because its zero is
+printed, so the argument needs none of the invisible columns.
+
+**That example does not travel.** `trailing-goodbye` is title 7/7 in
+`Docs/LANGUAGE_BASELINE.md`'s post-fix table, where only two rows sit at 0.000.
+Attach the claim to a table before making it; the reasoning survives, the count
+does not.
+
+`ambiguous` is last in every one of those tables because it has **no routing or
+count rate at all** — its captures are unpinnable, so only `title` is scored.
+The scorer agrees without being told to: with one rate available it ranks on
+that rate, lands last, and carries no mark, because `title` is a printed column
+and the `—` cells beside it say the rest. Whoever transcribed these tables
+arrived at the same place by hand.
+
+What the change above affects is the scorer's own output, not those tables.
+`Docs/LANGUAGE_BASELINE.md` states the rule under each of them, including one
+recorded hairline inversion that was left alone rather than silently corrected.
+
+**And a note on how this section was nearly wrong.** Its first draft said the
+published table "was ordered by the old key — treat the order as unverified
+until the next reading". That was an assumption wearing a caveat: checking it
+against the table's own figures took a minute, and it would have sent somebody
+to fix a table that was already right. **A claim that something is unverified
+is itself a claim, and needs the same check as a claim that something is
+wrong** — it is the same move as a `1.0` fallback or a `KNOWN:` marker, a way
+of not having a number while looking careful about it.
+
+No rate changes either way — only where rows sit in the report.
+
 ## Generations
 
 The set grows, and a measure whose denominator moved is not comparable across
@@ -394,7 +486,11 @@ as a diagnosis.
 The invention column is 4 or 5 cases per domain and is not a rate at any domain
 granularity. `family-health` reads 0/4: four named cases, not 0%.
 
-Worst families, which is where the structure actually is:
+Worst families, which is where the structure actually is. **Sorted by the
+printed `routing` column, not by the scorer's own ranking** — see "Reading the
+per-family table" above for why the two differ and why this table is right as
+it stands:
+
 
 | family | n | routing | count | title |
 |---|---|---|---|---|

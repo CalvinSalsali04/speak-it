@@ -8,6 +8,7 @@ with no Swift toolchain, where the pipeline itself cannot be executed at all
 That separation is the point. A measuring instrument that has never been
 checked against a known input is not evidence about anything.
 """
+import collections
 import contextlib
 import io
 import pathlib
@@ -1224,7 +1225,235 @@ class PerFamilyTableTests(unittest.TestCase):
                     self.assertIn("run-on", confined)
 
 
+class FamilyRankingTests(unittest.TestCase):
+    """Where a family sits in this table is a claim, and it was two wrong ones.
+
+    The table is the triage list: worst first, and somebody starts at the top.
+    It ranks across five measures and prints three of them, so a family could
+    hold the top row on `loss` or `invention` while every figure on its line
+    read 100% -- a position the reader cannot check against anything visible.
+    And ties broke on `n`, which is not the denominator of any rate here:
+    `recurrence` carries 22 captures of which exactly one is scored for
+    invention, so its 0/1 outranked a 0/8 on the strength of 22 against 8
+    while the evidence was 1 against 8. Six of the everyday set's 25 families
+    have an invention denominator of 1 or 2 over 12 to 33 captures.
+    """
+
+    def score(self, labels, probe):
+        with tempfile.TemporaryDirectory() as root:
+            directory = pathlib.Path(root) / "everyday"
+            directory.mkdir()
+            cases = directory / "everyday.tsv"
+            cases.write_text(HEADER + labels)
+            output = directory / "probe.txt"
+            output.write_text(probe)
+            return subprocess.check_output(
+                [sys.executable, str(HERE / "score.py"), str(cases), str(output)],
+                text=True)
+
+    def order(self, report):
+        """Family names in the order the table ranks them."""
+        lines = report.splitlines()
+        start = next(i for i, l in enumerate(lines) if "PER FAMILY" in l)
+        body = lines[start:]
+        header = next(i for i, l in enumerate(body) if l.startswith("family"))
+        rows = []
+        for line in body[header + 2:]:
+            if set(line) == {"-"}:
+                break
+            rows.append(line.split()[0])
+        return rows
+
+    def row(self, report, family):
+        lines = [l for l in self.order(report)]
+        self.assertIn(family, lines)
+        for line in report.splitlines():
+            if line.startswith(family + " ") or line.startswith(family + "\t"):
+                return line
+        self.fail(f"no row for {family}")
+
+    #: Eight captures routed wrong: a rate of 0.0 measured over eight.
+    def wide(self, family, n=8):
+        labels, probe = "", ""
+        for i in range(n):
+            utterance = f"wide {family} {i}"
+            labels += (f"W{i}\twork-school\t{utterance}\tToday:task\t-\t-\t"
+                       f"{family}\tn\n")
+            probe += block(utterance, {"title": utterance, "route": "Memory",
+                                       "type": "note"})
+        return labels, probe
+
+    #: Many captures, all of them clean, and exactly one scored for invention
+    #: -- which fails. A rate of 0.0 measured over one.
+    def thin(self, family, n=10):
+        labels, probe = "", ""
+        for i in range(n - 1):
+            utterance = f"thin {family} {i}"
+            labels += (f"T{i}\twork-school\t{utterance}\tToday:task\t-\t-\t"
+                       f"{family}\tn\n")
+            probe += block(utterance, {"title": utterance})
+        utterance = f"thin {family} superseded"
+        labels += (f"T9\twork-school\t{utterance}\tToday:task\t-\tsuperseded\t"
+                   f"{family}\tn\n")
+        probe += block(utterance, {"title": "call about the superseded number"})
+        return labels, probe
+
+    def test_at_an_equal_rate_the_measures_own_denominator_decides(self):
+        """The regression: `n` used to decide, and it is the larger here."""
+        thin_labels, thin_probe = self.thin("fam-thin", n=10)
+        wide_labels, wide_probe = self.wide("fam-wide", n=8)
+        report = self.score(thin_labels + wide_labels, thin_probe + wide_probe)
+        order = self.order(report)
+        self.assertEqual(order.index("fam-wide") + 1, order.index("fam-thin"),
+                         f"0/8 must outrank 0/1, got {order}")
+
+    def test_n_is_not_what_broke_the_tie(self):
+        """Same shapes, and the thin family now carries more captures still."""
+        thin_labels, thin_probe = self.thin("fam-thin", n=20)
+        wide_labels, wide_probe = self.wide("fam-wide", n=8)
+        report = self.score(thin_labels + wide_labels, thin_probe + wide_probe)
+        self.assertLess(self.order(report).index("fam-wide"),
+                        self.order(report).index("fam-thin"))
+
+    #: Many captures, all clean, and exactly one scored for loss -- which
+    #: fails because the span it must preserve is not in the title.
+    def thin_loss(self, family, n=10):
+        labels, probe = "", ""
+        for i in range(n - 1):
+            utterance = f"lossy {family} {i}"
+            labels += (f"L{i}\twork-school\t{utterance}\tToday:task\t-\t-\t"
+                       f"{family}\tn\n")
+            probe += block(utterance, {"title": utterance})
+        utterance = f"lossy {family} keeps a span"
+        labels += (f"L9\twork-school\t{utterance}\tToday:task\tRoncesvalles\t-\t"
+                   f"{family}\tn\n")
+        probe += block(utterance, {"title": "something else entirely"})
+        return labels, probe
+
+    def test_the_mark_generalises_to_the_other_unprinted_measure(self):
+        """`loss` is the second measure `worst()` reads and the table omits.
+
+        Written because the mark was built for the `invention` case that
+        prompted it, and a guard tested only on the case that prompted it is
+        a guard for that case. `loss` exercises the same branch through a
+        different measure, so the branch is the thing under test rather than
+        the string `invention`.
+        """
+        labels, probe = self.thin_loss("fam-loss", n=10)
+        report = self.score(labels, probe)
+        row = self.row(report, "fam-loss")
+        self.assertIn("ranked on loss 0/1", row)
+        self.assertIn("(100.0%)", row)
+        self.assertIn("ranked on <measure>", report)
+
+    def test_a_loss_ranked_family_outranks_nothing_better_evidenced(self):
+        """The tie-break holds for `loss` as it does for `invention`."""
+        thin_labels, thin_probe = self.thin_loss("fam-loss", n=20)
+        wide_labels, wide_probe = self.wide("fam-wide", n=8)
+        report = self.score(thin_labels + wide_labels, thin_probe + wide_probe)
+        self.assertLess(self.order(report).index("fam-wide"),
+                        self.order(report).index("fam-loss"))
+
+    def test_a_row_ranked_on_a_measure_with_no_column_says_so(self):
+        """Otherwise its printed figures read 100% at the top of the table."""
+        labels, probe = self.thin("fam-thin", n=10)
+        report = self.score(labels, probe)
+        row = self.row(report, "fam-thin")
+        self.assertIn("ranked on invention 0/1", row)
+        self.assertIn("(100.0%)", row)
+        self.assertIn("ranked on <measure>", report)
+
+    def test_a_row_ranked_on_a_printed_column_is_not_marked(self):
+        """The evidence is already on the line, so a mark would be noise."""
+        labels, probe = self.wide("fam-wide", n=8)
+        report = self.score(labels, probe)
+        self.assertNotIn("ranked on", self.row(report, "fam-wide"))
+        self.assertNotIn("ranked on <measure>", report)
+
+    def test_a_family_scored_on_one_measure_ranks_on_it_and_is_not_marked(self):
+        """`ambiguous` is this shape in the real set, and the README says so.
+
+        Its captures are unpinnable, so routing and count are never scored and
+        only `title` is. Every hand-transcribed table of this set puts it last,
+        and the README now claims the scorer arrives there without being told
+        to. That claim needs something holding it, or it is a sentence in a
+        document — which is the failure mode this directory exists to remove.
+
+        Not marked, because `title` is a printed column: the rate the row is
+        ranked on is in front of the reader, and the `—` cells say the rest.
+        """
+        labels, probe = "", ""
+        for i in range(15):
+            utterance = f"unpinnable {i}"
+            labels += (f"A{i}\twork-school\t{utterance}\tAmbiguous\t-\t-\t"
+                       f"fam-amb\tn\n")
+            probe += block(utterance, {"title": utterance, "route": "Memory",
+                                       "type": "note"})
+        wide_labels, wide_probe = self.wide("fam-bad", n=8)
+        report = self.score(labels + wide_labels, probe + wide_probe)
+
+        self.assertEqual(self.order(report), ["fam-bad", "fam-amb"])
+        row = self.row(report, "fam-amb")
+        self.assertNotIn("ranked on", row)
+        self.assertIn("—", row)
+        self.assertNotIn("NOT RANKED", report)
+
+    def test_a_family_with_nothing_scored_is_not_ranked_at_all(self):
+        """It used to score 1.0, which is where a perfect family goes."""
+        labels = ("A1\twork-school\tnever run\tToday:task\t-\t-\tfam-absent\tn\n"
+                  "A2\twork-school\tmissed one\tToday:task\t-\t-\tfam-wide\tn\n")
+        probe = block("missed one", {"title": "Missed one", "route": "Memory",
+                                     "type": "note"})
+        report = self.score(labels, probe)
+        self.assertNotIn("fam-absent", self.order(report))
+        self.assertIn("NOT RANKED", report)
+        self.assertIn("fam-absent", report.split("NOT RANKED")[1])
+
+    def test_the_not_ranked_block_is_absent_when_every_family_was_scored(self):
+        labels, probe = self.wide("fam-wide", n=2)
+        self.assertNotIn("NOT RANKED", self.score(labels, probe))
+
+    def test_the_footer_denies_that_n_is_a_denominator(self):
+        """`n` reads as one, and six families would be misread through it."""
+        labels, probe = self.wide("fam-wide", n=2)
+        self.assertIn("`n` is the", self.score(labels, probe))
+        self.assertIn("denominator of none of these columns",
+                      self.score(labels, probe))
+
+    def test_worst_refuses_a_family_it_cannot_rank_rather_than_answering(self):
+        """The filter is the guard; this only stops a caller mis-sorting."""
+        sys.path.insert(0, str(HERE))
+        try:
+            score = __import__("score")
+        finally:
+            sys.path.pop(0)
+        with self.assertRaises(ValueError):
+            score.worst(collections.Counter())
+
+    def test_worst_reports_the_measure_and_its_denominator(self):
+        sys.path.insert(0, str(HERE))
+        try:
+            score = __import__("score")
+        finally:
+            sys.path.pop(0)
+        counter = collections.Counter({"routing_ok": 1, "routing_miss": 7,
+                                       "title_ok": 8})
+        self.assertEqual(score.worst(counter), (0.125, 8, "routing"))
+
+    def test_at_an_equal_rate_and_denominator_the_better_evidenced_names_it(self):
+        """Two measures tied; the mark must not understate the evidence."""
+        sys.path.insert(0, str(HERE))
+        try:
+            score = __import__("score")
+        finally:
+            sys.path.pop(0)
+        counter = collections.Counter({"routing_ok": 0, "routing_miss": 2,
+                                       "invention_ok": 0, "invention_miss": 8,
+                                       "title_ok": 10})
+        self.assertEqual(score.worst(counter), (0.0, 8, "invention"))
+
 class ComparabilityTests(unittest.TestCase):
+
     """A pairing may only be read against an ingredient of comparable length.
 
     `adversarial/README.md` says to judge each pairing against the families it
