@@ -2444,3 +2444,35 @@ The development ambiguity count improved from 4/32 acted on to 3/32; the
 untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
 7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
 improvement is claimed, and no held-out failures were read.
+
+## 2026-09-11 — A removal names a row by the head of its noun phrase
+
+Two cases were filed together as "delete and remove are not operation verbs".
+They fail for different reasons and only one of them was a defect.
+
+"Delete the reminder to call Dave" failed on **word order**: the rule required
+the container noun to be the final token of the sentence, so it recognised the
+pre-modified phrasing of a request and refused the post-modified phrasing of
+the same request. The fix reads the head of the object noun phrase instead of
+its last word, admitting head-initial phrases only through a complement (`to`,
+`about`, `for`, `regarding`, `that`, `which`) and head-final phrases only when
+no preposition stands in front of the head. Verb particles are deliberately not
+prepositions: "pick up the parcel reminder" has a head, "drop the kids off at
+the appointment" does not. No other guard on the destructive path moved.
+
+"Remove the dentist appointment" failed on **reach**, and is left open. It is
+not a word-order problem: `appointment` has never been a container noun. The
+change deliberately does not add one. Reading the shape of a noun phrase and
+widening what a destructive verb may reach are different changes with different
+risks, and the second belongs to whoever owns the product, not to this rule.
+
+The plurals of the six existing container nouns were added, because
+`CaptureTargetMatcher.stopWords` already treated "reminders" and "reminder" as
+the same word; the singular-only spelling was an inflection gap, not a boundary.
+
+**Not measured.** The change was written in a Linux container; the engine
+depends on Apple's `NaturalLanguage` and cannot run there. What was run is a
+pattern-level model of the old and new rules over 31 utterances: 7 shapes newly
+recognised, no false positive over 18 errands and calendar nouns. The corpus
+gate, the unit suite and the release compile check all still have to run on a
+Mac before this is claimed to work.

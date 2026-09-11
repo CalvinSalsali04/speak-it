@@ -316,18 +316,53 @@ No utterance of that shape appears in the 1,069-case corpus, so the cost is
 currently hypothetical and the benefit is measured. If a real capture hits it,
 the fix is a new corpus family, not a widening of the rule.
 
-## Delete and remove are not operation verbs
+## Removal requests: one defect closed, one decision open
 
-"Cancel my plumber reminder" is recognised as an operation. "Delete the reminder
-to call Dave" and "remove the dentist appointment" are not — they fall through
-to a Memory row flagged for review, and nothing is destroyed.
+*The old heading here — "delete and remove are not operation verbs" — was
+wrong.* `delete`, `remove`, `clear`, `kill` and `drop` have been in the
+cancellation patterns all along. The two cases filed under it failed for two
+**different** reasons, and only one of them was a defect.
 
-This is a gap and it fails closed, which is why it is documented rather than
-fixed. Modifying or deleting stored user data needs substantially stronger
-evidence than creating content does, and widening the destructive vocabulary to
-make the family consistent would trade a safe gap for an unsafe one. Both cases
-are in `Tools/CorpusRunner/devsets/routed.tsv`, expected to fail, so the gap
-stays measured.
+**Closed in the working tree (2026-09-11): word order.** The rule required the
+container noun — reminder, task, item, note, alarm, entry — to be the *last
+token of the sentence*. So "delete the call Dave reminder" was recognised and
+"delete the reminder to call Dave" was not: the same request, post-modified
+instead of pre-modified. That is positional and it is a defect.
+`CaptureOperationDetector.removalOfStoredRow` now reads the **head** of the
+object noun phrase and admits the two shapes an English noun phrase has:
+
+- head-initial through a complement — "the reminder *to* call Dave", "the note
+  *about* the picnic". Only a complement counts, so "remove the note *from* the
+  fridge" is still a sticky note on a fridge.
+- head-final when no prepositional phrase stands in front of the head — "the
+  call Dave reminder", "the grocery list note". That test is what keeps "drop
+  the kids *off at* the appointment" an errand.
+
+The container vocabulary did not move, beyond admitting the plurals of the
+nouns already there — which `CaptureTargetMatcher.stopWords` had always
+treated as the same word. `StoredRowRemovalTests` pins the shapes on both
+sides.
+
+**Open, and a product decision rather than a defect: reach.** "Remove the
+dentist appointment" is still not recognised, and no amount of noun-phrase
+reading changes that: `appointment` has never been a container noun. Behind it
+is a real inconsistency between two tiers of destructive verb:
+
+| tier | target | what keeps it safe |
+|---|---|---|
+| `cancel` | unrestricted | `cancelsAnArrangement` — an arrangement noun or a deadline frame says the sentence is an errand |
+| `delete`, `remove`, `clear`, `kill`, `drop` | must name a container noun | the container noun itself |
+
+So "cancel the dentist appointment" acts on stored data and "remove the dentist
+appointment" does not. Making the second tier read the first tier's evidence
+would close the gap, and it would also widen what can destroy a person's rows.
+That is Calvin's call, not the implementation's. `DO03` in
+`Tools/CorpusRunner/devsets/routed.tsv` stays expected-to-fail until it is
+made; `DO02` no longer is.
+
+**Neither the corpus gate nor the unit suite has been run against this
+change.** It was written in a Linux container with no Swift toolchain and no
+Apple `NaturalLanguage` framework. See `Docs/DECISIONS.md`, 2026-09-11.
 
 ## Intent consolidation reads English discourse markers only
 

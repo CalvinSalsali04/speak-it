@@ -732,3 +732,221 @@ final class TranscriptAssemblyTests: XCTestCase {
         XCTAssertEqual(TranscriptAssembly.joined("Hello", ""), "Hello")
     }
 }
+
+/// Removal requests: "delete the reminder to call Dave", "get rid of the gym
+/// reminder", "remove the grocery list note".
+///
+/// The defect these close is **positional**. The rule required the container
+/// noun — reminder, task, item, note, alarm, entry — to be the *last word of
+/// the sentence*, so it recognised "delete the call Dave reminder" and refused
+/// "delete the reminder to call Dave": one request, two word orders. Reading
+/// the head of the object noun phrase instead is why the cases below are a
+/// family rather than a handful of sentences — each is a different way of
+/// putting a container noun at the head of a phrase.
+///
+/// It is **not** a fix for reach. The container vocabulary is unchanged apart
+/// from inflection, and `testACalendarNounIsNotYetAContainer` pins the cases
+/// that need a decision instead.
+///
+/// The negative half matters more than the positive half: reading a phrase
+/// differently is only safe if the new reading cannot reach an errand, so each
+/// shape that must *not* be read as a removal is pinned here beside the shape
+/// that must.
+final class StoredRowRemovalTests: XCTestCase {
+
+    private func operation(_ text: String) -> CaptureOperationRequest? {
+        CaptureOperationDetector.detect(text)
+    }
+
+    // MARK: Head-initial — the container noun takes a complement
+
+    func testPostModifiedContainerNounIsARemoval() {
+        for utterance in [
+            "Delete the reminder to call Dave",
+            "Remove the reminder to water the plants",
+            "Delete the note about the picnic",
+            "Get rid of the alarm for Tuesday",
+            "Remove the task to file the expenses",
+        ] {
+            let request = operation(utterance)
+            XCTAssertEqual(request?.operation, .cancel, "\(utterance) is a removal request")
+            XCTAssertEqual(request?.needsReview, false, "\(utterance) names its target")
+        }
+    }
+
+    func testTheContainerNounIsPeeledOffTheTarget() {
+        // The words that name the row are the complement, not the frame.
+        // Leaving "reminder to" attached means the target never matches.
+        XCTAssertEqual(operation("Delete the reminder to call Dave")?.target, "call dave")
+        XCTAssertEqual(operation("Get rid of the alarm for Tuesday")?.target, "tuesday")
+    }
+
+    // MARK: Head-final — the container noun closes the phrase
+
+    func testPreModifiedContainerNounIsARemoval() {
+        for utterance in [
+            "Delete the call Dave reminder",
+            "Get rid of the gym reminder",
+            "Kill the 7am alarm",
+            "Delete the pick up the parcel reminder",
+            "Remove the grocery list note",
+        ] {
+            XCTAssertEqual(
+                operation(utterance)?.operation, .cancel,
+                "\(utterance) is a removal request"
+            )
+        }
+    }
+
+    // MARK: Errands that only look like removals
+
+    func testAnObjectInTheWorldIsStillAnErrand() {
+        for utterance in [
+            // No container noun anywhere: the old rule declined these too, and
+            // the new one has to keep declining them.
+            "Delete the old photos",
+            "Get rid of the old couch",
+            "Clear the table",
+            "Drop the rental car off at noon",
+            "Remove the sticker from the laptop",
+            // A container noun that is the object of a preposition rather than
+            // the head of the phrase. This is the shape a head-final rule
+            // would swallow, and the reason the preposition test exists.
+            "Drop the kids off at the appointment",
+            "Drop the forms in at the meeting",
+            // A container noun at the head, post-modified by a place instead
+            // of by a complement: a sticky note on a fridge.
+            "Remove the note from the fridge",
+        ] {
+            XCTAssertNil(operation(utterance), "\(utterance) is an errand, not a removal")
+        }
+    }
+
+    // MARK: The vocabulary this rule may not widen on its own
+
+    func testACalendarNounIsNotYetAContainer() {
+        // "Remove the dentist appointment" is not recognised, and that is not
+        // the positional defect this class closes — "appointment" has never
+        // been one of the nouns this family of verbs may act on. Admitting it
+        // would let "remove" and "delete" destroy stored rows that only
+        // "cancel" can reach today, and "cancel" earns that reach through a
+        // guard these verbs do not have (`cancelsAnArrangement`). Which of the
+        // two tiers is right is a product decision, so the gap is pinned here
+        // rather than quietly closed.
+        for utterance in [
+            "Remove the dentist appointment",
+            "Remove the team meeting",
+            "Delete the Friday event",
+        ] {
+            XCTAssertNil(
+                CaptureOperationDetector.detect(utterance),
+                "\(utterance) needs a decision about reach, not a wider noun list"
+            )
+        }
+    }
+
+    func testCancellingAnArrangementIsStillAnErrand() {
+        // Unchanged by this work, and pinned here because it is the nearest
+        // neighbour: cancelling a subscription is something the person does in
+        // the world, not something the app does to a row.
+        XCTAssertNil(operation("Cancel my gym membership"))
+        XCTAssertNil(operation("Cancel my Netflix subscription"))
+    }
+
+    // MARK: Naming no particular row
+
+    func testAContainerNounWithNothingElseIsHeldForConfirmation() {
+        for utterance in ["Delete my reminders", "Remove the task", "Clear my notes"] {
+            let request = operation(utterance)
+            XCTAssertEqual(request?.operation, .cancel, "\(utterance) is a removal request")
+            XCTAssertEqual(
+                request?.needsReview, true,
+                "\(utterance) names no particular row, so it is confirmed rather than run"
+            )
+        }
+    }
+}
+
+/// The same family driven through the real store, because recognising the
+/// request is only half of it: what matters to a person is whether the right
+/// row goes and the others stay.
+@MainActor
+final class StoredRowRemovalStoreTests: XCTestCase {
+    private var container: ModelContainer!
+    private var repository: SwiftDataThoughtRepository!
+
+    override func setUpWithError() throws {
+        container = try ModelContainer(
+            for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+        )
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            requestsReminderAuthorization: false
+        )
+    }
+
+    override func tearDownWithError() throws {
+        repository = nil
+        container = nil
+    }
+
+    private func capture(_ text: String) async throws -> CaptureCreationResult {
+        try await repository.createCaptureResult(
+            text: text,
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+    }
+
+    private func activeTitles() throws -> [String] {
+        try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+            .filter { $0.completedAt == nil && !$0.isArchived }
+            .map(\.displayTitle)
+    }
+
+    func testDeletingAPostModifiedReminderRemovesThatRowAlone() async throws {
+        _ = try await capture("Remind me to call Dave tomorrow")
+        _ = try await capture("Buy milk")
+
+        let result = try await capture("Delete the reminder to call Dave")
+
+        guard case let .performed(operation, _, title) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected the removal to be performed")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertTrue(title.localizedCaseInsensitiveContains("dave"))
+
+        let remaining = try activeTitles()
+        XCTAssertFalse(remaining.contains { $0.localizedCaseInsensitiveContains("dave") })
+        XCTAssertTrue(
+            remaining.contains { $0.localizedCaseInsensitiveContains("milk") },
+            "removing one row must not disturb the others, got \(remaining)"
+        )
+    }
+
+    func testAnUnnamedRemovalDestroysNothing() async throws {
+        _ = try await capture("Remind me to call Dave tomorrow")
+        _ = try await capture("Buy milk")
+
+        let result = try await capture("Delete my reminders")
+
+        guard case .ambiguous = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("An unnamed removal is confirmed, never run")
+        }
+        let remaining = try activeTitles()
+        XCTAssertTrue(
+            remaining.contains { $0.localizedCaseInsensitiveContains("dave") },
+            "nothing may be destroyed while the person is still being asked, got \(remaining)"
+        )
+        XCTAssertTrue(remaining.contains { $0.localizedCaseInsensitiveContains("milk") })
+    }
+
+    func testAnErrandThatMentionsAnObjectIsStillCaptured() async throws {
+        let result = try await capture("Get rid of the old couch")
+        XCTAssertNil(result.operationOutcome, "this is an errand, not an operation")
+        XCTAssertFalse(result.items.isEmpty, "the errand must survive as a row")
+    }
+}

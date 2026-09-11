@@ -2127,11 +2127,6 @@ enum CaptureOperationDetector {
             #"^forget\s+about\s+(.+)$"#,
             #"^remove\s+(?:the\s+)?(.+?)\s+from\s+(?:my\s+|the\s+)?(?:list|reminders?|tasks?|today|memory)$"#,
             #"^take\s+(?:the\s+)?(.+?)\s+off(?:\s+(?:my|the)\s+\S+)?$"#,
-            // "Get rid of the gym reminder" created a *shopping row* before
-            // this existed. The trailing noun is the gate: it keeps "get rid of
-            // the old couch" an ordinary errand.
-            #"^get\s+rid\s+of\s+(?:the\s+|my\s+)?(.+?)\s+(?:reminder|task|item|note|alarm|entry)$"#,
-            #"^(?:delete|remove|clear|kill|drop)\s+(?:the\s+|my\s+)?(.+?)\s+(?:reminder|task|item|note|alarm|entry)$"#,
             #"^(?:don'?t|do\s+not)\s+(\#(actionVerbs)\b.*)$"#,
         ]
         for pattern in cancelPatterns {
@@ -2140,7 +2135,125 @@ enum CaptureOperationDetector {
             }
         }
 
+        // "Delete the reminder to call Dave", "remove the dentist appointment",
+        // "get rid of the gym reminder". Read last because it is the only
+        // family here that has to look at the shape of a noun phrase rather
+        // than at a fixed frame.
+        if let removal = removalOfStoredRow(lower), namesAnItem(removal.target) {
+            return request(
+                .cancel,
+                target: removal.target,
+                source: source,
+                review: removal.bare || isVague(removal.target)
+            )
+        }
+
         return nil
+    }
+
+    /// Nouns that say a target is **a row this app is holding** rather than a
+    /// thing in the world. "Delete the reminder to call Dave" names one;
+    /// "delete the old photos" does not, and must stay an ordinary errand.
+    ///
+    /// **This is the shipped vocabulary, plus inflection, and nothing else.**
+    /// Reading the head of a noun phrase is a change of *shape*; admitting a
+    /// new noun is a change of *reach*, and the two must not travel together.
+    /// `appointment`, `meeting` and `event` are the obvious additions and they
+    /// are deliberately absent: a calendar noun is exactly the case where
+    /// "remove the dentist appointment" would begin destroying stored rows,
+    /// and whether this family of verbs may do that is a product decision
+    /// rather than a defect. See `Docs/KNOWN_ISSUES.md`.
+    ///
+    /// The plurals are not new nouns. `CaptureTargetMatcher.stopWords` already
+    /// treats "reminders" and "reminder" as the same container word, so the
+    /// singular-only spelling here was an inflection gap rather than a
+    /// boundary anyone drew.
+    private static let storedRowNoun: Set<String> = [
+        "reminder", "reminders", "task", "tasks", "item", "items",
+        "note", "notes", "alarm", "alarms", "entry", "entries",
+    ]
+
+    /// Prepositions that open a phrase about somewhere or something *else*.
+    /// Their presence in front of a container noun means the container noun is
+    /// not the head of the object at all: "drop the kids off **at** the
+    /// appointment" is an errand whose last word only looks like a target.
+    ///
+    /// Verb particles — "pick **up** the parcel reminder" — are deliberately
+    /// absent. A particle belongs to the verb inside the row's name and leaves
+    /// the noun phrase's head where it was.
+    private static let phraseOpeningPreposition: Set<String> = [
+        "at", "in", "on", "from", "with", "by", "into", "onto", "near", "under",
+        "behind", "over", "against", "between", "beside", "toward", "towards",
+        "through", "around", "of", "to", "for", "about",
+    ]
+
+    /// Complements a container noun takes: the words that introduce *what the
+    /// row says* rather than a second thing. "The reminder **to** call Dave",
+    /// "the note **about** the picnic".
+    private static let storedRowComplement: Set<String> = [
+        "to", "about", "for", "regarding", "that", "which",
+    ]
+
+    private static let removalVerb =
+        #"(?:delete|remove|clear|erase|kill|drop|get\s+rid\s+of)"#
+
+    /// A request to remove something Speak It is holding.
+    ///
+    /// Reads the **head** of the object noun phrase instead of its last word.
+    /// The rule this replaces required the container noun to be the final
+    /// token, which is an accident of word order rather than a fact about
+    /// English: "delete the call Dave reminder" was recognised and "delete the
+    /// reminder to call Dave" — the same request, post-modified instead of
+    /// pre-modified — was not. The same accident hid every container noun the
+    /// list happened to lack, which is why "remove the dentist appointment"
+    /// fell through to a review row.
+    ///
+    /// Two shapes are admitted, and they are the two an English noun phrase
+    /// actually has:
+    ///
+    /// * **head-initial** — the container noun opens the phrase and takes a
+    ///   complement: "reminder to call Dave", "note about the picnic". Only a
+    ///   complement counts, so "note **from** the fridge" is still a sticky
+    ///   note on a fridge and still an errand.
+    /// * **head-final** — the container noun closes the phrase and nothing in
+    ///   front of it opens a prepositional phrase: "dentist appointment",
+    ///   "call Dave reminder". The preposition test is what keeps "drop the
+    ///   kids off at the appointment" an errand.
+    ///
+    /// Anything else falls through exactly as before, which is the property
+    /// that matters: this widens what is *recognised*, and every recognised
+    /// request still goes through `CaptureTargetMatcher`, which acts only on a
+    /// single confident match and hands everything else back to the person.
+    ///
+    /// - Returns: the spoken object phrase, and whether it named nothing but
+    ///   the container ("delete my reminders"), which is held for confirmation
+    ///   rather than run.
+    private static func removalOfStoredRow(_ lower: String) -> (target: String, bare: Bool)? {
+        guard let object = capture(
+            lower,
+            #"^(?:please\s+)?\#(removalVerb)\s+(?:the\s+|my\s+|that\s+|this\s+)?(.+)$"#
+        ) else { return nil }
+
+        let words = object
+            .replacingOccurrences(of: #"[^\p{L}\p{N}\s-]"#, with: " ", options: .regularExpression)
+            .split(separator: " ")
+            .map(String.init)
+        guard let first = words.first, let last = words.last else { return nil }
+
+        // Head-initial: the container noun, then its complement or nothing.
+        if storedRowNoun.contains(first) {
+            if words.count == 1 { return (object, true) }
+            if storedRowComplement.contains(words[1]) { return (object, false) }
+            return nil
+        }
+
+        // Head-final: the container noun, with no prepositional phrase in
+        // front of it to steal the head.
+        guard storedRowNoun.contains(last) else { return nil }
+        guard !words.dropLast().contains(where: { phraseOpeningPreposition.contains($0) }) else {
+            return nil
+        }
+        return (object, false)
     }
 
     /// "Cancel the gym membership", "cancel the meeting by Friday": an errand
@@ -2330,8 +2443,14 @@ enum CaptureOperationDetector {
             with: "",
             options: .regularExpression
         )
+        // A container noun in front of the complement is the frame, not the
+        // thing: "the reminder to call Dave" is about calling Dave. Every
+        // noun `removalOfStoredRow` reads as a container is peeled here for
+        // the same reason `reminder` always was, so the two cannot disagree
+        // about which words name the row.
         value = value.replacingOccurrences(
-            of: #"(?i)^(?:reminder\s+)?(?:to|about|for)\s+"#,
+            of: #"(?i)^(?:(?:reminders?|tasks?|notes?|items?|alarms?|entry|entries)\s+)?"#
+                + #"(?:to|about|for|regarding)\s+"#,
             with: "",
             options: .regularExpression
         )
