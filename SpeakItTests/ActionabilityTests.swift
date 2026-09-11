@@ -411,34 +411,30 @@ final class ActionabilityTests: XCTestCase {
         }
     }
 
-    /// Two statements run together are two thoughts when the second names its
-    /// own referent — a proper name, a relationship word, or the speaker's own
-    /// possessive — because such a subject cannot be reaching back into the
-    /// clause in front of it.
-    func testTwoStatementsAreCutWhenTheSecondNamesItsOwnSubject() {
-        XCTAssertEqual(
-            ClauseJuxtaposition.pieces(in: "the flight lands at 6:40 Ines is bringing the projector"),
-            ["the flight lands at 6:40", "Ines is bringing the projector"]
-        )
-        XCTAssertEqual(
-            ClauseJuxtaposition.pieces(in: "the rent goes up sixty dollars in April my lease renews in March"),
-            ["the rent goes up sixty dollars in April", "my lease renews in March"]
-        )
-        XCTAssertEqual(
-            ClauseJuxtaposition.pieces(in: "the conference moved to Halifax I need to rebook the flights"),
-            ["the conference moved to Halifax", "I need to rebook the flights"]
-        )
-    }
-
-    /// And are one note when the second half would not be findable alone.
+    /// Nothing cuts between two juxtaposed **statements**, and this is the
+    /// list any rule that one day does must leave alone.
     ///
-    /// These are the rows that keep the rule above honest. Structurally they
-    /// are identical to the ones it cuts — complete clause, noun phrase, verb
-    /// — so nothing but the subject naming its own referent separates them,
-    /// and a rule that split these would produce a row retrieving under
-    /// nothing at all.
-    func testAStatementThatResolvesThroughTheOneBeforeItIsNotCut() {
+    /// A rule was written and measured on 2026-09-11 (run 34596594804). It cut
+    /// where the second clause opened on the speaker's own possessive, a
+    /// first-person obligation, or a resolved proper name — and it gained
+    /// nothing at all on `statement-runon`, the development family it was
+    /// written for, which stayed at 0 of 6 on thought count. It also broke four
+    /// cases of the gating corpus, and all four say the same thing: a subject
+    /// and a predicate in the words in front of the cut **do not make those
+    /// words a finished clause**. "I have no idea where" has both and is
+    /// plainly unfinished; so does "It reminded me of something", which a
+    /// relative clause with no relativizer is about to modify.
+    ///
+    /// The first block is the original guard list, and it remains the hard
+    /// part: structurally these are the same shape as the sentences a
+    /// boundary rule wants to cut — complete clause, noun phrase, verb — so
+    /// nothing but whether the second half is findable alone separates them,
+    /// and a row severed wrongly retrieves under nothing. The second block is
+    /// what the measured attempt actually broke, kept here so the next one
+    /// fails in a second rather than in a dispatch.
+    func testNothingCutsBetweenTwoJuxtaposedStatements() {
         for text in [
+            // Findable only through the clause in front of them.
             "the dentist is on Pine Street the parking is round the back",
             "the boiler pressure sits at one bar the manual says one and a half",
             "we booked the Halifax hotel the deposit is non refundable",
@@ -446,15 +442,12 @@ final class ActionabilityTests: XCTestCase {
             "the recipe takes an hour it serves six",
             "Priya moved to the Toronto office she starts on the 14th",
             "our lease runs to March the rent is fixed until then",
-        ] {
-            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
-        }
-    }
-
-    /// A verb of saying takes the whole clause behind it, whoever it is aimed
-    /// at, so the statement rule must not cut inside its complement.
-    func testAReportedClauseIsNotAStatementBoundary() {
-        for text in [
+            // A head that is unfinished despite carrying a subject and a verb.
+            "I have no idea where my passport is",
+            "It reminded me of something my dad used to say",
+            "I keep telling myself I'll get to it and I never do, anyway I have to renew my passport",
+            // A verb of saying or thinking takes the whole clause behind it,
+            // whoever it is aimed at.
             "I told Priya yesterday Marcus is bringing the deck",
             "I think Priya is bringing the deck",
             "Sarah said Marcus is chairing the panel this year",

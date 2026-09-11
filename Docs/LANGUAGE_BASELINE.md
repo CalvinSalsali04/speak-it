@@ -5,9 +5,112 @@ one run of `Tools/CI/language-metrics.sh` on a real Mac. Nothing in this file
 is an estimate, and nothing in it was produced in a container where the parser
 cannot run.
 
-**The newest section is the current baseline.** Older sections stay as written;
-they are the record of what was true when they were measured, not a claim about
-today.
+**The newest section marked as a baseline is the current baseline.** A section
+that records a change which did not ship says so in its first lines. Older
+sections stay as written; they are the record of what was true when they were
+measured, not a claim about today.
+
+## 2026-09-11 12:03 — branch at `90434e9`, the statement-boundary attempt, withdrawn
+
+Branch `claude/hearth-thread-tod920`,
+[run 34596594804](https://github.com/CalvinSalsali04/speak-it/actions/runs/34596594804),
+`macos-26`. **This is not a baseline.** It is the measurement that decided a
+change should not ship, recorded because a negative result costs the same
+dispatch as a positive one and is worth as much.
+
+The change had four causes, three of them repairs to guards that already
+existed and one of them new machinery: a boundary between two juxtaposed
+*statements*, proposed where the second clause opened on the speaker's own
+possessive, a first-person obligation, or a resolved proper name.
+
+### The verdict, in one table
+
+| instrument | baseline (`2d8fe760`) | this run (`90434e9`) |
+|---|---|---|
+| gating corpus | 1393 cases, **0** failing | 1393 cases, **4 CRITICAL** |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| held-out destination / count | 233/320 · 255/310 | **232/320** · **256/310** |
+| held-out acted on anyway | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | **51/116** · **76/105** |
+| adversarial loss / invention / titles | 113/116 · 10/24 · 117/120 | 113/116 · 10/24 · 117/120 |
+| runon dev destination | 41/46 | 41/46 |
+| runon dev thought count | 33/44 | **35/45** |
+
+The everyday block is bit-identical, family by family and defect by defect, on
+255 captures. **The change did nothing at all to natural speech**, cost two
+adversarial routings and three adversarial counts, cost one held-out
+destination for one held-out count, and broke four cases of the gate.
+
+### The family it was written for did not move
+
+`runon.tsv` reports per family for the first time in this run, which is what
+made the verdict readable rather than a single total.
+
+| family | n | destination | thought count |
+|---|---|---|---|
+| adjunct-guard | 4 | 3/4 (75.0%) | 4/4 (100%) |
+| anaphora-guard | 6 | 5/6 (83.3%) | 6/6 (100%) |
+| **statement-runon** | 6 | 5/6 (83.3%) | **0/6 (0%)** |
+| mixed-runon | 8 | 7/8 (87.5%) | 5/7 (71.4%) |
+| object-guard | 10 | 9/10 (90.0%) | 10/10 (100%) |
+| bridging-guard | 4 | 4/4 (100%) | 4/4 (100%) |
+| errand-runon | 8 | 8/8 (100%) | 6/8 (75.0%) |
+
+`statement-runon` is the family the new machinery was written for and it is
+**0 of 6**. Every one of the two counts it gained came from the three guard
+repairs, in `errand-runon` and `mixed-runon`. The guard families were not
+over-split: `adjunct-guard`, `anaphora-guard`, `object-guard` and
+`bridging-guard` are all at 100% on thought count.
+
+The count denominator moved from 44 to 45 because one capture stopped being
+read as an Operation, which is a behaviour change rather than a scorer change:
+`heldout/score.py` only scores a count where the pipeline produced rows.
+
+### Why it broke the gate, which is the part worth keeping
+
+One case failed in each of four families, and none of them is a run-on
+sentence. The gate reported a count and not the rows (see below), so these were
+found by tracing every capture of those four families through the rule by hand
+rather than read off a log. Three are unambiguous:
+
+| family | capture | where the rule cut |
+|---|---|---|
+| Semantic keyword collisions | "I have no idea where my passport is" | before `my passport` |
+| Ordinary speech (control) | "It reminded me of something my dad used to say" | before `my dad` |
+| Intent consolidation | one of two captures opening a clause on `I have to` or `I need to` | before the obligation |
+
+The fourth is in `Filler that collapsed a capture`, whose eight captures
+include the same sentence as one of the two Intent-consolidation candidates,
+differing only by a full stop — so the same cut fails a case in both families.
+Which of the two consolidation captures it is cannot be settled without running
+the corpus, and it does not change the cause.
+
+The rule asked whether the words on each side of a cut carry a subject and a
+predicate. They do in all four — and **a subject and a predicate do not make a
+prefix a finished clause.** "I have no idea where" has both and is plainly
+unfinished. "It reminded me of something" has both and is about to be modified
+by a relative clause with no relativizer. The test I wrote proves the two sides
+are clauses; it never proves the left one is *over*.
+
+That is a general fact about this approach rather than a bug in these four
+rows, which is why the rule came out rather than being patched: it fires
+constantly on possessives inside subordinate clauses and never once where it
+was aimed. The guard list now lives in
+`SpeakItTests/ActionabilityTests.testNothingCutsBetweenTwoJuxtaposedStatements`,
+carrying both the original seven rows and these four, so the next attempt fails
+in a second instead of in a dispatch.
+
+### Two instruments that reported a count and not the rows
+
+Both cost this dispatch and are fixed on the same branch.
+
+- The corpus gate printed `4 blocking failures` and told the reader to run
+  `corpus-run --verbose`, which needs a Mac nobody reading a CI log has. It now
+  prints the rows.
+- The `Development-set failures` step had no `always()`, so the run that went
+  red — the only run that needed it — skipped it.
 
 ## 2026-09-11 11:26 — `main` at `2d8fe760`, the discourse-framing change merged
 

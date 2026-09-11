@@ -1644,18 +1644,6 @@ enum ClauseJuxtaposition {
         "today", "tomorrow", "tonight", "this", "next",
     ]
 
-    /// Whether the head in front of a proposed cut is a fronted adjunct rather
-    /// than a clause. "On the 1st renew the car insurance" was cut at "renew"
-    /// because the head had two words and its last one was not a lead — and
-    /// the row in front of the errand read "On the 1st", an event with a date
-    /// and nothing to do on it, while the errand lost the date. The same
-    /// shape took "in the morning call Dave", "after dinner call mom" and "by
-    /// the 15th pay the rent" apart.
-    ///
-    /// The test is structural: the head opens on a preposition and, in the
-    /// tagging of the whole sentence, carries no verb. "After I finish the
-    /// essay call Dave" keeps its cut, because "finish" is a verb and the head
-    /// is a clause of its own.
     /// The words a bare temporal adjunct ends on. A head with no preposition
     /// in front of it is still an adjunct when it is a time and carries no
     /// verb: "first thing tomorrow email the landlord about the damp" was cut
@@ -1670,6 +1658,18 @@ enum ClauseJuxtaposition {
         "sunday",
     ]
 
+    /// Whether the head in front of a proposed cut is a fronted adjunct rather
+    /// than a clause. "On the 1st renew the car insurance" was cut at "renew"
+    /// because the head had two words and its last one was not a lead — and
+    /// the row in front of the errand read "On the 1st", an event with a date
+    /// and nothing to do on it, while the errand lost the date. The same
+    /// shape took "in the morning call Dave", "after dinner call mom" and "by
+    /// the 15th pay the rent" apart.
+    ///
+    /// The test is structural: the head opens on a preposition **or ends on a
+    /// time**, and, in the tagging of the whole sentence, carries no verb.
+    /// "After I finish the essay call Dave" keeps its cut, because "finish" is
+    /// a verb and the head is a clause of its own.
     private static func isFrontedAdjunct(
         _ clause: String,
         headEnd: String.Index,
@@ -1722,144 +1722,9 @@ enum ClauseJuxtaposition {
         ) != nil
     }
 
-    /// Determiners that make what follows the speaker's own, and so
-    /// identifiable without the clause in front of it.
-    private static let selfIdentifyingDeterminer: Set<String> = ["my", "our", "your"]
-
-    /// A clause opening on the speaker taking something on. An obligation the
-    /// speaker places on themselves is a new commitment, never a remark
-    /// continuing the one before it: "the conference moved to Halifax I need
-    /// to rebook the flights" is a fact and an errand.
-    private static let firstPersonObligation =
-        #"(?i)^(?:i|we)(?:['’]ll\s|\s+(?:need\s+to|have\s+to|should|must"#
-        + #"|ought\s+to|gotta|hafta|better|will)\s)"#
-
-    /// Whether the clause starting at `start` names its own referent, and so
-    /// cannot be reaching back into the clause in front of it.
-    ///
-    /// This is the whole of the statement-boundary rule below, and it is
-    /// deliberately narrow. Two juxtaposed statements are two thoughts when
-    /// each half would still be **findable on its own**, and one note when the
-    /// second half would not — the product contract rather than taste, since
-    /// Memory is for knowledge worth finding later. Severed from the clause in
-    /// front of it, "the parking is round the back" retrieves under nothing.
-    ///
-    /// That distinction is not structural, and this rule does not pretend it
-    /// is. "Our recycling goes out on Tuesdays the garage code is 4821" and
-    /// "the car is due its service the mileage limit is thirty thousand" are
-    /// the same shape — complete clause, definite noun phrase, verb — and the
-    /// first is two rows while the second is one. Embedding distance does not
-    /// separate them either: "rent" and "lease" are close neighbours and still
-    /// two thoughts.
-    ///
-    /// So this fires only where the second subject carries its own index entry
-    /// — a proper name, a relationship word, or the speaker's own possessive —
-    /// and leaves every bare definite merged. Failing closed to one note loses
-    /// nothing and invents nothing; a wrongly severed row retrieves under
-    /// nothing at all, which is the worse of the two harms.
-    private static func opensOnItsOwnSubject(
-        _ clause: String,
-        from start: String.Index
-    ) -> Bool {
-        let rest = String(clause[start...])
-        guard let first = rest.split(whereSeparator: \.isWhitespace).first else { return false }
-        if selfIdentifyingDeterminer.contains(first.lowercased()) { return true }
-        if rest.range(of: firstPersonObligation, options: .regularExpression) != nil { return true }
-        // The resolver decides who is somebody, as everywhere else in this
-        // file; `nameType` is never enough on its own to move a boundary.
-        // Confidence `.low` means the transcript carried no capitalization at
-        // all, so admitting it would make the reading the recognizer's choice
-        // rather than the speaker's — the cost of that is already measured by
-        // `RenderingInvarianceTests`, and this does not add to it. The capital
-        // is also what keeps the resolver off the capture path for ordinary
-        // speech: without it this is a set lookup and nothing more.
-        guard first.first?.isUppercase == true,
-              let mention = PersonMentionResolver.primary(in: rest),
-              mention.role == .subject,
-              mention.confidence >= .medium,
-              mention.sourceRange.lowerBound == rest.startIndex else { return false }
-        return true
-    }
-
-    /// A boundary between two juxtaposed **statements**.
-    ///
-    /// Nothing owned one before this. `instructionPieces` only ever proposes a
-    /// cut in front of an errand verb, which is why "the flight lands at 6:40
-    /// Ines is bringing the projector" arrived as a single row titled after the
-    /// flight, and why the run-on family scored 0 of 8 on a set nothing was
-    /// tuned against while every family that reads meaning *after* a correct
-    /// cut sat in the eighties and nineties.
-    ///
-    /// A cut is proposed where the words on both sides are complete clauses in
-    /// the tagging of the whole utterance — a subject and then a predicate —
-    /// and refused wherever the left side has not finished with what follows
-    /// it. Recursive on the tail, so three statements in one breath are three
-    /// rows.
-    private static func statementPieces(in clause: String) -> [String] {
-        let context = SentenceContextCache.context(for: clause)
-        let tokens = context.tokens
-        guard tokens.count >= 6 else { return [clause] }
-
-        for index in 3..<(tokens.count - 2) {
-            let token = tokens[index]
-            let previous = tokens[index - 1]
-            let cut = token.range.lowerBound
-            guard !token.isConjunction,
-                  // A cut inside somebody's name is never a clause boundary.
-                  // Both sides, because `.joinNames` reports "Priya Sharma" as
-                  // one span and flags both its tokens; a cut *after* a name
-                  // is ordinary and must stay allowed.
-                  !(previous.isPersonalName && token.isPersonalName),
-                  !clauseInternalLead.contains(previous.text.lowercased()),
-                  context.hasSubjectPredicate(in: clause.startIndex..<cut),
-                  context.hasSubjectPredicate(in: cut..<clause.endIndex),
-                  opensOnItsOwnSubject(clause, from: cut),
-                  // "Marcus prefers phone calls": the word behind a verb is its
-                  // object, whatever else it could open.
-                  !precedingTokenIsVerb(in: clause, before: cut),
-                  !isFrontedAdjunct(clause, headEnd: cut, from: clause.startIndex)
-            else { continue }
-            let head = String(clause[clause.startIndex..<cut])
-                .trimmingCharacters(in: .whitespaces)
-            guard !head.isEmpty,
-                  !hasOpenTriggerClause(head),
-                  !endsOnReportedSpeech(head),
-                  // "Tell Priya Marcus is bringing the deck" is one
-                  // instruction: a verb of saying takes the whole clause
-                  // behind it, whoever it is aimed at.
-                  !headGovernsWhatFollows(head),
-                  !opensAsIdeaOrNote(clause) else { continue }
-            return [head] + statementPieces(in: String(clause[cut...]))
-        }
-        return [clause]
-    }
-
-    /// Whether a complement-taking verb sits close enough to the end of the
-    /// head to govern the clause behind it.
-    ///
-    /// `opensAClausalComplement` reads the shape where a determiner marks the
-    /// complement's subject. This reads the shape where the subject is a bare
-    /// name, which a determiner test cannot see: "tell Priya Marcus is
-    /// bringing the deck", "I think Priya is bringing the deck". Two tokens of
-    /// reach, which covers a verb and its recipient.
-    private static func headGovernsWhatFollows(_ head: String) -> Bool {
-        head.range(
-            of: #"(?i)\b\#(complementTakingVerb)\b(?:\s+\S+){0,2}\s*$"#,
-            options: .regularExpression
-        ) != nil
-    }
-
     /// The pieces of one clause, or the clause itself when no boundary is
     /// confident enough to propose.
-    ///
-    /// Two proposers, composed: one reads a fresh instruction starting
-    /// mid-capture, the other a fresh statement. Neither can see what the
-    /// other sees.
     static func pieces(in clause: String) -> [String] {
-        instructionPieces(in: clause).flatMap { statementPieces(in: $0) }
-    }
-
-    private static func instructionPieces(in clause: String) -> [String] {
         guard let regex = NSRegularExpression.speakItCached(
             #"(?i)\s+(?=\#(instructionOpeners)\s+"#
                 // A bare pronoun object points back at the clause before:
