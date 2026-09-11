@@ -17,6 +17,20 @@ not find out until they go looking for it.
 
 `Mixed` is scored separately and strictly: the finished half must survive as a
 row of its own, and the withdrawn half must not.
+
+A row whose note begins `KNOWN:` is a failure somebody documented rather than
+fixed. **It is still counted as a failure in every rate here.** It used to be
+counted as a pass, which made recall, fallout and the mixed row report better
+than the set actually did — and fallout is the number this file says decides
+whether it ships, so a documented fallout of 1 printed as 0. The marker now
+moves the *exit status*, not the rate: the report says what failed and how much
+of it is documented, and the exit status forgives the documented part so a
+known pre-existing defect does not block a hand run. A rate that a marker can
+improve is a rate people learn to write markers for.
+
+A `KNOWN:` row that starts passing is itself a failure. The marker has to be
+removed or it silently forgives a defect that no longer exists, which is how a
+suppression outlives the thing it suppressed.
 """
 import re, sys
 from collections import Counter, defaultdict
@@ -55,6 +69,11 @@ for b in blocks:
 stats = Counter()
 byfam = defaultdict(Counter)
 misses = []
+#: Ids, not counts. A count cannot tell the reader which rows to go and look
+#: at, and `stats["known"]` used to count *declarations* rather than failures,
+#: so it said 4 whether four rows failed or none did.
+documented = []   # marked KNOWN: and still failing
+stale = []        # marked KNOWN: and passing, so the marker must come off
 
 # The words a withdrawn thought must not leave behind in a surviving row. If
 # one of these still shows up as a row title, the fragment became a commitment.
@@ -67,8 +86,6 @@ for cid, utt, fam, exp, known in rows:
         misses.append(("UNSEEN", cid, utt, "probe output", "the runner never saw this line"))
         continue
     stats["scored"] += 1
-    if known:
-        stats["known"] += 1
     byfam[fam]["total"] += 1
     committed = bool(got["due"] or got["remind"] or got["recurrence"] or got["location"])
 
@@ -80,13 +97,13 @@ for cid, utt, fam, exp, known in rows:
         if withdrawn:
             stats["abd_ok"] += 1
             byfam[fam]["ok"] += 1
-        elif known:
-            stats["abd_ok"] += 1
-            byfam[fam]["ok"] += 1
-            misses.append(("KNOWN", cid, utt, "withdrawn",
-                           f"rows={got['rows']} routes={'/'.join(got['routes'])}"))
+            if known:
+                stale.append(cid)
         else:
-            misses.append(("MISSED", cid, utt, "withdrawn",
+            if known:
+                documented.append(cid)
+            misses.append(("DOCUMENTED" if known else "MISSED", cid, utt,
+                           "withdrawn",
                            f"rows={got['rows']} routes={'/'.join(got['routes'])}"))
         if committed:
             stats["unsafe"] += 1
@@ -96,30 +113,37 @@ for cid, utt, fam, exp, known in rows:
         stats["keep_total"] += 1
         # A kept sentence must still produce a row. A retraction here means the
         # app deleted words that were never a withdrawal of this capture.
-        if (got["retracted"] or got["rows"] == 0) and known:
-            byfam[fam]["ok"] += 1
-            misses.append(("KNOWN", cid, utt, "must survive",
-                           f"rows={got['rows']} retracted={got['retracted']}"))
-        elif got["retracted"] or got["rows"] == 0:
+        if got["retracted"] or got["rows"] == 0:
             stats["fallout"] += 1
-            misses.append(("FALSE-POS", cid, utt, "must survive",
+            if known:
+                documented.append(cid)
+                stats["documented_fallout"] += 1
+            misses.append(("DOCUMENTED" if known else "FALSE-POS", cid, utt,
+                           "must survive",
                            f"rows={got['rows']} retracted={got['retracted']}"))
         else:
             byfam[fam]["ok"] += 1
+            if known:
+                stale.append(cid)
     elif exp == "Mixed":
         stats["mix_total"] += 1
-        survivors = [t for t in got["titles"] if not WITHDRAWAL.search(t)]
-        abandoned_leaked = any(WITHDRAWAL.search(t) for t in got["titles"])
-        if got["rows"] >= 1 and survivors and not abandoned_leaked and not got["retracted"]:
+        #: "Something came back, and none of it is the part they took back."
+        #: This used to also require a title with no withdrawal in it, which a
+        #: mutation showed was unreachable: with at least one row, no leak
+        #: already implies every title is a survivor. A condition no test can
+        #: distinguish is not defence in depth, it is a branch nobody is
+        #: checking, so it reads as the intent instead.
+        leaked = any(WITHDRAWAL.search(t) for t in got["titles"])
+        if got["titles"] and not leaked and not got["retracted"]:
             stats["mix_ok"] += 1
             byfam[fam]["ok"] += 1
-        elif known:
-            stats["mix_ok"] += 1
-            byfam[fam]["ok"] += 1
-            misses.append(("KNOWN", cid, utt, "finished half survives alone",
-                           f"rows={got['rows']} titles={got['titles']} retracted={got['retracted']}"))
+            if known:
+                stale.append(cid)
         else:
-            misses.append(("MIXED", cid, utt, "finished half survives alone",
+            if known:
+                documented.append(cid)
+            misses.append(("DOCUMENTED" if known else "MIXED", cid, utt,
+                           "finished half survives alone",
                            f"rows={got['rows']} titles={got['titles']} retracted={got['retracted']}"))
         if committed:
             stats["unsafe"] += 1
@@ -138,11 +162,31 @@ print(f"  FALLOUT  kept words withdrawn {stats['fallout']}/{keep}"
 print(f"  mixed: finished half survives {stats['mix_ok']}/{stats['mix_total']}")
 print()
 print(f"  UNSAFE   withdrawn thought given a date/reminder/place   {stats['unsafe']}")
-print(f"  documented failures kept on purpose (KNOWN:)          {stats['known']}")
 print("=" * 68)
 print("  Fallout is the number that decides whether this ships: deleting")
 print("  somebody's words because of a phrase inside them is worse than")
 print("  leaving a withdrawn fragment they can delete themselves.")
+
+#: Named, and after the rates rather than inside them. A `KNOWN:` marker used
+#: to move a failure into the pass column, so a documented fallout of 1 printed
+#: as 0 — on the one number this file calls the shipping decision. It now moves
+#: the exit status instead: the rate says what the set did, and the marker says
+#: which part of that somebody already owns.
+if documented:
+    print()
+    print(f"  {len(documented)} of the failures above are documented (KNOWN:) "
+          f"and counted in the rates:")
+    print(f"    {' '.join(sorted(documented))}")
+    print("  The exit status forgives these, so a pre-existing defect does not")
+    print("  block a hand run. The rates do not, because a rate a marker can")
+    print("  improve is a rate people learn to write markers for.")
+
+if stale:
+    print()
+    print(f"  {len(stale)} row(s) marked KNOWN: now PASS — remove the marker:")
+    print(f"    {' '.join(sorted(stale))}")
+    print("  A marker that outlives its failure silently forgives a defect")
+    print("  that no longer exists. This fails the exit status on purpose.")
 print()
 print(f"{'FAMILY':32}{'CASES':>7}{'OK':>7}")
 print("-" * 48)
@@ -155,4 +199,11 @@ if verbose:
     for kind, cid, utt, want, got in misses:
         print(f"{kind:10} {cid}  {utt[:64]}\n           want {want} · got {got}")
 
-sys.exit(1 if (stats["fallout"] or stats["unsafe"] or stats["unseen"]) else 0)
+#: New failures only. `documented_fallout` is the part of `fallout` somebody
+#: has already written down and explained; gating on it again would mean the
+#: set can never be run clean until an unrelated defect is fixed. A stale
+#: marker does gate, because removing it costs one line and leaving it is a
+#: suppression nobody is watching.
+new_fallout = stats["fallout"] - stats["documented_fallout"]
+sys.exit(1 if (new_fallout or stats["unsafe"] or stats["unseen"] or stale)
+         else 0)
