@@ -146,20 +146,67 @@ print(f"{'family':<{NAME}}{'n':>4}{'destination':>17}{'thought count':>17}")
 print("-" * WIDTH)
 
 
+def destination_scored(counter):
+    """How many of the family's captures the destination rate is computed from.
+
+    Not `n`. A capture labelled `Ambiguous-*` is excluded from destination by
+    design — the contract for an unpinnable capture is to keep it and not act,
+    which the unsafe counter measures instead — so a family made largely of
+    them carries a destination denominator far below its row count.
+    """
+    return counter["dest_ok"] + counter["dest_miss"]
+
+
 def destination_rate(counter):
-    total = counter["dest_ok"] + counter["dest_miss"]
-    return counter["dest_ok"] / total if total else 1.0
+    """Deliberately undefined on a zero denominator, rather than 1.0.
+
+    Answering 1.0 there is what sorted a family with no scorable destination
+    into the bottom of a table whose footer says worst first — the position a
+    family that passes everything occupies. The fix is the filter below, not a
+    safer fallback here: a family with nothing to score has no place in a
+    ranking at all, and a fallback would only decide where to put it. So this
+    raises if one ever reaches it, which is a caller bug.
+    """
+    return counter["dest_ok"] / destination_scored(counter)
 
 
-for fam, counter in sorted(by_family.items(),
-                           key=lambda kv: (destination_rate(kv[1]), kv[0])):
-    print(f"{fam:<{NAME}}{counter['scored']:>4}"
-          f"{cell(counter['dest_ok'], counter['dest_ok'] + counter['dest_miss'])}"
-          f"{cell(counter['count_ok'], counter['count_scored'])}")
+def row(fam, counter):
+    return (f"{fam:<{NAME}}{counter['scored']:>4}"
+            f"{cell(counter['dest_ok'], destination_scored(counter))}"
+            f"{cell(counter['count_ok'], counter['count_scored'])}")
+
+
+#: Families with nothing scorable are held out of the ranking entirely — this
+#: filter is the guard, and the whole of it. Of the rest: rate first, then
+#: denominator descending, because at an equal rate the better evidenced family
+#: is the worse finding. Breaking that tie alphabetically seated one-capture
+#: rows at the top of the list triage starts from.
+ranked = sorted((f for f, c in by_family.items() if destination_scored(c)),
+                key=lambda f: (destination_rate(by_family[f]),
+                               -destination_scored(by_family[f]), f))
+unranked = sorted(f for f, c in by_family.items() if not destination_scored(c))
+
+for fam in ranked:
+    print(row(fam, by_family[fam]))
 print("-" * WIDTH)
-print("  Worst destination rate first. A whole-set average hides the family")
-print("  that is broken, and these rates are what an adversarial pairing has")
-print("  to be read against — see Tools/CorpusRunner/adversarial/README.md.")
+print("  Worst destination rate first; at an equal rate, the larger")
+print("  denominator first. A whole-set average hides the family that is")
+print("  broken, and these rates are what an adversarial pairing has to be")
+print("  read against — see Tools/CorpusRunner/adversarial/README.md.")
+print("  `n` is captures carrying the tag, not the denominator of either")
+print("  rate: read each denominator from its own column before quoting a")
+print("  row, because a rate over 1 or 2 captures ranks like any other.")
+
+if unranked:
+    print()
+    print("NOT RANKED — no scorable destination in these families")
+    print("-" * WIDTH)
+    for fam in unranked:
+        print(row(fam, by_family[fam]))
+    print("-" * WIDTH)
+    print("  Every capture carrying these tags is labelled unpinnable, so")
+    print("  there is no destination rate for them to be worst or best at.")
+    print("  They are measured by ACTED ON ANYWAY above, not by this table.")
 
 if verbose:
     print()

@@ -31,6 +31,51 @@ If a held-out failure looks important enough to fix, write a *new* case for it
 in the gating corpus, in its own family, and fix that. The held-out sentence
 stays untouched and keeps measuring.
 
+## Reading the per-family table
+
+The scorer prints a family row for every tag, worst destination rate first, and
+that ordering is what triage starts from. Two things decide whether a row can
+carry the weight of being read that way.
+
+**`n` is not the denominator.** `n` counts captures carrying the tag; the
+destination rate is computed only over captures the set commits to a
+destination. A capture labelled `Ambiguous-*` is excluded by design — the
+contract for an unpinnable capture is to keep it and not act on it, which
+`ACTED ON ANYWAY` measures instead. Sixty-nine of the 389 captures are labelled
+that way, and they are not spread evenly: seventeen of the thirty-two families
+have a destination denominator below their row count. Read the denominator from
+its own column, never from `n`.
+
+**Five families cannot be ranked on destination, or barely can.**
+
+| family | captures | scorable for destination |
+|---|---|---|
+| `ambiguous` | 14 | **0** |
+| `sarcasm` | 1 | **0** |
+| `hypothetical` | 4 | **1** |
+| `question` | 12 | **1** |
+| `ellipsis` | 12 | **4** |
+
+`ambiguous` and `sarcasm` are unrankable by construction and the scorer now
+prints them under `NOT RANKED` rather than in the list; they are measured by
+`ACTED ON ANYWAY`. `hypothetical` and `question` produce a rate that one
+capture decides. Quote those as named cases — "0 of 1" — and never as a
+percentage; a single capture is a direction, not a measurement.
+
+That is also why `ellipsis` 0 of 4 is worth what it is worth. It is the worst
+destination row in the set and it rests on four captures, which is enough to
+say the stage is weak and not enough to size the work.
+
+Until this was fixed the ordering misled twice over: a family with nothing
+scorable scored 1.0 and sorted to the bottom, where a family that passes
+everything belongs, and ties broke alphabetically, so a rate over one capture
+could sit above a rate over twenty-one. Ranking is now rate first, then
+denominator descending, and `Tools/CorpusRunner/test_score.py` holds both.
+
+None of this needs the engine: it is the composition of the label file, so it
+changes only when the set does. A retag moves these denominators without
+opening a generation — see below.
+
 ## Generations
 
 A generation opens when a capture's **text** changes — edited, added or
