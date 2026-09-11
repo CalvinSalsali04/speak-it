@@ -127,6 +127,163 @@ class PerFamilyRankingTests(unittest.TestCase):
         self.assertIn("0/1", line)
         self.assertNotIn("0/3", line)
         self.assertEqual(line.split()[1], "3")
+class RecordedLimitTests(unittest.TestCase):
+    """A declined gap and an open one must not read the same in a report.
+
+    `unfinished.tsv` scores recall at 34 of 57, and seven of its captures are a
+    limit somebody already measured and wrote down: trailing preposition,
+    conjunction and adverb were each tried as a class and removed, because
+    "Meet Mike at" and "we're almost out" are the same tag shape and only one
+    is unfinished. A reader triaging that table sees 23 misses and 23 reads as
+    23 available. These tests hold the three rules that keep the mark from
+    becoming a machine for excusing failures: it never changes a rate, its
+    citation is verified rather than asserted, and it can only cover captures
+    that are actually misses.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    SET = pathlib.Path(__file__).parent / "devsets" / "unfinished.tsv"
+    SCORER = pathlib.Path(__file__).parent / "devsets" / "unfinished-score.py"
+
+    def setUp(self):
+        if not self.SET.exists():
+            self.skipTest("unfinished.tsv not present")
+
+    def declarations(self):
+        """Parsed here as data. The scorer's own parser is exercised by running
+        it below; this is the citation check, which needs the repository."""
+        out = []
+        for line in self.SET.read_text().splitlines():
+            if not line.startswith("# limit:"):
+                continue
+            source, phrase, ids = [f.strip() for f in
+                                   line[len("# limit:"):].split("|")]
+            out.append((source, phrase, ids.split()))
+        return out
+
+    def captures(self):
+        rows = {}
+        for line in self.SET.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if parts[0] == "id":
+                continue
+            rows[parts[0]] = parts
+        return rows
+
+    def score(self, text=None):
+        """Run the real scorer against a probe that flags nothing.
+
+        Every unfinished capture therefore misses, which is the state the
+        disclosure has to survive: a limit must not improve the rate even when
+        the rate is as bad as it can be.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            labels = pathlib.Path(root) / "unfinished.tsv"
+            labels.write_text(text if text is not None else self.SET.read_text())
+            probe = pathlib.Path(root) / "probe.txt"
+            probe.write_text("\n".join(
+                f'\u2500\u2500 "{row[1]}"\n  row title: X\n  route: Today\n'
+                f'  state: complete\n  needsReview: false\n  due: nil\n'
+                f'  remind: nil'
+                for row in self.captures().values()) + "\n")
+            return subprocess.check_output(
+                [sys.executable, str(self.SCORER), str(labels), str(probe)],
+                text=True)
+
+    def test_a_declared_limit_cites_a_phrase_its_source_still_contains(self):
+        """A limit cannot outlive the decision that made it.
+
+        Implement the thing and delete the comment, and this fails until the
+        declaration goes with it. Without this the citation is a claim of the
+        kind this directory exists to stop making.
+        """
+        self.assertTrue(self.declarations(), "no limit is declared any more")
+        for source, phrase, _ in self.declarations():
+            with self.subTest(source=source):
+                path = self.ROOT / source
+                self.assertTrue(path.exists(), f"{source} does not exist")
+                self.assertIn(phrase, path.read_text(),
+                              f"{source} no longer says {phrase!r}, so the "
+                              f"limit it records may have been implemented")
+
+    def test_every_declared_capture_exists_and_is_an_unfinished_one(self):
+        """A declaration must not quietly cover a row that is not a miss."""
+        rows = self.captures()
+        for _, _, ids in self.declarations():
+            for cid in ids:
+                with self.subTest(capture=cid):
+                    self.assertIn(cid, rows, f"{cid} is declared and absent")
+                    self.assertEqual(rows[cid][3], "Incomplete",
+                                     f"{cid} is declared a limit but is not an "
+                                     f"unfinished capture")
+
+    def test_a_limit_changes_the_reading_and_never_the_rate(self):
+        """The rule that removes any incentive to declare one falsely."""
+        with_limit = self.score()
+        without = self.score("\n".join(
+            line for line in self.SET.read_text().splitlines()
+            if not line.startswith("# limit:")) + "\n")
+
+        def recall(report):
+            return next(l for l in report.splitlines() if "recall" in l)
+
+        self.assertEqual(recall(with_limit), recall(without))
+        self.assertIn("recorded design limits", with_limit)
+        self.assertNotIn("recorded design limits", without)
+
+    def test_the_report_names_the_captures_and_computes_no_ceiling(self):
+        """The disclosure is a fact; a ceiling would be a forecast.
+
+        The first draft printed "recall cannot pass 50/57". Two things were
+        wrong with it. A ceiling is a denominator in waiting — once 50 is in
+        the report, 34 of 50 is in the reader's head, and 68% is a nicer number
+        than 59.6% that nobody earned, which is precisely what the never-change
+        -a-rate rule exists to prevent. And it would be false: the source
+        records that three *tagger classes* were tried and cost more than they
+        recovered, which is a statement about one signal. The app already
+        measures the speaker's pauses and discards them; a boundary reading
+        timings would not meet the same ambiguity. A recorded limit is a
+        decision taken with the signals to hand, not a property of the
+        language.
+        """
+        rows = self.captures()
+        unfinished = sum(1 for r in rows.values() if r[3] == "Incomplete")
+        declared = {c for _, _, ids in self.declarations() for c in ids}
+        report = self.score()
+        self.assertIn(f"{len(declared)} of the {unfinished} unfinished", report)
+        for cid in sorted(declared):
+            with self.subTest(capture=cid):
+                self.assertIn(cid, report)
+        self.assertNotIn(f"{unfinished - len(declared)}/{unfinished}", report)
+        self.assertNotIn("ceiling", report)
+
+    def test_the_family_row_says_how_much_of_it_is_declined(self):
+        """The table is what gets quoted, so the mark has to be on the row.
+
+        A family that is mostly declined reads as the largest available win
+        from the table alone.
+        """
+        line = next(l for l in self.score().splitlines()
+                    if l.startswith("trailing-function-word"))
+        self.assertIn("recorded as a limit", line)
+
+    def test_the_trailing_determiner_capture_is_deliberately_not_declared(self):
+        """INC45 is "I need to talk to Sarah about the".
+
+        The cited comment covers preposition, conjunction and adverb; a
+        trailing determiner is none of those and the code below it handles
+        determiners separately. Sweeping it in would be a label standing in for
+        the judgement it approximates. Pinned so that widening the declaration
+        has to argue with this rather than happen quietly.
+        """
+        rows = self.captures()
+        declared = {c for _, _, ids in self.declarations() for c in ids}
+        family = {cid for cid, r in rows.items()
+                  if r[2] == "trailing-function-word"}
+        self.assertEqual(sorted(family - declared), ["INC45"])
+        self.assertIn("dangling article", rows["INC45"][4])
 
 
 class DevsetScorerTests(unittest.TestCase):

@@ -19,6 +19,32 @@
 #   Mixed       one finished thought and one unfinished one in one capture.
 #               The finished half must survive.
 #
+# RECORDED LIMITS.  `# limit: <source file> | <phrase it must still contain> |
+# <ids>` marks captures the implementation has already decided not to attempt.
+# A limit never changes a rate: recall still counts these as misses, and the
+# report names the captures rather than subtracting them. It deliberately
+# computes no ceiling — a ceiling is a denominator in waiting, and it would
+# also be false, because what the source records is that three tagger classes
+# were tried, not that the language cannot be read. Declaring a limit makes a
+# number more visible rather than better, so there is nothing to gain by
+# declaring one falsely. The phrase is checked against the source by
+# `Tools/CorpusRunner/test_score.py`, so a limit cannot outlive the decision
+# that made it: implement the thing, delete the comment, and the declaration
+# fails until it is removed.
+#
+# limit: SpeakIt/Repositories/ClauseStructure.swift | out of scope, and honestly so | INC41 INC42 INC43 INC44 INC46 INC47 INC48
+#   Trailing preposition and conjunction. Each of preposition, conjunction and
+#   adverb was tried as a trailing class and removed: "Meet Mike at" and
+#   "we're almost out" are the same tag shape and only one of them is
+#   unfinished, so what separates the pair is *which* preposition — a word
+#   list, which is the thing that file exists not to keep.
+#
+#   INC45 is deliberately NOT here. "I need to talk to Sarah about the" ends on
+#   a determiner, which that comment does not cover and the code below it
+#   handles separately. A limit that swept it in would be a label standing in
+#   for the judgement it approximates, which is the error this file is careful
+#   about everywhere else.
+#
 id	utterance	family	expectation	note
 # --- Dangling infinitive: "to" with no verb after it -------------------------
 INC01	Tomorrow I want to	dangling-infinitive	Incomplete	the headline case

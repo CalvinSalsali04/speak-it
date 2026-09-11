@@ -45,9 +45,34 @@ for b in blocks:
         "operation": bool(re.search(r"operation:", b)),
     }
 
+def limits(path):
+    """Recorded design limits declared in the set's header.
+
+    `# limit: <source file> | <phrase it must still contain> | <ids>` marks
+    captures the implementation has already decided not to attempt. Parsed
+    here, checked in `Tools/CorpusRunner/test_score.py`: the scorer has to run
+    without the repository around it, and a citation nobody verifies is the
+    kind of claim this whole directory exists to stop making.
+    """
+    out = []
+    for line in open(path):
+        if not line.startswith("# limit:"):
+            continue
+        parts = [f.strip() for f in line[len("# limit:"):].split("|")]
+        if len(parts) != 3:
+            continue
+        source, phrase, ids = parts
+        out.append((source, phrase, ids.split()))
+    return out
+
+
 stats = Counter()
 byfam = defaultdict(Counter)
 misses = []
+#: Counted, never subtracted. A limit changes what the reader concludes from
+#: the rate, not the rate.
+declared = limits(labels_path)
+limited = {cid for _, _, ids in declared for cid in ids}
 
 for cid, utt, fam, exp in rows:
     got = seen.get(utt)
@@ -65,6 +90,9 @@ for cid, utt, fam, exp in rows:
     if exp == "Incomplete":
         stats["inc_total"] += 1
         byfam[fam]["total"] += 1
+        if cid in limited:
+            stats["limited"] += 1
+            byfam[fam]["limited"] += 1
         if flagged:
             stats["inc_ok"] += 1
             byfam[fam]["ok"] += 1
@@ -119,12 +147,40 @@ print(f"  UNSAFE   fragment given a date/reminder/operation   {stats['unsafe']}"
 print("=" * 68)
 print("  Fallout is the number that decides whether this ships: a wrongly")
 print("  interrupted finished thought is worse than a missed fragment.")
+
+if stats["limited"]:
+    #: The ids, and deliberately no arithmetic. Printing "so the reachable
+    #: ceiling is 50 of 57" was the first draft and it was wrong twice over. A
+    #: ceiling is a denominator in waiting: once 50 is in the report, 34 of 50
+    #: is in the reader's head, and 68% is a nicer number than 59.6% that
+    #: nobody earned. And it would be false — what the source records is that
+    #: three *tagger classes* were tried and cost more than they recovered,
+    #: which is a statement about one signal, not about the language. The app
+    #: already measures the speaker's pauses and throws them away; a boundary
+    #: that read timings would not face the same ambiguity. A recorded limit is
+    #: a decision taken with the signals to hand. The disclosure is a fact; the
+    #: subtraction would be a forecast.
+    print()
+    print(f"  {stats['limited']} of the {inc} unfinished captures are recorded "
+          f"design limits:")
+    for source, phrase, ids in declared:
+        covered = [c for c in ids if c in limited]
+        print(f"    {source}")
+        print(f"      \"{phrase}\"")
+        print(f"      {' '.join(covered)}")
+    print("  They are counted as misses above and stay that way. A limit says")
+    print("  the gap is known and declined with the signals we have, not that")
+    print("  it is closed and not that it is unreachable.")
 print()
 print(f"{'FAMILY':32}{'CASES':>7}{'OK':>7}")
 print("-" * 48)
 for fam in sorted(byfam, key=lambda f: byfam[f]["total"] - byfam[f]["ok"], reverse=True):
     c = byfam[fam]
-    print(f"{fam:32}{c['total']:>7}{c['ok']:>7}")
+    #: Marked on the row rather than left to the block above, because this
+    #: table is what gets quoted and a family half made of declined cases
+    #: reads as the biggest available win when it is not.
+    mark = f"   {c['limited']} recorded as a limit" if c["limited"] else ""
+    print(f"{fam:32}{c['total']:>7}{c['ok']:>7}{mark}")
 
 if verbose:
     print()
