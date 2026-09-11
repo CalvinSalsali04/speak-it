@@ -707,6 +707,81 @@ class DevsetScorerSealTests(unittest.TestCase):
                          result.stdout + result.stderr)
 
 
+class HeldOutFamilyReportTests(unittest.TestCase):
+    """The 389-capture set's per-family table, added so pairings can be read.
+
+    `adversarial/README.md` tells the reader to judge each pairing against its
+    ingredients, and those ingredients are families of `heldout.tsv`. The
+    scorer parsed the family column and discarded it, so that instruction could
+    not be followed. These tests cover the table and, more importantly, that
+    adding it did not unseal the set.
+    """
+
+    HELDOUT = HERE.parent / "heldout"
+
+    def score(self, route="Today"):
+        if not (self.HELDOUT / "heldout.tsv").exists():
+            self.skipTest("heldout.tsv not present")
+        rows = [l.split("\t") for l in
+                (self.HELDOUT / "heldout.tsv").read_text().splitlines()
+                if not l.startswith("#") and l.strip()
+                and l.split("\t")[0] != "id"]
+        blocks = []
+        for r in rows:
+            blocks.append(
+                f'── "{r[1]}"\n   item 1 of 1:\n     row title:  X\n'
+                f"     route:      {route}   type: task   category: general"
+                f"   priority: normal\n     due:        nil\n"
+                f"     remind:     nil   delivery: notification\n"
+                f"     temporal:   none\n     state:      resolved")
+        with tempfile.TemporaryDirectory() as d:
+            probe = pathlib.Path(d) / "probe.txt"
+            probe.write_text("\n".join(blocks) + "\n")
+            return subprocess.check_output(
+                [sys.executable, str(self.HELDOUT / "score.py"),
+                 str(self.HELDOUT / "heldout.tsv"), str(probe)], text=True)
+
+    def test_the_family_table_still_prints_no_capture_text(self):
+        """The whole point of the set. A finer number is still only a number."""
+        result = self.score()
+        self.assertIn("PER FAMILY", result)
+        # A capture from the top of the file, and one from the middle.
+        self.assertNotIn("remind me to uh remind me to call the vet", result)
+        for line in result.splitlines():
+            self.assertLess(len(line), 100,
+                            f"a line long enough to be a capture: {line!r}")
+
+    def test_every_family_tag_reaches_the_table_untruncated(self):
+        """A fixed column silently renamed `occupation-vs-person`.
+
+        Truncation is worse than a wide table: the row still looks like a
+        family, so nobody checks it twice.
+        """
+        result = self.score()
+        table = result[result.index("PER FAMILY"):]
+        families = {r.split("\t")[2].strip() for r in
+                    (self.HELDOUT / "heldout.tsv").read_text().splitlines()
+                    if not r.startswith("#") and r.strip()
+                    and r.split("\t")[0] != "id"}
+        rows = {line.split()[0] for line in table.splitlines()
+                if line and not line[0].isspace() and line.split()}
+        for family in families:
+            self.assertIn(family, rows, f"{family} is missing or truncated")
+
+    def test_a_family_with_no_scorable_row_reads_as_a_dash(self):
+        """`ambiguous` captures skip destination and count by design.
+
+        Printing 0/0 as 0.0% would put a whole family at the top of a table
+        sorted worst-first, which is where the eye goes.
+        """
+        table = self.score()
+        table = table[table.index("PER FAMILY"):]
+        ambiguous = [l for l in table.splitlines() if l.startswith("ambiguous")]
+        self.assertTrue(ambiguous, "no ambiguous row in the table")
+        self.assertIn("—", ambiguous[0])
+        self.assertNotIn("0.0%", ambiguous[0])
+
+
 def score_module():
     """score.py is a script; the matcher is unit-testable in process."""
     import importlib.util
