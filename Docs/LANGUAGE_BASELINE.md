@@ -273,18 +273,62 @@ This also corrects a sizing argument recorded earlier in this workstream — tha
 declines 24 of 26 and these are two leaks in a working guard. The denominator
 was wrong and the mechanism was wrong: nothing declined these two.
 
-### What this makes the next target
+### The suppression is provable from source, not only from the pair
 
-`incomplete-complement` is **1/10** and `dangling-infinitive` is **18/20**, and
-INC01 against INC33 is the reason. A clause left hanging on an infinitive
-marker is detected; a transitive verb with no object is not. The nine
-`incomplete-complement` misses are one shape — `I want`, `I need`,
-`Tomorrow I want`, `I have to get`, `I should buy`, `Can you remind me about`,
-`I need to pick up`, `Add`, `Buy`.
+`ThoughtOrganizer.swift:920` calls `ThoughtCompletion.unfinished` **before
+anything reads a date**, and on a hit returns `dueDate: nil, reminderDate: nil,
+recurrenceRule: nil, locationIntent: nil` with the words kept. The comment
+above it names this exact case: *"'Tomorrow I want to' resolved its 'tomorrow'
+perfectly and then hung it on a sentence that never said what to do."* So the
+INC01/INC33 pair is corroboration of a mechanism that is written down, not an
+inference standing on ten captures.
 
-None of them is in the recorded-limit list in `unfinished.tsv`, so this is not
-the `ClauseStructure.swift` "out of scope, and honestly so" boundary. It is a
-detector built for one half of a distinction and never extended to the other.
+### What this makes the next target — narrower than it first looked
+
+`incomplete-complement` is **1/10** and `dangling-infinitive` is **18/20**. The
+first reading of that was that nine captures of one shape are undetected and
+none of them is declined anywhere. **Reading `ClauseStructure.swift` says
+otherwise: four of the nine are recorded declines in the source, with the
+measurement that produced each one written beside it.**
+
+| capture | what the detector does |
+|---|---|
+| `I want`, `I need`, `Tomorrow I want`, `I have to get`, `I should buy` | ends on a verb; **no rule reaches it** |
+| `Can you remind me about` | ends on a preposition — excluded because `Meet Mike at` and `remind me an hour before` are the same shape and the second is finished. Three classes were tried and cost four blocking corpus failures. |
+| `I need to pick up` | ends on a particle behind a verb — the `previous.isVerb` guard, which is what keeps `follow up`, `check in` and `head out` whole |
+| `Add`, `Buy` | a bare imperative verb, **tried and removed**: `NLTagger` calls a one-word "Add" a verb on macOS and something else on iOS |
+
+So the uncovered set is five captures, all one shape: a finite clause ending on
+a verb whose object never came. And closing it needs a transitivity judgement —
+`I should buy` is unfinished and `I already ate` is not — which is lexical, and
+a word list is the thing this file exists not to keep. It may well be another
+"out of scope, and honestly so"; it is not the clean unblocked target the first
+reading made it look like.
+
+### A better candidate, and it is a false premise rather than a missing rule
+
+The infinitive rule fires only when the clause holds exactly one `to`, on the
+stated ground that *"an earlier `to` is exactly the evidence that the frame got
+its content"*. That premise is false under a doubled false start.
+
+`INC56 I need to I need to` — tagged `repeated frame, still empty` — holds two
+markers, so the rule stands down and the capture is missed. The premise fails
+because the first `to` is followed by `I`, not by a verb: the frame it opened
+was never filled, so its presence is not evidence of anything.
+
+The doubled frame is not rare, and both sides of it are already covered:
+
+| capture | set | must be |
+|---|---|---|
+| `I need to I need to` | dev `unfinished` INC56 | flagged |
+| `I need to I need to get the oil changed before the trip` | held-out C002 | **finished** |
+| four more `I need to I need to …` captures | everyday W32, M08, L05, E04 | **finished** |
+
+The fix is to the rule's input rather than a new rule: ask whether an earlier
+marker was *filled* — followed by a verb — instead of whether one exists. It
+leaves `Remind me to buy milk when I get to` alone, because there the first
+`to` is followed by `buy`. It is measurable against six captures across three
+corpora that must not move, and it is not blocked on anything.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
