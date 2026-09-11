@@ -463,6 +463,64 @@ class LeakCheckTests(unittest.TestCase):
         self.assertEqual(len(self.leak.harvest(path)), 389)
 
 
+class DevsetScorerSealTests(unittest.TestCase):
+    """A development scorer must not be aimable at a held-out set.
+
+    `route-score.sh` and `score.sh` take a set NAME and build a path from it.
+    Until this guard, `../heldout/heldout` resolved to a real file, and because
+    `route-score.sh` already uses the held-out scorer on the same five columns,
+    `route-score.sh ../heldout/heldout --verbose` printed every held-out
+    failure. The entry points that refuse arguments do not help: the hole was
+    one level down, in the scorer they call.
+    """
+
+    DEVSETS = HERE.parent / "devsets"
+
+    def run_scorer(self, script, name):
+        path = self.DEVSETS / script
+        if not path.exists():
+            self.skipTest(f"{script} not present")
+        return subprocess.run([str(path), name, "--verbose"],
+                              capture_output=True, text=True)
+
+    def test_a_pathed_name_cannot_reach_a_held_out_set(self):
+        for script in ("route-score.sh", "score.sh"):
+            for name in ("../heldout/heldout", "../everyday/everyday",
+                         "/etc/passwd", "../../../etc/passwd"):
+                with self.subTest(script=script, name=name):
+                    result = self.run_scorer(script, name)
+                    self.assertEqual(result.returncode, 2,
+                                     f"{script} accepted {name!r}")
+                    combined = result.stdout + result.stderr
+                    self.assertNotIn("HELD-OUT SET", combined)
+                    self.assertNotIn("remind me to uh remind me", combined)
+
+    def test_an_empty_or_flag_like_name_is_refused(self):
+        """Refused, not necessarily by the same route.
+
+        An empty name is caught by the shell's own `${1:?}` check and exits 1;
+        a flag-like one is caught by the name guard and exits 2. Both refuse
+        and neither reaches a corpus, which is what matters — asserting the
+        exact code would make this test about bash rather than about sealing.
+        """
+        for script in ("route-score.sh", "score.sh"):
+            for name in ("", "--verbose", "-rf"):
+                with self.subTest(script=script, name=name):
+                    result = self.run_scorer(script, name)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("HELD-OUT SET",
+                                     result.stdout + result.stderr)
+
+    def test_a_real_development_set_name_is_still_accepted(self):
+        """The guard must not break the thing it protects."""
+        result = self.run_scorer("route-score.sh", "routed")
+        self.assertNotEqual(
+            result.returncode, 2,
+            "a bare development set name must pass the name check")
+        self.assertNotIn("is not a development set name",
+                         result.stdout + result.stderr)
+
+
 class CorpusTests(unittest.TestCase):
     """The committed set itself, checked for the properties it claims."""
 
