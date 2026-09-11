@@ -5,9 +5,502 @@ one run of `Tools/CI/language-metrics.sh` on a real Mac. Nothing in this file
 is an estimate, and nothing in it was produced in a container where the parser
 cannot run.
 
-**The newest section is the current baseline.** Older sections stay as written;
-they are the record of what was true when they were measured, not a claim about
-today.
+**The newest section marked as a baseline is the current baseline.** A section
+that records a change which did not ship says so in its first lines. Older
+sections stay as written; they are the record of what was true when they were
+measured, not a claim about today.
+
+## Two standing rules, both learned by paying for them
+
+**Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
+33/44 to 35/45 on thought count — an improvement by any reading of the total —
+while containing a regression that the per-family table made obvious at a
+glance: `statement-runon` at 0 of 6 beside `errand-runon` at 6 of 8. The
+change that produced the total also broke four cases of the gating corpus. A
+total is a weighted average of things that moved in both directions, and it is
+the one number that cannot tell you which.
+
+**An instrument's output is the thing under test, not its source.** Four
+checks in this repository reported a verdict nobody could act on, and every
+one of them had been reviewed by reading its code: a step that wrote failures
+to a path nothing collected, the same step skipped on the only run that needed
+it, a gate that printed a count and named a command requiring a Mac, and a
+mutation harness that ran in an already-broken copy so every measure read as
+protected. Run the instrument, read what it prints, and check that a reader
+who has only that output can act on it.
+
+## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
+
+Branch `claude/hearth-thread-tod920`,
+[run 34598981239](https://github.com/CalvinSalsali04/speak-it/actions/runs/34598981239),
+`macos-26`, `language_only`. **This is the current baseline** once the branch
+merges. Two causes: an ordinal is not an amount, and a complement-taking verb
+governs the clause behind it.
+
+| instrument | baseline (`2d8fe760`) | shipped (`9d91a0b`) |
+|---|---|---|
+| gating corpus | 1393, **0 failing** | 1393, **0 failing** |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| everyday acted on anyway | 0 | 0 |
+| held-out destination / count | 233/320 · 255/310 | **233/320 · 255/310** |
+| held-out acted on anyway | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | **52/116** · **78/105** |
+| adversarial over- / under-split | 8 · 18 | **9** · 18 |
+| adversarial titles / loss / invention | 117/120 · 113/116 · 10/24 | unchanged |
+| adversarial acted on anyway | 1 | 1 |
+| **runon dev destination** | 41/46 | **42/46** |
+| **runon dev thought count** | 33/44 | **35/44** |
+
+Every other development set is unchanged: coordination 115/121, routed 74/84
+and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+
+**The held-out 389 is back to the baseline figure exactly**, which retires the
+−1/+2 seen in the two withdrawn runs: all of that movement belonged to the
+causes that came out.
+
+### What it fixed, and what it cost
+
+| row | before | after |
+|---|---|---|
+| RM03 | destination and count both wrong | **passes both** |
+| RO05 "remind me the bins go out on Tuesday" | over-split into 2 | **1 row** |
+| one capture in `runon-x-repair` | correct | **over-split** |
+
+`errand-runon` is now 8/8 on destination and 7/7 on thought count.
+`object-guard` holds at 10/10 on count with RO05's over-split gone.
+
+**The cost is one sealed capture and it is in the direction that matters
+most.** Adversarial over-segmentation went from 8 to 9; a wrongly severed row
+retrieves under nothing. The capture cannot be inspected — the set reports
+rates only — but the cause can be reasoned to: of the two changes only the
+ordinal exemption *enables* a cut, so the complement guard cannot have caused
+an over-split.
+
+**It was merged anyway, and this is the reason.** The guard being relaxed is
+wrong on its own terms: "the 26th" is a complete noun phrase and "$89" is not,
+and keeping a rule that cannot tell them apart because one hard composition
+capture happens to benefit from the confusion is the wrong trade. The harm it
+was causing is worse than the harm it now causes — a capture that lost its
+errand entirely ("Priya starts on the 14th order her a laptop" arriving as one
+Memory row) costs the user the task, while an extra row on a hard sentence
+leaves both halves visible. The everyday set and the 389 are untouched either
+way.
+
+Watch adversarial over-segmentation on the next change. If it moves again, the
+ordinal exemption is the first thing to re-examine.
+
+## 2026-09-11 12:25 — why the unit suite fails on a GitHub-hosted Mac: answered
+
+Same run, [34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
+`iOS app` job, `macos-26`. `SpeakItTests/NaturalLanguageEnvironmentTests` asks
+Apple's framework directly instead of inferring it from a behaviour that
+failed, and this is the first run in which it has ever executed.
+
+**The lexical-class tagger returns nothing on that runner's simulator.** The
+failure messages carry the tagging of each sentence, so the answer is in the
+job log rather than in an `.xcresult` nobody can download:
+
+```
+on:OtherWord the:OtherWord 15th:OtherWord pay:OtherWord the:OtherWord rent:OtherWord
+when:OtherWord I:OtherWord finish:OtherWord the:OtherWord essay:OtherWord call:OtherWord dave:OtherWord
+I:OtherWord had:OtherWord better:OtherWord luck:OtherWord last:OtherWord time:OtherWord
+```
+
+Every token, in every sentence, is `OtherWord`. Not tagged differently — not
+tagged. And the two embedding tests **passed**, so `NLEmbedding.wordEmbedding`
+loads on the same machine in the same process. It is specifically `NLTagger`'s
+`.lexicalClass` that has no model.
+
+That explains every behavioural failure beside it, and each one is a rule
+reading the tagger's silence as a fact:
+
+| assertion | what the rule needed |
+|---|---|
+| `("on the 15th pay the rent") != ("pay the rent")` | "pay" to be a verb |
+| `("when I finish the essay call dave") != ("call dave")` | "finish" to be a verb |
+| `("actionable") != ("knowledge")` — *I had better luck last time* | "luck" to be a noun |
+| `("ambiguous") != ("actionable")` — *Unpack boxes* | the embedding path, reached only after the tag |
+| `"buy the milk tomorrow call the dentist"` arrived as one row | "buy" to be a verb |
+
+The corpus gate passes on the same runner minutes earlier because
+`Tools/CorpusRunner` runs on the **host**, where the tagger works. The
+difference between the two has never been anyone's diff.
+
+**What this does and does not say.** It says the suite cannot be trusted on a
+GitHub-hosted `macos-26` simulator for any tagger-dependent assertion, and that
+the author's Mac remains the reference environment. It does **not** establish
+that a real iPhone can reach the same state; that is a separate question and
+this run cannot answer it. What it does establish is the failure *mode* if one
+ever did: not a crash and not an error, but every capture quietly reading as
+though it had no verbs in it. Recorded in `Docs/KNOWN_ISSUES.md`.
+
+## 2026-09-11 12:20 — branch at `4af3af9`, the three guard repairs alone
+
+Branch `claude/hearth-thread-tod920`,
+[run 34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006),
+`macos-26`. **Not a baseline.** It is the control for the section below: the
+same branch with the statement boundary removed, so every figure here is the
+three guard repairs and nothing else.
+
+**The gating corpus is back to 1393 cases, 0 failing at every severity**, which
+settles the attribution: all four CRITICAL regressions were the statement
+boundary, and none of them was a guard repair.
+
+| instrument | baseline (`2d8fe760`) | four causes (`90434e9`) | three guards (`4af3af9`) |
+|---|---|---|---|
+| gating corpus failing | 0 | **4 CRITICAL** | 0 |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 | 16 · 23 |
+| held-out destination / count | 233/320 · 255/310 | 232 · 256 | **232** · **257** |
+| held-out acted on anyway | 7 | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | 51 · 76 | **52** · **77** |
+| adversarial over- / under-split | 8 · 18 | — | **9** · **19** |
+| runon dev destination | 41/46 | 41/46 | 41/46 |
+| runon dev thought count | 33/44 | 35/45 | **35/45** |
+
+Every other development set is unchanged: coordination 115/121, routed 74/84
+and 77/79 with 3 acted on anyway, framing 41/45 and 43/44, unfinished 34/57
+recall with 0/96 fallout and 2 unsafe, abandonment 24/24 with 0/24.
+
+**The everyday set is bit-identical for the third run running.** Neither the
+statement boundary nor the guard repairs changed a single one of 255 natural
+captures.
+
+### What actually changed, row by row
+
+The `Development-set failures` step now runs on a red run as well as a green
+one, so this is read off the log rather than inferred.
+
+| row | before | after | cause |
+|---|---|---|---|
+| RM03 | count and destination both wrong | **passes** | ordinal is not an amount |
+| RO05 "remind me the bins go out on Tuesday" | over-split into 2 | **1 row** | clausal complement |
+| RF04 "first thing tomorrow email the landlord about the damp" | over-split into 2 | 1 row, **routed to Memory** | verbless temporal head |
+| RE03 "book the car in for Thursday renew my passport" | passes | **merged into 1** | verbless temporal head |
+| RE08 "text Marcus about Saturday move the standup to 9:15" | passes | **merged into 1** | verbless temporal head |
+
+Two of the three causes are clean. The third is not, and the row-level view is
+the only reason that is visible: at the set level it reads as +2.
+
+### The verbless-temporal-head relaxation is wrong, and why generalises
+
+It accepted any head that carries no verb and ends on a time word, on the
+argument that no list of openers can finish while the end of the phrase is
+always the time. The argument about openers is right. The conclusion is not,
+because **"carries no verb" is the tagger's answer, not a fact.** `NLTagger`
+does not reliably call a sentence-initial "book" or "text" a verb, so
+"book the car in for Thursday" reads as verbless and ends on a day — an adjunct
+by that test, and the errand behind it is swallowed.
+
+The original rule was safe because it *also* demanded a fronting preposition,
+which an imperative clause does not have. The preposition is the half of the
+test the tagger cannot be wrong about, and it is load-bearing. Removed, with
+both captures above kept as the guard in
+`ActionabilityTests.testAnAdjunctInFrontOfACutNeedsAPrepositionAndNotJustATime`.
+
+**RF04's real root cause is elsewhere and is the better next target.** Merged
+into one row it routes to **Memory**, so `Actionability` does not read
+"first thing tomorrow email the landlord about the damp" as an errand at all.
+The same fronting vocabulary is the cause in both places; fixing it in the
+router is what would make the capture correct, and the over-split was the
+symptom rather than the disease.
+
+## 2026-09-11 12:03 — branch at `90434e9`, the statement-boundary attempt, withdrawn
+
+Branch `claude/hearth-thread-tod920`,
+[run 34596594804](https://github.com/CalvinSalsali04/speak-it/actions/runs/34596594804),
+`macos-26`. **This is not a baseline.** It is the measurement that decided a
+change should not ship, recorded because a negative result costs the same
+dispatch as a positive one and is worth as much.
+
+The change had four causes, three of them repairs to guards that already
+existed and one of them new machinery: a boundary between two juxtaposed
+*statements*, proposed where the second clause opened on the speaker's own
+possessive, a first-person obligation, or a resolved proper name.
+
+### The verdict, in one table
+
+| instrument | baseline (`2d8fe760`) | this run (`90434e9`) |
+|---|---|---|
+| gating corpus | 1393 cases, **0** failing | 1393 cases, **4 CRITICAL** |
+| everyday routing / count | 168/240 · 193/232 | 168/240 · 193/232 |
+| everyday loss / invention / titles | 230/244 · 14/22 · 245/255 | 230/244 · 14/22 · 245/255 |
+| everyday over- / under-split | 16 · 23 | 16 · 23 |
+| held-out destination / count | 233/320 · 255/310 | **232/320** · **256/310** |
+| held-out acted on anyway | 7 | 7 |
+| adversarial routing / count | 53/116 · 79/105 | **51/116** · **76/105** |
+| adversarial loss / invention / titles | 113/116 · 10/24 · 117/120 | 113/116 · 10/24 · 117/120 |
+| runon dev destination | 41/46 | 41/46 |
+| runon dev thought count | 33/44 | **35/45** |
+
+The everyday block is bit-identical, family by family and defect by defect, on
+255 captures. **The change did nothing at all to natural speech**, cost two
+adversarial routings and three adversarial counts, cost one held-out
+destination for one held-out count, and broke four cases of the gate.
+
+### The family it was written for did not move
+
+`runon.tsv` reports per family for the first time in this run, which is what
+made the verdict readable rather than a single total.
+
+| family | n | destination | thought count |
+|---|---|---|---|
+| adjunct-guard | 4 | 3/4 (75.0%) | 4/4 (100%) |
+| anaphora-guard | 6 | 5/6 (83.3%) | 6/6 (100%) |
+| **statement-runon** | 6 | 5/6 (83.3%) | **0/6 (0%)** |
+| mixed-runon | 8 | 7/8 (87.5%) | 5/7 (71.4%) |
+| object-guard | 10 | 9/10 (90.0%) | 10/10 (100%) |
+| bridging-guard | 4 | 4/4 (100%) | 4/4 (100%) |
+| errand-runon | 8 | 8/8 (100%) | 6/8 (75.0%) |
+
+`statement-runon` is the family the new machinery was written for and it is
+**0 of 6**. Every one of the two counts it gained came from the three guard
+repairs, in `errand-runon` and `mixed-runon`. The guard families were not
+over-split: `adjunct-guard`, `anaphora-guard`, `object-guard` and
+`bridging-guard` are all at 100% on thought count.
+
+The count denominator moved from 44 to 45 because one capture stopped being
+read as an Operation, which is a behaviour change rather than a scorer change:
+`heldout/score.py` only scores a count where the pipeline produced rows.
+
+### Why it broke the gate, which is the part worth keeping
+
+One case failed in each of four families, and none of them is a run-on
+sentence. The gate reported a count and not the rows (see below), so these were
+found by tracing every capture of those four families through the rule by hand
+rather than read off a log. Three are unambiguous:
+
+| family | capture | where the rule cut |
+|---|---|---|
+| Semantic keyword collisions | "I have no idea where my passport is" | before `my passport` |
+| Ordinary speech (control) | "It reminded me of something my dad used to say" | before `my dad` |
+| Intent consolidation | one of two captures opening a clause on `I have to` or `I need to` | before the obligation |
+
+The fourth is in `Filler that collapsed a capture`, whose eight captures
+include the same sentence as one of the two Intent-consolidation candidates,
+differing only by a full stop — so the same cut fails a case in both families.
+Which of the two consolidation captures it is cannot be settled without running
+the corpus, and it does not change the cause.
+
+The rule asked whether the words on each side of a cut carry a subject and a
+predicate. They do in all four — and **a subject and a predicate do not make a
+prefix a finished clause.** "I have no idea where" has both and is plainly
+unfinished. "It reminded me of something" has both and is about to be modified
+by a relative clause with no relativizer. The test I wrote proves the two sides
+are clauses; it never proves the left one is *over*.
+
+That is a general fact about this approach rather than a bug in these four
+rows, which is why the rule came out rather than being patched: it fires
+constantly on possessives inside subordinate clauses and never once where it
+was aimed. The guard list now lives in
+`SpeakItTests/ActionabilityTests.testNothingCutsBetweenTwoJuxtaposedStatements`,
+carrying both the original seven rows and these four, so the next attempt fails
+in a second instead of in a dispatch.
+
+### Two instruments that reported a count and not the rows
+
+Both cost this dispatch and are fixed on the same branch.
+
+- The corpus gate printed `4 blocking failures` and told the reader to run
+  `corpus-run --verbose`, which needs a Mac nobody reading a CI log has. It now
+  prints the rows.
+- The `Development-set failures` step had no `always()`, so the run that went
+  red — the only run that needed it — skipped it.
+
+## 2026-09-11 11:26 — `main` at `2d8fe760`, the discourse-framing change merged
+
+Commit `2d8fe760` on `main`,
+[run 34593643935](https://github.com/CalvinSalsali04/speak-it/actions/runs/34593643935),
+`macos-26`. **This is the current baseline.**
+
+It is the after-picture for the discourse-framing change, and it is the only
+run that compares cleanly with the 10:57 section below: same everyday
+generation (255 captures, 22 invention cases), same scorer, same corpus data,
+one merge apart. The 10:12 section measured the same change against the
+235-capture generation with the old invention scorer, so its everyday figures
+do not compare with either of these.
+
+Two instruments read for the first time in this run: `runon.tsv`, the
+development set written for the next change before that change exists, and the
+120-capture adversarial held-out set, which merged after the 10:57 run started.
+
+### What moved, and what did not — everyday, 255 captures
+
+| measure | before (`2c5ac5b`) | after (`2d8fe760`) |
+|---|---|---|
+| routing | 167/240 (69.6%) | **168/240 (70.0%)** |
+| count | 192/232 (82.8%) | **193/232 (83.2%)** |
+| nothing lost | 230/244 (94.3%) | 230/244 (94.3%) |
+| nothing invented | 14/22 (63.6%) | 14/22 (63.6%) |
+| clean titles | 237/255 (92.9%) | **245/255 (96.1%)** |
+| over-segmented | 17 | **16** |
+| under-segmented | 23 | 23 |
+| genuinely ambiguous | 15 | 15 |
+| **acted on anyway** | **0** | **0** |
+
+Nothing regressed on any of the four domain-level measures, and no everyday
+family lost ground on any of its three. The gating corpus stayed at 1393
+cases, 0 failing across all four severities.
+
+| measure | all domains | family-health | fitness-errands | freelance | money-travel | work-school |
+|---|---|---|---|---|---|---|
+| routing | 168/240 (70.0%) | 30/48 (62.5%) | 37/48 (77.1%) | 34/48 (70.8%) | 32/48 (66.7%) | 35/48 (72.9%) |
+| count | 193/232 (83.2%) | 39/47 (83.0%) | 38/46 (82.6%) | 38/46 (82.6%) | 39/47 (83.0%) | 39/46 (84.8%) |
+| nothing lost | 230/244 (94.3%) | 49/49 (100%) | 48/50 (96.0%) | 45/49 (91.8%) | 46/49 (93.9%) | 42/47 (89.4%) |
+| nothing invented | 14/22 (63.6%) | 0/4 (0%) | 3/4 (75.0%) | 3/5 (60.0%) | 4/5 (80.0%) | 4/4 (100%) |
+| clean titles | 245/255 (96.1%) | 50/51 (98.0%) | 51/51 (100%) | 47/51 (92.2%) | 50/51 (98.0%) | 47/51 (92.2%) |
+
+Item type matched the label 145/232, reported and never gated.
+
+### Title hygiene, by defect
+
+| defect | before | after |
+|---|---|---|
+| farewell kept | 7 | **0** |
+| preamble `number one` / `number three` kept | 3 | **0** |
+| preamble `number two` kept | 2 | 1 |
+| preamble `what happened was` kept | 1 | 1 |
+| title is the whole capture | 8 | 8 |
+
+Every farewell is gone. What is left is one enumerator, one preamble, and the
+eight captures whose title is the entire recording — which is the segmentation
+defect wearing a title-shaped coat, not a hygiene defect.
+
+### Everyday per family, worst routing first
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | 0/8 (0%) | 0/8 (0%) | 7/8 (87.5%) |
+| rambling-intro | 6 | 1/6 (16.7%) | 1/6 (16.7%) | 4/6 (66.7%) |
+| trailing-goodbye | 7 | 2/7 (28.6%) | 4/7 (57.1%) | **7/7 (100%)** |
+| sequencing | 17 | 7/17 (41.2%) | 8/17 (47.1%) | 16/17 (94.1%) |
+| multi-thought | 40 | 19/40 (47.5%) | 22/40 (55.0%) | **40/40 (100%)** |
+| operation | 10 | 5/10 (50.0%) | 0/2 (0%) | 10/10 (100%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 (25.0%) | 12/12 (100%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 22/24 (91.7%) |
+| filler | 18 | 9/14 (64.3%) | 12/14 (85.7%) | **18/18 (100%)** |
+| list | 20 | 13/20 (65.0%) | 14/20 (70.0%) | 18/20 (90.0%) |
+| relative-date | 6 | 4/6 (66.7%) | 5/6 (83.3%) | 6/6 (100%) |
+| person | 33 | 23/33 (69.7%) | 26/32 (81.2%) | 32/33 (97.0%) |
+| date | 38 | 26/37 (70.3%) | 30/37 (81.1%) | 36/38 (94.7%) |
+| negation | 51 | 36/51 (70.6%) | 41/47 (87.2%) | 49/51 (96.1%) |
+| location | 12 | 9/12 (75.0%) | 10/12 (83.3%) | 11/12 (91.7%) |
+| self-correction | 39 | 30/39 (76.9%) | 37/39 (94.9%) | 39/39 (100%) |
+| time | 28 | 21/27 (77.8%) | 26/27 (96.3%) | 27/28 (96.4%) |
+| quantity | 34 | 27/34 (79.4%) | 32/34 (94.1%) | 31/34 (91.2%) |
+| reference | 34 | 27/34 (79.4%) | 28/34 (82.4%) | 33/34 (97.1%) |
+| false-start | 14 | 12/14 (85.7%) | 12/14 (85.7%) | 14/14 (100%) |
+| recurrence | 22 | 19/22 (86.4%) | 21/22 (95.5%) | 22/22 (100%) |
+| proper-noun | 15 | 13/15 (86.7%) | 12/14 (85.7%) | 15/15 (100%) |
+| repetition | 10 | 10/10 (100%) | 10/10 (100%) | 10/10 (100%) |
+| question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
+| ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+The `negation` row is the 51-capture family after PR #33 added the tag to W09,
+F05 and F14. It does not compare with the 48-capture row in the 10:57 section.
+
+`n` counts captures carrying the tag, so the rows overlap: one capture can be
+filler, negation and multi-thought at once.
+
+### Held-out set — 389 utterances, sealed
+
+Destination 233/320 (72.8%), thought count 255/310 (82.3%), producing nothing
+0, genuinely ambiguous 69, **acted on anyway 7 (10.1%)**. Identical to every
+run before it. **Nothing has moved the generalisation measure yet**, and that
+remains the honest headline for the framing change: it fixed what a person
+reads on a row, and it has not been shown to help a speaker the parser has
+never met.
+
+### Adversarial held-out set — 120 captures, first reading
+
+Phenomena in combination: each capture crosses two families that are each
+already imperfect alone. Written held out, by interaction rather than by
+mechanism or content, and never tuned against.
+
+| measure | value |
+|---|---|
+| routing | 53/116 (45.7%) |
+| count | 79/105 (75.2%) |
+| nothing lost | 113/116 (97.4%) |
+| nothing invented | 10/24 (41.7%) |
+| clean titles | 117/120 (97.5%) |
+| over-segmented | 8 |
+| under-segmented | 18 |
+| genuinely ambiguous | 4 |
+| **acted on anyway** | **1 (25.0%)** |
+
+**The one row that should only ever fall is not zero here.** Everyday and the
+389-set both hold at 0 and 7 respectively; on captures built to be hard, one
+of the four ambiguous cases got a confident action. Four cases is a small
+denominator and 25% is not a rate worth quoting, but the count is the number
+that matters and it is 1, not 0.
+
+Routing at 45.7% against everyday's 70.0% is the headline. Combination is
+where the parser is worst, and it is not a uniform collapse:
+
+| pairing | routing | count | nothing lost | nothing invented |
+|---|---|---|---|---|
+| ellipsis × date | 0/10 (0%) | 1/10 (10.0%) | 10/10 (100%) | — |
+| reported speech × operation | 3/12 (25.0%) | 7/7 (100%) | 12/12 (100%) | — |
+| idiom × operation | 3/10 (30.0%) | 4/4 (100%) | 10/10 (100%) | — |
+| brand-verb × multi-task | 4/12 (33.3%) | 10/12 (83.3%) | 12/12 (100%) | — |
+| negation × multi-task | 5/12 (41.7%) | 8/12 (66.7%) | 11/12 (91.7%) | — |
+| not-a-time × date | 5/12 (41.7%) | 11/12 (91.7%) | 12/12 (100%) | — |
+| conditional × negation | 7/12 (58.3%) | 9/12 (75.0%) | 10/12 (83.3%) | — |
+| role × multi-person | 7/12 (58.3%) | 9/12 (75.0%) | 12/12 (100%) | — |
+| run-on × self-correction | 8/12 (66.7%) | 8/12 (66.7%) | 12/12 (100%) | 4/12 (33.3%) |
+| self-correction × name | 11/12 (91.7%) | 12/12 (100%) | 12/12 (100%) | 6/12 (50.0%) |
+
+**`ellipsis × date` at 0/10 is the worst single reading in any instrument.**
+Ellipsis — "and the other one too", "same again next week" — leaves the verb
+and often the object to be recovered from the previous clause, and the parser
+has no stage that recovers them. Combined with a date it routes nothing right
+and counts one in ten.
+
+Worth flagging against a stated prediction: **`run-on × self-correction` reads
+66.7% routing here while everyday's `run-on` family reads 0/8.** The
+expectation was that combination would compose the two failures and read
+worse. It did not, and that is evidence the everyday `run-on` captures are
+harder along some dimension the adversarial pairing does not carry — likely
+length and thought count, not the run-on property itself. Two sets, two
+readings; the everyday one is the one to fix against.
+
+Title hygiene is near clean at 117/120: 2 titles are the whole capture, 1
+opens on `that`.
+
+### Development sets — not a gate, not held out
+
+| set | measure | this run (`2d8fe760`) | last read at |
+|---|---|---|---|
+| gating corpus | cases / failing | 1393 / **0** | 1381 / 0 at `2c5ac5b`; the change adds 12 cases |
+| coordination | boundaries | 115/121 (95.0%) | 115/121 at 10:12, and at 09:56 before the change |
+| routed (116) | destination / count | 74/84 (88.1%) / 77/79 (97.5%) | 74/84 at 10:12 and 09:56 |
+| routed (116) | acted on anyway | 3 | 3 at 10:12 and 09:56 |
+| framing (45) | destination / count | 41/45 (91.1%) / 43/44 (97.7%) | 41/45 at 10:12; the set is newer than 09:56 |
+| unfinished | recall / fallout / unsafe | 34/57 / 0/96 / 2 | same at 10:12 and 09:56 |
+| abandonment | recall / fallout | 24/24 / 0/24 | same at 10:12 and 09:56 |
+| **runon (46)** | destination | **41/46 (89.1%)** | first reading |
+| **runon (46)** | thought count | **33/44 (75.0%)** | first reading |
+| **runon (46)** | acted on anyway | **0** | first reading |
+
+The right-hand column names where each comparison figure came from rather than
+calling it "before": the 10:57 run on `2c5ac5b` reported its gating-corpus
+total but its development-set block was not recorded, so the honest comparison
+for those sets is the 10:12 / 09:56 pair on the branch, which brackets the same
+parser change.
+
+**The shape of `runon.tsv`'s first reading is the finding.** Destination is
+89.1% and count is 75.0%: on speech with no marker between two thoughts, the
+parser usually routes the capture to the right place and usually fails to
+notice there were two thoughts. Eleven of forty-four scored rows have the
+wrong count. That is the signature of a missing boundary rather than a
+misread meaning, and it is exactly what the set was written to isolate.
+
+The per-row failures are not in this run: the `Development-set failures` step
+wrote them to a file nothing collected. The step now prints to the job log.
 
 ## 2026-09-11 10:57 — `main` at generation 3, with no parser change in it
 

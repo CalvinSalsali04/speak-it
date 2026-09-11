@@ -1,4 +1,5 @@
 import XCTest
+import NaturalLanguage
 @testable import SpeakIt
 
 /// Replays the entire semantic corpus through the ways a **recognizer** can
@@ -179,5 +180,101 @@ final class RenderingInvarianceTests: XCTestCase {
         }
 
         print(lines.joined(separator: "\n"))
+    }
+}
+
+// MARK: - The linguistic environment the rules are written against
+
+/// Asserts what the parser assumes about Apple's tagger and word embedding,
+/// directly, instead of inferring it from a behaviour that failed.
+///
+/// Why this suite exists
+/// ---------------------
+/// Almost every routing rule is a structural query over one `NLTagger` answer.
+/// `Actionability.withoutFrontedAdjunct` cuts "on the 15th" off "pay the rent"
+/// only because the tagger calls "pay" a verb and finds no verb in the span in
+/// front of it; `Actionability.isOrdinaryEnglishWord` reads "Unpack boxes" as
+/// an errand only because `NLEmbedding` holds "pack". Neither rule names a
+/// phrase, which is the point of writing them that way — and it makes the
+/// app's behaviour a function of what the framework answers on the machine it
+/// is running on.
+///
+/// That is not hypothetical. On 2026-09-11 the unit suite failed on a
+/// GitHub-hosted `macos-26` runner with 57 assertions that pass on the
+/// author's Mac, on unchanged `main` as well as on a branch, while
+/// `Tools/CorpusRunner` replayed the same corpus against the same sources on
+/// the same runner minutes earlier with zero failures. The difference between
+/// those two is the simulator runtime. Every failing assertion turned on a
+/// part-of-speech or vocabulary judgement.
+///
+/// These tests answer the question the behaviour tests can only raise. A
+/// failure here says the framework on this machine does not answer the way the
+/// rules assume, and names the answer it gave instead; a pass here alongside a
+/// behavioural failure rules the framework out. It lives in this file because
+/// it is the same kind of fact as the rest of it: something outside the app
+/// decides what the app does, and the suite states what it is relying on.
+final class NaturalLanguageEnvironmentTests: XCTestCase {
+
+    /// The whole sentence's tagging, as the failure message so the reading is
+    /// recoverable from a log without an `.xcresult`.
+    private func tagging(_ text: String) -> String {
+        SentenceContext(text).tokens
+            .map { "\($0.text):\($0.lexicalClass?.rawValue ?? "none")" }
+            .joined(separator: " ")
+    }
+
+    private func tag(_ word: String, in text: String) -> NLTag? {
+        SentenceContext(text).tokens
+            .first { $0.text.lowercased() == word }?.lexicalClass
+    }
+
+    func testTheEnglishWordEmbeddingLoads() {
+        XCTAssertNotNil(
+            NLEmbedding.wordEmbedding(for: .english),
+            "NLEmbedding.wordEmbedding(for: .english) is nil on this machine. "
+                + "PersonMention and Actionability both fail closed without it."
+        )
+    }
+
+    func testTheEmbeddingHoldsTheOrdinaryWordsTheRulesAskAbout() throws {
+        let embedding = try XCTUnwrap(NLEmbedding.wordEmbedding(for: .english))
+        for word in ["pack", "scale", "kettle", "rent", "invoice", "luck"] {
+            XCTAssertTrue(embedding.contains(word), "embedding does not hold \(word)")
+        }
+    }
+
+    func testAFrontedAdjunctIsTaggedAsOneAndTheVerbBehindItAsAVerb() {
+        for (text, verb) in [
+            ("on the 15th pay the rent", "pay"),
+            ("by friday send the invoice", "send"),
+            ("after dinner call mom", "call"),
+            ("tomorrow morning email the landlord", "email"),
+        ] {
+            XCTAssertEqual(tag(verb, in: text), .verb, tagging(text))
+            let context = SentenceContext(text)
+            guard let verbStart = context.tokens
+                .first(where: { $0.text.lowercased() == verb })?.range.lowerBound
+            else { continue }
+            XCTAssertTrue(
+                context.isVerbless(in: text.startIndex..<verbStart),
+                "the span in front of \(verb) holds a verb — " + tagging(text)
+            )
+        }
+    }
+
+    func testASubjectInsideAFrontedConditionIsTagged() {
+        let text = "when I finish the essay call dave"
+        XCTAssertEqual(tag("i", in: text), .pronoun, tagging(text))
+        XCTAssertEqual(tag("finish", in: text), .verb, tagging(text))
+        XCTAssertEqual(tag("call", in: text), .verb, tagging(text))
+    }
+
+    /// What separates "I had better luck last time" from "I had better call
+    /// the bank tomorrow" is one token's part of speech and nothing else.
+    func testHadBetterIsSeparatedByTheTagOfTheWordAfterIt() {
+        let knowledge = "I had better luck last time"
+        XCTAssertEqual(tag("luck", in: knowledge), .noun, tagging(knowledge))
+        let action = "I had better call the bank tomorrow"
+        XCTAssertEqual(tag("call", in: action), .verb, tagging(action))
     }
 }

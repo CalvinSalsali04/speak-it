@@ -299,9 +299,18 @@ jobs:
       # The development sets are meant to be read; the held-out sets are not.
       # This step prints the first and cannot reach the second: the scorers are
       # named in the script rather than discovered, and it refuses arguments.
+      # To the job log, not to a file. The first version of this step wrote
+      # the failures to ${{ runner.temp }} and nothing collected them, so the
+      # run that asked for them produced nothing anyone could read. The job
+      # log is the one place every reader can already see; the artifact host
+      # is not reachable from every session.
+      # `always()` because the run that most needs the rows is the run that
+      # went red: when Measure exits non-zero on a corpus-gate regression,
+      # a step without it is skipped and the dispatch produces a count and
+      # no rows.
       - name: Development-set failures
-        if: inputs.devset_failures == true
-        run: Tools/CI/devset-failures.sh > "${{ runner.temp }}/devset-failures.txt" 2>&1 || true
+        if: always() && inputs.devset_failures == true
+        run: Tools/CI/devset-failures.sh || true
 
       - name: Upload the metrics report
         if: always()

@@ -1590,6 +1590,39 @@ enum ClauseJuxtaposition {
         ) != nil
     }
 
+    /// Verbs that take a whole clause as their complement, beyond the verbs of
+    /// saying `ClauseScope.reportingVerb` already names. A closed grammatical
+    /// class rather than a list of phrases: every one of them licenses the same
+    /// "… that X did Y" frame, and the next one to arrive should not need its
+    /// own defect first.
+    private static let complementTakingVerb =
+        #"(?:\#(ClauseScope.reportingVerb)"#
+        + #"|remind|think|know|knows|knew|remember|remembers|hope|hopes"#
+        + #"|guess|guesses|bet|bets|reckon|notice|notices|noticed"#
+        + #"|realise|realises|realised|realize|realizes|realized"#
+        + #"|see|sees|saw|worry|worries|worried)"#
+
+    /// Whether the head has already opened a clausal complement, so the verb
+    /// behind it is that complement's predicate rather than a new instruction.
+    ///
+    /// `endsOnReportedSpeech` reads the head ending *on* the verb of saying —
+    /// "Sarah said call Mike". This reads the other shape, where the
+    /// complement has begun and its subject is sitting at the end of the head:
+    /// "remind me the bins go out on Tuesday" is one reminder about the bins,
+    /// and was arriving as a reminder plus an errand called "Go out on
+    /// Tuesday". The determiner is what makes it safe to do structurally —
+    /// what follows a determiner is the head of a noun phrase, and a noun
+    /// phrase between a complement-taking verb and a verb is a subject.
+    private static func opensAClausalComplement(_ head: String) -> Bool {
+        head.range(
+            of: #"(?i)\b\#(complementTakingVerb)\b"#
+                + #"(?:\s+(?:me|us|him|her|them|everyone|[A-Z][\p{L}'’-]+))?"#
+                + #"\s+(?:the|a|an|my|your|his|her|their|our|this|that|these|those)"#
+                + #"\s+[\p{L}'’-]+\s*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     /// Whether the text ends inside a place or condition clause that has not
     /// reached its verb yet.
     ///
@@ -1623,6 +1656,17 @@ enum ClauseJuxtaposition {
     /// tagging of the whole sentence, carries no verb. "After I finish the
     /// essay call Dave" keeps its cut, because "finish" is a verb and the head
     /// is a clause of its own.
+    ///
+    /// **The preposition is load-bearing and was measured to be.** Dropping it
+    /// — accepting any verbless head that *ends* on a time, so that "first
+    /// thing tomorrow email the landlord" would stop being cut — reads the
+    /// tagger's uncertainty as a fact. "Book the car in for Thursday renew my
+    /// passport" and "text Marcus about Saturday move the standup to 9:15"
+    /// both lost their boundary under that rule, because `NLTagger` does not
+    /// reliably call a sentence-initial "book" or "text" a verb, so a head
+    /// that is an instruction reads as verbless and ends on a day. An adjunct
+    /// has no verb *and* announces itself with a preposition; only the second
+    /// half is something the tagger cannot be wrong about.
     private static func isFrontedAdjunct(
         _ clause: String,
         headEnd: String.Index,
@@ -1703,6 +1747,7 @@ enum ClauseJuxtaposition {
             }
             guard !hasOpenTriggerClause(head),
                   !endsOnReportedSpeech(head),
+                  !opensAClausalComplement(head),
                   // "Idea for the app: let people share lists" is one idea
                   // however many verbs it describes; a capture that opens by
                   // naming itself an idea or a note is not cut.
@@ -1715,8 +1760,16 @@ enum ClauseJuxtaposition {
                   !clauseInternalLead.contains(last),
                   // A possessive or an amount in front of a verb-shaped word
                   // makes it a noun: "Maya's swim lesson", "the $89 charge".
+                  //
+                  // An ordinal is not an amount. "The 26th" is a complete noun
+                  // phrase with nothing following it inside the phrase, so
+                  // "Dad's appointment is on the 26th arrange a lift for him"
+                  // and "Priya starts on the 14th order her a laptop" were
+                  // both refused their boundary by a guard written for "3
+                  // eggs", and arrived as one row that lost the errand.
                   !last.hasSuffix("'s"), !last.hasSuffix("’s"),
-                  last.range(of: #"^[$€£]?\d"#, options: .regularExpression) == nil,
+                  last.range(of: #"^[$€£]?\d"#, options: .regularExpression) == nil
+                    || last.range(of: #"^\d{1,2}(?:st|nd|rd|th)$"#, options: .regularExpression) != nil,
                   // "The Friday sign off": a day behind a determiner is an
                   // adjective, and the verb-shaped word after it is a noun.
                   !(dayWords.contains(last) && recent.dropLast().last.map(nounDeterminers.contains) == true),

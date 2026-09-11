@@ -34,7 +34,17 @@ if [ -z "$blocking" ]; then
   exit 1
 fi
 if [ "$blocking" != "0" ]; then
-  echo "corpus gate: $blocking blocking failures (baseline is 0). Run Tools/CorpusRunner/build/corpus-run --verbose to see them." >&2
+  echo "corpus gate: $blocking blocking failures (baseline is 0). The rows follow." >&2
+  # Printing them, rather than naming the command that would print them.
+  # Telling the reader to "run corpus-run --verbose" assumes the reader has a
+  # Mac; on CI nobody does, the .xcresult and the artifact both live on a blob
+  # host a session may not reach, and the job log is the one place every
+  # reader can already see. A red gate that reports only a count costs a whole
+  # dispatch to turn into four sentences — it cost one on 2026-09-11.
+  # `|| true` so that a non-zero exit or a SIGPIPE from `head` cannot cut
+  # the script off before the verdict below.
+  Tools/CorpusRunner/build/corpus-run --verbose 2>&1 \
+    | head -n "${CORPUS_GATE_FAILURE_LINES:-300}" || true
   exit 1
 fi
 echo "corpus gate ok: 0 blocking failures"

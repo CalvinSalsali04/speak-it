@@ -5,6 +5,7 @@
 #
 #   Tools/CI/unit-tests.sh                                  # SpeakItTests (the unit suite)
 #   Tools/CI/unit-tests.sh SpeakItTests/TemporalFullPathTests
+#   Tools/CI/unit-tests.sh SpeakItTests/AbandonmentTests,SpeakItTests/SpeechRepairTests
 #   Tools/CI/unit-tests.sh SpeakItUITests                   # the XCUITest suite, slow
 #   SPEAKIT_SHARDS=3 Tools/CI/unit-tests.sh                 # the unit suite across three slim simulators
 #
@@ -62,9 +63,16 @@ if [ "$SHARDS" = "1" ] || [[ "$ONLY" == */* ]]; then
     -scheme SpeakIt
     -destination "platform=iOS Simulator,id=$SIMULATOR"
     -derivedDataPath "$DERIVED_DATA"
-    -only-testing:"$ONLY"
     CODE_SIGNING_ALLOWED=NO
   )
+  # A comma-separated list is several -only-testing arguments, not one.
+  # Iterating on a defect usually means two or three classes — the one that
+  # failed and the one that is supposed to protect it — and passing them as a
+  # single identifier matched nothing and reported a build that ran no tests.
+  IFS=',' read -r -a only_classes <<< "$ONLY"
+  for only_class in "${only_classes[@]}"; do
+    [ -n "$only_class" ] && args+=(-only-testing:"$only_class")
+  done
   if [ -n "$RESULT_BUNDLE" ]; then
     rm -rf "$RESULT_BUNDLE"
     args+=(-resultBundlePath "$RESULT_BUNDLE")
