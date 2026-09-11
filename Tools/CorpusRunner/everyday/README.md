@@ -220,10 +220,16 @@ rather than between two comparisons:
   than ambiguous: W38 and E20 rejected the strings `not 2D` and `not 6`, which a
   *correct* title contains. All ten keep their captures and their `negation`
   family label, and `test_score.py` now fails if a `negation` capture is given a
-  `reject` span. **Negation is consequently unmeasured by `invention` and by
-  nothing else either — that is a real gap in this instrument, named rather than
-  papered over.** Measuring it needs a judgement about which value the reading
-  treated as operative, which a span test cannot make.
+  `reject` span.
+
+**What is now unmeasured is narrower than "negation", and the distinction
+matters.** All 48 negation-family captures are still scored for routing, count,
+loss and title — negation is one of the weaker routing families in the set, and
+that signal is intact. What no measure here reports is **invention on a negated
+or superseded value**: whether the reading treated the operative value as the
+operative one. That needs a judgement a span test cannot make, so its home is a
+readable development set. Do not close this gap by re-adding a `reject` span to
+a contrast capture — that is the defect this section exists to record.
 
 Between the twenty added and the ten withdrawn, `invention` moves from 12 cases
 to 22, all of them genuine supersessions, so its rate sits on a different

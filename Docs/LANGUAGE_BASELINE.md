@@ -122,9 +122,12 @@ comparisons:
   one` — and the excluded value is spoken deliberately, so a faithful title
   contains it. Two of the old ones rejected `not 2D` and `not 6`, strings a
   *correct* title carries. Net effect 12 → 22 cases, all genuine supersessions.
-  **Negation is now measured by nothing in this instrument.** That gap is real
-  and is stated in the everyday README; closing it needs a judgement about which
-  value the reading treated as operative, which a span test cannot make.
+  The withdrawn captures are still scored for routing, count, loss and title,
+  so the negation family's routing signal is intact. What no measure reports is
+  **invention on a negated or superseded value** — whether the reading treated
+  the operative value as operative. That needs a judgement a span test cannot
+  make, so it belongs in a readable development set; the everyday README says so
+  and warns against closing the gap by re-adding a span test.
 - Span matching now anchors its left edge. The old test was a plain substring
   match over normalised text, where `6:40` folds to `6 40` and sits inside
   `16 40`, so a pipeline that correctly discarded a superseded time could be
