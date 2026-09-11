@@ -1063,6 +1063,123 @@ class TunedSideWidthTests(unittest.TestCase):
         self.assertEqual(ranked, [])
 
 
+#: A claim is not retired when the sentence is deleted from the file somebody
+#: happened to be editing. It is retired when it is gone from everywhere it is
+#: written *and* everywhere it is generated.
+#:
+#: The case that produced this list: `Tools/CorpusRunner/heldout/README.md`
+#: claimed the 389 utterances were "written before anyone read the parser",
+#: the repository's history turned out not to support it, and the sentence was
+#: rewritten. It was still printed at the top of every language report by
+#: `Tools/CI/language-metrics.sh`, and from there copied into every baseline
+#: quoting one. Removed where a person was reading, left standing where a
+#: script was writing.
+#:
+#: So the step is: grep the retired claim across the repository before calling
+#: it retired, and then keep grepping, which is what this does. Each entry is
+#: a phrase, the commit that retired it, and why — because a bare list of
+#: forbidden strings reads as censorship rather than as a decayed claim that
+#: somebody replaced with a checkable one.
+RETIRED_CLAIMS = {
+    "does not run in CI yet":
+        "8c83dd4 wired generation-check.py into the language-tools job. Four "
+        "files said it ran nowhere and one asserted the opposite; they now "
+        "state the property and cite the filter that makes it hold.",
+    "not run in CI yet":
+        "Same retirement, shorter phrasing, listed separately because the "
+        "grep that misses a variant is the grep that lets it survive.",
+}
+
+#: `Tools/CorpusRunner/heldout/README.md` line 3, `Docs/LANGUAGE_BASELINE.md`
+#: and `Tools/CI/language-metrics.sh` line 131 still carry "before anyone read
+#: the parser" on `main`. All three are rewritten on the core language
+#: thread's branch. That phrase joins the list above the moment that lands —
+#: one line, and the point of building the list now is that adding it is one
+#: line. It is named here rather than added early, because a list whose
+#: entries are aspirations is a list people learn to ignore.
+
+
+class RetiredClaimTests(unittest.TestCase):
+    """Claims somebody retired, asserted gone rather than believed gone."""
+
+    SKIP_DIRS = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
+
+    def tracked_files(self):
+        root = HERE.parents[2]
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            parts = set(path.relative_to(root).parts)
+            if self.SKIP_DIRS & parts:
+                continue
+            if path.suffix not in {".md", ".sh", ".py", ".swift", ".yml", ".txt"}:
+                continue
+            if path.resolve() == pathlib.Path(__file__).resolve():
+                continue  # the file that names the claims cannot be its own leak
+            yield path
+
+    @staticmethod
+    def carries(body, phrase):
+        """Whether a file body still carries a retired claim.
+
+        A function rather than an inline `in`, because the end-to-end test
+        cannot check its own matcher: mutating the comparison and mutating
+        the thing that would notice are the same edit. This is the seam where
+        the case bug lived, so this is where a fixture can reach it.
+        """
+        return phrase.lower() in body.lower()
+
+    def test_the_matcher_ignores_case(self):
+        """The bug this guard shipped with for ten minutes.
+
+        The first version lowered the body and compared it against phrases
+        containing "CI", so it could never fire. It reported a pass on a
+        repository with the claim in three files.
+        """
+        self.assertTrue(self.carries("it Does Not Run In CI Yet, sadly",
+                                     "does not run in CI yet"))
+        self.assertFalse(self.carries("it runs in CI", "does not run in CI yet"))
+
+    def test_the_claim_list_is_not_empty_and_every_entry_says_why(self):
+        """A list that can be emptied silently is a suppression.
+
+        Emptying `RETIRED_CLAIMS` made every mutation above pass, which is the
+        same shape as a `KNOWN:` marker forgiving a rate: the guard reports
+        success because it was asked nothing.
+        """
+        self.assertTrue(RETIRED_CLAIMS, "the retired-claim list must not be empty")
+        for phrase, reason in RETIRED_CLAIMS.items():
+            with self.subTest(phrase=phrase):
+                self.assertTrue(phrase.strip())
+                self.assertGreater(len(reason.strip()), 40,
+                                   "a retired claim needs the commit that "
+                                   "retired it and why, not a bare string")
+
+    def test_no_retired_claim_is_still_written_anywhere(self):
+        found = collections.defaultdict(list)
+        for path in self.tracked_files():
+            body = path.read_text(encoding="utf-8", errors="ignore")
+            for phrase in RETIRED_CLAIMS:
+                if self.carries(body, phrase):
+                    found[phrase].append(str(path))
+        for phrase, files in found.items():
+            with self.subTest(phrase=phrase):
+                self.fail(f"retired claim still present in {len(files)} file(s): "
+                          f"{', '.join(sorted(files))}\n  retired by: "
+                          f"{RETIRED_CLAIMS[phrase]}")
+
+    def test_the_check_reads_generated_output_too_not_only_prose(self):
+        """The half that would have caught the one that got away.
+
+        The surviving copy was in a shell script, not a document. A check
+        scanning `*.md` only would have reported the claim retired while it
+        was still being printed at the top of every report.
+        """
+        suffixes = {p.suffix for p in self.tracked_files()}
+        self.assertIn(".sh", suffixes)
+        self.assertIn(".py", suffixes)
+
+
 class DevsetScorerSealTests(unittest.TestCase):
     """A development scorer must not be aimable at a held-out set.
 
