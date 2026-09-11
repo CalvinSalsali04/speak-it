@@ -9,6 +9,92 @@ cannot run.
 they are the record of what was true when they were measured, not a claim about
 today.
 
+## 2026-09-11 10:12 — after the discourse-framing change
+
+First measured language change since the baseline. Commit `412a1a8` on
+`claude/hearth-thread-tod920`,
+[run #51](https://github.com/CalvinSalsali04/speak-it/actions/runs/34587781290),
+`macos-26`. Compared against the 09:56 section below, which is the only
+difference: no other change landed between them.
+
+### What moved, and what did not
+
+| instrument | measure | before | after |
+|---|---|---|---|
+| gating corpus | cases / failing | 1381 / 0 | 1393 / **0** |
+| everyday | routing | 152/220 (69.1%) | 153/220 (69.5%) |
+| everyday | count | 172/212 (81.1%) | 173/212 (81.6%) |
+| everyday | nothing lost | 210/224 (93.8%) | 210/224 (93.8%) |
+| everyday | nothing invented | 5/19 (26.3%) | **12/19 (63.2%)** |
+| everyday | clean titles | 217/235 (92.3%) | **225/235 (95.7%)** |
+| everyday | over-split | 17 | 16 |
+| everyday | under-split | 23 | 23 |
+| everyday | ambiguous acted on | 0 | 0 |
+| held-out (389) | destination | 233/320 (72.8%) | 233/320 (72.8%) |
+| held-out (389) | thought count | 255/310 (82.3%) | 255/310 (82.3%) |
+| held-out (389) | acted on anyway | 7 | 7 |
+| coordination | boundaries | 115/121 (95.0%) | 115/121 (95.0%) |
+| routed | destination | 74/84 (88.1%) | 74/84 (88.1%) |
+| routed | acted on anyway | 3 | 3 |
+| unfinished | recall / fallout | 34/57 / 0/96 | 34/57 / 0/96 |
+| abandonment | recall / fallout | 24/24 / 0/24 | 24/24 / 0/24 |
+| **framing** (new) | destination | — | 41/45 (91.1%) |
+| **framing** (new) | thought count | — | 43/44 (97.7%) |
+| **framing** (new) | acted on anyway | — | 0 |
+
+**Nothing regressed.** Not one everyday family lost ground on any of its three
+measures, no development set moved down, and the gating corpus stayed at zero
+failures across all four severities while growing by the 12 new cases.
+
+### Title hygiene, by defect
+
+| defect | before | after |
+|---|---|---|
+| farewell kept | 7 | **0** |
+| preamble `number one` kept | 2 | **0** |
+| preamble `number two` kept | 2 | 1 |
+| preamble `number three` kept | 1 | **0** |
+| preamble `what happened was` kept | 1 | 1 |
+| title is the whole capture | 8 | 8 |
+
+### The families the change was aimed at
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| trailing-goodbye | 7 | 2/7 → 2/7 | 4/7 → 4/7 | **0/7 → 7/7** |
+| run-on | 8 | 0/8 → 0/8 | 0/8 → 0/8 | 4/8 → 7/8 |
+| rambling-intro | 6 | 1/6 → 1/6 | 1/6 → 1/6 | 3/6 → 4/6 |
+| sequencing | 17 | 6/17 → **7/17** | 7/17 → **8/17** | 12/17 → 16/17 |
+| multi-thought | 40 | 19/40 → 19/40 | 22/40 → 22/40 | 36/40 → **40/40** |
+| list | 20 | 12/20 → **13/20** | 13/20 → **14/20** | 17/20 → 18/20 |
+| filler | 18 | 9/14 → 9/14 | 12/14 → 12/14 | 15/18 → **18/18** |
+
+### What this is honestly worth
+
+The title half of the problem is solved on this evidence: every farewell is
+gone, and `trailing-goodbye`, `multi-thought` and `filler` are at 100% clean
+titles. That is the visible defect — the words a person reads on the row —
+and it was the whole of `trailing-goodbye`'s title score.
+
+The segmentation half barely moved. Routing gained one capture and count
+gained one; `run-on` is still 0/8 and `multi-thought` still 19/40. Enumerated
+speech is now cut where the speaker said to cut it, and that is a small share
+of run-on speech: most of it carries no marker at all, which is a harder
+problem and the next one to take.
+
+**The held-out set did not move, at all.** That is the honest headline. This
+change was aimed at a family the 389-utterance set varies by mechanism rather
+than by content, so there was little there for it to move, but the rule stands:
+a change that has not moved the generalisation measure has not been shown to
+help on that measure, whatever the everyday numbers say.
+
+One number moved more than expected and is worth treating as a hypothesis
+rather than a finding: **nothing invented went from 5/19 to 12/19**. The likely
+reading is that framing words were being read as content — an enumerator
+looking like a quantity, a closing looking like a value — and removing them
+removed the invention with them. The denominator is 19, so this needs a second
+run before it is stated as a result.
+
 ## 2026-09-11 09:56 — complete baseline on `main`
 
 The baseline language improvement work is judged against. It is the first run
