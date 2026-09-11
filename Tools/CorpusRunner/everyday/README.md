@@ -1,8 +1,10 @@
 # Everyday speech — held-out set
 
 255 captures of ordinary adult life, 51 in each of five domains, written from
-the product description and from how people actually dictate. **Nothing here has
-been tuned against, and nothing here may be tuned against.**
+the product description and from how people actually dictate. **Nothing here may be
+tuned against.** Eight of the 255 turned out not to have been unseen when the
+set was authored; see [Eight of these captures were not held out](#eight-of-these-captures-were-not-held-out)
+before quoting a rate from here.
 
 ```bash
 ./Tools/CorpusRunner/everyday/score.sh              # the numbers
@@ -178,6 +180,45 @@ failures by default cannot, because the harness has no way to un-print them.
 detail, and an unrecognised flag does not unseal it either.
 
 Any scorer added to this directory must stay on that side of the line.
+
+## Eight of these captures were not held out
+
+`leak-check.py` was widened on 2026-09-11 to compare sealed capture text against
+the repository's prose, not only against the other corpora. It found eleven
+sealed captures already committed, eight of them from this set:
+
+    W17  W20  W51  F02  F06  F19  F29  M04
+
+All eight appear verbatim in `Docs/PipelineSweep/domains.md`, which is dated
+2026-08-25 — **three weeks before this set was authored** — and which tabulates
+each sentence beside the answer the pipeline gave for it. They were development
+failure-analysis material first and held-out captures second. Whatever those
+eight rows measure, it is not generalisation to unseen content.
+
+W51 is also in `Docs/LANGUAGE_BASELINE.md`, and in this README's own baseline
+section.
+
+What that does to a rate here, stated exactly: the denominator is not 255
+captures of unseen content. It is 247, plus eight that were looked at while
+rules were being changed. Nobody has yet re-scored the set without them, so
+every figure below this line still includes all eight, and none of the figures
+has been adjusted by hand — an adjusted number needs a macOS run, not
+arithmetic.
+
+The leak is not repairable by editing a document, because the exposure already
+happened. The remedy is to retire the eight and open a new generation, which
+moves published figures and so is a decision somebody takes rather than an edit.
+That decision is open.
+
+The direction matters and is the reason this went unseen for so long. A check
+that compares the sealed sets against each other cannot catch it: the leak did
+not travel between sets, and it did not travel forwards. It travelled out of a
+document that already existed into a set written later, which means a set's
+authoring date is not evidence that its content was unseen. `leak-check.py` now
+asks the other question too, so nothing further can arrive quietly; the eleven
+are listed in its `PROSE_DOCUMENTED` and remain counted on every run, because a
+list that hid them would be the marker-as-absolution mistake this repository has
+already made once.
 
 ## Checking the instrument itself
 
