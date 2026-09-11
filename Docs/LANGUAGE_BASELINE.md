@@ -990,7 +990,12 @@ Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
 (over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
 
 Weakest unfinished families: `incomplete-complement` 1/10,
-`trailing-function-word` 2/8, `abandoned-midthought` 3/9.
+`trailing-function-word` 2/8 ‡, `abandoned-midthought` 3/9.
+
+‡ Seven of those eight captures are recorded design limits as of `1ca210b`,
+declared against `ClauseStructure.swift`'s own "out of scope, and honestly so".
+The rate is unchanged and correct; what it means is not. See "What a recorded
+limit does to a weakest-family list" below.
 
 ### 5. Synthetic stress — still none
 
@@ -1109,7 +1114,7 @@ the scorer talking: see "Correction — 2026-09-11" above.
 | family | set | score |
 |---|---|---|
 | `incomplete-complement` | unfinished | **1/10** |
-| `trailing-function-word` | unfinished | **2/8** |
+| `trailing-function-word` | unfinished | **2/8** ‡ |
 | `abandoned-midthought` | unfinished | **3/9** |
 | `occupations` | coordination | **1/4**, all three failures over-splits |
 | `dangling-infinitive` | unfinished | 18/20 |
@@ -1120,6 +1125,36 @@ the scorer talking: see "Correction — 2026-09-11" above.
 Five of the six coordination failures are **over-splits**: the segmenter
 inventing a row nobody asked for. That is one direction, not a scatter, and it
 is worth treating as one question rather than six.
+
+### ‡ What a recorded limit does to a weakest-family list
+
+**`trailing-function-word` 2/8 is not the available win it looks like.** Seven
+of its eight captures — INC41, INC42, INC43, INC44, INC46, INC47, INC48 — are
+declared design limits as of `1ca210b`, citing `ClauseStructure.swift`'s own
+record that preposition, conjunction and adverb were each tried as a trailing
+class and each removed. "Pick up milk and" and "we're almost out" are the same
+tag shape and only one of them is unfinished, so what separates them is *which*
+preposition: a word list, which is the thing that file exists not to keep.
+
+The rate stays 2/8 on purpose. A limit is counted as a miss and never
+subtracted, because a ceiling is a denominator in waiting — publish "so the
+reachable total is 50 of 57" once and 34/50 is in the reader's head, and 68% is
+a nicer number than 59.6% that nobody earned. It would also be false: what the
+source records is a decision about three *tagger classes*, not a property of
+the language. The app already measures the speaker's pauses and throws them
+away (`Docs/SEGMENTATION_ARCHITECTURE.md`), and a boundary that read timings
+would not face this ambiguity at all.
+
+**So the reading to take from the row is "declined with the signals we have",
+not "broken" and not "unreachable".** INC45 is the one to look at: "I need to
+talk to Sarah about the" ends on a determiner, which that comment does not
+cover, and it was deliberately left out of the declaration rather than swept in
+— a limit that covered it would be a marker standing in for the judgement it
+approximates, which is the error this project keeps paying for.
+
+The declaration cannot outlive the decision: `test_score.py` checks the cited
+phrase is still in the source, so implementing the thing and deleting the
+comment fails the suite until the declaration goes too.
 
 ## What this baseline does not cover
 
