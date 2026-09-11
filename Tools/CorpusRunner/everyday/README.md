@@ -201,6 +201,12 @@ number in this table can be filled in until `score.sh` is run on a Mac. Until
 then this directory is an instrument with no reading, and saying otherwise would
 be inventing a result.
 
+The runner itself has been exercised end to end against a stand-in probe: the
+shell plumbing extracts all 235 captures, invokes the probe and renders the full
+report, so the only unrun link in the chain is the pipeline. If this block is
+missing or empty in a language-metrics report, the cause is the engine or the
+build, not this script.
+
 Those tests are not ceremony. Three of them caught real defects in the scorer
 while it was being written: operation targets were not counted as visible
 output, so every correctly handled cancellation scored as data loss; a field
