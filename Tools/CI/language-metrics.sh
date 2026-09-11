@@ -39,6 +39,14 @@ while [ $# -gt 0 ]; do
         echo "language-metrics: --report needs a path" >&2
         exit 2
       fi
+      # A flag where the path should be is a typo, and swallowing it would
+      # let "--report --verbose" past the refusal below on a technicality.
+      case "$2" in
+        --*)
+          echo "language-metrics: --report needs a path, got $2" >&2
+          exit 2
+          ;;
+      esac
       REPORT="$2"
       shift 2
       ;;

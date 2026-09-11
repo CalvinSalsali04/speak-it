@@ -30,10 +30,16 @@ the repository variable `IOS_RUNNER` to that runner's label.
 
 The `language` job is the cheap half. It runs `language-metrics.sh` and nothing
 else: no simulator, no release build, no unit suite. At roughly five macOS
-minutes it fits the monthly allowance about thirty times over, where the iOS
-job fits once or twice. Dispatching `ci.yml` with `language_only` skips the
-iOS job entirely, which is the way to ask whether a parser change helped
-without spending the month's budget on it.
+minutes it should fit the monthly allowance many times over, where the iOS job
+fits once or twice. Dispatching `ci.yml` with `language_only` skips the iOS job
+entirely, which is the way to ask whether a parser change helped without
+spending the month's budget on it.
+
+It is **dispatch-only on purpose** until one real run has confirmed the
+runtime, the cost, the output format and that every scorer works. Making it
+run per pull request is one line — add `|| vars.IOS_RUNNER != ''` back to its
+`if` — and should happen once that run has been read. Automating a job nobody
+has watched succeed is how a green tick stops meaning anything.
 
 That matters more than it sounds. The parser depends on Apple's
 `NaturalLanguage`, so it cannot run on Linux or in a container: before this

@@ -11,7 +11,8 @@
 # language scorer, with no simulator and no release build. It exists because
 # the parser only runs on macOS, so a session without a Mac would otherwise be
 # changing language rules against numbers it cannot produce. Dispatch it with
-# language_only to get those numbers without paying for the unit suite.
+# language_only to get those numbers without paying for the unit suite. It is
+# dispatch-only for now — see the job for why.
 #
 # Every check is a script under Tools/CI so the same command runs locally.
 name: CI
@@ -248,15 +249,15 @@ jobs:
 
   language:
     name: Language metrics
-    needs: changes
-    # Same availability rule as the iOS job — a Mac is required either way —
-    # but a fraction of the cost, so this is the one to dispatch when the
-    # question is whether a parser change helped. It repeats the iOS job's
-    # corpus gate on a full dispatch; ninety seconds is the right price for
-    # the gate not depending on this job existing.
-    if: >-
-      needs.changes.outputs.ios == 'true' &&
-      (github.event_name == 'workflow_dispatch' || vars.IOS_RUNNER != '')
+    # Dispatch only, deliberately, until one real run on a Mac has confirmed
+    # the runtime, the cost, the output format and that every scorer works.
+    # Running it per pull request is the intended end state and is one line
+    # away — add `|| vars.IOS_RUNNER != ''` — but automating a job nobody has
+    # watched succeed is how a green tick starts meaning nothing.
+    #
+    # It repeats the iOS job's corpus gate on a full dispatch; ninety seconds
+    # is the right price for the gate not depending on this job existing.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ${{ inputs.runner || vars.IOS_RUNNER || 'macos-26' }}
     timeout-minutes: 30
     steps:
