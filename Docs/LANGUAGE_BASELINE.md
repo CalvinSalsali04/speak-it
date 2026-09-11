@@ -10,6 +10,35 @@ that records a change which did not ship says so in its first lines. Older
 sections stay as written; they are the record of what was true when they were
 measured, not a claim about today.
 
+## Sealed-set cost ledger
+
+Every change that moved a sealed measure, with its direction. **One row per
+change, added when the change is measured, never edited afterwards.**
+
+This exists because no individual write-up can show the thing that matters
+here. A change costing one row on a sealed set is defensible on its own and
+says so honestly in its own section; three such changes are a real decline that
+no one section ever displays, and finding it otherwise means reading every
+dated section in this file and doing the arithmetic. A cost absorbed silently
+into the next figure is how a sealed set degrades invisibly, so a cost that
+does not appear here has not been reported.
+
+Sealed sets only — held-out, everyday, adversarial. Development sets are worked
+against on purpose and their movements belong in the dated sections.
+
+| date | change | measure | from | to | |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
+| 2026-09-11 | resultive guard tightened to a statement cause (#57) | — | — | — | no sealed measure moved |
+
+Running total: **−1 row**, across one change, on one of the eight sealed
+measures. Held-out destination, held-out acted-on-anyway, and all four everyday
+and both adversarial measures are unmoved since `2cc2ac5`.
+
+The ledger is not a budget and no number in it is acceptable by being small.
+It is here so the question "has this been drifting?" has an answer that takes
+one glance instead of an afternoon.
+
 ## Three standing rules, two of them learned by paying for them
 
 **Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
@@ -183,7 +212,299 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 20:38 — `abandoned-midthought` traced: the detector only ever reads the last word
+
+Run 34644656689, macos-26, branch at `8cfa1f5`, `language_only` with
+`devset_failures`. No parser change; this run exists to print rows nobody had
+looked at. Every rate is unchanged from the 20:14 run.
+
+**`abandoned-midthought` is 3 of 9 and had never had its failures listed.** It
+was the only weak family in the set with no recorded analysis — `1/10`
+`incomplete-complement` and `2/8` `trailing-function-word` both have one, and
+both turned out on inspection to be largely declined-by-design rather than
+broken. This one is not.
+
+| id | capture | got |
+|---|---|---|
+| INC49 | `Tomorrow I need to, um, wait, I forgot` | 1 row, **Today**, resolved, **due=Tue** |
+| INC50 | `Next week I should, wait, I lost it` | 1 row, Today, resolved |
+| INC51 | `I was going to, uh, hold on` | 1 row, Memory, resolved |
+| INC52 | `Remind me to, um, what was it` | 1 row, Today, resolved |
+| INC56 | `I need to I need to` | 1 row, Today, resolved |
+| INC57 | `I was going to call, I mean` | 1 row, Memory, resolved |
+
+The three that pass — INC53 `I need to, hmm`, INC54 `Tomorrow I want to um`,
+INC55 `I have to uh` — are the three whose filler strips to a clause that
+**ends on `to`**. That is the whole difference between the halves of this
+family, and it names the mechanism exactly.
+
+**`state=resolved` on all six is the part that matters more than the miss.**
+These are not captures the app is unsure about. It is confident. Four of the
+six become Today tasks, and INC49 is dated Tuesday — one of the set's two
+`unsafe` rows, the other being INC33, both already recorded at 15:45. A person
+who lost their thought out loud gets a task they never finished asking for,
+with a date on it.
+
+### Root cause: `ThoughtCompletion.unfinished` inspects the final token and its
+### predecessor, and nothing else
+
+Reading the source rather than inferring from the rates: the function takes
+`tokens.last`, tests its lexical class, tests `tokens[tokens.count - 2]` for
+`isVerb`, and in the `to` branch counts how many `to` tokens the clause holds.
+There is no other reach. Every unfinished thought it can detect is one that
+**stops** mid-frame.
+
+So a capture where the speaker opened a frame and then said anything at all
+afterwards is invisible to it, however unfinished the frame is. That is not a
+missing rule for these six sentences; it is the shape of what the detector can
+see. `SemanticGap.incompleteThought` — the representation — already exists and
+is right. The gap is reach, not vocabulary.
+
+Five of the six close on a **retrieval failure**: the speaker says the thought
+is gone (`I forgot`, `I lost it`, `hold on`, `what was it`, a trailing
+`I mean`). Those words are evidence about the material *before* them, and
+nothing reads them that way. `SpeechRepair` has a closed `bareWithdrawal` class
+for "the speaker took it back" and there is no counterpart for "the speaker
+lost it" — the two are different destinations, `Abandoned` against
+`Incomplete`, and only one is modelled. INC56 is the separate, already-recorded
+marker-count premise.
+
+### Not being built, and the reason is the same one as last time
+
+Sized over readable material with a walk, not a glob, and never touching a
+sealed path: **102,420 readable sentences; 25 contain a retrieval-failure
+phrase anywhere; 6 have one clause-finally; all 6 are rows in
+`unfinished.tsv`.** There is not one instance in the corpus that somebody here
+did not write for this purpose.
+
+The set also carries its own falsifier, which is the argument against a quick
+fix in one row: **FP27 `I think I forgot` is labelled `Complete`**, as are
+FP22 `I forgot my keys` and FP23 `I forgot what Sarah said`. Any rule keyed on
+the phrase flags FP27 and puts the first crack in a fallout record that is
+`0/96`. The structural discriminator that would survive it — an infinitive or
+modal frame followed by a finite clause that cannot fill it, which is why
+`I think` is safe and `I need to` is not — reaches INC49, INC50, INC52 and
+INC56 and honestly misses INC51 and INC57. Worth building against real
+captures. Not worth building against six sentences we wrote, where the
+discriminator and the data would have the same author.
+
+**This is the third target in a row to end here**, and the coincidence is the
+finding rather than any one of the three:
+
+| target | why it stopped |
+|---|---|
+| doubled infinitive frame (INC56) | 1 readable instance, ours |
+| retrieval-failure tail (this) | 6 readable instances, all ours |
+| deliberation, `decision` 1/6 | all readable rows by one author |
+
+Three independent weaknesses, three different layers, one cause: past the
+development sets we wrote, there is no material. The instruments are not the
+bottleneck any more and neither is the parser. **Recorded here as the
+measurement behind the request for real captures**, so that request rests on
+three traced failures rather than on a preference.
+
+## 2026-09-11 20:14 — the resultive guard tightened; nothing moved, and a hypothesis died
+
+Run [34642431339](https://github.com/CalvinSalsali04/speak-it/actions/runs/34642431339),
+`macos-26`, branch at `63e26de`. Measures the review changes to the section
+below. Everything committed after `63e26de` is documentation.
+
+**Every measure is identical to the 19:29 run.** Gating corpus **1404 cases, 0
+failing** (three new cases, all passing); held-out 233/320 destination and
+**254/310** thought count; everyday 168/240 · 193/232 · 245/255; adversarial
+52/116 · 78/105 with over-segmented still 9; rambling 69/73 · 62/73 with
+`knowledge-action` spoken still 3/3; coordination, routed, framing and runon
+unmoved.
+
+That is the intended result and it was predicted in advance: the change
+tightens the resultive guard and cannot loosen it, so the only movement
+available to it was a loss, and there was none.
+
+### What changed and why
+
+A review of the section below found two things, both correct, both checked
+against source before acting.
+
+**The bound as published was false.** "The change can only ever add a boundary"
+is not true: the resultive alternative is written to consume both words of `and
+so`, so for "X and so I need to Y" the boundary widens from `␣and␣` to
+`␣and␣so␣`, `resultive` computes true off its trailing `so`, and the left-side
+requirement lands on a boundary that `and` alone never applied it to. Where X
+does not stand alone that is a boundary **removed**. The correct statement is
+narrower: *the change adds a boundary where a statement is followed by a
+first-person obligation, and changes the extent of an existing `and` boundary
+in the single case where `and so` precedes one.*
+
+**The left-side test was carried by its weaker arm.** `leftCanStandAlone` is an
+OR whose second arm, `ActionabilityReader.read(left) != .ambiguous`, is true of
+a bare imperative — so an instruction could serve as a cause and "Pick up the
+dry cleaning so I need to bring the ticket" would split. The guard now reads
+`hasSubjectPredicate` alone. The argument for this boundary is that a
+commitment is not a property of the fact that prompted it; an instruction is
+not a fact. The ticket is *how the dry cleaning gets collected*, and splitting
+strands "bring the ticket" as a row that means nothing alone.
+
+Three regression cases, in the shape that had no coverage at all — verified
+first: the only `corpusCase` utterances containing `and so` are the two added
+here. "The lease ends in March and so I need to draft the renewal" at 2, "Okay
+and so I need to call Catherine tomorrow" at 1, and the imperative-cause guard
+at 1. The first two are a pair: the same widened boundary has to give opposite
+answers on them.
+
+### The negative result
+
+**The held-out row did not come back.** Thought count is 254/310 before and
+after, so whatever moved at 19:29 is not an imperative-cause split — that was
+the plausible candidate and it is now ruled out. The ledger entry stands at −1.
+
+No further hypothesis about that row will be tested by reading it. What is left
+is the honest position: one sealed row moved, the cause is not known, and the
+two sealed sets that are not held-out did not move at all.
+
+## 2026-09-11 19:29 — the `so` split: its target family fixed, and one sealed row lost
+
+Run [34638463387](https://github.com/CalvinSalsali04/speak-it/actions/runs/34638463387),
+`macos-26`, `language_only` with `devset_failures`, branch at `a64dde6`.
+The only parser change since `2cc2ac5` is the resultive-`so` boundary, so every
+movement below is attributable to it.
+
+### The target
+
+`knowledge-action` thought count, spoken half: **0/3 → 3/3.** RB17R, RB18R and
+RB19R now separate the fact from the errand it caused. The clean half stays
+3/3, so the twin gap on that family is closed.
+
+The cause was that clause splitting had one coordinator. `splittableAndRanges`
+matched `\s+and\s+` and nothing else; `splitClauses` carries `so` in
+`connectorRun` but requires `actionLeadPattern` immediately after, and that
+excludes `obligationLead` — so "so book the service" could split and "so I need
+to book the service" never could. Every clean twin in the family joins with
+`and` and every rambling twin with `so`, which explains all six rows.
+
+### What it cost
+
+| Measure | `2cc2ac5` | `a64dde6` | |
+| --- | --- | --- | --- |
+| Gating corpus | 1393 cases, 0 failing | **1401 cases, 0 failing** | +8 cases, all passing |
+| Held-out destination | 233/320 | 233/320 | — |
+| Held-out thought count | 255/310 | **254/310** | **−1** |
+| Held-out acted-on-anyway | 7 | 7 | — |
+| Everyday routing / count / titles | 168/240 · 193/232 · 245/255 | 168/240 · 193/232 · 245/255 | — |
+| Adversarial routing / count | 52/116 · 78/105 | 52/116 · 78/105 | — |
+| Adversarial over-segmented | 9 | 9 | — |
+| coordination | 115/121 | 115/121 | — |
+| routed | 74/84 · 77/79 | 74/84 · 77/79 | — |
+| framing | 41/45 · 43/44 | 41/45 · 43/44 | — |
+| runon | 42/46 · 35/44 | 42/46 · 35/44 | — |
+
+**The held-out count lost one row and this section does not explain it away.**
+That set is scored non-verbose on purpose and its failures are not read to
+steer parser work, so which capture moved is not known here and was not looked
+up. What can be said: across the three sealed sets — 764 captures — exactly one
+measure moved, by one row, and the two sealed sets that are not held-out did
+not move at all. That is consistent with the bound the change was designed to
+have, and it is still a real loss on the only set that stands in for unseen
+speech.
+
+### The over-split risk, bounded from readable material alone
+
+Since which held-out capture moved cannot be looked up, the next best thing is
+to bound the rule's reach where the text *can* be read. Over every readable
+sentence in the repository — development sets, the unit tests, and prose in
+`Docs/` — **13,396 sentences, of which 258 contain the word "so"**:
+
+| | |
+| --- | --- |
+| readable sentences scanned | 13,396 |
+| containing the word `so` | 258 |
+| matching the new admission | **14** |
+| left untouched | 244 |
+
+So the rule declines 95% of the `so` sentences it sees. One of the fourteen is
+a `GUARD:` note scraped out of a test file rather than an utterance, leaving
+thirteen, and every one is accounted for:
+
+- **Four are held by the left-side guard and did not split** — "Okay so I need
+  to call Catherine tomorrow", "Um so I need to, uh, call the dentist…", "Right
+  so I should email the landlord", RB01R. Verified, not assumed: the gate is at
+  0 failing over 1,401 cases and `errand-rambling` stayed 8/8.
+- **Five split and are correct** — RB17R, RB18R, RB19R (the target family, now
+  3/3) and the two new corpus rows, all at their labelled counts.
+- **Two rows now over-count, and in both the new boundary is right** — RB30C
+  and RB30R, for the reason below.
+- **Two split correctly inside rows that already passed** — RB28R and the
+  `and then also` corpus row, both still at their labelled counts.
+
+**Zero of the thirteen produced a wrong new boundary by the labels in this
+repository.** That does not explain the held-out row and is not offered as
+though it did — the held-out set exists precisely because readable material
+runs out. It does say the loss is not a systematic over-split: if the rule
+fired loosely, 258 `so` sentences and 13,396 readable ones is enough material
+for it to show, and it does not.
+
+### RB30 went 4 rows to 5, and the count column was hiding the reason
+
+RB30C and RB30R now over-produce. The boundaries tell a different story from
+the count:
+
+- Correct: `[picked up the results and the iron is low again]` `[book a follow
+  up]` `[start the supplements]` `[tell Mum]` — 4 rows, cutting at the `so` and
+  at two `and`s.
+- Before: it cut after "results", missed the `so` entirely, and scored **4** —
+  the right number from a missing boundary and a spurious one cancelling.
+- Now: the `so` boundary is correct and the spurious "results / iron is low"
+  cut survives, so the arithmetic stops cancelling and the row reads 5.
+
+So the regression on this row is the *exposure* of a pre-existing `and`
+over-split, not a new defect: "I picked up the blood work results and the iron
+is low again" is a result and what the result says, which is one thought. That
+is the next change, and it is deliberately not bundled here — two parser
+changes in one run make neither attributable.
+
+It is also the concrete demonstration of a claim made earlier today from
+reading alone: **a count column cannot see a wrong cut.** RB30 passed for a
+week while cutting in the wrong place.
+
+### Labels corrected in the same branch
+
+RB28 and RB30, both twins, wanted 3 thoughts and want 4 — each enumerates four
+units. Three of the four rows were failing at 3 and pass at 4, which is the
+direction to distrust; the check that makes it honest is that RB28R returned 3
+and *passed* against the wrong label and now fails, so the relabel created a
+failure rather than only removing them.
+
+RB14 (`give Dimitri the blue chair`) is marked as a known-bad row rather than
+fixed. It reaches Memory because `give` is absent from
+`ActionabilityReader.actionVerb` and `hasImperativeShape` requires the
+determiner directly after the head verb, so a recipient between them blocks the
+shape rule — the prepositional form "give the chair *to* Dimitri" passes.
+Across 3,020 readable utterances every other double-object dative uses a verb
+already on the list, so the only capture the gap costs is the one written for
+this set. A real structural blind spot with no measured user impact, recorded
+in `dropped-language-candidates`.
+
+### The earlier "filler is not the problem" headline is withdrawn as stated
+
+The 16:54 section below reads the 15 zero-gap pairs as showing filler costs
+nothing. It does not support that. Those families' clean twins are at 8/8, 4/4
+and 3/3 — at ceiling — so a zero gap has no headroom to appear in. Zero
+failures over 15 pairs bounds the per-capture filler cost at about **18%**
+(95%), and over errand's 8 pairs alone at about 31%. Not at zero.
+
+What those rows do license: **filler does not break the cases the parser
+already handles.** The structural finding is unaffected and is now demonstrated
+rather than inferred — the family that fell to 0/3 came back to 3/3 on a change
+to clause boundaries and nothing else. Raised by the evaluation thread; the
+arithmetic was checked here before accepting it.
+
 ## 2026-09-11 16:54 — the rambling set's first reading, and it is not filler
+
+> **Corrected at 19:29 (section above).** The "filler is not the problem"
+> reading below overstates what these pairs support: the three zero-gap
+> families are at ceiling on their clean halves, so 15 pairs bound the
+> per-capture filler cost at about 18%, not at zero. The section is left as it
+> was written, because it records what was reported at the time.
+
 
 Branch `claude/hearth-thread-tod920` at `d9366f1`,
 [run 34623965550](https://github.com/CalvinSalsali04/speak-it/actions/runs/34623965550),
@@ -1410,9 +1731,11 @@ left standing here because this section records what was reported at the time.
 `heldout.tsv` arrived in `cb2b630`, a commit that also rewrote six parser
 sources, seventeen hours after the seven `Docs/PipelineSweep/*.md` analyses of
 this parser's behaviour. Commit order is not authoring order, so the claim is
-uncheckable rather than false — and three of the 389 are demonstrably not
-unseen, two of them in the gating corpus itself. The figures below are
-unchanged and the rows are still counted;
+uncheckable rather than false — and five of the 389 are demonstrably not
+unseen, two of them in the gating corpus itself and three verbatim in
+documents. (This annotation said "three" until 19:54, having counted the
+exact-match column and not the union with the prose column.) The figures below
+are unchanged and the rows are still counted;
 `Tools/CorpusRunner/heldout/README.md` sets out the evidence.
 
 | measure | value |
