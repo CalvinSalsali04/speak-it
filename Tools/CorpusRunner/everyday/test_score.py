@@ -1088,7 +1088,43 @@ RETIRED_CLAIMS = {
     "not run in CI yet":
         "Same retirement, shorter phrasing, listed separately because the "
         "grep that misses a variant is the grep that lets it survive.",
+    "before anyone read the parser":
+        "Retired by #56 (4ddb573). heldout.tsv arrived in cb2b630, a commit "
+        "that in the same breath rewrote six parser sources, seventeen hours "
+        "after the PipelineSweep analyses of this parser landed. Commit order "
+        "is not authoring order, so the sentence is uncheckable rather than "
+        "false, which is the relevant fact about a claim the held-out rate's "
+        "meaning rests on.",
 }
+
+#: Occurrences where the sentence is QUOTED rather than claimed.
+#:
+#: Two kinds, and both are the retirement working rather than failing. An
+#: archived baseline section records what was reported at the time, so editing
+#: it would be rewriting the record instead of correcting a claim. And the
+#: retraction itself has to quote the sentence it retracts, or a reader cannot
+#: tell what was withdrawn.
+#:
+#: Worth saying that the first two things this list ever met were both
+#: legitimate: a guard with no exemption mechanism gets switched off the first
+#: time it is right about something.
+#:
+#: Keyed by (phrase, repository-relative path), and it forgives THE OCCURRENCE,
+#: not the file. The exemption holds only while the retraction is still written
+#: next to the claim: delete it, or restate the claim somewhere else in the
+#: same file, and this stops forgiving anything.
+RETIRED_CLAIM_QUOTED = {
+    ("before anyone read the parser", "Docs/LANGUAGE_BASELINE.md"):
+        "That sentence is not supportable and was retired",
+    ("before anyone read the parser", "Tools/CorpusRunner/heldout/README.md"):
+        "nothing in the repository supports it",
+}
+
+#: How close the retraction has to sit to the claim, in characters of flattened
+#: text. A file-level search would let one footnote at the bottom of a long
+#: document excuse a fresh assertion at the top, and `LANGUAGE_BASELINE.md` is
+#: 1,400 lines of exactly that shape.
+QUOTE_WINDOW = 400
 
 #: `Tools/CorpusRunner/heldout/README.md` line 3, `Docs/LANGUAGE_BASELINE.md`
 #: and `Tools/CI/language-metrics.sh` line 131 still carry "before anyone read
@@ -1155,18 +1191,126 @@ class RetiredClaimTests(unittest.TestCase):
                                    "a retired claim needs the commit that "
                                    "retired it and why, not a bare string")
 
+    @staticmethod
+    def flatten(text):
+        """Collapse whitespace so a claim wrapped across lines is still one claim.
+
+        The prose half of `leak-check.py` learned this the expensive way: a
+        per-line matcher skips exactly the wrapped sentences and indented block
+        quotations most likely to carry the thing you are looking for. A
+        retired claim is prose, and prose wraps -- `git grep` missed the
+        occurrence in `heldout/README.md` for precisely this reason, and so
+        would this check without the collapse.
+        """
+        return re.sub(r"\s+", " ", text)
+
+    @classmethod
+    def occurrences(cls, path, root):
+        """Every occurrence of a retired claim in `path`, and its exemption if any.
+
+        Yields `(phrase, exempt)`. `exempt` is the retraction text when this
+        particular occurrence is a documented quotation AND the retraction is
+        still written beside it; `None` otherwise. Forgiving one occurrence
+        never forgives a second one in the same file.
+        """
+        flat = cls.flatten(path.read_text(encoding="utf-8", errors="ignore"))
+        lowered = flat.lower()
+        try:
+            relative = str(path.relative_to(root))
+        except ValueError:                      # pragma: no cover - defensive
+            relative = str(path)
+        for phrase in RETIRED_CLAIMS:
+            evidence = RETIRED_CLAIM_QUOTED.get((phrase, relative))
+            start = 0
+            while True:
+                at = lowered.find(phrase.lower(), start)
+                if at < 0:
+                    break
+                start = at + len(phrase)
+                window = flat[at:start + QUOTE_WINDOW]
+                if evidence and cls.carries(window, cls.flatten(evidence)):
+                    yield phrase, evidence
+                else:
+                    yield phrase, None
+
+    def test_a_claim_wrapped_across_lines_is_still_one_claim(self):
+        """The defect this check would have shipped with as a line-wise grep."""
+        wrapped = "389 utterances written before anyone\nread the parser."
+        self.assertTrue(self.carries(self.flatten(wrapped),
+                                     "before anyone read the parser"))
+        self.assertFalse(self.carries(wrapped, "before anyone read the parser"),
+                         "unflattened, the wrap hides it -- which is the point")
+
     def test_no_retired_claim_is_still_written_anywhere(self):
-        found = collections.defaultdict(list)
+        root = HERE.parents[2]
+        live = collections.defaultdict(list)
+        quoted = 0
         for path in self.tracked_files():
-            body = path.read_text(encoding="utf-8", errors="ignore")
-            for phrase in RETIRED_CLAIMS:
-                if self.carries(body, phrase):
-                    found[phrase].append(str(path))
-        for phrase, files in found.items():
+            for phrase, exempt in self.occurrences(path, root):
+                if exempt:
+                    quoted += 1
+                else:
+                    live[phrase].append(str(path.relative_to(root)))
+        self.assertEqual(quoted, len(RETIRED_CLAIM_QUOTED),
+                         "every quoted entry must match exactly one live "
+                         "occurrence: an entry matching none has outlived its "
+                         "row, and one matching several is forgiving in bulk")
+        for phrase, files in live.items():
             with self.subTest(phrase=phrase):
                 self.fail(f"retired claim still present in {len(files)} file(s): "
                           f"{', '.join(sorted(files))}\n  retired by: "
                           f"{RETIRED_CLAIMS[phrase]}")
+
+    def test_a_quoted_occurrence_needs_its_retraction_beside_it(self):
+        """The marker has to be able to stop applying, or it is an off switch.
+
+        Four states, because a check tested only where its conditions agree is
+        not tested at all: annotated, retraction deleted, retraction too far to
+        be read as attached, and the claim restated fresh below an annotated
+        one.
+        """
+        phrase = "before anyone read the parser"
+        retraction = RETIRED_CLAIM_QUOTED[(phrase, "Docs/LANGUAGE_BASELINE.md")]
+
+        def exemptions(body):
+            with tempfile.TemporaryDirectory() as room:
+                root = pathlib.Path(room)
+                (root / "Docs").mkdir()
+                path = root / "Docs" / "LANGUAGE_BASELINE.md"
+                path.write_text(body, encoding="utf-8")
+                return [e for _, e in self.occurrences(path, root)]
+
+        annotated = (f"389 utterances written {phrase}.\n\n"
+                     f"\u00a7 **{retraction} on 2026-09-11.**\n")
+        self.assertEqual(exemptions(annotated), [retraction],
+                         "the quoted occurrence carries its retraction")
+
+        self.assertEqual(exemptions(f"389 utterances written {phrase}.\n"), [None],
+                         "retraction deleted, so nothing excuses the sentence")
+
+        far = (f"389 utterances written {phrase}.\n" + "filler line\n" * 60
+               + f"\u00a7 **{retraction} on 2026-09-11.**\n")
+        self.assertEqual(exemptions(far), [None],
+                         "a retraction the reader never reaches is not a retraction")
+
+        second = annotated + f"\nAnd again: written {phrase}, stated fresh.\n"
+        self.assertEqual(exemptions(second), [retraction, None],
+                         "forgiving one occurrence must not forgive the next")
+
+    def test_every_quoted_entry_names_a_retired_phrase_and_a_real_file(self):
+        root = HERE.parents[2]
+        self.assertTrue(RETIRED_CLAIM_QUOTED,
+                        "an empty exemption list and a guard nobody has tested "
+                        "look the same from here")
+        for (phrase, relative), evidence in RETIRED_CLAIM_QUOTED.items():
+            with self.subTest(entry=relative):
+                self.assertIn(phrase, RETIRED_CLAIMS,
+                              "an exemption for a phrase nobody retired")
+                self.assertTrue((root / relative).exists(),
+                                "an exemption for a file that is gone")
+                self.assertGreater(len(evidence.strip()), 20,
+                                   "the evidence has to be specific enough that "
+                                   "deleting the retraction removes it")
 
     def test_the_check_reads_generated_output_too_not_only_prose(self):
         """The half that would have caught the one that got away.
