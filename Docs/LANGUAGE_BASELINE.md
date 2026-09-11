@@ -25,7 +25,7 @@ difference: no other change landed between them.
 | everyday | routing | 152/220 (69.1%) | 153/220 (69.5%) |
 | everyday | count | 172/212 (81.1%) | 173/212 (81.6%) |
 | everyday | nothing lost | 210/224 (93.8%) | 210/224 (93.8%) |
-| everyday | nothing invented | 5/19 (26.3%) | **12/19 (63.2%)** |
+| everyday | nothing invented | 5/19 (26.3%) | 12/19 (63.2%) — **not a real gain, see below** |
 | everyday | clean titles | 217/235 (92.3%) | **225/235 (95.7%)** |
 | everyday | over-split | 17 | 16 |
 | everyday | under-split | 23 | 23 |
@@ -88,12 +88,24 @@ than by content, so there was little there for it to move, but the rule stands:
 a change that has not moved the generalisation measure has not been shown to
 help on that measure, whatever the everyday numbers say.
 
-One number moved more than expected and is worth treating as a hypothesis
-rather than a finding: **nothing invented went from 5/19 to 12/19**. The likely
-reading is that framing words were being read as content — an enumerator
-looking like a quantity, a closing looking like a value — and removing them
-removed the invention with them. The denominator is 19, so this needs a second
-run before it is stated as a result.
+**The invention jump is not a result, and was corrected within the hour.** The
+number moved from 5/19 to 12/19, and the arithmetic gives it away: **seven of
+the nineteen invention cases listed `bye` as the value the reading must not
+show**, and 5 + 7 = 12. On the twelve cases that test what the measure is for —
+a superseded value, a corrected number, a corrected weekday, an inverted
+negation — the score was 5/12 before this change and 5/12 after. Nothing about
+invention improved.
+
+The cause was the scorer, not the change: a farewell left in a title is a title
+defect, and it was being counted a second time as an invention, so one fix moved
+two metrics. The evaluation thread found this, has narrowed `reject` to values
+the reading must not *assert*, and added a test that fails if a farewell returns
+to that column. Verified here against `everyday.tsv` on `main` rather than taken
+on trust: 19 rows carry a reject value and 7 of them are `bye`.
+
+Once that lands, the invention column on both of these sections stops being
+comparable with later runs. Treat 5/19 and 12/19 as belonging to a scorer that
+no longer exists.
 
 ## 2026-09-11 09:56 — complete baseline on `main`
 
@@ -159,6 +171,12 @@ And **merges outnumber splits, 23 to 17**: see "What this changes" below.
 reading must *not* show, and on **14 of those 19 it shows it anyway**. The
 denominator is small, but a 74% rate on a harm measure is the worst number in
 this file.
+
+> **Corrected 2026-09-11 10:25.** Seven of those 19 rows listed `bye` as the
+> rejected value, which is a title defect the title metric already counted. The
+> figure above is what the scorer reported and is left as recorded, but it is
+> not a clean invention rate, and it is not comparable with runs after the
+> evaluation thread's narrowing of that column.
 
 #### Title hygiene — 217/235 clean (92.3%)
 
