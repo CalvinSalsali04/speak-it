@@ -106,6 +106,18 @@ timings only have to survive from the recognizer to `ThoughtExtractor`, in
 memory. Re-analysing an old capture later would not have them. That is a real
 limit and a much smaller one than a schema change.
 
+**And it sets a ceiling no instrument here can show.** Raised by the evaluation
+thread, and it sharpens what the numbers above mean. `statement-runon` at 0 of 6
+and the everyday `run-on` family are not only unmeasured against pauses — they
+are bounded by what survives the flattening at line 290, and neither number can
+distinguish *the rule is missing* from *the signal is missing*. Today the first
+reading is settled: nothing proposes a boundary there, so the 0 of 6 is a
+capability gap. But if a rule is ever written for it, its ceiling is set by that
+one line of string conversion, and no corpus in this repository would show the
+ceiling. **So the first rule that moves the number will look like it solved the
+family.** It will not have; it will have taken the part of the family that word
+order can reach.
+
 **What cannot be claimed:** whether pause length actually separates these
 sentences is **unmeasured and currently unmeasurable here.** Every corpus in
 this repository is text — `heldout.tsv`, `everyday.tsv`, `adversarial.tsv`, the
