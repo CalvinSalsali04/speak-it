@@ -108,10 +108,36 @@ Two smaller consequences of the same branch outlive the arithmetic:
   not that row failed, so it will keep reading 4 after one of them starts
   passing — which is the moment the marker should be removed.
 
-**Nothing else in this file is affected.** `KNOWN:` appears in exactly two files
-in the repository, `abandonment.tsv` and its own scorer, so the `unfinished`
-set's 34/57 recall, 0/96 fallout and 2 unsafe stand as measured, as does every
-other figure here.
+**Nothing else in this file is affected**, and that is checkable rather than
+inferred. `KNOWN:` appears in exactly two files in the repository,
+`abandonment.tsv` and its own scorer — but the stronger argument is that every
+other published denominator reconciles with the label file it came from:
+
+| published | denominator | label file says |
+|---|---|---|
+| coordination 115/121 | 121 | 121 rows, and a row the probe never emitted counts as a **failure** here, not an exclusion |
+| routed 74/84, ambiguous 3/32 | 84 and 32 | 116 rows, 32 carrying `Ambiguous` — 116 − 32 = 84 |
+| framing 41/45 | 45 | 45 rows, none ambiguous |
+| runon 41/46 | 46 | 46 rows, none ambiguous |
+| unfinished 34/57 and 0/96 | 57 and 96 | 57 `Incomplete` and 96 `Complete` of 163 rows |
+| held-out 233/320 | 320 | 389 rows, 69 carrying `Ambiguous` — 389 − 69 = 320 |
+
+All of those scorers except coordination's drop a labelled row the probe never
+emitted out of the denominator rather than failing it. So a denominator arriving
+at exactly its label count is positive evidence that none was dropped on the run
+these figures came from. That check is available for every rate above, and it passes for all of
+them. It is the check the abandonment figures needed and could not get, because
+there the arithmetic departs from the labels by design.
+
+**One scorer would hide the drop next time.** `unfinished-score.py` increments
+an `unseen` counter and then never prints it, never records a miss for it, and
+never gates on it — the only one of the five that does none of the three.
+Coordination counts a missing row as a failure; abandonment prints it, records
+it and fails the exit code on it; held-out and everyday both print
+`missing probe results`, and everyday's mutation harness checks that the counter
+can still report. `unfinished` alone would publish a rate over a shrunken set
+with nothing in its output to say so. The reconciliation above is what stands in
+for that today, and it is a hand check rather than an instrument.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 
