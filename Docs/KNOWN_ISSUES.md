@@ -465,6 +465,43 @@ make the family consistent would trade a safe gap for an unsafe one. Both cases
 are in `Tools/CorpusRunner/devsets/routed.tsv`, expected to fail, so the gap
 stays measured.
 
+## A verb with no object is not read as an unfinished thought
+
+**Measured 2026-09-11**, run 34617253884 on `macos-26`, from
+`Tools/CorpusRunner/devsets/unfinished.tsv`.
+
+`ThoughtCompletion` reads the tail of a sentence structurally: a word whose job
+is to introduce something, left with nothing behind it. "Tomorrow I want to"
+ends on the infinitive marker and is caught — `dangling-infinitive` scores
+**18/20**. "Tomorrow I want" ends on the verb itself, and nothing reaches it —
+`incomplete-complement` scores **1/10**.
+
+**What a person sees.** "Tomorrow I want" becomes a Today task, titled with
+those three words, dated tomorrow. Half a sentence arrives looking like a
+decision the person made. That is the severity of this entry rather than a
+second entry: `unfinished.tsv` reports it as `UNSAFE 2` — a fragment given a
+date — and both captures behind that figure are ones this gap missed.
+`ThoughtOrganizer` drops every commitment the moment the thought is recognised
+as unfinished, so **the unsafe count reaches 0 when this gap closes**, with no
+separate guard to build. One defect, one entry, and it retires in one piece.
+
+**Four of the nine misses are not this gap and must not be swept in with it.**
+Each is a decline recorded in `ClauseStructure.swift` with the measurement
+behind it: a stranded preposition ("Meet Mike at" and "remind me an hour
+before" are the same shape and the second is finished), a particle behind a
+verb (the guard that keeps "follow up" and "check in" whole), and a bare
+one-word imperative (`NLTagger` classifies a lone "Add" differently on macOS
+and on iOS). Those stay declined.
+
+**Why it is documented rather than fixed.** The five that remain — "I want",
+"I need", "I have to get", "I should buy", "Tomorrow I want" — need the app to
+know that "buy" takes an object and "ate" does not. That is a vocabulary list,
+and `ClauseStructure` is built on the principle that word lists do not survive
+contact with speech; the three classes tried and removed there cost four
+blocking corpus failures between them. The safe direction is also not obvious:
+`unfinished` fallout is **0/96** today, and "I need" said as a complete
+utterance is exactly the shape a widened detector starts eating.
+
 ## Run-on speech with no marker in it is still one row
 
 `DiscourseFrame` and the enumeration vocabulary in `splitClauses` read the

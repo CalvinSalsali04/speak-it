@@ -249,39 +249,55 @@ anything.
 date would count as unsafe too. `UNSAFE 2` cannot distinguish "the guard held
 on the others" from "there was nothing for it to hold".
 
-The set settles it with a minimal pair already in it. Fourteen of the 57
-`Incomplete` captures carry a resolvable temporal expression:
+**The source settles it, and the capture counts do not.** `ThoughtOrganizer`
+calls `ThoughtCompletion.unfinished` **before anything reads a date**, and on a
+hit returns `dueDate: nil, reminderDate: nil, recurrenceRule: nil,
+locationIntent: nil` with the words kept. The comment above it names this exact
+case: *"'Tomorrow I want to' resolved its 'tomorrow' perfectly and then hung it
+on a sentence that never said what to do."*
+
+That is a proof rather than an association. A flagged capture returns with
+every commitment nil, so `committed` is false, so it cannot be counted unsafe.
+**`unsafe` therefore reaches 0 when recall reaches 57/57, whatever else is
+true.** It is the recall miss's blast radius, not a hole beside it.
+
+That decides what gets written down. `unsafe` is not its own
+`Docs/KNOWN_ISSUES.md` entry — a second entry would double-count one defect,
+the way a farewell once counted as both a title defect and an invention. But
+the recall gap had no entry either, so the behaviour a person actually meets —
+"Tomorrow I want" arriving as a Today task dated tomorrow — was documented
+nowhere. It has one now, **"A verb with no object is not read as an unfinished
+thought"**, carrying the dated-fragment consequence inside it as the severity.
+Close the gap and both halves retire together.
+
+The set corroborates that, and a first draft of this section overstated how
+much. The pair is real:
 
 | capture | flagged? | unsafe? |
 |---|---|---|
 | INC01 `Tomorrow I want to` | yes | no |
 | INC33 `Tomorrow I want` | **no** | **yes**, `due=['Tue']` |
 
-One trailing `to` apart, and it holds across the rest: INC01, INC12, INC13,
-INC15, INC23, INC29, INC30 and INC54 all carry `tomorrow`, `next week` or
-`at five`, all are flagged, and none is unsafe. The only two unflagged captures
-carrying a resolvable temporal are the only two unsafe.
+**The count around it was wrong, and it was wrong the way a paraphrased
+predicate is always wrong.** A regex over the 57 `Incomplete` rows matched
+fourteen, and the draft then described them as carrying "a resolvable temporal
+expression" and listed eight. Ten are flagged; **four are unflagged — INC05
+`Later I should`, INC33, INC49 and INC50 `Next week I should, wait, I lost
+it`** — and only two of the four are unsafe. So "the only two unflagged
+captures carrying a resolvable temporal are the only two unsafe" was false. The
+regex matched `later` and `at some point`, which resolve to no day at all; what
+was run and what was reported were different predicates, and the narrowing
+happened in the prose rather than in the code.
 
-**So flagging does suppress the commitment, and `unsafe` is the blast radius of
-the recall miss rather than a hole beside it.** It reaches 0 when
-`incomplete-complement` and `abandoned-midthought` recall improves, with no
-guard work at all. It does not belong in `Docs/KNOWN_ISSUES.md` as a limitation
-in its own right; written there it would describe a hole that does not exist.
+Why INC05 and INC50 are undated is a hypothesis, not a finding: `later` and
+`next week` name no single day, and `wait, I lost it` may reach the abandonment
+path and produce no row. Neither has been checked. **Nothing in the conclusion
+rests on it**, because the conclusion rests on the early return above.
 
 This also corrects a sizing argument recorded earlier in this workstream — that
 26 of the 67 non-`Complete` captures carry a temporal expression, so the guard
 declines 24 of 26 and these are two leaks in a working guard. The denominator
 was wrong and the mechanism was wrong: nothing declined these two.
-
-### The suppression is provable from source, not only from the pair
-
-`ThoughtOrganizer.swift:920` calls `ThoughtCompletion.unfinished` **before
-anything reads a date**, and on a hit returns `dueDate: nil, reminderDate: nil,
-recurrenceRule: nil, locationIntent: nil` with the words kept. The comment
-above it names this exact case: *"'Tomorrow I want to' resolved its 'tomorrow'
-perfectly and then hung it on a sentence that never said what to do."* So the
-INC01/INC33 pair is corroboration of a mechanism that is written down, not an
-inference standing on ten captures.
 
 ### What this makes the next target — narrower than it first looked
 
@@ -321,8 +337,8 @@ The doubled frame is not rare, and both sides of it are already covered:
 | capture | set | must be |
 |---|---|---|
 | `I need to I need to` | dev `unfinished` INC56 | flagged |
-| `I need to I need to get the oil changed before the trip` | held-out C002 | **finished** |
-| four more `I need to I need to …` captures | everyday W32, M08, L05, E04 | **finished** |
+| a capture opening `I need to I need to …` and then finishing | held-out C002 | **finished** |
+| four more opening the same way | everyday W32, M08, L05, E04 | **finished** |
 
 The fix would be to the rule's input rather than a new rule: ask whether an
 earlier marker was *filled* — followed by a verb — instead of whether one
