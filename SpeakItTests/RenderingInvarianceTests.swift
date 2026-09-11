@@ -252,11 +252,11 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
         ] {
             XCTAssertEqual(tag(verb, in: text), .verb, tagging(text))
             let context = SentenceContext(text)
-            guard let head = context.tokens.first(where: { $0.text.lowercased() == verb })?.range else {
-                continue
-            }
+            guard let verbStart = context.tokens
+                .first(where: { $0.text.lowercased() == verb })?.range.lowerBound
+            else { continue }
             XCTAssertTrue(
-                context.isVerbless(in: text.startIndex..<head),
+                context.isVerbless(in: text.startIndex..<verbStart),
                 "the span in front of \(verb) holds a verb — " + tagging(text)
             )
         }
