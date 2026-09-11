@@ -933,6 +933,50 @@ class TunedSideWidthTests(unittest.TestCase):
         self.assertIn("exact collisions         1", buf2.getvalue())
         self.assertIn("S0", buf2.getvalue())
 
+        #: The documented row is the steady state -- reported on every green
+        #: run -- so its text must not be printed, or the overlap half of this
+        #: file puts sealed captures into every CI log, which is the harm the
+        #: prose half was written to avoid. The undocumented row still prints
+        #: both sides: that run fails, and somebody has to judge whether the
+        #: pair is contamination or coincidence, which two ids cannot answer.
+        self.assertNotIn("the spare key is under the doormat", buf2.getvalue())
+        self.assertIn("(documented)", buf2.getvalue())
+        self.assertIn("the spare key is under the doormat", buf.getvalue())
+
+
+    def test_a_documented_near_duplicate_does_not_print_its_text_either(self):
+        """The near branch needed its own fixture to be tested at all.
+
+        The collision test above only ever produces an exact match, so the
+        near branch was never reached by it: a mutation putting the capture
+        text back into the documented-near line went unnoticed. A branch no
+        fixture reaches is not defence in depth, it is a branch nobody is
+        checking.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("the spare key is under the doormat now")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED = [sealed]
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {("everyday.tsv", "S0"): "known"}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                code = self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertEqual(code, 0, "a documented near duplicate must not gate")
+        self.assertIn("near duplicates (>=0.7)  1  (1 documented, 0 new)", out)
+        self.assertIn("NEAR  S0", out)
+        self.assertIn("(documented)", out)
+        self.assertNotIn("doormat", out)
+
 
 class DevsetScorerSealTests(unittest.TestCase):
     """A development scorer must not be aimable at a held-out set.

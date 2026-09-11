@@ -468,11 +468,24 @@ def check(path):
           f"  ({len(exact) - len(fresh_exact)} documented, {len(fresh_exact)} new)")
     print(f"near duplicates (>={THRESHOLD})  {len(near)}"
           f"  ({len(near) - len(fresh_near)} documented, {len(fresh_near)} new)")
+    #: A documented row prints its id and where it is, and **not its text**.
+    #: This is the steady state: those rows are reported on every green run,
+    #: so printing the capture would put sealed text into every CI log from
+    #: now on -- which is the harm `check_prose` was written to avoid, arriving
+    #: through the other half of the same file. A *new* row still prints both
+    #: sides, because the run fails and somebody has to judge whether the pair
+    #: is contamination or coincidence, and they cannot do that from two ids.
     for cid, utterance, source in exact:
-        print(f"  COLLISION  {cid}  also in {source}\n    {utterance}")
+        if (path.name, cid) in OVERLAP_DOCUMENTED:
+            print(f"  COLLISION  {cid}  also in {source}  (documented)")
+        else:
+            print(f"  COLLISION  {cid}  also in {source}\n    {utterance}")
     for cid, overlap, source, utterance, other in sorted(near, key=lambda r: -r[1]):
-        print(f"  NEAR  {cid}  j={overlap}  {source}\n    held out: {utterance}"
-              f"\n    tuned:    {other}")
+        if (path.name, cid) in OVERLAP_DOCUMENTED:
+            print(f"  NEAR  {cid}  j={overlap}  {source}  (documented)")
+        else:
+            print(f"  NEAR  {cid}  j={overlap}  {source}\n    held out: {utterance}"
+                  f"\n    tuned:    {other}")
     if fresh_exact or fresh_near:
         sources = ({src for _, _, src in fresh_exact}
                    | {src for _, _, src, _, _ in fresh_near})
