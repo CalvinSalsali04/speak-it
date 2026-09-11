@@ -29,6 +29,7 @@ against on purpose and their movements belong in the dated sections.
 | date | change | measure | from | to | |
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
+| 2026-09-11 | resultive guard tightened to a statement cause (#57) | — | — | — | no sealed measure moved |
 
 Running total: **−1 row**, across one change, on one of the eight sealed
 measures. Held-out destination, held-out acted-on-anyway, and all four everyday
@@ -210,6 +211,64 @@ already print the count, and coordination still has the strongest answer of the
 five — a missing row is a failure and the denominator stays whole. Switching the
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
+
+## 2026-09-11 20:14 — the resultive guard tightened; nothing moved, and a hypothesis died
+
+Run [34642431339](https://github.com/CalvinSalsali04/speak-it/actions/runs/34642431339),
+`macos-26`, branch at `63e26de`. Measures the review changes to the section
+below. Everything committed after `63e26de` is documentation.
+
+**Every measure is identical to the 19:29 run.** Gating corpus **1404 cases, 0
+failing** (three new cases, all passing); held-out 233/320 destination and
+**254/310** thought count; everyday 168/240 · 193/232 · 245/255; adversarial
+52/116 · 78/105 with over-segmented still 9; rambling 69/73 · 62/73 with
+`knowledge-action` spoken still 3/3; coordination, routed, framing and runon
+unmoved.
+
+That is the intended result and it was predicted in advance: the change
+tightens the resultive guard and cannot loosen it, so the only movement
+available to it was a loss, and there was none.
+
+### What changed and why
+
+A review of the section below found two things, both correct, both checked
+against source before acting.
+
+**The bound as published was false.** "The change can only ever add a boundary"
+is not true: the resultive alternative is written to consume both words of `and
+so`, so for "X and so I need to Y" the boundary widens from `␣and␣` to
+`␣and␣so␣`, `resultive` computes true off its trailing `so`, and the left-side
+requirement lands on a boundary that `and` alone never applied it to. Where X
+does not stand alone that is a boundary **removed**. The correct statement is
+narrower: *the change adds a boundary where a statement is followed by a
+first-person obligation, and changes the extent of an existing `and` boundary
+in the single case where `and so` precedes one.*
+
+**The left-side test was carried by its weaker arm.** `leftCanStandAlone` is an
+OR whose second arm, `ActionabilityReader.read(left) != .ambiguous`, is true of
+a bare imperative — so an instruction could serve as a cause and "Pick up the
+dry cleaning so I need to bring the ticket" would split. The guard now reads
+`hasSubjectPredicate` alone. The argument for this boundary is that a
+commitment is not a property of the fact that prompted it; an instruction is
+not a fact. The ticket is *how the dry cleaning gets collected*, and splitting
+strands "bring the ticket" as a row that means nothing alone.
+
+Three regression cases, in the shape that had no coverage at all — verified
+first: the only `corpusCase` utterances containing `and so` are the two added
+here. "The lease ends in March and so I need to draft the renewal" at 2, "Okay
+and so I need to call Catherine tomorrow" at 1, and the imperative-cause guard
+at 1. The first two are a pair: the same widened boundary has to give opposite
+answers on them.
+
+### The negative result
+
+**The held-out row did not come back.** Thought count is 254/310 before and
+after, so whatever moved at 19:29 is not an imperative-cause split — that was
+the plausible candidate and it is now ruled out. The ledger entry stands at −1.
+
+No further hypothesis about that row will be tested by reading it. What is left
+is the honest position: one sealed row moved, the cause is not known, and the
+two sealed sets that are not held-out did not move at all.
 
 ## 2026-09-11 19:29 — the `so` split: its target family fixed, and one sealed row lost
 
