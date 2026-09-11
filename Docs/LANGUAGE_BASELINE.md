@@ -183,7 +183,114 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 19:29 — the `so` split: its target family fixed, and one sealed row lost
+
+Run [34638463387](https://github.com/CalvinSalsali04/speak-it/actions/runs/34638463387),
+`macos-26`, `language_only` with `devset_failures`, branch at `a64dde6`.
+The only parser change since `2cc2ac5` is the resultive-`so` boundary, so every
+movement below is attributable to it.
+
+### The target
+
+`knowledge-action` thought count, spoken half: **0/3 → 3/3.** RB17R, RB18R and
+RB19R now separate the fact from the errand it caused. The clean half stays
+3/3, so the twin gap on that family is closed.
+
+The cause was that clause splitting had one coordinator. `splittableAndRanges`
+matched `\s+and\s+` and nothing else; `splitClauses` carries `so` in
+`connectorRun` but requires `actionLeadPattern` immediately after, and that
+excludes `obligationLead` — so "so book the service" could split and "so I need
+to book the service" never could. Every clean twin in the family joins with
+`and` and every rambling twin with `so`, which explains all six rows.
+
+### What it cost
+
+| Measure | `2cc2ac5` | `a64dde6` | |
+| --- | --- | --- | --- |
+| Gating corpus | 1393 cases, 0 failing | **1401 cases, 0 failing** | +8 cases, all passing |
+| Held-out destination | 233/320 | 233/320 | — |
+| Held-out thought count | 255/310 | **254/310** | **−1** |
+| Held-out acted-on-anyway | 7 | 7 | — |
+| Everyday routing / count / titles | 168/240 · 193/232 · 245/255 | 168/240 · 193/232 · 245/255 | — |
+| Adversarial routing / count | 52/116 · 78/105 | 52/116 · 78/105 | — |
+| Adversarial over-segmented | 9 | 9 | — |
+| coordination | 115/121 | 115/121 | — |
+| routed | 74/84 · 77/79 | 74/84 · 77/79 | — |
+| framing | 41/45 · 43/44 | 41/45 · 43/44 | — |
+| runon | 42/46 · 35/44 | 42/46 · 35/44 | — |
+
+**The held-out count lost one row and this section does not explain it away.**
+That set is scored non-verbose on purpose and its failures are not read to
+steer parser work, so which capture moved is not known here and was not looked
+up. What can be said: across the three sealed sets — 764 captures — exactly one
+measure moved, by one row, and the two sealed sets that are not held-out did
+not move at all. That is consistent with the bound the change was designed to
+have, and it is still a real loss on the only set that stands in for unseen
+speech.
+
+### RB30 went 4 rows to 5, and the count column was hiding the reason
+
+RB30C and RB30R now over-produce. The boundaries tell a different story from
+the count:
+
+- Correct: `[picked up the results and the iron is low again]` `[book a follow
+  up]` `[start the supplements]` `[tell Mum]` — 4 rows, cutting at the `so` and
+  at two `and`s.
+- Before: it cut after "results", missed the `so` entirely, and scored **4** —
+  the right number from a missing boundary and a spurious one cancelling.
+- Now: the `so` boundary is correct and the spurious "results / iron is low"
+  cut survives, so the arithmetic stops cancelling and the row reads 5.
+
+So the regression on this row is the *exposure* of a pre-existing `and`
+over-split, not a new defect: "I picked up the blood work results and the iron
+is low again" is a result and what the result says, which is one thought. That
+is the next change, and it is deliberately not bundled here — two parser
+changes in one run make neither attributable.
+
+It is also the concrete demonstration of a claim made earlier today from
+reading alone: **a count column cannot see a wrong cut.** RB30 passed for a
+week while cutting in the wrong place.
+
+### Labels corrected in the same branch
+
+RB28 and RB30, both twins, wanted 3 thoughts and want 4 — each enumerates four
+units. Three of the four rows were failing at 3 and pass at 4, which is the
+direction to distrust; the check that makes it honest is that RB28R returned 3
+and *passed* against the wrong label and now fails, so the relabel created a
+failure rather than only removing them.
+
+RB14 (`give Dimitri the blue chair`) is marked as a known-bad row rather than
+fixed. It reaches Memory because `give` is absent from
+`ActionabilityReader.actionVerb` and `hasImperativeShape` requires the
+determiner directly after the head verb, so a recipient between them blocks the
+shape rule — the prepositional form "give the chair *to* Dimitri" passes.
+Across 3,020 readable utterances every other double-object dative uses a verb
+already on the list, so the only capture the gap costs is the one written for
+this set. A real structural blind spot with no measured user impact, recorded
+in `dropped-language-candidates`.
+
+### The earlier "filler is not the problem" headline is withdrawn as stated
+
+The 16:54 section below reads the 15 zero-gap pairs as showing filler costs
+nothing. It does not support that. Those families' clean twins are at 8/8, 4/4
+and 3/3 — at ceiling — so a zero gap has no headroom to appear in. Zero
+failures over 15 pairs bounds the per-capture filler cost at about **18%**
+(95%), and over errand's 8 pairs alone at about 31%. Not at zero.
+
+What those rows do license: **filler does not break the cases the parser
+already handles.** The structural finding is unaffected and is now demonstrated
+rather than inferred — the family that fell to 0/3 came back to 3/3 on a change
+to clause boundaries and nothing else. Raised by the evaluation thread; the
+arithmetic was checked here before accepting it.
+
 ## 2026-09-11 16:54 — the rambling set's first reading, and it is not filler
+
+> **Corrected at 19:29 (section above).** The "filler is not the problem"
+> reading below overstates what these pairs support: the three zero-gap
+> families are at ceiling on their clean halves, so 15 pairs bound the
+> per-capture filler cost at about 18%, not at zero. The section is left as it
+> was written, because it records what was reported at the time.
+
 
 Branch `claude/hearth-thread-tod920` at `d9366f1`,
 [run 34623965550](https://github.com/CalvinSalsali04/speak-it/actions/runs/34623965550),
