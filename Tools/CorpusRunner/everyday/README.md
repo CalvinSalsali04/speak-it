@@ -107,6 +107,25 @@ Today versus Memory is the product contract's hard line and is scored. Whether a
 particular capture is an `idea` or a `note` is a judgement call a label cannot
 settle, so type agreement is printed and never counted as a failure.
 
+It prints on two lines, and the second is the one to read:
+
+```
+  item type matched the label 145/232  (reported, never gated)
+    of those segmented right  145/192  ← the one that is about types
+```
+
+The plain figure cannot separate a type error from a count error. Both sides are
+`Counter`s over rows, so a capture the pipeline split or merged wrongly differs
+by a whole row and can never match, whatever types it chose — the generation-3
+reading has 40 `count` failures and all 40 are inside its 87 type mismatches.
+Quoted alone, 62.5% reads as a type problem when a third of it is the
+segmentation problem already reported two lines above. Conditioned on correct
+segmentation the figure is 75.5%, and the residue is 47 real type
+disagreements.
+
+The plain line is unchanged and no generation boundary is crossed; the second
+line is additive.
+
 ## The label format
 
 One tab-separated row per capture:
@@ -295,6 +314,7 @@ matching edit on the adversarial set is recorded in its own README.
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |
 |---|---|---|---|---|---|---|---|
 | 2026-09-11 | `330344a` | 152/220 (69.1%) | 172/212 (81.1%) | 210/224 (93.8%) | 5/19 (26.3%)* | 217/235 (92.3%) | **0 / 15** |
+| 2026-09-11 | `2c5ac5b` | 167/240 (69.6%) | 192/232 (82.8%) | 230/244 (94.3%) | 14/22 (63.6%) | 237/255 (92.9%) | **0 / 15** |
 
 *Generation 1. The invention column used the 19-case measure, 7 of whose cases
 were farewells; it is not comparable to any later row. The whole row predates
@@ -327,6 +347,78 @@ held-out set, where five of six failures were over-splits. Both can be true:
 they are different sets measuring different content. It means neither direction
 should be assumed to be *the* segmentation problem without saying which set the
 claim comes from.
+
+### Generation 3, commit `2c5ac5b`, run 34591348628
+
+The second row above. `language_only` on `macos-26`, scored non-verbose. This is
+the **before** picture for the discourse-framing work: it predates #30, and it
+also predates #32 and #33, so the adversarial set is absent from it and the
+`negation` family denominator is still 48.
+
+**Do not read it against the generation-1 row.** Both the cases and the span
+matching changed between them; 69.1% and 69.6% are not a movement, they are two
+different measurements. The first genuine comparison will be this row against
+the next one.
+
+| domain | routing | count | loss | invention | title |
+|---|---|---|---|---|---|
+| fitness-errands | 37/48 (77.1%) | 38/46 (82.6%) | 48/50 (96.0%) | 3/4 | 49/51 (96.1%) |
+| work-school | 35/48 (72.9%) | 39/46 (84.8%) | 42/47 (89.4%) | 4/4 | 46/51 (90.2%) |
+| freelance | 33/48 (68.8%) | 37/46 (80.4%) | 45/49 (91.8%) | 3/5 | 45/51 (88.2%) |
+| money-travel | 32/48 (66.7%) | 39/47 (83.0%) | 46/49 (93.9%) | 4/5 | 49/51 (96.1%) |
+| family-health | 30/48 (62.5%) | 39/47 (83.0%) | 49/49 (100.0%) | 0/4 | 48/51 (94.1%) |
+
+**The domain column is not where the failures live, and this table should not be
+read as if it were.** All five domains sit inside one standard error of the
+whole-set routing rate: at n=48 and p=0.696 that is ±6.6 points, and the spread
+is 62.5% to 77.1%. A chi-square across the five gives 2.9 on 4 degrees of
+freedom, against 9.49 for significance at 0.05 — no evidence that the subject a
+person is talking about predicts whether Speak It understands them. The same
+test across fourteen families gives 54.9 on 13 degrees of freedom, against
+22.36. **Failure is a function of how people speak, not what they speak about.**
+
+That is worth stating plainly because per-domain rates are the natural thing to
+quote and would send work in the wrong direction. Balanced domains were the
+right design — they make this testable — but their value is as a control, not
+as a diagnosis.
+
+The invention column is 4 or 5 cases per domain and is not a rate at any domain
+granularity. `family-health` reads 0/4: four named cases, not 0%.
+
+Worst families, which is where the structure actually is:
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | 0/8 (0.0%) | 0/8 (0.0%) | 4/8 (50.0%) |
+| rambling-intro | 6 | 1/6 (16.7%) | 1/6 (16.7%) | 3/6 (50.0%) |
+| trailing-goodbye | 7 | 2/7 (28.6%) | 4/7 (57.1%) | 0/7 (0.0%) |
+| sequencing | 17 | 6/17 (35.3%) | 7/17 (41.2%) | 12/17 (70.6%) |
+| multi-thought | 40 | 19/40 (47.5%) | 22/40 (55.0%) | 36/40 (90.0%) |
+| operation | 10 | 5/10 (50.0%) | 0/2 | 10/10 (100.0%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 | 12/12 (100.0%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 19/24 (79.2%) |
+
+Every family that reads meaning *after* a correct cut is in the eighties or
+nineties: `self-correction` 30/39, `quantity` 27/34, `time` 21/27, `recurrence`
+19/22, `repetition` 10/10. The five worst are all about finding the boundaries
+of a thought inside speech that has framing around it.
+
+Two caveats that belong next to these numbers rather than in a message:
+
+1. **The simulator suite was red on the same commit and the same runner.** The
+   corpus gate passed 1381/1381 natively in that job, and these figures come
+   from the host-side runner, so they are not invalidated. But `SpeakItTests`
+   failed with 57 assertions on `macos-26` at `2c5ac5b`, identically to an
+   unrelated branch, so it is the state of the suite on that image rather than
+   anyone's diff. Until that is understood, every figure here was taken on a
+   commit whose simulator tests do not pass on that runner.
+2. **`item type matched the label` is 145/232 (62.5%)** — and a third of that
+   gap is the `count` failure printed two lines above it, not a type problem.
+   See *Item types are reported, never gated* for why the comparison cannot
+   separate them. Conditioned on correct segmentation it is 145/192 (75.5%),
+   leaving 47 genuine type disagreements. Still reported, still never gated,
+   and still nobody's investigation — but 62.5% is not the number to
+   investigate.
 
 **`invention` was measuring two things and has been corrected.** Seven of its
 nineteen cases listed `bye` as the rejected value. A farewell left in a title is
