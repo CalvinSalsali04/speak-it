@@ -12,6 +12,61 @@
 > Treat an unmarked entry as a claim to verify before ranking work from it, not
 > as a finding.
 
+## A choice can be recorded as open, never as resolved
+
+**Verified from source 2026-09-11; the per-row consequence is a prediction, not
+a measurement, and is marked as such below.**
+
+Speak It can represent *"the speaker named alternatives and did not choose"*. It
+has no representation for *"named alternatives and then chose."* Thinking aloud
+and landing on an answer is therefore read as thinking aloud and never landing.
+
+`TemporalCommitment.Unsettled` in `ClauseStructure.swift` is a closed enum of
+four reasons a stated time is not settled, and `competingDays` fires on
+`<day> or <day>` anywhere in the clause. It is terminal: nothing downstream
+looks for a resolution stated afterwards. The assumption is written into the
+comment above it — *"'or Wednesday' names two days precisely because the
+speaker has not picked"* — which is true of "Tuesday or Wednesday" standing
+alone and false the moment a person carries on talking. `ThoughtOrganizer`
+then drops the date and keeps the words.
+
+So of a development capture reading *"maybe cook the salmon Wednesday or
+Thursday, I think Thursday, cook the salmon on Thursday"*, the pattern matches
+`Wednesday or Thursday` and the clause carrying it loses its date, although the
+speaker resolved the choice twice in the following six words. Its clean twin,
+"cook the salmon on Thursday", does not match and keeps everything. **Predicted,
+not observed:** `unsettled` is consulted per row after clause splitting, so
+which row loses the date depends on where the cut falls, and no run has
+confirmed the final rows. The prediction is recorded here so the next
+measurement can falsify it.
+
+The clause-level counterpart is the same shape. `SelfCorrectionResolver`
+repairs by **slot replacement** — a later value overwrites an earlier one in
+the same slot — so it can fix "Tuesday, no, Wednesday" and cannot express
+"drive or take the bus, actually no, take the bus", where the alternatives are
+whole clauses and there is no slot to swap. Resolution is representable for a
+value inside a slot and not representable for a choice between clauses.
+
+**Why this is named rather than patched.** A resolution test bolted onto
+`unsettled` would cover the temporal case and miss the clause case, which is
+most of the family: the shape needs somewhere to put a *choice set with an
+optional resolution*, carried from clause analysis through to the organized
+thought, so that a later mention of one alternative — or a resolution marker
+like "actually no", "I think", "better" — selects it and everything downstream
+reads the winner. That is a representation change, not a rule.
+
+It is not being built yet, and the reason is evidential rather than technical.
+The readable material for this family is five rows in
+`Tools/CorpusRunner/devsets/rambling.tsv`, all written by one author, and four
+of them phrase the resolution as a restatement of the canonical sentence rather
+than as a person actually resolving a choice. Rewritten rows are being written
+by a second author. Building a representation against five self-authored rows
+would measure our idea of how people deliberate, which is the failure this
+whole set exists to escape.
+
+Development-set standing: `decision` scores **1 of 6** on thought count, the
+worst family in any readable set.
+
 ## "Don't buy milk" and "remind me not to buy milk" are opposite captures
 
 **Measured 2026-09-11**, from the corpus and the source, not inferred from a
