@@ -2,8 +2,8 @@
 
 255 captures of ordinary adult life, 51 in each of five domains, written from
 the product description and from how people actually dictate. **Nothing here may be
-tuned against.** Eight of the 255 turned out not to have been unseen when the
-set was authored; see [Eight of these captures were not held out](#eight-of-these-captures-were-not-held-out)
+tuned against.** Nine of the 255 turned out not to have been unseen when the set
+was authored; see [Nine of these captures were not held out](#nine-of-these-captures-were-not-held-out)
 before quoting a rate from here.
 
 ```bash
@@ -181,44 +181,80 @@ detail, and an unrecognised flag does not unseal it either.
 
 Any scorer added to this directory must stay on that side of the line.
 
-## Eight of these captures were not held out
+## Nine of these captures were not held out
 
-`leak-check.py` was widened on 2026-09-11 to compare sealed capture text against
-the repository's prose, not only against the other corpora. It found eleven
-sealed captures already committed, eight of them from this set:
+`leak-check.py` was widened on 2026-09-11, in two steps, and each step found
+captures the previous version could not see.
+
+**Widening one, prose.** The check compared sealed captures against the other
+corpora and never against the repository's documents. Eight everyday captures
+turned out to be committed verbatim in tracked prose:
 
     W17  W20  W51  F02  F06  F19  F29  M04
 
-All eight appear verbatim in `Docs/PipelineSweep/domains.md`, which is dated
-2026-08-25 — **three weeks before this set was authored** — and which tabulates
-each sentence beside the answer the pipeline gave for it. They were development
-failure-analysis material first and held-out captures second. Whatever those
-eight rows measure, it is not generalisation to unseen content.
+All eight appear in `Docs/PipelineSweep/domains.md`, which is dated 2026-08-25 —
+**three weeks before this set was authored** — and which tabulates each sentence
+beside the answer the pipeline gave for it. They were development
+failure-analysis material first and held-out captures second. W51 is also in
+`Docs/LANGUAGE_BASELINE.md` and in this README's own baseline section.
 
-W51 is also in `Docs/LANGUAGE_BASELINE.md`, and in this README's own baseline
-section.
+**Widening two, the tuned side.** The overlap check did read Swift, but its
+harvest was one regular expression run over a whole file, pairing quote
+characters without knowing which of them opened a literal. It fell out of phase
+and returned the code *between* strings. On `SemanticCorpusData*.swift` it
+returned 2,465 strings while missing **1,128 of the 1,380 `corpusCase`
+utterances, 82% of the gating corpus** — and the inflated count is what hid it,
+because 2,465 reads as more thorough than the 2,101 literals actually there.
 
-What that does to a rate here, stated exactly: the denominator is not 255
-captures of unseen content. It is 247, plus eight that were looked at while
-rules were being changed. Nobody has yet re-scored the set without them, so
-every figure below this line still includes all eight, and none of the figures
-has been adjusted by hand — an adjusted number needs a macOS run, not
-arithmetic.
+It also globbed `SemanticCorpusData*.swift` alone, so every hand-written test
+fixture — tuned by definition, since somebody iterated on the rules until that
+exact sentence went green — sat outside the comparison.
 
-The leak is not repairable by editing a document, because the exposure already
-happened. The remedy is to retire the eight and open a new generation, which
-moves published figures and so is a decision somebody takes rather than an edit.
-That decision is open.
+With both repaired, five everyday captures are exact matches for tuned strings:
 
-The direction matters and is the reason this went unseen for so long. A check
-that compares the sealed sets against each other cannot catch it: the leak did
-not travel between sets, and it did not travel forwards. It travelled out of a
-document that already existed into a set written later, which means a set's
-authoring date is not evidence that its content was unseen. `leak-check.py` now
-asks the other question too, so nothing further can arrive quietly; the eleven
-are listed in its `PROSE_DOCUMENTED` and remain counted on every run, because a
-list that hid them would be the marker-as-absolution mistake this repository has
-already made once.
+| capture | where |
+|---|---|
+| F02 | `SemanticCorpusDataG.swift` (a `corpusCase`) and `SpeechRepairTests.swift` |
+| W17 | `SemanticCorpusDataG.swift` (a `corpusCase`) |
+| F17, F29, W20 | `SpeechRepairTests.swift` |
+
+F02, W17, F29 and W20 were already in the prose list. **F17 is new**, which
+brings this set to nine captures that were not held out. One more, M36, is a
+near-duplicate at the 0.70 line.
+
+`heldout/` was never checked for this at all — it was a corpus to compare
+*against* and never a set under check, so the set carrying the published
+destination figure was the one set nobody looked at. It has three exact matches
+(C049, C100, C342) and nine near-duplicates. `adversarial/` has no exact match
+and one near-duplicate, and is the one sealed set that comes through this clean.
+
+What it does to a rate here, stated exactly: the denominator is not 255 captures
+of unseen content. It is 246, plus nine that were looked at while rules were
+being changed. Nobody has re-scored the set without them, so every figure below
+this line still includes all nine, and none has been adjusted by hand — an
+adjusted number needs a macOS run, not arithmetic.
+
+The leak is not repairable by editing a file, because the exposure already
+happened and deleting a row from a tuned corpus does not un-tune the rules. The
+nine stay in the set and stay counted; they are listed in `PROSE_DOCUMENTED` and
+`OVERLAP_DOCUMENTED`, which move the exit status and never the count, so the
+check gates on anything new instead of being switched off for being red the
+first time it could see properly. Retiring them opens a new generation and moves
+published figures, which is a decision somebody takes rather than an edit. That
+decision is open.
+
+Two lessons worth more than the nine rows.
+
+**Direction.** A check that compares the sealed sets against each other cannot
+catch a leak that travelled out of a document written earlier into a set written
+later. A set's authoring date is not evidence that its content was unseen.
+
+**Coverage is not a property you can assert.** This file said the boundary was
+mechanical rather than a promise, and it was — mechanically reading 18% of the
+gating corpus. The count it printed was the only thing that could have shown
+that, and it was inflated by the same defect. A check's own denominator needs an
+anchor that must agree with something already published, which is why
+`test_score.py` now asserts the harvest against a fixture the old pattern fails.
 
 ## Checking the instrument itself
 

@@ -124,12 +124,42 @@ def utterance_column(lines):
     return column_of(lines, "utterance")
 
 
+#: Swift string literals, and the reason this is not a one-line regex.
+#:
+#: It used to be `re.findall(r'"([^"\\]{12,})"', text)` over the whole file,
+#: which pairs quote characters left to right without knowing which of them
+#: opens a literal. The closing quote of one literal and the opening quote of
+#: the next are a perfectly good pair for that pattern whenever the code
+#: between them is twelve characters long, so the scan drifts out of phase and
+#: harvests the *gaps* instead of the strings. Whether any given utterance is
+#: seen then depends on how many quote characters precede it in the file.
+#:
+#: It is not a rounding error. On `SpeakItTests/SemanticCorpusData*.swift` the
+#: old pattern returned 2,465 strings, which reads as thorough, while missing
+#: 1,128 of the 1,380 `corpusCase` utterances — 82% of the gating corpus — and
+#: padding the count with 1,224 fragments of source code that are not strings
+#: at all. Everyday F02 and W17 are `corpusCase` rows in `SemanticCorpusDataG`
+#: and sit in the part it could not see, so the overlap check printed
+#: `exact collisions 0` about a set with two verbatim rows in the regression
+#: net. That is the failure this file exists to make impossible, and the
+#: printed total is what hid it: 2,465 reads as more thorough than 2,101.
+#:
+#: A literal cannot span a line here, so scanning per line keeps an unbalanced
+#: quote inside a comment from swallowing the rest of the file.
+def swift_literals(text, minimum=12):
+    out = []
+    for line in text.splitlines():
+        for found in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
+            if len(found) >= minimum:
+                out.append(found)
+    return out
+
+
 def harvest(path):
     """Every utterance in one corpus file."""
     text = path.read_text(errors="ignore")
     if path.suffix != ".tsv":
-        # Swift corpus sources: any string literal long enough to be a capture.
-        return re.findall(r'"([^"\\]{12,})"', text)
+        return swift_literals(text)
 
     lines = text.splitlines()
     column = utterance_column(lines)
@@ -289,11 +319,60 @@ def harvest_ids(path):
     return out
 
 
+#: Sealed captures already sitting in tuned material when this was measured,
+#: 2026-09-11. Same contract as `PROSE_DOCUMENTED` and the `KNOWN:` rows in the
+#: development sets: **every one is still counted and still printed**, and the
+#: list moves only the exit status, so the check gates on anything new instead
+#: of being switched off for being red the first time it could see properly.
+#:
+#: These are not forgiven because they are harmless. They are the leak, and
+#: they are listed here because deleting them from the tuned corpora restores
+#: nothing — the rules were already developed against them — while retiring
+#: them from the sealed sets moves published figures and is a decision rather
+#: than an edit.
+OVERLAP_DOCUMENTED = {
+    # Exact: the same sentence exists on both sides of the boundary.
+    ("everyday.tsv", "F02"): "SemanticCorpusDataG.swift and SpeechRepairTests.swift",
+    ("everyday.tsv", "W17"): "SemanticCorpusDataG.swift",
+    ("everyday.tsv", "F17"): "SpeechRepairTests.swift",
+    ("everyday.tsv", "F29"): "SpeechRepairTests.swift",
+    ("everyday.tsv", "W20"): "SpeechRepairTests.swift",
+    ("heldout.tsv", "C049"): "SemanticCorpusDataQ.swift",
+    ("heldout.tsv", "C100"): "SemanticCorpusDataF.swift",
+    ("heldout.tsv", "C342"): "LocationReminderTests.swift, eight assertions",
+    # Near, at or above the 0.70 line. Kept in the same list because the
+    # marker does the same job either way, and separated in the report by the
+    # line each one is printed on.
+    ("everyday.tsv", "M36"): "near SemanticCorpusDataB.swift",
+    ("adversarial.tsv", "AN08"): "near SemanticCorpusDataA.swift",
+    ("heldout.tsv", "C005"): "near SemanticCorpusDataC/D.swift",
+    ("heldout.tsv", "C236"): "near SwiftDataThoughtRepositoryTests.swift",
+    ("heldout.tsv", "C243"): "near SemanticCorpusDataA.swift and routed.tsv",
+    ("heldout.tsv", "C331"): "near SemanticCorpusDataQ.swift and DurabilityTests.swift",
+    ("heldout.tsv", "C353"): "near SemanticCorpusDataE.swift",
+    ("heldout.tsv", "C355"): "near SemanticCorpusDataB.swift",
+}
+
+
 def others(exclude):
-    sources = list((ROOT / "SpeakItTests").glob("SemanticCorpusData*.swift"))
+    """Every corpus development touches, which is more than the named corpora.
+
+    `SemanticCorpusData*.swift` is the gating corpus, but it is not the only
+    tuned material in `SpeakItTests/`. A hand-written test fixture is tuned by
+    definition: somebody iterated on the rules until that exact sentence went
+    green. Held-out C342 is the fixture in eight assertions of
+    `LocationReminderTests.swift`, held-out C100 is one in
+    `ActionabilityTests.swift`, and everyday F02, F17, F29 and W20 are fixtures
+    in `SpeechRepairTests.swift` — six sealed captures inside the tuned side of
+    the boundary, none of them visible while this globbed one filename pattern.
+    """
+    sources = list((ROOT / "SpeakItTests").glob("*.swift"))
     sources += list((ROOT / "Tools/CorpusRunner/devsets").glob("*.tsv"))
-    sources.append(ROOT / "Tools/CorpusRunner/heldout/heldout.tsv")
-    sources += [p for p in SEALED if p != exclude]
+    #: `exclude` is the set being checked. It used to be applied to `SEALED`
+    #: only, which was correct while `heldout.tsv` was never a set under check
+    #: and always a corpus to compare against. Now that it is checked too, an
+    #: unconditional append would compare it with itself and collide on all 389.
+    sources += [p for p in SEALED_ALL if p != exclude]
     found = {}
     for path in sources:
         if not path.exists():
@@ -323,7 +402,12 @@ def verdict(sources):
 def main():
     """Checks every sealed set, so adding one cannot mean forgetting to check it."""
     failed = 0
-    for path in SEALED:
+    #: `SEALED_ALL`, not `SEALED`. `heldout.tsv` was on the tuned side of this
+    #: loop only: it was compared against, never checked, so the set carrying
+    #: the published 233/320 was the one set whose overlap with tuned material
+    #: nothing ever looked at. Two of its captures are hand-written test
+    #: fixtures.
+    for path in SEALED_ALL:
         if not path.exists():
             raise SystemExit(f"leak check: {path} is listed as sealed but missing")
         failed |= check(path)
@@ -378,17 +462,32 @@ def check(path):
     print(f"=== {path.parent.name}/{path.name}")
     print(f"held-out captures        {len(ours)}")
     print(f"strings from tuned sets  {len(theirs)}")
-    print(f"exact collisions         {len(exact)}")
-    print(f"near duplicates (>={THRESHOLD})  {len(near)}")
+    fresh_exact = [r for r in exact if (path.name, r[0]) not in OVERLAP_DOCUMENTED]
+    fresh_near = [r for r in near if (path.name, r[0]) not in OVERLAP_DOCUMENTED]
+    print(f"exact collisions         {len(exact)}"
+          f"  ({len(exact) - len(fresh_exact)} documented, {len(fresh_exact)} new)")
+    print(f"near duplicates (>={THRESHOLD})  {len(near)}"
+          f"  ({len(near) - len(fresh_near)} documented, {len(fresh_near)} new)")
     for cid, utterance, source in exact:
         print(f"  COLLISION  {cid}  also in {source}\n    {utterance}")
     for cid, overlap, source, utterance, other in sorted(near, key=lambda r: -r[1]):
         print(f"  NEAR  {cid}  j={overlap}  {source}\n    held out: {utterance}"
               f"\n    tuned:    {other}")
-    if exact or near:
-        sources = {src for _, _, src in exact} | {src for _, _, src, _, _ in near}
+    if fresh_exact or fresh_near:
+        sources = ({src for _, _, src in fresh_exact}
+                   | {src for _, _, src, _, _ in fresh_near})
         print("\n" + verdict(sources), file=sys.stderr)
         return 1
+    if exact or near:
+        #: Red on arrival, and not switched off for it. Every row above is
+        #: counted and printed; the list only decides the exit status, so a
+        #: *new* overlap still fails the run while the ones already paid for
+        #: do not block every hand run until somebody decides what to do
+        #: about them. Same contract as `PROSE_DOCUMENTED` and `KNOWN:`.
+        print("\nleak check: every overlap above is documented in "
+              "OVERLAP_DOCUMENTED and still counted. Nothing NEW overlaps a "
+              "tuned corpus.")
+        return 0
     report_closest(ranked)
     print("\nleak check ok: nothing held out appears in a tuned corpus.")
     return 0

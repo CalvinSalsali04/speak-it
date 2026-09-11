@@ -729,6 +729,139 @@ class LeakCheckTests(unittest.TestCase):
         self.assertEqual(len(self.leak.harvest(path)), 389)
 
 
+class SwiftLiteralHarvestTests(unittest.TestCase):
+    """The tuned side of the boundary is only as wide as what it reads.
+
+    This check spent its life reporting `exact collisions 0` for everyday
+    while two everyday captures sat in `SemanticCorpusDataG.swift` as
+    `corpusCase` rows. Nothing was wrong with the comparison; the harvest
+    never handed it the strings.
+    """
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_a_literal_is_found_whatever_precedes_it(self):
+        """The regression that let two everyday captures into the gating corpus.
+
+        The old harvest was one regex over the whole file, pairing quote
+        characters left to right with no idea which of them opens a literal.
+        A literal too short to match leaves its two quotes unconsumed, the
+        scan falls out of phase, and from there it reads the *gaps between*
+        strings instead of the strings. Here it returns the source text
+        `)\\ncorpusCase(.x, ` and never sees the capture at all.
+        """
+        text = 'foo("ok")\ncorpusCase(.x, "Sarah has no dairy at all", count: 1)\n'
+        self.assertIn("Sarah has no dairy at all", self.leak.swift_literals(text))
+
+    def test_the_code_between_two_literals_is_not_harvested_as_one(self):
+        """The other half of the same defect, and the half that hid it.
+
+        Harvesting gaps does not merely lose captures, it inflates the count
+        that is supposed to show coverage. The real file reported 2,465
+        strings while holding 2,101 literals, so the number a reader would
+        check read as *more* thorough than the truth.
+        """
+        text = 'foo("ok")\ncorpusCase(.x, "Sarah has no dairy at all", count: 1)\n'
+        for found in self.leak.swift_literals(text):
+            self.assertNotIn("corpusCase", found)
+
+    def test_an_escaped_quote_does_not_end_a_literal(self):
+        text = r'let s = "he said \"buy the milk\" and left the room"'
+        self.assertEqual(len(self.leak.swift_literals(text)), 1)
+
+    def test_a_literal_shorter_than_a_capture_is_skipped(self):
+        """Identifiers and keys are strings too, and matching them is noise."""
+        self.assertEqual(self.leak.swift_literals('let k = "id"'), [])
+
+    def test_an_unbalanced_quote_does_not_swallow_the_rest_of_the_file(self):
+        """Why this scans per line rather than over the whole text."""
+        text = ('// the user says "buy milk\n'
+                'corpusCase(.x, "Sarah has no dairy at all", count: 1)\n')
+        self.assertIn("Sarah has no dairy at all", self.leak.swift_literals(text))
+
+
+class TunedSideWidthTests(unittest.TestCase):
+    """What counts as tuned material, and what was being left out of it."""
+
+    def setUp(self):
+        self.leak = leak_check_module()
+
+    def test_a_hand_written_test_fixture_counts_as_tuned_material(self):
+        """`SemanticCorpusData*.swift` was not the only tuned corpus.
+
+        A fixture in an ordinary test file is tuned by definition: somebody
+        iterated on the rules until that exact sentence went green. Held-out
+        C342 is the fixture in eight assertions of `LocationReminderTests`,
+        and while this globbed one filename pattern none of that was visible.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "LocationReminderTests.swift").write_text(
+                'func t() { assert(text: "the spare key is under the doormat") }\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\nS0\th\tunrelated capture here\n")
+            self.leak.ROOT = root
+            self.leak.SEALED = [sealed]
+            self.leak.SEALED_ALL = [sealed]
+            found = self.leak.others(sealed)
+        self.assertIn(self.leak.norm("the spare key is under the doormat"), found)
+
+    def test_the_held_out_set_is_checked_and_not_only_compared_against(self):
+        """It was on the tuned side of the loop only.
+
+        `heldout.tsv` was a corpus to compare *against* and never a set under
+        check, so the set carrying the published destination figure was the
+        one set whose overlap with tuned material nothing ever looked at.
+        Three of its captures are exact matches for tuned strings.
+        """
+        script = HERE / "leak-check.py"
+        if not (HERE.parent / "heldout" / "heldout.tsv").exists():
+            self.skipTest("heldout.tsv not present")
+        out = subprocess.run([sys.executable, str(script)],
+                             capture_output=True, text=True).stdout
+        self.assertIn("=== heldout/heldout.tsv", out)
+
+    def test_a_documented_overlap_is_counted_but_does_not_gate(self):
+        """Red on arrival is how a check gets switched off.
+
+        The marker moves the exit status and never the count, for the same
+        reason a `KNOWN:` row is still counted as a failure: a number a
+        marker can improve is a number people learn to write markers for.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("the spare key is under the doormat")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED = [sealed]
+            self.leak.SEALED_ALL = [sealed]
+
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                undocumented = self.leak.check(sealed)
+
+            self.leak.OVERLAP_DOCUMENTED = {("everyday.tsv", "S0"): "known"}
+            buf2 = io.StringIO()
+            with contextlib.redirect_stdout(buf2), contextlib.redirect_stderr(buf2):
+                documented = self.leak.check(sealed)
+
+        self.assertEqual(undocumented, 1, "a new overlap must fail the run")
+        self.assertEqual(documented, 0, "a documented overlap must not gate")
+        self.assertIn("exact collisions         1", buf2.getvalue())
+        self.assertIn("S0", buf2.getvalue())
+
+
 class DevsetScorerSealTests(unittest.TestCase):
     """A development scorer must not be aimable at a held-out set.
 
