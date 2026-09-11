@@ -910,13 +910,26 @@ enum ThoughtOrganizer {
             ? ItemCategory.people
             : inferredCategory(from: lowercase, type: type)
 
-        // Checked before anything reads a date, because a date is exactly what
-        // an unfinished thought must not acquire. "Tomorrow I want to" resolved
-        // its "tomorrow" perfectly and then hung it on a sentence that never
-        // said what to do; "Tomorrow remind me to" went further and scheduled a
-        // notification with no action inside it. The words are kept and every
-        // commitment is dropped — no date, no reminder, no recurrence, no
-        // place — because there is nothing here to commit to yet.
+        // A date is exactly what an unfinished thought must not acquire.
+        // "Tomorrow I want to" resolved its "tomorrow" perfectly and then hung
+        // it on a sentence that never said what to do; "Tomorrow remind me to"
+        // went further and scheduled a notification with no action inside it.
+        // The words are kept and every commitment is dropped — no date, no
+        // reminder, no recurrence, no place — because there is nothing here to
+        // commit to yet.
+        //
+        // **This is a discard, not an ordering, and the distinction is load
+        // bearing.** An earlier version of this comment said the check runs
+        // "before anything reads a date". It does not: `dueDate`,
+        // `reminderDate`, `reminderDelivery` and `recurrenceRule` are all
+        // resolved above, and this is simply the first `return` in `organize`.
+        // What protects the capture is that the call below *names every
+        // commitment field and passes nil*. So the guard is only as good as
+        // that list is exhaustive: `OrganizedThought.init` defaults
+        // `temporalIntent`, `locationIntent` and `state`, and a future
+        // commitment-carrying field with a default would compile here
+        // unchanged and be adopted silently. Keep the list exhaustive, and
+        // prefer removing the defaults over trusting anyone to remember.
         if ThoughtCompletion.unfinished(in: normalized) != nil {
             return OrganizedThought(
                 itemType: .unclear,

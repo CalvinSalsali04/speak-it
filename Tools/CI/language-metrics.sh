@@ -101,6 +101,7 @@ section "DEVELOPMENT SETS — where rules are worked out; not a gate, not held o
   Tools/CorpusRunner/devsets/route-score.sh routed
   Tools/CorpusRunner/devsets/route-score.sh framing
   Tools/CorpusRunner/devsets/route-score.sh runon
+  Tools/CorpusRunner/devsets/route-score.sh rambling
   Tools/CorpusRunner/devsets/unfinished-score.sh
   Tools/CorpusRunner/devsets/abandonment-score.sh
 } >> "$OUT" 2>&1
@@ -128,7 +129,7 @@ if [ "$FOUND" -eq 0 ]; then
   echo "  none yet" >> "$OUT"
 fi
 
-section "HELD-OUT SET — written before anyone read the parser; scored non-verbose"
+section "HELD-OUT SET — kept out of development; scored non-verbose. Read Tools/CorpusRunner/heldout/README.md on what its provenance does and does not support before quoting this as generalisation"
 Tools/CorpusRunner/heldout/score.sh >> "$OUT" 2>&1
 
 {

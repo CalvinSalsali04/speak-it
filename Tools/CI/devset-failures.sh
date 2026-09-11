@@ -65,6 +65,9 @@ Tools/CorpusRunner/devsets/route-score.sh framing --verbose 2>&1
 section "RUN-ON — several thoughts in one breath, with no marker between them"
 Tools/CorpusRunner/devsets/route-score.sh runon --verbose 2>&1
 
+section "RAMBLING — filler and false starts, against a clean twin of the same content"
+Tools/CorpusRunner/devsets/route-score.sh rambling --verbose 2>&1
+
 section "UNFINISHED — whether a thought was finished at all"
 Tools/CorpusRunner/devsets/unfinished-score.sh --verbose 2>&1
 
