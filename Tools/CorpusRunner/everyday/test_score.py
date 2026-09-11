@@ -8,6 +8,8 @@ with no Swift toolchain, where the pipeline itself cannot be executed at all
 That separation is the point. A measuring instrument that has never been
 checked against a known input is not evidence about anything.
 """
+import contextlib
+import io
 import pathlib
 import re
 import subprocess
@@ -799,6 +801,179 @@ def lengths_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def generation_module():
+    """generation-check.py has a hyphen in its name, so it loads by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "generation_check", HERE / "generation-check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class GenerationCheckTests(unittest.TestCase):
+    """The sealing claim, made mechanical.
+
+    Every sealed set's README says its captures have never been scored and then
+    edited, and until this check nothing enforced it. What the check can prove
+    is narrow and worth stating: it cannot tell a legitimate new generation
+    from a quiet edit, because they are the same diff. The generation row does
+    the real work; this only makes the edit impossible to make silently.
+
+    So these tests are mostly about the two ways it could be useless: firing on
+    edits that are not the claim (a note, a tag, a reordering), which teaches
+    people to re-record without reading, and not firing on edits that are.
+    """
+
+    def setUp(self):
+        self.gen = generation_module()
+        if not self.gen.MANIFEST.exists():
+            self.skipTest("generations.tsv not present")
+
+    def test_the_committed_sets_match_their_recorded_generation(self):
+        """The check, run for real. A red main is the thing this prevents."""
+        here, there = self.gen.present(), self.gen.recorded()
+        self.assertEqual(sorted(here), sorted(there))
+        for name in here:
+            with self.subTest(corpus=name):
+                self.assertEqual(self.gen.difference(there[name], here[name]),
+                                 ([], []))
+
+    def test_the_recorded_hashes_are_written_sorted(self):
+        """Order means nothing to the verdict and everything to the diff.
+
+        A generation that moves three captures should show as three changed
+        lines, not as a rewritten file nobody reads.
+        """
+        rows = [line.split("\t") for line in
+                self.gen.HASHES.read_text().splitlines()
+                if not line.startswith("#") and line.strip()]
+        self.assertEqual(rows, sorted(rows))
+
+    def test_every_sealed_set_is_recorded(self):
+        """A set missing from the manifest is the one nobody would notice."""
+        rows = self.gen.generations()
+        for name, path in self.gen.SEALED.items():
+            if path.exists():
+                with self.subTest(corpus=name):
+                    self.assertIn(name, rows)
+                    self.assertEqual(int(rows[name]["captures"]),
+                                     len(self.gen.present()[name]))
+
+    def test_the_hash_is_of_the_capture_and_nothing_around_it(self):
+        """A note, a tag or a retitled README is not "scored and then edited".
+
+        A check that fires on those is one people learn to re-record without
+        reading, which costs more than it protects.
+        """
+        self.assertEqual(self.gen.digest("call the vet"),
+                         self.gen.digest("call the vet"))
+        self.assertNotEqual(self.gen.digest("call the vet"),
+                            self.gen.digest("call the vet today"))
+
+    def test_reordering_rows_is_not_a_generation(self):
+        """It changes nothing about what is measured."""
+        rows = ["a", "b", "c"]
+        self.assertEqual(self.gen.difference(rows, list(reversed(rows))),
+                         ([], []))
+
+    def test_an_edited_capture_is_reported_as_one_change_not_two(self):
+        """Its old hash goes and a new one arrives, so it shows on both sides.
+
+        Reporting that as one removal and one addition sends someone hunting a
+        capture nobody deleted.
+        """
+        gone, added = self.gen.difference(["a", "b"], ["a", "c"])
+        self.assertEqual((gone, added), (["b"], ["c"]))
+        self.assertEqual(min(len(gone), len(added)), 1)
+
+    def test_a_capture_that_is_gone_is_not_read_as_an_edit(self):
+        gone, added = self.gen.difference(["a", "b"], ["a"])
+        self.assertEqual((gone, added), (["b"], []))
+
+    @contextlib.contextmanager
+    def recording_into_a_scratch_copy(self):
+        """Point the recorder's two output files at a temporary directory.
+
+        `record` writes to module-level paths, so a test that calls it writes
+        to the committed manifest. Every test here exercises a refusal, so in
+        principle nothing is written -- but a mutation that turns a refusal
+        into a write then corrupts real data, which is exactly what happened
+        while these tests were being written. A test must not be able to do
+        that however the code under it behaves.
+        """
+        manifest, hashes = self.gen.MANIFEST, self.gen.HASHES
+        with tempfile.TemporaryDirectory() as root:
+            self.gen.MANIFEST = pathlib.Path(root) / "generations.tsv"
+            self.gen.HASHES = pathlib.Path(root) / "captures.sha256"
+            self.gen.MANIFEST.write_text(manifest.read_text())
+            self.gen.HASHES.write_text(hashes.read_text())
+            try:
+                yield
+            finally:
+                self.gen.MANIFEST, self.gen.HASHES = manifest, hashes
+
+    def refuses(self, *args):
+        """(exit status, what it said) for one `record` call, written nowhere."""
+        err = io.StringIO()
+        with self.recording_into_a_scratch_copy():
+            with contextlib.redirect_stderr(err):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = self.gen.record(*args)
+        return status, err.getvalue()
+
+    def test_the_recorder_refuses_a_number_that_is_not_the_next_one(self):
+        """Typing the number out is what makes opening a generation a decision."""
+        status, said = self.refuses("adversarial", 7, "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("not 7", said)
+
+    def test_the_recorder_refuses_when_nothing_changed(self):
+        """Otherwise it is a button people press to turn a red check green."""
+        rows = self.gen.generations()
+        status, said = self.refuses(
+            "adversarial", int(rows["adversarial"]["generation"]) + 1,
+            "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("unchanged", said)
+
+    def test_an_unknown_set_is_refused_by_name(self):
+        status, said = self.refuses("everydy", 1, "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("not a sealed set", said)
+
+    def test_a_rewritten_manifest_keeps_one_header_and_stays_sorted(self):
+        """Both properties of a file that is read back and rewritten.
+
+        Reading the column header as data gave a set named "set", written back
+        out as a second header line: a file that corrupts a little more each
+        time it is rewritten and reads fine until somebody looks. And the
+        hashes are written sorted so a generation shows as the lines it
+        changed rather than as a rewritten file nobody reads.
+        """
+        with self.recording_into_a_scratch_copy():
+            rows = self.gen.generations()
+            self.assertNotIn("set", rows)
+            self.gen.write({name: sorted(values) for name, values
+                            in self.gen.recorded().items()}, rows)
+            text = self.gen.MANIFEST.read_text()
+            self.assertEqual(text.count("set\tgeneration\tcaptures"), 1)
+            self.assertEqual(sorted(rows), sorted(self.gen.generations()))
+            lines = [l.split("\t") for l in self.gen.HASHES.read_text().splitlines()
+                     if not l.startswith("#") and l.strip()]
+            self.assertEqual(lines, sorted(lines))
+
+    def test_the_manifest_holds_no_capture_text(self):
+        """It is committed, so it must reveal nothing the sets are sealing."""
+        hashes = self.gen.HASHES.read_text()
+        for name, path in self.gen.SEALED.items():
+            if not path.exists():
+                continue
+            with self.subTest(corpus=name):
+                for capture in self.gen.harvest(path)[:40]:
+                    self.assertNotIn(capture, hashes)
 
 
 class PerFamilyTableTests(unittest.TestCase):

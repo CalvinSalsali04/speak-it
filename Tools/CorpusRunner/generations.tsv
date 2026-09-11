@@ -1,0 +1,7 @@
+# Which generation each sealed set is on. A generation opens when a
+# capture's text changes; numbers never compare across one. The
+# narrative for each lives in that set's README.
+set	generation	captures	recorded	note
+adversarial	1	120	2026-09-11	first record; generation 1 is the set as it stands today
+everyday	3	255	2026-09-11	recorded at its existing generation 3; history in its README
+heldout	1	389	2026-09-11	first record; generation 1 is the set as it stands today

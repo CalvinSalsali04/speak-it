@@ -147,6 +147,12 @@ jobs:
         run: python3 Tools/CorpusRunner/everyday/test_score.py
       - name: Held-out boundary
         run: python3 Tools/CorpusRunner/everyday/leak-check.py
+      # Beside the leak check rather than in the corpus gate, for the reason
+      # the leak check moved here: the gate needs a Mac and is dispatch-only,
+      # so a guard living there does not run on the pull request that
+      # introduces the edit it exists to catch.
+      - name: No sealed capture was edited after it was scored
+        run: python3 Tools/CorpusRunner/everyday/generation-check.py
       - name: Every measure is protected by its suite
         run: python3 Tools/CorpusRunner/everyday/measure-gate.py
 

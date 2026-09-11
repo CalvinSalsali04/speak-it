@@ -252,6 +252,12 @@ never across.
 | 2 | 2026-09-11 | 235 | 12 (farewell cases cleared) | substring |
 | 3 | 2026-09-11 | 255 | 22 | left-anchored |
 
+`Tools/CorpusRunner/generations.tsv` records this set at generation 3, and
+`generation-check.py` fails on every pull request if a capture's text changes
+without a new row above. It cannot tell a legitimate generation from a quiet
+edit — they are the same diff — so the rows above still do the real work; the
+check only makes the edit impossible to make silently.
+
 Generation 3 changed two things at once, deliberately, at a pause between runs
 rather than between two comparisons:
 

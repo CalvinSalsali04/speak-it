@@ -253,6 +253,24 @@ never used to steer a fix.
 The frame of reference is Monday 2026-08-03 10:00 America/Toronto. Every
 asserted ordinal falls inside August, which has 31 days.
 
+## Generations
+
+A generation opens when a capture's **text** changes — edited, added or
+removed. Numbers never compare across one. A retagged family, a changed note
+or a rewritten README is not a generation; family denominators move
+independently and are tracked separately where that applies.
+
+| generation | recorded | captures | what changed |
+|---|---|---|---|
+| 1 | 2026-09-11 | 120 | first record. Generation 1 is this set as it stands today, not a reconstruction of its history. |
+
+`Tools/CorpusRunner/generations.tsv` holds the same number for every sealed
+set, and `everyday/generation-check.py` fails on every pull request if a
+capture here has changed without a new row above. What that proves is narrow
+and worth stating: it cannot tell a legitimate new generation from a quiet
+edit, because they are the same diff. The row above does the real work — the
+check only makes the edit impossible to make silently.
+
 ## Family denominators
 
 | date | family | from | to | why |
