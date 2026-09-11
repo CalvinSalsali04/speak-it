@@ -9,6 +9,11 @@ cd "$ROOT"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 python3 Tools/CorpusRunner/test_score.py
+# The everyday held-out instrument, and the check that nothing in it has
+# leaked into a corpus that gets tuned against. Both are plain Python, so
+# they cost nothing here and catch a leak on the commit that introduces it
+# rather than at the release that trusts the number.
+python3 Tools/CorpusRunner/everyday/test_score.py
 Tools/PipelineProbe/build.sh
 Tools/CorpusRunner/build.sh
 

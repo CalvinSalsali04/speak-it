@@ -1,0 +1,236 @@
+id	domain	utterance	expect	keep	reject	families	note
+W01	work-school	okay so um I need to send Priya the deck before the standup tomorrow	Today:task	Priya|deck|Aug 4	-	filler|person|relative-date	one action, one person, one date
+W02	work-school	remind me to uh book the room for the retro on Thursday afternoon	Today:task	Aug 6	-	filler|date|time	Thursday from Monday is Aug 6
+W03	work-school	the client actually approved the scope so we can start Monday	Memory:note	actually approved	-	self-correction|proper-noun	actually is an ordinary adverb here, not a repair marker
+W04	work-school	we have no budget left for contractors this quarter	Memory:note	no budget	-	negation	negation must survive; a note whose point is the negative
+W05	work-school	so the thing is I gotta the thing is I gotta finish the migration doc	Today:task	migration doc	-	false-start|repetition	restarted clause should yield one item
+W06	work-school	email Dr Okonkwo about the thesis committee and then also book the library room	Today:task|Today:task	Okonkwo|library room	-	multi-thought|person|sequencing	two genuinely separate actions
+W07	work-school	my student number is 20419883 in case I need it for the portal	Memory:note	20419883	-	reference|quantity	reference detail, nothing actionable
+W08	work-school	standup moved to 9:15 starting next week	Memory:note	9:15	-	time	a fact about a recurring meeting, not a new task
+W09	work-school	I need to review the pull request um the one from Sam not the other one	Today:task	Sam	-	filler|self-correction|person	the correction narrows which PR, it is not a new thought
+W10	work-school	cancel the one on one with Marcus I already talked to him	Op:cancel	Marcus	-	cancellation|operation|person	withdraws something previously captured
+W11	work-school	we should uh actually lets push the launch to the fifteenth	Today:task	fifteenth	-	false-start|date	false start then the real intent
+W12	work-school	the quarterly numbers actually improved which nobody expected	Memory:note	actually improved	-	self-correction	actually as adverb again, different sentence shape
+W13	work-school	write the grant abstract this week sometime when I have time	Today:task	grant abstract	-	hedged	when-there's-time task, still Today
+W14	work-school	professor Lindqvist said the exam is open book	Memory:note	Lindqvist|open book	-	person|reference	reported speech, uncommon surname
+W15	work-school	number one we need to finalize the budget and number two we need to tell the team	Today:task|Today:task	budget|tell the team	-	list|sequencing|rambling-intro	numbered list should not create an extra item for the preamble
+W16	work-school	did I already send the invoice to accounting	Ambiguous	invoice	-	question|ambiguous	a question to self; acting on it would be a guess
+W17	work-school	tell Priya no changes after Thursday	Today:task	Priya|no changes	-	negation|person	the instruction is the prohibition
+W18	work-school	set up the sprint review recurring every second Tuesday	Today:task	-	-	recurrence	recurring setup
+W19	work-school	um so yeah I think I want to redo the onboarding deck at some point bye	Today:task	onboarding deck	bye	filler|trailing-goodbye|hedged	trailing goodbye must not become content
+W20	work-school	the office is closed this week so no standup	Memory:note	no standup	-	negation	negation after a causal so
+W21	work-school	I have to submit the ethics form by Friday at five	Today:task	Aug 7|17:00	-	date|time	explicit deadline
+W22	work-school	print the handouts order the whiteboard markers and book the projector	Today:task|Today:task|Today:task	handouts|markers|projector	-	list|multi-thought	three actions in one breath, no conjunction cues beyond and
+W23	work-school	what if we ran the workshop as two shorter sessions instead	Memory:idea	two shorter sessions	-	hedged	an idea, not an action
+W24	work-school	follow up with the TA about my grade on assignment three	Today:task	assignment three	-	reference	person follow-up shape
+W25	work-school	meeting with the dean next Tuesday at 2 in the admin building	Today:event	14:00|admin building	-	date|time|location	calendar shaped; next Tuesday is not asserted, a Monday speaker may mean either Tuesday
+W26	work-school	I keep forgetting the printer code its 4471	Memory:note	4471	-	reference|quantity	the code is the payload
+W27	work-school	reschedule the design sync it clashes with the all hands	Today:task	design sync	-	operation|cancellation	rescheduling something not named as a stored item is a new action, not an operation on one
+W28	work-school	so basically what happened was the deploy went out early and now the docs are wrong so I need to update the docs	Today:task	update the docs	-	rambling-intro|run-on	long preamble, one real action at the end
+W29	work-school	ask Yusuf whether the API keys rotate automatically	Today:task	Yusuf|API keys	-	person|question	a question addressed to someone else is an action
+W30	work-school	the fire drill is on the twelfth I think or maybe the thirteenth	Ambiguous	-	-	ambiguous|date|hedged	speaker cannot pin the date; app should not pick one
+W31	work-school	note that Aurelio prefers written updates over calls	Memory:note	Aurelio|written updates	-	person|reference	knowledge about a person
+W32	work-school	I need to I need to get the syllabus uploaded before term starts	Today:task	syllabus	-	false-start|repetition	stuttered restart
+W33	work-school	dont email the vendor until legal signs off	Today:task	until legal	-	negation|sequencing	prohibition with a condition
+W34	work-school	five slides actually six slides for the board update	Today:task	six	five slides	self-correction|quantity	the correction replaces the number
+W35	work-school	lunch and learn Wednesday topic is accessibility	Today:event	Aug 5|accessibility	-	date|reference	event with a topic
+W36	work-school	remind me every morning to check the on call handover	Today:task	-	-	recurrence|time	daily recurrence
+W37	work-school	I should probably maybe look into whether we still need the staging cluster	Today:task	staging cluster	-	hedged|filler	heavily hedged but still an intent to act
+W38	work-school	the workshop is in room 2B not 2D	Memory:note	2B	not 2D	self-correction|reference	correction of a reference detail
+W39	work-school	send the contract to Nkechi and cc Priya and also put the renewal date in the calendar	Today:task|Today:task	Nkechi|renewal	-	multi-thought|person	cc is part of the first action, the calendar entry is separate
+W40	work-school	never mind about the poster session I am not going	Op:cancel	poster session	-	cancellation|operation|negation	taking a previous capture back
+W41	work-school	my advisor wants the draft by the end of the month	Today:task	draft	-	relative-date	vague but real deadline
+W42	work-school	so um like the thing about the vendor call is honestly I dunno if its worth doing	Ambiguous	vendor call	-	filler|ambiguous|hedged	no decision reached; preserve without acting
+W43	work-school	book flights for the conference and the hotel too its in Halifax	Today:task|Today:task	Halifax	-	multi-thought|location	two bookings, one place
+W44	work-school	the seminar has no attendance requirement this year	Memory:note	no attendance	-	negation	has no X shape
+W45	work-school	put together the postmortem doc take notes from the incident channel and then share it with Rafi	Today:task|Today:task|Today:task	postmortem|Rafi	-	multi-thought|sequencing|person	three steps of one project, still three actions
+W46	work-school	office hours are Thursdays two to four	Memory:note	-	-	recurrence|time	standing fact, not an event to schedule
+W47	work-school	check whether the standing desk order actually shipped	Today:task	actually shipped	-	self-correction	actually inside a whether clause
+F01	family-health	remind me to pick up Imogen from swimming at 5:30 tomorrow	Today:task	Imogen|Aug 4|17:30	-	person|relative-date|time	one action with child, date and time
+F02	family-health	Sarah has no dairy at all	Memory:note	no dairy	-	negation	allergy note whose entire value is the negation
+F03	family-health	um so the pediatrician said uh give her the amoxicillin twice a day for ten days	Today:task	amoxicillin|twice a day	-	filler|recurrence|quantity	dosage detail must stay with the action
+F04	family-health	book the dentist for the kids and also my own cleaning is overdue	Today:task|Today:task	dentist|cleaning	-	multi-thought	two appointments
+F05	family-health	mums blood pressure meds are the little white ones not the pink	Memory:note	white	-	self-correction|reference	a caregiving detail
+F06	family-health	the class has no birthday treats policy	Memory:note	no birthday treats	-	negation	policy note, negation carries the meaning
+F07	family-health	so today after work I need to grab the prescription and then swing by my mums and then take the recycling out	Today:task|Today:task|Today:task	prescription|recycling	-	multi-thought|sequencing	three errands chained with and then
+F08	family-health	Theos parent teacher thing is on the 19th at 6	Today:event	Theo|18:00	-	person|date|time	school event
+F09	family-health	I need to uh I need to call the clinic about the referral	Today:task	clinic|referral	-	false-start|repetition	restart
+F10	family-health	physio every Tuesday and Thursday at 7am until October	Today:task	-	-	recurrence|time	bounded recurrence
+F11	family-health	dont let Nana take the stairs on her own	Memory:note	dont|stairs	-	negation	a standing instruction, prohibition
+F12	family-health	what was the name of that physiotherapist again	Ambiguous	physiotherapist	-	question|ambiguous	a question with no answer in the capture
+F13	family-health	Ravis birthday is March 3rd he likes those ginger cookies	Memory:note	Ravi|ginger cookies	-	person|date|reference	person knowledge worth finding later
+F14	family-health	actually make it two puffs of the inhaler not one	Today:task	two puffs	-	self-correction|quantity	correction of a dosage
+F15	family-health	sign the field trip form pay the twelve dollars and send back the allergy sheet	Today:task|Today:task|Today:task	field trip|allergy sheet	-	list|multi-thought|quantity	three school admin actions
+F16	family-health	my appointment with Dr Achterberg got moved to the 26th	Today:event	Achterberg|26th	-	person|date	an appointment with a date belongs on Today, not filed as a note
+F17	family-health	we have no milk left	Today:shopping	no milk	-	negation	a shopping trigger stated negatively
+F18	family-health	okay so like I should probably get the car seat checked at some point bye	Today:task	car seat	bye	filler|hedged|trailing-goodbye	hedged intent plus sign off
+F19	family-health	Noor is fasting this month so no lunch meetings	Memory:note	Noor|no lunch	-	negation|person	negation after so
+F20	family-health	cancel Fridays babysitter we are staying home	Op:cancel	babysitter	-	cancellation|operation	withdrawing an arrangement
+F21	family-health	the hospital parking is free after 8pm on weekends	Memory:note	free|8pm	-	reference|time	useful reference fact
+F22	family-health	I think maybe we should look into that sleep clinic the one Beatriz mentioned	Today:task	sleep clinic|Beatriz	-	hedged|person	hedged but a real intent to act
+F23	family-health	get bananas oat milk and the big bag of rice	Today:shopping|Today:shopping|Today:shopping	bananas|oat milk|rice	-	list	a three item shopping list
+F24	family-health	remind me not to text Dad about the money thing tonight	Today:task	Dad	-	negation	a reminder whose content is a prohibition
+F25	family-health	so the thing is the thing is Grandad keeps skipping his afternoon dose	Memory:note	afternoon dose	-	false-start|repetition	an observation, not an action
+F26	family-health	vaccination record is in the blue folder in the hall cupboard	Memory:note	blue folder	-	reference|location	where a thing lives
+F27	family-health	call the school about the uniform and then um also ask about the bus pass	Today:task	uniform|bus pass	-	multi-thought|filler	one phone call with two things to ask; details of one action stay together
+F28	family-health	Granddads memorial is always the first Sunday of November	Memory:note	November	-	recurrence|date	yearly fact anchored to a weekday rather than a number
+F29	family-health	the venue has no wheelchair access	Memory:note	no wheelchair	-	negation	accessibility constraint
+F30	family-health	pack swimsuits towels sunscreen and the inflatable thing for Saturday	Today:task	sunscreen|Aug 8	-	list|date	one packing task with several details that belong together
+F31	family-health	did the results come back or am I imagining that	Ambiguous	results	-	question|ambiguous	speaker is unsure a thing happened
+F32	family-health	take the cat to the vet on Thursday and get the flea stuff while I am there	Today:task|Today:task	vet|Aug 6|flea	-	multi-thought|date	two errands, one trip
+F33	family-health	Dr Whitcombes office opens at 8:15 not 8:45	Memory:note	8:15	8:45	self-correction|time	corrected time, wrong one must not survive
+F34	family-health	I want to start walking in the mornings before everyone gets up	Today:task	walking	-	recurrence|time	intention shaped as a habit
+F35	family-health	remind me on the 9th to renew the health card	Today:task	health card	-	date	explicit day of month
+F36	family-health	she said it was fine but honestly I dunno I might call back	Ambiguous	-	-	ambiguous|hedged	no resolved intent
+F37	family-health	buy a gift for Amaia her party is the 22nd	Today:task|Memory:note	Amaia|22nd	-	multi-thought|person|date	an action and a fact
+F38	family-health	no screens after eight on school nights	Memory:note	no screens	-	negation|time	household rule
+F39	family-health	um yeah so I guess just remember that Uncle Rasheed is allergic to shellfish	Memory:note	Rasheed|shellfish	-	filler|person|reference	filler wrapped fact
+F40	family-health	water the plants feed the fish and bring in the parcel	Today:task|Today:task|Today:task	plants|fish|parcel	-	list|multi-thought	three household actions
+F41	family-health	reschedule the ultrasound I cannot do mornings that week	Today:task	ultrasound	-	operation|negation	change with a constraint
+F42	family-health	his shoe size is a 12 actually a 13 now	Memory:note	13	a 12	self-correction|quantity	corrected number
+F43	family-health	school photos are next Wednesday wear the green jumper	Today:event|Memory:note	green jumper	-	date|multi-thought	an event and an instruction; next Wednesday is not asserted, the reading is contested
+F44	family-health	there is no parking at the clinic so leave early	Today:task	no parking	-	negation	known good guard, keep as control
+F45	family-health	put the specialist referral letter somewhere I can find it	Today:task	referral letter	-	hedged	vague but actionable
+F46	family-health	Mateus has football Saturday mornings all season	Memory:note	Mateus|football	-	recurrence|person	standing schedule fact
+F47	family-health	okay so um for the weekend I wanna first go to the farmers market and then I wanna take the kids to the splash pad and then maybe dinner at Aunt Colettes bye	Today:task|Today:task|Today:task	farmers market|splash pad|Colette	bye	rambling-intro|sequencing|multi-thought|trailing-goodbye|run-on	long chained plan, matches the shape Calvin called out
+M01	money-travel	cancel the gym membership before they charge me again on the 15th	Today:task	gym membership|15th	-	cancellation|date	an action about cancelling, not an operation on a stored item
+M02	money-travel	our flight is BA2196 landing at 6:40am	Memory:note	BA2196|6:40	-	reference|time	flight code must survive verbatim
+M03	money-travel	um so I need to uh move like two grand into the savings account before the rent goes out	Today:task	savings	-	filler|quantity	one transfer action
+M04	money-travel	the hotel has no shuttle after 10	Memory:note	no shuttle	-	negation|time	travel constraint stated negatively
+M05	money-travel	book the airport parking renew the travel insurance and print the visa letter	Today:task|Today:task|Today:task	parking|insurance|visa letter	-	list|multi-thought	three trip errands
+M06	money-travel	actually the exchange rate improved so wait until Friday	Today:task	actually|Aug 7	-	self-correction|date	actually as adverb plus a real deadline
+M07	money-travel	my Visa ends 4417 and the amex ends 9002	Memory:note	4417|9002	-	reference|quantity	two reference numbers in one note
+M08	money-travel	I need to I need to dispute that duplicate charge from the airline	Today:task	duplicate charge	-	false-start|repetition	restart
+M09	money-travel	car insurance renews every March 20th	Memory:note	March 20	-	recurrence|date	yearly renewal fact
+M10	money-travel	dont pay the invoice until the credit note comes through	Today:task	dont pay|credit note	-	negation|sequencing	prohibition with a condition
+M11	money-travel	is the deposit refundable or did I read that wrong	Ambiguous	deposit	-	question|ambiguous	unresolved question
+M12	money-travel	so basically what I am thinking is we do Lisbon for four nights then Porto for three then fly home from Porto	Today:task|Today:task|Today:task	Lisbon|Porto	-	rambling-intro|sequencing|multi-thought|location|run-on	itinerary planning, three legs
+M13	money-travel	remind me to file the taxes by the 30th of April	Today:task	taxes	-	date	annual deadline
+M14	money-travel	the apartment code is 8843 and the wifi is lisboa2024	Memory:note	8843|lisboa2024	-	reference	two codes, neither is a date
+M15	money-travel	we have no travel adapters for the UK plug	Today:shopping	no travel adapters	-	negation	a shopping need stated as an absence
+M16	money-travel	switch the phone plan and also look at whether the roaming addon is worth it	Today:task|Today:task	phone plan|roaming	-	multi-thought|hedged	an action and an investigation
+M17	money-travel	budget is 3500 actually 3800 including the flights	Memory:note	3800	3500	self-correction|quantity	corrected figure
+M18	money-travel	never mind the Rome idea we are not going	Op:cancel	Rome	-	cancellation|operation|negation	retracting a previous capture
+M19	money-travel	check in opens 24 hours before so Thursday morning	Today:task	Aug 6	-	relative-date|time	derived date, stated by the speaker
+M20	money-travel	um okay so like the mortgage renewal thing I honestly havent decided anything yet	Ambiguous	mortgage renewal	-	filler|ambiguous|hedged	explicitly undecided
+M21	money-travel	set aside 200 a month for the car fund	Today:task	200	-	recurrence|quantity	recurring saving
+M22	money-travel	Ingrid says the train from Malmo is cheaper than flying	Memory:note	Ingrid|Malmo	-	person|location|reference	reported advice, uncommon place name
+M23	money-travel	email the landlord about the deposit and then also chase the utilities refund bye	Today:task|Today:task	landlord|utilities	bye	multi-thought|trailing-goodbye	two chases plus sign off
+M24	money-travel	the annual fee is waived the first year only	Memory:note	waived|first year	-	reference	a qualified fact
+M25	money-travel	pack the passports charge the power bank and download the offline maps	Today:task|Today:task|Today:task	passports|power bank|offline maps	-	list|multi-thought	three prep actions
+M26	money-travel	I should probably compare the two credit cards at some point	Today:task	credit cards	-	hedged	when-there's-time
+M27	money-travel	there is no ATM in the village so bring cash	Today:task	no ATM|cash	-	negation	known good guard as control, plus an action
+M28	money-travel	the Airbnb checkin is after 3 and checkout is 10 sharp	Memory:note	15:00|10	-	time|reference	two times in one fact
+M29	money-travel	transfer the euros uh actually transfer the pounds first	Today:task	pounds	euros	false-start|self-correction	the correction swaps the currency
+M30	money-travel	our seats are 14A and 14B	Memory:note	14A|14B	-	reference	seat numbers must not be read as times
+M31	money-travel	renew the passport its expiring in eleven months	Today:task	passport	-	relative-date	long horizon action
+M32	money-travel	Dmitri offered to drive us to the airport	Memory:note	Dmitri	-	person|reference	an offer recorded, not yet an action
+M33	money-travel	cancel the hire car booking and rebook the smaller one	Today:task|Today:task	hire car|smaller	-	cancellation|multi-thought	cancel and replace
+M34	money-travel	no checked bags on the return leg	Memory:note	no checked bags	-	negation	a constraint
+M35	money-travel	so the thing is the thing is I still havent booked the transfer from the station	Today:task	transfer	-	false-start|repetition	restart with a real action
+M36	money-travel	put the rent reminder on the first of every month	Today:task	-	-	recurrence|date	monthly recurrence
+M37	money-travel	what if we drove instead and stopped in Sudbury on the way	Memory:idea	Sudbury	-	hedged|location	an idea, not a plan
+M38	money-travel	the travel clinic actually had appointments this week	Memory:note	actually had	-	self-correction	actually as adverb
+M39	money-travel	remind me Sunday evening to do the expense report	Today:task	Aug 9|expense report	-	date|time	day plus part of day
+M40	money-travel	we spent 62 on dinner and 18 on the taxi	Memory:note	62|18	-	quantity|reference	two figures in one record
+M41	money-travel	I need to sort the currency the sim card and the parking pass before Friday	Today:task|Today:task|Today:task	currency|sim card|parking pass|Aug 7	-	list|multi-thought|date	three items under one deadline
+M42	money-travel	the flight is 7:05 or 7:50 I cannot remember which	Ambiguous	-	-	ambiguous|time	speaker cannot pin the time
+M43	money-travel	Yara said the visa takes three weeks minimum	Memory:note	Yara|three weeks	-	person|reference	reported constraint
+M44	money-travel	dont forget the printed itinerary they do not accept phones at that border	Today:task	printed itinerary	-	negation	dont forget is an instruction to do, not to avoid
+M45	money-travel	subscription audit in January cancel anything I have not opened	Today:task	January	-	cancellation|date	future audit task
+M46	money-travel	book the ferry for the 3rd of September two adults one child	Today:task	ferry|two adults	-	date|quantity	one booking with details that belong together
+M47	money-travel	the apartment has no washing machine	Memory:note	no washing machine	-	negation	has no X shape
+L01	freelance	invoice Halvorsen Studio for the July retainer	Today:task	Halvorsen	-	proper-noun	business name must survive as spoken
+L02	freelance	um so the client wants uh three concepts not two	Memory:note	three concepts	two	filler|self-correction|quantity	corrected scope figure
+L03	freelance	send the proposal to Beaumont and then follow up Thursday if they go quiet	Today:task|Today:task	Beaumont|Aug 6	-	multi-thought|date|sequencing	an action and a conditional follow up
+L04	freelance	the contract has no kill fee	Memory:note	no kill fee	-	negation	a contract term that is entirely negative
+L05	freelance	I need to I need to write up the scope change before I do any more work	Today:task	scope change	-	false-start|repetition	restart
+L06	freelance	chase the unpaid invoice from Okafor Design its sixty days late now	Today:task	Okafor|sixty days	-	proper-noun|quantity	one chase with detail that belongs together
+L07	freelance	my day rate is 650 and 800 for rush work	Memory:note	650|800	-	reference|quantity	two rates in one fact
+L08	freelance	dont start the build until the deposit clears	Today:task	dont start|deposit	-	negation|sequencing	prohibition with a gate
+L09	freelance	so basically the situation is they changed the brief again and I think I need to reprice it	Today:task	reprice	-	rambling-intro|hedged|run-on	long preamble, one action
+L10	freelance	call it done actually one more revision round	Today:task	one more revision	-	self-correction	the speaker reverses themselves mid sentence
+L11	freelance	update the portfolio add the Kestrel case study and write the About page	Today:task|Today:task|Today:task	Kestrel|About page	-	list|multi-thought	three website tasks
+L12	freelance	should I raise rates in January or wait I honestly dont know	Ambiguous	-	-	question|ambiguous|hedged	explicitly undecided
+L13	freelance	Sundberg pays net 15 everyone else is net 30	Memory:note	Sundberg|net 15|net 30	-	reference|proper-noun	two payment terms, neither is a time
+L14	freelance	remind me every Friday to send the weekly update to clients	Today:task	-	-	recurrence	weekly recurrence
+L15	freelance	the shoot is at the Distillery District on the 11th from 8 til 2	Today:event	Distillery District|Aug 11	-	location|date|time	event with place and a window
+L16	freelance	cancel the discovery call with Ashbourne they went with someone else	Op:cancel	Ashbourne	-	cancellation|operation|proper-noun	withdrawing a booked thing
+L17	freelance	okay yeah so I might do a newsletter thing eventually bye	Memory:idea	newsletter	bye	filler|hedged|trailing-goodbye	a vague idea with a sign off
+L18	freelance	the file they sent actually opens fine in Figma	Memory:note	actually opens	-	self-correction|proper-noun	actually as adverb, product name
+L19	freelance	quote the rebrand at 12k and if they push back the floor is 9	Today:task	12k|is 9	-	quantity	one decision with two numbers that belong together
+L20	freelance	email Tomasz the revised timeline and cc his producer and attach the new deck	Today:task	Tomasz|deck	-	person|multi-thought	one email with three details that belong together
+L21	freelance	I have no availability until the 24th	Memory:note	no availability|24th	-	negation|date	has no X plus a date
+L22	freelance	set up the new client folder the shared drive and the time tracking project	Today:task|Today:task|Today:task	shared drive|time tracking	-	list|multi-thought	three setup steps
+L23	freelance	the brief is due um Tuesday no wait Wednesday	Today:task	Aug 5	Aug 4	self-correction|filler|date	corrected weekday, the wrong one must not survive
+L24	freelance	note that Wiremu prefers Loom over written feedback	Memory:note	Wiremu|Loom	-	person|reference|proper-noun	person preference
+L25	freelance	renew the domain and the SSL before the 9th	Today:task|Today:task	domain|SSL	-	multi-thought|date	two renewals under one deadline
+L26	freelance	so the thing is the thing is I keep underquoting the discovery phase	Memory:note	underquoting	-	false-start|repetition	a self observation, not an action
+L27	freelance	what if I packaged the audit as a fixed price thing	Memory:idea	fixed price	-	hedged	business idea
+L28	freelance	they have no brand guidelines so I am making the palette from scratch	Memory:note	no brand guidelines	-	negation	constraint that shapes the work
+L29	freelance	book the accountant call for the 17th at 11 and prep the receipts before that	Today:task|Today:task	17th|11:00|receipts	-	multi-thought|date|time|sequencing	a booking and its prerequisite
+L30	freelance	never mind the rate increase email I am not sending it	Op:cancel	rate increase	-	cancellation|operation|negation	retraction
+L31	freelance	the retainer is 10 hours a month rolling over up to 20	Memory:note	10 hours|20	-	reference|quantity|recurrence	a term with two numbers
+L32	freelance	I should probably write a proper contract template at some point	Today:task	contract template	-	hedged	when-there's-time
+L33	freelance	Ferreira asked for the source files and the fonts	Today:task	Ferreira|source files|fonts	-	person|list	one request with two deliverables that belong together
+L34	freelance	the invoice number is INV-2026-0412	Memory:note	INV-2026-0412	-	reference	an alphanumeric reference that must not be read as a date
+L35	freelance	um like I dunno whether to take the Hallberg job it pays well but the timeline is brutal	Ambiguous	Hallberg	-	filler|ambiguous|hedged	weighing, not deciding
+L36	freelance	archive the finished projects and back up the drive on the first of the month	Today:task|Today:task	archive|back up	-	multi-thought|recurrence	two maintenance actions
+L37	freelance	they pay in euros actually in pounds now	Memory:note	pounds	euros	self-correction	corrected currency
+L38	freelance	number one finish the wireframes number two get sign off number three schedule the build	Today:task|Today:task|Today:task	wireframes|sign off|build	-	list|sequencing	numbered list, three items not six
+L39	freelance	the studio has no parking use the lot on Shuter	Memory:note	no parking|Shuter	-	negation|location	negative fact plus the workaround
+L40	freelance	follow up with Delacroix about the testimonial	Today:task	Delacroix|testimonial	-	person|proper-noun	single follow up
+L41	freelance	raise the deposit to 50 percent on new projects starting September	Today:task	50|September	-	quantity|date	policy change with a start date
+L42	freelance	did I already invoice the Marchetti job	Ambiguous	Marchetti	-	question|ambiguous	unresolved question to self
+L43	freelance	the deliverable is three logo lockups two colourways and a one page guide	Memory:note	three logo lockups|one page guide	-	list|quantity	one scope statement whose parts belong together
+L44	freelance	block out the last week of August no client work	Today:task	no client work	-	negation|date	a block whose meaning is the prohibition
+L45	freelance	so today I wanna first go through the inbox and then actually no first do the Hargrave edits and then the inbox	Today:task|Today:task	Hargrave|inbox	-	false-start|self-correction|sequencing|multi-thought|run-on	reordering mid sentence, two tasks not three
+L46	freelance	send Anouk the NDA she starts Monday	Today:task|Memory:note	Anouk|NDA	-	person|multi-thought|relative-date	an action and a fact
+L47	freelance	my accountant is Priyanka at Whitfield and Roe	Memory:note	Priyanka|Whitfield	-	person|proper-noun|reference	a contact fact, business name with and inside it
+E01	fitness-errands	pick up the dry cleaning and drop the parcel at the post office	Today:task|Today:task	dry cleaning|post office	-	multi-thought	two errands
+E02	fitness-errands	um so I wanna go to the gym like four times this week	Today:task	four times	-	filler|recurrence|quantity	a weekly target
+E03	fitness-errands	the car needs an oil change and the winter tires swapped before November	Today:task|Today:task	oil change|winter tires	-	multi-thought|date	two vehicle jobs
+E04	fitness-errands	I need to I need to get the brakes looked at before winter	Today:task	brakes	-	false-start|repetition	restart
+E05	fitness-errands	milk eggs bread and that oat cereal Sofia likes	Today:shopping|Today:shopping|Today:shopping|Today:shopping	milk|eggs|bread|Sofia	-	list|person	four shopping items, last one carries a name
+E06	fitness-errands	the pool has no lane swim on Sundays	Memory:note	no lane swim	-	negation|recurrence	has no X plus a recurring day
+E07	fitness-errands	book the boiler service its been two years	Today:task	boiler service	-	quantity	one booking
+E08	fitness-errands	so um today when I go out I wanna first hit Kinsmen Hardware then Greenhouse Juice then the framers on Dundas bye	Today:task|Today:task|Today:task	Kinsmen Hardware|Greenhouse Juice|Dundas	bye	sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	three stops, store names kept as spoken, goodbye dropped
+E09	fitness-errands	squats 5 by 5 at 80 kilos next session	Today:task	80	-	quantity	one plan whose numbers belong together
+E10	fitness-errands	dont run on the ankle until the physio clears it	Today:task	dont run|physio	-	negation|sequencing	prohibition with a condition
+E11	fitness-errands	my locker combination is 27 14 33	Memory:note	27|14|33	-	reference|quantity	three numbers that must not become times
+E12	fitness-errands	the gym actually opens at 5 on weekdays	Memory:note	actually opens	-	self-correction|time	actually as adverb
+E13	fitness-errands	return the boots to Mahoneys and exchange the shirt at Verdant	Today:task|Today:task	Mahoneys|Verdant	-	multi-thought|proper-noun	two returns at two stores
+E14	fitness-errands	I should probably start stretching in the evenings	Today:task	stretching	-	hedged|recurrence	hedged habit
+E15	fitness-errands	we have no bin bags and no washing up liquid	Today:shopping|Today:shopping	no bin bags|washing up liquid	-	negation|list	two needs both stated as absences
+E16	fitness-errands	the 5k is on the 30th registration closes the 20th	Today:event|Today:task	30th|20th	-	date|multi-thought	an event and its deadline
+E17	fitness-errands	cancel my Saturday class I will be away	Op:cancel	Saturday class	-	cancellation|operation	withdrawing a booking
+E18	fitness-errands	get a new filter for the vacuum its a Hoverline 400	Today:shopping	Hoverline 400	-	proper-noun|reference	unknown product model must survive verbatim
+E19	fitness-errands	run three times actually four times a week until the race	Today:task	four times	three times	self-correction|recurrence|quantity	corrected frequency
+E20	fitness-errands	the hardware shop closes at 4 on Saturdays not 6	Memory:note	at 4	not 6	self-correction|time	corrected closing time
+E21	fitness-errands	wash the car sort the garage and take the old paint to the depot	Today:task|Today:task|Today:task	garage|old paint|depot	-	list|multi-thought	three weekend jobs
+E22	fitness-errands	is the bike service included or is that extra	Ambiguous	bike service	-	question|ambiguous	unresolved question
+E23	fitness-errands	remind me Wednesday to put the bins out	Today:task	Aug 5|bins	-	date	explicit weekday
+E24	fitness-errands	Bartholomew at the shop said the part is on backorder	Memory:note	Bartholomew|backorder	-	person|reference	reported speech, unusual first name
+E25	fitness-errands	there is no step class this month	Memory:note	no step class	-	negation	known good guard as control
+E26	fitness-errands	so basically the thing with the treadmill is it makes that noise again and I should probably call someone	Today:task	treadmill	-	rambling-intro|hedged|run-on	preamble then a hedged action
+E27	fitness-errands	swim Monday lift Wednesday rest Friday	Today:task|Today:task|Today:task	swim|lift|rest	-	list|recurrence	a three day split
+E28	fitness-errands	buy the protein powder the vanilla one not chocolate	Today:shopping	vanilla	chocolate	self-correction	corrected flavour, wrong one must not survive
+E29	fitness-errands	my PB on the deadlift is 140 from March	Memory:note	140	-	quantity|reference	a record worth finding later
+E30	fitness-errands	collect the keys from Ingeborg then meet the plumber at two	Today:task|Today:task	Ingeborg|14:00	-	multi-thought|person|time|sequencing	two appointments in sequence
+E31	fitness-errands	um okay yeah so I dunno whether to cancel the membership or just pause it	Ambiguous	membership	-	filler|ambiguous|hedged	weighing two options, deciding neither
+E32	fitness-errands	the recycling depot has no weekend hours	Memory:note	no weekend hours	-	negation	has no X shape
+E33	fitness-errands	I need to book the MOT sort the insurance and find the logbook	Today:task|Today:task|Today:task	MOT|insurance|logbook	-	list|multi-thought	three vehicle admin items
+E34	fitness-errands	never mind the running club I am not joining	Op:cancel	running club	-	cancellation|operation|negation	retraction
+E35	fitness-errands	the physio is at 105 Bloor suite 4	Memory:note	105 Bloor|suite 4	-	location|reference	an address whose numbers must not become times
+E36	fitness-errands	pick up the parcel from the depot on your way home	Today:task	depot	-	location	an errand tied to a route
+E37	fitness-errands	yoga every Monday and Thursday at 6:30	Today:task	-	-	recurrence|time	twice weekly recurrence
+E38	fitness-errands	what if I cycled to work twice a week instead of driving	Memory:idea	twice a week	-	hedged|recurrence	an idea, not a commitment
+E39	fitness-errands	get the spare key cut two copies	Today:task	two copies	-	quantity	one errand with a quantity
+E40	fitness-errands	the class has no waitlist you just turn up	Memory:note	no waitlist	-	negation	negation carries the whole fact
+E41	fitness-errands	so the thing is the thing is I keep forgetting the gym bag on Tuesdays	Memory:note	gym bag	-	false-start|repetition|recurrence	an observation
+E42	fitness-errands	order the dog food book the groomer and pick up the flea treatment	Today:task|Today:task|Today:task	dog food|groomer|flea treatment	-	list|multi-thought	three pet errands
+E43	fitness-errands	my resting heart rate was 58 this morning down from 64	Memory:note	58|64	-	quantity|reference	two numbers, both must survive
+E44	fitness-errands	drop the shoes at the cobbler on Roncesvalles before Friday	Today:task	Roncesvalles|Aug 7	-	location|date|proper-noun	one errand with place and deadline
+E45	fitness-errands	did I already put the bins out or was that last week	Ambiguous	bins	-	question|ambiguous	unresolved memory question
+E46	fitness-errands	swap the smoke alarm batteries all three of them	Today:task	three	-	quantity	one job, a quantity that belongs to it
+E47	fitness-errands	so today when I go shopping I want to go to or actually first I wanna go to Solstice Market and then Fernwood Bakery for bread and then the pharmacy bye	Today:task|Today:task|Today:task	Solstice Market|Fernwood Bakery|pharmacy	bye	false-start|sequencing|multi-thought|proper-noun|trailing-goodbye|run-on	the shape Calvin described, with different stores so it is not his sentence
