@@ -1,5 +1,9 @@
 """Regression coverage for the evaluation instrument, independent of parser output."""
+import collections
+import csv
+import io
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -708,6 +712,198 @@ class DevsetScorerTests(unittest.TestCase):
                     len(reason), 20,
                     f"{row[0]} is marked KNOWN: without saying why, which is a "
                     f"suppression rather than a documented failure")
+
+
+
+
+class RamblingPairingTests(unittest.TestCase):
+    """The rambling set's headline is the GAP between twins, so the pairing is
+    the instrument.
+
+    `RB04C` and `RB04R` carry the same content, one written and one spoken, and
+    the number worth reading is the difference between them. That only measures
+    anything while both halves carry the same labels and differ only in how the
+    content is said. Nothing here reads parser output: these are properties of
+    the label file, so they hold on a Linux container, and they fail the moment
+    somebody edits one side of a pair.
+    """
+
+    SET = pathlib.Path(__file__).parent / "devsets" / "rambling.tsv"
+
+    #: Ids with no twin, declared rather than tolerated: a dropped row and a
+    #: deliberate singleton are indistinguishable from here, and the failure
+    #: mode of a silently tolerated singleton is a gap headline computed over
+    #: fewer pairs than the reader thinks.
+    UNPAIRED = {
+        "RB25": "coherent-long, written as one long unrehearsed capture with "
+                "no clean counterpart by design",
+        "RB26": "coherent-long, same design",
+        "RB27": "coherent-long, same design",
+    }
+
+    #: Pairs whose rambling half ends with its clean half word for word, split
+    #: by WHY, because one of these is a property of the family and the other
+    #: is a habit of whoever typed it, and a single flag over both gets quoted
+    #: as whichever is convenient.
+    #:
+    #: A restart IS the speaker saying the whole thing again. A restart capture
+    #: that did not end with the complete utterance would be the mislabelled
+    #: one, so there is nothing here to fix.
+    RESTART_ENDS_WITH_TWIN = {
+        "RB09": "restart: 'send Yusuf the I mean send Yusuf the updated quote'",
+        "RB10": "restart: 'book a table for book a table for six on Saturday'",
+        "RB11": "restart: 'order the order the replacement filter for the furnace'",
+    }
+
+    #: A decision is different. The speaker weighs options and then states the
+    #: outcome -- and in these four the outcome is phrased as the canonical
+    #: sentence rather than as a person resolving a choice ('no, the bus').
+    #: So "return the final clause" scores them correctly with no deliberation
+    #: handling at all, which is the rate improving without the capability.
+    #: Counted, not excused: these are the rows to rewrite, and the family is
+    #: 4/4 clean to 1/4 rambling even WITH the answer handed over.
+    DECISION_ENDS_WITH_TWIN = {
+        "RB13": "decision resolves as 'take the bus to the airport on Sunday' verbatim",
+        "RB14": "decision resolves as 'give Dimitri the blue chair' verbatim",
+        "RB15": "decision resolves as 'cook the salmon on Thursday' verbatim",
+        "RB16": "decision resolves as 'so book the afternoon session'",
+    }
+
+    @classmethod
+    def rows(cls):
+        body = cls.SET.read_text(encoding="utf-8")
+        lines = [l for l in body.splitlines() if l and not l.startswith("#")]
+        return list(csv.DictReader(io.StringIO("\n".join(lines)), delimiter="\t"))
+
+    @staticmethod
+    def flatten(text):
+        return re.sub(r"[^a-z0-9 ]", " ", text.lower()).split()
+
+    @classmethod
+    def ends_with(cls, rambling, clean):
+        """Whether the rambling half finishes with its clean twin word for word.
+
+        A function with a fixture rather than an inline `endswith`, because an
+        end-to-end test cannot check its own matcher: mutating the comparison
+        and mutating the thing that would notice are the same edit. The last
+        guard written in this repository shipped with a comparison that could
+        never fire, and it was a mutation that found it, not a reading.
+        """
+        return cls.flatten(rambling)[-len(cls.flatten(clean)):] == cls.flatten(clean)
+
+    def pairs(self):
+        by = {r["id"]: r for r in self.rows()}
+        for rid, row in sorted(by.items()):
+            match = re.fullmatch(r"(RB\d+)C", rid)
+            if match and match.group(1) + "R" in by:
+                yield match.group(1), row, by[match.group(1) + "R"]
+
+    def test_the_matcher_sees_a_trailing_twin_and_only_a_trailing_twin(self):
+        self.assertTrue(self.ends_with("honestly the afternoon so book the session",
+                                       "book the session"))
+        self.assertTrue(self.ends_with("Book the Session.", "book the session"),
+                        "case and punctuation must not hide a verbatim ending")
+        self.assertFalse(self.ends_with("book the session and then go home",
+                                        "book the session"),
+                         "a twin in the middle is not a twin at the end")
+        self.assertFalse(self.ends_with("book the", "book the session"))
+
+    def test_every_capture_is_paired_or_declared_unpaired(self):
+        by = {r["id"]: r for r in self.rows()}
+        for rid in by:
+            match = re.fullmatch(r"(RB\d+)([CR])", rid)
+            with self.subTest(id=rid):
+                if not match:
+                    self.assertIn(rid, self.UNPAIRED,
+                                  "a capture with no C/R suffix must say why")
+                    continue
+                twin = match.group(1) + ("R" if match.group(2) == "C" else "C")
+                self.assertIn(twin, by, f"{rid} lost its twin; the gap headline "
+                                        "is computed over pairs")
+        for rid in self.UNPAIRED:
+            with self.subTest(declared=rid):
+                self.assertIn(rid, by, "a declared singleton that is gone must "
+                                       "leave the list with it")
+                self.assertNotIn(rid + "C", by,
+                                 "a declared singleton that gained a twin is no "
+                                 "longer a singleton")
+
+    def test_twins_agree_on_destination_and_thought_count(self):
+        """The one assertion that survives a relabel.
+
+        Deliberately not pinned to literal counts: RB28 and RB30 were relabelled
+        from 3 thoughts to 4 after they were written, and a test carrying the old
+        number would have had to be edited to accept the correction -- which is
+        the shape where a wrong label and a wrong test agree with each other.
+        Agreement between halves holds whatever the right answer turns out to be.
+        """
+        for stem, clean, rambling in self.pairs():
+            with self.subTest(pair=stem):
+                self.assertEqual(clean["expected_destination"],
+                                 rambling["expected_destination"],
+                                 "a pair split across destinations measures "
+                                 "routing, not rambling")
+                self.assertEqual(clean["expected_thoughts"],
+                                 rambling["expected_thoughts"],
+                                 "a pair that disagrees on thought count has a "
+                                 "gap built into its labels")
+
+    def test_a_rambling_twin_ending_in_its_clean_twin_is_declared_and_reasoned(self):
+        """Whether a trivial rule scores well here is part of the measurement.
+
+        If the rambling half ends with the clean half word for word, "return the
+        final clause" answers the pair with no structural recovery whatsoever.
+        That is worth knowing about a set whose purpose is to show structural
+        recovery failing.
+        """
+        documented = dict(self.RESTART_ENDS_WITH_TWIN, **self.DECISION_ENDS_WITH_TWIN)
+        self.assertEqual(
+            len(documented),
+            len(self.RESTART_ENDS_WITH_TWIN) + len(self.DECISION_ENDS_WITH_TWIN),
+            "an id in both lists is an id whose reason nobody has decided")
+
+        found = [stem for stem, clean, rambling in self.pairs()
+                 if self.ends_with(rambling["utterance"], clean["utterance"])]
+        self.assertTrue(found, "the matcher found nothing at all, which on this "
+                               "set means it stopped working")
+        for stem in found:
+            with self.subTest(pair=stem):
+                self.assertIn(stem, documented,
+                              "a new pair hands the answer to a trivial rule; "
+                              "say which population it belongs to")
+        for stem, reason in documented.items():
+            with self.subTest(documented=stem):
+                self.assertIn(stem, found,
+                              "documented as ending with its twin and no longer "
+                              "does; a list that outlives its rows is a list "
+                              "nobody is reading")
+                self.assertGreater(len(reason.strip()), 20,
+                                   "a documented row needs the reason, not a mark")
+
+    def test_the_two_populations_are_not_interchangeable(self):
+        """A marker standing in for the judgement it approximates is the bug.
+
+        Parking a decision row in the restart list would make an artefact look
+        constitutive, which is the whole reason the two lists exist separately.
+        """
+        by = {r["id"]: r for r in self.rows()}
+        for stem in self.RESTART_ENDS_WITH_TWIN:
+            with self.subTest(restart=stem):
+                self.assertIn("restart", by[stem + "R"]["family"])
+        for stem in self.DECISION_ENDS_WITH_TWIN:
+            with self.subTest(decision=stem):
+                self.assertIn("decision", by[stem + "R"]["family"])
+
+    def test_each_paired_family_has_the_same_number_of_halves(self):
+        """A dropped row shows up as a family that is heavier on one side."""
+        counts = collections.Counter(r["family"] for r in self.rows())
+        for family, total in sorted(counts.items()):
+            if not family.endswith("-clean"):
+                continue
+            other = family[: -len("-clean")] + "-rambling"
+            with self.subTest(family=family):
+                self.assertEqual(total, counts[other],
+                                 f"{family} and {other} must stay matched")
 
 
 if __name__ == "__main__":
