@@ -358,6 +358,111 @@ final class ActionabilityTests: XCTestCase {
                        ["tomorrow morning email the landlord"])
     }
 
+    /// An ordinal ends a noun phrase; an amount modifies the noun behind it.
+    ///
+    /// The guard that reads a digit in front of a verb-shaped word exists for
+    /// "the $89 charge", where the number belongs to the phrase that follows.
+    /// "The 26th" is finished, and the guard was swallowing the boundary
+    /// behind every spoken date, so a fact and the errand it prompted arrived
+    /// as one row that kept the fact and lost the errand.
+    func testAnOrdinalDoesNotReadAsAnAmountInFrontOfAVerb() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "Priya starts on the 14th order her a laptop"),
+            ["Priya starts on the 14th", "order her a laptop"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "the invoice went out on the 3rd chase the payment"),
+            ["the invoice went out on the 3rd", "chase the payment"]
+        )
+        // A fronted ordinal is still an adjunct, not a clause of its own.
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "on the 1st renew the car insurance"),
+            ["on the 1st renew the car insurance"]
+        )
+    }
+
+    /// A time in front of the verb is context for it, whatever the phrase
+    /// opens on. No list of openers finishes — "first thing", "late", "early",
+    /// "sometime" — but the end of the phrase is the time itself.
+    func testAVerblessTemporalHeadIsAnAdjunctWithNoPrepositionInFrontOfIt() {
+        for text in [
+            "first thing tomorrow email the landlord about the damp",
+            "late tonight book the taxi",
+            "first thing monday send the invoice",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+        // A head with a verb in it is a clause and keeps its cut.
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "buy the milk tomorrow call the dentist"),
+            ["buy the milk tomorrow", "call the dentist"]
+        )
+    }
+
+    /// A complement-taking verb governs the clause behind it, so the verb in
+    /// that clause is its predicate rather than a fresh instruction.
+    func testAClausalComplementIsNotASecondInstruction() {
+        for text in [
+            "remind me the bins go out on Tuesday",
+            "I told Ines the meeting moved to Thursday",
+            "remember the car needs an oil change",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+    }
+
+    /// Two statements run together are two thoughts when the second names its
+    /// own referent — a proper name, a relationship word, or the speaker's own
+    /// possessive — because such a subject cannot be reaching back into the
+    /// clause in front of it.
+    func testTwoStatementsAreCutWhenTheSecondNamesItsOwnSubject() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "the flight lands at 6:40 Ines is bringing the projector"),
+            ["the flight lands at 6:40", "Ines is bringing the projector"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "the rent goes up sixty dollars in April my lease renews in March"),
+            ["the rent goes up sixty dollars in April", "my lease renews in March"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "the conference moved to Halifax I need to rebook the flights"),
+            ["the conference moved to Halifax", "I need to rebook the flights"]
+        )
+    }
+
+    /// And are one note when the second half would not be findable alone.
+    ///
+    /// These are the rows that keep the rule above honest. Structurally they
+    /// are identical to the ones it cuts — complete clause, noun phrase, verb
+    /// — so nothing but the subject naming its own referent separates them,
+    /// and a rule that split these would produce a row retrieving under
+    /// nothing at all.
+    func testAStatementThatResolvesThroughTheOneBeforeItIsNotCut() {
+        for text in [
+            "the dentist is on Pine Street the parking is round the back",
+            "the boiler pressure sits at one bar the manual says one and a half",
+            "we booked the Halifax hotel the deposit is non refundable",
+            "the car is due its service the mileage limit is thirty thousand",
+            "the recipe takes an hour it serves six",
+            "Priya moved to the Toronto office she starts on the 14th",
+            "our lease runs to March the rent is fixed until then",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+    }
+
+    /// A verb of saying takes the whole clause behind it, whoever it is aimed
+    /// at, so the statement rule must not cut inside its complement.
+    func testAReportedClauseIsNotAStatementBoundary() {
+        for text in [
+            "I told Priya yesterday Marcus is bringing the deck",
+            "I think Priya is bringing the deck",
+            "Sarah said Marcus is chairing the panel this year",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+    }
+
     /// A condition on the speaker in front of the verb is a trigger, and the
     /// body the reader tests starts behind it. A statement behind the
     /// condition is not an errand, and "before I forget" is not a condition.
