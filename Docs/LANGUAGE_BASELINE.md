@@ -404,6 +404,67 @@ is worth treating as one question rather than six.
   app with its store. See `Tools/PipelineProbe/README.md` for what that cannot
   tell you.
 
+## Everyday corpus — generation 3 (2026-09-11)
+
+The everyday held-out set grew from 235 captures to 255, and its `invention`
+measure from 12 cases to 22, so **everyday numbers from before this change are
+not comparable to numbers after it.** Compare within a generation, never across.
+`Tools/CorpusRunner/everyday/README.md` holds the generation table and the
+reasoning.
+
+Two things changed together, deliberately at a pause rather than between two
+comparisons:
+
+- Twenty captures added, four per domain. Fifteen carry a genuine superseded
+  value — a corrected number, time, weekday, person or place. `invention` had
+  been the thinnest measure in the set.
+- Ten captures were withdrawn from `invention` (five of them pre-existing). They
+  phrase an exclusion, not a repair — `book the small meeting room not the big
+  one` — and the excluded value is spoken deliberately, so a faithful title
+  contains it. Two of the old ones rejected `not 2D` and `not 6`, strings a
+  *correct* title carries. Net effect 12 → 22 cases, all genuine supersessions.
+  The withdrawn captures are still scored for routing, count, loss and title,
+  so the negation family's routing signal is intact. What no measure reports is
+  **invention on a negated or superseded value** — whether the reading treated
+  the operative value as operative. That needs a judgement a span test cannot
+  make, so it belongs in a readable development set; the everyday README says so
+  and warns against closing the gap by re-adding a span test.
+- Span matching now anchors its left edge. The old test was a plain substring
+  match over normalised text, where `6:40` folds to `6 40` and sits inside
+  `16 40`, so a pipeline that correctly discarded a superseded time could be
+  reported for inventing it. Direction of the correction is known: `loss` can
+  only get stricter, `invention` only less false.
+
+Nothing here was tuned against, and the set stays sealed: it has been scored
+non-verbose and its failures have not been read.
+
+## Adversarial held-out set — new instrument, no reading yet (2026-09-11)
+
+`Tools/CorpusRunner/adversarial/` is a third sealed set, 120 captures in 10
+pairings of 12. It is a different axis rather than more of the other two:
+
+| set | held out by | what it varies |
+|---|---|---|
+| `heldout/` (389) | mechanism | one phenomenon per capture |
+| `everyday/` (255) | content | ordinary life speech |
+| `adversarial/` (120) | interaction | two phenomena deliberately compounded |
+
+The gap it fills is specific. `heldout.tsv` carries exactly one family tag on
+all 389 rows, so nothing in the repository asked whether the pipeline's layers
+**compose**. Every pairing here is built from two ingredients `heldout/` already
+measures separately, so a pairing scoring badly while both ingredients score
+well alone is evidence about architecture rather than a missing rule.
+
+**Read a pairing against its ingredients, never on its own** — if an ingredient
+is already weak in `heldout/`, a weak pairing says nothing new.
+
+It is scored by the everyday scorer unchanged, so it needs no second
+implementation and inherits the defects already found and fixed there. It is
+discovered by the existing `score.sh` convention, so `language-metrics.sh`
+picks it up with no edit. Its baseline table is empty for the same reason
+everyday's was: the engine cannot run in a Linux container, and a number from
+anywhere else would be invented.
+
 ## How to reproduce
 
 ```bash
