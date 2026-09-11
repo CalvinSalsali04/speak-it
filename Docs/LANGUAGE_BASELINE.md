@@ -154,14 +154,31 @@ there the arithmetic departs from the labels by design.
 | coordination, `devsets/score.py` | counted as a **failure**. The denominator stays `len(rows)`, and `--verbose` shows `(no output)`. This is the design the others should have. |
 | held-out, `heldout/score.py` — so routed, framing and runon too | dropped from the denominator, but the count prints as `missing probe results` |
 | everyday, `everyday/score.py` | dropped, prints `missing probe results`, and `measure-gate.py` mutation-checks that the counter can still report |
-| `abandonment-score.py` | dropped, and **no counter is printed** — only an `UNSEEN` entry in the `--verbose` list, which `language-metrics.sh` never asks for. It does fail the exit status, but the same script discards that: "the scorers report; they do not gate." |
-| `unfinished-score.py` | dropped, and **nothing at all**: `stats["unseen"] += 1; continue`, no print, no miss, no exit status. |
+| `abandonment-score.py` | dropped, printed as `scored N of M labelled`, and the run fails. Before that it printed **no counter at all** — only an `UNSEEN` entry in the `--verbose` list, which `language-metrics.sh` never asks for. |
+| `unfinished-score.py` | dropped, printed the same way, and the run fails. Before that it did **nothing at all**: `stats["unseen"] += 1; continue`, no print, no miss, no exit status. |
 
-So on the report every figure in this file comes from, a dropped row is silent
-in two of the five sets, and in `unfinished` it is silent on a hand run too. The
-reconciliation above is what stands in for the missing signal today, and it is a
-hand check rather than an instrument. A scorer that printed
-`scored N of M labelled` and failed when the two differ would make it one.
+So on the report every figure **in this file** comes from, a dropped row was
+silent in two of the five sets, and in `unfinished` it was silent on a hand run
+too. The reconciliation above stood in for the missing signal, and it was a hand
+check rather than an instrument.
+
+**It is an instrument now**, in the two sets that needed it. Both dev-set
+scorers print `scored N of M labelled` on every run, clean or not — a line that
+appears only on failure is not evidence on the runs where it stays quiet — and
+a mismatch fails the run:
+
+```
+  scored                        57 of 57 labelled
+  scored                        56 of 57 labelled  ← 1 with no probe result, excluded from every rate below
+```
+
+`language-metrics.sh` discards dev-set scorer exit codes by design, so this
+cannot redden the language job; it stops a hand run, which is where a dropped
+row is worth stopping for. The three sealed-set scorers are unchanged: they
+already print the count, and coordination still has the strongest answer of the
+five — a missing row is a failure and the denominator stays whole. Switching the
+others to that would move published rates, so it needs a run and a note rather
+than a quiet edit.
 
 ## 2026-09-11 12:34 — branch at `9d91a0b`, the two guard repairs that shipped
 

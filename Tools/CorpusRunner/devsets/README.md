@@ -130,6 +130,51 @@ a safe gap for an unsafe one, which is a judgement with no line of source to
 cite, so the citation rule does not fit them as written. Until it does, that
 rate carries two declined cases with nothing in the report saying so.
 
+## The denominator is the only evidence that nothing was lost
+
+Every scorer here drops a labelled row the probe never emitted, rather than
+failing it. So a truncated probe run, a lost line or an encoding difference
+takes captures out of the denominator and the rate is computed over whatever
+survived — a set that quietly got easier.
+
+**A denominator arriving at exactly its label count is therefore the only
+evidence anyone gets that no row was dropped.** That reconciliation used to be
+a hand check against the label file. Both scorers here now print it:
+
+```
+  scored                        57 of 57 labelled
+  scored                        56 of 57 labelled  ← 1 with no probe result, excluded from every rate below
+```
+
+It prints on a clean run too. A line that appears only on failure is not
+evidence of anything on the runs where it stays quiet.
+
+`unfinished-score.py` had the worst version of this: it incremented a counter
+that was never printed, appended no miss, and had no exit status at all, so
+`unfinished-score.sh` could not fail on anything. `abandonment-score.py`
+counted and gated on it but only recorded the miss under `--verbose`, and
+`language-metrics.sh` never passes `--verbose` — so on the report every
+published figure comes from, a dropped row was silent in both.
+
+The five scorers now sit in three groups, which is worth knowing before
+quoting any of them:
+
+| scorer | a labelled row with no probe result |
+|---|---|
+| `score.py` (coordination) | counted as a **failure**; denominator stays whole |
+| `unfinished-score.py`, `abandonment-score.py` | excluded, printed, and the run fails |
+| `../heldout/score.py`, `../everyday/score.py` | excluded and printed; neither has an exit status |
+
+Coordination's answer is the strongest of the three, and switching the others
+to it would change published rates, so it needs a run and a note rather than a
+quiet edit.
+
+**Nothing has been lost so far.** `unfinished.tsv` holds 96 `Complete` and 57
+`Incomplete`, which is exactly the published `0/96` and `34/57`; the same
+reconciliation holds for every set the baseline publishes. That was checked by
+hand against the label files. The point of the line above is that the next
+check is the instrument's, not somebody's.
+
 ## `KNOWN:` markers, and the numbers that change because of them
 
 Four rows of `abandonment.tsv` carry a note beginning `KNOWN:` — a failure

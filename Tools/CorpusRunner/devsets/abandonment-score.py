@@ -68,6 +68,21 @@ for b in blocks:
 
 stats = Counter()
 byfam = defaultdict(Counter)
+
+
+def scored_line(stats, labelled):
+    """`N of M labelled`, and what it means when the two differ.
+
+    Kept identical to `unfinished-score.py`'s so the two reports read alike.
+    An unseen row is dropped from the denominator rather than failed, so the
+    denominator matching the label count is the only evidence that nothing
+    was lost between the label file and the probe run.
+    """
+    if stats["unseen"]:
+        return (f"{stats['scored']} of {labelled} labelled"
+                f"  ← {stats['unseen']} with no probe result, "
+                f"excluded from every rate below")
+    return f"{stats['scored']} of {labelled} labelled"
 misses = []
 #: Ids, not counts. A count cannot tell the reader which rows to go and look
 #: at, and `stats["known"]` used to count *declarations* rather than failures,
@@ -154,7 +169,11 @@ abd, keep = stats["abd_total"], stats["keep_total"]
 print()
 print("EXPLICIT-ABANDONMENT DEV SET")
 print("=" * 68)
-print(f"  scored                        {stats['scored']}")
+#: Printed, not only counted. This file recorded an UNSEEN miss and gated on
+#: it, but the miss is verbose-only and `language-metrics.sh` never passes
+#: `--verbose` -- so on the report every published figure comes from, a
+#: dropped row was as silent here as in `unfinished-score.py`.
+print(f"  scored                        {scored_line(stats, len(rows))}")
 print(f"  recall   withdrawn            {stats['abd_ok']}/{abd}"
       f"  ({100 * stats['abd_ok'] / max(abd, 1):.1f}%)")
 print(f"  FALLOUT  kept words withdrawn {stats['fallout']}/{keep}"

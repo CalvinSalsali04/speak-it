@@ -69,6 +69,22 @@ def limits(path):
 stats = Counter()
 byfam = defaultdict(Counter)
 misses = []
+
+
+def scored_line(stats, labelled):
+    """`N of M labelled`, and what it means when the two differ.
+
+    A scorer here drops an unseen row from the denominator rather than
+    failing it, so **a denominator arriving at exactly its label count is the
+    only evidence anyone gets that no row was dropped**. That reconciliation
+    was a hand check somebody did against the label file; printing both
+    numbers on one line makes it something the instrument does.
+    """
+    if stats["unseen"]:
+        return (f"{stats['scored']} of {labelled} labelled"
+                f"  ← {stats['unseen']} with no probe result, "
+                f"excluded from every rate below")
+    return f"{stats['scored']} of {labelled} labelled"
 #: Counted, never subtracted. A limit changes what the reader concludes from
 #: the rate, not the rate.
 declared = limits(labels_path)
@@ -77,7 +93,15 @@ limited = {cid for _, _, ids in declared for cid in ids}
 for cid, utt, fam, exp in rows:
     got = seen.get(utt)
     if got is None:
+        #: A labelled row the probe never emitted. It used to increment this
+        #: counter and nothing else: the counter was never printed, no miss
+        #: was appended for it, and this file had no exit status at all. So a
+        #: truncated probe run, a lost line or an encoding difference took
+        #: rows out of the denominator and the report said nothing -- 34 of
+        #: 57 would quietly become a rate over whatever survived.
         stats["unseen"] += 1
+        misses.append(("UNSEEN", cid, utt, "a probe result",
+                       "the runner never emitted this line"))
         continue
     stats["scored"] += 1
     flagged = GAP in [g for g in got["gaps"] if g]
@@ -135,7 +159,7 @@ inc, fp = stats["inc_total"], stats["fp_total"]
 print()
 print("UNFINISHED-THOUGHT DEV SET")
 print("=" * 68)
-print(f"  scored                        {stats['scored']}")
+print(f"  scored                        {scored_line(stats, len(rows))}")
 print(f"  recall   unfinished flagged   {stats['inc_ok']}/{inc}"
       f"  ({100 * stats['inc_ok'] / max(inc, 1):.1f}%)")
 print(f"  FALLOUT  finished misflagged  {stats['fallout']}/{fp}"
@@ -186,3 +210,19 @@ if verbose:
     print()
     for kind, cid, utt, want, got in misses:
         print(f"{kind:10} {cid}  {utt[:64]}\n           want {want} · got {got}")
+
+#: This file used to have no exit status at all, so `unfinished-score.sh`
+#: could not fail on anything. `language-metrics.sh` discards dev-set scorer
+#: exit codes by design -- the scorers report, they do not gate -- so this
+#: cannot redden the language job. It fails a hand run, which is where a
+#: dropped row is worth stopping for.
+#:
+#: `unsafe` is deliberately not in this condition, though it is in
+#: `abandonment-score.py`'s and belongs here for the same reason: a fragment
+#: given a date is harm, not a miss. It stays out because this set is not
+#: clean on it. `Docs/LANGUAGE_BASELINE.md` records **2 unsafe** alongside
+#: the 34/57 and 0/96 at `9d91a0b`, so adding it here would make every hand
+#: run red on a defect that predates this change and has nothing to do with
+#: a dropped row. Those two captures are worth fixing or documenting; when
+#: one of those happens, this condition should grow.
+sys.exit(1 if stats["unseen"] else 0)
