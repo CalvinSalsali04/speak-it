@@ -9,6 +9,198 @@ cannot run.
 they are the record of what was true when they were measured, not a claim about
 today.
 
+## 2026-09-11 11:26 — `main` at `2d8fe760`, the discourse-framing change merged
+
+Commit `2d8fe760` on `main`,
+[run 34593643935](https://github.com/CalvinSalsali04/speak-it/actions/runs/34593643935),
+`macos-26`. **This is the current baseline.**
+
+It is the after-picture for the discourse-framing change, and it is the only
+run that compares cleanly with the 10:57 section below: same everyday
+generation (255 captures, 22 invention cases), same scorer, same corpus data,
+one merge apart. The 10:12 section measured the same change against the
+235-capture generation with the old invention scorer, so its everyday figures
+do not compare with either of these.
+
+Two instruments read for the first time in this run: `runon.tsv`, the
+development set written for the next change before that change exists, and the
+120-capture adversarial held-out set, which merged after the 10:57 run started.
+
+### What moved, and what did not — everyday, 255 captures
+
+| measure | before (`2c5ac5b`) | after (`2d8fe760`) |
+|---|---|---|
+| routing | 167/240 (69.6%) | **168/240 (70.0%)** |
+| count | 192/232 (82.8%) | **193/232 (83.2%)** |
+| nothing lost | 230/244 (94.3%) | 230/244 (94.3%) |
+| nothing invented | 14/22 (63.6%) | 14/22 (63.6%) |
+| clean titles | 237/255 (92.9%) | **245/255 (96.1%)** |
+| over-segmented | 17 | **16** |
+| under-segmented | 23 | 23 |
+| genuinely ambiguous | 15 | 15 |
+| **acted on anyway** | **0** | **0** |
+
+Nothing regressed on any of the four domain-level measures, and no everyday
+family lost ground on any of its three. The gating corpus stayed at 1393
+cases, 0 failing across all four severities.
+
+| measure | all domains | family-health | fitness-errands | freelance | money-travel | work-school |
+|---|---|---|---|---|---|---|
+| routing | 168/240 (70.0%) | 30/48 (62.5%) | 37/48 (77.1%) | 34/48 (70.8%) | 32/48 (66.7%) | 35/48 (72.9%) |
+| count | 193/232 (83.2%) | 39/47 (83.0%) | 38/46 (82.6%) | 38/46 (82.6%) | 39/47 (83.0%) | 39/46 (84.8%) |
+| nothing lost | 230/244 (94.3%) | 49/49 (100%) | 48/50 (96.0%) | 45/49 (91.8%) | 46/49 (93.9%) | 42/47 (89.4%) |
+| nothing invented | 14/22 (63.6%) | 0/4 (0%) | 3/4 (75.0%) | 3/5 (60.0%) | 4/5 (80.0%) | 4/4 (100%) |
+| clean titles | 245/255 (96.1%) | 50/51 (98.0%) | 51/51 (100%) | 47/51 (92.2%) | 50/51 (98.0%) | 47/51 (92.2%) |
+
+Item type matched the label 145/232, reported and never gated.
+
+### Title hygiene, by defect
+
+| defect | before | after |
+|---|---|---|
+| farewell kept | 7 | **0** |
+| preamble `number one` / `number three` kept | 3 | **0** |
+| preamble `number two` kept | 2 | 1 |
+| preamble `what happened was` kept | 1 | 1 |
+| title is the whole capture | 8 | 8 |
+
+Every farewell is gone. What is left is one enumerator, one preamble, and the
+eight captures whose title is the entire recording — which is the segmentation
+defect wearing a title-shaped coat, not a hygiene defect.
+
+### Everyday per family, worst routing first
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | 0/8 (0%) | 0/8 (0%) | 7/8 (87.5%) |
+| rambling-intro | 6 | 1/6 (16.7%) | 1/6 (16.7%) | 4/6 (66.7%) |
+| trailing-goodbye | 7 | 2/7 (28.6%) | 4/7 (57.1%) | **7/7 (100%)** |
+| sequencing | 17 | 7/17 (41.2%) | 8/17 (47.1%) | 16/17 (94.1%) |
+| multi-thought | 40 | 19/40 (47.5%) | 22/40 (55.0%) | **40/40 (100%)** |
+| operation | 10 | 5/10 (50.0%) | 0/2 (0%) | 10/10 (100%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 (25.0%) | 12/12 (100%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 22/24 (91.7%) |
+| filler | 18 | 9/14 (64.3%) | 12/14 (85.7%) | **18/18 (100%)** |
+| list | 20 | 13/20 (65.0%) | 14/20 (70.0%) | 18/20 (90.0%) |
+| relative-date | 6 | 4/6 (66.7%) | 5/6 (83.3%) | 6/6 (100%) |
+| person | 33 | 23/33 (69.7%) | 26/32 (81.2%) | 32/33 (97.0%) |
+| date | 38 | 26/37 (70.3%) | 30/37 (81.1%) | 36/38 (94.7%) |
+| negation | 51 | 36/51 (70.6%) | 41/47 (87.2%) | 49/51 (96.1%) |
+| location | 12 | 9/12 (75.0%) | 10/12 (83.3%) | 11/12 (91.7%) |
+| self-correction | 39 | 30/39 (76.9%) | 37/39 (94.9%) | 39/39 (100%) |
+| time | 28 | 21/27 (77.8%) | 26/27 (96.3%) | 27/28 (96.4%) |
+| quantity | 34 | 27/34 (79.4%) | 32/34 (94.1%) | 31/34 (91.2%) |
+| reference | 34 | 27/34 (79.4%) | 28/34 (82.4%) | 33/34 (97.1%) |
+| false-start | 14 | 12/14 (85.7%) | 12/14 (85.7%) | 14/14 (100%) |
+| recurrence | 22 | 19/22 (86.4%) | 21/22 (95.5%) | 22/22 (100%) |
+| proper-noun | 15 | 13/15 (86.7%) | 12/14 (85.7%) | 15/15 (100%) |
+| repetition | 10 | 10/10 (100%) | 10/10 (100%) | 10/10 (100%) |
+| question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
+| ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+The `negation` row is the 51-capture family after PR #33 added the tag to W09,
+F05 and F14. It does not compare with the 48-capture row in the 10:57 section.
+
+`n` counts captures carrying the tag, so the rows overlap: one capture can be
+filler, negation and multi-thought at once.
+
+### Held-out set — 389 utterances, sealed
+
+Destination 233/320 (72.8%), thought count 255/310 (82.3%), producing nothing
+0, genuinely ambiguous 69, **acted on anyway 7 (10.1%)**. Identical to every
+run before it. **Nothing has moved the generalisation measure yet**, and that
+remains the honest headline for the framing change: it fixed what a person
+reads on a row, and it has not been shown to help a speaker the parser has
+never met.
+
+### Adversarial held-out set — 120 captures, first reading
+
+Phenomena in combination: each capture crosses two families that are each
+already imperfect alone. Written held out, by interaction rather than by
+mechanism or content, and never tuned against.
+
+| measure | value |
+|---|---|
+| routing | 53/116 (45.7%) |
+| count | 79/105 (75.2%) |
+| nothing lost | 113/116 (97.4%) |
+| nothing invented | 10/24 (41.7%) |
+| clean titles | 117/120 (97.5%) |
+| over-segmented | 8 |
+| under-segmented | 18 |
+| genuinely ambiguous | 4 |
+| **acted on anyway** | **1 (25.0%)** |
+
+**The one row that should only ever fall is not zero here.** Everyday and the
+389-set both hold at 0 and 7 respectively; on captures built to be hard, one
+of the four ambiguous cases got a confident action. Four cases is a small
+denominator and 25% is not a rate worth quoting, but the count is the number
+that matters and it is 1, not 0.
+
+Routing at 45.7% against everyday's 70.0% is the headline. Combination is
+where the parser is worst, and it is not a uniform collapse:
+
+| pairing | routing | count | nothing lost | nothing invented |
+|---|---|---|---|---|
+| ellipsis × date | 0/10 (0%) | 1/10 (10.0%) | 10/10 (100%) | — |
+| reported speech × operation | 3/12 (25.0%) | 7/7 (100%) | 12/12 (100%) | — |
+| idiom × operation | 3/10 (30.0%) | 4/4 (100%) | 10/10 (100%) | — |
+| brand-verb × multi-task | 4/12 (33.3%) | 10/12 (83.3%) | 12/12 (100%) | — |
+| negation × multi-task | 5/12 (41.7%) | 8/12 (66.7%) | 11/12 (91.7%) | — |
+| not-a-time × date | 5/12 (41.7%) | 11/12 (91.7%) | 12/12 (100%) | — |
+| conditional × negation | 7/12 (58.3%) | 9/12 (75.0%) | 10/12 (83.3%) | — |
+| role × multi-person | 7/12 (58.3%) | 9/12 (75.0%) | 12/12 (100%) | — |
+| run-on × self-correction | 8/12 (66.7%) | 8/12 (66.7%) | 12/12 (100%) | 4/12 (33.3%) |
+| self-correction × name | 11/12 (91.7%) | 12/12 (100%) | 12/12 (100%) | 6/12 (50.0%) |
+
+**`ellipsis × date` at 0/10 is the worst single reading in any instrument.**
+Ellipsis — "and the other one too", "same again next week" — leaves the verb
+and often the object to be recovered from the previous clause, and the parser
+has no stage that recovers them. Combined with a date it routes nothing right
+and counts one in ten.
+
+Worth flagging against a stated prediction: **`run-on × self-correction` reads
+66.7% routing here while everyday's `run-on` family reads 0/8.** The
+expectation was that combination would compose the two failures and read
+worse. It did not, and that is evidence the everyday `run-on` captures are
+harder along some dimension the adversarial pairing does not carry — likely
+length and thought count, not the run-on property itself. Two sets, two
+readings; the everyday one is the one to fix against.
+
+Title hygiene is near clean at 117/120: 2 titles are the whole capture, 1
+opens on `that`.
+
+### Development sets — not a gate, not held out
+
+| set | measure | this run (`2d8fe760`) | last read at |
+|---|---|---|---|
+| gating corpus | cases / failing | 1393 / **0** | 1381 / 0 at `2c5ac5b`; the change adds 12 cases |
+| coordination | boundaries | 115/121 (95.0%) | 115/121 at 10:12, and at 09:56 before the change |
+| routed (116) | destination / count | 74/84 (88.1%) / 77/79 (97.5%) | 74/84 at 10:12 and 09:56 |
+| routed (116) | acted on anyway | 3 | 3 at 10:12 and 09:56 |
+| framing (45) | destination / count | 41/45 (91.1%) / 43/44 (97.7%) | 41/45 at 10:12; the set is newer than 09:56 |
+| unfinished | recall / fallout / unsafe | 34/57 / 0/96 / 2 | same at 10:12 and 09:56 |
+| abandonment | recall / fallout | 24/24 / 0/24 | same at 10:12 and 09:56 |
+| **runon (46)** | destination | **41/46 (89.1%)** | first reading |
+| **runon (46)** | thought count | **33/44 (75.0%)** | first reading |
+| **runon (46)** | acted on anyway | **0** | first reading |
+
+The right-hand column names where each comparison figure came from rather than
+calling it "before": the 10:57 run on `2c5ac5b` reported its gating-corpus
+total but its development-set block was not recorded, so the honest comparison
+for those sets is the 10:12 / 09:56 pair on the branch, which brackets the same
+parser change.
+
+**The shape of `runon.tsv`'s first reading is the finding.** Destination is
+89.1% and count is 75.0%: on speech with no marker between two thoughts, the
+parser usually routes the capture to the right place and usually fails to
+notice there were two thoughts. Eleven of forty-four scored rows have the
+wrong count. That is the signature of a missing boundary rather than a
+misread meaning, and it is exactly what the set was written to isolate.
+
+The per-row failures are not in this run: the `Development-set failures` step
+wrote them to a file nothing collected. The step now prints to the job log.
+
 ## 2026-09-11 10:57 — `main` at generation 3, with no parser change in it
 
 Commit `2c5ac5b` on `main`,
