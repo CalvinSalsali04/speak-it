@@ -30,12 +30,21 @@ no capture in it. A rate says which family to look at; a sentence would have
 ended the set's usefulness.
 
 `runon.tsv` has the same provenance and goes further than measuring: it states
-what the app should do with speech nobody punctuated. Two thoughts about
-different things are two rows; two statements about the same thing are one
-note, because splitting a single fact in half makes a person find only half of
-it later. That line is a product decision rather than a measurement, and the
-`same-topic-guard` and `object-guard` rows are where it is drawn — argue with
-those rows, not with the rate.
+what the app should do with speech nobody punctuated. Two halves are two rows
+when each would still be **findable on its own**, and one note when the second
+half would not — which is the product contract rather than taste, since Memory
+is for knowledge worth finding later. The first draft said "same topic is one
+note" and that rule gave the same label to two rows that are not the same: "the
+parking is round the back" retrieves under nothing once it is severed, while
+"Okonkwo is chairing the panel" retrieves under Okonkwo.
+
+Its guards are split three ways on purpose, because three different mechanisms
+pass them and one rate would hide which is working: `anaphora-guard` (the second
+clause opens on a pronoun or deictic — mechanical), `bridging-guard` (it opens on
+a definite that resolves only through the first clause — not mechanical, and the
+rows that will fail longest), and `object-guard` (the second noun phrase is not a
+subject at all). A topic rule scored on an undivided family would read as working
+while anaphora carried it.
 
 `routed.tsv`, `framing.tsv` and `runon.tsv` are deliberately scored by the **held-out
 scorer**, on the same five columns, so the number being developed against is the

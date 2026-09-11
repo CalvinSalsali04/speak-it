@@ -10,12 +10,28 @@
 #
 # What this set asserts, so that it can be argued with
 # ----------------------------------------------------
-# A recording carrying two thoughts about DIFFERENT things is two rows, even
-# when nothing separates them but a breath. Two statements about the SAME
-# thing are one note — "the dentist is on Pine Street the parking is round the
-# back" is one thing a person will want to find later, and splitting it makes
-# them find half. That line is a product decision, not a measurement, and the
-# guards below are where it is drawn.
+# A recording carrying two thoughts is two rows when each half would still be
+# FINDABLE on its own, and one note when the second half would not.
+#
+# That is the product contract rather than taste: Memory is for knowledge
+# worth finding later. "The parking is round the back" retrieves under
+# nothing once it is severed from the dentist, so RG01 is one note.
+# "Okonkwo is chairing the panel" retrieves under Okonkwo, so RS05 is two
+# rows even though the panel belongs to the conference in front of it. An
+# earlier draft of this header said "same topic is one note"; that rule
+# labelled those two rows the same way when they are not, which is how it was
+# found to be the wrong rule.
+#
+# The guard families are kept apart because two different mechanisms pass
+# them and a single rate would hide which one is working:
+#
+#   anaphora-guard  the second clause opens on a pronoun or a deictic, so it
+#                   cannot be a thought of its own. Mechanical, solvable.
+#   bridging-guard  the second clause opens on a definite that resolves only
+#                   through the first ("the parking", "the manual"). Not
+#                   mechanical, and the row that will still be failing last.
+#   object-guard    the second noun phrase is an object or an apposition, not
+#                   a subject at all.
 #
 # On the destination column: the scorer asks whether the wanted destination is
 # among the routes produced, so a capture holding a fact and an errand is
@@ -50,13 +66,18 @@ RS03	the flight lands at 6:40 Ines is bringing the projector	statement-runon	Mem
 RS04	Dad's blood type is O negative the spare key is under the planter	statement-runon	Memory	2
 RS05	the conference is in Halifax this year Okonkwo is chairing the panel	statement-runon	Memory	2
 RS06	our recycling goes out on Tuesdays the garage code is 4821	statement-runon	Memory	2
-# --- Guards: two statements about ONE thing stay one note -------------------
-RG01	the dentist is on Pine Street the parking is round the back	same-topic-guard	Memory	1
-RG02	the boiler pressure sits at one bar the manual says one and a half	same-topic-guard	Memory	1
-RG03	the recipe takes an hour it serves six	same-topic-guard	Memory	1
-RG04	Priya moved to the Toronto office she starts on the 14th	same-topic-guard	Memory	1
-RG05	the router is five years old it drops every evening	same-topic-guard	Memory	1
-RG06	our lease runs to March the rent is fixed until then	same-topic-guard	Memory	1
+# --- Guards: the second half resolves only through the first ----------------
+RG01	the dentist is on Pine Street the parking is round the back	bridging-guard	Memory	1
+RG02	the boiler pressure sits at one bar the manual says one and a half	bridging-guard	Memory	1
+RG07	we booked the Halifax hotel the deposit is non refundable	bridging-guard	Memory	1
+RG08	the car is due its service the mileage limit is thirty thousand	bridging-guard	Memory	1
+# The second clause opens on a pronoun or a deictic ------------------------
+RG03	the recipe takes an hour it serves six	anaphora-guard	Memory	1
+RG04	Priya moved to the Toronto office she starts on the 14th	anaphora-guard	Memory	1
+RG05	the router is five years old it drops every evening	anaphora-guard	Memory	1
+RG06	our lease runs to March the rent is fixed until then	anaphora-guard	Memory	1
+RG09	the boiler is thirty years old it still works fine	anaphora-guard	Memory	1
+RG10	the printer jams on thick paper it is fine on plain	anaphora-guard	Memory	1
 # --- Guards: a second noun phrase that is an object, not a subject ----------
 RO01	I put the milk in the fridge	object-guard	Memory	1
 RO02	Sarah gave me her new number	object-guard	Memory	1
@@ -64,7 +85,7 @@ RO03	send Marcus the updated deck	object-guard	Today	1
 RO04	I told Ines the meeting moved to Thursday	object-guard	Memory	1
 RO05	remind me the bins go out on Tuesday	object-guard	Today	1
 RO06	I think the car needs an oil change	object-guard	Today	1
-RO07	book the small meeting room the one with the whiteboard	object-guard	Today	1
+RO07	reserve the corner studio the one by the stairwell	object-guard	Today	1
 RO08	the dog that lives next door barks all night	object-guard	Memory	1
 RO09	she asked whether the invoice went out	object-guard	Memory	1
 RO10	leave the keys with the neighbour who has the blue door	object-guard	Today	1
