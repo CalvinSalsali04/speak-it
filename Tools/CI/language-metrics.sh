@@ -129,7 +129,7 @@ if [ "$FOUND" -eq 0 ]; then
   echo "  none yet" >> "$OUT"
 fi
 
-section "HELD-OUT SET — written before anyone read the parser; scored non-verbose"
+section "HELD-OUT SET — kept out of development; scored non-verbose. Read Tools/CorpusRunner/heldout/README.md on what its provenance does and does not support before quoting this as generalisation"
 Tools/CorpusRunner/heldout/score.sh >> "$OUT" 2>&1
 
 {
