@@ -8,6 +8,8 @@ with no Swift toolchain, where the pipeline itself cannot be executed at all
 That separation is the point. A measuring instrument that has never been
 checked against a known input is not evidence about anything.
 """
+import contextlib
+import io
 import pathlib
 import re
 import subprocess
@@ -799,6 +801,321 @@ def lengths_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def generation_module():
+    """generation-check.py has a hyphen in its name, so it loads by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "generation_check", HERE / "generation-check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class GenerationCheckTests(unittest.TestCase):
+    """The sealing claim, made mechanical.
+
+    Every sealed set's README says its captures have never been scored and then
+    edited, and until this check nothing enforced it. What the check can prove
+    is narrow and worth stating: it cannot tell a legitimate new generation
+    from a quiet edit, because they are the same diff. The generation row does
+    the real work; this only makes the edit impossible to make silently.
+
+    So these tests are mostly about the two ways it could be useless: firing on
+    edits that are not the claim (a note, a tag, a reordering), which teaches
+    people to re-record without reading, and not firing on edits that are.
+    """
+
+    def setUp(self):
+        self.gen = generation_module()
+        if not self.gen.MANIFEST.exists():
+            self.skipTest("generations.tsv not present")
+
+    def test_the_committed_sets_match_their_recorded_generation(self):
+        """The check, run for real. A red main is the thing this prevents."""
+        here, there = self.gen.present(), self.gen.recorded()
+        self.assertEqual(sorted(here), sorted(there))
+        for name in here:
+            with self.subTest(corpus=name):
+                self.assertEqual(self.gen.difference(there[name], here[name]),
+                                 ([], []))
+
+    def test_the_recorded_hashes_are_written_sorted(self):
+        """Order means nothing to the verdict and everything to the diff.
+
+        A generation that moves three captures should show as three changed
+        lines, not as a rewritten file nobody reads.
+        """
+        rows = [line.split("\t") for line in
+                self.gen.HASHES.read_text().splitlines()
+                if not line.startswith("#") and line.strip()]
+        self.assertEqual(rows, sorted(rows))
+
+    def test_every_sealed_set_is_recorded(self):
+        """A set missing from the manifest is the one nobody would notice."""
+        rows = self.gen.generations()
+        for name, path in self.gen.SEALED.items():
+            if path.exists():
+                with self.subTest(corpus=name):
+                    self.assertIn(name, rows)
+                    self.assertEqual(int(rows[name]["captures"]),
+                                     len(self.gen.present()[name]))
+
+    def test_the_hash_is_of_the_capture_and_nothing_around_it(self):
+        """A note, a tag or a retitled README is not "scored and then edited".
+
+        A check that fires on those is one people learn to re-record without
+        reading, which costs more than it protects.
+        """
+        self.assertEqual(self.gen.digest("call the vet"),
+                         self.gen.digest("call the vet"))
+        self.assertNotEqual(self.gen.digest("call the vet"),
+                            self.gen.digest("call the vet today"))
+
+    def test_reordering_rows_is_not_a_generation(self):
+        """It changes nothing about what is measured."""
+        rows = ["a", "b", "c"]
+        self.assertEqual(self.gen.difference(rows, list(reversed(rows))),
+                         ([], []))
+
+    def test_an_edited_capture_is_reported_as_one_change_not_two(self):
+        """Its old hash goes and a new one arrives, so it shows on both sides.
+
+        Reporting that as one removal and one addition sends someone hunting a
+        capture nobody deleted.
+        """
+        gone, added = self.gen.difference(["a", "b"], ["a", "c"])
+        self.assertEqual((gone, added), (["b"], ["c"]))
+        self.assertEqual(min(len(gone), len(added)), 1)
+
+    def test_a_capture_that_is_gone_is_not_read_as_an_edit(self):
+        gone, added = self.gen.difference(["a", "b"], ["a"])
+        self.assertEqual((gone, added), (["b"], []))
+
+    @contextlib.contextmanager
+    def recording_into_a_scratch_copy(self):
+        """Point the recorder's two output files at a temporary directory.
+
+        `record` writes to module-level paths, so a test that calls it writes
+        to the committed manifest. Every test here exercises a refusal, so in
+        principle nothing is written -- but a mutation that turns a refusal
+        into a write then corrupts real data, which is exactly what happened
+        while these tests were being written. A test must not be able to do
+        that however the code under it behaves.
+        """
+        manifest, hashes = self.gen.MANIFEST, self.gen.HASHES
+        with tempfile.TemporaryDirectory() as root:
+            self.gen.MANIFEST = pathlib.Path(root) / "generations.tsv"
+            self.gen.HASHES = pathlib.Path(root) / "captures.sha256"
+            self.gen.MANIFEST.write_text(manifest.read_text())
+            self.gen.HASHES.write_text(hashes.read_text())
+            try:
+                yield
+            finally:
+                self.gen.MANIFEST, self.gen.HASHES = manifest, hashes
+
+    def refuses(self, *args):
+        """(exit status, what it said) for one `record` call, written nowhere."""
+        err = io.StringIO()
+        with self.recording_into_a_scratch_copy():
+            with contextlib.redirect_stderr(err):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = self.gen.record(*args)
+        return status, err.getvalue()
+
+    def test_the_recorder_refuses_a_number_that_is_not_the_next_one(self):
+        """Typing the number out is what makes opening a generation a decision."""
+        status, said = self.refuses("adversarial", 7, "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("not 7", said)
+
+    def test_the_recorder_refuses_when_nothing_changed(self):
+        """Otherwise it is a button people press to turn a red check green."""
+        rows = self.gen.generations()
+        status, said = self.refuses(
+            "adversarial", int(rows["adversarial"]["generation"]) + 1,
+            "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("unchanged", said)
+
+    def test_an_unknown_set_is_refused_by_name(self):
+        status, said = self.refuses("everydy", 1, "2026-09-11")
+        self.assertEqual(status, 1)
+        self.assertIn("not a sealed set", said)
+
+    def test_a_rewritten_manifest_keeps_one_header_and_stays_sorted(self):
+        """Both properties of a file that is read back and rewritten.
+
+        Reading the column header as data gave a set named "set", written back
+        out as a second header line: a file that corrupts a little more each
+        time it is rewritten and reads fine until somebody looks. And the
+        hashes are written sorted so a generation shows as the lines it
+        changed rather than as a rewritten file nobody reads.
+        """
+        with self.recording_into_a_scratch_copy():
+            rows = self.gen.generations()
+            self.assertNotIn("set", rows)
+            self.gen.write({name: sorted(values) for name, values
+                            in self.gen.recorded().items()}, rows)
+            text = self.gen.MANIFEST.read_text()
+            self.assertEqual(text.count("set\tgeneration\tcaptures"), 1)
+            self.assertEqual(sorted(rows), sorted(self.gen.generations()))
+            lines = [l.split("\t") for l in self.gen.HASHES.read_text().splitlines()
+                     if not l.startswith("#") and l.strip()]
+            self.assertEqual(lines, sorted(lines))
+
+    @contextlib.contextmanager
+    def a_scratch_world(self, sets):
+        """Sealed sets of our own, already recorded, with the module aimed at them.
+
+        `main` reads module-level paths, so without this a test exercising the
+        check's own verdict would read the committed sets and write beside
+        them. The committed data is never touched here, whatever the code
+        under test does.
+        """
+        sealed = self.gen.SEALED, self.gen.MANIFEST, self.gen.HASHES
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            self.gen.SEALED = {}
+            for name, captures in sets.items():
+                (root / name).mkdir()
+                path = root / name / f"{name}.tsv"
+                path.write_text(
+                    "id\tdomain\tutterance\texpect\tkeep\treject\tfamilies\tnote\n"
+                    + "".join(f"{name[:2].upper()}{i:02}\tg\t{c}\tToday:task"
+                              f"\t-\t-\tf\tn\n"
+                              for i, c in enumerate(captures)))
+                self.gen.SEALED[name] = path
+            self.gen.MANIFEST = root / "generations.tsv"
+            self.gen.HASHES = root / "captures.sha256"
+            here = self.gen.present()
+            self.gen.write(here, {
+                name: {"set": name, "generation": "1",
+                       "captures": str(len(values)), "recorded": "2026-09-11",
+                       "note": "first record"}
+                for name, values in here.items()})
+            try:
+                yield root
+            finally:
+                self.gen.SEALED, self.gen.MANIFEST, self.gen.HASHES = sealed
+
+    def check(self):
+        """(exit status, what it printed, what it complained)."""
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = self.gen.main([])
+        return status, out.getvalue(), err.getvalue()
+
+    #: Two sets, so deleting one leaves the check with something to report.
+    WORLD = {"alpha": ["call the vet", "book the car in"],
+             "beta": ["email Nadia the invoice"]}
+
+    def test_an_untouched_world_passes(self):
+        """The control. Without it every test below could pass on a broken rig."""
+        with self.a_scratch_world(self.WORLD):
+            status, said, complained = self.check()
+        self.assertEqual(status, 0, complained)
+        self.assertIn("generation check ok", said)
+        self.assertIn("alpha", said)
+        self.assertIn("beta", said)
+
+    def test_a_deleted_set_is_a_failure_and_not_an_absence(self):
+        """The defect this replaced: `present()` only reports a set whose file
+        exists, so iterating it made a deleted set invisible. Removing all 120
+        adversarial captures printed the other two sets and "no sealed capture
+        has been edited since it was scored", exit 0. Reproduced before fixing.
+        """
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            status, said, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("alpha", complained)
+        self.assertIn("2 removed", complained)
+        self.assertIn("0 captures now against 2 recorded", complained)
+        self.assertNotIn("generation check ok", said)
+
+    def test_a_vanished_set_is_told_to_be_restored_not_recorded(self):
+        """`--record` would write a generation of zero captures and turn this
+        green over a set that is not there, so the failure must not offer it.
+        """
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            _, _, complained = self.check()
+        self.assertIn("Restore it", complained)
+        self.assertNotIn("--record", complained)
+
+    def test_the_recorder_refuses_a_set_with_no_captures(self):
+        """Mechanical, rather than advice in a failure message."""
+        with self.a_scratch_world(self.WORLD):
+            self.gen.SEALED["alpha"].unlink()
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    status = self.gen.record("alpha", 2, "2026-09-11")
+            recorded_still = self.gen.generations()["alpha"]["captures"]
+        self.assertEqual(status, 1)
+        self.assertIn("no captures", err.getvalue())
+        self.assertEqual(recorded_still, "2",
+                         "a refused record must leave the manifest alone")
+
+    def test_a_set_still_on_disk_but_never_recorded_is_a_failure(self):
+        """The other side of the union: added, not removed."""
+        with self.a_scratch_world(self.WORLD) as root:
+            (root / "gamma").mkdir()
+            path = root / "gamma" / "gamma.tsv"
+            path.write_text("id\tdomain\tutterance\texpect\tkeep\treject"
+                            "\tfamilies\tnote\nGA00\tg\tnew capture"
+                            "\tToday:task\t-\t-\tf\tn\n")
+            self.gen.SEALED["gamma"] = path
+            status, _, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("gamma", complained)
+        self.assertIn("1 added", complained)
+        self.assertIn("1 capture now against 0 recorded", complained)
+
+    def test_a_duplicated_capture_is_not_blamed_on_the_manifest(self):
+        """`difference` is set-based, so a duplicate moves only the count.
+
+        Without its own branch that lands on "the manifest has been edited by
+        hand", which sends someone to correct a file that is correct. No set
+        has a duplicate today, so the wrong sentence was waiting for the first
+        one.
+        """
+        world = dict(self.WORLD, alpha=["call the vet", "call the vet"])
+        with self.a_scratch_world(self.WORLD):
+            recorded_alpha = self.gen.recorded()["alpha"]
+        with self.a_scratch_world(world):
+            #: Recorded from the duplicated set, so the hashes agree and only
+            #: the count can differ — which is the state being tested.
+            status, _, complained = self.check()
+        self.assertEqual(status, 1)
+        self.assertIn("identical to another capture", complained)
+        self.assertNotIn("edited by hand", complained)
+        self.assertEqual(len(recorded_alpha), 2)
+
+    def test_a_malformed_hash_line_names_itself(self):
+        """766 lines of hex; an unpack error sends someone scrolling."""
+        with self.a_scratch_world(self.WORLD):
+            good = self.gen.HASHES.read_text()
+            self.gen.HASHES.write_text(good + "alpha no tab here\n")
+            expected = len(good.splitlines()) + 1
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                with self.assertRaises(SystemExit):
+                    self.gen.recorded()
+        self.assertIn(f"line {expected}", err.getvalue())
+        self.assertIn("set<TAB>hash", err.getvalue())
+
+    def test_the_manifest_holds_no_capture_text(self):
+        """It is committed, so it must reveal nothing the sets are sealing."""
+        hashes = self.gen.HASHES.read_text()
+        for name, path in self.gen.SEALED.items():
+            if not path.exists():
+                continue
+            with self.subTest(corpus=name):
+                for capture in self.gen.harvest(path)[:40]:
+                    self.assertNotIn(capture, hashes)
 
 
 class PerFamilyTableTests(unittest.TestCase):

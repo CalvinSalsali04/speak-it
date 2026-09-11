@@ -31,6 +31,33 @@ If a held-out failure looks important enough to fix, write a *new* case for it
 in the gating corpus, in its own family, and fix that. The held-out sentence
 stays untouched and keeps measuring.
 
+## Generations
+
+A generation opens when a capture's **text** changes — edited, added or
+removed. Numbers never compare across one. A retagged family, a changed note
+or a rewritten README is not a generation; family denominators move
+independently and are tracked separately where that applies.
+
+| generation | recorded | captures | what changed |
+|---|---|---|---|
+| 1 | 2026-09-11 | 389 | first record. Generation 1 is this set as it stands today, not a reconstruction of its history. |
+
+`Tools/CorpusRunner/generations.tsv` holds the same number for every sealed
+set, and `everyday/generation-check.py` reports whether a capture here has changed
+without a new row above. **It does not run in CI yet.** Wiring it into the
+Linux job is a one-step change to `.github/workflows/ci.yml`, which needs a
+permission this repository's automation does not currently hold, so it was
+split into its own pull request. Until that merges the check is a command
+somebody has to remember to run, which is exactly the state it exists to end —
+so read the row above as the claim and this file as unenforced. Run it with
+
+    python3 Tools/CorpusRunner/everyday/generation-check.py
+
+What it proves once wired is narrow and worth stating: it cannot tell a
+legitimate new generation from a quiet edit, because they are the same diff.
+The row above does the real work — the check only makes the edit impossible to
+make silently.
+
 ## Baseline
 
 Recorded 2026-08-25, after the contextual-semantic (Phase 2) work. The previous
