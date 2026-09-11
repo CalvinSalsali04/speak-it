@@ -93,6 +93,36 @@ provenance problem as a data problem: it opens a new generation, breaks
 comparability with every figure already published, and destroys the evidence.
 The denominator carries them, and a reader quoting the rate should know it.
 
+### Incidental exposure, 2026-09-11
+
+**One capture in this set was printed into a working session's context on
+2026-09-11 and is not named here.** An evaluation session answering a question
+about what *readable* material contains wrote an ad-hoc scan over every `*.tsv`
+under `Tools/CorpusRunner/`, which is wider than the question, and one held-out
+capture's text came back with the results. The session reported it unprompted;
+nothing else would have surfaced it.
+
+What is known, from that report: the capture's text was seen, its pass or fail
+state was not looked up, and it played no part in the analysis the scan was
+for. It is unnamed here deliberately — naming it in a tracked document is the
+thing this file exists to prevent, and would compromise it far more thoroughly
+than the scan did.
+
+It is recorded because this section's subject is which captures have stopped
+being unseen and how, and "a session that works on the parser has seen it" is
+that, whether or not anyone acted on it. An exposure nobody writes down is
+indistinguishable from one that never happened, which is the same property that
+made the original provenance claim unfalsifiable.
+
+**The mitigation is not a rule.** Both threads wrote ad-hoc scanners that day,
+and the one that stayed inside readable material did so because its author
+happened to be thinking about it — luck with a good outcome, not a property.
+What makes it a property is a single readable-material helper that yields the
+development sets, the gating corpus and the prose and *cannot* return a sealed
+path, so that reaching the sealed sets takes a deliberate act rather than a
+loose glob. Until that exists, treat any scan over `Tools/CorpusRunner/**` as
+capable of this.
+
 **Evidence the other way, so this note does not overstate.** Compared against
 `SemanticCorpusDataI.swift` — the 307 lines added in that very commit, the
 material most in front of whoever wrote this set — there is no exact match at

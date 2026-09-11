@@ -10,6 +10,34 @@ that records a change which did not ship says so in its first lines. Older
 sections stay as written; they are the record of what was true when they were
 measured, not a claim about today.
 
+## Sealed-set cost ledger
+
+Every change that moved a sealed measure, with its direction. **One row per
+change, added when the change is measured, never edited afterwards.**
+
+This exists because no individual write-up can show the thing that matters
+here. A change costing one row on a sealed set is defensible on its own and
+says so honestly in its own section; three such changes are a real decline that
+no one section ever displays, and finding it otherwise means reading every
+dated section in this file and doing the arithmetic. A cost absorbed silently
+into the next figure is how a sealed set degrades invisibly, so a cost that
+does not appear here has not been reported.
+
+Sealed sets only — held-out, everyday, adversarial. Development sets are worked
+against on purpose and their movements belong in the dated sections.
+
+| date | change | measure | from | to | |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
+
+Running total: **−1 row**, across one change, on one of the eight sealed
+measures. Held-out destination, held-out acted-on-anyway, and all four everyday
+and both adversarial measures are unmoved since `2cc2ac5`.
+
+The ledger is not a budget and no number in it is acceptable by being small.
+It is here so the question "has this been drifting?" has an answer that takes
+one glance instead of an afternoon.
+
 ## Three standing rules, two of them learned by paying for them
 
 **Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
