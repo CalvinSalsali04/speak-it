@@ -32,13 +32,13 @@ AS02	reported-x-op	Priya says drop the Tuesday call	Op:cancel	Tuesday call	-	rep
 AS03	reported-x-op	the clinic rang and said move the appointment to the 19th	Today:task	19th	-	reported-speech|operation	a move, not a cancel
 AS04	reported-x-op	Dad texted saying forget the airport run	Op:cancel	airport run	-	reported-speech|operation	forget used as cancel
 AS05	reported-x-op	she said remind her about the deposit	Today:task	deposit	-	reported-speech|operation	reported request for a reminder
-AS06	reported-x-op	the landlord said don't pay until the invoice comes	Memory:note	invoice	-	reported-speech|operation	reported negated instruction
+AS06	reported-x-op	the landlord said don't pay until the invoice comes	Memory:note	invoice	-	reported-speech|operation|negation	reported negated instruction
 AS07	reported-x-op	Ines told me to scrap the Thursday session	Op:cancel	Thursday session	-	reported-speech|operation	scrap as cancel
 AS08	reported-x-op	my boss said push the review to next month	Today:task	review	-	reported-speech|operation	push is a move not a delete
 AS09	reported-x-op	the garage said the car's ready and to collect it today	Today:task	collect	-	reported-speech|operation	statement plus instruction
 AS10	reported-x-op	Aurelio said cancel nothing yet	Memory:note	Aurelio	-	reported-speech|operation	cancel appears but nothing is cancelled
 AS11	reported-x-op	the school said no lunch money is needed on Wednesday	Memory:note	Wednesday|lunch money	-	reported-speech|operation	reported negation about a date
-AS12	reported-x-op	he said delete the old draft not the final one	Op:cancel	old draft	-	reported-speech|operation	reported operation with an exclusion
+AS12	reported-x-op	he said delete the old draft not the final one	Op:cancel	old draft	-	reported-speech|operation|negation	reported operation with an exclusion
 AU01	runon-x-repair	pick up the dry cleaning call the bank no the credit union post Ada's letter	Today:task|Today:task|Today:task	dry cleaning|credit union|Ada	the bank	run-on|self-correction	repair inside the middle thought
 AU02	runon-x-repair	book the table for six no eight confirm the taxi text Priya the address	Today:task|Today:task|Today:task	eight|taxi|address	for six	run-on|self-correction	corrected number, no markers
 AU03	runon-x-repair	water the plants email the tutor no the coach feed the cat	Today:task|Today:task|Today:task	plants|coach|cat	the tutor	run-on|self-correction	corrected recipient mid-run
