@@ -456,6 +456,37 @@ class LeakCheckTests(unittest.TestCase):
             path.write_text("id\tutterance\nX1\tbuy milk\n")
             self.assertEqual(self.leak.harvest(path), ["buy milk"])
 
+    def test_the_sealed_sets_own_captures_are_read_by_header_too(self):
+        """`mine()` hard-coded column 2 while `harvest()` read the header.
+
+        Both sealed sets put the utterance third today, so it was correct —
+        and the registry test will happily register a set laid out
+        differently, at which point this side compares the wrong field and the
+        check passes for the wrong reason. That is the failure the
+        `utterance_column` docstring warns about, on the other half of the
+        same script.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            path = pathlib.Path(root) / "odd.tsv"
+            path.write_text(
+                "# title: A SET LAID OUT DIFFERENTLY\n"
+                "id\tfamily\tnote\tutterance\treject\n"
+                "X1\tnegation\twhy\tbuy the oat milk not the soy\t-\n")
+            self.assertEqual(self.leak.mine(path),
+                             {"buy the oat milk not the soy": "X1"})
+
+    def test_the_verdict_distinguishes_contamination_from_double_counting(self):
+        """The two failures need different words or the reader hunts the wrong one."""
+        sealed = {p.name for p in self.leak.SEALED}
+        tuned = self.leak.verdict({"routed.tsv"})
+        self.assertIn("developed against", tuned)
+        duplicate = self.leak.verdict(sealed)
+        self.assertIn("counted as two", duplicate)
+        self.assertNotIn("developed against", duplicate)
+        # A mixed failure is the serious one and must read as contamination.
+        self.assertIn("developed against",
+                      self.leak.verdict(sealed | {"routed.tsv"}))
+
     def test_the_existing_held_out_set_harvests_its_documented_size(self):
         """An anchor against a real file: heldout/README.md says 389."""
         path = HERE.parent / "heldout" / "heldout.tsv"

@@ -247,6 +247,21 @@ re-run: `loss` can only get stricter and `invention` can only get less false. It
 also fixes a latent case that predates the new captures — F33 rejects `8:45`,
 which the old matcher would have found inside a rendered `18:45`.
 
+### Family denominators move independently of generations
+
+A generation is about a *measure* changing — its cases or its matching. A
+family's denominator can move without any of that, because a capture gained or
+lost a family tag. Those edits are invisible in the table above and still make
+a per-family rate incomparable, so they are recorded here:
+
+| date | family | from | to | why |
+|---|---|---|---|---|
+| 2026-09-11 | `negation` (everyday) | 48 | 51 | W09, F05 and F14 exclude a value with `not` and carried no tag |
+
+No capture and no `reject` span changed in that edit, so every headline measure
+is untouched — only the `negation` row of the per-family table moves. The
+matching edit on the adversarial set is recorded in its own README.
+
 ## Baseline
 
 | date | commit | routing | count | loss | invention | title | unsafe / ambiguous |

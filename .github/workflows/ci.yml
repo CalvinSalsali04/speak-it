@@ -138,13 +138,17 @@ jobs:
         run: python3 -m unittest discover -v
       - name: Corpus scorer self-tests
         run: python3 Tools/CorpusRunner/test_score.py
-      # The everyday scorer's own tests are pure Python too. They ran only
-      # inside the macOS corpus gate, which meant a scorer defect waited for a
-      # Mac to be noticed and cost a macOS minute to find.
-      - name: Everyday scorer self-tests
+      # These three were reachable only through corpus-gate.sh, which needs a
+      # Swift toolchain and so runs on a Mac by dispatch. That left the leak
+      # check -- the mechanical part of the held-out boundary -- never running
+      # on a pull request, which is the one place a leak is introduced. All
+      # three are pure Python and take about twenty seconds together.
+      - name: Held-out scorer self-tests (carries the leak check)
         run: python3 Tools/CorpusRunner/everyday/test_score.py
-      - name: Everyday held-out leak check
+      - name: Held-out boundary
         run: python3 Tools/CorpusRunner/everyday/leak-check.py
+      - name: Every measure is protected by its suite
+        run: python3 Tools/CorpusRunner/everyday/measure-gate.py
 
   dashboard:
     name: Founder dashboard
