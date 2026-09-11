@@ -5,6 +5,7 @@ Where rules are worked out. **Not a gate, and not held out.**
 ```bash
 ./Tools/CorpusRunner/devsets/score.sh coordination [--verbose]
 ./Tools/CorpusRunner/devsets/route-score.sh routed [--verbose]
+./Tools/CorpusRunner/devsets/route-score.sh framing [--verbose]
 ./Tools/CorpusRunner/devsets/unfinished-score.sh [--verbose]
 ./Tools/CorpusRunner/devsets/abandonment-score.sh [--verbose]
 ```
@@ -18,12 +19,36 @@ if nobody looked. Iterating needs somewhere else to iterate.
 |---|---|---|---|
 | `coordination.tsv` | `probe --clauses` | `score.py` | where clause boundaries fall |
 | `routed.tsv` | full rules path | `../heldout/score.py` | destination, and unsafe action on an ambiguous capture |
+| `framing.tsv` | full rules path | `../heldout/score.py` | whether the frame around speech is read as frame: sign-offs, enumeration |
+| `runon.tsv` | full rules path | `../heldout/score.py` | several thoughts in one breath with no marker, and the boundaries that must not be cut |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
 
-`routed.tsv` is deliberately scored by the **held-out scorer**, on the same five
-columns, so the number being developed against is the same number being reported
-at the end. Only the data differs.
+`framing.tsv` was written from the everyday set's per-family *rates* — `run-on`
+0/8, `rambling-intro` 1/6, `trailing-goodbye` 2/7, `sequencing` 6/17 — and from
+no capture in it. A rate says which family to look at; a sentence would have
+ended the set's usefulness.
+
+`runon.tsv` has the same provenance and goes further than measuring: it states
+what the app should do with speech nobody punctuated. Two halves are two rows
+when each would still be **findable on its own**, and one note when the second
+half would not — which is the product contract rather than taste, since Memory
+is for knowledge worth finding later. The first draft said "same topic is one
+note" and that rule gave the same label to two rows that are not the same: "the
+parking is round the back" retrieves under nothing once it is severed, while
+"Okonkwo is chairing the panel" retrieves under Okonkwo.
+
+Its guards are split three ways on purpose, because three different mechanisms
+pass them and one rate would hide which is working: `anaphora-guard` (the second
+clause opens on a pronoun or deictic — mechanical), `bridging-guard` (it opens on
+a definite that resolves only through the first clause — not mechanical, and the
+rows that will fail longest), and `object-guard` (the second noun phrase is not a
+subject at all). A topic rule scored on an undivided family would read as working
+while anaphora carried it.
+
+`routed.tsv`, `framing.tsv` and `runon.tsv` are deliberately scored by the **held-out
+scorer**, on the same five columns, so the number being developed against is the
+same number being reported at the end. Only the data differs.
 
 ## Reading the coordination set
 

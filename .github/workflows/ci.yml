@@ -39,6 +39,14 @@ on:
         description: "Only measure language: skip the unit suite and the release build"
         type: boolean
         default: false
+      devset_failures:
+        description: "Also print every development-set failure (never the held-out ones)"
+        type: boolean
+        default: false
+      tests:
+        description: "Which tests to run (e.g. SpeakItTests/ObligationFrameTests). Blank = the whole unit suite"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -221,8 +229,11 @@ jobs:
             echo "simslim not installed; the unit tests run on a stock simulator"
           fi
 
+      # A macOS minute costs ten Linux minutes, and the whole suite is twenty
+      # of them. Naming one class turns a diagnosis that used to cost a run
+      # into one that costs a build.
       - name: Unit tests
-        run: Tools/CI/unit-tests.sh SpeakItTests
+        run: Tools/CI/unit-tests.sh "${{ inputs.tests || 'SpeakItTests' }}"
         env:
           SPEAKIT_DERIVED_DATA: ${{ runner.temp }}/DerivedData
           SPEAKIT_RESULT_BUNDLE: ${{ runner.temp }}/SpeakItTests.xcresult
@@ -284,6 +295,13 @@ jobs:
       # so a CI run can never be the thing that unseals it.
       - name: Measure
         run: Tools/CI/language-metrics.sh --report "${{ runner.temp }}/language-metrics.txt"
+
+      # The development sets are meant to be read; the held-out sets are not.
+      # This step prints the first and cannot reach the second: the scorers are
+      # named in the script rather than discovered, and it refuses arguments.
+      - name: Development-set failures
+        if: inputs.devset_failures == true
+        run: Tools/CI/devset-failures.sh > "${{ runner.temp }}/devset-failures.txt" 2>&1 || true
 
       - name: Upload the metrics report
         if: always()

@@ -5,7 +5,397 @@ one run of `Tools/CI/language-metrics.sh` on a real Mac. Nothing in this file
 is an estimate, and nothing in it was produced in a container where the parser
 cannot run.
 
-## 2026-09-11 — first measured baseline
+**The newest section is the current baseline.** Older sections stay as written;
+they are the record of what was true when they were measured, not a claim about
+today.
+
+## 2026-09-11 10:57 — `main` at generation 3, with no parser change in it
+
+Commit `2c5ac5b` on `main`,
+[run 34591348628](https://github.com/CalvinSalsali04/speak-it/actions/runs/34591348628),
+`macos-26`. This run exists because the unit suite failed on the framing
+branch and the same suite had to be run on unchanged `main` to find out whose
+failure it was; the language job came free with it.
+
+**This is the before-picture the framing change has to be compared against**,
+and it is the first everyday reading at the set's third generation (255
+captures, 22 invention cases). It does **not** contain the discourse-framing
+change. The 10:12 section below measured that change against the 235-capture
+generation, so those two sets of everyday figures do not compare with each
+other. These do, once the branch is measured again.
+
+**The unit suite in this same run failed**, and so does the suite on the
+framing branch, with an identical list of 57 failing assertions. That is the
+state of the suite on a GitHub-hosted `macos-26` runner; the `ios` job had
+never run there before today. It does not make the numbers above wrong — they
+come from `Tools/CorpusRunner`, a host-side binary that passed its own gate at
+1381/1381 in the same job — but they were taken on a commit whose simulator
+suite does not pass on that runner, and that belongs next to them until the
+failure is understood.
+
+### Everyday held-out set — 255 captures, nothing tuned against them
+
+| measure | all domains | family-health | fitness-errands | freelance | money-travel | work-school |
+|---|---|---|---|---|---|---|
+| routing | 167/240 (69.6%) | 30/48 (62.5%) | 37/48 (77.1%) | 33/48 (68.8%) | 32/48 (66.7%) | 35/48 (72.9%) |
+| count | 192/232 (82.8%) | 39/47 (83.0%) | 38/46 (82.6%) | 37/46 (80.4%) | 39/47 (83.0%) | 39/46 (84.8%) |
+| nothing lost | 230/244 (94.3%) | 49/49 (100%) | 48/50 (96.0%) | 45/49 (91.8%) | 46/49 (93.9%) | 42/47 (89.4%) |
+| nothing invented | 14/22 (63.6%) | 0/4 (0%) | 3/4 (75.0%) | 3/5 (60.0%) | 4/5 (80.0%) | 4/4 (100%) |
+
+Over-segmented 17, under-segmented 23, produced nothing 0, missing probe
+results 0. Genuinely ambiguous 15, **acted on anyway 0**. Item type matched the
+label 145/232, reported and never gated.
+
+Clean titles 237/255 (92.9%). The 18 defects: 8 where the title is the whole
+capture, 7 farewells kept, 5 numbered preambles kept (`number one` ×2,
+`number two` ×2, `number three` ×1), 1 `what happened was`. Fourteen of the
+eighteen are framing left in place, which is what the branch change exists to
+remove.
+
+### Per family, worst first
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | 0/8 (0%) | 0/8 (0%) | 4/8 (50.0%) |
+| rambling-intro | 6 | 1/6 (16.7%) | 1/6 (16.7%) | 3/6 (50.0%) |
+| trailing-goodbye | 7 | 2/7 (28.6%) | 4/7 (57.1%) | 0/7 (0%) |
+| sequencing | 17 | 6/17 (35.3%) | 7/17 (41.2%) | 12/17 (70.6%) |
+| multi-thought | 40 | 19/40 (47.5%) | 22/40 (55.0%) | 36/40 (90.0%) |
+| operation | 10 | 5/10 (50.0%) | 0/2 (0%) | 10/10 (100%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 (25.0%) | 12/12 (100%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 19/24 (79.2%) |
+| list | 20 | 12/20 (60.0%) | 13/20 (65.0%) | 17/20 (85.0%) |
+| filler | 18 | 9/14 (64.3%) | 12/14 (85.7%) | 15/18 (83.3%) |
+| relative-date | 6 | 4/6 (66.7%) | 5/6 (83.3%) | 6/6 (100%) |
+| person | 33 | 23/33 (69.7%) | 26/32 (81.2%) | 32/33 (97.0%) |
+| date | 38 | 26/37 (70.3%) | 30/37 (81.1%) | 36/38 (94.7%) |
+| negation | 48 | 34/48 (70.8%) | 38/44 (86.4%) | 46/48 (95.8%) |
+| location | 12 | 9/12 (75.0%) | 10/12 (83.3%) | 11/12 (91.7%) |
+| self-correction | 39 | 30/39 (76.9%) | 37/39 (94.9%) | 39/39 (100%) |
+| time | 28 | 21/27 (77.8%) | 26/27 (96.3%) | 27/28 (96.4%) |
+| quantity | 34 | 27/34 (79.4%) | 32/34 (94.1%) | 31/34 (91.2%) |
+| reference | 34 | 27/34 (79.4%) | 28/34 (82.4%) | 33/34 (97.1%) |
+| false-start | 14 | 12/14 (85.7%) | 12/14 (85.7%) | 13/14 (92.9%) |
+| recurrence | 22 | 19/22 (86.4%) | 21/22 (95.5%) | 22/22 (100%) |
+| proper-noun | 15 | 13/15 (86.7%) | 12/14 (85.7%) | 13/15 (86.7%) |
+| repetition | 10 | 10/10 (100%) | 10/10 (100%) | 10/10 (100%) |
+| question | 9 | 1/1 (100%) | 1/1 (100%) | 9/9 (100%) |
+| ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+`n` counts captures carrying the tag, so the rows overlap: one capture can be
+filler, negation and multi-thought at once. The negation row here is the
+48-capture family; PR #33 later added the tag to W09, F05 and F14, so the next
+reading's negation row is out of 51 and does not compare with this one.
+
+### Held-out set — 389 utterances, sealed
+
+Destination 233/320 (72.8%), thought count 255/310 (82.3%), producing nothing
+0, genuinely ambiguous 69, **acted on anyway 7 (10.1%)**. Identical to every
+previous run. Nothing has moved this number yet.
+
+### Adversarial set
+
+Not in this run: it merged after the run started. Its first reading is still
+outstanding.
+
+## 2026-09-11 10:12 — after the discourse-framing change
+
+First measured language change since the baseline. Commit `412a1a8` on
+`claude/hearth-thread-tod920`,
+[run #51](https://github.com/CalvinSalsali04/speak-it/actions/runs/34587781290),
+`macos-26`. Compared against the 09:56 section below, which is the only
+difference: no other change landed between them.
+
+### What moved, and what did not
+
+| instrument | measure | before | after |
+|---|---|---|---|
+| gating corpus | cases / failing | 1381 / 0 | 1393 / **0** |
+| everyday | routing | 152/220 (69.1%) | 153/220 (69.5%) |
+| everyday | count | 172/212 (81.1%) | 173/212 (81.6%) |
+| everyday | nothing lost | 210/224 (93.8%) | 210/224 (93.8%) |
+| everyday | nothing invented | 5/19 (26.3%) | 12/19 (63.2%) — **not a real gain, see below** |
+| everyday | clean titles | 217/235 (92.3%) | **225/235 (95.7%)** |
+| everyday | over-split | 17 | 16 |
+| everyday | under-split | 23 | 23 |
+| everyday | ambiguous acted on | 0 | 0 |
+| held-out (389) | destination | 233/320 (72.8%) | 233/320 (72.8%) |
+| held-out (389) | thought count | 255/310 (82.3%) | 255/310 (82.3%) |
+| held-out (389) | acted on anyway | 7 | 7 |
+| coordination | boundaries | 115/121 (95.0%) | 115/121 (95.0%) |
+| routed | destination | 74/84 (88.1%) | 74/84 (88.1%) |
+| routed | acted on anyway | 3 | 3 |
+| unfinished | recall / fallout | 34/57 / 0/96 | 34/57 / 0/96 |
+| abandonment | recall / fallout | 24/24 / 0/24 | 24/24 / 0/24 |
+| **framing** (new) | destination | — | 41/45 (91.1%) |
+| **framing** (new) | thought count | — | 43/44 (97.7%) |
+| **framing** (new) | acted on anyway | — | 0 |
+
+**Nothing regressed.** Not one everyday family lost ground on any of its three
+measures, no development set moved down, and the gating corpus stayed at zero
+failures across all four severities while growing by the 12 new cases.
+
+### Title hygiene, by defect
+
+| defect | before | after |
+|---|---|---|
+| farewell kept | 7 | **0** |
+| preamble `number one` kept | 2 | **0** |
+| preamble `number two` kept | 2 | 1 |
+| preamble `number three` kept | 1 | **0** |
+| preamble `what happened was` kept | 1 | 1 |
+| title is the whole capture | 8 | 8 |
+
+### The families the change was aimed at
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| trailing-goodbye | 7 | 2/7 → 2/7 | 4/7 → 4/7 | **0/7 → 7/7** |
+| run-on | 8 | 0/8 → 0/8 | 0/8 → 0/8 | 4/8 → 7/8 |
+| rambling-intro | 6 | 1/6 → 1/6 | 1/6 → 1/6 | 3/6 → 4/6 |
+| sequencing | 17 | 6/17 → **7/17** | 7/17 → **8/17** | 12/17 → 16/17 |
+| multi-thought | 40 | 19/40 → 19/40 | 22/40 → 22/40 | 36/40 → **40/40** |
+| list | 20 | 12/20 → **13/20** | 13/20 → **14/20** | 17/20 → 18/20 |
+| filler | 18 | 9/14 → 9/14 | 12/14 → 12/14 | 15/18 → **18/18** |
+
+### What this is honestly worth
+
+The title half of the problem is solved on this evidence: every farewell is
+gone, and `trailing-goodbye`, `multi-thought` and `filler` are at 100% clean
+titles. That is the visible defect — the words a person reads on the row —
+and it was the whole of `trailing-goodbye`'s title score.
+
+The segmentation half barely moved. Routing gained one capture and count
+gained one; `run-on` is still 0/8 and `multi-thought` still 19/40. Enumerated
+speech is now cut where the speaker said to cut it, and that is a small share
+of run-on speech: most of it carries no marker at all, which is a harder
+problem and the next one to take.
+
+**The held-out set did not move, at all.** That is the honest headline. This
+change was aimed at a family the 389-utterance set varies by mechanism rather
+than by content, so there was little there for it to move, but the rule stands:
+a change that has not moved the generalisation measure has not been shown to
+help on that measure, whatever the everyday numbers say.
+
+**The invention jump is not a result, and was corrected within the hour.** The
+number moved from 5/19 to 12/19, and the arithmetic gives it away: **seven of
+the nineteen invention cases listed `bye` as the value the reading must not
+show**, and 5 + 7 = 12. On the twelve cases that test what the measure is for —
+a superseded value, a corrected number, a corrected weekday, an inverted
+negation — the score was 5/12 before this change and 5/12 after. Nothing about
+invention improved.
+
+The cause was the scorer, not the change: a farewell left in a title is a title
+defect, and it was being counted a second time as an invention, so one fix moved
+two metrics. The evaluation thread found this, has narrowed `reject` to values
+the reading must not *assert*, and added a test that fails if a farewell returns
+to that column. Verified here against `everyday.tsv` on `main` rather than taken
+on trust: 19 rows carry a reject value and 7 of them are `bye`.
+
+Once that lands, the invention column on both of these sections stops being
+comparable with later runs. Treat 5/19 and 12/19 as belonging to a scorer that
+no longer exists.
+
+## 2026-09-11 09:56 — complete baseline on `main`
+
+The baseline language improvement work is judged against. It is the first run
+that covers every corpus the repository has.
+
+| | |
+|---|---|
+| commit | `330344a` (`main`, after #28 and #29 merged) |
+| run | [CI #50](https://github.com/CalvinSalsali04/speak-it/actions/runs/34586389323), `language_only` dispatch |
+| runner | GitHub-hosted `macos-26`, Xcode 26.6 |
+| wall clock | 4 min 02 s for the job; 3 min 52 s of it the measurement |
+
+Six instruments, kept apart on purpose. A single accuracy figure across them
+would be meaningless: they do not measure the same thing, they do not share a
+denominator, and the two that are near ceiling would drown the four that are
+not.
+
+### 1. Gating corpus — regression net (self-consistency)
+
+```
+rendering=identity  TOTAL 1381 cases, 0 failing, 1381 clean
+CRITICAL 0  BEHAVIORAL 0  METADATA 0  COSMETIC 0
+```
+
+Unchanged and saturated. This instrument can only confirm that a change broke
+nothing already written down. **It is not an accuracy figure and must never be
+quoted as one.**
+
+### 2. Everyday speech — held out, 235 captures, by content
+
+Five life domains, 47 captures each, written from the product description and
+from how adults dictate. Never tuned against. This is the closest instrument
+the repository has to Calvin's north star, and it is the one that should drive
+the work.
+
+| domain | routing | count | loss | invention |
+|---|---|---|---|---|
+| **all domains** | **152/220 (69.1%)** | **172/212 (81.1%)** | **210/224 (93.8%)** | **5/19 (26.3%)** |
+| family-health | 27/44 (61.4%) | 35/43 (81.4%) | 45/45 (100.0%) | 0/4 (0.0%) |
+| fitness-errands | 34/44 (77.3%) | 34/42 (81.0%) | 44/46 (95.7%) | 1/5 (20.0%) |
+| freelance | 29/44 (65.9%) | 33/42 (78.6%) | 41/45 (91.1%) | 1/4 (25.0%) |
+| money-travel | 29/44 (65.9%) | 35/43 (81.4%) | 42/45 (93.3%) | 2/3 (66.7%) |
+| work-school | 33/44 (75.0%) | 35/42 (83.3%) | 38/43 (88.4%) | 1/3 (33.3%) |
+
+Domains differ by 16 points on routing, which is less than the spread between
+families below. **Content domain is not where the problem lives.**
+
+| | |
+|---|---|
+| over-segmented (split) | 17 |
+| under-segmented (merge) | **23** |
+| produced nothing at all | 0 |
+| item type matched the label | 132/212 |
+| genuinely ambiguous | 15 |
+| **acted on anyway** | **0 (0.0%)** |
+
+Two things to take from that block. Abstention is perfect on this set — not one
+capture a careful reader could not pin down was scheduled or modified anyway.
+And **merges outnumber splits, 23 to 17**: see "What this changes" below.
+
+`invention` deserves its own line. Only 19 of the 235 captures carry a value the
+reading must *not* show, and on **14 of those 19 it shows it anyway**. The
+denominator is small, but a 74% rate on a harm measure is the worst number in
+this file.
+
+> **Corrected 2026-09-11 10:25.** Seven of those 19 rows listed `bye` as the
+> rejected value, which is a title defect the title metric already counted. The
+> figure above is what the scorer reported and is left as recorded, but it is
+> not a clean invention rate, and it is not comparable with runs after the
+> evaluation thread's narrowing of that column.
+
+#### Title hygiene — 217/235 clean (92.3%)
+
+A lower bound on defects: it counts removable material still in the shown
+title, never whether a title reads well.
+
+| domain | clean titles |
+|---|---|
+| family-health | 44/47 (93.6%) |
+| fitness-errands | 45/47 (95.7%) |
+| freelance | 41/47 (87.2%) |
+| money-travel | 45/47 (95.7%) |
+| work-school | 42/47 (89.4%) |
+
+| defect | count |
+|---|---|
+| title is the whole capture | 8 |
+| farewell kept | 7 |
+| preamble `number one` kept | 2 |
+| preamble `number two` kept | 2 |
+| preamble `what happened was` kept | 1 |
+| preamble `number three` kept | 1 |
+
+#### Per family — the table that matters
+
+`n` counts captures carrying the tag, so the rows overlap: one capture can be
+filler, negation and multi-thought at once.
+
+| family | n | routing | count | title |
+|---|---|---|---|---|
+| run-on | 8 | **0/8 (0.0%)** | **0/8 (0.0%)** | 4/8 (50.0%) |
+| rambling-intro | 6 | **1/6 (16.7%)** | **1/6 (16.7%)** | 3/6 (50.0%) |
+| trailing-goodbye | 7 | **2/7 (28.6%)** | 4/7 (57.1%) | **0/7 (0.0%)** |
+| sequencing | 17 | **6/17 (35.3%)** | **7/17 (41.2%)** | 12/17 (70.6%) |
+| multi-thought | 40 | **19/40 (47.5%)** | **22/40 (55.0%)** | 36/40 (90.0%) |
+| operation | 10 | 5/10 (50.0%) | 0/2 (0.0%) | 10/10 (100.0%) |
+| cancellation | 12 | 6/12 (50.0%) | 1/4 (25.0%) | 12/12 (100.0%) |
+| hedged | 24 | 9/17 (52.9%) | 15/17 (88.2%) | 19/24 (79.2%) |
+| list | 20 | 12/20 (60.0%) | 13/20 (65.0%) | 17/20 (85.0%) |
+| negation | 38 | 24/38 (63.2%) | 28/34 (82.4%) | 36/38 (94.7%) |
+| filler | 18 | 9/14 (64.3%) | 12/14 (85.7%) | 15/18 (83.3%) |
+| relative-date | 6 | 4/6 (66.7%) | 5/6 (83.3%) | 6/6 (100.0%) |
+| date | 36 | 24/35 (68.6%) | 28/35 (80.0%) | 34/36 (94.4%) |
+| person | 31 | 22/31 (71.0%) | 24/30 (80.0%) | 30/31 (96.8%) |
+| location | 11 | 8/11 (72.7%) | 9/11 (81.8%) | 10/11 (90.9%) |
+| reference | 34 | 27/34 (79.4%) | 28/34 (82.4%) | 33/34 (97.1%) |
+| quantity | 29 | 23/29 (79.3%) | 27/29 (93.1%) | 26/29 (89.7%) |
+| time | 25 | 20/24 (83.3%) | 23/24 (95.8%) | 24/25 (96.0%) |
+| self-correction | 24 | 20/24 (83.3%) | 22/24 (91.7%) | 24/24 (100.0%) |
+| false-start | 14 | 12/14 (85.7%) | 12/14 (85.7%) | 13/14 (92.9%) |
+| proper-noun | 14 | 12/14 (85.7%) | 11/13 (84.6%) | 12/14 (85.7%) |
+| recurrence | 22 | 19/22 (86.4%) | 21/22 (95.5%) | 22/22 (100.0%) |
+| repetition | 10 | 10/10 (100.0%) | 10/10 (100.0%) | 10/10 (100.0%) |
+| question | 9 | 1/1 (100.0%) | 1/1 (100.0%) | 9/9 (100.0%) |
+| ambiguous | 15 | — | — | 14/15 (93.3%) |
+
+### 3. Held-out set — 389 utterances, held out by mechanism
+
+| measure | value | change |
+|---|---|---|
+| destination correct | 233/320 (72.8%) | unchanged |
+| thought count correct | 255/310 (82.3%) | unchanged |
+| captures producing nothing | 0 | unchanged |
+| genuinely ambiguous | 69 | unchanged |
+| **acted on anyway** | **7 (10.1%)** | unchanged |
+
+Identical to the 09:38 run, as it must be: nothing merged between them touched
+the parser. Failures were not read; the job cannot read them.
+
+### 4. Development sets — readable, and where fixes are worked out
+
+| set | measure | value |
+|---|---|---|
+| coordination | clause boundaries correct | 115/121 (95.0%) |
+| routed | destination correct | 74/84 (88.1%) |
+| routed | thought count correct | 77/79 (97.5%) |
+| routed | ambiguous acted on anyway | 3/32 (9.4%) |
+| unfinished | unfinished flagged (recall) | 34/57 (59.6%) |
+| unfinished | finished misflagged (fallout) | 0/96 (0.0%) |
+| unfinished | fragment given a date or reminder | 2 |
+| abandonment | withdrawals recognised | 24/24 (100%) |
+| abandonment | kept words wrongly withdrawn | 0/24 (0.0%) |
+
+Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
+(over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
+
+Weakest unfinished families: `incomplete-complement` 1/10,
+`trailing-function-word` 2/8, `abandoned-midthought` 3/9.
+
+### 5. Synthetic stress — still none
+
+`Tools/LanguageMutations/invariance.sh` has never run against the real engine.
+No consistency number exists, and consistency would not be an accuracy number
+if it did.
+
+### 6. Public-dataset derived — still none
+
+`Docs/PUBLIC_DATASETS.md` records the licence survey. No data has been
+integrated, and no external label has been treated as ground truth.
+
+## What this changes
+
+**The over-splitting hypothesis does not survive first contact with unseen
+speech.** It came from the coordination development set, where five of six
+failures point one way. On the everyday set, which nothing has been tuned
+against, the count goes the other way: 23 merges against 17 splits. The
+development set is measuring a narrow question — coordinated noun phrases —
+and the held-out sets are measuring whole recordings. Over-splitting is real
+and narrow; under-splitting is what real captures actually suffer from.
+
+**The failure is concentrated in discourse structure, not in semantics.** The
+five worst families by routing — run-on (0%), rambling-intro (16.7%),
+trailing-goodbye (28.6%), sequencing (35.3%), multi-thought (47.5%) — are all
+the same situation: one recording carrying several thoughts, wrapped in the
+framing people put around speech. The families that read the *content* of a
+sentence, once it has been cut out correctly, are in the eighties and nineties.
+
+Title hygiene says the same thing from the other side: 14 of the 18 title
+defects are framing material left in place — 7 farewells, 6 numbered
+enumerators, 1 narrative opener — and `trailing-goodbye` scores **0/7**.
+
+`grep` for farewell handling in `SpeakIt/` returns nothing. `IntentConsolidation`
+owns elaborative framing and deliberately stands down the moment two
+substantive clauses are present, so it is a collapse stage for rambling with a
+single point rather than a general framing stage. Nothing owns enumerators
+(`number one`, `first of all`, `secondly`) either, and an enumerator is a
+clause boundary a speaker states out loud. That is one missing layer producing
+two visible symptoms.
+
+## 2026-09-11 09:38 — first measured run, PR #28 branch
 
 | | |
 |---|---|

@@ -28,27 +28,27 @@ DERIVED_DATA="${SPEAKIT_DERIVED_DATA:-/tmp/SpeakItClaudeTests}"
 RESULT_BUNDLE="${SPEAKIT_RESULT_BUNDLE:-}"
 SHARDS="${SPEAKIT_SHARDS:-1}"
 
-# Best-effort pass/fail summary for the GitHub job summary; the .xcresult is
-# the authoritative record and is uploaded as an artifact on failure.
+# Reads the failing assertions out of an .xcresult and prints them.
+#
+# They go to stdout as well as to the GitHub job summary on purpose. The
+# .xcresult is the authoritative record and is uploaded as an artifact, but an
+# artifact is downloaded from a blob host, and a session reviewing a CI failure
+# may not be able to reach one - which leaves a list of test names and no
+# message. The job log is the one place every reader can already see.
 summarize() {
   local title="$1" bundle="$2"
-  [ -n "$bundle" ] && [ -d "$bundle" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
-  local summary_file
+  [ -n "$bundle" ] && [ -d "$bundle" ] || return 0
+  local summary_file text_file
   summary_file="$(mktemp)"
+  text_file="$(mktemp)"
   if xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$summary_file" 2>/dev/null; then
-    python3 - "$title" "$summary_file" <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
-import json, sys
-data = json.load(open(sys.argv[2]))
-print(f"### {sys.argv[1]}")
-print()
-print("| Result | Passed | Failed | Skipped |")
-print("|---|---|---|---|")
-print(f"| {data.get('result', '?')} | {data.get('passedTests', '?')} | {data.get('failedTests', '?')} | {data.get('skippedTests', '?')} |")
-for failure in data.get("testFailures", [])[:25]:
-    print(f"- `{failure.get('testName', '?')}` — {failure.get('failureText', '').strip()[:300]}")
-PY
+    python3 "$HERE/xcresult-failures.py" "$title" "$summary_file" > "$text_file" 2>/dev/null || true
+    cat "$text_file"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      cat "$text_file" >> "$GITHUB_STEP_SUMMARY"
+    fi
   fi
-  rm -f "$summary_file"
+  rm -f "$summary_file" "$text_file"
 }
 
 # ---------------------------------------------------------------------------

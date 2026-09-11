@@ -353,6 +353,32 @@ make the family consistent would trade a safe gap for an unsafe one. Both cases
 are in `Tools/CorpusRunner/devsets/routed.tsv`, expected to fail, so the gap
 stays measured.
 
+## Run-on speech with no marker in it is still one row
+
+`DiscourseFrame` and the enumeration vocabulary in `splitClauses` read the
+frame a speaker *states*: a farewell at the end, "number two" in the middle,
+"first of all" at the front. Everyday held-out measurement after that change:
+every farewell is out of every title (`trailing-goodbye` 0/7 → 7/7 clean),
+and `sequencing` gained a capture on both routing and count.
+
+What did not move is the larger half. `run-on` is 0/8 on routing and 0/8 on
+count, and `multi-thought` is 19/40 and 22/40, unchanged. A person who says
+three things in one breath with no marker between them still gets one row.
+Under-segmentation outnumbers over-segmentation 23 to 16 on that set.
+
+Two narrower gaps sit inside the same area:
+
+- A numbered enumerator in front of a **fact** is not read as a boundary.
+  "Number two the garage code is 4821" keeps the marker, because the gate
+  requires an instruction behind the number — which is what keeps "gate number
+  two" and "apartment number three" from being cut. One capture in the everyday
+  set still carries `number two` in its title for this reason.
+- A long capture whose title is the whole capture — 8 of them — was never
+  summarised at all. That is a different stage from framing.
+
+The words are never lost either way: nothing lost held at 210/224 across the
+change, and the verbatim transcript is untouched by design.
+
 ## Intent consolidation reads English discourse markers only
 
 `IntentConsolidator` decides that a capture is narrative from a closed list of
