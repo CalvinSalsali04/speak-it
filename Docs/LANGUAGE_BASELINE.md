@@ -212,6 +212,97 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-11 20:38 — `abandoned-midthought` traced: the detector only ever reads the last word
+
+Run 34644656689, macos-26, branch at `8cfa1f5`, `language_only` with
+`devset_failures`. No parser change; this run exists to print rows nobody had
+looked at. Every rate is unchanged from the 20:14 run.
+
+**`abandoned-midthought` is 3 of 9 and had never had its failures listed.** It
+was the only weak family in the set with no recorded analysis — `1/10`
+`incomplete-complement` and `2/8` `trailing-function-word` both have one, and
+both turned out on inspection to be largely declined-by-design rather than
+broken. This one is not.
+
+| id | capture | got |
+|---|---|---|
+| INC49 | `Tomorrow I need to, um, wait, I forgot` | 1 row, **Today**, resolved, **due=Tue** |
+| INC50 | `Next week I should, wait, I lost it` | 1 row, Today, resolved |
+| INC51 | `I was going to, uh, hold on` | 1 row, Memory, resolved |
+| INC52 | `Remind me to, um, what was it` | 1 row, Today, resolved |
+| INC56 | `I need to I need to` | 1 row, Today, resolved |
+| INC57 | `I was going to call, I mean` | 1 row, Memory, resolved |
+
+The three that pass — INC53 `I need to, hmm`, INC54 `Tomorrow I want to um`,
+INC55 `I have to uh` — are the three whose filler strips to a clause that
+**ends on `to`**. That is the whole difference between the halves of this
+family, and it names the mechanism exactly.
+
+**`state=resolved` on all six is the part that matters more than the miss.**
+These are not captures the app is unsure about. It is confident. Four of the
+six become Today tasks, and INC49 is dated Tuesday — one of the set's two
+`unsafe` rows, the other being INC33, both already recorded at 15:45. A person
+who lost their thought out loud gets a task they never finished asking for,
+with a date on it.
+
+### Root cause: `ThoughtCompletion.unfinished` inspects the final token and its
+### predecessor, and nothing else
+
+Reading the source rather than inferring from the rates: the function takes
+`tokens.last`, tests its lexical class, tests `tokens[tokens.count - 2]` for
+`isVerb`, and in the `to` branch counts how many `to` tokens the clause holds.
+There is no other reach. Every unfinished thought it can detect is one that
+**stops** mid-frame.
+
+So a capture where the speaker opened a frame and then said anything at all
+afterwards is invisible to it, however unfinished the frame is. That is not a
+missing rule for these six sentences; it is the shape of what the detector can
+see. `SemanticGap.incompleteThought` — the representation — already exists and
+is right. The gap is reach, not vocabulary.
+
+Five of the six close on a **retrieval failure**: the speaker says the thought
+is gone (`I forgot`, `I lost it`, `hold on`, `what was it`, a trailing
+`I mean`). Those words are evidence about the material *before* them, and
+nothing reads them that way. `SpeechRepair` has a closed `bareWithdrawal` class
+for "the speaker took it back" and there is no counterpart for "the speaker
+lost it" — the two are different destinations, `Abandoned` against
+`Incomplete`, and only one is modelled. INC56 is the separate, already-recorded
+marker-count premise.
+
+### Not being built, and the reason is the same one as last time
+
+Sized over readable material with a walk, not a glob, and never touching a
+sealed path: **102,420 readable sentences; 25 contain a retrieval-failure
+phrase anywhere; 6 have one clause-finally; all 6 are rows in
+`unfinished.tsv`.** There is not one instance in the corpus that somebody here
+did not write for this purpose.
+
+The set also carries its own falsifier, which is the argument against a quick
+fix in one row: **FP27 `I think I forgot` is labelled `Complete`**, as are
+FP22 `I forgot my keys` and FP23 `I forgot what Sarah said`. Any rule keyed on
+the phrase flags FP27 and puts the first crack in a fallout record that is
+`0/96`. The structural discriminator that would survive it — an infinitive or
+modal frame followed by a finite clause that cannot fill it, which is why
+`I think` is safe and `I need to` is not — reaches INC49, INC50, INC52 and
+INC56 and honestly misses INC51 and INC57. Worth building against real
+captures. Not worth building against six sentences we wrote, where the
+discriminator and the data would have the same author.
+
+**This is the third target in a row to end here**, and the coincidence is the
+finding rather than any one of the three:
+
+| target | why it stopped |
+|---|---|
+| doubled infinitive frame (INC56) | 1 readable instance, ours |
+| retrieval-failure tail (this) | 6 readable instances, all ours |
+| deliberation, `decision` 1/6 | all readable rows by one author |
+
+Three independent weaknesses, three different layers, one cause: past the
+development sets we wrote, there is no material. The instruments are not the
+bottleneck any more and neither is the parser. **Recorded here as the
+measurement behind the request for real captures**, so that request rests on
+three traced failures rather than on a preference.
+
 ## 2026-09-11 20:14 — the resultive guard tightened; nothing moved, and a hypothesis died
 
 Run [34642431339](https://github.com/CalvinSalsali04/speak-it/actions/runs/34642431339),

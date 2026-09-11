@@ -12,6 +12,43 @@
 > Treat an unmarked entry as a claim to verify before ranking work from it, not
 > as a finding.
 
+## A thought that stops and then keeps going is read as finished
+
+**Measured 2026-09-11, run 34644656689, and traced to source. Six named
+captures below; the rate is `abandoned-midthought` 3 of 9 in
+`devsets/unfinished.tsv`.**
+
+When somebody opens a thought, loses it, and says so out loud — *"Tomorrow I
+need to, um, wait, I forgot"* — Speak It files a confident Today task and dates
+it Tuesday. Not a flagged fragment the person can finish: `state=resolved`, a
+date attached. Four of the six captures in this shape become tasks, one of them
+dated, and the speaker never said what the task was.
+
+**Root cause.** `ThoughtCompletion.unfinished` in `ClauseStructure.swift` reads
+`tokens.last`, its lexical class, the token before it, and — for `to` — how
+many infinitive markers the clause holds. That is its entire reach. It can only
+recognise a thought that **stops** at the moment it breaks off. The three
+captures in this family that pass are exactly the three whose filler strips
+back to a clause ending on `to`.
+
+So the words a speaker uses to say the thought is gone (*I forgot*, *I lost
+it*, *hold on*, *what was it*, a trailing *I mean*) are evidence about what came
+before them, and nothing in the pipeline reads them that way. `SpeechRepair`
+carries a closed class for *"the speaker took it back"* and has no counterpart
+for *"the speaker lost it"* — different destinations, `Abandoned` against
+`Incomplete`, and only one is modelled. The representation for the second
+(`SemanticGap.incompleteThought`) already exists; what is missing is anything
+that reaches it from here.
+
+**Why it is named rather than fixed.** Across 102,420 readable sentences the
+shape occurs six times and all six are rows written for this set. The same set
+contains its own trap — `I think I forgot` is a finished sentence — so a rule
+keyed on the phrase would put the first hole in a `0/96` fallout record to
+recover captures nobody outside this repository has said. A structural version
+(an infinitive or modal frame followed by a finite clause that cannot fill it)
+would reach four of the six and is worth building **against real captures**,
+which is where this is blocked. See `Docs/LANGUAGE_BASELINE.md`, 20:38.
+
 ## A choice can be recorded as open, never as resolved
 
 **Verified from source 2026-09-11; the per-row consequence is a prediction, not

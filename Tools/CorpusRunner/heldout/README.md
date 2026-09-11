@@ -96,17 +96,63 @@ The denominator carries them, and a reader quoting the rate should know it.
 ### Incidental exposure, 2026-09-11
 
 **One capture in this set was printed into a working session's context on
-2026-09-11 and is not named here.** An evaluation session answering a question
-about what *readable* material contains wrote an ad-hoc scan over every `*.tsv`
-under `Tools/CorpusRunner/`, which is wider than the question, and one held-out
+2026-09-11.** An evaluation session answering a question about what *readable*
+material contains wrote an ad-hoc scan over every `*.tsv` under
+`Tools/CorpusRunner/`, which is wider than the question, and one held-out
 capture's text came back with the results. The session reported it unprompted;
 nothing else would have surfaced it.
 
 What is known, from that report: the capture's text was seen, its pass or fail
 state was not looked up, and it played no part in the analysis the scan was
-for. It is unnamed here deliberately — naming it in a tracked document is the
-thing this file exists to prevent, and would compromise it far more thoroughly
-than the scan did.
+for.
+
+**The capture is named by id in `EXPOSED_WITHOUT_INSPECTION` in
+`leak-check.py`, which owns this population** — landing with PR #55, which is
+where that constant was added; until it merges the id lives only in this
+paragraph. This section will not restate it once #55 is in: two records of one
+fact drift, and the one that drifted here said "unnamed by design" for eight
+commits after it had been named.
+
+Recording the **id** is right and recording the **text** would not be, and the
+distinction is worth stating because it is easy to re-derive the wrong answer
+from a sensible instinct. An id grants no access that listing the file does
+not — getting from `C283` to its words means opening `heldout.tsv`, which is
+the act the rule forbids and which the id does not help with. What the id buys
+is the only thing this record is for: a recount can subtract a named row, and
+a second exposure of the same capture can be recognised as the same one
+instead of counted twice. `OVERLAP_DOCUMENTED` and `PROSE_DOCUMENTED` name ids
+for that reason, and today's correction of the compromised count from three to
+five was possible **because** they do. An unnamed exposure is a denominator
+nobody can check.
+
+That reasoning is recorded here rather than assumed, because the first version
+of this section argued the other way, and an argument nobody wrote down is one
+the next reader has to lose again.
+
+**Second exposure of the same capture, 2026-09-11 ~20:45, and it was caused by
+this section.** Writing the paragraph above, the core session ran
+`grep -rn "EXPOSED_WITHOUT_INSPECTION\|C283" Tools/` to check the constant
+existed. `heldout.tsv` is under `Tools/`, so the id matched its own row and the
+capture's text was printed a second time. Same conditions as the first: text
+seen, pass/fail state not looked up, no part in any analysis.
+
+**Distinct captures exposed is still one; exposure events are two.** That
+sentence is only writable because the capture has an id in the record, which is
+the argument above making its own case within the hour — an unnamed first
+exposure would have made this indistinguishable from a second capture, and the
+count would now be wrong in the direction that overstates the damage.
+
+The new hazard is specific and was not anticipated when the id was recorded:
+**an id is safe to store and unsafe to grep**, because the sealed file is the
+one place the id appears next to its text, and every plain recursive search
+over `Tools/` includes it. Naming the row is still right — the alternative
+loses the denominator — but the id is a lookup key into the sealed set for
+anyone who searches a tree containing it, including by accident. Check a
+constant in the file that defines it, or search through
+`corpus_paths.readable()`; never `grep -r` an id from the repository root. This
+is the same lesson as the scan that caused the first exposure, arriving through
+the mitigation rather than around it, which is the part worth remembering: a
+fix can carry the defect it was written for.
 
 It is recorded because this section's subject is which captures have stopped
 being unseen and how, and "a session that works on the parser has seen it" is
@@ -114,14 +160,20 @@ that, whether or not anyone acted on it. An exposure nobody writes down is
 indistinguishable from one that never happened, which is the same property that
 made the original provenance claim unfalsifiable.
 
-**The mitigation is not a rule.** Both threads wrote ad-hoc scanners that day,
-and the one that stayed inside readable material did so because its author
-happened to be thinking about it — luck with a good outcome, not a property.
-What makes it a property is a single readable-material helper that yields the
-development sets, the gating corpus and the prose and *cannot* return a sealed
-path, so that reaching the sealed sets takes a deliberate act rather than a
-loose glob. Until that exists, treat any scan over `Tools/CorpusRunner/**` as
-capable of this.
+**The mitigation is now a rule, and was not when this was written.** Both
+threads wrote ad-hoc scanners that day, and the one that stayed inside readable
+material did so because its author happened to be thinking about it — luck with
+a good outcome, not a property. `Tools/CorpusRunner/corpus_paths.py` makes it a
+property: `readable()` cannot return a sealed path even if the list behind it is
+mis-edited, because the filter runs at the point of return, and reaching sealed
+material takes naming `sealed()`.
+
+The part worth keeping is what the check claims. Two lists that do not overlap
+are satisfied perfectly by a list that has silently lost a whole corpus — which
+is how `rambling.tsv` once reached one runner and not the other. So the claim is
+**totality**, not disjointness: `unclassified()` fails the run if any `*.tsv`
+under `Tools/CorpusRunner/` is in neither list, so adding a corpus and
+forgetting to classify it is a failure rather than a silent gap.
 
 **Evidence the other way, so this note does not overstate.** Compared against
 `SemanticCorpusDataI.swift` — the 307 lines added in that very commit, the
