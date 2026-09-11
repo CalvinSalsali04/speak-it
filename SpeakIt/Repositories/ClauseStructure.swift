@@ -407,6 +407,30 @@ enum ClauseScope {
         guard boundary.lowerBound >= complement.lowerBound,
               boundary.upperBound <= complement.upperBound else { return true }
 
+        // A report cannot carry the speaker's own obligation. "The guy said
+        // the warranty expires in November **so I need to book the service**"
+        // is a fact from him and a commitment from the speaker, and the "so"
+        // clause is never part of what he said — he is not in a position to
+        // assert what the speaker must do.
+        //
+        // Scoped to the resultive coordinator on purpose. "And" genuinely does
+        // continue a report ("Sarah said the meeting is off and the demo
+        // moved"), and the test below is what decides those. This says only
+        // that "so I need to" / "so I should" leaves the reported frame, which
+        // is why the rule reads the first person rather than the obligation
+        // alone: "Sarah said I need to rebook" reports an obligation and stays
+        // inside the complement, because it has no resultive boundary.
+        if String(context.text[boundary]).range(
+            of: #"(?i)\bso\s*$"#,
+            options: .regularExpression
+        ) != nil,
+           String(context.text[rightConjunct]).range(
+               of: #"(?i)^\s*(?:i|we)\s+\#(ActionabilityReader.obligationLead)\b"#,
+               options: .regularExpression
+           ) != nil {
+            return true
+        }
+
         let words = context.tokens(in: rightConjunct)
         guard let first = words.first, first.isVerb else { return false }
         if first.text.range(

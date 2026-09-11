@@ -289,6 +289,56 @@ enum SemanticCorpusH {
                    route: [.today, .today], person: ["Priya", "Marcus"],
                    severityCeiling: .metadata,
                    note: "GAP: the second conjunct becomes an event with no person. people.md P1/P2 — the split fires but the name is not attached."),
+
+        // A fact and the errand it caused, joined by "so".
+        //
+        // This is how the boundary sounds when someone is speaking. Written
+        // down the same capture uses "and" — "the lease ends in March AND I
+        // need to draft the renewal" — and that has split correctly for
+        // months, while the spoken form arrived as one row. The pair below is
+        // the same content twice so the two connectors have to agree.
+        //
+        // Found by pairing each capture in devsets/rambling.tsv with a clean
+        // twin: the family scored 3 of 3 typed and 0 of 3 spoken.
+        corpusCase(.paragraphs,
+                   "The lease ends in March and I need to draft the renewal",
+                   count: 2,
+                   note: "Control: the written connector, correct before this rule existed."),
+        corpusCase(.paragraphs,
+                   "The lease ends in March so I need to draft the renewal",
+                   count: 2,
+                   note: "The spoken connector for the same two thoughts."),
+        corpusCase(.paragraphs,
+                   "The furnace warranty expires in November so I should book the service",
+                   count: 2,
+                   note: "\"should\" reaches the same rule as \"need to\"; both are obligationLead."),
+
+        // A report cannot carry the speaker's own obligation. The warranty is
+        // the guy's news; booking the service is not something he is in a
+        // position to assert, so the "so" clause leaves the reported frame.
+        corpusCase(.paragraphs,
+                   "The guy said the furnace warranty expires in November so I need to book the service",
+                   count: 2,
+                   note: "The coordinator sits inside a reported complement and still ends it."),
+
+        // GUARDS. "so" is resultive and most of what follows it is not a
+        // second thought at all; these are the shapes that must stay whole.
+        corpusCase(.paragraphs,
+                   "Buy milk so the kids have breakfast",
+                   count: 1,
+                   note: "GUARD: a purpose clause is why the errand exists, not a second errand."),
+        corpusCase(.paragraphs,
+                   "Write the address down so that I don't forget it",
+                   count: 1,
+                   note: "GUARD: \"so that\" is a subordinator. Splitting strands the purpose."),
+        corpusCase(.paragraphs,
+                   "Right so I should email the landlord",
+                   count: 1,
+                   note: "GUARD: a discourse marker is not a cause. Nothing on the left is a thought yet, which is the whole licence for splitting on \"so\". Companion to \"Okay so I need to call Catherine tomorrow\" in the filler family."),
+        corpusCase(.paragraphs,
+                   "Sarah said I need to rebook the flights",
+                   count: 1,
+                   note: "GUARD: a reported obligation with no resultive boundary stays one thought. Keeps the complement rule from reading every reported \"I need to\" as the speaker's own."),
     ]
 
 }
