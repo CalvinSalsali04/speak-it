@@ -331,26 +331,30 @@ def harvest_ids(path):
 #: them from the sealed sets moves published figures and is a decision rather
 #: than an edit.
 OVERLAP_DOCUMENTED = {
-    # Exact: the same sentence exists on both sides of the boundary.
-    ("everyday.tsv", "F02"): "SemanticCorpusDataG.swift and SpeechRepairTests.swift",
-    ("everyday.tsv", "W17"): "SemanticCorpusDataG.swift",
-    ("everyday.tsv", "F17"): "SpeechRepairTests.swift",
-    ("everyday.tsv", "F29"): "SpeechRepairTests.swift",
-    ("everyday.tsv", "W20"): "SpeechRepairTests.swift",
-    ("heldout.tsv", "C049"): "SemanticCorpusDataQ.swift",
-    ("heldout.tsv", "C100"): "SemanticCorpusDataF.swift",
-    ("heldout.tsv", "C342"): "LocationReminderTests.swift, eight assertions",
-    # Near, at or above the 0.70 line. Kept in the same list because the
-    # marker does the same job either way, and separated in the report by the
-    # line each one is printed on.
-    ("everyday.tsv", "M36"): "near SemanticCorpusDataB.swift",
-    ("adversarial.tsv", "AN08"): "near SemanticCorpusDataA.swift",
-    ("heldout.tsv", "C005"): "near SemanticCorpusDataC/D.swift",
-    ("heldout.tsv", "C236"): "near SwiftDataThoughtRepositoryTests.swift",
-    ("heldout.tsv", "C243"): "near SemanticCorpusDataA.swift and routed.tsv",
-    ("heldout.tsv", "C331"): "near SemanticCorpusDataQ.swift and DurabilityTests.swift",
-    ("heldout.tsv", "C353"): "near SemanticCorpusDataE.swift",
-    ("heldout.tsv", "C355"): "near SemanticCorpusDataB.swift",
+    # Exact, and *where* matters as much as *that*. A capture in the gating
+    # corpus is in the regression net the rules are tuned to pass; a capture
+    # in a development set is in material somebody worked against; a capture
+    # in one hand-written fixture is the mildest of the three. They are
+    # different amounts of damage to the same number, so the location is
+    # written out rather than summarised.
+    ("everyday.tsv", "F02"): "gating corpus (DataG) + SpeechRepairTests",
+    ("everyday.tsv", "W17"): "gating corpus (DataG)",
+    ("everyday.tsv", "F17"): "SpeechRepairTests",
+    ("everyday.tsv", "F29"): "SpeechRepairTests",
+    ("everyday.tsv", "W20"): "SpeechRepairTests",
+    ("heldout.tsv", "C049"): "gating corpus (DataQ) + routed.tsv + coordination.tsv",
+    ("heldout.tsv", "C100"): "ten places: four gating-corpus files, six test files",
+    ("heldout.tsv", "C342"): "LocationReminderTests, eight assertions",
+    # Near, at or above the 0.70 line. Same list because the marker does the
+    # same job either way; the report separates them by the line each prints on.
+    ("everyday.tsv", "M36"): "near the gating corpus",
+    ("adversarial.tsv", "AN08"): "near the gating corpus",
+    ("heldout.tsv", "C005"): "near the gating corpus",
+    ("heldout.tsv", "C236"): "near SwiftDataThoughtRepositoryTests",
+    ("heldout.tsv", "C243"): "near the gating corpus and routed.tsv",
+    ("heldout.tsv", "C331"): "near the gating corpus and DurabilityTests",
+    ("heldout.tsv", "C353"): "near the gating corpus",
+    ("heldout.tsv", "C355"): "near the gating corpus",
 }
 
 
@@ -373,13 +377,25 @@ def others(exclude):
     #: and always a corpus to compare against. Now that it is checked too, an
     #: unconditional append would compare it with itself and collide on all 389.
     sources += [p for p in SEALED_ALL if p != exclude]
+    #: Every source a string appears in, not the first one found. C100 sits in
+    #: four `SemanticCorpusData*.swift` files and six hand-written test files;
+    #: `setdefault` reported one of the ten and made a workhorse fixture look
+    #: like an incidental duplicate. The distinction the reader needs is not
+    #: only *that* a sealed capture is on the tuned side but *how deep*: exact
+    #: in the gating corpus the rules are tuned to pass is a different amount
+    #: of damage from exact in one development set.
     found = {}
     for path in sources:
         if not path.exists():
             continue
         for candidate in harvest(path):
-            found.setdefault(norm(candidate), path.name)
-    return found
+            found.setdefault(norm(candidate), []).append(path.name)
+    return {text: sorted(dict.fromkeys(names)) for text, names in found.items()}
+
+
+def where(names):
+    """`a.swift +2 more`, so a long list cannot push the id off the line."""
+    return names[0] if len(names) == 1 else f"{names[0]} +{len(names) - 1} more"
 
 
 def verdict(sources):
@@ -456,6 +472,7 @@ def check(path):
     ours, theirs = mine(path), others(path)
     exact = [(cid, utterance, theirs[utterance])
              for utterance, cid in ours.items() if utterance in theirs]
+    #: Sources are lists now. Flattened wherever a set of names is wanted.
 
     ranked, near = similarities(ours, theirs)
 
@@ -475,20 +492,15 @@ def check(path):
     #: through the other half of the same file. A *new* row still prints both
     #: sides, because the run fails and somebody has to judge whether the pair
     #: is contamination or coincidence, and they cannot do that from two ids.
-    for cid, utterance, source in exact:
-        if (path.name, cid) in OVERLAP_DOCUMENTED:
-            print(f"  COLLISION  {cid}  also in {source}  (documented)")
-        else:
-            print(f"  COLLISION  {cid}  also in {source}\n    {utterance}")
-    for cid, overlap, source, utterance, other in sorted(near, key=lambda r: -r[1]):
-        if (path.name, cid) in OVERLAP_DOCUMENTED:
-            print(f"  NEAR  {cid}  j={overlap}  {source}  (documented)")
-        else:
-            print(f"  NEAR  {cid}  j={overlap}  {source}\n    held out: {utterance}"
-                  f"\n    tuned:    {other}")
+    for cid, utterance, names in exact:
+        mark = "  (documented)" if (path.name, cid) in OVERLAP_DOCUMENTED else ""
+        print(f"  COLLISION  {cid}  in {len(names)}: {', '.join(names)}{mark}")
+    for cid, overlap, names, utterance, other in sorted(near, key=lambda r: -r[1]):
+        mark = "  (documented)" if (path.name, cid) in OVERLAP_DOCUMENTED else ""
+        print(f"  NEAR  {cid}  j={overlap}  {where(names)}{mark}")
     if fresh_exact or fresh_near:
-        sources = ({src for _, _, src in fresh_exact}
-                   | {src for _, _, src, _, _ in fresh_near})
+        sources = ({n for _, _, names in fresh_exact for n in names}
+                   | {n for _, _, names, _, _ in fresh_near for n in names})
         print("\n" + verdict(sources), file=sys.stderr)
         return 1
     if exact or near:
@@ -523,9 +535,8 @@ def report_closest(ranked, show=3):
     if not ranked:
         return
     print(f"closest, no leak         j={ranked[0][0]:.2f} (line is {THRESHOLD})")
-    for overlap, cid, utterance, source, other in ranked[:show]:
-        print(f"  {cid}  j={overlap:.2f}  nearest in {source}"
-              f"\n    held out: {utterance}\n    tuned:    {other}")
+    for overlap, cid, utterance, names, other in ranked[:show]:
+        print(f"  {cid}  j={overlap:.2f}  nearest in {where(names)}")
 
 
 if __name__ == "__main__":

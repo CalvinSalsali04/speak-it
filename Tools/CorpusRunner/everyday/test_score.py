@@ -933,15 +933,18 @@ class TunedSideWidthTests(unittest.TestCase):
         self.assertIn("exact collisions         1", buf2.getvalue())
         self.assertIn("S0", buf2.getvalue())
 
-        #: The documented row is the steady state -- reported on every green
-        #: run -- so its text must not be printed, or the overlap half of this
-        #: file puts sealed captures into every CI log, which is the harm the
-        #: prose half was written to avoid. The undocumented row still prints
-        #: both sides: that run fails, and somebody has to judge whether the
-        #: pair is contamination or coincidence, which two ids cannot answer.
-        self.assertNotIn("the spare key is under the doormat", buf2.getvalue())
+        #: **No sealed capture text in any automated output, ever**, on a
+        #: failing run as much as a green one. A leak detector that prints the
+        #: leak has copied it somewhere new: a CI log is a different surface
+        #: from the sealed file, retained and readable by anyone with
+        #: repository access. Nothing is lost, because whoever fixes a finding
+        #: has to open both rows anyway and cannot judge a 0.78 without
+        #: reading them; the check's job is to say *which two rows*.
+        self.assertNotIn("doormat", buf.getvalue())
+        self.assertNotIn("doormat", buf2.getvalue())
         self.assertIn("(documented)", buf2.getvalue())
-        self.assertIn("the spare key is under the doormat", buf.getvalue())
+        self.assertIn("COLLISION  S0", buf.getvalue())
+        self.assertIn("T.swift", buf.getvalue())
 
 
     def test_a_documented_near_duplicate_does_not_print_its_text_either(self):
@@ -976,6 +979,88 @@ class TunedSideWidthTests(unittest.TestCase):
         self.assertIn("NEAR  S0", out)
         self.assertIn("(documented)", out)
         self.assertNotIn("doormat", out)
+
+
+    def test_every_place_a_collision_lives_is_reported_not_just_the_first(self):
+        """`setdefault` reported one location and hid the other nine.
+
+        Held-out C100 sits in four gating-corpus files and six hand-written
+        test files. Reported as one, it reads as an incidental duplicate; the
+        ten say it is a workhorse fixture the suite reaches for, which is a
+        different amount of damage to the same number.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            for name in ("A.swift", "B.swift"):
+                (root / "SpeakItTests" / name).write_text(
+                    'assert("the spare key is under the doormat")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED = [sealed]
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertIn("COLLISION  S0  in 2: A.swift, B.swift", out)
+        self.assertNotIn("doormat", out)
+
+    def test_a_clean_run_prints_no_sealed_capture_either(self):
+        """The closest-miss report was the case that settled the rule.
+
+        On a green run, with nothing wrong, the old report printed the three
+        nearest sealed captures into the log. There is no failure being
+        explained there, so there is no cost being paid for. It still prints
+        the drift signal — the score, the id, the corpus — because that is
+        what a reader watching a set creep toward the line needs, and none of
+        it requires the sentence.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            root = pathlib.Path(root)
+            (root / "SpeakItTests").mkdir(parents=True)
+            (root / "Tools/CorpusRunner/devsets").mkdir(parents=True)
+            (root / "SpeakItTests" / "T.swift").write_text(
+                'assert("post the parcel on the way to work")\n')
+            sealed = root / "Tools/CorpusRunner/everyday/everyday.tsv"
+            sealed.parent.mkdir(parents=True)
+            sealed.write_text("id\tdomain\tutterance\n"
+                              "S0\th\tthe spare key is under the doormat\n")
+            self.leak.ROOT = root
+            self.leak.SEALED = [sealed]
+            self.leak.SEALED_ALL = [sealed]
+            self.leak.OVERLAP_DOCUMENTED = {}
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                code = self.leak.check(sealed)
+        out = buf.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("closest, no leak", out)
+        self.assertIn("S0", out)
+        self.assertNotIn("doormat", out)
+        self.assertNotIn("parcel", out)
+
+    def test_a_capture_too_short_to_compare_is_not_compared(self):
+        """Recorded because the artefact is real in other scanners.
+
+        Jaccard over content words clears 0.70 easily at three or four words —
+        two ordinary reminder phrases sharing three of them is not evidence of
+        anything. `similarities` skips both sides below four tokens, so the
+        short-capture artefact cannot reach this report. That is a deliberate
+        floor and it belongs in a test rather than in a reader's memory: the
+        coverage it costs is real, and stating it is the same contract as
+        `PROSE_MIN_WORDS` printing how many captures it cannot protect.
+        """
+        ours = {self.leak.norm("call the dentist"): "S0"}
+        theirs = {self.leak.norm("call the dentist now"): ["T.swift"]}
+        ranked, near = self.leak.similarities(ours, theirs)
+        self.assertEqual(near, [], "a three-word capture must not be compared")
+        self.assertEqual(ranked, [])
 
 
 class DevsetScorerSealTests(unittest.TestCase):
