@@ -1,0 +1,673 @@
+{
+  "methodology": {
+    "parser_output_used_as_label": false,
+    "production_parser_invoked": false,
+    "sealed_cases_read": 0,
+    "naturalness_ratings_are_independent": false,
+    "semantic_reviews_are_independent": false,
+    "near_duplicate_definition": "token-set Jaccard >= 0.80 after Unicode-aware tokenization",
+    "structural_template_definition": "function words and punctuation retained; adjacent content words collapsed to <slot>"
+  },
+  "metrics": {
+    "corpus_size": 818,
+    "semantic_family_count": 137,
+    "historical_semantic_family_count": 133,
+    "public_introduced_semantic_family_count": 4,
+    "exact_unique_texts": 818,
+    "word_length": {
+      "min": 2,
+      "p25": 19.0,
+      "median": 24.0,
+      "mean": 26.287,
+      "p75": 31.0,
+      "max": 82
+    },
+    "phenomena_per_case": {
+      "0": 308,
+      "1": 190,
+      "2": 250,
+      "3": 56,
+      "4": 14
+    },
+    "average_phenomena_per_case": 1.117359,
+    "single_phenomenon_cases": 190,
+    "multi_phenomenon_cases": 320,
+    "multi_phenomenon_rate": 0.391198,
+    "phenomenon_coverage": {
+      "covered": 78,
+      "taxonomy_total": 83,
+      "uncovered": [
+        "conditional-intent",
+        "conjunction-ambiguity",
+        "self-correction-quantity",
+        "shared-object",
+        "unresolved-alternative"
+      ],
+      "counts": {
+        "abandoned-thought": 1,
+        "ambiguous-pronoun": 1,
+        "asr-boundary-error": 30,
+        "asr-deletion": 1,
+        "asr-dropped-token": 1,
+        "asr-duplicated-token": 31,
+        "asr-insertion": 32,
+        "asr-name-corruption": 1,
+        "asr-partial-recognition": 1,
+        "asr-substitution": 1,
+        "cancellation": 1,
+        "cancellation-scope": 1,
+        "casing-corruption": 26,
+        "casual-grammar": 33,
+        "change-of-intent": 1,
+        "code-switch-token": 31,
+        "completed-action": 8,
+        "contact-person-ambiguity": 1,
+        "correction-chain": 20,
+        "cross-turn-reference": 1,
+        "cross-turn-reference-ambiguity": 1,
+        "discourse-marker": 23,
+        "dst-transition": 1,
+        "exact-time": 17,
+        "false-start": 31,
+        "filler-words": 23,
+        "future-intention": 24,
+        "hesitation": 26,
+        "homophone": 1,
+        "incomplete-clause": 1,
+        "information-mixed-with-action": 9,
+        "location-inheritance": 3,
+        "long-capture": 27,
+        "lowercase": 30,
+        "multiple-tasks": 5,
+        "multiple-thoughts": 12,
+        "negation": 17,
+        "never-mind-withdrawal": 1,
+        "numbered-list": 13,
+        "ordinary-word-name": 12,
+        "outstanding-obligation": 21,
+        "partial-thought": 1,
+        "past-event": 9,
+        "prohibition": 7,
+        "pronoun-resolution": 1,
+        "punctuation-corruption": 1,
+        "punctuation-loss": 22,
+        "question-mixed-with-action": 12,
+        "quoted-speech": 1,
+        "rambling-ending": 24,
+        "rambling-introduction": 19,
+        "recurrence": 7,
+        "relative-date": 22,
+        "relative-duration": 4,
+        "repetition": 29,
+        "rephrasing": 24,
+        "reported-speech": 1,
+        "resolved-alternative": 1,
+        "restart": 25,
+        "scoped-withdrawal": 1,
+        "self-correction-date": 18,
+        "self-correction-location": 20,
+        "self-correction-person": 17,
+        "self-correction-time": 14,
+        "sequencing": 7,
+        "shared-date": 2,
+        "shared-location": 2,
+        "shared-subject": 9,
+        "shared-time": 1,
+        "short-fragment": 1,
+        "sign-off-trailing-noise": 29,
+        "store-brand-product-name": 7,
+        "stutter-like-repetition": 31,
+        "temporal-inheritance": 1,
+        "timezone-sensitive": 1,
+        "uncertainty": 8,
+        "uncommon-proper-noun": 6,
+        "unnumbered-list": 8
+      }
+    },
+    "interaction_coverage": {
+      "distinct_pairs": 410,
+      "top_pairs": [
+        {
+          "pair": [
+            "discourse-marker",
+            "asr-insertion"
+          ],
+          "count": 5
+        },
+        {
+          "pair": [
+            "rephrasing",
+            "asr-boundary-error"
+          ],
+          "count": 4
+        },
+        {
+          "pair": [
+            "casual-grammar",
+            "asr-insertion"
+          ],
+          "count": 4
+        },
+        {
+          "pair": [
+            "code-switch-token",
+            "asr-duplicated-token"
+          ],
+          "count": 4
+        },
+        {
+          "pair": [
+            "stutter-like-repetition",
+            "asr-boundary-error"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "rambling-ending",
+            "lowercase"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "rambling-introduction",
+            "punctuation-loss"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "false-start",
+            "hesitation"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "self-correction-location",
+            "repetition"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "false-start",
+            "stutter-like-repetition"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "future-intention",
+            "casual-grammar"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "numbered-list",
+            "long-capture"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "future-intention",
+            "hesitation"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "hesitation",
+            "casing-corruption"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "false-start",
+            "rambling-introduction"
+          ],
+          "count": 3
+        },
+        {
+          "pair": [
+            "correction-chain",
+            "code-switch-token"
+          ],
+          "count": 2
+        },
+        {
+          "pair": [
+            "repetition",
+            "asr-duplicated-token"
+          ],
+          "count": 2
+        },
+        {
+          "pair": [
+            "filler-words",
+            "punctuation-loss"
+          ],
+          "count": 2
+        },
+        {
+          "pair": [
+            "self-correction-date",
+            "asr-duplicated-token"
+          ],
+          "count": 2
+        },
+        {
+          "pair": [
+            "rephrasing",
+            "casing-corruption"
+          ],
+          "count": 2
+        }
+      ]
+    },
+    "structural_templates": 816,
+    "structural_near_duplicate_groups": 2,
+    "structural_near_duplicate_records": 4,
+    "largest_structural_template": 2,
+    "largest_structural_template_share": 0.002445,
+    "top_structural_templates": [
+      {
+        "template": "before i <slot> , i am <slot> to be at the <slot> when i am at the <slot> .",
+        "count": 2
+      },
+      {
+        "template": "<slot>",
+        "count": 2
+      },
+      {
+        "template": "actually , can you <slot> the <slot> to <slot> the <slot> ? i do not need that one <slot> .",
+        "count": 1
+      },
+      {
+        "template": "just so i remember , i <slot> this : the <slot> is <slot> on <slot> .",
+        "count": 1
+      },
+      {
+        "template": "<slot> this <slot> for <slot> : <slot> by <slot> than by <slot> .",
+        "count": 1
+      },
+      {
+        "template": "just <slot> a <slot> that the <slot> my <slot> on it .",
+        "count": 1
+      },
+      {
+        "template": "i <slot> the <slot> my <slot> on it , but there is not <slot> to <slot> on that yet .",
+        "count": 1
+      },
+      {
+        "template": "i am not <slot> this is <slot> : the <slot> on . keep it for <slot> than <slot> it as <slot> .",
+        "count": 1
+      },
+      {
+        "template": "keep <slot> of <slot> with the <slot> for me .",
+        "count": 1
+      },
+      {
+        "template": "before i <slot> , <slot> the <slot> .",
+        "count": 1
+      }
+    ],
+    "family_concentration": {
+      "min": 1,
+      "median": 6,
+      "max": 14,
+      "largest_share": 0.017115
+    },
+    "entity_diversity": {
+      "person": {
+        "unique": 50,
+        "top": [
+          {
+            "value": "Zoe Bennett",
+            "count": 22
+          },
+          {
+            "value": "Imani Brooks",
+            "count": 20
+          },
+          {
+            "value": "River James",
+            "count": 20
+          },
+          {
+            "value": "Grace Liu",
+            "count": 19
+          },
+          {
+            "value": "Lucas Pereira",
+            "count": 18
+          },
+          {
+            "value": "Hassan Ali",
+            "count": 17
+          },
+          {
+            "value": "Mina Kowalski",
+            "count": 17
+          },
+          {
+            "value": "Xavier Reed",
+            "count": 15
+          },
+          {
+            "value": "Wanjiku Njoroge",
+            "count": 15
+          },
+          {
+            "value": "Noah Williams",
+            "count": 14
+          }
+        ]
+      },
+      "location": {
+        "unique": 34,
+        "top": [
+          {
+            "value": "the rental counter",
+            "count": 15
+          },
+          {
+            "value": "the hotel lobby",
+            "count": 14
+          },
+          {
+            "value": "the climbing gym",
+            "count": 13
+          },
+          {
+            "value": "St. Lawrence Market",
+            "count": 13
+          },
+          {
+            "value": "Harbourfront Centre",
+            "count": 13
+          },
+          {
+            "value": "the farmers market",
+            "count": 13
+          },
+          {
+            "value": "the campus bookstore",
+            "count": 13
+          },
+          {
+            "value": "the King Street office",
+            "count": 13
+          },
+          {
+            "value": "the daycare on Ossington",
+            "count": 11
+          },
+          {
+            "value": "Union Station",
+            "count": 11
+          }
+        ]
+      },
+      "date": {
+        "unique": 39,
+        "top": [
+          {
+            "value": "next Thursday",
+            "count": 35
+          },
+          {
+            "value": "next weekend",
+            "count": 33
+          },
+          {
+            "value": "the last day of the month",
+            "count": 31
+          },
+          {
+            "value": "next Tuesday",
+            "count": 28
+          },
+          {
+            "value": "October 3",
+            "count": 28
+          },
+          {
+            "value": "January 12",
+            "count": 28
+          },
+          {
+            "value": "Wednesday",
+            "count": 27
+          },
+          {
+            "value": "the morning after the exam",
+            "count": 26
+          },
+          {
+            "value": "Friday",
+            "count": 26
+          },
+          {
+            "value": "two days from now",
+            "count": 25
+          }
+        ]
+      },
+      "time": {
+        "unique": 27,
+        "top": [
+          {
+            "value": "20:10",
+            "count": 25
+          },
+          {
+            "value": "07:15",
+            "count": 23
+          },
+          {
+            "value": "19:25",
+            "count": 23
+          },
+          {
+            "value": "16:15",
+            "count": 21
+          },
+          {
+            "value": "10:00",
+            "count": 20
+          },
+          {
+            "value": "12:20",
+            "count": 20
+          },
+          {
+            "value": "09:30",
+            "count": 20
+          },
+          {
+            "value": "13:10",
+            "count": 19
+          },
+          {
+            "value": "22:30",
+            "count": 19
+          },
+          {
+            "value": "14:30",
+            "count": 19
+          }
+        ]
+      },
+      "recurrence": {
+        "unique": 6,
+        "top": [
+          {
+            "value": "every-three-days",
+            "count": 9
+          },
+          {
+            "value": "school-days",
+            "count": 8
+          },
+          {
+            "value": "yearly:anniversary",
+            "count": 6
+          },
+          {
+            "value": "twice-weekly",
+            "count": 5
+          },
+          {
+            "value": "weekdays",
+            "count": 4
+          },
+          {
+            "value": "daily",
+            "count": 3
+          }
+        ]
+      }
+    },
+    "fact_copy": {
+      "records_copying_all_facts": 6,
+      "rate": 0.007335
+    },
+    "provenance_mix": {
+      "repository-authored": 776,
+      "PRESTO": 12,
+      "MASSIVE": 10,
+      "SLURP-text": 10,
+      "Taskmaster": 10
+    },
+    "label_confidence_mix": {
+      "machine-reviewed": 796,
+      "draft": 22
+    },
+    "naturalness_distribution": {
+      "1": 0,
+      "2": 0,
+      "3": 227,
+      "4": 546,
+      "5": 45
+    },
+    "naturalness_four_or_five_rate": 0.722494,
+    "meaning_preservation": {
+      "appears_preserved": 796,
+      "uncertain": 22
+    },
+    "machine_assessed_preservation_rate": 0.973105,
+    "broken_or_implausible": 0,
+    "machine_assessed_broken_rate": 0.0,
+    "automated_language_lints": {
+      "findings": 0,
+      "affected_cases": 0,
+      "by_lint": {}
+    },
+    "split_roles": {
+      "safety": 489,
+      "development": 176,
+      "synthetic-stress": 111,
+      "public-derived": 42
+    },
+    "safety": {
+      "cases": 514,
+      "trusted_with_two_independent_reviews": 0,
+      "awaiting_two_independent_reviews": 514
+    },
+    "normalized_duplicate_groups": 0,
+    "normalized_duplicate_records": 0,
+    "lexical_jaccard_0_80_pairs": 1,
+    "lexical_near_duplicate_records": 2,
+    "lexical_near_duplicate_record_rate": 0.002445
+  },
+  "saturation": [
+    {
+      "cases": 100,
+      "coverage_units": 205,
+      "new_units_since_previous": 205,
+      "marginal_units_per_case": 2.05,
+      "semantic_families": 100,
+      "phenomena": 0,
+      "interactions": 0,
+      "structural_templates": 100
+    },
+    {
+      "cases": 200,
+      "coverage_units": 338,
+      "new_units_since_previous": 133,
+      "marginal_units_per_case": 1.33,
+      "semantic_families": 133,
+      "phenomena": 0,
+      "interactions": 0,
+      "structural_templates": 200
+    },
+    {
+      "cases": 400,
+      "coverage_units": 615,
+      "new_units_since_previous": 277,
+      "marginal_units_per_case": 1.385,
+      "semantic_families": 133,
+      "phenomena": 78,
+      "interactions": 0,
+      "structural_templates": 399
+    },
+    {
+      "cases": 600,
+      "coverage_units": 959,
+      "new_units_since_previous": 344,
+      "marginal_units_per_case": 1.72,
+      "semantic_families": 133,
+      "phenomena": 78,
+      "interactions": 144,
+      "structural_templates": 599
+    },
+    {
+      "cases": 800,
+      "coverage_units": 1426,
+      "new_units_since_previous": 467,
+      "marginal_units_per_case": 2.335,
+      "semantic_families": 134,
+      "phenomena": 78,
+      "interactions": 410,
+      "structural_templates": 799
+    },
+    {
+      "cases": 818,
+      "coverage_units": 1446,
+      "new_units_since_previous": 20,
+      "marginal_units_per_case": 1.111111,
+      "semantic_families": 137,
+      "phenomena": 78,
+      "interactions": 410,
+      "structural_templates": 816
+    }
+  ],
+  "success_gate": {
+    "checks": {
+      "exact_unique": true,
+      "normalized_duplicates_zero": true,
+      "near_duplicate_rate_below_original_20_4_percent": true,
+      "largest_template_below_original_7_7_percent": true,
+      "fact_copy_substantially_below_original_96_9_percent": true,
+      "machine_naturalness_majority_four_or_five": true,
+      "machine_broken_rate_below_five_percent": true,
+      "automated_language_lints_zero": true,
+      "machine_preservation_at_least_95_percent": true,
+      "safety_has_two_independent_reviews": false,
+      "independent_semantic_review_exists": false,
+      "provenance_has_all_four_public_sources": true,
+      "intentional_multi_phenomenon_coverage": true,
+      "saturation_measured_through_800": true
+    },
+    "passed": 12,
+    "total": 14,
+    "ready_to_freeze": false,
+    "ready_to_scale_to_10000": false,
+    "decision": "remain below 1,000; independent adjudication and failed gates remain"
+  }
+}

@@ -1,5 +1,9 @@
 # SpeechLab
 
+> Phase 2: the bounded 818-case adjudication candidate, hierarchical taxonomy,
+> constrained composition engine, public-data pilot, blind review pack, and
+> freeze decision are documented in [`phase2/README.md`](phase2/README.md).
+
 SpeechLab is the provenance-first evaluation system for Speak It's production
 understanding pipeline. It creates intended semantics before wording, validates
 every boundary, and retains every evaluated case in indexed SQLite. It does not
