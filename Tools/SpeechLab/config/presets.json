@@ -1,0 +1,7 @@
+{
+  "diagnostic": {"description": "Coverage-selected tens of cases", "default_limit": 100},
+  "focused": {"description": "One or more named phenomena", "requires": "--phenomenon"},
+  "broad": {"description": "Development robustness", "default_limit": 10000},
+  "stress": {"description": "Explicit configurable large N", "default_limit": null},
+  "sealed": {"description": "Aggregate-only scoring with no retained case disclosure", "command": "sealed-evaluate"}
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://speakit.local/speechlab/evaluation-result.schema.json",
+  "title": "SpeechLab retained evaluation result", "type": "object", "additionalProperties": false,
+  "required": ["run_id", "rendering_id", "blueprint_id", "input_text", "expected", "actual", "expected_hash", "actual_hash", "metrics", "difference", "duration_ms", "probe_hash", "environment"],
+  "properties": {
+    "run_id": {"type": "string"}, "rendering_id": {"type": "string"}, "blueprint_id": {"type": "string"}, "input_text": {"type": "string"},
+    "expected": {"type": "object"}, "actual": {"type": "object"}, "expected_hash": {"type": "string"}, "actual_hash": {"type": "string"},
+    "metrics": {"type": "object"}, "difference": {"type": "object"}, "duration_ms": {"type": "number", "minimum": 0},
+    "probe_hash": {"type": "string"}, "environment": {"type": "object"}
+  }
+}

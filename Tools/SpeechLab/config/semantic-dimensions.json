@@ -1,0 +1,21 @@
+{
+  "version": "speechlab-1",
+  "dimensions": {
+    "route": ["Today", "Memory"],
+    "item_type": ["task", "reminder", "memory", "idea", "event", "personFact", "shopping", "personFollowUp", "note"],
+    "item_count": [0, 1, 2, 3],
+    "temporal": ["none", "date-only", "exact-date-time", "relative-date", "relative-duration", "recurrence", "shared"],
+    "location": ["none", "named", "arrival", "departure", "shared"],
+    "person": ["none", "named", "ordinary-word-name", "shared", "pronoun"],
+    "polarity": ["positive", "negative-statement", "prohibition", "cancellation"],
+    "actionability": ["completed", "outstanding", "future", "conditional", "question", "information-plus-action"],
+    "ambiguity_policy": ["act", "review", "preserve-only", "other"]
+  },
+  "invalid_combinations": [
+    "Memory route with task, shopping, event, or personFollowUp type",
+    "exact time without a resolved date",
+    "prohibition without negation",
+    "review/preserve-only captures that silently schedule",
+    "cancellation without an operation or target context"
+  ]
+}

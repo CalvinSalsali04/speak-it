@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://speakit.local/speechlab/rendering.schema.json",
+  "title": "SpeechLab rendering", "type": "object", "additionalProperties": false,
+  "required": ["rendering_id", "blueprint_id", "text", "provenance", "generator", "seed", "phenomena", "mutation_lineage", "equivalence_class", "meaning_preservation"],
+  "properties": {
+    "rendering_id": {"type": "string", "pattern": "^rd-[a-f0-9]{24}$"}, "blueprint_id": {"type": "string", "pattern": "^bp-[a-f0-9]{24}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 10000}, "provenance": {"type": "object"},
+    "generator": {"type": "object", "additionalProperties": false, "required": ["kind", "name", "version"], "properties": {"kind": {"enum": ["deterministic", "public_import", "external_ai", "human", "production"]}, "name": {"type": "string"}, "version": {"type": "string"}}},
+    "seed": {"type": ["integer", "null"]}, "phenomena": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "mutation_lineage": {"type": "array", "items": {"type": "string"}}, "equivalence_class": {"type": "string", "minLength": 1},
+    "meaning_preservation": {"enum": ["guaranteed", "reviewed", "uncertain"]}
+  }
+}
