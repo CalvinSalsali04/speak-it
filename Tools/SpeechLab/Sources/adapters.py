@@ -6,9 +6,9 @@ from .contracts import VERSION, digest, norm, write_jsonl
 
 REGISTRY = {
     'MASSIVE': dict(source_url='https://github.com/alexa/massive', license='CC BY 4.0', allowed_usage='Attribution required; author Speak It semantics separately.', text_audio='text+audio', language='multilingual', dialogue='single utterance', relevant_phenomena=['casing-corruption', 'question-mixed-with-action']),
-    'PRESTO': dict(source_url='https://github.com/google-research-datasets/presto', license='Check upstream release before import', allowed_usage='Local adapter only until license is reviewed.', text_audio='text', language='multilingual', dialogue='dialogue', relevant_phenomena=['self-correction-person', 'change-of-intent']),
-    'Taskmaster': dict(source_url='https://github.com/google-research-datasets/Taskmaster', license='CC BY 4.0', allowed_usage='Attribution required; dialogue turns need authored capture boundaries.', text_audio='text+audio subsets', language='English', dialogue='dialogue', relevant_phenomena=['multiple-tasks', 'pronoun-resolution']),
-    'SLURP-text': dict(source_url='https://github.com/pswietojanski/slurp', license='Text CC BY 4.0; audio has different restrictions', allowed_usage='Import text only unless audio terms are separately approved.', text_audio='text', language='English', dialogue='single utterance', relevant_phenomena=['asr-substitution', 'uncommon-proper-noun'])
+    'PRESTO': dict(source_url='https://github.com/google-research-datasets/presto', license='CC BY 4.0', allowed_usage='Attribution required; preserve context provenance and author Speak It semantics separately.', text_audio='text', language='multilingual', dialogue='dialogue', relevant_phenomena=['self-correction-person', 'change-of-intent']),
+    'Taskmaster': dict(source_url='https://github.com/google-research-datasets/Taskmaster', license='Verify per Taskmaster release; TM-1 README states CC BY 4.0', allowed_usage='Attribution required for verified releases; dialogue turns need authored capture boundaries.', text_audio='text+audio subsets', language='English', dialogue='dialogue', relevant_phenomena=['multiple-tasks', 'pronoun-resolution']),
+    'SLURP-text': dict(source_url='https://github.com/pswietojanski/slurp', license='Text CC BY 4.0 per MASSIVE NOTICE; audio terms not cleared here', allowed_usage='Import text only; do not import audio until its exact terms are separately verified.', text_audio='text only approved', language='English', dialogue='single utterance', relevant_phenomena=['asr-substitution', 'uncommon-proper-noun'])
 }
 
 

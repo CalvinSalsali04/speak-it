@@ -19,8 +19,8 @@
     {
       "dataset": "PRESTO",
       "source_url": "https://github.com/google-research-datasets/presto",
-      "license": "Check upstream release before import",
-      "allowed_usage": "Local adapter only until license is reviewed.",
+      "license": "CC BY 4.0",
+      "allowed_usage": "Attribution required; preserve context provenance and author Speak It semantics separately.",
       "text_audio": "text",
       "language": "multilingual",
       "dialogue": "dialogue",
@@ -35,8 +35,8 @@
     {
       "dataset": "Taskmaster",
       "source_url": "https://github.com/google-research-datasets/Taskmaster",
-      "license": "CC BY 4.0",
-      "allowed_usage": "Attribution required; dialogue turns need authored capture boundaries.",
+      "license": "Verify per Taskmaster release; TM-1 README states CC BY 4.0",
+      "allowed_usage": "Attribution required for verified releases; dialogue turns need authored capture boundaries.",
       "text_audio": "text+audio subsets",
       "language": "English",
       "dialogue": "dialogue",
@@ -51,9 +51,9 @@
     {
       "dataset": "SLURP-text",
       "source_url": "https://github.com/pswietojanski/slurp",
-      "license": "Text CC BY 4.0; audio has different restrictions",
-      "allowed_usage": "Import text only unless audio terms are separately approved.",
-      "text_audio": "text",
+      "license": "Text CC BY 4.0 per MASSIVE NOTICE; audio terms not cleared here",
+      "allowed_usage": "Import text only; do not import audio until its exact terms are separately verified.",
+      "text_audio": "text only approved",
       "language": "English",
       "dialogue": "single utterance",
       "relevant_phenomena": [
