@@ -1,0 +1,30 @@
+{
+  "format_version": "speechlab-1",
+  "task": "Generate meaning-preserving natural-speech renderings",
+  "requested_diversity": [
+    "speaker style",
+    "disfluency position",
+    "syntax",
+    "capture length"
+  ],
+  "candidates_per_blueprint": 3,
+  "forbidden_meaning_changes": [
+    "Do not add/drop items, facts, polarity, dates, people, locations, recurrence, or operations.",
+    "Do not turn questions or completed actions into obligations."
+  ],
+  "required_output_fields": [
+    "blueprint_id",
+    "text",
+    "phenomena",
+    "meaning_preservation",
+    "generator",
+    "provenance",
+    "seed",
+    "mutation_lineage",
+    "equivalence_class"
+  ],
+  "style_constraints": {
+    "voice": "messy but plausible spontaneous speech",
+    "no_explanations": true
+  }
+}

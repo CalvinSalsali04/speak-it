@@ -1,0 +1,68 @@
+{
+  "datasets": [
+    {
+      "dataset": "MASSIVE",
+      "source_url": "https://github.com/alexa/massive",
+      "license": "CC BY 4.0",
+      "allowed_usage": "Attribution required; author Speak It semantics separately.",
+      "text_audio": "text+audio",
+      "language": "multilingual",
+      "dialogue": "single utterance",
+      "relevant_phenomena": [
+        "casing-corruption",
+        "question-mixed-with-action"
+      ],
+      "import_status": "not_imported",
+      "local_path": null,
+      "attribution_requirement": "Preserve source, license, record ID, and modifications."
+    },
+    {
+      "dataset": "PRESTO",
+      "source_url": "https://github.com/google-research-datasets/presto",
+      "license": "CC BY 4.0",
+      "allowed_usage": "Attribution required; preserve context provenance and author Speak It semantics separately.",
+      "text_audio": "text",
+      "language": "multilingual",
+      "dialogue": "dialogue",
+      "relevant_phenomena": [
+        "self-correction-person",
+        "change-of-intent"
+      ],
+      "import_status": "not_imported",
+      "local_path": null,
+      "attribution_requirement": "Preserve source, license, record ID, and modifications."
+    },
+    {
+      "dataset": "Taskmaster",
+      "source_url": "https://github.com/google-research-datasets/Taskmaster",
+      "license": "Verify per Taskmaster release; TM-1 README states CC BY 4.0",
+      "allowed_usage": "Attribution required for verified releases; dialogue turns need authored capture boundaries.",
+      "text_audio": "text+audio subsets",
+      "language": "English",
+      "dialogue": "dialogue",
+      "relevant_phenomena": [
+        "multiple-tasks",
+        "pronoun-resolution"
+      ],
+      "import_status": "not_imported",
+      "local_path": null,
+      "attribution_requirement": "Preserve source, license, record ID, and modifications."
+    },
+    {
+      "dataset": "SLURP-text",
+      "source_url": "https://github.com/pswietojanski/slurp",
+      "license": "Text CC BY 4.0 per MASSIVE NOTICE; audio terms not cleared here",
+      "allowed_usage": "Import text only; do not import audio until its exact terms are separately verified.",
+      "text_audio": "text only approved",
+      "language": "English",
+      "dialogue": "single utterance",
+      "relevant_phenomena": [
+        "asr-substitution",
+        "uncommon-proper-noun"
+      ],
+      "import_status": "not_imported",
+      "local_path": null,
+      "attribution_requirement": "Preserve source, license, record ID, and modifications."
+    }
+  ]
+}
