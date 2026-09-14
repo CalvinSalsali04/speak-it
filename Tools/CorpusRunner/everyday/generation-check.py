@@ -61,14 +61,21 @@ HERE = Path(__file__).resolve().parent
 RUNNER = HERE.parent
 
 #: Every set whose captures are claimed never to have been edited after
-#: scoring. All three, deliberately: a claim enforced on one set and taken on
-#: trust on the others, with nothing saying which is which, is the situation
-#: this check exists to end.
-SEALED = {
-    "everyday": RUNNER / "everyday" / "everyday.tsv",
-    "heldout": RUNNER / "heldout" / "heldout.tsv",
-    "adversarial": RUNNER / "adversarial" / "adversarial.tsv",
-}
+#: scoring. A claim enforced on one set and taken on trust on the others, with
+#: nothing saying which is which, is the situation this check exists to end --
+#: which is why the list is no longer written out here.
+#:
+#: It was, and a fourth sealed set arrived and this check went on reporting
+#: three, cleanly, at exit 0. Nothing was wrong with the comparison; the list
+#: simply did not know. That is the third instrument today found keeping its
+#: own idea of which files are sealed, so it now asks the one thing that is
+#: required to be total: `corpus_paths.unclassified()` fails the run on any
+#: `*.tsv` here that is in neither list, so a set cannot be added without
+#: arriving in this dict too.
+sys.path.insert(0, str(RUNNER))
+import corpus_paths  # noqa: E402  (needs RUNNER resolved first)
+
+SEALED = {path.parent.name: path for path in corpus_paths.sealed()}
 
 MANIFEST = RUNNER / "generations.tsv"
 HASHES = RUNNER / "generations" / "captures.sha256"

@@ -69,3 +69,20 @@ guard fails the run if it is ever left unclassified.
 
 If it disagrees with the readable evidence for #57, the disagreement is the
 finding. A set written to confirm a rule is not evidence for it.
+
+## Generations
+
+**Generation 1, recorded 2026-09-14.** The set as first written: 40 captures,
+nothing scored against it yet. There is no earlier generation to compare
+against and no number in this repository yet depends on it.
+
+A generation opens when a capture's text changes, and numbers never compare
+across one. If that happens, the row saying what changed and which figures stop
+comparing goes here, before the new number is published anywhere.
+
+## If this set is ever edited after being scored
+
+Say so here, in full, and treat every published figure from generation 1 as
+belonging to a set that no longer exists. That is the expensive answer and it
+is the honest one: the alternative is a rate whose denominator quietly changed,
+which is how a sealed set degrades without anybody lying.

@@ -37,6 +37,7 @@ SEALED_NAMES = {
     "everyday/everyday.tsv",
     "adversarial/adversarial.tsv",
     "heldout/heldout.tsv",
+    "consequence/consequence.tsv",
 }
 
 #: Development sets. Written to be read: read the failures, fix the layer, run

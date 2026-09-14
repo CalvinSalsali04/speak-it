@@ -1081,9 +1081,20 @@ class CorpusPathTests(unittest.TestCase):
         finally:
             paths.READABLE_NAMES = original
 
-    def test_the_sealed_list_is_the_three_sealed_sets(self):
+    def test_the_sealed_list_is_exactly_the_declared_sealed_sets(self):
+        #: Pinned to literal names rather than derived from the module, and
+        #: deliberately so: a test that adapts to whatever the list says cannot
+        #: notice a set being added or dropped. Adding one is a real decision
+        #: -- it opens a generation, needs a README, a score.sh and a manifest
+        #: row -- so it should cost an edit here and a sentence saying why.
+        #: `consequence.tsv` joined on 2026-09-14: blind-authored evidence for
+        #: the resultive-`so` boundary, which Calvin asked for and which is
+        #: worth nothing if it is developed against.
         self.assertEqual(sorted(p.name for p in self.paths().sealed()),
-                         ["adversarial.tsv", "everyday.tsv", "heldout.tsv"])
+                         ["adversarial.tsv", "consequence.tsv",
+                          "everyday.tsv", "heldout.tsv"],
+                         "the sealed list changed; if that was deliberate, say "
+                         "in the note above which set arrived or left and why")
 
 
 def ledger_check_module():

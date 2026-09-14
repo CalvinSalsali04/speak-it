@@ -1,0 +1,58 @@
+# Consequence set, generation 1. Sealed. See README.md for what "blind" means
+# here and for the parameters, which were committed in d0600d9 before a single
+# capture below was written.
+#
+# One phenomenon: a person states a fact, then the errand that fact creates.
+# Ids are in blocks of five by connector, fixed in advance and not chosen per
+# capture: CQ01-05 "and", CQ06-10 "so", CQ11-15 "which means", CQ16-20 a bare
+# comma, CQ21-25 "then", CQ26-30 "that means", CQ31-35 "because of that",
+# CQ36-40 no connector at all. Within each block the domains run household,
+# work, health, family, money.
+#
+# `expected_destination` names the destination of the ERRAND on a two-thought
+# row. This file cannot say "the fact to Memory and the errand to Today",
+# because no column for a per-thought destination exists -- the same gap the
+# devsets README records for cut points. Read the thought count as the
+# measurement here and the destination as context: an errand is Today almost
+# by definition, so destination barely varies and barely discriminates.
+# id	utterance	family	expected_destination	expected_thoughts
+CQ01	the stopcock and the outside tap are both under the kitchen sink	consequence-whole	Memory	1
+CQ02	Priya is leaving at the end of the month and someone has to take over the vendor list	consequence-split	Today	2
+CQ03	the repeat prescription runs out on Friday and I need to ring the surgery	consequence-split	Today	2
+CQ04	Mum's train gets in at six and I said I'd meet her at the barrier	consequence-split	Today	2
+CQ05	the standing order and the direct debit come out on the same day which is why the account dips	consequence-whole	Memory	1
+CQ06	the gutter's blocked again so I need to get someone out before the autumn	consequence-split	Today	2
+CQ07	the client's been quiet all week so I assume the project's on hold	consequence-whole	Memory	1
+CQ08	the physio wants me swimming twice a week so I should look up the pool times	consequence-split	Today	2
+CQ09	Theo's got football on Saturdays now so we never see him at the weekend	consequence-whole	Memory	1
+CQ10	the insurance renewal came in forty pounds higher so I should shop around	consequence-split	Today	2
+CQ11	the skip's booked for Tuesday which means it'll be gone before the weekend	consequence-whole	Memory	1
+CQ12	Anwar's on leave all next week which means I'm covering the Monday standup	consequence-split	Today	2
+CQ13	the appointment's been moved to the afternoon which means I'll miss the worst of the traffic	consequence-whole	Memory	1
+CQ14	Nan's moving to the ground floor flat in March which means we need to sort her old furniture	consequence-split	Today	2
+CQ15	the bonus lands in April which means I should move the card balance over then	consequence-split	Today	2
+CQ16	the tap in the bathroom's dripping again, I need to get a new washer	consequence-split	Today	2
+CQ17	Renata's handing over the audit file Thursday, I should block out the afternoon to read it	consequence-split	Today	2
+CQ18	the pharmacy closes at half five now, I'll have to collect it on my way past	consequence-split	Today	2
+CQ19	Dad's birthday is the twelfth, the same week as the wedding	consequence-whole	Memory	1
+CQ20	the phone contract ends next month, eighteen months to the day	consequence-whole	Memory	1
+CQ21	the carpet fitters come on the ninth, then I need to get the furniture back in	consequence-split	Today	2
+CQ22	send the figures to Marcus first then up to the board	consequence-whole	Today	1
+CQ23	you take the tablet and then wait twenty minutes before eating	consequence-whole	Memory	1
+CQ24	the ceremony's at two, then I have to get the cake to the venue by four	consequence-split	Today	2
+CQ25	the tax return's due in January, then I need to sort the payment on account	consequence-split	Today	2
+CQ26	put the green bin out every other Thursday, that means this week not next	consequence-whole	Today	1
+CQ27	the office is shut between Christmas and New Year, that means I need to move the client call	consequence-split	Today	2
+CQ28	the referral's gone through, that means I should chase the clinic if nothing comes in a fortnight	consequence-split	Today	2
+CQ29	Sofia's starting at the new school in September, that means both of them are out of the house by eight	consequence-whole	Memory	1
+CQ30	the rate's fixed until 2028, that means I should overpay while it's cheap	consequence-split	Today	2
+CQ31	the side gate lock has seized, because of that I need to get a locksmith out	consequence-split	Today	2
+CQ32	the server room's being rewired on the fifteenth and because of that the whole floor's closed	consequence-whole	Memory	1
+CQ33	the clinic's moved across town, because of that I have to leave half an hour earlier	consequence-split	Today	2
+CQ34	Ravi's shifts changed in the spring, because of that I need to redo the pickup rota	consequence-split	Today	2
+CQ35	the subscription went up in June and because of that we're paying nearly double what we were	consequence-whole	Memory	1
+CQ36	the recycling collection moved to Wednesdays it's been that way since the spring	consequence-whole	Memory	1
+CQ37	the contract's up for renewal in six weeks I need to get the numbers to Fionnuala	consequence-split	Today	2
+CQ38	the results came back clear nothing showed up at all	consequence-whole	Memory	1
+CQ39	Grandad turns ninety in March I should book the restaurant now	consequence-split	Today	2
+CQ40	the ISA allowance resets in April I should move the savings across before then	consequence-split	Today	2
