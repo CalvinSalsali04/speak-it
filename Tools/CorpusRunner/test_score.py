@@ -1793,6 +1793,35 @@ class CorpusShapeTests(unittest.TestCase):
                              "the shape report printed a capture, which is the "
                              "one thing it exists to avoid")
 
+    #: `everyday.tsv`'s layout: the utterance third, not second. Every test
+    #: above uses the common layout, which is precisely why a reader that
+    #: hard-codes column one passed all of them.
+    EVERYDAY_SHAPED = ("id\tdomain\tutterance\tkeep\n"
+                       "X01\twork\tthe lease ends in March\ty\n"
+                       "X02\thome\tthe bin goes out on Thursday\ty\n")
+
+    def test_an_empty_utterance_is_found_in_the_other_layout_too(self):
+        """The check read column one until 2026-09-14.
+
+        On the one corpus that keeps its utterance third it was therefore
+        reading `domain`, which is never empty -- so the empty-utterance check
+        could not fail on the 255-capture set, and reported nothing, which is
+        what a working check also reports. It sat six lines under a comment
+        saying the column is never assumed.
+        """
+        status, said = self.run_on(
+            self.EVERYDAY_SHAPED + "X03\tmoney\t\ty\n")
+        self.assertEqual(status, 1, said)
+        self.assertIn("empty utterance", said)
+        self.assertIn("X03", said)
+
+    def test_an_empty_cell_that_is_not_the_utterance_is_not_reported(self):
+        """The other direction, or the test above passes on a check that
+        reports every empty cell anywhere."""
+        status, said = self.run_on(
+            self.EVERYDAY_SHAPED + "X03\t\tthe kettle needs descaling\ty\n")
+        self.assertNotIn("empty utterance", said)
+
     def test_a_duplicate_row_is_named_by_id_and_not_by_text(self):
         """Even the error path stays blind, which is where text usually leaks."""
         status, said = self.run_on(self.GOOD + "X03\tthe lease ends in March\ta\t1\n")

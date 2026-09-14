@@ -33,6 +33,9 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import corpus_paths  # noqa: E402  (after the path insert, which it needs)
+
 
 #: A line is the header if it names the utterance column. Nothing weaker
 #: works: `heldout.tsv` writes its header inside a comment, `everyday.tsv`
@@ -40,27 +43,17 @@ import sys
 #: perfectly plausible header to anything that just takes line one. Counting
 #: everyday's header as a capture reported 256 rows for a 255-capture set,
 #: which is the off-by-one a reviewer would wave through.
-def _is_header(cells):
-    return any(c.strip().lower() == "utterance" for c in cells)
-
-
+#:
+#: That rule used to live here, spelled out a third time. It is in
+#: `corpus_paths` now, with the other twelve readers being moved onto it, for
+#: the reason this tool exists: a property a reviewer trusts instead of
+#: reading the file has to be computed the same way everywhere, and this file
+#: contributed two of the four defects the move was written for.
 def read(path):
     """Rows and the header, however the file happens to write it."""
-    rows, header = [], None
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#"):
-            cells = line.lstrip("# ").split("\t")
-            if len(cells) > 1 and _is_header(cells):
-                header = cells
-            continue
-        if not line.strip():
-            continue
-        cells = line.split("\t")
-        if header is None and _is_header(cells):
-            header = cells
-            continue
-        rows.append(cells)
-    return rows, header
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    return ([cells for _number, cells in corpus_paths.data_rows(path)],
+            corpus_paths.header_row(lines))
 
 
 def digest(values):
@@ -113,12 +106,8 @@ def main(argv):
     #: column, which of course contains no prose. Zero is the one result that
     #: looks the same whether the scan worked, so a tool whose whole purpose is
     #: to let a reviewer skip reading the file must not guess where to look.
-    column = None
-    if header:
-        for index, cell in enumerate(header):
-            if cell.strip().lower() == "utterance":
-                column = index
-                break
+    column = corpus_paths.column_of(
+        pathlib.Path(path).read_text(encoding="utf-8").splitlines(), "utterance")
     if column is None:
         problems.append("no column named 'utterance' in the header, so this "
                         "tool cannot tell which field holds the captures and "
@@ -136,7 +125,12 @@ def main(argv):
         print(f"  utterance length    min {lengths[0]}, median "
               f"{lengths[len(lengths)//2]}, max {lengths[-1]} characters")
         print(f"  content fingerprint {digest(texts)}")
-        blank = [r[0] for r in rows if not r[1].strip()]
+        #: `r[column]`, not `r[1]`. This read column one until 2026-09-14, so
+        #: on `everyday.tsv` -- the one corpus that keeps its utterance third
+        #: -- it checked the `domain` column, which is never empty. A check
+        #: that cannot fail is indistinguishable from one that passes, and it
+        #: sat six lines under a comment saying the column is never assumed.
+        blank = [r[0] for r in rows if not r[column].strip()]
         if blank:
             problems.append(f"rows with an empty utterance: {blank}")
 

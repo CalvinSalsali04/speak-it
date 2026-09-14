@@ -226,9 +226,25 @@ def _grep(pattern, root=None):
 HEADER_KEY = "utterance"
 
 
+def cells_of(line):
+    """A line's cells as written, stripped, with any leading `#` removed."""
+    return [cell.strip() for cell in line.lstrip("#").strip().split("\t")]
+
+
 def header_cells(line):
-    """A line's cells, lowered and stripped, with any leading `#` removed."""
-    return [cell.strip().lower() for cell in line.lstrip("#").strip().split("\t")]
+    """A line's cells lowered, which is the form column names are matched in."""
+    return [cell.lower() for cell in cells_of(line)]
+
+
+def header_row(lines):
+    """The header's column names as written, or None when there is no header.
+
+    `header_cells` lowers, because matching a name should not care how it was
+    typed. A tool printing the header for a reviewer wants it as written, and
+    lowering it there is how a display starts disagreeing with the file.
+    """
+    head = header_index(lines)
+    return None if head is None else cells_of(lines[head])
 
 
 def header_index(lines):
