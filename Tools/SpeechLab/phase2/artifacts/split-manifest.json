@@ -1,0 +1,13 @@
+{
+  "frozen": false,
+  "reason": "remain below 1,000; independent adjudication and failed gates remain",
+  "roles": {
+    "safety": 489,
+    "development": 176,
+    "synthetic-stress": 111,
+    "public-derived": 42
+  },
+  "independent_evaluation_cases": 0,
+  "parser_results_included": false,
+  "sealed_content_included": false
+}

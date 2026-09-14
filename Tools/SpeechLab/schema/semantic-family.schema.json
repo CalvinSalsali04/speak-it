@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/semantic-family.schema.json",
+  "title": "SpeechLab semantic family",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["semantic_family_id", "shape", "description", "historical_family_ids", "historical_blueprint_ids", "member_count", "decision"],
+  "properties": {
+    "semantic_family_id": {"type": "string", "pattern": "^sf-[a-f0-9]{16}$"},
+    "shape": {"type": "object"},
+    "description": {"type": "string", "minLength": 1},
+    "historical_family_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "historical_blueprint_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "member_count": {"type": "integer", "minimum": 0},
+    "decision": {"enum": ["retained", "collapsed", "split"]}
+  }
+}

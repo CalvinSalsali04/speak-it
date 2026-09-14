@@ -1,0 +1,64 @@
+{
+  "snapshots": [
+    {
+      "cases": 100,
+      "coverage_units": 205,
+      "new_units_since_previous": 205,
+      "marginal_units_per_case": 2.05,
+      "semantic_families": 100,
+      "phenomena": 0,
+      "interactions": 0,
+      "structural_templates": 100
+    },
+    {
+      "cases": 200,
+      "coverage_units": 338,
+      "new_units_since_previous": 133,
+      "marginal_units_per_case": 1.33,
+      "semantic_families": 133,
+      "phenomena": 0,
+      "interactions": 0,
+      "structural_templates": 200
+    },
+    {
+      "cases": 400,
+      "coverage_units": 615,
+      "new_units_since_previous": 277,
+      "marginal_units_per_case": 1.385,
+      "semantic_families": 133,
+      "phenomena": 78,
+      "interactions": 0,
+      "structural_templates": 399
+    },
+    {
+      "cases": 600,
+      "coverage_units": 959,
+      "new_units_since_previous": 344,
+      "marginal_units_per_case": 1.72,
+      "semantic_families": 133,
+      "phenomena": 78,
+      "interactions": 144,
+      "structural_templates": 599
+    },
+    {
+      "cases": 800,
+      "coverage_units": 1426,
+      "new_units_since_previous": 467,
+      "marginal_units_per_case": 2.335,
+      "semantic_families": 134,
+      "phenomena": 78,
+      "interactions": 410,
+      "structural_templates": 799
+    },
+    {
+      "cases": 818,
+      "coverage_units": 1446,
+      "new_units_since_previous": 20,
+      "marginal_units_per_case": 1.111111,
+      "semantic_families": 137,
+      "phenomena": 78,
+      "interactions": 410,
+      "structural_templates": 816
+    }
+  ]
+}
