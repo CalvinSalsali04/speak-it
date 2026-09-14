@@ -1163,6 +1163,79 @@ Running total: **\u22121 row**, across one change, on one of the measures.
 """
 
 
+class SealedSetsDoNotRenderAsText(unittest.TestCase):
+    """A sealed set must not be readable from a diff.
+
+    The consequence set was written so the thread that owns parser changes
+    would not have seen it, and that thread read all fifty-six captures an
+    hour later — reviewing the pull request that added it. Nobody did anything
+    wrong. A reviewer has to check something, and the review surface offered
+    the text and nothing else.
+
+    `.gitattributes` marks every sealed file `-diff`, so `git diff`, `git show`
+    and `git log -p` report a binary change instead of printing captures, and
+    the structural report becomes the thing a reviewer reads. What that does
+    NOT do is make the file unreadable: anyone can still open it, and should
+    be able to. It removes the easy accidental path, not the deliberate one.
+
+    These tests exist because a `.gitattributes` line is the kind of thing that
+    is written once for the sets that exist that day. The fifth sealed set will
+    arrive without one unless something fails.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+    ROOT = HERE.parents[1]
+
+    def rules(self):
+        """Every path this repository marks `-diff`."""
+        text = (self.ROOT / ".gitattributes").read_text(encoding="utf-8")
+        out = set()
+        for line in text.splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line.endswith(" -diff"):
+                out.add(line[: -len(" -diff")].strip())
+        return out
+
+    def sealed_paths(self):
+        sys.path.insert(0, str(self.HERE))
+        import corpus_paths
+        return {path.relative_to(self.ROOT).as_posix()
+                for path in corpus_paths.sealed()}
+
+    def test_the_file_carries_rules_at_all(self):
+        """No rules would satisfy the subset test below perfectly."""
+        self.assertGreaterEqual(len(self.rules()), 4)
+
+    def test_every_sealed_set_is_marked(self):
+        missing = sorted(self.sealed_paths() - self.rules())
+        self.assertEqual(missing, [],
+                         "sealed sets a reviewer would read as plain text")
+
+    def test_nothing_that_is_not_sealed_is_marked(self):
+        """The rule hides text, so it must not creep onto readable material.
+
+        A development set that stopped rendering would make ordinary review
+        worse for no gain, and would do it quietly.
+        """
+        extra = sorted(self.rules() - self.sealed_paths())
+        self.assertEqual(extra, [], "readable files hidden from review")
+
+    def test_git_actually_applies_the_rule(self):
+        """The rule is checked against git, not against the file's wording.
+
+        A `.gitattributes` entry that is present and not in force is exactly
+        the shape of check this repository keeps finding: the claim is on
+        disk, the behaviour is not, and nothing says so.
+        """
+        for path in sorted(self.sealed_paths()):
+            result = subprocess.run(
+                ["git", "check-attr", "diff", "--", path],
+                cwd=self.ROOT, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(result.stdout.strip().endswith("diff: unset"),
+                            f"{path}: {result.stdout.strip()}")
+
+
 class LedgerCheckTests(unittest.TestCase):
     """The ledger states a total, and a stated total is a claim about its rows.
 
