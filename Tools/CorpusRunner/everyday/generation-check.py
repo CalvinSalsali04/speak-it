@@ -41,12 +41,16 @@ The check reads the union of the sets on disk and the sets on record, not the
 ones on disk. A set that has been deleted is absent from disk, and iterating
 disk made its disappearance invisible rather than a failure.
 
-**It is not wired into CI yet**, so today it is a command somebody has to
-remember to run — which is the state it exists to end. The one step that wires
-it into the Linux job is a `.github/workflows/ci.yml` edit, and this
-repository's automation cannot merge a workflow change, so that step is its own
-pull request. Anything written here about what the check prevents is true only
-once that lands.
+**It runs on every pull request** that touches `Tools/CorpusRunner/**`, in the
+`language-tools` job of `.github/workflows/ci.yml`, beside the leak check and
+for the same reason: the corpus gate needs a Mac and is dispatch-only, so a
+guard living there would not run on the pull request that introduces the edit
+it exists to catch.
+
+The path filter that gates that job lists `Tools/CorpusRunner/**`, and every
+sealed set lives under it, so the check runs on every pull request that could
+possibly change the thing it guards. That is the property worth stating: not
+that the job is wired, but that nothing it protects can move without it.
 """
 import hashlib
 import importlib.util

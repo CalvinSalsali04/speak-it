@@ -208,6 +208,60 @@ if unranked:
     print("  there is no destination rate for them to be worst or best at.")
     print("  They are measured by ACTED ON ANYWAY above, not by this table.")
 
+#: Families whose rate means nothing read on its own.
+#:
+#: A guard family is labelled "do not split here"; its target family is
+#: labelled "split here". Both are juxtaposed clauses with no connector, so a
+#: parser with no boundary logic at all passes every guard row and fails every
+#: target row. A guard at ceiling beside a target at zero is therefore evidence
+#: about whether the mechanism EXISTS, not about whether it is right -- and the
+#: table above prints that 4/4 among the healthy rows, where anyone scanning
+#: reads it as coverage.
+#:
+#: `runon.tsv` says in its own header that bridging is "the row that will still
+#: be failing last". It is the row that passes first, and nothing in the
+#: repository owns a statement-statement boundary for it to be guarding.
+CONTROL_PAIRS = [("anaphora-guard", "statement-runon"),
+                 ("bridging-guard", "statement-runon"),
+                 ("object-guard", "statement-runon")]
+
+present = [(g, t) for g, t in CONTROL_PAIRS if g in by_family or t in by_family]
+if present:
+    lines, vacuous_any = [], False
+    for guard, target in present:
+        if guard not in by_family or target not in by_family:
+            missing = guard if guard not in by_family else target
+            lines.append(f"  {guard} / {target}: {missing} is not in this set, "
+                         f"so the other half is being read alone")
+            continue
+        g, t = by_family[guard], by_family[target]
+        paired = g["count_scored"] and t["count_scored"]
+        vacuous = paired and g["count_ok"] == g["count_scored"] and not t["count_ok"]
+        vacuous_any = vacuous_any or vacuous
+        lines.append(f"  {guard:<16}{g['count_ok']:>3}/{g['count_scored']:<3}"
+                     f"  vs  {target:<16}{t['count_ok']:>3}/{t['count_scored']:<3}"
+                     f"  {'NOT INFORMATIVE' if vacuous else 'informative'}")
+    print()
+    print("CONTROL PAIRS \u2014 a guard read against what it guards against")
+    print("-" * WIDTH)
+    for line in lines:
+        print(line)
+    print("-" * WIDTH)
+    if vacuous_any:
+        # Printed only when a row earns it. Boilerplate that appears whatever
+        # the numbers say is boilerplate a reader learns to skip -- and it also
+        # makes the verdict unsearchable, which is how the first version of
+        # this section got its own tests wrong.
+        print("  NOT INFORMATIVE means a parser that never splits scores")
+        print("  exactly those two numbers, so the guard's pass is evidence")
+        print("  the mechanism is absent rather than correct. The rows stay")
+        print("  counted -- they are a real regression guard against an")
+        print("  over-split -- but the rate is not progress. The verdict")
+        print("  changes by itself once the target family leaves zero.")
+    else:
+        print("  Each guard above is read against the family it guards")
+        print("  against, so neither rate is carrying the other.")
+
 if verbose:
     print()
     for kind, cid, utt, want, got in misses:

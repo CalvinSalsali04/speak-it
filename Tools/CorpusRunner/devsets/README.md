@@ -40,6 +40,70 @@ spoken; two families failing equally means the label is wrong and rambling is
 not what broke it. Do not average across the halves: the clean rows are
 deliberately easy and would flatter any single number taken over the file.
 
+**A family can be passed by a rule that has none of the capability.** The
+decision family's four original pairs (`RB13`–`RB16`) were written by the
+thread that was about to work on deliberation, and all four resolve by
+repeating the clean twin word for word: "maybe cook the salmon Wednesday or
+Thursday I think Thursday **cook the salmon on Thursday**". Returning the final
+clause and discarding everything before it scores that family correctly while
+understanding nothing, so the 1-of-6 rate was measured with the answer already
+sitting in the input — which makes it a floor on the real capability and not a
+measurement of it. `RamblingPairingTests` declares those four and fails the run
+if a new pair joins them without saying which population it is in; a restart
+(`RB09`–`RB11`) ending with its twin is the family behaving correctly and needs
+no fix, and collapsing the two under one flag is how such a marker gets quoted
+as whichever is convenient.
+
+`RB41`–`RB46` are the rows that ask the question without handing over the
+answer, written by the evaluation thread on 2026-09-11 at the core thread's
+request, and deliberately by a different hand. They cover the three shapes the
+original four do not: the outcome landing mid-utterance with a reason after it
+(`RB41`, `RB42`), a deliberation resolving to **both** options so the count is
+the answer (`RB43`, `RB44`), and one resolving to **nothing** (`RB45`, `RB46`).
+None ends with its clean twin. Read them against `RB13`–`RB16` rather than
+pooled with them: a large gap between the two groups is the trivial rule
+showing, and that is the number worth having.
+
+The open-deliberation pair carries a **proposed** label, not a settled one.
+`RB45` and `RB46` are filed as Memory, one thought, no date, on the argument
+that a speaker who has not decided has no action to record and that a Today
+item would invent an obligation the capture does not contain — the same
+invention the everyday set counts 22 of. The argument the other way is that
+someone thinking aloud about a decision may want to be reminded to make it.
+This is a product question rather than a scoring one; the rows exist so it is
+at least measurable, and answering it the other way changes those two labels
+and nothing else in the file. It is open with Calvin alongside the bare
+prohibitive from PR #44 ("don't call the plumber" with nothing to cancel),
+because both are the same question: what the app does with an utterance that
+states no obligation.
+
+They stay scored under the Memory reading while it is open, so the figure does
+not move when it is answered, and because **the error is recoverable in only
+one direction**. A note that should have been a task is found by searching for
+it. A task the speaker never committed to has to be noticed and dismissed, and
+until then it is wrong on the one screen they opened to see what they owe.
+
+**The count column can be right for the wrong reason, and on this set it has
+been.** It compares how many thoughts came out, not where they were cut. The
+core language thread found RB30 rating correct for a week on four thoughts
+produced by two errors cancelling — a boundary it should have cut and did not,
+against one it cut and should not have. Every capture here splitting three or
+more ways is unfalsifiable on placement for the same reason, so a count that
+agrees is evidence the number is right and not evidence the split is. The
+column that would settle it does not exist yet: expected cut points, or
+expected titles, beside the count.
+
+`bridging-guard` in `runon.tsv` is the other half of that lesson. Its four
+rows want one thought, `statement-runon`'s six want two, and both are
+juxtaposed clauses with no connector — so a parser with no boundary logic at
+all scores the guard 4/4 and the target 0/6. The scorer now prints the two
+beside each other under `CONTROL PAIRS` and marks that combination NOT
+INFORMATIVE, because the guard's pass says the mechanism is absent rather than
+correct. The rows stay counted; they are a genuine regression guard against an
+over-split, and the set's own header calling bridging "the row that will still
+be failing last" is the clearest evidence of how the rate reads to someone
+scanning it.
+
 It exists because the other five sets stopped discriminating. They sit at or
 near their ceilings while the sealed everyday set routes 168/240 and the
 adversarial set 52/116, so development steered by them is steered by
@@ -147,6 +211,46 @@ this prose. They are a harder case: the reason is that closing them would trade
 a safe gap for an unsafe one, which is a judgement with no line of source to
 cite, so the citation rule does not fit them as written. Until it does, that
 rate carries two declined cases with nothing in the report saying so.
+
+## `unsafe` was one number answering two questions
+
+`unfinished-score.py` counts a fragment that came back carrying a date, a
+reminder or an operation. The commitment test sat outside the recall test, so
+two different things landed in one count:
+
+- a capture the app **recognised** as unfinished and dated anyway — something
+  ran and let the commitment through, which is harm on the path meant to stop
+  it;
+- a capture it **never recognised** — nothing decided the fragment was
+  unfinished, so nothing was ever asked to withhold the date.
+
+The second is not an independent defect. It is the recall miss showing through,
+and it goes to zero when recall improves with no guard written. The report now
+prints the split on every run, clean or not:
+
+```
+  UNSAFE   fragment given a date/reminder/operation   2
+    recognised, and committed anyway  0   ← a guard let a commitment through
+    never recognised at all           2   ← the recall miss showing through
+```
+
+**The total does not move.** A breakdown that changed the number it breaks down
+would be worth nothing.
+
+The set settles which kind the real ones are, with a minimal pair already in
+it. `INC01 Tomorrow I want to` is flagged and not unsafe; `INC33 Tomorrow I
+want` is missed and unsafe, one trailing `to` apart. Eight `Incomplete`
+captures carry a resolvable temporal and are flagged, and not one of them is
+unsafe; the only two that are unsafe are the only two carrying a temporal that
+were never flagged. So flagging does suppress the commitment, and the two
+`unsafe` in `Docs/LANGUAGE_BASELINE.md` are a consequence of the recall miss
+rather than a hole in a guard. Recording them in `Docs/KNOWN_ISSUES.md` as
+their own limitation would have described a hole that does not exist.
+
+That is also why the exit status now fails on the **recognised** half and not
+on the total. Gating the total would redden every hand run on a number this
+scorer cannot move on its own; gating the recognised half stops the run for the
+one thing that is a defect in its own right, and it is at zero today.
 
 ## The denominator is the only evidence that nothing was lost
 
