@@ -2661,6 +2661,29 @@ class ExposureRecordTests(unittest.TestCase):
                       "it happened, and the set's claim to be unseen is exactly "
                       "as weak as it was before the entry was deleted")
 
+    def test_a_capture_seen_twice_is_one_capture_and_two_events(self):
+        """Two counts, because collapsing them misreports in both directions.
+
+        C283 was displayed twice, an hour apart, the second time by the record
+        of the first being grepped. Keyed by capture alone, the second event
+        would have been invisible; counted as two captures, the damage reads
+        as twice what it is. The report prints both, and it can only say
+        "the same row again" because the row has an id.
+        """
+        events = {k: v for k, v in self.leak.EXPOSED_WITHOUT_INSPECTION.items()}
+        self.assertIsInstance(events[("heldout.tsv", "C283")], list,
+                              "the record must hold a list of events per "
+                              "capture, or a repeat exposure has nowhere to go")
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.leak.report_exposure()
+        printed = said.getvalue()
+        self.assertIn("captures displayed", printed)
+        self.assertIn("exposure events", printed)
+        self.assertIn("(1 of 2)", printed,
+                      "a capture with several events must show them "
+                      "separately, or the count and the prose disagree")
+
     def test_the_record_never_carries_the_text_it_is_about(self):
         """The id is the record. Storing the sentence would repeat the harm.
 
@@ -2678,8 +2701,10 @@ class ExposureRecordTests(unittest.TestCase):
                 if len(cells) > column:
                     sealed_text.append(cells[column].strip())
 
-        blob = self.leak.flatten(
-            " ".join(self.leak.EXPOSED_WITHOUT_INSPECTION.values())).lower()
+        blob = self.leak.flatten(" ".join(
+            event
+            for events in self.leak.EXPOSED_WITHOUT_INSPECTION.values()
+            for event in events)).lower()
 
         #: Windows rather than whole utterances, at the same length the prose
         #: check protects. A mutation put half a sealed capture in a reason

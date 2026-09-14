@@ -96,3 +96,70 @@ def missing():
     declared = sorted(HERE / name
                       for name in SEALED_NAMES | READABLE_NAMES | MANIFEST_NAMES)
     return [path for path in declared if not path.exists()]
+
+
+def searchable(root=None):
+    """Every file it is safe to search, which is every file except the sealed ones.
+
+    This exists because the record of the first exposure caused the second one,
+    within two hours. A capture id is safe to *store* and unsafe to *grep*: the
+    sealed file is the one place an id sits beside its text, so any recursive
+    search from the repository root turns the record into a lookup key and
+    hands back the row. The person who did it was checking that the record
+    existed.
+
+    "Do not grep an id from the root" is a true sentence and the weakest kind
+    of guard there is -- a rule somebody has to remember, competing with a
+    command that is shorter to type. So the safe search is the easy one:
+
+        python3 Tools/CorpusRunner/corpus_paths.py --grep C283
+
+    searches everything except the three sealed files and cannot return a
+    sealed row. It is not a sandbox and does not try to be; `grep -r` still
+    exists. It removes the reason to reach for it.
+
+    One honest limit: a sealed capture already quoted in a tracked document is
+    findable here, because the document is readable material. That is the
+    sixteen occurrences `leak-check.py` counts on every run, not a new hole.
+    """
+    root = pathlib.Path(root) if root else HERE.parents[1]
+    forbidden = set(sealed())
+    out = []
+    for path in root.rglob("*"):
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        if path in forbidden or path.resolve() in {q.resolve() for q in forbidden}:
+            continue
+        out.append(path)
+    return sorted(out)
+
+
+def _grep(pattern, root=None):
+    """`--grep`: the readable-only search, as path:line:text."""
+    import re
+    matcher = re.compile(pattern)
+    hits = 0
+    for path in searchable(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if matcher.search(line):
+                hits += 1
+                print(f"{path}:{number}: {line.strip()[:200]}")
+    print(f"\n{hits} match(es) in readable material. "
+          f"{len(sealed())} sealed files were not searched, by construction.")
+    return 0 if hits else 1
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == "--grep":
+        sys.exit(_grep(sys.argv[2]))
+    print(f"sealed        {len(sealed())}")
+    print(f"readable      {len(readable())}")
+    print(f"unclassified  {len(unclassified())}  (must be 0)")
+    print(f"missing       {len(missing())}  (must be 0)")
+    print("\nsearch readable material with:  "
+          "python3 Tools/CorpusRunner/corpus_paths.py --grep PATTERN")

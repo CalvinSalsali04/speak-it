@@ -1036,6 +1036,32 @@ class CorpusPathTests(unittest.TestCase):
         """Deleting a corpus must not pass as quietly as adding one."""
         self.assertEqual(self.paths().missing(), [])
 
+    def test_the_readable_search_cannot_return_a_sealed_file(self):
+        """The search that caused the second exposure, made safe by construction.
+
+        An id is safe to store and unsafe to grep: the sealed file is the one
+        place an id sits beside its text, so a recursive search from the
+        repository root turns the record into a lookup key. That happened
+        within two hours of the record being written, to somebody checking
+        that the record existed.
+        """
+        paths = self.paths()
+        searchable = set(paths.searchable())
+        for path in paths.sealed():
+            self.assertNotIn(path, searchable,
+                             f"{path.name} is searchable, so grepping a "
+                             f"capture id returns the capture")
+
+    def test_the_readable_search_still_reaches_ordinary_files(self):
+        """A search that reads nothing finds nothing, and passes.
+
+        The exact shape of the symlink defect: excluding everything satisfies
+        the test above perfectly.
+        """
+        searchable = {p.name for p in self.paths().searchable()}
+        self.assertIn("rambling.tsv", searchable)
+        self.assertIn("leak-check.py", searchable)
+
     def test_readable_refuses_a_sealed_path_even_if_the_list_is_wrong(self):
         """The seam, with a fixture on it.
 
@@ -1058,6 +1084,120 @@ class CorpusPathTests(unittest.TestCase):
     def test_the_sealed_list_is_the_three_sealed_sets(self):
         self.assertEqual(sorted(p.name for p in self.paths().sealed()),
                          ["adversarial.tsv", "everyday.tsv", "heldout.tsv"])
+
+
+def ledger_check_module():
+    """ledger-check.py has a hyphen in its name, so it needs loading by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "ledger_check", pathlib.Path(__file__).parent / "ledger-check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+LEDGER = """## Sealed-set cost ledger
+
+| date | change | measure | from | to | |
+| --- | --- | --- | --- | --- | --- |
+| 2026-09-11 | a boundary (#57) | held-out thought count | 255/310 | 254/310 | **\u22121** |
+| 2026-09-11 | a tightening (#57) | \u2014 | \u2014 | \u2014 | no sealed measure moved |
+
+Running total: **\u22121 row**, across one change, on one of the measures.
+
+## Next heading
+"""
+
+
+class LedgerCheckTests(unittest.TestCase):
+    """The ledger states a total, and a stated total is a claim about its rows.
+
+    Both halves are hand-written, at different times, by whoever measured the
+    change. That is the arrangement that produced a wrong published figure
+    twice in one day here, so the total is recomputed rather than read.
+    """
+
+    def setUp(self):
+        self.ledger = ledger_check_module()
+
+    def test_a_consistent_ledger_passes(self):
+        """The control. Without it every failure below could be the fixture."""
+        self.assertEqual(self.ledger.check(LEDGER), [])
+
+    def test_a_total_that_disagrees_with_its_rows_fails(self):
+        """The failure this exists for: prose drifting from the table above it."""
+        problems = self.ledger.check(
+            LEDGER.replace("**\u22121 row**", "**\u22123 rows**"))
+        self.assertTrue(any("sum to" in p for p in problems), problems)
+        self.assertTrue(any("-3" in p or "\u22123" in p for p in problems),
+                        "the report must name the stated figure, or a reader "
+                        "cannot tell which of the two numbers to fix")
+
+    def test_a_change_count_that_disagrees_with_the_rows_fails(self):
+        """The other half of the running-total sentence, and it was unguarded.
+
+        A mutation removed this comparison and nothing moved. "Across one
+        change" is the denominator of the total: the same net figure across
+        one change and across nine are different findings, and the second is
+        the one the ledger exists to make visible. A total whose denominator
+        nobody checks is the defect this file has written down four times.
+        """
+        problems = self.ledger.check(
+            LEDGER.replace("across one change", "across four changes"))
+        self.assertTrue(any("change(s)" in p for p in problems), problems)
+
+    def test_a_row_whose_direction_contradicts_its_figures_fails(self):
+        problems = self.ledger.check(
+            LEDGER.replace("| **\u22121** |", "| **+1** |"))
+        self.assertTrue(any("its own figures" in p for p in problems), problems)
+
+    def test_a_change_of_denominator_is_not_a_direction(self):
+        """`255/310 -> 254/311` has no readable direction.
+
+        Two figures over different denominators are not comparable, which is
+        the whole argument for not comparing numbers across a generation. A
+        subtraction that ignores it produces a confident wrong answer.
+        """
+        problems = self.ledger.check(LEDGER.replace("254/310", "254/311"))
+        self.assertTrue(any("denominator" in p for p in problems), problems)
+
+    def test_nothing_moved_and_moved_by_zero_stay_different_claims(self):
+        """One flag over two populations is the recurring bug in this repo."""
+        problems = self.ledger.check(
+            LEDGER.replace("| \u2014 | \u2014 | \u2014 | no sealed measure moved |",
+                           "| a measure | 10/20 | 10/20 | no sealed measure moved |"))
+        self.assertTrue(problems,
+                        "a row carrying real figures while claiming nothing "
+                        "moved reads as untouched and is not")
+
+    def test_a_missing_ledger_is_a_failure_and_not_a_clean_run(self):
+        """A check that treats absence as success cannot fail on deletion.
+
+        Exactly how `generation-check.py` once reported ok with a whole sealed
+        set deleted.
+        """
+        problems = self.ledger.check("# Language baseline\n\nNo ledger here.\n")
+        self.assertTrue(any("no '## Sealed-set cost ledger' section" in p
+                            for p in problems), problems)
+
+    def test_an_emptied_table_is_distinguishable_from_a_quiet_year(self):
+        empty = LEDGER.split("| 2026-09-11")[0] + "\nRunning total: **0 rows**, across 0 changes.\n\n## Next heading\n"
+        problems = self.ledger.check(empty)
+        self.assertTrue(any("no rows" in p for p in problems), problems)
+
+    @unittest.expectedFailure
+    def test_the_baseline_carries_the_ledger(self):
+        """Pinned as an expected failure, not skipped, and the difference matters.
+
+        The ledger is written by the core language thread and lands with its
+        pull request; this check is on a different branch. A skip here would
+        mean the wiring is never noticed when the ledger arrives. An expected
+        failure reports an UNEXPECTED SUCCESS the moment the section exists,
+        which fails the run and is the reminder to wire this into CI and take
+        this marker off. Same mechanism as the `Docs/**` path-filter test.
+        """
+        self.assertEqual(self.ledger.check(
+            self.ledger.BASELINE.read_text(encoding="utf-8")), [])
 
 
 if __name__ == "__main__":

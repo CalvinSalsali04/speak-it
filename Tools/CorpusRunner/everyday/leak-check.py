@@ -90,16 +90,30 @@ PROSE_DOCUMENTED = {
 #: These do not move the exit status. There is nothing to fix -- the reading
 #: already happened -- and a gate that can only ever stay red teaches people to
 #: switch it off. What they change is the reader's denominator.
+#: Keyed by capture, valued by a LIST of events, because those are two
+#: different counts and the second exposure proved it inside two hours. One
+#: capture displayed twice is not two captures compromised, and a record that
+#: cannot say which would overstate the damage; a record keyed only by capture
+#: would have hidden that it happened again at all. Both numbers are printed.
 EXPOSED_WITHOUT_INSPECTION = {
-    ("heldout.tsv", "C283"): (
+    ("heldout.tsv", "C283"): [
         "2026-09-11. Answering a question about how many readable sentences a "
         "rule could admit, this thread scanned every *.tsv under "
         "Tools/CorpusRunner/ instead of the development sets, and one held-out "
         "row printed into the session. No pass or fail was read, no failure "
         "was inspected and no rule changed. Repaired at the path layer rather "
         "than in the one scan: see Tools/CorpusRunner/corpus_paths.py, where "
-        "asking for readable() cannot return a sealed file."
-    ),
+        "asking for readable() cannot return a sealed file.",
+
+        "2026-09-11, about an hour later. The core language thread, checking "
+        "this constant existed, ran a recursive grep for the id from the "
+        "repository root. The sealed file is the one place an id sits beside "
+        "its text, so the search returned the row. Same conditions: text seen, "
+        "no pass or fail looked up, no part in any analysis. This is the "
+        "mitigation carrying the defect it was written for, so the handling "
+        "rule lives in corpus_paths.searchable() rather than in a sentence "
+        "somebody has to remember: search readable material, never the root.",
+    ],
 }
 
 
@@ -112,13 +126,18 @@ def report_exposure():
         print("empty means nobody wrote an entry, which is not the same as")
         print("nothing having happened.")
         return
+    events = sum(len(v) for v in EXPOSED_WITHOUT_INSPECTION.values())
     print(f"captures displayed        {len(EXPOSED_WITHOUT_INSPECTION)}"
           "  (id only; the text is deliberately not stored)")
+    print(f"exposure events          {events:>3}"
+          "  (a capture seen twice is one capture, not two)")
     print()
     for (set_name, cid), why in sorted(EXPOSED_WITHOUT_INSPECTION.items()):
-        print(f"  SEEN  {set_name} {cid}")
-        for line in textwrap.wrap(why, 68):
-            print(f"        {line}")
+        for n, event in enumerate(why, 1):
+            label = f"{cid}" if len(why) == 1 else f"{cid} ({n} of {len(why)})"
+            print(f"  SEEN  {set_name} {label}")
+            for line in textwrap.wrap(event, 68):
+                print(f"        {line}")
     print()
     print("  These are not counted as contamination: the rules were not tuned")
     print("  against them and the text is not in the repository. They are")
