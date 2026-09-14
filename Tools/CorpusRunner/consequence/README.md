@@ -51,8 +51,8 @@ Written before the first capture, unchanged afterwards.
 | --- | --- |
 | connectors, in fixed rotation | `and`, `so`, `which means`, bare comma, `then`, `that means`, `because of that`, none (juxtaposition) |
 | captures per connector | 5 |
-| total | 40 |
-| must stay ONE thought | 16 of 40, written in the same pass, spread across every connector |
+| total | 40, amended to 56 on 2026-09-14 (see the amendment section) |
+| must stay ONE thought | 16 of 40, then 24 of 56, written in the same pass, spread across every connector |
 | destinations | drawn from the product contract, not from what a parser would do: an action is Today, a fact worth keeping is Memory |
 | domains | household, work, health, family, money — one row each per connector block |
 
@@ -70,11 +70,62 @@ guard fails the run if it is ever left unclassified.
 If it disagrees with the readable evidence for #57, the disagreement is the
 finding. A set written to confirm a rule is not evidence for it.
 
+## Amendment, 2026-09-14, before anything was measured
+
+**The parameters above were amended once, and this section is why that is not
+the same as tuning.**
+
+The original forty are written register. That was a stated weakness from the
+first version of this file, and it stopped being a footnote when the core
+language thread corrected a figure it had published: a scan reporting that the
+everyday set contained no instance of the word "so" had hard-coded column two,
+and `everyday.tsv` keeps its utterance in column **three**. The corrected
+numbers make everyday the **most** spoken-sounding corpus we have, not the
+least, with roughly a quarter of its captures carrying a spoken marker against
+about a tenth of the development sets.
+
+So a set written entirely in clean prose is testing the wrong register for the
+thing it is evidence about. Sixteen captures were added, `CQ41`-`CQ56`, two per
+connector block as before, eight that must split and eight that must stay one
+thought, in the register people actually dictate in: fillers, discourse
+openers, hedges, a false start, "I mean".
+
+**Why this is an amendment and not tuning, stated so it can be checked rather
+than believed:**
+
+- It happened **before any measurement of any kind**. Nothing has been scored
+  against this set, on any machine, at any generation. There is no result to
+  have steered it.
+- It changes the **register**, which the original parameters never mentioned.
+  It does not change the phenomenon, the connectors, the domain rotation, or
+  the split/whole balance, and it does not move toward the rule's trigger
+  shape: the new rows use the same fixed connector rotation as the old ones.
+- It was prompted by a corrected fact about a corpus, not by anything about
+  what the parser does.
+
+If that reasoning is wrong, the remedy is to score `CQ01`-`CQ40` and
+`CQ41`-`CQ56` separately and compare, which the family names make possible
+without touching the file.
+
+**One thing not to over-read.** Counting spoken markers in the amended set with
+my own list of markers gives about 23%, which looks like everyday's 24%. Those
+two numbers are **not comparable**: they were produced by different marker
+lists, and mine does not count a bare "so" used as a discourse opener, which
+two of the new rows rely on. Treat the register change as qualitative until
+one list has been run over both sets.
+
 ## Generations
 
-**Generation 1, recorded 2026-09-14.** The set as first written: 40 captures,
-nothing scored against it yet. There is no earlier generation to compare
-against and no number in this repository yet depends on it.
+**Generation 1, recorded 2026-09-14.** The set as first written: 40 captures
+in written register, nothing scored against it.
+
+**Generation 2, recorded 2026-09-14.** 56 captures: the original forty
+unchanged, plus `CQ41`-`CQ56` in spoken register, for the reason in the
+amendment above. Opened the same day, before any measurement, so no published
+figure compares across it and none ever will -- generation 1 was never scored.
+That is the cheapest a generation boundary will ever be, and it is worth
+saying out loud that the reason it was cheap is that nothing had been measured
+yet, not that generations are cheap.
 
 A generation opens when a capture's text changes, and numbers never compare
 across one. If that happens, the row saying what changed and which figures stop

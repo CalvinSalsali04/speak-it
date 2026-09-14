@@ -56,3 +56,19 @@ CQ37	the contract's up for renewal in six weeks I need to get the numbers to Fio
 CQ38	the results came back clear nothing showed up at all	consequence-whole	Memory	1
 CQ39	Grandad turns ninety in March I should book the restaurant now	consequence-split	Today	2
 CQ40	the ISA allowance resets in April I should move the savings across before then	consequence-split	Today	2
+CQ41	um the shed roof is leaking again and I need to get someone to look at it before winter	consequence-spoken-split	Today	2
+CQ42	so the thing is Priya and Anwar are both off the same week which is just typical	consequence-spoken-whole	Memory	1
+CQ43	right so my prescription runs out Friday so I need to ring the surgery tomorrow	consequence-spoken-split	Today	2
+CQ44	um Theo's been at football every Saturday so we sort of never see him now	consequence-spoken-whole	Memory	1
+CQ45	okay so the renewal's gone up which means I need to shop around before it auto-renews	consequence-spoken-split	Today	2
+CQ46	the skip's um the skip's booked for Tuesday which means it'll be gone by the weekend	consequence-spoken-whole	Memory	1
+CQ47	right, Renata's handing the audit over Thursday, I should probably block out the afternoon	consequence-spoken-split	Today	2
+CQ48	the physio said six weeks, maybe eight, I mean it depends how it goes	consequence-spoken-whole	Memory	1
+CQ49	so the ceremony's at two, then I've got to get the cake over there by four	consequence-spoken-split	Today	2
+CQ50	so you pay the deposit first and then like the rest of it on completion	consequence-spoken-whole	Memory	1
+CQ51	um the bin collection's changed, that means I need to put the green one out tonight	consequence-spoken-split	Today	2
+CQ52	the office is shut over Christmas, that means what, nine working days in December	consequence-spoken-whole	Memory	1
+CQ53	the clinic moved across town and because of that I have to leave uh half an hour earlier now	consequence-spoken-split	Today	2
+CQ54	Ravi's shifts changed in the spring and because of that he's you know around on Thursdays now	consequence-spoken-whole	Memory	1
+CQ55	so the ISA thing resets in April I should move the savings across before then	consequence-spoken-split	Today	2
+CQ56	the recycling moved to Wednesdays it's been like that since the spring I think	consequence-spoken-whole	Memory	1
