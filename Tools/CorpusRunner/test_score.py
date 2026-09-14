@@ -617,6 +617,95 @@ class DevsetScorerTests(unittest.TestCase):
                     f"suppression rather than a documented failure")
 
 
+class AcceptableCounts(unittest.TestCase):
+    """The label reader that decides 
+    the thought-count metric.
+
+    It is tested directly rather than through a run because it is a pure
+    function that a whole published figure rests on, and because the defect it
+    fixes was invisible end to end: the strict reading produced a plausible
+    number for a year and nothing compared it against the label it came from.
+    """
+
+    def reader(self):
+        import importlib.util
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "score.py")
+        source = path.read_text()
+        # Import the function without running the script, which expects argv.
+        namespace = {}
+        start = source.index("def acceptable_counts(")
+        end = source.index("def tally(")
+        exec(compile("import re\n" + source[start:end], str(path), "exec"),
+             namespace)
+        return namespace["acceptable_counts"]
+
+    def test_an_exact_label_permits_exactly_one_count(self):
+        self.assertEqual(self.reader()("3"), ({3}, 3, False))
+
+    def test_a_range_permits_every_count_in_it(self):
+        acceptable, strict, prose = self.reader()("1-2")
+        self.assertEqual(acceptable, {1, 2})
+        self.assertEqual(strict, 1)
+        self.assertFalse(prose)
+
+    def test_a_wider_range_is_inclusive_at_both_ends(self):
+        self.assertEqual(self.reader()("4-5")[0], {4, 5})
+        self.assertEqual(self.reader()("0-1")[0], {0, 1})
+
+    def test_whitespace_around_the_dash_is_tolerated(self):
+        self.assertEqual(self.reader()("2 - 3")[0], {2, 3})
+
+    def test_a_prose_label_falls_back_to_the_leading_integer_and_says_so(self):
+        """The fallback is the old behaviour. What is new is that it is named.
+
+        Three captures carry a label like `2 (or 1 with 2 alerts)`. Reading the
+        leading integer is a guess, and a guess that reports itself can be
+        counted; one that does not becomes part of the figure.
+        """
+        acceptable, strict, prose = self.reader()("2 (or 1 with 2 alerts)")
+        self.assertEqual((acceptable, strict), ({2}, 2))
+        self.assertTrue(prose)
+
+    def test_an_unparseable_label_is_not_scored_at_all(self):
+        self.assertEqual(self.reader()(""), (set(), None, False))
+        self.assertEqual(self.reader()("some")[1], None)
+
+    def test_the_strict_answer_is_always_one_the_label_permits(self):
+        """Otherwise range-aware could score below strict, which is nonsense.
+
+        This is the property that makes the two figures comparable: the strict
+        reading has to be a special case of the range-aware one, so the second
+        can only ever be the same or higher.
+        """
+        for label in ["0", "3", "0-1", "1-2", "2-3", "4-5", "2 (or 1 with 2 alerts)"]:
+            with self.subTest(label=label):
+                acceptable, strict, _ = self.reader()(label)
+                self.assertIn(strict, acceptable)
+
+    def test_the_real_file_uses_only_shapes_this_understands(self):
+        """A fourth label shape would be silently read as its leading integer."""
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "heldout.tsv")
+        if not path.exists():
+            self.skipTest("heldout.tsv not present")
+        reader = self.reader()
+        prose = []
+        for line in path.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 5 or parts[0] == "id":
+                continue
+            _, strict, is_prose = reader(parts[4])
+            if is_prose:
+                prose.append(parts[0])
+        self.assertLessEqual(
+            len(prose), 3,
+            f"more prose count labels than the three recorded: {sorted(prose)}. "
+            f"Each is read as its leading integer, which is a guess.")
+
+
 class CompromisedRegistry(unittest.TestCase):
     """The held-out exclusion list, and the ways it can pass while doing nothing.
 

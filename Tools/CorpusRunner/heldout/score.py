@@ -47,6 +47,54 @@ for b in blocks:
 def wanted_today(dest):
     return any(k in dest for k in ("Today", "Shopping", "Event", "Alarm"))
 
+def acceptable_counts(label):
+    """Every thought count the label says is defensible, and how it was read.
+
+    Many of this set's captures carry a RANGE — `0-1`, `1-2`, `4-5` — which is
+    the author recording that two readings of the same recording are both
+    correct. Until 2026-09-12 this scorer read `^(\\d+)` and compared against
+    that number alone, so a capture labelled `1-2` that produced 2 was marked
+    wrong for giving an answer its own label allows.
+
+    Nothing documented that reading: not the README, not the file header, not
+    a comment here. It was an unexamined default, and the kind that becomes a
+    published figure without anyone choosing it.
+
+    **How many is printed by the run, not written here.** The first draft of
+    this docstring said 71 captures and 22% of the denominator; 71 is how many
+    carry a range in the file, and the count is computed over far fewer,
+    because an `Ambiguous` capture returns before it reaches the count block.
+    Two populations, one number, written in prose — the same mistake this
+    repository has now made four times, caught here by the instrument printing
+    a different figure two lines below the sentence claiming it.
+
+    Both readings are reported now. The strict one is kept and printed because
+    every thought-count figure published before 2026-09-12 means it.
+
+    Returns (acceptable, strict, nonstandard):
+      acceptable   every count the label permits
+      strict       the single count the legacy reading compares against
+      nonstandard  True for a prose label like `2 (or 1 with 2 alerts)`, where
+                   the leading integer is used as before. Three captures carry
+                   one; the run prints how many it met rather than absorbing
+                   them silently.
+    """
+    text = label.strip()
+    exact = re.fullmatch(r"(\d+)", text)
+    if exact:
+        n = int(exact.group(1))
+        return {n}, n, False
+    span = re.fullmatch(r"(\d+)\s*-\s*(\d+)", text)
+    if span:
+        lo, hi = int(span.group(1)), int(span.group(2))
+        return set(range(lo, hi + 1)), lo, False
+    lead = re.match(r"^(\d+)", text)
+    if lead:
+        n = int(lead.group(1))
+        return {n}, n, True
+    return set(), None, False
+
+
 def tally(rows):
     """Accumulate every measure over the given rows.
 
@@ -105,15 +153,23 @@ def tally(rows):
         if not ok:
             misses.append(("DEST", cid, utt, dest, "/".join(got["routes"]) or "nothing"))
 
-        m = re.match(r"^(\d+)", n.strip())
-        if m and not got["operation"]:
+        acceptable, strict, nonstandard = acceptable_counts(n)
+        if strict is not None and not got["operation"]:
             stats["count_scored"] += 1
             by_family[fam]["count_scored"] += 1
-            if got["rows"] == int(m.group(1)):
+            if nonstandard:
+                stats["count_label_prose"] += 1
+            if len(acceptable) > 1:
+                stats["count_label_range"] += 1
+            if got["rows"] == strict:
                 stats["count_ok"] += 1
                 by_family[fam]["count_ok"] += 1
             else:
-                misses.append(("COUNT", cid, utt, m.group(1), str(got["rows"])))
+                misses.append(("COUNT", cid, utt, n.strip(), str(got["rows"])))
+            # The range-aware reading, counted separately so the strict figure
+            # stays byte-for-byte what it was and both appear on one run.
+            if got["rows"] in acceptable:
+                stats["count_ok_range"] += 1
     return stats, by_family, misses
 
 
@@ -150,8 +206,11 @@ print(f"  scored                     {stats['scored']}")
 print(f"  missing probe results      {stats['unseen']}")
 print(f"  destination correct        {stats['dest_ok']}/{d_total}"
       f"  ({100 * stats['dest_ok'] / max(d_total, 1):.1f}%)")
-print(f"  thought count correct      {stats['count_ok']}/{stats['count_scored']}"
+print(f"  thought count strict       {stats['count_ok']}/{stats['count_scored']}"
       f"  ({100 * stats['count_ok'] / max(stats['count_scored'], 1):.1f}%)")
+print(f"  thought count range-aware  {stats['count_ok_range']}/{stats['count_scored']}"
+      f"  ({100 * stats['count_ok_range'] / max(stats['count_scored'], 1):.1f}%)"
+      f"   [{stats['count_label_range']} captures carry a range]")
 print(f"  captures producing nothing {stats['produced_nothing']}")
 print()
 print(f"  genuinely ambiguous        {stats['ambiguous']}")
@@ -160,6 +219,17 @@ print(f"  ACTED ON ANYWAY            {stats['unsafe']}"
 print("=" * 66)
 print("  The last number is the one that matters: a confident wrong action on")
 print("  a capture whose meaning a careful human could not pin down.")
+print("  STRICT compares against the first number in the label; RANGE-AWARE")
+print("  accepts any count the label permits. A label like `1-2` is the")
+print("  author recording that both readings are defensible, and strict")
+print("  marks the upper one wrong. The bracket above is how many such")
+print("  captures the count is actually computed over -- fewer than carry a")
+print("  range in the file, because an Ambiguous capture is never count-")
+print("  scored. Every thought-count figure published before 2026-09-12 is")
+print("  a STRICT figure.")
+if stats["count_label_prose"]:
+    print(f"  {stats['count_label_prose']} labels are prose rather than `N` or `N-M`; the leading")
+    print("  integer is used for both readings, as before.")
 print("  These are the LEGACY figures: every labelled capture, including the")
 print("  ones known not to be unseen. They are what older sections of")
 print("  Docs/LANGUAGE_BASELINE.md mean, and they are kept for that reason.")
@@ -172,8 +242,10 @@ if scoring_heldout:
   print("=" * 66)
   print(f"  destination correct        {clean['dest_ok']}/{c_total}"
         f"  ({100 * clean['dest_ok'] / max(c_total, 1):.1f}%)")
-  print(f"  thought count correct      {clean['count_ok']}/{clean['count_scored']}"
+  print(f"  thought count strict       {clean['count_ok']}/{clean['count_scored']}"
         f"  ({100 * clean['count_ok'] / max(clean['count_scored'], 1):.1f}%)")
+  print(f"  thought count range-aware  {clean['count_ok_range']}/{clean['count_scored']}"
+        f"  ({100 * clean['count_ok_range'] / max(clean['count_scored'], 1):.1f}%)")
   print(f"  genuinely ambiguous        {clean['ambiguous']}")
   print(f"  ACTED ON ANYWAY            {clean['unsafe']}"
         f"  ({100 * clean['unsafe'] / max(clean['ambiguous'], 1):.1f}% of them)")
