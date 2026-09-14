@@ -427,18 +427,25 @@ mechanisms, and three of the eight are in none of them.
 
 | connector | where it is handled |
 | --- | --- |
-| `and` | `splittableCoordinatorRanges`, a literal regex |
-| `so` | the same regex, behind a first-person-obligation lookahead |
-| comma | `splitClauses`, behind an `actionLeadPattern` lookahead |
-| `then` | `splitClauses`, behind a `triggerLeadPattern` lookahead |
+| `and` | `splittableCoordinatorRanges`, a literal regex, and in `connectorRun` |
+| `so` | the same regex behind a first-person-obligation lookahead, and in `connectorRun` |
+| comma | `splitClauses`, only before an `actionLeadPattern` |
+| `then` | `connectorRun`, plus its own branch before a `triggerLeadPattern` |
 | juxtaposition | `ClauseJuxtaposition`, its own module |
 | `which means` | nowhere |
 | `that means` | nowhere |
 | `because of that` | nowhere |
 
-The last three occur in `SpeakIt/` only inside comments. The table is the
-consequence set's eight and not an inventory: `connectorRun` also carries
-`also` and `plus`, which that rotation does not use.
+The last three occur in `SpeakIt/` only inside comments. `connectorRun` is
+`so|and|also|then|plus`, so it carries two more forms the consequence rotation
+never used; the table is that rotation's eight and not an inventory of the
+splitter.
+
+Counted by mechanism rather than by connector, the picture is sharper than
+"eight surface forms". Two of them have a dedicated boundary finder. Four ride
+a shared run of connector words that can only open a boundary when an action
+or a trigger lead follows it. One has a module to itself. Three have nothing at
+all.
 
 The interesting half is not the absence. It is that **the machinery deciding
 whether a tail is a thought of its own is already general, and is only ever
