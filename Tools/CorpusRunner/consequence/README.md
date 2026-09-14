@@ -114,6 +114,29 @@ lists, and mine does not count a bare "so" used as a discourse opener, which
 two of the new rows rely on. Treat the register change as qualitative until
 one list has been run over both sets.
 
+**What the amendment turned out to test, recorded after the first run.**
+
+*2026-09-14, after the set was scored on a Mac for the first time. This is an
+observation about what the rows turned out to be good for. It is **not** a
+reason they were written, it was not available when they were written, and it
+lends the justification above none of its strength. Kept here rather than
+folded into that justification so the two cannot be mistaken for each other.*
+
+Reviewing the first run, the core language thread pointed out that register is
+not where `CQ41`-`CQ56` earned their place. What they added that the original
+forty did not exercise at all is the **discourse-versus-resultive distinction**:
+seven split captures contain `so`, four carrying it as a resultive before a
+first-person obligation and three opening with it as a discourse marker while
+joining their clauses some other way. The thought count moved by exactly four.
+A rule that had learned something accidental does not land on precisely the
+rows its stated condition describes and decline the three that merely look
+alike, including the one capture that carries both uses at once.
+
+That is a stronger claim than the register argument, and it is available only
+because the rows existed before anyone knew it. It is also the reason the
+`CQ01`-`CQ40` versus `CQ41`-`CQ56` comparison offered above is worth actually
+running rather than kept as a remedy.
+
 ## Generations
 
 **Generation 1, recorded 2026-09-14.** The set as first written: 40 captures
