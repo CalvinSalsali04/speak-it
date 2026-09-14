@@ -1503,9 +1503,6 @@ class LedgerCheckTests(unittest.TestCase):
             self.ledger.BASELINE.read_text(encoding="utf-8")), [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class CorpusShapeTests(unittest.TestCase):
     """The reviewer's tool for a sealed set, which must never print a capture.
@@ -1610,3 +1607,37 @@ class CorpusShapeTests(unittest.TestCase):
                 self.assertIn(f"rows                {count}", out,
                               f"{name} no longer holds {count} captures; if "
                               f"that was deliberate it opens a generation")
+
+class ThisFileRunsAllOfItselfTests(unittest.TestCase):
+    """A class defined after `unittest.main()` is never run as a script.
+
+    Not hypothetical: `CorpusShapeTests` was appended to the end of this file,
+    which put it after the `__main__` guard. `python3 -m unittest
+    test_score.CorpusShapeTests` ran it and passed, because importing a module
+    defines everything in it. `python3 test_score.py` -- which is what CI runs
+    -- called `unittest.main()` before the class existed and reported 81 tests
+    instead of 88, cleanly, at exit 0.
+
+    That is the recurring shape: a check that never runs and a check that
+    passes are the same output. Every edit that appends to this file is one
+    keystroke away from it, so the guard is mechanical rather than remembered.
+    """
+
+    def test_nothing_is_defined_after_the_main_guard(self):
+        source = pathlib.Path(__file__).resolve().read_text(encoding="utf-8")
+        marker = 'if __name__ == "__main__":'
+        self.assertIn(marker, source)
+        after = source.split(marker)[-1]
+        self.assertNotIn(
+            "\nclass ", after,
+            "a class is defined after the __main__ guard, so it is invisible "
+            "to `python3 test_score.py` and will not run in CI. Move the "
+            "guard back to the end of the file.")
+        self.assertNotIn(
+            "\ndef ", after,
+            "a function is defined after the __main__ guard and will not be "
+            "seen when this file runs as a script")
+
+
+if __name__ == "__main__":
+    unittest.main()
