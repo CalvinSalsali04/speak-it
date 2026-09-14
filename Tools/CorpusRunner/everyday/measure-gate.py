@@ -80,13 +80,25 @@ ROOT = HERE.parents[2]
 #: `leak-check.py`, sits beside `everyday/` rather than inside it, and is not a
 #: directory, so it fell out of a list that only ever linked directories.
 #: Entries may now be either.
+#: The corpus half is derived rather than listed, because listing it failed
+#: again the moment a fourth sealed set arrived: `leak-check.py` iterates
+#: `corpus_paths.sealed()` and raises on a sealed file that is not on disk, so
+#: a set missing from this mirror turns the gate's control red and the gate
+#: reports nothing at all. That is the control working, and it is the fourth
+#: list today that knew about three corpora when there were four.
+sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+import corpus_paths  # noqa: E402  (needs ROOT resolved first)
+
 LINKED = [ROOT / "SpeakItTests",
           ROOT / "Docs",
           ROOT / "Tools/CI",
           ROOT / "Tools/CorpusRunner/corpus_paths.py",
-          ROOT / "Tools/CorpusRunner/devsets",
-          ROOT / "Tools/CorpusRunner/heldout",
-          ROOT / "Tools/CorpusRunner/adversarial"]
+          ROOT / "Tools/CorpusRunner/devsets"] + [
+          #: Every sealed set's directory, whatever the list says today. The
+          #: everyday one is copied rather than linked, since it is the tree
+          #: under mutation, so it is excluded here.
+          path.parent for path in corpus_paths.sealed()
+          if path.parent.name != "everyday"]
 
 
 @contextlib.contextmanager

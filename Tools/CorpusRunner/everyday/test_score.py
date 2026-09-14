@@ -2816,9 +2816,13 @@ class SealedListSourceTests(unittest.TestCase):
 
     def test_every_sealed_set_is_actually_checked(self):
         """The list is only useful if the loop reads all of it."""
-        self.assertEqual(len(self.leak.SEALED_ALL), 3)
+        #: The count was asserted separately from the names, which is one
+        #: assertion pretending to be two: the names already fix the count, and
+        #: the bare 3 was the half that had to be edited when a fourth sealed
+        #: set arrived, for no extra safety.
         names = {p.name for p in self.leak.SEALED_ALL}
-        self.assertEqual(names, {"everyday.tsv", "adversarial.tsv", "heldout.tsv"})
+        self.assertEqual(names, {"everyday.tsv", "adversarial.tsv",
+                                 "heldout.tsv", "consequence.tsv"})
 
 
 if __name__ == "__main__":
