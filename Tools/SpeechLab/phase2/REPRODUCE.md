@@ -38,3 +38,32 @@ fe3449af69b42fda7163345482556066c35a80f7e552a6d67e212a0e2f0783cc  slurp-test.jso
 ```
 
 None of these commands invokes the production parser or reads sealed failures.
+
+## Independent adjudication
+
+The committed review submissions can be reapplied without parser access:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/apply_reviews.py \
+  --cases Tools/SpeechLab/phase2/data/cases.jsonl \
+  --reviews Tools/SpeechLab/phase2/adjudication/reviews.jsonl \
+  --output /private/tmp/speechlab-cases-adjudicated.jsonl
+
+cmp /private/tmp/speechlab-cases-adjudicated.jsonl \
+  Tools/SpeechLab/phase2/adjudication/cases-adjudicated.jsonl
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/adjudication_report.py \
+  --original Tools/SpeechLab/phase2/data/cases.jsonl \
+  --adjudicated /private/tmp/speechlab-cases-adjudicated.jsonl \
+  --output /private/tmp/speechlab-adjudication-report.json
+
+cmp /private/tmp/speechlab-adjudication-report.json \
+  Tools/SpeechLab/phase2/adjudication/report.json
+```
+
+`prepare_review_batches.py`, `compile_review_decisions.py`, and
+`run_adjudication.py` fail closed on assignment, identity, completeness,
+duplicate, enum, schema, or digest errors. The batch inputs are intentionally
+not committed because they are deterministic projections of the existing blind
+review pack. Reviewer submissions record source and identity; none is
+represented as human review.
