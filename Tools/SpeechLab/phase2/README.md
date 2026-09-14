@@ -2,9 +2,10 @@
 
 Phase 2 is a bounded, review-first corpus of 818 cases. It improves the draft
 synthetic corpus's diversity and measurement discipline, but it is **not yet a
-frozen or trusted evaluation set**. The corpus has author self-review only. No
-case is called gold, and no production-parser result appears in its labels or
-independent-review pack.
+frozen evaluation set**. The authored snapshot remains in `data/cases.jsonl`;
+the independent-review result is kept separately under `adjudication/`. No case
+is called gold, and no production-parser result appears in its labels or
+independent-review artifacts.
 
 ## Contents
 
@@ -20,20 +21,25 @@ independent-review pack.
 - `artifacts/quality-report.json`: complete machine-measured health report.
 - `artifacts/saturation.json`: coverage at 100, 200, 400, 600, 800, and 818.
 - `artifacts/split-manifest.json`: explicitly records that freezing is blocked.
+- `adjudication/`: 1,332 schema-valid independent external-AI reviews, the
+  adjudicated 818-case snapshot, assignment provenance, and complete metrics.
 
-See [CORPUS-QUALITY-REPORT.md](CORPUS-QUALITY-REPORT.md) for the decision,
+See [ADJUDICATION-REPORT.md](ADJUDICATION-REPORT.md) for the current decision,
+[CORPUS-QUALITY-REPORT.md](CORPUS-QUALITY-REPORT.md) for the pre-review baseline,
 [REVIEW-PROTOCOL.md](REVIEW-PROTOCOL.md) for adjudication, and
 [REPRODUCE.md](REPRODUCE.md) for exact commands.
 
 ## Non-negotiable status
 
-The corpus is useful for development and independent review. It is not an
+The corpus is useful for development and targeted remediation. It is not an
 accuracy benchmark yet because:
 
-1. 514 safety-critical cases await two independent positive reviews each.
-2. No case has an independent semantic review in this repository snapshot.
-3. Twenty-two deliberately lossy or ambiguity-sensitive cases remain draft.
-4. Five taxonomy IDs remain uncovered until the contract or available semantic
+1. 50 cases remain disputed, including 29 safety-critical cases without two
+   independent positive reviews.
+2. Independent review found an 11.49% conservative broken-language rate and a
+   93.89% meaning-preservation rate; both miss their gates.
+3. Five taxonomy IDs remain uncovered until the contract or available semantic
    shapes can represent them without inventing meaning.
 
-Do not run the production parser before freezing a future independent split.
+Do not run the production parser against a future independent split before its
+semantics are frozen.

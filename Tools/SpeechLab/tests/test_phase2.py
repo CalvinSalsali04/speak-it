@@ -11,8 +11,11 @@ sys.path.insert(0, str(LAB / 'phase2'))
 
 from Sources.composition import validate_composition
 from Sources.contracts import digest, read_jsonl
+from adjudication_report import adjudication_metrics
 from apply_reviews import apply_reviews
 from build_corpus import build
+from compile_review_decisions import compile_decisions
+from prepare_review_batches import contains_forbidden_key, prepare
 from quality import language_lint_results, validate_all
 
 
@@ -95,6 +98,87 @@ class Phase2CorpusTests(unittest.TestCase):
         twice = apply_reviews([once], [self._review(once, 'reviewer-b', 'human')], schema)[0]
         self.assertTrue(twice['trusted'])
         self.assertEqual(twice['label_state'], 'human-reviewed')
+        author = self._review(ordinary, 'codex-phase2-author-self-review')
+        with self.assertRaises(ValueError):
+            apply_reviews([deepcopy(ordinary)], [author], schema)
+
+    def test_blind_assignment_requires_distinct_reviewers_and_two_for_safety(self):
+        sample = [deepcopy(next(case for case in self.cases if not case['safety_critical'])),
+                  deepcopy(next(case for case in self.cases if case['safety_critical']))]
+        pack = [next(row for row in self.review_pack if row['case_id'] == case['case_id'])
+                for case in sample]
+        assignments, assigned_by_case = prepare(sample, pack, ['a', 'b', 'c'])
+        self.assertEqual(sum(map(len, assignments.values())), 3)
+        self.assertEqual(len(assigned_by_case[sample[0]['case_id']]), 1)
+        self.assertEqual(len(set(assigned_by_case[sample[1]['case_id']])), 2)
+        with self.assertRaises(ValueError):
+            prepare(sample, pack, ['same', 'same', 'other'])
+        self.assertTrue(contains_forbidden_key({'nested': [{'parser_output': 'hidden'}]}))
+
+    def test_decision_compiler_rejects_incomplete_or_duplicate_output(self):
+        batch = self.review_pack[:2]
+        schema = json.loads((LAB / 'schema' / 'review.schema.json').read_text())
+        decisions = []
+        for row in batch:
+            decisions.append({
+                'case_id': row['case_id'], 'naturalness': 4,
+                'intended_meaning': 'reviewed meaning', 'intended_item_count': 1,
+                'routing': [], 'temporal_meaning': None, 'location_meaning': None,
+                'cancellation_negation_scope': None, 'ambiguity': 'none',
+                'proposed_contract_correct': 'yes',
+                'meaning_preservation': 'appears_preserved', 'notes': 'independent review',
+            })
+        compiled = compile_decisions(batch, decisions, 'reviewer-a', 'external_ai',
+                                     '2026-09-14T12:00:00Z', schema)
+        self.assertEqual(len(compiled), 2)
+        self.assertTrue(all(row['review']['independence'] == 'independent' for row in compiled))
+        with self.assertRaises(ValueError):
+            compile_decisions(batch, decisions[:1], 'reviewer-a', 'external_ai',
+                              '2026-09-14T12:00:00Z', schema)
+
+    def test_adjudication_preserves_disagreement_and_uses_conservative_scores(self):
+        schema = json.loads((LAB / 'schema' / 'review.schema.json').read_text())
+        original = deepcopy(next(case for case in self.cases if case['safety_critical']))
+        positive = self._review(original, 'reviewer-a')
+        adverse = self._review(original, 'reviewer-b')
+        adverse['review']['naturalness'] = 2
+        adverse['review']['proposed_contract_correct'] = 'no'
+        adverse['review']['meaning_preservation'] = 'meaning_changed'
+        adverse['review']['review_id'] = 'review-' + digest(adverse['review'])[:24]
+        result = apply_reviews([deepcopy(original)], [positive, adverse], schema)[0]
+        self.assertFalse(result['trusted'])
+        self.assertEqual(result['label_state'], 'disputed')
+        self.assertEqual(result['naturalness'], 2)
+        self.assertEqual(result['meaning_preservation'], 'meaning_changed')
+        metrics = adjudication_metrics([original], [result])
+        self.assertEqual(metrics['disputed_cases'], 1)
+        self.assertEqual(metrics['safety_cases_by_completed_reviews'], {'0': 0, '1': 0, '2': 1})
+        self.assertEqual(metrics['audited_broken_language']['rate'], 1.0)
+
+    def test_committed_adjudication_is_complete_auditable_and_unfrozen(self):
+        adjudication = self.phase2 / 'adjudication'
+        reviewed = list(read_jsonl(adjudication / 'cases-adjudicated.jsonl'))
+        submissions = list(read_jsonl(adjudication / 'reviews.jsonl'))
+        report = json.loads((adjudication / 'report.json').read_text())
+        self.assertEqual(len(reviewed), 818)
+        self.assertEqual(len(submissions), 1332)
+        self.assertEqual(
+            {row['review']['reviewer']['kind'] for row in submissions}, {'external_ai'}
+        )
+        self.assertEqual(len({row['review']['reviewer']['identity'] for row in submissions}), 3)
+        self.assertTrue(all(row['review']['independence'] == 'independent' for row in submissions))
+        self.assertTrue(all(not contains_forbidden_key(row) for row in submissions))
+        self.assertEqual(
+            {sum(review['independence'] == 'independent' for review in case['reviews'])
+             for case in reviewed if case['safety_critical']},
+            {2},
+        )
+        self.assertEqual(report['adjudication']['trusted_cases'], 768)
+        self.assertEqual(report['adjudication']['disputed_cases'], 50)
+        self.assertEqual(report['success_gate']['passed'], 10)
+        self.assertEqual(report['success_gate']['total'], 14)
+        self.assertFalse(report['success_gate']['ready_to_freeze'])
+        self.assertFalse(report['success_gate']['ready_to_scale_to_10000'])
 
     def test_quality_gate_is_honest(self):
         report = json.loads((self.phase2 / 'artifacts' / 'quality-report.json').read_text())

@@ -1,5 +1,9 @@
 # Phase 2 corpus-quality report
 
+> This is the pre-adjudication baseline. The completed independent-review
+> result and current freeze decision are in
+> [ADJUDICATION-REPORT.md](ADJUDICATION-REPORT.md).
+
 ## Decision
 
 The 818-case corpus is a substantially healthier **adjudication candidate**,
