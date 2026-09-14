@@ -1,5 +1,6 @@
 """Regression coverage for the evaluation instrument, independent of parser output."""
 import collections
+import contextlib
 import csv
 import io
 import pathlib
@@ -1051,6 +1052,48 @@ class CorpusPathTests(unittest.TestCase):
             self.assertNotIn(path, searchable,
                              f"{path.name} is searchable, so grepping a "
                              f"capture id returns the capture")
+
+    def test_the_search_proves_it_can_find_something_first(self):
+        """Zero is the one result that looks the same whether the scan worked.
+
+        The real instance: a scan for the word "so" hard-coded column two,
+        `everyday.tsv` keeps its utterance in column three, and the zero it
+        returned was published as a fact about the corpus. The true answer was
+        34. Every other number invites "is that right?"; zero invites "good".
+        """
+        self.assertTrue(self.paths().scan_is_working(),
+                        "the search cannot find a string that sits in its own "
+                        "source, so any zero it reports means nothing")
+
+    def test_a_search_that_reads_nothing_refuses_to_report(self):
+        """A broken scan must fail loudly, not return an empty result.
+
+        Driven through the real entry point rather than by asserting on
+        `scan_is_working` alone, because the value of the canary is that the
+        caller cannot skip it.
+        """
+        paths = self.paths()
+        with tempfile.TemporaryDirectory() as empty:
+            #: A root with no corpus_paths.py in it, so the known-positive is
+            #: genuinely absent -- the same state a traversal defect produces.
+            self.assertFalse(paths.scan_is_working(empty))
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                status = paths._grep("anything at all", empty)
+            self.assertEqual(status, 2,
+                             "a search that cannot find its own canary must "
+                             "exit differently from one that found no matches")
+            self.assertIn("means nothing", said.getvalue())
+
+    def test_the_canary_is_actually_in_the_file(self):
+        """Otherwise the self-check is a test of nothing, passing forever."""
+        paths = self.paths()
+        source = pathlib.Path(paths.__file__).read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            source.count(paths.SELF_CHECK), 1,
+            "SELF_CHECK must appear in the module's own source; that is the "
+            "whole mechanism, and renaming the constant without leaving the "
+            "literal behind silently disarms it")
 
     def test_the_readable_search_still_reaches_ordinary_files(self):
         """A search that reads nothing finds nothing, and passes.

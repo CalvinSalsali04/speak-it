@@ -135,11 +135,29 @@ def searchable(root=None):
     return sorted(out)
 
 
-def _grep(pattern, root=None):
-    """`--grep`: the readable-only search, as path:line:text."""
+#: A string that exists, in this file, so that a scan finding nothing can be
+#: told apart from a scan that is broken.
+#:
+#: **Zero is the one result that looks identical whether the scan worked or
+#: not.** Every other number invites "is that right?"; zero invites "good".
+#: Not hypothetical: a one-off scan for the word "so" across the corpora
+#: hard-coded column two, and `everyday.tsv` keeps its utterance in column
+#: three, so it searched the wrong field, returned zero, and that zero was
+#: published as "the everyday set contains no instance of it". The real answer
+#: is 34. What caught it was a README describing eighteen filler captures,
+#: which cannot coexist with zero disfluency markers -- a document, not an
+#: instrument.
+#:
+#: So every search here proves it can find something before it reports finding
+#: nothing. The canary costs one pass over material already being read, and it
+#: refuses to report rather than returning an empty result.
+SELF_CHECK = "corpus-paths-canary-do-not-delete"
+
+
+def _scan(pattern, root=None):
+    """Every (path, line number, line) in readable material matching `pattern`."""
     import re
     matcher = re.compile(pattern)
-    hits = 0
     for path in searchable(root):
         try:
             text = path.read_text(encoding="utf-8")
@@ -147,10 +165,34 @@ def _grep(pattern, root=None):
             continue
         for number, line in enumerate(text.splitlines(), 1):
             if matcher.search(line):
-                hits += 1
-                print(f"{path}:{number}: {line.strip()[:200]}")
+                yield path, number, line
+
+
+def scan_is_working(root=None):
+    """Whether a search here can find a string known to be in readable material.
+
+    The known-positive is `SELF_CHECK`, which sits in this file, and this file
+    is readable material. A scan that cannot find it is not reading what it
+    thinks it is reading, and its zero means nothing.
+    """
+    return any(_scan(SELF_CHECK, root))
+
+
+def _grep(pattern, root=None):
+    """`--grep`: the readable-only search, as path:line:text."""
+    if not scan_is_working(root):
+        print("corpus-paths: the search cannot find a string that is in its own "
+              "source, so it is not reading what it thinks it is reading. Any "
+              "result below, especially a zero, means nothing. Fix the traversal "
+              "before trusting it.")
+        return 2
+    hits = 0
+    for path, number, line in _scan(pattern, root):
+        hits += 1
+        print(f"{path}:{number}: {line.strip()[:200]}")
     print(f"\n{hits} match(es) in readable material. "
-          f"{len(sealed())} sealed files were not searched, by construction.")
+          f"{len(sealed())} sealed files were not searched, by construction, "
+          f"and the search was confirmed able to find a known string first.")
     return 0 if hits else 1
 
 
