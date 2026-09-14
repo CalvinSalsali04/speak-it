@@ -1409,6 +1409,149 @@ Running total: **\u22121 row**, across one change, on one of the measures.
 """
 
 
+class TheHeaderIsReadInOnePlace(unittest.TestCase):
+    """Which line is the header, and which column holds the capture.
+
+    Four defects have come from four readers working this out separately, and
+    the reason is one file wide: every corpus here comments its header except
+    `everyday.tsv`, which writes it as an ordinary first line. So
+    `startswith("#")` is right ten times out of eleven -- the worst hit rate a
+    rule people copy can have, because the tenth reader has no reason to doubt
+    it. One of those four re-derivations reported 256 rows for a 255-capture
+    set; another reported that a corpus contains no instance of a word it uses
+    34 times.
+
+    So these tests are about the two questions being answered in one place and
+    answered the same way, not about any one scan being right.
+    """
+
+    #: The four sealed sets are published denominators. A reader that gains or
+    #: loses a row changes a rate nobody re-derives, so the sizes are pinned
+    #: here by count alone -- no id, no text.
+    SEALED_SIZES = {
+        "heldout.tsv": 389,
+        "everyday.tsv": 255,
+        "adversarial.tsv": 120,
+        "consequence.tsv": 56,
+    }
+
+    def paths(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def corpus(self, body):
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        path = pathlib.Path(room.name) / "set.tsv"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_both_header_layouts_in_this_repository_are_read(self):
+        """The asymmetry itself, pinned in both directions.
+
+        A rule that reads only the commented one is right ten times and wrong
+        on the largest readable corpus; a rule that reads only the first line
+        is right once.
+        """
+        paths = self.paths()
+        commented = ["# id\tutterance\tfamily", "C1\thello\tx"]
+        bare = ["id\tdomain\tutterance", "C1\twork\thello"]
+        self.assertEqual(paths.utterance_column(commented), 1)
+        self.assertEqual(paths.utterance_column(bare), 2)
+        self.assertEqual(paths.header_index(commented), 0)
+        self.assertEqual(paths.header_index(bare), 0)
+
+    def test_the_header_line_is_never_counted_as_data(self):
+        """The 256-for-255 defect, in both layouts."""
+        paths = self.paths()
+        for body in ("# id\tutterance\nC1\thello\nC2\tthere\n",
+                     "id\tutterance\nC1\thello\nC2\tthere\n"):
+            with self.subTest(body=body.splitlines()[0]):
+                path = self.corpus(body)
+                self.assertEqual(len(list(paths.data_rows(path))), 2)
+                self.assertEqual([u for _n, _i, u in paths.utterances(path)],
+                                 ["hello", "there"])
+
+    def test_every_column_is_read_from_the_same_line(self):
+        """Two columns resolved by two independent scans can disagree.
+
+        `column_of` looked for its name on any line, so a data cell that
+        happens to read `id` is a header as far as the id lookup is concerned
+        while the utterance lookup uses the real one. Every row then reports
+        the same id, which reads as a duplicate-id corpus rather than as a
+        reader that lost track of which line it was on.
+        """
+        paths = self.paths()
+        path = self.corpus("# capture\tutterance\nid\thello\nC2\tthere\n")
+        found = [cid for _n, cid, _u in paths.utterances(path)]
+        self.assertEqual(
+            found, ["", ""],
+            "the id column was resolved from a data row, not from the header "
+            f"line the utterance column came from; got {found}")
+
+    def test_a_row_too_short_for_the_utterance_column_is_refused(self):
+        """A dropped row is a smaller denominator and no message.
+
+        This is the shape this repository keeps finding: the malformed row is
+        exactly the row worth knowing about, and skipping it makes the file
+        look clean and one capture smaller. No corpus file here has one today,
+        so refusing costs nothing and stays cheap only while that holds.
+        """
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\nC1\thello\nC2\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception),
+                      "the refusal must name the line, or it sends a reader "
+                      "looking through the whole file")
+
+    def test_a_corpus_with_no_utterance_header_refuses_rather_than_guessing(self):
+        paths = self.paths()
+        with self.assertRaises(ValueError):
+            paths.utterance_column(["# id\tcapture", "C1\thello"])
+
+    def test_column_of_returns_none_rather_than_something_usable(self):
+        """`column_of(...) or 0` is how a missing header becomes column one."""
+        paths = self.paths()
+        self.assertIsNone(paths.column_of(["# id\tutterance"], "domain"))
+
+    def test_every_corpus_file_reads_and_nothing_is_dropped(self):
+        """Counts only -- no id and no text leaves this test.
+
+        `data_rows` and `utterances` must agree on every file: the second is
+        the first plus a column lookup, and a gap between them is a silently
+        skipped row.
+        """
+        paths = self.paths()
+        for path in sorted(paths.sealed() + paths.readable()):
+            with self.subTest(corpus=path.name):
+                rows = len(list(paths.data_rows(path)))
+                utterances = len(list(paths.utterances(path)))
+                self.assertGreater(rows, 0)
+                self.assertEqual(rows, utterances)
+                if path.name in self.SEALED_SIZES:
+                    self.assertEqual(rows, self.SEALED_SIZES[path.name])
+
+    def test_the_corpora_do_not_agree_on_a_column(self):
+        """Why a hard-coded index is not merely untidy.
+
+        If every set kept its utterance in the same column, every hard-coded
+        reader would be correct and this whole family would be invisible until
+        the layout changed. They do not, so this records what is actually true
+        -- and if it ever stops being true, the reader that hard-codes the new
+        common index starts passing by luck.
+        """
+        paths = self.paths()
+        columns = {paths.utterance_column(
+            p.read_text(encoding="utf-8").splitlines())
+            for p in paths.sealed() + paths.readable()}
+        self.assertGreater(len(columns), 1, f"one column everywhere: {columns}")
+
+
 class SealedSetsDoNotRenderAsText(unittest.TestCase):
     """A sealed set must not be readable from a diff.
 

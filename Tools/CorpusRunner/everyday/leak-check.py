@@ -372,22 +372,14 @@ def harvest_ids(path):
     it compares text against text. The prose check has to *name* what it found
     without printing it, so it needs the id travelling beside the capture.
     """
-    lines = path.read_text(errors="ignore").splitlines()
-    column = utterance_column(lines)
-    if column is None:
-        raise SystemExit(
-            f"leak check: {path.name} has no column headed 'utterance', so "
-            f"its captures cannot be identified. Add the header rather than "
-            f"letting this file go unchecked.")
-    out = []
-    for line in lines:
-        if line.startswith("#") or not line.strip():
-            continue
-        fields = line.split("\t")
-        if len(fields) <= column or fields[column].strip().lower() == "utterance":
-            continue
-        out.append((fields[0].strip(), fields[column]))
-    return out
+    try:
+        return [(cid, utterance)
+                for _number, cid, utterance in corpus_paths.utterances(path)]
+    except ValueError as why:
+        # Same translation as `mine` and `harvest`: a command-line tool owes a
+        # message, not a traceback, and the rule it states comes from the one
+        # owner so it cannot drift from theirs.
+        raise SystemExit(f"leak check: {Path(path).name}: {why}")
 
 
 #: Sealed captures already sitting in tuned material when this was measured,

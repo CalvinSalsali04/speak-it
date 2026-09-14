@@ -231,26 +231,39 @@ def header_cells(line):
     return [cell.strip().lower() for cell in line.lstrip("#").strip().split("\t")]
 
 
-def column_of(lines, name):
-    """Index of a named column, read from whichever line carries the header.
-
-    Returns None when no line names it. Callers that need the utterance column
-    should use `utterance_column`, which refuses instead of returning None:
-    `column_of(...) or 0` is how a missing header quietly becomes column one.
-    """
-    for line in lines:
-        cells = header_cells(line)
-        if name in cells:
-            return cells.index(name)
-    return None
-
-
 def header_index(lines):
-    """Index of the line that carries the column names, or None."""
+    """Index of the line that carries the column names, or None.
+
+    The header is the line naming `utterance`, rather than the first line or
+    the commented one, because those two rules disagree across this directory
+    and each is right somewhere.
+    """
     for number, line in enumerate(lines):
         if HEADER_KEY in header_cells(line):
             return number
     return None
+
+
+def column_of(lines, name):
+    """Index of a named column, read from the header line.
+
+    From *the* header line, not from whichever line happens to carry the word.
+    Two columns resolved by two independent scans can land on two different
+    lines: a data cell reading `id` is a header as far as an id lookup is
+    concerned while the utterance lookup uses the real one, and every row then
+    reports the same id. That reads as a corpus with duplicate ids rather than
+    as a reader that lost track of which line it was on.
+
+    Returns None when the header does not name it, or when there is no header.
+    Callers that need the utterance column should use `utterance_column`,
+    which refuses instead: `column_of(...) or 0` is how a missing header
+    quietly becomes column one.
+    """
+    head = header_index(lines)
+    if head is None:
+        return None
+    cells = header_cells(lines[head])
+    return cells.index(name) if name in cells else None
 
 
 def utterance_column(lines):
@@ -295,9 +308,18 @@ def utterances(path):
     column = utterance_column(lines)
     ids = column_of(lines, "id")
     for number, cells in data_rows(path):
-        if len(cells) > column:
-            yield number, (cells[ids] if ids is not None and len(cells) > ids
-                           else ""), cells[column]
+        if len(cells) <= column:
+            # Refused rather than skipped. A dropped row is a denominator one
+            # smaller and no message, on exactly the row worth knowing about:
+            # the file reads as clean and one capture shorter, and every rate
+            # computed from it is quietly wrong. No corpus file here has a
+            # short row today, so this costs nothing until one appears.
+            raise ValueError(
+                f"{pathlib.Path(path).name} line {number}: {len(cells)} "
+                f"cell(s), but the utterance is column {column + 1}. A row "
+                f"this reader cannot parse is not a row to skip.")
+        yield number, (cells[ids].strip()
+                       if ids is not None and len(cells) > ids else ""), cells[column]
 
 
 if __name__ == "__main__":
