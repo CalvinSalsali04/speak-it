@@ -13,6 +13,9 @@ import re, sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import compromised
+
 labels_path, probe_path = sys.argv[1], sys.argv[2]
 verbose = "--verbose" in sys.argv
 
@@ -44,69 +47,102 @@ for b in blocks:
 def wanted_today(dest):
     return any(k in dest for k in ("Today", "Shopping", "Event", "Alarm"))
 
-stats = Counter()
-# Per family as well as overall. This set carries exactly one family tag on
-# every row, by design, so that a failure names the phenomenon that caused it
-# — and until now the scorer read that column and dropped it, leaving four
-# aggregate numbers. Tools/CorpusRunner/adversarial/README.md tells the reader
-# to judge each pairing against its ingredients, and the ingredients live here,
-# so without this the instruction could not be followed.
-#
-# Rates only, and the default output stays sealed: no capture text, no failure
-# detail, `--verbose` unchanged. A finer-grained number is still a number.
-by_family = defaultdict(Counter)
-misses = []
-for cid, utt, fam, dest, n in rows:
-    fam = fam.strip() or "untagged"
-    got = seen.get(utt)
-    if got is None:
-        stats["unseen"] += 1
-        continue
-    stats["scored"] += 1
-    by_family[fam]["scored"] += 1
+def tally(rows):
+    """Accumulate every measure over the given rows.
 
-    # Preservation applies to ambiguous captures too. Count before the branch
-    # below, otherwise an ambiguous capture silently producing nothing is
-    # absent from the very metric intended to expose data loss.
-    if got["rows"] == 0 and not got["operation"]:
-        stats["produced_nothing"] += 1
-        misses.append(("EMPTY", cid, utt, dest, "no rows, no operation"))
+    Called twice — once over every labelled capture (the legacy metric)
+    and once with the known-not-unseen captures removed (the clean sealed
+    metric). One function so the two numbers cannot drift apart: a change
+    to how anything is counted lands in both or neither.
+    """
+    stats = Counter()
+    # Per family as well as overall. This set carries exactly one family tag on
+    # every row, by design, so that a failure names the phenomenon that caused it
+    # — and until now the scorer read that column and dropped it, leaving four
+    # aggregate numbers. Tools/CorpusRunner/adversarial/README.md tells the reader
+    # to judge each pairing against its ingredients, and the ingredients live here,
+    # so without this the instruction could not be followed.
+    #
+    # Rates only, and the default output stays sealed: no capture text, no failure
+    # detail, `--verbose` unchanged. A finer-grained number is still a number.
+    by_family = defaultdict(Counter)
+    misses = []
+    for cid, utt, fam, dest, n in rows:
+        fam = fam.strip() or "untagged"
+        got = seen.get(utt)
+        if got is None:
+            stats["unseen"] += 1
+            continue
+        stats["scored"] += 1
+        by_family[fam]["scored"] += 1
 
-    if "Ambiguous" in dest:
-        stats["ambiguous"] += 1
-        by_family[fam]["ambiguous"] += 1
-        # The contract for an unpinnable capture: keep it, do not act on it.
-        if got["operation"] or got["remind"] or got["due"]:
-            stats["unsafe"] += 1
-            by_family[fam]["unsafe"] += 1
-            misses.append(("UNSAFE", cid, utt, dest,
-                           f"op={got['operation']} due={got['due']} remind={got['remind']}"))
-        continue
+        # Preservation applies to ambiguous captures too. Count before the branch
+        # below, otherwise an ambiguous capture silently producing nothing is
+        # absent from the very metric intended to expose data loss.
+        if got["rows"] == 0 and not got["operation"]:
+            stats["produced_nothing"] += 1
+            misses.append(("EMPTY", cid, utt, dest, "no rows, no operation"))
 
-    if "Operation" in dest:
-        ok = got["operation"]
-    elif wanted_today(dest):
-        ok = "Today" in got["routes"]
-    else:
-        ok = bool(got["routes"]) and "Memory" in got["routes"]
-    stats["dest_ok" if ok else "dest_miss"] += 1
-    by_family[fam]["dest_ok" if ok else "dest_miss"] += 1
-    if not ok:
-        misses.append(("DEST", cid, utt, dest, "/".join(got["routes"]) or "nothing"))
+        if "Ambiguous" in dest:
+            stats["ambiguous"] += 1
+            by_family[fam]["ambiguous"] += 1
+            # The contract for an unpinnable capture: keep it, do not act on it.
+            if got["operation"] or got["remind"] or got["due"]:
+                stats["unsafe"] += 1
+                by_family[fam]["unsafe"] += 1
+                misses.append(("UNSAFE", cid, utt, dest,
+                               f"op={got['operation']} due={got['due']} remind={got['remind']}"))
+            continue
 
-    m = re.match(r"^(\d+)", n.strip())
-    if m and not got["operation"]:
-        stats["count_scored"] += 1
-        by_family[fam]["count_scored"] += 1
-        if got["rows"] == int(m.group(1)):
-            stats["count_ok"] += 1
-            by_family[fam]["count_ok"] += 1
+        if "Operation" in dest:
+            ok = got["operation"]
+        elif wanted_today(dest):
+            ok = "Today" in got["routes"]
         else:
-            misses.append(("COUNT", cid, utt, m.group(1), str(got["rows"])))
+            ok = bool(got["routes"]) and "Memory" in got["routes"]
+        stats["dest_ok" if ok else "dest_miss"] += 1
+        by_family[fam]["dest_ok" if ok else "dest_miss"] += 1
+        if not ok:
+            misses.append(("DEST", cid, utt, dest, "/".join(got["routes"]) or "nothing"))
+
+        m = re.match(r"^(\d+)", n.strip())
+        if m and not got["operation"]:
+            stats["count_scored"] += 1
+            by_family[fam]["count_scored"] += 1
+            if got["rows"] == int(m.group(1)):
+                stats["count_ok"] += 1
+                by_family[fam]["count_ok"] += 1
+            else:
+                misses.append(("COUNT", cid, utt, m.group(1), str(got["rows"])))
+    return stats, by_family, misses
+
+
+stats, by_family, misses = tally(rows)
+
+# The registry describes `heldout.tsv` and nothing else. This scorer also runs
+# the development sets, where excluding a held-out id would be meaningless and
+# the presence check below would be a false alarm, so the exclusion is scoped
+# to the set it is about rather than applied to whatever it is pointed at.
+directory = Path(labels_path).resolve().parent.name
+scoring_heldout = directory == "heldout"
+excluded_ids = compromised.EXCLUDED if scoring_heldout else set()
+
+if scoring_heldout:
+    # Every excluded id must really be in the file. A typo excludes nothing and
+    # the clean number quietly becomes the legacy one: both are printed, both
+    # look plausible, and the difference between them is silently zero. That is
+    # a guard whose expected answer is the system's default answer, which is
+    # the failure this repository keeps paying for.
+    missing = sorted(excluded_ids - {r[0] for r in rows})
+    if missing:
+        sys.exit(f"compromised.py names ids not in {labels_path}: "
+                 f"{', '.join(missing)}")
+
+clean_rows = [r for r in rows if r[0] not in excluded_ids]
+clean, clean_by_family, _ = tally(clean_rows)
 
 d_total = stats["dest_ok"] + stats["dest_miss"]
 print()
-directory = Path(labels_path).resolve().parent.name
 label = {"heldout": "HELD-OUT SET", "devsets": "DEVELOPMENT SET"}.get(directory, "CAPTURE SET")
 print(f"{label} — {len(rows)} labelled utterances")
 print("=" * 66)
@@ -124,6 +160,60 @@ print(f"  ACTED ON ANYWAY            {stats['unsafe']}"
 print("=" * 66)
 print("  The last number is the one that matters: a confident wrong action on")
 print("  a capture whose meaning a careful human could not pin down.")
+print("  These are the LEGACY figures: every labelled capture, including the")
+print("  ones known not to be unseen. They are what older sections of")
+print("  Docs/LANGUAGE_BASELINE.md mean, and they are kept for that reason.")
+
+# ---------------------------------------------------------------- clean sealed
+if scoring_heldout:
+  c_total = clean["dest_ok"] + clean["dest_miss"]
+  print()
+  print(f"CLEAN SEALED — {len(clean_rows)} captures still plausibly unseen")
+  print("=" * 66)
+  print(f"  destination correct        {clean['dest_ok']}/{c_total}"
+        f"  ({100 * clean['dest_ok'] / max(c_total, 1):.1f}%)")
+  print(f"  thought count correct      {clean['count_ok']}/{clean['count_scored']}"
+        f"  ({100 * clean['count_ok'] / max(clean['count_scored'], 1):.1f}%)")
+  print(f"  genuinely ambiguous        {clean['ambiguous']}")
+  print(f"  ACTED ON ANYWAY            {clean['unsafe']}"
+        f"  ({100 * clean['unsafe'] / max(clean['ambiguous'], 1):.1f}% of them)")
+  print("=" * 66)
+  print("  USE THIS ONE for any claim about generalising to unseen speech.")
+  print("  It is not a better score; it is the same measures over the rows")
+  print("  entitled to carry that claim. It may read higher or lower.")
+
+  print()
+  print(f"EXCLUSIONS — {len(rows)} labelled, "
+        f"{len(compromised.EXCLUDED)} excluded, {len(clean_rows)} clean")
+  print("=" * 66)
+  for name, table in compromised.CATEGORIES:
+      ids = sorted(table)
+      print(f"  {name:<32} {len(ids):>2}  {' '.join(ids)}")
+  print("-" * 66)
+  print(f"  compromised (in tuned material or in a document) : "
+        f"{len(compromised.COMPROMISED)}")
+  print(f"  excluded from the clean sealed score             : "
+        f"{len(compromised.EXCLUDED)}")
+  print("  The categories overlap — C342 is in two — so the excluded total is")
+  print("  a union and not a sum. Counting it as a sum is how the published")
+  print("  figure read three when it was five.")
+  print()
+  print("  Which subtotals the excluded captures feed, so the denominators")
+  print("  above can be reconciled by hand:")
+  for cid in sorted(compromised.EXCLUDED):
+      feeds = []
+      for r in rows:
+          if r[0] != cid:
+              continue
+          feeds.append(f"family:{r[2].strip()}")
+          feeds.append("ambiguous/unsafe" if "Ambiguous" in r[3] else "destination")
+          if re.match(r"^\d+", r[4].strip()):
+              feeds.append("thought count")
+      print(f"    {cid}  " + ", ".join(feeds))
+  print("=" * 66)
+  print("  Ids only. No capture text and no failure reason is read or printed")
+  print("  by this section, and an id must never be grepped from the")
+  print("  repository root -- see the note in compromised.py.")
 
 
 def cell(ok, total):
@@ -140,7 +230,7 @@ NAME = max([len(f) for f in by_family] + [len("family")]) + 1
 WIDTH = NAME + 4 + 17 + 17
 
 print()
-print("PER FAMILY — one tag per capture, so these columns do not overlap")
+print("PER FAMILY (LEGACY denominators) — one tag per capture")
 print("=" * WIDTH)
 print(f"{'family':<{NAME}}{'n':>4}{'destination':>17}{'thought count':>17}")
 print("-" * WIDTH)

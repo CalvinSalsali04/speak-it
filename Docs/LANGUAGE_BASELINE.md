@@ -31,9 +31,26 @@ against on purpose and their movements belong in the dated sections.
 | 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
 | 2026-09-11 | resultive guard tightened to a statement cause (#57) | — | — | — | no sealed measure moved |
 
-Running total: **−1 row**, across one change, on one of the eight sealed
-measures. Held-out destination, held-out acted-on-anyway, and all four everyday
-and both adversarial measures are unmoved since `2cc2ac5`.
+Running total: **−1 row**, across one change. The only sealed measure that has
+moved is **held-out thought count**. Held-out destination and held-out
+acted-on-anyway are unmoved since `2cc2ac5`, as are the everyday and
+adversarial measures.
+
+**No count of "how many sealed measures there are" is asserted here, and the
+one that used to be was wrong twice over.** It read "one of the eight sealed
+measures" over a sentence that then enumerated nine, and it described "four
+everyday measures" when `everyday/measure-gate.py` names eleven — six forced
+and five suppressed — and the adversarial set is scored by the same scorer. The
+figure was never derived from anything; it was written in prose and would have
+been quoted back as if it had been. If a denominator is wanted, count the names
+in `measure-gate.py` and the headline figures `heldout/score.py` prints, which
+is a list something maintains rather than a number this file invented.
+
+Caught in review by the evaluation thread, which could not reproduce the eight
+from anything enumerable. That is the same defect as the compromised-capture
+count earlier the same day: **a published figure has to come from the check
+that computes it**, or the first person to re-derive it gets a different
+answer.
 
 The ledger is not a budget and no number in it is acceptable by being small.
 It is here so the question "has this been drifting?" has an answer that takes

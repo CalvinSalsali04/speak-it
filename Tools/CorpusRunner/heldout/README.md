@@ -93,6 +93,49 @@ provenance problem as a data problem: it opens a new generation, breaks
 comparability with every figure already published, and destroys the evidence.
 The denominator carries them, and a reader quoting the rate should know it.
 
+### Two numbers, and which one a claim may use
+
+As of 2026-09-12 the scorer prints **two** sets of figures, and the difference
+between them is the whole subject of this file.
+
+- **LEGACY** — every labelled capture. This is the historical metric and it is
+  unchanged. Every figure in the dated sections of `Docs/LANGUAGE_BASELINE.md`
+  written before 2026-09-12 means this number, which is why it is still printed
+  rather than quietly replaced.
+- **CLEAN SEALED** — the same measures over the captures still plausibly
+  unseen. **Use this one for any claim about generalising to unseen speech.**
+
+The clean number is not a better number. It is the same measures over the rows
+entitled to carry that claim, and it may read higher or lower than the legacy
+one — which capture is excluded decides that, not whether excluding helps.
+
+**No count is written down here.** Totals, the excluded count, both
+denominators, and which subtotal each excluded capture feeds are all printed by
+`score.py` on every run, from the registry it actually uses. A figure restated
+in prose is a figure that can disagree with the instrument, and this file has
+already published a wrong count once for exactly that reason.
+
+The exclusion registry is `compromised.py`, which carries the provenance for
+each capture and the reason each category exists:
+
+| category | why it disqualifies a capture |
+|---|---|
+| in tuned material | The text sits in the gating corpus or a development set, so the rules were fitted while the capture was visible. The row measures memorisation. |
+| verbatim in a tracked document | Nothing was fitted to it, but every rule here is written by someone who reads these documents, so it is not unseen either. |
+| exposed without inspection | The text was printed into a working session's view. Never in tuning material, pass/fail never looked up. An *event*, not a state of the repository — so it cannot be rediscovered by scanning and has to be recorded when it happens. |
+
+The first two categories are the "five compromised captures"; they describe the
+repository and a scan can find them. The third is one more capture and it is
+excluded as well, which is a judgement worth stating: the property the clean
+number claims is **unseen**, and a capture a parser-writing session has read is
+not unseen whatever route it took. It costs one row and protects the claim.
+
+The categories **overlap** — one capture is in the first two at once — so the
+excluded total is a union and never a sum. Reporting one limb as if it were the
+union is how the published figure read three when it was five, and a sum would
+read six where the answer is five. `test_score.py` fails if the limbs stop
+overlapping without someone updating the test deliberately.
+
 ### Incidental exposure, 2026-09-11
 
 **One capture in this set was printed into a working session's context on

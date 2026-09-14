@@ -617,5 +617,99 @@ class DevsetScorerTests(unittest.TestCase):
                     f"suppression rather than a documented failure")
 
 
+class CompromisedRegistry(unittest.TestCase):
+    """The held-out exclusion list, and the ways it can pass while doing nothing.
+
+    Every assertion here exists because the corresponding mistake was made in
+    this repository on 2026-09-11: a two-limb count reported as a column
+    rather than a union, and a guard whose expected answer was the system's
+    default answer.
+
+    Ids only. Nothing in this class reads the utterance column.
+    """
+
+    HELDOUT = pathlib.Path(__file__).resolve().parent / "heldout" / "heldout.tsv"
+
+    def registry(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "heldout"))
+        import compromised
+        return compromised
+
+    def heldout_ids(self):
+        if not self.HELDOUT.exists():
+            self.skipTest("heldout.tsv not present")
+        ids = set()
+        for line in self.HELDOUT.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 5 and parts[0] != "id":
+                ids.add(parts[0])
+        return ids
+
+    def test_every_excluded_id_is_really_in_the_set(self):
+        """A typo excludes nothing and the clean score becomes the legacy one.
+
+        This is the failure mode that cannot be seen from the output: both
+        numbers are printed, both look plausible, and the difference between
+        them is silently zero.
+        """
+        c = self.registry()
+        unknown = sorted(c.EXCLUDED - self.heldout_ids())
+        self.assertEqual(
+            unknown, [],
+            f"compromised.py names ids that are not in heldout.tsv: {unknown}. "
+            f"The clean sealed score would exclude nothing for these.")
+
+    def test_the_exclusion_actually_removes_rows(self):
+        """Guards against the registry emptying out and nobody noticing."""
+        c = self.registry()
+        self.assertTrue(c.EXCLUDED, "the exclusion set is empty")
+        self.assertTrue(
+            c.EXCLUDED & self.heldout_ids(),
+            "no excluded id is in the set, so clean == legacy")
+
+    def test_compromised_is_the_union_of_the_two_state_categories(self):
+        """The union, not either column, and not their sum.
+
+        C342 sits in both limbs, which is exactly what let a column pass for
+        the union and kept the wrong total looking self-consistent. A sum
+        would say six here and the right answer is five.
+        """
+        c = self.registry()
+        self.assertEqual(
+            c.COMPROMISED,
+            set(c.IN_TUNED_MATERIAL) | set(c.VERBATIM_IN_DOCUMENT))
+        self.assertLess(
+            len(c.COMPROMISED),
+            len(c.IN_TUNED_MATERIAL) + len(c.VERBATIM_IN_DOCUMENT),
+            "the two limbs no longer overlap -- if that is real, this test "
+            "should be updated deliberately rather than relaxed")
+
+    def test_clean_excludes_at_least_everything_compromised(self):
+        c = self.registry()
+        self.assertTrue(c.COMPROMISED <= c.EXCLUDED)
+
+    def test_every_category_says_why_each_capture_is_in_it(self):
+        """A bare id is not a record. Provenance is what makes it auditable."""
+        c = self.registry()
+        for name, table in c.CATEGORIES:
+            for cid, provenance in table.items():
+                with self.subTest(category=name, capture=cid):
+                    self.assertGreater(
+                        len(provenance.strip()), 10,
+                        f"{cid} is listed under {name!r} without saying where")
+
+    def test_why_reports_both_categories_for_a_doubly_compromised_capture(self):
+        """The accessor has to return the union too, not the first hit."""
+        c = self.registry()
+        doubled = set(c.IN_TUNED_MATERIAL) & set(c.VERBATIM_IN_DOCUMENT)
+        if not doubled:
+            self.skipTest("no capture is compromised both ways any more")
+        for cid in doubled:
+            with self.subTest(capture=cid):
+                self.assertEqual(len(c.why(cid)), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
