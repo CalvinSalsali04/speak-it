@@ -223,6 +223,64 @@ class SealedPathsAreRefusedByName(CensusCase):
             self.assertNotIn("sealed", str(path).lower())
 
 
+class TheMarkedListInTheBaselineIsRecomputed(CensusCase):
+    """The document names which forms are absent; the census decides.
+
+    `LANGUAGE_BASELINE.md` states that four connectives appear in no readable
+    utterance, and that sentence is the reason a target is not being built.
+    A claim doing that much work cannot be a sentence somebody typed once.
+
+    It is a list rather than a number on purpose. A count drifts by one every
+    time anybody adds a devset row and says nothing when it does; the set of
+    forms with no attestation at all changes only when the answer changes,
+    and when it changes the conclusion changes with it.
+
+    The limit is the same one every marked figure here has: **this catches a
+    marked claim that drifts and cannot catch a claim nobody marked.**
+    """
+
+    DOC = HERE.parents[1] / "Docs" / "LANGUAGE_BASELINE.md"
+    MARKER = r"<!--\s*recomputed:\s*absent-connectives\s+([^>]*?)\s*-->"
+
+    def claimed(self):
+        import re
+        found = re.findall(self.MARKER, self.DOC.read_text(encoding="utf-8"))
+        return [[part.strip() for part in raw.split(",")] for raw in found]
+
+    def measured(self):
+        counts, _, _ = self.census.census()
+        return [name for name, _ in self.census.CONNECTIVES if not counts[name]]
+
+    def test_the_document_still_carries_the_marker(self):
+        """No marker means the test below checks nothing, silently."""
+        self.assertEqual(len(self.claimed()), 1)
+
+    def test_the_marked_list_matches_what_the_census_finds(self):
+        self.assertEqual(self.claimed()[0], self.measured())
+
+    def test_the_claim_is_about_something(self):
+        """An empty absent-list agrees with an empty census perfectly, and
+        the sentence in the document would then be true of nothing."""
+        self.assertTrue(self.measured())
+
+    def test_the_document_does_not_restate_the_counts(self):
+        """The forms are named; the figures stay where something prints them.
+
+        `choice-balance.py` printed a count two generations out of date for as
+        long as that block existed, because the document's copy was corrected
+        and the script's was not. The rule that came out of it was one copy,
+        and this is the section most tempted to make a second.
+        """
+        import re
+        start = self.DOC.read_text(encoding="utf-8").index(
+            "## 2026-09-14 — the next target")
+        text = self.DOC.read_text(encoding="utf-8")[start:]
+        text = text[:text.index("\n## ", 10)]
+        for name, _ in self.census.CONNECTIVES:
+            hits = re.findall(rf"`{re.escape(name)}`\s+(?:at\s+)?\d+", text)
+            self.assertEqual(hits, [], f"the section quotes a count for {name}")
+
+
 class TheMatcherWorksInBothDirections(CensusCase):
     """A pattern matching nothing reports every form absent; one matching
     everything reports every form attested. Both read as a clean run."""

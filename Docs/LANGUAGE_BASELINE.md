@@ -411,6 +411,113 @@ destination are identical to the row. The only negative signal remains the one
 held-out thought-count row from 2026-09-11, already in the cost ledger, and
 range-aware scoring accepts the count it produces. Merged on that basis.
 
+## 2026-09-14 — the next target, traced to source, and why it is not being built
+
+After #57 the consequence set reported 34 of 56 on thought count, with 22 of
+the 32 must-split captures still arriving as one thought. The reading published
+beside that number was that the rule fixes one connector of eight, and that the
+next improvement is probably not a ninth. This section traces that claim to the
+source, tries to size it against every readable set in the repository, and
+stops there on purpose.
+
+### What the source says
+
+The splitter does not have a list of eight connectors. It has three unrelated
+mechanisms, and three of the eight are in none of them.
+
+| connector | where it is handled |
+| --- | --- |
+| `and` | `splittableCoordinatorRanges`, a literal regex |
+| `so` | the same regex, behind a first-person-obligation lookahead |
+| comma | `splitClauses`, behind an `actionLeadPattern` lookahead |
+| `then` | `splitClauses`, behind a `triggerLeadPattern` lookahead |
+| juxtaposition | `ClauseJuxtaposition`, its own module |
+| `which means` | nowhere |
+| `that means` | nowhere |
+| `because of that` | nowhere |
+
+The last three occur in `SpeakIt/` only inside comments.
+
+The interesting half is not the absence. It is that **the machinery deciding
+whether a tail is a thought of its own is already general, and is only ever
+consulted at positions a two-word regex nominates.** `isIndependentConjunct`
+takes spans into a `SentenceContext` rather than loose strings, asks
+`hasSubjectPredicate` and `hasOwnSubject` about them, and already carries a
+relation distinction: a `resultive: Bool`, derived from whether the boundary
+ends in `so`, which turns on the guard that a consequence needs a cause and
+that an imperative is not a fact.
+
+So a stronger design is visible from the source alone, without measuring
+anything: candidate boundaries generated separately from the adjudication that
+accepts them, each candidate carrying a relation rather than one boolean
+hard-wired to one word. `which means`, `that means` and `because of that` are
+all resultive and would want precisely the guard `so` already has.
+
+That is a design sketch. It is not a plan, for the reason below.
+
+### Why it is not being built
+
+**Nothing in this repository can size the family.**
+
+`Tools/CorpusRunner/connective-census.py` counts how many readable rows contain
+each form, across the seven development sets and SpeechLab's renderings and
+audit data. It reads no sealed set: sources come from `corpus_paths.readable()`
+plus a declared SpeechLab list checked against `corpus_paths.sealed()` at the
+point of use, and it refuses to run rather than score a zero if any source
+stops yielding rows.
+
+Run it for the figures rather than reading them here. The load-bearing result
+is the one this document does state, because a test recomputes it: **`which
+means`, `that means`, `because of that` and `therefore` appear in no readable
+row at all**, while `and` and `so` appear in hundreds.
+<!-- recomputed: absent-connectives which means, that means, because of that, therefore -->
+
+**Read that in both directions, and the second one matters more.** A zero is
+not evidence that people do not say these things. Every row counted was
+authored by this project, so the census largely records what we have thought to
+write down, and treating it as a fact about speech would be the circular step
+that has already killed four targets.
+
+What it does settle is narrower and sufficient. The only material in which this
+family appears at all is the consequence set — and that set's eight-connector
+rotation is a **design parameter fixed in advance**, not an observation of how
+anyone talks. Choosing the next parser change from where that set fails is
+optimising against a sealed set at low resolution, which is the single thing
+the set exists to prevent. It would also be the fifth instance of the pattern
+that killed the previous four: the readable material could not size the family,
+and every example was a sentence written for the occasion.
+
+The readable sets cannot break the tie either: they are at or near their
+ceilings, which is why they have stopped producing new targets rather than
+because the parser is finished. Their rates are recorded in their own sections
+above and are deliberately not repeated here — this document already carries
+three copies of them, and a fourth is how the count in `choice-balance.py` came
+to be two generations out of date while everything around it was correct.
+
+### What would settle it
+
+Real recordings, which is the open ask from 2026-09-11. Four properties matter
+more than the count: whatever someone happened to record rather than captures
+picked to match a family we named; more than one speaker, since one author is
+still one author; whole recordings rather than sentences; and a portion sealed
+before any thread reads a line.
+
+Until then this is recorded as an **architectural observation with a design
+sketch and no evidence of use** — which is its honest state — and not as queued
+work. Building a relation model for connectives that appear zero times outside
+a set authored to exercise them would be the ninth coordinator with a better
+vocabulary.
+
+### What is not claimed
+
+- Not that the current splitter is adequate. It plainly under-splits on the
+  consequence set, and that number stands unchanged.
+- Not that the three absent connectors are rare in speech. This repository
+  cannot say either way, and the census says so in its own output.
+- Not a measurement of any kind. Nothing here ran the parser: the table of
+  mechanisms is read from source and the census reads corpora, in a container
+  where the engine does not build.
+
 ## 2026-09-14 — correction: I read the wrong column, and what survives it
 
 Commit `bbc9f97` reports that the everyday corpus contains no instance of the
