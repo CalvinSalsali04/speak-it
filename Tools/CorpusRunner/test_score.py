@@ -715,6 +715,252 @@ class DevsetScorerTests(unittest.TestCase):
                     f"suppression rather than a documented failure")
 
 
+class AcceptableCounts(unittest.TestCase):
+    """The label reader that decides 
+    the thought-count metric.
+
+    It is tested directly rather than through a run because it is a pure
+    function that a whole published figure rests on, and because the defect it
+    fixes was invisible end to end: the strict reading produced a plausible
+    number for a year and nothing compared it against the label it came from.
+    """
+
+    def reader(self):
+        import importlib.util
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "score.py")
+        source = path.read_text()
+        # Import the function without running the script, which expects argv.
+        namespace = {}
+        start = source.index("def acceptable_counts(")
+        end = source.index("def tally(")
+        exec(compile("import re\n" + source[start:end], str(path), "exec"),
+             namespace)
+        return namespace["acceptable_counts"]
+
+    def test_an_exact_label_permits_exactly_one_count(self):
+        self.assertEqual(self.reader()("3"), ({3}, 3, False))
+
+    def test_a_range_permits_every_count_in_it(self):
+        acceptable, strict, prose = self.reader()("1-2")
+        self.assertEqual(acceptable, {1, 2})
+        self.assertEqual(strict, 1)
+        self.assertFalse(prose)
+
+    def test_a_wider_range_is_inclusive_at_both_ends(self):
+        self.assertEqual(self.reader()("4-5")[0], {4, 5})
+        self.assertEqual(self.reader()("0-1")[0], {0, 1})
+
+    def test_whitespace_around_the_dash_is_tolerated(self):
+        self.assertEqual(self.reader()("2 - 3")[0], {2, 3})
+
+    def test_a_prose_label_falls_back_to_the_leading_integer_and_says_so(self):
+        """The fallback is the old behaviour. What is new is that it is named.
+
+        Three captures carry a label like `2 (or 1 with 2 alerts)`. Reading the
+        leading integer is a guess, and a guess that reports itself can be
+        counted; one that does not becomes part of the figure.
+        """
+        acceptable, strict, prose = self.reader()("2 (or 1 with 2 alerts)")
+        self.assertEqual((acceptable, strict), ({2}, 2))
+        self.assertTrue(prose)
+
+    def test_an_unparseable_label_is_not_scored_at_all(self):
+        self.assertEqual(self.reader()(""), (set(), None, False))
+        self.assertEqual(self.reader()("some")[1], None)
+
+    def test_the_strict_answer_is_always_one_the_label_permits(self):
+        """Otherwise range-aware could score below strict, which is nonsense.
+
+        This is the property that makes the two figures comparable: the strict
+        reading has to be a special case of the range-aware one, so the second
+        can only ever be the same or higher.
+        """
+        for label in ["0", "3", "0-1", "1-2", "2-3", "4-5", "2 (or 1 with 2 alerts)"]:
+            with self.subTest(label=label):
+                acceptable, strict, _ = self.reader()(label)
+                self.assertIn(strict, acceptable)
+
+    def test_the_real_file_uses_only_shapes_this_understands(self):
+        """A fourth label shape would be silently read as its leading integer."""
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "heldout.tsv")
+        if not path.exists():
+            self.skipTest("heldout.tsv not present")
+        reader = self.reader()
+        prose = []
+        for line in path.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 5 or parts[0] == "id":
+                continue
+            _, strict, is_prose = reader(parts[4])
+            if is_prose:
+                prose.append(parts[0])
+        self.assertLessEqual(
+            len(prose), 3,
+            f"more prose count labels than the three recorded: {sorted(prose)}. "
+            f"Each is read as its leading integer, which is a guess.")
+
+
+class CompromisedRegistry(unittest.TestCase):
+    """The held-out exclusion list, and the ways it can pass while doing nothing.
+
+    Every assertion here exists because the corresponding mistake was made in
+    this repository on 2026-09-11: a two-limb count reported as a column
+    rather than a union, and a guard whose expected answer was the system's
+    default answer.
+
+    Ids only. Nothing in this class reads the utterance column.
+    """
+
+    HELDOUT = pathlib.Path(__file__).resolve().parent / "heldout" / "heldout.tsv"
+
+    def registry(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "heldout"))
+        import compromised
+        return compromised
+
+    def heldout_ids(self):
+        if not self.HELDOUT.exists():
+            self.skipTest("heldout.tsv not present")
+        ids = set()
+        for line in self.HELDOUT.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 5 and parts[0] != "id":
+                ids.add(parts[0])
+        return ids
+
+    def test_every_excluded_id_is_really_in_the_set(self):
+        """A typo excludes nothing and the clean score becomes the legacy one.
+
+        This is the failure mode that cannot be seen from the output: both
+        numbers are printed, both look plausible, and the difference between
+        them is silently zero.
+        """
+        c = self.registry()
+        unknown = sorted(c.EXCLUDED - self.heldout_ids())
+        self.assertEqual(
+            unknown, [],
+            f"compromised.py names ids that are not in heldout.tsv: {unknown}. "
+            f"The clean sealed score would exclude nothing for these.")
+
+    def test_the_exclusion_actually_removes_rows(self):
+        """Guards against the registry emptying out and nobody noticing."""
+        c = self.registry()
+        self.assertTrue(c.EXCLUDED, "the exclusion set is empty")
+        self.assertTrue(
+            c.EXCLUDED & self.heldout_ids(),
+            "no excluded id is in the set, so clean == legacy")
+
+    def test_compromised_is_the_union_of_the_two_state_categories(self):
+        """The union, not either column, and not their sum.
+
+        C342 sits in both limbs, which is exactly what let a column pass for
+        the union and kept the wrong total looking self-consistent. A sum
+        would say six here and the right answer is five.
+        """
+        c = self.registry()
+        self.assertEqual(
+            c.COMPROMISED,
+            set(c.IN_TUNED_MATERIAL) | set(c.VERBATIM_IN_DOCUMENT))
+        self.assertLess(
+            len(c.COMPROMISED),
+            len(c.IN_TUNED_MATERIAL) + len(c.VERBATIM_IN_DOCUMENT),
+            "the two limbs no longer overlap -- if that is real, this test "
+            "should be updated deliberately rather than relaxed")
+
+    def test_clean_excludes_at_least_everything_compromised(self):
+        c = self.registry()
+        self.assertTrue(c.COMPROMISED <= c.EXCLUDED)
+
+    def test_every_category_says_why_each_capture_is_in_it(self):
+        """A bare id is not a record. Provenance is what makes it auditable."""
+        c = self.registry()
+        for name, table in c.CATEGORIES:
+            for cid, provenance in table.items():
+                with self.subTest(category=name, capture=cid):
+                    self.assertGreater(
+                        len(provenance.strip()), 10,
+                        f"{cid} is listed under {name!r} without saying where")
+
+    def test_the_registry_agrees_with_the_leak_check_that_detects_them(self):
+        """Two records of one fact drift. This is the thing that notices.
+
+        `compromised.py` is the scorer's exclusion list. PR #55 adds
+        `OVERLAP_DOCUMENTED`, `PROSE_DOCUMENTED` and
+        `EXPOSED_WITHOUT_INSPECTION` to `everyday/leak-check.py`, which is the
+        check that actually *detects* these captures. Once both exist, the two
+        must name the same ids, and the leak check should become the source
+        the registry derives from -- a figure belongs to the check that
+        computes it.
+
+        Skips until #55 lands, which is the weak form and is deliberate here:
+        the alternative is asserting against a file that does not exist yet.
+        The skip message names what will arm it, so a skip in the output is a
+        reminder rather than a silence.
+        """
+        leak = (pathlib.Path(__file__).resolve().parent
+                / "everyday" / "leak-check.py")
+        if not leak.exists():
+            self.skipTest("everyday/leak-check.py not present")
+        source = leak.read_text()
+        names = ["OVERLAP_DOCUMENTED", "PROSE_DOCUMENTED",
+                 "EXPOSED_WITHOUT_INSPECTION"]
+        if not all(n in source for n in names):
+            self.skipTest(
+                "leak-check.py does not carry the documented lists yet; "
+                "PR #55 adds them. When it lands this test arms itself and "
+                "compromised.py should derive from it rather than restate it.")
+
+        #: `__file__` is set because leak-check.py resolves its own path to
+        #: find the repository root, and a bare exec namespace has no
+        #: `__file__` at all. `__name__` is set to something other than
+        #: `__main__` so that exec'ing the module defines its lists without
+        #: also running its command line.
+        namespace = {"__file__": str(leak), "__name__": "leak_check_under_test"}
+        exec(compile(source, str(leak), "exec"), namespace)  # noqa: S102
+        #: Their lists cover every sealed set; `compromised.py` covers the
+        #: held-out set alone, because the clean sealed score is a held-out
+        #: figure. So the comparison is restricted to held-out captures, and
+        #: restricted BY THE FILE IN THE KEY rather than by an id prefix: a
+        #: prefix test would be a second guess about the data sitting inside
+        #: the check meant to catch guesses, and it would silently pass the
+        #: day a set adopts a colliding prefix.
+        theirs = set()
+        for n in names:
+            for key in namespace[n]:
+                self.assertIsInstance(
+                    key, tuple,
+                    f"{n} stopped using (file, id) keys, so this comparison "
+                    f"can no longer tell which set a capture belongs to")
+                source_file, capture_id = key[0], key[1]
+                if source_file == "heldout.tsv":
+                    theirs.add(capture_id)  # ids only, never text
+        self.assertTrue(
+            theirs,
+            "no held-out capture is named by leak-check.py at all, which "
+            "means this test is comparing against an empty set and would "
+            "pass however wrong compromised.py became")
+        ours = self.registry().EXCLUDED
+        self.assertEqual(
+            ours, theirs,
+            "compromised.py and leak-check.py disagree about which held-out "
+            "captures are not unseen. One of them is wrong and the clean "
+            "sealed score is computed from the first.")
+
+    def test_why_reports_both_categories_for_a_doubly_compromised_capture(self):
+        """The accessor has to return the union too, not the first hit."""
+        c = self.registry()
+        doubled = set(c.IN_TUNED_MATERIAL) & set(c.VERBATIM_IN_DOCUMENT)
+        if not doubled:
+            self.skipTest("no capture is compromised both ways any more")
+        for cid in doubled:
+            with self.subTest(capture=cid):
+                self.assertEqual(len(c.why(cid)), 2)
 
 
 class RamblingPairingTests(unittest.TestCase):
@@ -1239,19 +1485,282 @@ class LedgerCheckTests(unittest.TestCase):
         problems = self.ledger.check(empty)
         self.assertTrue(any("no rows" in p for p in problems), problems)
 
-    @unittest.expectedFailure
     def test_the_baseline_carries_the_ledger(self):
-        """Pinned as an expected failure, not skipped, and the difference matters.
+        """The real ledger passes the real check.
 
-        The ledger is written by the core language thread and lands with its
-        pull request; this check is on a different branch. A skip here would
-        mean the wiring is never noticed when the ledger arrives. An expected
-        failure reports an UNEXPECTED SUCCESS the moment the section exists,
-        which fails the run and is the reminder to wire this into CI and take
-        this marker off. Same mechanism as the `Docs/**` path-filter test.
+        This was pinned as an expected failure while the ledger lived on the
+        core language thread's branch and this check lived on the evaluation
+        thread's. That is the weak form done deliberately: a skip would have
+        gone quiet forever, an expected failure reports an UNEXPECTED SUCCESS
+        the moment the section exists, and an unexpected success fails the run.
+
+        It did exactly that, on the merge that brought the two branches
+        together, which is the only event that could have armed it. The marker
+        is off because the thing it was waiting for arrived; the mechanism is
+        worth keeping for the next check that has to outlive a branch.
         """
         self.assertEqual(self.ledger.check(
             self.ledger.BASELINE.read_text(encoding="utf-8")), [])
+
+
+
+class CorpusShapeTests(unittest.TestCase):
+    """The reviewer's tool for a sealed set, which must never print a capture.
+
+    It exists because reviewing #62 meant reading all fifty-six captures of a
+    sealed set in a pull request diff, which spent the set as blind evidence
+    for every parser change after that one. The properties a reviewer actually
+    needed were all computable without reading a row.
+    """
+
+    def shape(self):
+        path = (pathlib.Path(__file__).resolve().parent / "corpus-shape.py")
+        namespace = {"__file__": str(path), "__name__": "corpus_shape_under_test"}
+        exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"),  # noqa: S102
+             namespace)
+        return namespace
+
+    def run_on(self, text):
+        """Returns (exit status, printed output) for a corpus written inline."""
+        shape = self.shape()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corpus.tsv"
+            path.write_text(text, encoding="utf-8")
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                status = shape["main"]([str(path)])
+        return status, said.getvalue()
+
+    GOOD = ("id\tutterance\tfamily\texpected_thoughts\n"
+            "X01\tthe lease ends in March\ta\t1\n"
+            "X02\tthe bin goes out on Thursday\tb\t2\n")
+
+    def test_no_capture_text_reaches_the_output(self):
+        """The whole point. A reviewer must be able to run this and stay blind."""
+        status, said = self.run_on(self.GOOD)
+        self.assertEqual(status, 0, said)
+        for text in ("the lease ends in March", "the bin goes out on Thursday"):
+            self.assertNotIn(text, said,
+                             "the shape report printed a capture, which is the "
+                             "one thing it exists to avoid")
+
+    def test_a_duplicate_row_is_named_by_id_and_not_by_text(self):
+        """Even the error path stays blind, which is where text usually leaks."""
+        status, said = self.run_on(self.GOOD + "X03\tthe lease ends in March\ta\t1\n")
+        self.assertEqual(status, 1)
+        self.assertIn("X01", said)
+        self.assertIn("X03", said)
+        self.assertNotIn("the lease ends in March", said)
+
+    def test_the_utterance_column_comes_from_the_header(self):
+        """`everyday.tsv` keeps it third and the devsets keep it second.
+
+        A hard-coded column is the defect that reported zero instances of the
+        word "so" in a corpus containing 34 of them.
+        """
+        third = ("id\tdomain\tutterance\texpect\n"
+                 "X01\thome\tthe lease ends in March\tMemory\n")
+        status, said = self.run_on(third)
+        self.assertEqual(status, 0, said)
+        self.assertIn("utterance column    2", said)
+        self.assertNotIn("the lease ends in March", said)
+
+    def test_a_file_with_no_utterance_header_is_refused_not_guessed(self):
+        """Refusing beats reporting on whichever column happened to be second."""
+        status, said = self.run_on("X01\tsomething\tother\n")
+        self.assertEqual(status, 1)
+        self.assertIn("refuses to report on content rather than guess", said)
+
+    def test_an_uncommented_header_is_not_counted_as_a_capture(self):
+        """Counting everyday's header row reported 256 rows for 255 captures."""
+        status, said = self.run_on(self.GOOD)
+        self.assertEqual(status, 0, said)
+        self.assertIn("rows                2", said)
+
+    def test_a_commented_header_is_found_too(self):
+        """`heldout.tsv` writes its header inside a comment."""
+        status, said = self.run_on("# id\tutterance\tfamily\n"
+                                   "X01\tthe lease ends in March\ta\n")
+        self.assertEqual(status, 0, said)
+        self.assertIn("utterance column    1", said)
+
+    def test_every_sealed_set_passes_its_own_shape_check(self):
+        """And reports the capture count its README claims.
+
+        Pinned to literals: a test that reads the count out of the file it is
+        checking cannot notice the file changing.
+        """
+        runner = pathlib.Path(__file__).resolve().parent
+        expected = {"consequence": 56, "everyday": 255,
+                    "heldout": 389, "adversarial": 120}
+        shape = self.shape()
+        for name, count in expected.items():
+            path = runner / name / f"{name}.tsv"
+            if not path.exists():
+                continue
+            with self.subTest(corpus=name):
+                said = io.StringIO()
+                with contextlib.redirect_stdout(said):
+                    status = shape["main"]([str(path)])
+                out = said.getvalue()
+                self.assertEqual(status, 0, out)
+                self.assertIn(f"rows                {count}", out,
+                              f"{name} no longer holds {count} captures; if "
+                              f"that was deliberate it opens a generation")
+
+class ThisFileRunsAllOfItselfTests(unittest.TestCase):
+    """A class defined after `unittest.main()` is never run as a script.
+
+    Not hypothetical: `CorpusShapeTests` was appended to the end of this file,
+    which put it after the `__main__` guard. `python3 -m unittest
+    test_score.CorpusShapeTests` ran it and passed, because importing a module
+    defines everything in it. `python3 test_score.py` -- which is what CI runs
+    -- called `unittest.main()` before the class existed and reported 81 tests
+    instead of 88, cleanly, at exit 0.
+
+    That is the recurring shape: a check that never runs and a check that
+    passes are the same output. Every edit that appends to this file is one
+    keystroke away from it, so the guard is mechanical rather than remembered.
+    """
+
+    def test_nothing_is_defined_after_the_main_guard(self):
+        source = pathlib.Path(__file__).resolve().read_text(encoding="utf-8")
+        marker = 'if __name__ == "__main__":'
+        self.assertIn(marker, source)
+        after = source.split(marker)[-1]
+        self.assertNotIn(
+            "\nclass ", after,
+            "a class is defined after the __main__ guard, so it is invisible "
+            "to `python3 test_score.py` and will not run in CI. Move the "
+            "guard back to the end of the file.")
+        self.assertNotIn(
+            "\ndef ", after,
+            "a function is defined after the __main__ guard and will not be "
+            "seen when this file runs as a script")
+
+
+class ReconciliationTests(unittest.TestCase):
+    """The exclusions block claims an arithmetic identity, so it is checked.
+
+    The clean denominator for a measure must be the legacy one minus exactly
+    the excluded captures recorded as entering that measure. The first version
+    worked participation out from the label with `^\\d+` and reported that
+    eleven captures fed a thought count whose denominator had fallen by nine:
+    an Ambiguous capture returns before the count block, and a capture the
+    probe answers with an operation is skipped by it, and both carry a numeric
+    label. A reconciliation that does not reconcile is worse than none, because
+    it reads as having been checked.
+    """
+
+    def check(self):
+        """`reconciliation_problems`, lifted out of the script around it."""
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "score.py")
+        source = path.read_text(encoding="utf-8")
+        start = source.index("def reconciliation_problems(")
+        end = source.index("def tally(", start)
+        namespace = {}
+        exec(compile(source[start:end], str(path), "exec"), namespace)  # noqa: S102
+        return namespace["reconciliation_problems"]
+
+    LEGACY = {"dest_ok": 200, "dest_miss": 120,       # destination over 320
+              "count_scored": 310, "ambiguous": 69}
+    CLEAN = {"dest_ok": 195, "dest_miss": 115,        # destination over 310
+             "count_scored": 301, "ambiguous": 68}
+
+    #: Eleven excluded captures: ten feed destination, nine feed the thought
+    #: count, one is ambiguous instead. That is the real shape of the held-out
+    #: registry and the shape the first version got wrong.
+    FEEDS = dict(
+        [(f"C{i:03d}", ["destination", "thought count"]) for i in range(1, 10)]
+        + [("C010", ["destination"]), ("C011", ["ambiguous/unsafe"])])
+    EXCLUDED = set(FEEDS)
+
+    def test_a_consistent_set_of_denominators_reports_nothing(self):
+        self.assertEqual(
+            self.check()(self.LEGACY, self.CLEAN, self.FEEDS, self.EXCLUDED), [])
+
+    def test_a_capture_credited_to_a_measure_it_never_entered_is_caught(self):
+        """The exact defect: the Ambiguous capture listed under thought count."""
+        feeds = dict(self.FEEDS)
+        feeds["C011"] = ["ambiguous/unsafe", "thought count"]
+        problems = self.check()(self.LEGACY, self.CLEAN, feeds, self.EXCLUDED)
+        self.assertTrue(any("thought count" in p for p in problems), problems)
+        self.assertTrue(any("fell by 9" in p for p in problems), problems)
+
+    def test_a_denominator_that_moved_on_its_own_is_caught(self):
+        """The other direction: the tally changed and the exclusions did not."""
+        clean = dict(self.CLEAN, count_scored=299)
+        problems = self.check()(self.LEGACY, clean, self.FEEDS, self.EXCLUDED)
+        self.assertTrue(any("fell by 11" in p for p in problems), problems)
+
+    def test_every_measure_is_checked_and_not_just_the_first(self):
+        """Three identities, so a break in any one has to surface."""
+        clean = dict(self.CLEAN, dest_ok=190, ambiguous=60)
+        problems = self.check()(self.LEGACY, clean, self.FEEDS, self.EXCLUDED)
+        self.assertTrue(any("destination" in p for p in problems), problems)
+        self.assertTrue(any("ambiguous" in p for p in problems), problems)
+
+
+class LedgerSingleMeasureTests(unittest.TestCase):
+    """A running total is a sum, and a sum needs one denominator.
+
+    The ledger states `Running total: **-1 rows**, across one change`, and the
+    check adds the rows up. That is only meaningful because exactly one sealed
+    measure has ever moved. Nothing said so and nothing enforced it, so the day
+    a second measure moved the total would have quietly become 254/310 added to
+    34/56 -- collapsing two instruments into one number, which is the thing
+    this repository forbids everywhere else.
+    """
+
+    def ledger(self):
+        return ledger_check_module()
+
+    #: Built here rather than by editing the real fixture. A test that edits a
+    #: document by string replacement skips itself the day the wording moves,
+    #: and a skipped test checks nothing.
+    def written(self, rows, total):
+        body = ["## Sealed-set cost ledger", "",
+                "| date | change | measure | from | to | |",
+                "| --- | --- | --- | --- | --- | --- |"]
+        body.extend(rows)
+        body += ["", total, "", "## Next heading", ""]
+        return "\n".join(body)
+
+    ONE = "| 2026-09-11 | a change | held-out thought count | 255/310 | 254/310 | **\u22121** |"
+    TWO = "| 2026-09-14 | another | consequence thought count | 30/56 | 34/56 | **+4** |"
+
+    def test_one_measure_under_one_running_total_is_accepted(self):
+        """The control. Without it the next test passes for any reason."""
+        text = self.written([self.ONE],
+                            "Running total: **\u22121 rows**, across one change.")
+        problems = [p for p in self.ledger().check(text)
+                    if "more than one sealed measure" in p]
+        self.assertEqual(problems, [])
+
+    def test_two_measures_under_one_running_total_is_refused(self):
+        text = self.written([self.ONE, self.TWO],
+                            "Running total: **+3 rows**, across two changes.")
+        problems = self.ledger().check(text)
+        self.assertTrue(
+            any("more than one sealed measure" in p for p in problems),
+            problems)
+
+    def test_the_refusal_names_both_measures_so_the_fix_is_obvious(self):
+        text = self.written([self.ONE, self.TWO],
+                            "Running total: **+3 rows**, across two changes.")
+        said = " ".join(self.ledger().check(text))
+        self.assertIn("held-out thought count", said)
+        self.assertIn("consequence thought count", said)
+
+    def test_the_real_ledger_still_moves_only_one_measure(self):
+        """If this fails, the ledger needs a per-measure total, not a patch."""
+        real = self.ledger().BASELINE.read_text(encoding="utf-8")
+        problems = self.ledger().check(real)
+        self.assertEqual(
+            [p for p in problems if "more than one sealed measure" in p], [],
+            "a second sealed measure has moved, so the single running total "
+            "in LANGUAGE_BASELINE.md is now a sum over two denominators")
 
 
 if __name__ == "__main__":
