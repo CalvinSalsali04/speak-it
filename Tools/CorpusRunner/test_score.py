@@ -2307,7 +2307,7 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
                 i += 1
         return re.compile(f"^{out}$")
 
-    def job_body(self):
+    def job_body(self, job=None):
         """The lines of one job, from its key to the next key at that indent.
 
         `\n  ` is not the delimiter: it is also the prefix of every `\n    `
@@ -2316,8 +2316,12 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
         is named for. It cost a run to notice.
         """
         lines = self.WORKFLOW.read_text(encoding="utf-8").splitlines()
-        start = next(i for i, l in enumerate(lines)
-                     if l == f"  {self.JOB}:")
+        want = f"  {job or self.JOB}:"
+        if want not in lines:
+            raise self.failureException(
+                f"no job named `{want.strip()}` in the workflow, so every "
+                f"assertion about it below would pass vacuously")
+        start = lines.index(want)
         for j, later in enumerate(lines[start + 1:], start + 1):
             if re.fullmatch(r"  \S.*", later):
                 return "\n".join(lines[start:j])
@@ -2379,6 +2383,32 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
         one = self.as_regex("Tools/*/x.md")
         self.assertIsNotNone(one.match("Tools/CI/x.md"))
         self.assertIsNone(one.match("Tools/a/b/x.md"))
+
+    def test_every_output_the_gate_names_is_actually_exported(self):
+        """The `if:` and the `filters:` block are two of three parts.
+
+        The third is the `outputs:` map on the `changes` job, and it is the
+        one nothing above reads. Delete `prose:` from it and the filter still
+        evaluates, the `if:` still names it, every other test here still
+        passes -- and `needs.changes.outputs.prose` is the empty string, so
+        `language-tools` is gated on `ios` alone and a documentation-only
+        pull request runs no sealed-set check. That is this pull request's
+        own hole, reopened by deleting one line, with the suite green.
+
+        A check that never runs and a check that passes are the same output;
+        so is a gate wired to an output nobody exports.
+        """
+        body = self.job_body("changes")
+        for name in sorted(self.gate_outputs()):
+            exported = re.search(
+                rf"^      {name}: .*steps\.filter\.outputs\.{name}\b",
+                body, re.MULTILINE)
+            self.assertIsNotNone(
+                exported,
+                f"`{self.JOB}` is gated on needs.changes.outputs.{name}, but "
+                f"the `changes` job exports no `{name}` built from "
+                f"steps.filter.outputs.{name}. That expression is the empty "
+                f"string at runtime, so the gate silently drops the filter.")
 
     def test_every_markdown_file_the_check_reads_starts_the_job(self):
         patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
