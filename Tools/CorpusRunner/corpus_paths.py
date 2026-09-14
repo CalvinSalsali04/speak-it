@@ -196,6 +196,110 @@ def _grep(pattern, root=None):
     return 0 if hits else 1
 
 
+# --- Which lines are data, and which column holds the utterance -------------
+#
+# Four separate defects have come from four readers working this out again:
+#
+#   * `heldout/score.sh` cut column two off EVERY line, so a commented header's
+#     second cell -- the bare word `utterance` -- was fed to the probe as a
+#     390th capture.
+#   * A one-off scan hard-coded column two and reported that the everyday set
+#     contains no instance of the word "so". It keeps its utterance in column
+#     THREE. The real answer is 34, and that set turns out to be the most
+#     spoken-sounding corpus in the repository rather than the least.
+#   * `corpus-shape.py` counted `everyday.tsv`'s header as a row and reported
+#     256 rows for a 255-capture set.
+#   * And `corpus-shape.py` had to solve the whole problem from scratch to do
+#     it, as did `leak-check.py`, `heldout/score.py` and `everyday/score.py`,
+#     by four different mechanisms.
+#
+# The mechanism that is right already existed, in `everyday/leak-check.py`,
+# which is the wrong place for it: one owner, in the module that already owns
+# which files exist.
+#
+# The asymmetry that causes it is worth naming, because it is one file wide.
+# Every corpus here comments its header EXCEPT `everyday.tsv`, which writes it
+# as an ordinary first line. So `startswith("#")` is correct ten times out of
+# eleven, which is the worst possible hit rate for a rule people copy.
+
+#: The cell that identifies a header line, in any of the layouts here.
+HEADER_KEY = "utterance"
+
+
+def header_cells(line):
+    """A line's cells, lowered and stripped, with any leading `#` removed."""
+    return [cell.strip().lower() for cell in line.lstrip("#").strip().split("\t")]
+
+
+def column_of(lines, name):
+    """Index of a named column, read from whichever line carries the header.
+
+    Returns None when no line names it. Callers that need the utterance column
+    should use `utterance_column`, which refuses instead of returning None:
+    `column_of(...) or 0` is how a missing header quietly becomes column one.
+    """
+    for line in lines:
+        cells = header_cells(line)
+        if name in cells:
+            return cells.index(name)
+    return None
+
+
+def header_index(lines):
+    """Index of the line that carries the column names, or None."""
+    for number, line in enumerate(lines):
+        if HEADER_KEY in header_cells(line):
+            return number
+    return None
+
+
+def utterance_column(lines):
+    """Which column a corpus file keeps its utterances in.
+
+    Raises rather than returning None. A corpus file with no header is not a
+    file whose utterances live in column two; it is a file this cannot read,
+    and guessing is the defect above rather than a fallback for it.
+    """
+    column = column_of(lines, HEADER_KEY)
+    if column is None:
+        raise ValueError(
+            "no line in this file names an `utterance` column, so which column "
+            "holds the capture is unknown. Assuming one is how a scan came to "
+            "report that a corpus contained no instance of a word it uses 34 "
+            "times. Add a header rather than defaulting.")
+    return column
+
+
+def data_rows(path):
+    """Yields (line number, cells) for the rows that are data.
+
+    A row is data when it is not blank, not a comment, and not the header --
+    the header identified by the cells it names rather than by being first or
+    by being commented, because those two rules disagree across this directory
+    and each is right somewhere.
+    """
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    head = header_index(lines)
+    for number, line in enumerate(lines):
+        if number == head or line.startswith("#") or not line.strip():
+            continue
+        yield number + 1, line.split("\t")
+
+
+def utterances(path):
+    """Yields (line number, id, utterance) for every data row of a corpus file.
+
+    The two questions answered together, which is how they are always asked.
+    """
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    column = utterance_column(lines)
+    ids = column_of(lines, "id")
+    for number, cells in data_rows(path):
+        if len(cells) > column:
+            yield number, (cells[ids] if ids is not None and len(cells) > ids
+                           else ""), cells[column]
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) == 3 and sys.argv[1] == "--grep":
