@@ -175,6 +175,52 @@ class TheRotationIsCheckedRatherThanAsserted(ReportCase):
         for cid in self.report.ACKNOWLEDGED:
             self.assertIn(cid, text)
 
+    def test_no_recorded_reason_quotes_its_capture(self):
+        """The one channel every other guard in this file misses.
+
+        Everything else the report prints is derived from ids and from probe
+        output, and `assert_clean` catches a capture echoed back out of the
+        input. The recorded reasons are neither: they are written by hand from
+        the sealed set and compiled into the source, so no test that refuses to
+        read the set can compare them against it. One of them carried a
+        two-word quotation from its own capture — reproduced nowhere here,
+        this docstring included — from the day it was written until
+        2026-09-14, printed on every run.
+
+        What is checkable without the set is the shape, and the vocabulary. A
+        reason names a grammatical role, so a backticked span is a single token
+        drawn from a closed list; anything longer, anything double-quoted, or
+        any word off that list is a capture showing through. Bounding the shape
+        alone would still admit one content word at a time.
+        """
+        stated = {cid: self.report.quotation_in(reason)
+                  for cid, reason in self.report.ACKNOWLEDGED.items()}
+        self.assertEqual({c: p for c, p in stated.items() if p}, {})
+
+    def test_the_quotation_check_rejects_what_it_exists_for(self):
+        """A matcher that stopped matching passes the test above on anything.
+
+        The messages are asserted, not just the rejection. A multi-word span is
+        also caught by the vocabulary rule, so dropping the multi-word branch
+        changes no verdict and only the diagnostic — which made removing it an
+        invisible mutation until this test read what it says. The diagnostic is
+        the part a person acts on, so it is the part pinned.
+        """
+        check = self.report.quotation_in
+        self.assertIn("double-quoted",
+                      check('`then` is not a joiner: "two words".'))
+        self.assertIn("multi-word", check("`two words` is a phrase."))
+        self.assertIn("empty backtick", check("an empty `` pair."))
+        self.assertIn("ROLE_VOCABULARY",
+                      check("the `prescription` runs out in March."))
+        self.assertIsNone(check("`then` is the object of `before`."))
+
+    def test_the_vocabulary_is_closed_and_not_merely_single_word(self):
+        """The half of the rule that stops a content word arriving alone."""
+        self.assertNotIn("prescription", self.report.ROLE_VOCABULARY)
+        for word in ("and", "so", "then", "before"):
+            self.assertIn(word, self.report.ROLE_VOCABULARY)
+
     def test_the_base_rate_is_printed_so_a_weak_check_reads_as_weak(self):
         _, text = self.run_on(SET, probe_text(self.rows))
         self.assertIn("appears in 21/56 overall  (weak", text)

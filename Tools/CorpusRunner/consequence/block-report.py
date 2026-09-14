@@ -12,8 +12,11 @@ The block is carried by the id, because the set was written in a fixed rotation
 and sealed: `CQ01`-`CQ40` in eight blocks of five, then `CQ41`-`CQ56` adding two
 per block in spoken register. Nothing here edits the set to add a column.
 
-Rates only, and no capture text on any path, including the error paths, where a
-row is named by its id. A finer-grained number is still a number.
+Rates only. No capture text on any path, including the error paths, where a row
+is named by its id -- and that claim is enforced rather than asserted for
+everything derived from the set, and bounded by shape for the two reasons
+recorded by hand below, which are the only text here a guard cannot compare
+against the set. A finer-grained number is still a number.
 """
 import re
 import sys
@@ -24,15 +27,58 @@ from pathlib import Path
 CONNECTORS = ("and", "so", "which means", ",", "then", "that means",
               "because of that", "none")
 
+#: Words a reason may name, because every one of them is either already public
+#: in CONNECTORS or a grammatical term rather than anything a capture is about.
+#: A word not on this list costs an edit and a sentence, which is the point: it
+#: is how an ordinary content word from a capture is stopped from arriving one
+#: reason at a time.
+ROLE_VOCABULARY = frozenset({"and", "so", "then", "before", "after", "because",
+                            "which", "that", "means", "no"})
+
 #: Rows written in the no-connector block that contain a connector WORD used as
 #: something else. Word presence is not connector use, and this project's most
 #: repeated bug is a marker standing in for the judgement it approximates. So
 #: the check stays strict and the exceptions cost an edit and a sentence.
+#:
+#: These reasons are the one thing in this file no downstream guard can reach.
+#: Everything else printed here is derived from ids and from probe output, and a
+#: test can catch a capture echoed back out of its own input; these are written
+#: by hand from the sealed set and compiled into the source, so a test that
+#: refuses to read the set cannot compare them against it. One of them quoted
+#: two words of its capture until 2026-09-14.
+#:
+#: What IS checkable without the set is the shape. A reason names a grammatical
+#: role, so it never needs a quoted span: no double quotes at all, and a
+#: backticked span must be a single token drawn from ROLE_VOCABULARY above.
+#: `test_block_report.py` enforces that. It bounds the shape rather than the
+#: content, which is why the vocabulary is closed and not merely single-word.
 ACKNOWLEDGED = {
-    "CQ40": "`then` is the object of `before`, not a joiner: \"before then\".",
+    "CQ40": "`then` is the object of the preposition `before`, not a joiner.",
     "CQ55": "opens with a bare `so` as a discourse marker, one of the two rows "
             "written to carry that use; its `then` is the CQ40 one.",
 }
+
+
+def quotation_in(reason):
+    """The reason a recorded exception is malformed, or None if it is fine.
+
+    Its own function with its own fixtures in both directions, because a rule
+    about what may not appear in some text cannot be checked by that text
+    staying silent: a matcher that stopped matching passes a no-quotes
+    assertion on anything at all.
+    """
+    if '"' in reason:
+        return "contains a double-quoted span, which is how a fragment of a capture gets printed"
+    for span in re.findall(r"`([^`]*)`", reason):
+        if not span:
+            return "has an empty backtick pair"
+        if " " in span:
+            return f"backticks the multi-word span {span!r}; name the role rather than quoting the words"
+        if span.lower() not in ROLE_VOCABULARY:
+            return (f"backticks `{span}`, which is not in ROLE_VOCABULARY; "
+                    f"either it is a grammatical term worth adding there with a "
+                    f"sentence, or it is a word out of a capture")
+    return None
 
 ID = re.compile(r"^(CQ\d+)\t")
 BLOCK_SIZE, SPOKEN_FIRST, SPOKEN_PER_BLOCK = 5, 41, 2
