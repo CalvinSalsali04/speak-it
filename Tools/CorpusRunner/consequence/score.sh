@@ -3,7 +3,7 @@
 #
 # READ THIS BEFORE RUNNING IT.
 #
-# These 40 captures were written to a phenomenon -- a person states a fact,
+# These 56 captures were written to a phenomenon -- a person states a fact,
 # then the errand that fact creates -- with the generation parameters fixed and
 # committed BEFORE any capture existed, and with the author unable to see what
 # the parser does with any of them, because the engine does not build in the
@@ -26,3 +26,8 @@ grep -E '^CQ[0-9]+	' "$SP/consequence.tsv" | cut -f2 > /tmp/consequence_utteranc
 ./Tools/PipelineProbe/build/probe /tmp/consequence_utterances.txt > /tmp/consequence_out.txt 2>&1
 python3 "$ROOT/Tools/CorpusRunner/heldout/score.py" \
     "$SP/consequence.tsv" /tmp/consequence_out.txt "$@"
+# The family column encodes split/whole and spoken/written, so the table above
+# has nowhere to put the connector -- and "22 of 32 still read as one thought"
+# cannot say which of the eight connectors those 22 sit under. The block comes
+# from the id, because the rotation was fixed before the set was written.
+python3 "$SP/block-report.py" "$SP/consequence.tsv" /tmp/consequence_out.txt

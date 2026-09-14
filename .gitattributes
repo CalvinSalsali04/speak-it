@@ -1,0 +1,25 @@
+# Sealed capture sets are not rendered as text by `git diff`, `git show` or
+# `git log -p`, and GitHub shows them as a binary change.
+#
+# Not tidiness. On 2026-09-14 the consequence set was merged, and merging it
+# meant reviewing it, and reviewing a diff of a corpus means reading the
+# corpus: all fifty-six captures were read by the thread that owns parser
+# changes, shortly after the set was written to be unseen by exactly that
+# thread. Nobody did anything wrong. A reviewer has to check something, and
+# the only thing the review surface offered was the text.
+#
+# Everything a reviewer actually needs -- row count, unique ids, uniform
+# columns, the population of every label column, per-block counts against a
+# rotation claimed in advance -- is computable without reading a capture, and
+# `Tools/CorpusRunner/corpus-shape.py` computes it. This file removes the
+# easier, wrong option, so the shape report is what a reviewer reads.
+#
+# Tools/CorpusRunner/test_score.py fails when a sealed set is missing a rule
+# here, or when a rule here covers a file that is not sealed. The list is
+# derived from corpus_paths.sealed() but written out, because git reads this
+# file and cannot call Python.
+
+Tools/CorpusRunner/adversarial/adversarial.tsv -diff
+Tools/CorpusRunner/consequence/consequence.tsv -diff
+Tools/CorpusRunner/everyday/everyday.tsv -diff
+Tools/CorpusRunner/heldout/heldout.tsv -diff
