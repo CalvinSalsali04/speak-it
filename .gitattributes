@@ -4,7 +4,7 @@
 # Not tidiness. On 2026-09-14 the consequence set was merged, and merging it
 # meant reviewing it, and reviewing a diff of a corpus means reading the
 # corpus: all fifty-six captures were read by the thread that owns parser
-# changes, an hour after the set was written to be unseen by exactly that
+# changes, shortly after the set was written to be unseen by exactly that
 # thread. Nobody did anything wrong. A reviewer has to check something, and
 # the only thing the review surface offered was the text.
 #

@@ -50,6 +50,27 @@ MARKERS = (
 #: row as marker-free, which reads exactly like a well-balanced set.
 SELF_CHECK = "actually no take the bus"
 
+#: The rules this script decides, and the rules it does not. Both lists are
+#: printed on every run, and the totality test in test_choice_balance.py fails
+#: when the definition states a rule that is in neither.
+CHECKED = ("B1", "B2", "B3")
+
+#: Deliberately carries NO figure. The first version of this block said "four
+#: of the five rows", which was already stale when it was written, and it
+#: survived the correction because the document's copy was marked for
+#: recomputation and this one was not. A number lives where something checks
+#: it; everywhere else points at that place. The test below enforces the rule
+#: rather than the instance, so the next number cannot get in either.
+UNCHECKED = (
+    ("B4", ("are the alternatives and the resolution paraphrases of one",
+            "canonical sentence? Most of the readable decision rows we",
+            "already have fail exactly this, and read as understanding.",
+            "The count is in §B4 of the definition, where the suite",
+            "recomputes it from the set and fails when it drifts.")),
+    ("B5", ("how many authors wrote these, and is any published rate",
+            "resting on one of them?")),
+)
+
 TAG = re.compile(r"^choice-([a-z]+)-([a-z0-9]+)$")
 ALLOW = re.compile(r"^#\s*allow-marker\s+(\S+)\s+(.+?)\s*$")
 
@@ -187,13 +208,13 @@ def check(path):
 
     print()
     print("NOT CHECKED HERE — a human has to do these, and nothing below")
-    print("reports on them, so a pass above is a pass on three rules of five")
+    print(f"reports on them, so a pass above is a pass on {len(CHECKED)} rules "
+          f"of {len(CHECKED) + len(UNCHECKED)}")
     print("-" * 68)
-    print("  B4  are the alternatives and the resolution paraphrases of one")
-    print("      canonical sentence? Four of the five rows this project")
-    print("      already had fail exactly that, and read as understanding.")
-    print("  B5  how many authors wrote these, and is any published rate")
-    print("      resting on one of them?")
+    for rule, note in UNCHECKED:
+        print(f"  {rule}  {note[0]}")
+        for line in note[1:]:
+            print(f"      {line}")
     print("-" * 68)
 
     if failures:

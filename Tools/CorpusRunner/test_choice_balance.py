@@ -27,6 +27,28 @@ def balance_module():
 
 HEADER = "# id\tutterance\tfamily\texpected_destination\texpected_thoughts\n"
 
+NUMBER = (r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+          r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+          r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)")
+
+#: `N of M`, spelled out or not, and any bare numeral. Spelled out matters more
+#: than numerals here: the figure that went stale and survived a correction read
+#: "Four of the five rows", with no digit in it at all, so a digit test would
+#: have passed over the exact sentence it was written for.
+FIGURE = __import__("re").compile(
+    rf"(?:\d)|(?:\b{NUMBER}\s+of\s+(?:the\s+)?{NUMBER}\b)",
+    __import__("re").IGNORECASE)
+
+
+def figure_in(text):
+    """Whether `text` states a quantity, as opposed to referring to one.
+
+    Its own function with its own fixtures, because a rule about what may not
+    appear in some text cannot be checked by the same text staying silent: a
+    predicate that matches nothing passes a no-figures assertion perfectly.
+    """
+    return bool(FIGURE.search(__import__("re").sub(r"§B\d", "", text)))
+
 
 def row(cid, utterance, tag):
     return f"{cid}\t{utterance}\t{tag}\tToday\t1\n"
@@ -227,6 +249,37 @@ class TheCheckerAndTheDefinitionStayInStep(FixtureCase):
         self.assertEqual(unaccounted, set(),
                          "rules in the definition that this checker neither "
                          "checks nor declares unchecked")
+
+    def test_the_unchecked_block_states_no_figure_of_its_own(self):
+        """The rule, not the instance.
+
+        The first version of that block said "four of the five rows", a figure
+        already stale when written. It survived the correction that fixed the
+        document because the document's copy was marked for recomputation and
+        this one was not — and the script is the copy a person actually runs,
+        so it is the one most likely to be read and quoted.
+
+        Correcting it would have left the next number free to arrive. A figure
+        lives where something recomputes it; everywhere else points there.
+        """
+        stated = [(rule, line) for rule, note in self.balance.UNCHECKED
+                  for line in note if figure_in(line)]
+        self.assertEqual(stated, [], "a figure nothing recomputes")
+
+    def test_the_figure_detector_finds_the_figures_it_exists_for(self):
+        """Including the one that actually went stale, which had no digit."""
+        self.assertTrue(figure_in("Four of the five rows already fail"))
+        self.assertTrue(figure_in("seven of ten resolve by restating"))
+        self.assertTrue(figure_in("4 of 5"))
+        self.assertTrue(figure_in("the rate is 7/10"))
+        self.assertFalse(figure_in("paraphrases of one canonical sentence"))
+        self.assertFalse(figure_in("is any published rate resting on one of them"))
+        self.assertFalse(figure_in("the count is in §B4 of the definition"))
+
+    def test_the_two_lists_account_for_every_rule_in_the_definition(self):
+        """Not just presence: the count printed on every run is derived."""
+        named = set(self.balance.CHECKED) | {r for r, _ in self.balance.UNCHECKED}
+        self.assertEqual(named, self.rules_in_the_definition())
 
     def test_the_definition_has_not_quietly_emptied(self):
         """Zero rules parsed would satisfy the test above perfectly."""
