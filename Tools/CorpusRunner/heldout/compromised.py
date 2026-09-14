@@ -48,6 +48,25 @@ VERBATIM_IN_DOCUMENT = {
     "C358": "Docs/AMBIGUITY_TAXONOMY.md",
 }
 
+# Text is a NEAR duplicate of tuned material — Jaccard at or above 0.70 over
+# content words — without being identical. Weaker than an exact match and still
+# not "unseen": a gating-corpus sentence that shares seven content words in ten
+# with a held-out capture was fitted against essentially this capture.
+#
+# It is the weakest category here and the threshold is a choice somebody made,
+# not a fact. `leak-check.py` pins a four-token floor with a test for the
+# reason that matters: Jaccard over content words clears 0.70 easily on a very
+# short sentence, so without the floor this category would fill up with pairs
+# that merely share a verb and a noun.
+NEAR_TUNED_MATERIAL = {
+    "C005": "near the gating corpus",
+    "C236": "near SwiftDataThoughtRepositoryTests",
+    "C243": "near the gating corpus and routed.tsv",
+    "C331": "near the gating corpus and DurabilityTests",
+    "C353": "near the gating corpus",
+    "C355": "near the gating corpus",
+}
+
 # Text was printed into a working session's context. Never in tuning material,
 # never compared against, pass/fail never looked up. This category is an
 # *event* rather than a state of the repository, which is why it cannot be
@@ -63,6 +82,7 @@ EXPOSED_WITHOUT_INSPECTION = {
 CATEGORIES = (
     ("in tuned material", IN_TUNED_MATERIAL),
     ("verbatim in a tracked document", VERBATIM_IN_DOCUMENT),
+    ("near tuned material (Jaccard >= 0.70)", NEAR_TUNED_MATERIAL),
     ("exposed without inspection", EXPOSED_WITHOUT_INSPECTION),
 )
 
@@ -72,11 +92,24 @@ CATEGORIES = (
 # able to get from that five to the exclusion set used here.
 COMPROMISED = set(IN_TUNED_MATERIAL) | set(VERBATIM_IN_DOCUMENT)
 
-# What the clean sealed score excludes. Wider than COMPROMISED by one, and the
-# judgement is deliberate: the property the clean number claims is "unseen",
-# and a capture that a parser-writing session has read is not unseen whatever
-# route it took. Excluding it costs one row and protects the claim.
-EXCLUDED = COMPROMISED | set(EXPOSED_WITHOUT_INSPECTION)
+# What the clean sealed score excludes: every capture documented as not unseen,
+# by any route. Wider than COMPROMISED, and deliberately so — the property the
+# clean number claims is **unseen**, and each category below defeats it.
+#
+# The five in COMPROMISED are the ones whose text is demonstrably present in
+# tuned material or in a document. The near-duplicates and the exposure are
+# weaker cases and are still excluded, because the conservative denominator is
+# the honest one for a generalisation claim: if the exclusion is wrong, the
+# clean score is computed over slightly fewer captures than it could have been,
+# which costs precision. If it is too narrow, the number overstates what the
+# parser has shown, which is the failure this whole apparatus exists to stop.
+#
+# Anyone wanting a less conservative figure has the categories: the scorer
+# prints each one's count on every run, so the arithmetic is available without
+# a second metric being published.
+EXCLUDED = (COMPROMISED
+            | set(NEAR_TUNED_MATERIAL)
+            | set(EXPOSED_WITHOUT_INSPECTION))
 
 
 def why(cid):

@@ -260,15 +260,18 @@ if scoring_heldout:
   print("=" * 66)
   for name, table in compromised.CATEGORIES:
       ids = sorted(table)
-      print(f"  {name:<32} {len(ids):>2}  {' '.join(ids)}")
+      print(f"  {name:<38} {len(ids):>2}  {' '.join(ids)}")
   print("-" * 66)
   print(f"  compromised (in tuned material or in a document) : "
         f"{len(compromised.COMPROMISED)}")
   print(f"  excluded from the clean sealed score             : "
         f"{len(compromised.EXCLUDED)}")
-  print("  The categories overlap — C342 is in two — so the excluded total is")
-  print("  a union and not a sum. Counting it as a sum is how the published")
-  print("  figure read three when it was five.")
+  doubled = sorted(
+      cid for cid in compromised.EXCLUDED if len(compromised.why(cid)) > 1)
+  print(f"  Categories overlap ({' '.join(doubled)} appear in more than one),")
+  print("  so the excluded total is a union and never a sum. Reporting one")
+  print("  limb as the union is how the published figure read three when it")
+  print("  was five; summing the limbs overcounts the other way.")
   print()
   print("  Which subtotals the excluded captures feed, so the denominators")
   print("  above can be reconciled by hand:")
