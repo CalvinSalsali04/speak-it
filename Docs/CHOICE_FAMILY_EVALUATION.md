@@ -118,10 +118,15 @@ reporting a clean bill over five requirements it verified three of.
   present, and no single slot type more than half the captures. Otherwise "the
   choice family" quietly means "the date family" again.
 - **B4.** The alternatives and the resolution must not be paraphrases of one
-  canonical sentence. **Four of the five readable rows we already have fail
-  this**: they resolve by restating a sentence that is itself the clean twin,
-  which hands the answer to a trivial *last clause wins* rule and would score
-  as understanding.
+  canonical sentence. **Seven of the ten readable decision rows we already have
+  fail this** <!-- recomputed: twin-restatement 7 of 10 -->: the clean twin's
+  whole sentence sits verbatim inside the rambling row, so a *last clause wins*
+  rule scores them as understanding. The other three are two-thought rows whose
+  twin is a conjunction, where only the resolved half is restated — nearer to
+  failing than to passing. That count is recomputed from `rambling.tsv` by
+  `test_choice_balance.py`, and this sentence fails the suite when it drifts;
+  the first version of it said four of five, which was the figure in
+  `KNOWN_ISSUES.md` from before this thread added rows.
 - **B5.** One author's captures never make a published rate on their own.
 
 ## 7. Comparability between runs

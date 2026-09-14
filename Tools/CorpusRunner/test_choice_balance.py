@@ -233,6 +233,61 @@ class TheCheckerAndTheDefinitionStayInStep(FixtureCase):
         self.assertGreaterEqual(len(self.rules_in_the_definition()), 5)
 
 
+class TheMarkedFigureIsRecomputed(FixtureCase):
+    """A number in prose is a measurement nobody re-runs.
+
+    The definition says how many of the readable decision rows resolve by
+    restating their own clean twin, which is the evidence for B4 existing at
+    all. The first draft of that sentence said four of five, carried over from
+    `KNOWN_ISSUES.md` and already stale: this thread had added rows since. So
+    the figure is marked in the document and recomputed here.
+
+    The limit is worth stating because it is the same shape as everything else
+    in this directory: **this catches a marked figure that drifts, and cannot
+    catch a claim nobody marked.**
+    """
+
+    DOC = HERE.parents[1] / "Docs" / "CHOICE_FAMILY_EVALUATION.md"
+    SET = HERE / "devsets" / "rambling.tsv"
+    MARKER = r"<!--\s*recomputed:\s*twin-restatement\s+(\d+)\s+of\s+(\d+)\s*-->"
+
+    def rows(self):
+        out = {}
+        for line in self.SET.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            cells = line.split("\t")
+            if len(cells) >= 3 and cells[0] != "id":
+                out[cells[0]] = (cells[1], cells[2])
+        return out
+
+    def measure(self):
+        """(restating, total) over decision rows that have a clean twin."""
+        rows = self.rows()
+        rambling = [k for k, v in rows.items()
+                    if v[1].startswith("decision-") and k.endswith("R")]
+        pairs = [(k, k[:-1] + "C") for k in rambling if k[:-1] + "C" in rows]
+        restating = [k for k, twin in pairs if rows[twin][0] in rows[k][0]]
+        return len(restating), len(pairs)
+
+    def claimed(self):
+        import re
+        found = re.findall(self.MARKER, self.DOC.read_text())
+        return [(int(a), int(b)) for a, b in found]
+
+    def test_the_document_still_carries_the_marker(self):
+        """No marker means the test below checks nothing, silently."""
+        self.assertEqual(len(self.claimed()), 1)
+
+    def test_the_marked_figure_matches_the_set_it_describes(self):
+        self.assertEqual(self.claimed()[0], self.measure())
+
+    def test_the_measurement_is_over_something(self):
+        """Zero pairs would make any claim of `0 of 0` agree perfectly."""
+        _, total = self.measure()
+        self.assertGreaterEqual(total, 5)
+
+
 class SealedSetsAreRefused(FixtureCase):
     def test_every_sealed_set_is_refused_by_path(self):
         """The checker prints ids, and a set being shaped would be read."""
