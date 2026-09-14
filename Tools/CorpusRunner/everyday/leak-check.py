@@ -583,9 +583,13 @@ def check(path):
     #: This is the steady state: those rows are reported on every green run,
     #: so printing the capture would put sealed text into every CI log from
     #: now on -- which is the harm `check_prose` was written to avoid, arriving
-    #: through the other half of the same file. A *new* row still prints both
-    #: sides, because the run fails and somebody has to judge whether the pair
-    #: is contamination or coincidence, and they cannot do that from two ids.
+    #: through the other half of the same file. **A new row prints no text
+    #: either**, which this comment claimed the opposite of until the claim was
+    #: checked against a real injected leak: a0d5978 took the text out of every
+    #: printing path and the reasoning above it was left describing the code as
+    #: it had been. A reader judging contamination from a new row gets the id
+    #: and every file it appears in, and opens those files, which they can do
+    #: and CI cannot.
     for cid, utterance, names in exact:
         mark = "  (documented)" if (path.name, cid) in OVERLAP_DOCUMENTED else ""
         print(f"  COLLISION  {cid}  in {len(names)}: {', '.join(names)}{mark}")
