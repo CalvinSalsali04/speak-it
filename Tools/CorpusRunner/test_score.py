@@ -700,6 +700,49 @@ class CompromisedRegistry(unittest.TestCase):
                         len(provenance.strip()), 10,
                         f"{cid} is listed under {name!r} without saying where")
 
+    def test_the_registry_agrees_with_the_leak_check_that_detects_them(self):
+        """Two records of one fact drift. This is the thing that notices.
+
+        `compromised.py` is the scorer's exclusion list. PR #55 adds
+        `OVERLAP_DOCUMENTED`, `PROSE_DOCUMENTED` and
+        `EXPOSED_WITHOUT_INSPECTION` to `everyday/leak-check.py`, which is the
+        check that actually *detects* these captures. Once both exist, the two
+        must name the same ids, and the leak check should become the source
+        the registry derives from -- a figure belongs to the check that
+        computes it.
+
+        Skips until #55 lands, which is the weak form and is deliberate here:
+        the alternative is asserting against a file that does not exist yet.
+        The skip message names what will arm it, so a skip in the output is a
+        reminder rather than a silence.
+        """
+        leak = (pathlib.Path(__file__).resolve().parent
+                / "everyday" / "leak-check.py")
+        if not leak.exists():
+            self.skipTest("everyday/leak-check.py not present")
+        source = leak.read_text()
+        names = ["OVERLAP_DOCUMENTED", "PROSE_DOCUMENTED",
+                 "EXPOSED_WITHOUT_INSPECTION"]
+        if not all(n in source for n in names):
+            self.skipTest(
+                "leak-check.py does not carry the documented lists yet; "
+                "PR #55 adds them. When it lands this test arms itself and "
+                "compromised.py should derive from it rather than restate it.")
+
+        namespace = {}
+        exec(compile(source, str(leak), "exec"), namespace)  # noqa: S102
+        theirs = set()
+        for n in names:
+            for key in namespace[n]:
+                # keys are (file, id) pairs; ids only, never text
+                theirs.add(key[1] if isinstance(key, tuple) else key)
+        ours = self.registry().EXCLUDED
+        self.assertEqual(
+            ours, theirs,
+            "compromised.py and leak-check.py disagree about which held-out "
+            "captures are not unseen. One of them is wrong and the clean "
+            "sealed score is computed from the first.")
+
     def test_why_reports_both_categories_for_a_doubly_compromised_capture(self):
         """The accessor has to return the union too, not the first hit."""
         c = self.registry()
