@@ -436,7 +436,9 @@ mechanisms, and three of the eight are in none of them.
 | `that means` | nowhere |
 | `because of that` | nowhere |
 
-The last three occur in `SpeakIt/` only inside comments.
+The last three occur in `SpeakIt/` only inside comments. The table is the
+consequence set's eight and not an inventory: `connectorRun` also carries
+`also` and `plus`, which that rotation does not use.
 
 The interesting half is not the absence. It is that **the machinery deciding
 whether a tail is a thought of its own is already general, and is only ever
@@ -471,6 +473,17 @@ is the one this document does state, because a test recomputes it: **`which
 means`, `that means`, `because of that` and `therefore` appear in no readable
 row at all**, while `and` and `so` appear in hundreds.
 <!-- recomputed: absent-connectives which means, that means, because of that, therefore -->
+
+**The two lists are the same list.** Every connective the splitter handles is
+attested in readable material — including `also` and `plus`, which the census
+found only because reading `connectorRun` turned them up and which the
+consequence rotation never used — and every
+connective it does not handle is attested in none. That correspondence is not a
+coincidence and it is not a compliment to the parser: the corpora and the rules
+were written by the same hands, working from the same intuitions about how a
+sentence goes. The parser handles what we thought to write down. A census over
+our own material can therefore confirm that a family is unsizeable and can
+never establish that one is rare.
 
 **Read that in both directions, and the second one matters more.** A zero is
 not evidence that people do not say these things. Every row counted was

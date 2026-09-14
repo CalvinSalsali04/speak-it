@@ -277,7 +277,13 @@ class TheMarkedListInTheBaselineIsRecomputed(CensusCase):
         text = self.DOC.read_text(encoding="utf-8")[start:]
         text = text[:text.index("\n## ", 10)]
         for name, _ in self.census.CONNECTIVES:
-            hits = re.findall(rf"`{re.escape(name)}`\s+(?:at\s+)?\d+", text)
+            # Any digit within a few words of the form, in either order. The
+            # first version of this looked for a digit immediately after the
+            # backticks, and the sentence that slipped past it -- mine, in the
+            # commit that added this test -- read "`also` in 153 utterances".
+            near = rf"(?:`{re.escape(name)}`(?:\W+\w+){{0,3}}\W+\d" \
+                   rf"|\d(?:\W+\w+){{0,3}}\W+`{re.escape(name)}`)"
+            hits = re.findall(near, text)
             self.assertEqual(hits, [], f"the section quotes a count for {name}")
 
 

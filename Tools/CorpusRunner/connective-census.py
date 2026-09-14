@@ -92,6 +92,8 @@ CONNECTIVES = (
     ("and", r"\band\b"),
     ("so", r"\bso\b"),
     ("then", r"\bthen\b"),
+    ("also", r"\balso\b"),
+    ("plus", r"\bplus\b"),
     ("which means", r"\bwhich means\b"),
     ("that means", r"\bthat means\b"),
     ("because of that", r"\bbecause of that\b"),
