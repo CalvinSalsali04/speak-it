@@ -12,6 +12,30 @@ they meant, and it happens on the common path rather than the rare one.
 `unsafe` counts the third thing: a fragment that came back with a date, a
 reminder, or a stored-data operation attached to it — the app inventing a
 commitment out of half a sentence.
+
+**`unsafe` is reported split, because one number was answering two questions.**
+The commitment test used to sit outside the recall test, so a capture the app
+recognised as unfinished and dated anyway counted the same as one it never
+recognised at all. Those are not the same defect. The first is a guard letting
+a commitment through, which is harm on the path that is supposed to prevent it.
+The second is the recall miss showing through: nothing decided the fragment was
+unfinished, so nothing was ever asked to suppress the date, and the count goes
+to zero when recall improves without any guard being touched.
+
+The split is what makes them separable, and it is why the exit status can now
+fail on the first without failing on the second. The total is unchanged: a
+breakdown that moved the number it breaks down would be worth nothing.
+
+**What the split still cannot see, and the exit status now depends on it.**
+`flagged` and `committed` are both read over the whole capture block rather
+than per row, which the probe output does not separate. So a multi-row capture
+whose *finished* half legitimately carries a date, with an unfinished half
+beside it, reads as "recognised, and committed anyway" — a guard failure that
+is not one, and one this condition would fail the run on. The count is zero
+today and no capture in the set has that shape, which is exactly why it is
+written here rather than discovered later: the first time this gates, check
+whether the capture has more than one row before believing it. `unsafe` has
+always had this blind spot; the split inherits it rather than introducing it.
 """
 import re, sys
 from collections import Counter, defaultdict
@@ -125,8 +149,15 @@ for cid, utt, fam, exp in rows:
                            f"rows={got['rows']} routes={'/'.join(got['routes'])} state={'/'.join(got['states'])}"))
         if committed:
             stats["unsafe"] += 1
+            #: Which of the two this is. Inside the branch rather than beside
+            #: it, because `flagged` is exactly the recall test three lines up:
+            #: a capture that was flagged and dated anyway is a guard failing,
+            #: and one that was never flagged had no guard consulted.
+            if flagged:
+                stats["unsafe_recognised"] += 1
             misses.append(("UNSAFE", cid, utt, "no date/reminder",
-                           f"due={got['due']} remind={got['remind']} op={got['operation']}"))
+                           f"flagged={flagged} due={got['due']} "
+                           f"remind={got['remind']} op={got['operation']}"))
     elif exp == "Complete":
         stats["fp_total"] += 1
         byfam[fam]["total"] += 1
@@ -138,14 +169,22 @@ for cid, utt, fam, exp in rows:
             byfam[fam]["ok"] += 1
     elif exp == "Abandoned":
         stats["abd_total"] += 1
-        if flagged or got["rows"] == 0 or got["review"] or got["operation"]:
+        #: Named rather than inlined, because the same expression is now the
+        #: thing the unsafe split asks about. This branch's recall test is not
+        #: `flagged` alone: a withdrawal the app acted on is handled too.
+        handled = bool(flagged or got["rows"] == 0 or got["review"]
+                       or got["operation"])
+        if handled:
             stats["abd_ok"] += 1
         else:
             misses.append(("ABANDON", cid, utt, "withdrawn or flagged",
                            f"rows={got['rows']} routes={'/'.join(got['routes'])}"))
         if committed:
             stats["unsafe"] += 1
-            misses.append(("UNSAFE", cid, utt, "no date/reminder", f"due={got['due']}"))
+            if handled:
+                stats["unsafe_recognised"] += 1
+            misses.append(("UNSAFE", cid, utt, "no date/reminder",
+                           f"handled={handled} due={got['due']}"))
     elif exp == "Mixed":
         stats["mix_total"] += 1
         # The finished half has to survive as its own row.
@@ -168,6 +207,14 @@ print(f"  abandonment handled           {stats['abd_ok']}/{stats['abd_total']}")
 print(f"  mixed: finished half survives {stats['mix_ok']}/{stats['mix_total']}")
 print()
 print(f"  UNSAFE   fragment given a date/reminder/operation   {stats['unsafe']}")
+#: Printed on every run, including a clean one. A split that appears only when
+#: it is non-zero tells a later reader nothing about the runs where it stayed
+#: quiet -- the same reason `scored N of M labelled` prints when N == M.
+print(f"    recognised, and committed anyway  {stats['unsafe_recognised']}"
+      f"   ← a guard let a commitment through")
+print(f"    never recognised at all           "
+      f"{stats['unsafe'] - stats['unsafe_recognised']}"
+      f"   ← the recall miss showing through")
 print("=" * 68)
 print("  Fallout is the number that decides whether this ships: a wrongly")
 print("  interrupted finished thought is worse than a missed fragment.")
@@ -217,12 +264,20 @@ if verbose:
 #: cannot redden the language job. It fails a hand run, which is where a
 #: dropped row is worth stopping for.
 #:
-#: `unsafe` is deliberately not in this condition, though it is in
-#: `abandonment-score.py`'s and belongs here for the same reason: a fragment
-#: given a date is harm, not a miss. It stays out because this set is not
-#: clean on it. `Docs/LANGUAGE_BASELINE.md` records **2 unsafe** alongside
-#: the 34/57 and 0/96 at `9d91a0b`, so adding it here would make every hand
-#: run red on a defect that predates this change and has nothing to do with
-#: a dropped row. Those two captures are worth fixing or documenting; when
-#: one of those happens, this condition should grow.
-sys.exit(1 if stats["unseen"] else 0)
+#: `unsafe_recognised` is in this condition and the total `unsafe` is not,
+#: and the split above is what makes that distinction available. The earlier
+#: note here said the total stayed out because the set is not clean on it --
+#: `Docs/LANGUAGE_BASELINE.md` records **2 unsafe** at `9d91a0b` -- so gating
+#: it would redden every hand run on a pre-existing defect, and that this
+#: condition should grow once those two captures were identified.
+#:
+#: They have been. Both are captures the app never flagged as unfinished, so
+#: nothing was ever asked to withhold the date: they are the recall miss
+#: showing through and they disappear when recall improves, with no guard to
+#: write. Gating on them would block every run on a number that is not
+#: independently movable. A capture that *was* recognised and dated anyway is
+#: the opposite -- a guard that ran and let a commitment past -- and that is
+#: worth stopping for. Same reasoning as a recorded limit: the disclosure is a
+#: fact, and the part somebody already owns forgives the exit status, not the
+#: rate.
+sys.exit(1 if (stats["unseen"] or stats["unsafe_recognised"]) else 0)

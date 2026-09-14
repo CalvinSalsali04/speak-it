@@ -1,0 +1,1206 @@
+{
+  "version": "speechlab-taxonomy-2",
+  "historical_taxonomy_version": "speechlab-1",
+  "semantic_states": {
+    "intent_kind": [
+      "action",
+      "memory",
+      "idea",
+      "person-fact",
+      "location-related-intent",
+      "temporal-intent"
+    ],
+    "operation": [
+      "none",
+      "cancellation"
+    ],
+    "polarity": [
+      "positive",
+      "negation",
+      "prohibition"
+    ],
+    "certainty": [
+      "resolved",
+      "uncertain",
+      "resolved-alternative",
+      "unresolved-alternative"
+    ]
+  },
+  "categories": [
+    {
+      "id": "semantic-state",
+      "name": "Semantic state",
+      "description": "What the speaker ultimately means the product to retain or act on."
+    },
+    {
+      "id": "discourse-structure",
+      "name": "Discourse structure",
+      "description": "How one or more thoughts are arranged in the capture."
+    },
+    {
+      "id": "repair-deliberation",
+      "name": "Repair and deliberation",
+      "description": "How a speaker revises, replaces, withdraws, or weighs an expression."
+    },
+    {
+      "id": "surface-speech",
+      "name": "Surface speech",
+      "description": "Meaning-neutral or locally incomplete properties of spontaneous speech."
+    },
+    {
+      "id": "asr-transcription",
+      "name": "ASR and transcription",
+      "description": "Observed transcript effects, distinct from authored speech behavior."
+    },
+    {
+      "id": "contextual-product",
+      "name": "Contextual and product",
+      "description": "Resolution behavior that depends on time, place, people, or product context."
+    }
+  ],
+  "phenomena": [
+    {
+      "id": "abandoned-thought",
+      "name": "Abandoned Thought",
+      "definition": "An incomplete thought is abandoned for another.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "abandoned-thought"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "ambiguous-pronoun",
+      "name": "Ambiguous Pronoun",
+      "definition": "A pronoun has multiple plausible antecedents.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "ambiguous-pronoun"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "asr-boundary-error",
+      "name": "ASR boundary error",
+      "definition": "Clause or item boundaries are lost or inserted.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "normal",
+      "legacy_ids": [],
+      "aliases": [
+        "boundary-errors"
+      ]
+    },
+    {
+      "id": "asr-deletion",
+      "name": "Asr Deletion",
+      "definition": "ASR omits a spoken token.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "asr-deletion"
+      ],
+      "aliases": [
+        "asr-token-deletion"
+      ]
+    },
+    {
+      "id": "asr-dropped-token",
+      "name": "ASR dropped token",
+      "definition": "The transcript omits a spoken token.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": [
+        "dropped-token"
+      ]
+    },
+    {
+      "id": "asr-duplicated-token",
+      "name": "ASR duplicated token",
+      "definition": "The transcript contains an accidental duplicate token.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [],
+      "aliases": [
+        "duplicated-token"
+      ]
+    },
+    {
+      "id": "asr-insertion",
+      "name": "Asr Insertion",
+      "definition": "ASR inserts an unintended token.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "asr-insertion"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "asr-name-corruption",
+      "name": "ASR name corruption",
+      "definition": "A person or proper name is transcribed incorrectly.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": [
+        "name-corruption"
+      ]
+    },
+    {
+      "id": "asr-partial-recognition",
+      "name": "ASR partial recognition",
+      "definition": "Only part of the spoken capture is recognized.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": [
+        "partial-recognition"
+      ]
+    },
+    {
+      "id": "asr-substitution",
+      "name": "Asr Substitution",
+      "definition": "ASR substitutes a confusable token.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "asr-substitution"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "cancellation",
+      "name": "Cancellation",
+      "definition": "An existing stored intention is cancelled.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [
+        "cancellation"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "cancellation-scope",
+      "name": "Cancellation scope",
+      "definition": "A cancellation targets one explicit item or a stated set of items.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "casing-corruption",
+      "name": "Casing Corruption",
+      "definition": "Casing is inconsistent or misleading.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "casing-corruption"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "casual-grammar",
+      "name": "Casual grammar",
+      "definition": "Colloquial grammar occurs without changing the intended contract.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "change-of-intent",
+      "name": "Change Of Intent",
+      "definition": "The final intent supersedes an earlier one.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "change-of-intent"
+      ],
+      "aliases": [
+        "self-correction",
+        "value-correction"
+      ]
+    },
+    {
+      "id": "code-switch-token",
+      "name": "Code Switch Token",
+      "definition": "A defined non-English token appears in an English capture.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "code-switch-token"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "completed-action",
+      "name": "Completed Action",
+      "definition": "An action is explicitly already completed.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "completed-action"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "conditional-intent",
+      "name": "Conditional Intent",
+      "definition": "An action is contingent on a condition.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "conditional-intent"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "conjunction-ambiguity",
+      "name": "Conjunction Ambiguity",
+      "definition": "A conjunction permits multiple plausible scopes.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "conjunction-ambiguity"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "contact-person-ambiguity",
+      "name": "Contact/person ambiguity",
+      "definition": "A name or relationship matches multiple plausible people.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": [
+        "person-ambiguity"
+      ]
+    },
+    {
+      "id": "correction-chain",
+      "name": "Repair chain",
+      "definition": "Two or more explicit repairs resolve to one final value.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "cross-turn-reference",
+      "name": "Cross-turn reference",
+      "definition": "A phrase intentionally resolves to a unique prior-turn referent.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "cross-turn-reference-ambiguity",
+      "name": "Cross-turn reference ambiguity",
+      "definition": "A phrase has multiple plausible prior-turn referents.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "discourse-marker",
+      "name": "Discourse marker",
+      "definition": "A marker such as “anyway” or “so” organizes the capture.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "dst-transition",
+      "name": "DST transition",
+      "definition": "A local time lies near a daylight-saving transition and requires review.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "exact-time",
+      "name": "Exact Time",
+      "definition": "An exact clock time is semantically relevant.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "exact-time"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "false-start",
+      "name": "False Start",
+      "definition": "A started constituent is replaced before completion.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "false-start"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "filler-words",
+      "name": "Filler Words",
+      "definition": "Semantically empty discourse fillers occur.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "filler-words"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "future-intention",
+      "name": "Future Intention",
+      "definition": "A future intention is asserted.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "future-intention"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "hesitation",
+      "name": "Hesitation",
+      "definition": "A pause marker interrupts a fluent phrase.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "hesitation"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "homophone",
+      "name": "Homophone",
+      "definition": "Homophones create lexical ambiguity.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "homophone"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "incomplete-clause",
+      "name": "Incomplete clause",
+      "definition": "A locally incomplete clause is interpretable from explicit context.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "information-mixed-with-action",
+      "name": "Information Mixed With Action",
+      "definition": "A fact and an actionable item coexist.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "information-mixed-with-action"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "location-inheritance",
+      "name": "Location Inheritance",
+      "definition": "A later clause inherits earlier location context.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "location-inheritance"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "long-capture",
+      "name": "Long Capture",
+      "definition": "A long capture contains relevant and irrelevant spans.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "long-capture"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "lowercase",
+      "name": "Lowercase",
+      "definition": "All text is lowercased without changing meaning.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "lowercase"
+      ],
+      "aliases": [
+        "capitalization-loss"
+      ]
+    },
+    {
+      "id": "multiple-tasks",
+      "name": "Multiple Tasks",
+      "definition": "One capture contains multiple independent obligations.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "multiple-tasks"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "multiple-thoughts",
+      "name": "Multiple Thoughts",
+      "definition": "One capture contains distinct semantic thoughts.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "multiple-thoughts"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "negation",
+      "name": "Negation",
+      "definition": "A proposition is explicitly negative.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "high",
+      "legacy_ids": [
+        "negation"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "never-mind-withdrawal",
+      "name": "Never Mind Withdrawal",
+      "definition": "The speaker explicitly withdraws an intent.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [
+        "never-mind-withdrawal"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "numbered-list",
+      "name": "Numbered List",
+      "definition": "Tasks are presented with spoken numbering.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "numbered-list"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "ordinary-word-name",
+      "name": "Ordinary Word Name",
+      "definition": "A person name is also an ordinary word.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "ordinary-word-name"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "outstanding-obligation",
+      "name": "Outstanding Obligation",
+      "definition": "An obligation remains uncompleted.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "outstanding-obligation"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "partial-thought",
+      "name": "Partial Thought",
+      "definition": "The capture ends before semantic completion.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "partial-thought"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "past-event",
+      "name": "Past Event",
+      "definition": "A past event is recorded as information.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "past-event"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "prohibition",
+      "name": "Prohibition",
+      "definition": "A future action is forbidden.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "high",
+      "legacy_ids": [
+        "prohibition"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "pronoun-resolution",
+      "name": "Pronoun Resolution",
+      "definition": "A pronoun has a clear available antecedent.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "pronoun-resolution"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "punctuation-corruption",
+      "name": "Punctuation Corruption",
+      "definition": "Punctuation creates implausible boundaries.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "punctuation-corruption"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "punctuation-loss",
+      "name": "Punctuation Loss",
+      "definition": "Expected punctuation is absent.",
+      "primary_category": "asr-transcription",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "punctuation-loss"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "question-mixed-with-action",
+      "name": "Question Mixed With Action",
+      "definition": "A question and an actionable item coexist.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "question-mixed-with-action"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "quoted-speech",
+      "name": "Quoted Speech",
+      "definition": "Quoted words must retain their speech boundary.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "quoted-speech"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "rambling-ending",
+      "name": "Rambling Ending",
+      "definition": "Non-actionable elaboration follows the intent.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "rambling-ending"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "rambling-introduction",
+      "name": "Rambling Introduction",
+      "definition": "Non-actionable preamble precedes the intent.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "rambling-introduction"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "recurrence",
+      "name": "Recurrence",
+      "definition": "An intent repeats according to a schedule.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "recurrence"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "relative-date",
+      "name": "Relative Date",
+      "definition": "A date is relative to capture time.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "relative-date"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "relative-duration",
+      "name": "Relative Duration",
+      "definition": "A duration is relative to capture time.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "relative-duration"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "repetition",
+      "name": "Repetition",
+      "definition": "Words are repeated without adding meaning.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "repetition"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "rephrasing",
+      "name": "Rephrasing",
+      "definition": "The same intent is restated in different words.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "rephrasing"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "reported-speech",
+      "name": "Reported Speech",
+      "definition": "Speech is reported as information, not commanded.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "reported-speech"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "resolved-alternative",
+      "name": "Resolved alternative",
+      "definition": "Alternatives are stated and one is explicitly selected.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [
+        "repair-deliberation"
+      ],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "restart",
+      "name": "Restart",
+      "definition": "The speaker restarts the whole instruction.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "restart"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "scoped-withdrawal",
+      "name": "Scoped withdrawal",
+      "definition": "One candidate intent is explicitly withdrawn while another remains.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "self-correction-date",
+      "name": "Self Correction Date",
+      "definition": "The date is explicitly corrected.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "self-correction-date"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "self-correction-location",
+      "name": "Self Correction Location",
+      "definition": "The location is explicitly corrected.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "self-correction-location"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "self-correction-person",
+      "name": "Self Correction Person",
+      "definition": "The named person is explicitly corrected.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "self-correction-person"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "self-correction-quantity",
+      "name": "Self Correction Quantity",
+      "definition": "A quantity is explicitly corrected.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "self-correction-quantity"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "self-correction-time",
+      "name": "Self Correction Time",
+      "definition": "The time is explicitly corrected.",
+      "primary_category": "repair-deliberation",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "self-correction-time"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "sequencing",
+      "name": "Sequencing",
+      "definition": "Order relations connect otherwise distinct actions.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "sequencing"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "shared-date",
+      "name": "Shared Date",
+      "definition": "One date applies to multiple items.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "shared-date"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "shared-location",
+      "name": "Shared Location",
+      "definition": "One location applies to multiple items.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "shared-location"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "shared-object",
+      "name": "Shared Object",
+      "definition": "One object is shared by multiple actions.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "shared-object"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "shared-subject",
+      "name": "Shared Subject",
+      "definition": "One subject governs several predicates.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "shared-subject"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "shared-time",
+      "name": "Shared Time",
+      "definition": "One exact time applies to multiple items.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "shared-time"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "short-fragment",
+      "name": "Short Fragment",
+      "definition": "A terse fragment conveys an item.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "short-fragment"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "sign-off-trailing-noise",
+      "name": "Sign Off Trailing Noise",
+      "definition": "A sign-off or dictation noise trails the intent.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "sign-off-trailing-noise"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "store-brand-product-name",
+      "name": "Store Brand Product Name",
+      "definition": "A commercial proper name must be preserved.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "store-brand-product-name"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "stutter-like-repetition",
+      "name": "Stutter-like repetition",
+      "definition": "A short sound or token onset repeats without adding meaning.",
+      "primary_category": "surface-speech",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "temporal-inheritance",
+      "name": "Temporal Inheritance",
+      "definition": "A later clause inherits earlier temporal context.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "temporal-inheritance"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "timezone-sensitive",
+      "name": "Timezone-sensitive language",
+      "definition": "The intended time depends on an explicit timezone or travel context.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    },
+    {
+      "id": "uncertainty",
+      "name": "Uncertainty",
+      "definition": "The speaker is unsure whether an intent should be acted on.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "uncertainty"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "uncommon-proper-noun",
+      "name": "Uncommon Proper Noun",
+      "definition": "A rare proper noun must be preserved.",
+      "primary_category": "contextual-product",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "uncommon-proper-noun"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "unnumbered-list",
+      "name": "Unnumbered List",
+      "definition": "Tasks are presented as an unnumbered list.",
+      "primary_category": "discourse-structure",
+      "secondary_categories": [],
+      "preserves_meaning_by_default": true,
+      "safety_level": "normal",
+      "legacy_ids": [
+        "unnumbered-list"
+      ],
+      "aliases": []
+    },
+    {
+      "id": "unresolved-alternative",
+      "name": "Unresolved alternative",
+      "definition": "Multiple live alternatives remain and must not be silently resolved.",
+      "primary_category": "semantic-state",
+      "secondary_categories": [
+        "repair-deliberation"
+      ],
+      "preserves_meaning_by_default": false,
+      "safety_level": "high",
+      "legacy_ids": [],
+      "aliases": []
+    }
+  ],
+  "legacy_id_map": {
+    "filler-words": "filler-words",
+    "hesitation": "hesitation",
+    "false-start": "false-start",
+    "restart": "restart",
+    "self-correction-person": "self-correction-person",
+    "self-correction-date": "self-correction-date",
+    "self-correction-time": "self-correction-time",
+    "self-correction-quantity": "self-correction-quantity",
+    "self-correction-location": "self-correction-location",
+    "repetition": "repetition",
+    "rephrasing": "rephrasing",
+    "abandoned-thought": "abandoned-thought",
+    "never-mind-withdrawal": "never-mind-withdrawal",
+    "rambling-introduction": "rambling-introduction",
+    "rambling-ending": "rambling-ending",
+    "sign-off-trailing-noise": "sign-off-trailing-noise",
+    "multiple-thoughts": "multiple-thoughts",
+    "multiple-tasks": "multiple-tasks",
+    "numbered-list": "numbered-list",
+    "unnumbered-list": "unnumbered-list",
+    "sequencing": "sequencing",
+    "conjunction-ambiguity": "conjunction-ambiguity",
+    "shared-subject": "shared-subject",
+    "shared-object": "shared-object",
+    "shared-date": "shared-date",
+    "shared-time": "shared-time",
+    "shared-location": "shared-location",
+    "temporal-inheritance": "temporal-inheritance",
+    "location-inheritance": "location-inheritance",
+    "pronoun-resolution": "pronoun-resolution",
+    "ambiguous-pronoun": "ambiguous-pronoun",
+    "reported-speech": "reported-speech",
+    "quoted-speech": "quoted-speech",
+    "negation": "negation",
+    "prohibition": "prohibition",
+    "cancellation": "cancellation",
+    "change-of-intent": "change-of-intent",
+    "uncertainty": "uncertainty",
+    "conditional-intent": "conditional-intent",
+    "question-mixed-with-action": "question-mixed-with-action",
+    "information-mixed-with-action": "information-mixed-with-action",
+    "completed-action": "completed-action",
+    "outstanding-obligation": "outstanding-obligation",
+    "past-event": "past-event",
+    "future-intention": "future-intention",
+    "exact-time": "exact-time",
+    "relative-date": "relative-date",
+    "relative-duration": "relative-duration",
+    "recurrence": "recurrence",
+    "uncommon-proper-noun": "uncommon-proper-noun",
+    "ordinary-word-name": "ordinary-word-name",
+    "store-brand-product-name": "store-brand-product-name",
+    "lowercase": "lowercase",
+    "punctuation-loss": "punctuation-loss",
+    "punctuation-corruption": "punctuation-corruption",
+    "casing-corruption": "casing-corruption",
+    "asr-substitution": "asr-substitution",
+    "asr-deletion": "asr-deletion",
+    "asr-insertion": "asr-insertion",
+    "homophone": "homophone",
+    "partial-thought": "partial-thought",
+    "long-capture": "long-capture",
+    "short-fragment": "short-fragment",
+    "code-switch-token": "code-switch-token"
+  },
+  "alias_map": {
+    "self-correction": "change-of-intent",
+    "value-correction": "change-of-intent",
+    "capitalization-loss": "lowercase",
+    "name-corruption": "asr-name-corruption",
+    "boundary-errors": "asr-boundary-error",
+    "partial-recognition": "asr-partial-recognition",
+    "duplicated-token": "asr-duplicated-token",
+    "dropped-token": "asr-dropped-token",
+    "asr-token-deletion": "asr-deletion",
+    "person-ambiguity": "contact-person-ambiguity"
+  },
+  "compatibility_note": "All 64 speechlab-1 IDs remain canonical and readable; aliases are input-only mappings."
+}

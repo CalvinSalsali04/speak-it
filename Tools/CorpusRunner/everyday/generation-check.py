@@ -41,12 +41,16 @@ The check reads the union of the sets on disk and the sets on record, not the
 ones on disk. A set that has been deleted is absent from disk, and iterating
 disk made its disappearance invisible rather than a failure.
 
-**It is not wired into CI yet**, so today it is a command somebody has to
-remember to run — which is the state it exists to end. The one step that wires
-it into the Linux job is a `.github/workflows/ci.yml` edit, and this
-repository's automation cannot merge a workflow change, so that step is its own
-pull request. Anything written here about what the check prevents is true only
-once that lands.
+**It runs on every pull request** that touches `Tools/CorpusRunner/**`, in the
+`language-tools` job of `.github/workflows/ci.yml`, beside the leak check and
+for the same reason: the corpus gate needs a Mac and is dispatch-only, so a
+guard living there would not run on the pull request that introduces the edit
+it exists to catch.
+
+The path filter that gates that job lists `Tools/CorpusRunner/**`, and every
+sealed set lives under it, so the check runs on every pull request that could
+possibly change the thing it guards. That is the property worth stating: not
+that the job is wired, but that nothing it protects can move without it.
 """
 import hashlib
 import importlib.util
@@ -57,14 +61,21 @@ HERE = Path(__file__).resolve().parent
 RUNNER = HERE.parent
 
 #: Every set whose captures are claimed never to have been edited after
-#: scoring. All three, deliberately: a claim enforced on one set and taken on
-#: trust on the others, with nothing saying which is which, is the situation
-#: this check exists to end.
-SEALED = {
-    "everyday": RUNNER / "everyday" / "everyday.tsv",
-    "heldout": RUNNER / "heldout" / "heldout.tsv",
-    "adversarial": RUNNER / "adversarial" / "adversarial.tsv",
-}
+#: scoring. A claim enforced on one set and taken on trust on the others, with
+#: nothing saying which is which, is the situation this check exists to end --
+#: which is why the list is no longer written out here.
+#:
+#: It was, and a fourth sealed set arrived and this check went on reporting
+#: three, cleanly, at exit 0. Nothing was wrong with the comparison; the list
+#: simply did not know. That is the third instrument today found keeping its
+#: own idea of which files are sealed, so it now asks the one thing that is
+#: required to be total: `corpus_paths.unclassified()` fails the run on any
+#: `*.tsv` here that is in neither list, so a set cannot be added without
+#: arriving in this dict too.
+sys.path.insert(0, str(RUNNER))
+import corpus_paths  # noqa: E402  (needs RUNNER resolved first)
+
+SEALED = {path.parent.name: path for path in corpus_paths.sealed()}
 
 MANIFEST = RUNNER / "generations.tsv"
 HASHES = RUNNER / "generations" / "captures.sha256"

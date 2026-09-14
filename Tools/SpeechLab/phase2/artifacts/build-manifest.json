@@ -1,0 +1,24 @@
+{
+  "version": "speechlab-corpus-2",
+  "cases": 818,
+  "historical_blueprints": 260,
+  "historical_semantic_shapes": 133,
+  "semantic_families_after_public_pilot": 137,
+  "category_counts": {
+    "core": 266,
+    "single": 190,
+    "pair": 250,
+    "triad_or_four": 70,
+    "public": 42
+  },
+  "uncovered_taxonomy_ids_during_forced_single_pass": [
+    "conditional-intent",
+    "conjunction-ambiguity",
+    "self-correction-quantity",
+    "shared-object",
+    "unresolved-alternative"
+  ],
+  "production_parser_invoked": false,
+  "sealed_content_read": false,
+  "all_cases_trusted": false
+}

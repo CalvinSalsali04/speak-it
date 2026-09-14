@@ -64,13 +64,41 @@ REWRITTEN = [
 ROOT = HERE.parents[2]
 
 #: Sibling directories the suite reaches for: corpora to check the sealed sets
-#: against, and the Swift sources the leak check harvests. They are linked
+#: against, the Swift sources the leak check harvests, the documents its prose
+#: half reads, and the scripts the retired-claim check scans. They are linked
 #: rather than copied, so the scratch tree differs from the real one in exactly
 #: one file — the mutated scorer.
+#:
+#: `Docs` and `Tools/CI` joined this list on the day a test started asserting
+#: that a documented exemption names a file that exists. It failed here and
+#: nowhere else, and the gate refused to report rather than reporting twelve
+#: protected measures it had not measured — which is the control working. The
+#: list was already short of the truth before that: the prose half of the leak
+#: check reads every document in the repository, and this tree had none.
+#: A third time now, so the list itself is the defect: it was "the directories
+#: the tree needs", and the tree needed a file. `corpus_paths.py` is imported by
+#: `leak-check.py`, sits beside `everyday/` rather than inside it, and is not a
+#: directory, so it fell out of a list that only ever linked directories.
+#: Entries may now be either.
+#: The corpus half is derived rather than listed, because listing it failed
+#: again the moment a fourth sealed set arrived: `leak-check.py` iterates
+#: `corpus_paths.sealed()` and raises on a sealed file that is not on disk, so
+#: a set missing from this mirror turns the gate's control red and the gate
+#: reports nothing at all. That is the control working, and it is the fourth
+#: list today that knew about three corpora when there were four.
+sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+import corpus_paths  # noqa: E402  (needs ROOT resolved first)
+
 LINKED = [ROOT / "SpeakItTests",
-          ROOT / "Tools/CorpusRunner/devsets",
-          ROOT / "Tools/CorpusRunner/heldout",
-          ROOT / "Tools/CorpusRunner/adversarial"]
+          ROOT / "Docs",
+          ROOT / "Tools/CI",
+          ROOT / "Tools/CorpusRunner/corpus_paths.py",
+          ROOT / "Tools/CorpusRunner/devsets"] + [
+          #: Every sealed set's directory, whatever the list says today. The
+          #: everyday one is copied rather than linked, since it is the tree
+          #: under mutation, so it is excluded here.
+          path.parent for path in corpus_paths.sealed()
+          if path.parent.name != "everyday"]
 
 
 @contextlib.contextmanager
@@ -91,7 +119,7 @@ def scratch_tree():
             if path.exists():
                 link = root / path.relative_to(ROOT)
                 link.parent.mkdir(parents=True, exist_ok=True)
-                link.symlink_to(path, target_is_directory=True)
+                link.symlink_to(path, target_is_directory=path.is_dir())
         yield root / "Tools/CorpusRunner" / HERE.name
 
 
