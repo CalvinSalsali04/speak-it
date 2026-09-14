@@ -70,6 +70,7 @@ jobs:
       ios: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ios == 'true' }}
       dashboard: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.dashboard == 'true' }}
       referral: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.referral == 'true' }}
+      prose: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.prose == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,6 +91,22 @@ jobs:
               - 'Tools/LanguageMutations/**'
               - 'Tools/PipelineProbe/**'
               - 'Tools/CI/**'
+              - '.github/workflows/ci.yml'
+            # The leak check walks EVERY Markdown file in the repository, not
+            # only the ones under Docs/, because a README beside a corpus is
+            # the more tempting place to quote a capture. It was reachable
+            # only through the `ios` filter, whose globs contain no Markdown
+            # at all -- so a documentation-only pull request ran no sealed-set
+            # check. #56 nearly put a held-out capture verbatim into
+            # LANGUAGE_BASELINE.md and was caught by a reader, not by CI.
+            #
+            # This is its own output rather than another glob under `ios`
+            # because `ios` also gates the macOS job, and a prose change must
+            # not bill a Mac. Kept as `**/*.md` rather than `Docs/**` to match
+            # what the check actually reads; test_score.py fails when a file
+            # the check reads is matched by none of these globs.
+            prose:
+              - '**/*.md'
               - '.github/workflows/ci.yml'
             dashboard:
               - 'FounderDashboard/**'
@@ -125,7 +142,7 @@ jobs:
   language-tools:
     name: Language tooling (no Mac needed)
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    if: needs.changes.outputs.ios == 'true' || needs.changes.outputs.prose == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -3,6 +3,7 @@ import collections
 import contextlib
 import csv
 import io
+import os
 import pathlib
 import re
 import subprocess
@@ -1761,6 +1762,147 @@ class LedgerSingleMeasureTests(unittest.TestCase):
             [p for p in problems if "more than one sealed measure" in p], [],
             "a second sealed measure has moved, so the single running total "
             "in LANGUAGE_BASELINE.md is now a sum over two denominators")
+
+
+class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
+    """Every file the leak check reads must also start the job that runs it.
+
+    `leak-check.py` walks every Markdown file in the repository, because a
+    README beside a corpus is a more tempting place to quote a capture than a
+    design document is. The job that runs it, `language-tools`, was gated on
+    the `ios` path filter, and that filter lists no Markdown at all -- so a
+    documentation-only pull request ran no sealed-set check whatsoever. #56
+    nearly committed a held-out capture verbatim into `LANGUAGE_BASELINE.md`
+    and was stopped by a person reading the diff.
+
+    This is the totality shape this repository keeps finding in its own
+    instruments, one level up: the check was correct, its coverage complete,
+    and nothing ran it. So the property under test is not "the filter mentions
+    Markdown" -- that is satisfied by `Docs/**`, which would leave `CLAUDE.md`
+    and every `Tools/**/README.md` outside a language directory uncovered. It
+    is that **no file the check reads is missed by every glob**, tested
+    against the files actually on disk.
+
+    What it cannot do, stated because the same hole is everywhere else here:
+    it reads the globs, not GitHub's matcher. A glob this translator and
+    picomatch disagree about passes here and fails there, or worse.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+
+    #: The filter outputs that gate `language-tools`. Read from the job's own
+    #: `if:` rather than written here, so adding a third output to the gate
+    #: without widening this test is not possible.
+    JOB = "language-tools"
+
+    @staticmethod
+    def as_regex(glob):
+        """A paths-filter glob as a regex. `**` spans directories, `*` does not."""
+        out, i = "", 0
+        while i < len(glob):
+            if glob.startswith("**/", i):
+                out += "(?:[^/]+/)*"
+                i += 3
+            elif glob.startswith("**", i):
+                out += ".*"
+                i += 2
+            elif glob[i] == "*":
+                out += "[^/]*"
+                i += 1
+            elif glob[i] == "?":
+                out += "[^/]"
+                i += 1
+            else:
+                out += re.escape(glob[i])
+                i += 1
+        return re.compile(f"^{out}$")
+
+    def job_body(self):
+        """The lines of one job, from its key to the next key at that indent.
+
+        `\n  ` is not the delimiter: it is also the prefix of every `\n    `
+        inside the body, so splitting on it returns an empty job and every
+        test below then passes or fails for a reason that is not the one it
+        is named for. It cost a run to notice.
+        """
+        lines = self.WORKFLOW.read_text(encoding="utf-8").splitlines()
+        start = next(i for i, l in enumerate(lines)
+                     if l == f"  {self.JOB}:")
+        for j, later in enumerate(lines[start + 1:], start + 1):
+            if re.fullmatch(r"  \S.*", later):
+                return "\n".join(lines[start:j])
+        return "\n".join(lines[start:])
+
+    def gate_outputs(self):
+        """The `needs.changes.outputs.X` names in the job's `if:` condition."""
+        return set(re.findall(r"needs\.changes\.outputs\.(\w+)",
+                              self.job_body()))
+
+    def globs(self, outputs):
+        """Every glob listed under the named filters."""
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        found, current = [], None
+        #: Skipping the `filters: |` line itself, which sits two levels out
+        #: from the block it introduces and so ends the walk immediately.
+        block = text[text.index("filters: |"):].splitlines()[1:]
+        for line in block:
+            if re.fullmatch(r" {12}(\w+):", line):
+                current = line.strip().rstrip(":")
+            elif line.strip().startswith("- '") and current in outputs:
+                found.append(line.strip()[3:-1])
+            elif line.strip() and not line.startswith(" " * 12):
+                break
+        return found
+
+    def markdown_the_check_reads(self):
+        """Every `.md` path `leak-check.py` would walk, relative to the root."""
+        out = []
+        for here, folders, files in os.walk(self.ROOT, followlinks=True):
+            folders[:] = [f for f in folders if f != ".git"]
+            for name in files:
+                if name.endswith(".md"):
+                    out.append(str(pathlib.Path(here, name)
+                                   .relative_to(self.ROOT)))
+        return out
+
+    def test_the_job_is_gated_on_something(self):
+        """An `if:` this cannot parse would make every test below vacuous."""
+        self.assertTrue(self.gate_outputs(),
+                        f"no `needs.changes.outputs.*` found in {self.JOB}")
+
+    def test_the_globs_were_found(self):
+        """No globs makes the coverage test below fail for the wrong reason,
+        and an empty read is the one input that looks like total failure."""
+        self.assertGreater(len(self.globs(self.gate_outputs())), 5)
+
+    def test_the_translator_agrees_with_itself_in_both_directions(self):
+        """A matcher that matches nothing reports every file as uncovered; one
+        that matches everything reports the filter as complete. Both wrong."""
+        star = self.as_regex("**/*.md")
+        for hit in ("CLAUDE.md", "Docs/README.md", "Tools/a/b/c.md"):
+            self.assertIsNotNone(star.match(hit), hit)
+        for miss in ("Docs/README.txt", "notes.md.swift"):
+            self.assertIsNone(star.match(miss), miss)
+        narrow = self.as_regex("Docs/**")
+        self.assertIsNotNone(narrow.match("Docs/a/b.md"))
+        self.assertIsNone(narrow.match("CLAUDE.md"))
+        one = self.as_regex("Tools/*/x.md")
+        self.assertIsNotNone(one.match("Tools/CI/x.md"))
+        self.assertIsNone(one.match("Tools/a/b/x.md"))
+
+    def test_every_markdown_file_the_check_reads_starts_the_job(self):
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        files = self.markdown_the_check_reads()
+        self.assertGreater(len(files), 20, "no Markdown found to check")
+        uncovered = [f for f in files
+                     if not any(p.match(f) for p in patterns)]
+        self.assertEqual(
+            uncovered[:10], [],
+            f"{len(uncovered)} Markdown file(s) are read by leak-check.py and "
+            f"match no path filter that starts language-tools, so changing "
+            f"only them runs no sealed-set check at all")
+
 
 
 if __name__ == "__main__":
