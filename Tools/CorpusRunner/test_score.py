@@ -3,6 +3,7 @@ import collections
 import contextlib
 import csv
 import io
+import os
 import pathlib
 import re
 import subprocess
@@ -1550,6 +1551,217 @@ class TheHeaderIsReadInOnePlace(unittest.TestCase):
             p.read_text(encoding="utf-8").splitlines())
             for p in paths.sealed() + paths.readable()}
         self.assertGreater(len(columns), 1, f"one column everywhere: {columns}")
+
+
+class EveryCorpusReaderIsDeclared(unittest.TestCase):
+    """Who is still working out the file format for themselves.
+
+    Five defects have come from five readers deriving the same two rules --
+    which lines are data, which column holds the capture -- and each was found
+    by accident, years of reading apart in instrument time. The rules now have
+    one owner in `corpus_paths`. That on its own fixes nothing, because the
+    sixth reader will be written by somebody who has not read this class.
+
+    So the list below is the point. A file that slices a tab-separated line
+    itself is either on it, with a reason, or the run fails. The list is
+    allowed to shrink and nothing else; an entry that stops matching fails too,
+    so a converted reader cannot be left on it and a stale entry cannot sit
+    here looking like remaining work.
+
+    It is not a claim that the listed readers are wrong. It is a claim that
+    each is a place the next defect in this family will appear, written down
+    where the next person changing one will see it.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+
+    #: `cut -f` for shell, a tab split for Python. Deliberately crude: a
+    #: detector with exceptions is a detector somebody routes around, and the
+    #: cost of a false positive here is one line in the list below.
+    SLICES = re.compile(r"""split\("\\t"\)|split\('\\t'\)|cut -f""")
+
+    #: Every file that still reads a corpus its own way, and why it has not
+    #: moved yet. Shrinks; never grows without the reason being written here.
+    HAND_ROLLED = {
+        "adversarial/lengths.py":
+            "reads label columns as well as the utterance; moves with the "
+            "adversarial scorer",
+        "adversarial/score.sh":
+            "`cut -f3` into the probe's input file. Shell cannot call Python "
+            "cheaply here, and the extraction is checked by comparing the "
+            "file it writes against `corpus_paths.utterances`",
+        "choice-balance.py":
+            "reads the tag column, not the utterance; the tag grammar is its "
+            "own and belongs to it",
+        "consequence/block-report.py":
+            "reads the connector and block columns; same reason",
+        "consequence/score.sh":
+            "`cut -f2` into the probe's input file, checked the same way as "
+            "the adversarial one",
+        "devsets/abandonment-score.py":
+            "development-set scorer, reads its own label columns",
+        "devsets/score.py":
+            "development-set scorer, reads its own label columns",
+        "devsets/unfinished-score.py":
+            "development-set scorer, reads its own label columns",
+        "everyday/generation-check.py":
+            "hashes whole rows rather than reading a column, so the format "
+            "question it asks is a different one",
+        "everyday/score.py":
+            "the largest scorer; converting it needs the everyday suite green "
+            "on a Mac, which this container cannot do",
+        "everyday/score.sh":
+            "`cut -f3` into the probe's input file, checked the same way as the "
+            "adversarial one. This is the one that has to say three",
+        "heldout/score.py":
+            "scores the sealed set; converting it needs its own suite green on a "
+            "Mac, which this container cannot do",
+        "heldout/score.sh":
+            "`cut -f2` into the probe's input file. This is the one whose "
+            "commented header used to arrive as a 390th capture",
+    }
+
+    #: Suites build corpora inline to test readers, which is the one place
+    #: writing the format out by hand is the job rather than a copy of it.
+    TESTS = re.compile(r"(^|/)test_[^/]+\.py$")
+
+    def readers(self):
+        found = []
+        for path in sorted(self.HERE.rglob("*")):
+            if path.suffix not in (".py", ".sh") or not path.is_file():
+                continue
+            relative = str(path.relative_to(self.HERE))
+            if relative == "corpus_paths.py" or self.TESTS.search(relative):
+                continue
+            if self.SLICES.search(path.read_text(encoding="utf-8")):
+                found.append(relative)
+        return found
+
+    def test_the_detector_finds_a_hand_rolled_reader(self):
+        """Without this, a detector that matches nothing passes every
+        assertion below and reports the family as solved."""
+        with tempfile.TemporaryDirectory() as room:
+            room = pathlib.Path(room)
+            (room / "a.py").write_text('cells = line.split("\\t")\n')
+            (room / "b.sh").write_text('cut -f2 corpus.tsv\n')
+            (room / "c.py").write_text('import corpus_paths\n')
+            hits = [p.name for p in sorted(room.iterdir())
+                    if self.SLICES.search(p.read_text())]
+            self.assertEqual(hits, ["a.py", "b.sh"])
+
+    def test_no_undeclared_reader_slices_a_corpus_itself(self):
+        undeclared = [r for r in self.readers() if r not in self.HAND_ROLLED]
+        self.assertEqual(
+            undeclared, [],
+            "these read a tab-separated corpus their own way and are not in "
+            "HAND_ROLLED. Use corpus_paths.utterances / data_rows, or add the "
+            "file here with the reason it cannot")
+
+    def test_the_list_only_shrinks(self):
+        """A converted reader left on the list is a to-do that reads as done.
+
+        The same shape as an annotation that documents a failure and then
+        absolves it: the entry stays, the defect is gone, and the list stops
+        being a measurement of anything.
+        """
+        readers = set(self.readers())
+        stale = sorted(set(self.HAND_ROLLED) - readers)
+        self.assertEqual(
+            stale, [],
+            "no longer slice a corpus by hand, so remove them from "
+            "HAND_ROLLED rather than leaving the list overstating the work")
+
+    def test_the_reasons_are_reasons(self):
+        for name, why in sorted(self.HAND_ROLLED.items()):
+            with self.subTest(reader=name):
+                self.assertGreater(
+                    len(why.split()), 3,
+                    f"{name} is listed without saying why it has not moved")
+
+
+class TheShellExtractionAgreesWithTheReader(unittest.TestCase):
+    """The four `score.sh` scripts cut a column out of a corpus with `cut -f`.
+
+    Shell cannot call the one reader cheaply, so those four stay hand-rolled
+    and are declared in `EveryCorpusReaderIsDeclared`. Declaring them is not
+    the same as checking them, and this family's whole history is readers
+    quietly disagreeing: `heldout/score.sh` used to cut column two off EVERY
+    line, so the commented header's second cell -- the bare word `utterance`
+    -- reached the probe as a 390th capture, and nothing said so.
+
+    So each script's extraction is run and compared against
+    `corpus_paths.utterances` for the same file. By count and by digest, never
+    by value: three of these four corpora are sealed, and a unittest failure
+    message prints both sides of an assertEqual. A mismatch here reports the
+    first line number that differs and nothing else.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+
+    #: The script, and the corpus it extracts from. The command is read out of
+    #: the script rather than repeated here: a copy of a command is a fifth
+    #: reader, which is the thing this file is about.
+    SCRIPTS = (
+        ("adversarial/score.sh", "adversarial/adversarial.tsv"),
+        ("heldout/score.sh", "heldout/heldout.tsv"),
+        ("consequence/score.sh", "consequence/consequence.tsv"),
+        ("everyday/score.sh", "everyday/everyday.tsv"),
+    )
+
+    def paths(self):
+        sys.path.insert(0, str(self.HERE))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def extraction(self, script):
+        """The pipeline the script uses to write its utterance file."""
+        lines = [l for l in (self.HERE / script).read_text(encoding="utf-8")
+                 .splitlines()
+                 if "cut -f" in l and not l.lstrip().startswith("#")]
+        self.assertEqual(len(lines), 1,
+                         f"{script}: expected one extraction line, found "
+                         f"{len(lines)}")
+        return lines[0].split(">")[0].strip()
+
+    def test_each_script_extracts_exactly_what_the_reader_reads(self):
+        paths = self.paths()
+        for script, corpus in self.SCRIPTS:
+            with self.subTest(script=script):
+                command = self.extraction(script)
+                shelled = subprocess.run(
+                    ["sh", "-c", command],
+                    cwd=self.HERE, capture_output=True, text=True,
+                    env={**os.environ, "SP": str((self.HERE / script).parent)})
+                self.assertEqual(shelled.returncode, 0, shelled.stderr)
+                got = shelled.stdout.splitlines()
+                want = [u for _n, _i, u in paths.utterances(self.HERE / corpus)]
+                self.assertEqual(
+                    len(got), len(want),
+                    f"{script} extracts {len(got)} lines, the reader reads "
+                    f"{len(want)} from {corpus}")
+                first = next((i for i, (a, b) in enumerate(zip(got, want))
+                              if a != b), None)
+                self.assertIsNone(
+                    first,
+                    f"{script} and corpus_paths disagree from extracted line "
+                    f"{(first or 0) + 1} onward. Not printed: these sets are "
+                    f"sealed and an assertEqual would render both sides")
+
+    def test_the_comparison_can_actually_fail(self):
+        """A command that returns nothing would agree with nothing, and the
+        length check is the only thing standing between that and a pass."""
+        paths = self.paths()
+        want = [u for _n, _i, u in
+                paths.utterances(self.HERE / "devsets/routed.tsv")]
+        shelled = subprocess.run(
+            ["sh", "-c", "cut -f2 devsets/routed.tsv"],
+            cwd=self.HERE, capture_output=True, text=True)
+        #: Column two with no header handling: one line too many, and the
+        #: extra one is the header. Exactly the 390th-capture defect.
+        self.assertNotEqual(len(shelled.stdout.splitlines()), len(want))
 
 
 class SealedSetsDoNotRenderAsText(unittest.TestCase):
