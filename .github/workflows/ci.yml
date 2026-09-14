@@ -138,6 +138,13 @@ jobs:
         run: python3 -m unittest discover -v
       - name: Corpus scorer self-tests
         run: python3 Tools/CorpusRunner/test_score.py
+      # Named here rather than discovered: `unittest discover` will not descend
+      # into `everyday/`, which has no `__init__.py`, so a discovery step would
+      # quietly stop covering half of this. The list being hand-written is why
+      # test_score.py asserts every `test_*.py` under Tools/CorpusRunner/
+      # appears in this file -- a suite nobody runs reports nothing, cleanly.
+      - name: Choice-family balance checker self-tests
+        run: python3 Tools/CorpusRunner/test_choice_balance.py
       # These three were reachable only through corpus-gate.sh, which needs a
       # Swift toolchain and so runs on a Mac by dispatch. That left the leak
       # check -- the mechanical part of the held-out boundary -- never running

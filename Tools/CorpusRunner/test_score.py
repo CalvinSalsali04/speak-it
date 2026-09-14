@@ -1254,5 +1254,40 @@ class LedgerCheckTests(unittest.TestCase):
             self.ledger.BASELINE.read_text(encoding="utf-8")), [])
 
 
+class EverySuiteIsActuallyRun(unittest.TestCase):
+    """A test file nobody runs and a test file that does not exist are the
+    same file.
+
+    `language-tools` names its Python suites one line at a time. That is
+    deliberate — `unittest discover` does not descend into a directory without
+    an `__init__.py`, so a discovery step would silently stop covering the
+    `everyday/` half. The cost of naming them is that the next suite someone
+    adds is covered by nothing and reports nothing, which is exactly what
+    happened to the leak check for the eighteen percent of the corpus it never
+    read.
+
+    So the list is checked for totality rather than trusted: every `test_*.py`
+    under `Tools/CorpusRunner/` has to appear in the workflow.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+    WORKFLOW = HERE.parents[1] / ".github" / "workflows" / "ci.yml"
+
+    def suites(self):
+        return sorted(self.HERE.rglob("test_*.py"))
+
+    def test_the_search_for_suites_finds_more_than_none(self):
+        """Zero suites would satisfy the test below perfectly."""
+        self.assertGreaterEqual(len(self.suites()), 3)
+
+    def test_every_suite_under_the_corpus_runner_is_named_in_the_workflow(self):
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
+        root = self.HERE.parents[1]
+        unrun = [str(path.relative_to(root)) for path in self.suites()
+                 if str(path.relative_to(root)) not in workflow]
+        self.assertEqual(unrun, [],
+                         "suites that run nowhere but on somebody's laptop")
+
+
 if __name__ == "__main__":
     unittest.main()
