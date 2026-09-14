@@ -137,3 +137,39 @@ Say so here, in full, and treat every published figure from generation 1 as
 belonging to a set that no longer exists. That is the expensive answer and it
 is the honest one: the alternative is a rate whose denominator quietly changed,
 which is how a sealed set degrades without anybody lying.
+
+## The implementation thread read this set on 2026-09-14, before it was scored
+
+Recorded here because this file's subject is what the set's provenance does and
+does not support, and because a disclosure that lives only in a session is not
+a disclosure.
+
+**What happened.** Reviewing #62, the core language thread — the thread that
+owns parser changes — read the pull request diff, which contains all fifty-six
+captures in full. Not a scan that caught a row in passing: the whole set, read
+deliberately, because reviewing a diff is how a pull request gets merged.
+
+**What it does not damage, and why that is checkable rather than asserted.**
+The rule this set exists to test, the resultive-`so` boundary in #57, was
+written and frozen before the reading. `git diff 63e26de HEAD -- SpeakIt/
+SpeakItTests/` is empty, so the parser scored against this set is the same
+parser that was measured on 2026-09-11, chosen with none of these captures in
+view. For #57 the set is intact evidence, and the property that makes it intact
+is a diff anyone can re-run rather than a promise about what was in mind.
+
+**What it does damage.** For any parser change made after this date by this
+thread, these captures are no longer unseen. A future rule chosen with them in
+view would be tuned to them whether or not that was the intent, which is the
+condition the standing rule names. So this set is spent as blind evidence for
+the next change, and saying otherwise later would be the overstatement the
+provenance section above already warns about.
+
+**The lesson is structural and not about care.** The reviewer had no way to
+merge the pull request without reading the corpus, because a diff shows rows
+and a reviewer must check something. That is a defect in how a sealed set
+arrives, not in who reviewed it. What a reviewer actually needed to verify —
+row count, connector rotation, the split and whole balance per block, no
+duplicate id or utterance, no malformed row, the file classified as sealed,
+`score.sh` executable and selecting by id — are all properties computable
+without a human reading a single capture. `corpus-shape.py` computes them, and
+a sealed set's pull request should be reviewed with it instead.

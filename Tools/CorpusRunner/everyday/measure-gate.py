@@ -37,6 +37,7 @@ Run it from the repository root:
     python3 Tools/CorpusRunner/everyday/measure-gate.py
 """
 import contextlib
+import os
 import pathlib
 import re
 import shutil
@@ -114,7 +115,18 @@ def scratch_tree():
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
         (root / "Tools/CorpusRunner").mkdir(parents=True)
-        shutil.copytree(HERE, root / "Tools/CorpusRunner" / HERE.name)
+        #: `__pycache__` is NOT copied. `copy2` preserves mtimes, so a
+        #: compiled module copied beside its source arrives looking current,
+        #: and Python validates a `.pyc` on the source's (mtime, size) at
+        #: one-second granularity. A mutation that preserves length and lands
+        #: in the same filesystem second as the mtime the `.pyc` recorded is
+        #: therefore invisible: the interpreter runs the CACHED original while
+        #: the file on disk holds the mutant. That reports "the suite did not
+        #: notice" about a file nobody executed, and the silent direction --
+        #: a control or a verdict computed from the wrong bytes -- looks
+        #: exactly like a clean result.
+        shutil.copytree(HERE, root / "Tools/CorpusRunner" / HERE.name,
+                        ignore=shutil.ignore_patterns("__pycache__"))
         for path in LINKED:
             if path.exists():
                 link = root / path.relative_to(ROOT)
@@ -125,8 +137,13 @@ def scratch_tree():
 
 def run_suite(root):
     """The suite's exit status, run against the scorer sitting in `root`."""
+    #: Belt and braces with the `__pycache__` exclusion above: this run writes
+    #: no bytecode at all, so nothing it leaves behind can be read back by a
+    #: later mutation, and the symlinked real directories stop collecting
+    #: `__pycache__` from a harness that only ever meant to read them.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.run([sys.executable, str(root / "test_score.py")],
-                          capture_output=True, text=True).returncode
+                          capture_output=True, text=True, env=env).returncode
 
 
 def baseline_is_clean():

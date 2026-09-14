@@ -1,5 +1,48 @@
 # Decisions
 
+## 2026-09-11 — "So" can end a thought, but only in front of an obligation
+
+Clause splitting was built for one coordinator. `splittableAndRanges` matched
+`\s+and\s+` and nothing else, and the other path in `splitClauses` does carry
+`so` in `connectorRun` but requires `actionLeadPattern` immediately after,
+which excludes `obligationLead`. So "so book the service" could split and "so I
+need to book the service" never could.
+
+The consequence was visible to anyone speaking rather than typing. "The lease
+ends in March **and** I need to draft the renewal" arrived as a date to know
+and an errand to do; "the lease ends in March **so** I need to draft the
+renewal" arrived as a single row. Same content, same speaker, same two
+thoughts — and *so* is the word people actually reach for, because the
+relationship between a fact and the errand it causes is a resultive one. A
+development set pairing each capture with a clean twin scored that family 3 of
+3 typed and 0 of 3 spoken, and all six rows are explained by which connector
+the twin used.
+
+`so` is not admitted on the same terms as `and`, because most of what follows
+it is not a second thought: a purpose clause ("buy milk *so the kids have
+breakfast*"), a degree phrase ("*so tired*"), a subordinator ("*so that* I
+don't forget"). The shape that is reliably a thought of its own is a
+first-person obligation, since a commitment is not a property of the fact that
+prompted it. The boundary therefore needs an obligation on the right **and** a
+left side that already parses as a thought — the second half is what keeps
+"Okay so I need to call Catherine tomorrow" and "So basically I need to submit
+the report Friday" at one thought each, their left side being a discourse
+marker rather than a clause.
+
+`ClauseScope.coordinatorEndsComplement` gains the matching case: a report
+cannot carry the speaker's own obligation. "The guy said the warranty expires
+in November so I need to book the service" is his news and the speaker's
+errand, and the *so* clause is never part of what he said. This is scoped to
+the resultive coordinator, because "and" genuinely does continue a report —
+"Sarah said the meeting is off and the demo moved" is all Sarah's.
+
+**What it cost, stated because it is not free.** The target family went 0/3 to
+3/3 and the gating corpus stayed at zero failures over 1,401 cases, but
+held-out thought count went 255/310 to 254/310. That set is scored non-verbose
+and its failures are not read to steer parser work, so which capture moved is
+not known. Everyday and adversarial did not move. The full accounting is in
+`Docs/LANGUAGE_BASELINE.md` under 2026-09-11 19:29.
+
 ## 2026-09-11 — Speech is framed at both ends, and the second end now has an owner
 
 The everyday held-out set (235 captures, never tuned against) put the worst

@@ -1324,19 +1324,46 @@ enum RuleBasedThoughtExtractor {
             .compactMap { Range($0.range, in: text) }
     }
 
-    /// Every "and" that is a join rather than part of a fixed phrase.
+    /// Every coordinator that is a join rather than part of a fixed phrase.
     ///
     /// All of them, because a decision taken at the first one used to settle
     /// the whole clause: if the tail after it did not stand alone, the sentence
     /// was left whole and no later boundary was ever examined. Coordination of
     /// three or more elements is ordinary speech, not a stress case.
-    private static func splittableAndRanges(in part: String) -> [Range<String.Index>] {
+    ///
+    /// **"so" is here on a much shorter leash than "and".** It is resultive —
+    /// it attaches a consequence to a cause — and most of what follows it is
+    /// not a separate thought at all: a purpose clause ("buy milk *so the kids
+    /// have breakfast*"), a degree phrase ("*so tired*"), a subordinator ("*so
+    /// that* I don't forget"). The one shape that is reliably a thought of its
+    /// own is a first-person obligation, because a commitment is not a
+    /// property of the fact that prompted it. "The lease ends in March so I
+    /// need to draft the renewal" is a date to know and an errand to do, and
+    /// it arrived as one row.
+    ///
+    /// This is the connector people reach for when they are speaking. Written
+    /// down, the same capture uses "and" — which is why no development set
+    /// showed it for so long. `devsets/rambling.tsv` writes each capture twice,
+    /// and on the half that rambles the whole family scored 0 of 3.
+    ///
+    /// The left-hand condition lives in `isIndependentConjunct`: a resultive
+    /// boundary needs a cause that stands alone, which is what keeps "Okay so
+    /// I need to call Catherine tomorrow" a single request with a lead-in.
+    private static func splittableCoordinatorRanges(in part: String) -> [Range<String.Index>] {
         // "And then" and "and also" are the same boundary with a step marker
         // on it. The marker belongs to the boundary, not to the conjunct: left
         // in, "buy milk and then bread" read "then bread" as the second item
         // and titled it "Buy then bread", and "and then the plumber" was not
         // a recipient because it did not open on its determiner.
-        guard let regex = NSRegularExpression.speakItCached(#"(?i)\s+and\s+(?:(?:then|also)\s+)?"#) else { return [] }
+        //
+        // The resultive alternative is written first so that "and so I need
+        // to" consumes both words: matched the other way round, the boundary
+        // would fall after "and" and leave a conjunct opening on a stranded
+        // "so".
+        guard let regex = NSRegularExpression.speakItCached(
+            #"(?i)\s+(?:and\s+)?so\s+(?=(?:i|we)\s+\#(ActionabilityReader.obligationLead)\b)"#
+            + #"|\s+and\s+(?:(?:then|also)\s+)?"#
+        ) else { return [] }
         let idioms = idiomRanges(in: part)
         return regex
             .matches(in: part, range: NSRange(part.startIndex..., in: part))
@@ -1360,7 +1387,7 @@ enum RuleBasedThoughtExtractor {
     /// people to call. So a bare common noun keeps the thought together, while
     /// a person, a predicate, or a conjunct carrying its own time splits it.
     private static func splitIndependentConjuncts(_ part: String) -> [String] {
-        let boundaries = splittableAndRanges(in: part)
+        let boundaries = splittableCoordinatorRanges(in: part)
         guard !boundaries.isEmpty else { return [part] }
 
         // One reading of the whole clause, produced before any of it is cut up.
@@ -1408,11 +1435,16 @@ enum RuleBasedThoughtExtractor {
                 in: context,
                 reading: reading
             )
+            let resultive = part[boundaries[index - 1]].range(
+                of: #"(?i)\bso\s*$"#,
+                options: .regularExpression
+            ) != nil
             if endsComplement,
                isIndependentConjunct(
                    rightRange,
                    after: currentStart..<currentEnd,
                    head: segments[0],
+                   resultive: resultive,
                    in: context
                ) {
                 let clause = normalize(String(part[currentStart..<currentEnd]))
@@ -1436,6 +1468,7 @@ enum RuleBasedThoughtExtractor {
         _ rightRange: Range<String.Index>,
         after leftRange: Range<String.Index>,
         head headRange: Range<String.Index>,
+        resultive: Bool,
         in context: SentenceContext
     ) -> Bool {
         let trimmed = normalize(String(context.text[rightRange]))
@@ -1443,6 +1476,27 @@ enum RuleBasedThoughtExtractor {
         guard !trimmed.isEmpty, !left.isEmpty else { return false }
         let leftCanStandAlone = context.hasSubjectPredicate(in: leftRange)
             || ActionabilityReader.read(left) != .ambiguous
+
+        // A resultive coordinator attaches a consequence to a cause, so there
+        // has to be a cause: a statement on the left. "Okay so I need to call
+        // Catherine tomorrow" and "So basically I need to submit the report
+        // Friday" have a discourse marker in front of the request, not a
+        // clause, and both are in the corpus at one thought each. This is the
+        // whole guard against reading a spoken lead-in as a second capture,
+        // and it is deliberately stricter than what "and" requires, because
+        // "and" cannot open an utterance and "so" can.
+        //
+        // It reads `hasSubjectPredicate` alone rather than `leftCanStandAlone`,
+        // and the difference is the point: that value is an OR whose second arm
+        // is true of a bare imperative, so it would let an *instruction* count
+        // as a cause. "Pick up the dry cleaning so I need to bring the ticket"
+        // is one errand and the note that goes with it — the ticket is how the
+        // dry cleaning gets collected, not a second thing to do — and splitting
+        // it strands "bring the ticket" as a row that means nothing alone. A
+        // commitment is not a property of the fact that prompted it, which is
+        // the whole argument for this boundary, and an imperative is not a
+        // fact.
+        if resultive, !context.hasSubjectPredicate(in: leftRange) { return false }
 
         // "Email the contract to legal and get it back by Friday": a conjunct
         // whose object is a pronoun pointing back at the left's object is the
