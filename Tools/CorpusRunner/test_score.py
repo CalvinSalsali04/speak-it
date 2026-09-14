@@ -1505,3 +1505,108 @@ class LedgerCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CorpusShapeTests(unittest.TestCase):
+    """The reviewer's tool for a sealed set, which must never print a capture.
+
+    It exists because reviewing #62 meant reading all fifty-six captures of a
+    sealed set in a pull request diff, which spent the set as blind evidence
+    for every parser change after that one. The properties a reviewer actually
+    needed were all computable without reading a row.
+    """
+
+    def shape(self):
+        path = (pathlib.Path(__file__).resolve().parent / "corpus-shape.py")
+        namespace = {"__file__": str(path), "__name__": "corpus_shape_under_test"}
+        exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"),  # noqa: S102
+             namespace)
+        return namespace
+
+    def run_on(self, text):
+        """Returns (exit status, printed output) for a corpus written inline."""
+        shape = self.shape()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "corpus.tsv"
+            path.write_text(text, encoding="utf-8")
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                status = shape["main"]([str(path)])
+        return status, said.getvalue()
+
+    GOOD = ("id\tutterance\tfamily\texpected_thoughts\n"
+            "X01\tthe lease ends in March\ta\t1\n"
+            "X02\tthe bin goes out on Thursday\tb\t2\n")
+
+    def test_no_capture_text_reaches_the_output(self):
+        """The whole point. A reviewer must be able to run this and stay blind."""
+        status, said = self.run_on(self.GOOD)
+        self.assertEqual(status, 0, said)
+        for text in ("the lease ends in March", "the bin goes out on Thursday"):
+            self.assertNotIn(text, said,
+                             "the shape report printed a capture, which is the "
+                             "one thing it exists to avoid")
+
+    def test_a_duplicate_row_is_named_by_id_and_not_by_text(self):
+        """Even the error path stays blind, which is where text usually leaks."""
+        status, said = self.run_on(self.GOOD + "X03\tthe lease ends in March\ta\t1\n")
+        self.assertEqual(status, 1)
+        self.assertIn("X01", said)
+        self.assertIn("X03", said)
+        self.assertNotIn("the lease ends in March", said)
+
+    def test_the_utterance_column_comes_from_the_header(self):
+        """`everyday.tsv` keeps it third and the devsets keep it second.
+
+        A hard-coded column is the defect that reported zero instances of the
+        word "so" in a corpus containing 34 of them.
+        """
+        third = ("id\tdomain\tutterance\texpect\n"
+                 "X01\thome\tthe lease ends in March\tMemory\n")
+        status, said = self.run_on(third)
+        self.assertEqual(status, 0, said)
+        self.assertIn("utterance column    2", said)
+        self.assertNotIn("the lease ends in March", said)
+
+    def test_a_file_with_no_utterance_header_is_refused_not_guessed(self):
+        """Refusing beats reporting on whichever column happened to be second."""
+        status, said = self.run_on("X01\tsomething\tother\n")
+        self.assertEqual(status, 1)
+        self.assertIn("refuses to report on content rather than guess", said)
+
+    def test_an_uncommented_header_is_not_counted_as_a_capture(self):
+        """Counting everyday's header row reported 256 rows for 255 captures."""
+        status, said = self.run_on(self.GOOD)
+        self.assertEqual(status, 0, said)
+        self.assertIn("rows                2", said)
+
+    def test_a_commented_header_is_found_too(self):
+        """`heldout.tsv` writes its header inside a comment."""
+        status, said = self.run_on("# id\tutterance\tfamily\n"
+                                   "X01\tthe lease ends in March\ta\n")
+        self.assertEqual(status, 0, said)
+        self.assertIn("utterance column    1", said)
+
+    def test_every_sealed_set_passes_its_own_shape_check(self):
+        """And reports the capture count its README claims.
+
+        Pinned to literals: a test that reads the count out of the file it is
+        checking cannot notice the file changing.
+        """
+        runner = pathlib.Path(__file__).resolve().parent
+        expected = {"consequence": 56, "everyday": 255,
+                    "heldout": 389, "adversarial": 120}
+        shape = self.shape()
+        for name, count in expected.items():
+            path = runner / name / f"{name}.tsv"
+            if not path.exists():
+                continue
+            with self.subTest(corpus=name):
+                said = io.StringIO()
+                with contextlib.redirect_stdout(said):
+                    status = shape["main"]([str(path)])
+                out = said.getvalue()
+                self.assertEqual(status, 0, out)
+                self.assertIn(f"rows                {count}", out,
+                              f"{name} no longer holds {count} captures; if "
+                              f"that was deliberate it opens a generation")
