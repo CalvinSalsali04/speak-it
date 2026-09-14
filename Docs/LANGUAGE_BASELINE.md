@@ -229,6 +229,76 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-14 — correction: I read the wrong column, and what survives it
+
+Commit `bbc9f97` reports that the everyday corpus contains no instance of the
+word "so" and that the resultive-`so` rule fires on none of its captures, and
+concludes that "everyday unmoved" was vacuous evidence for #57. **That is
+wrong, and the cause is my own bug.**
+
+`everyday.tsv` keeps its utterance in the **third** column; the development
+sets and `heldout.tsv` keep it in the second. My scan hard-coded column two, so
+for the everyday set it searched a different field entirely and found nothing.
+`leak-check.py` has a function whose whole purpose is to avoid this, with a
+docstring naming these exact files — *"hard-coding a column is how this check
+silently starts comparing the wrong field and passing for the wrong reason"* —
+and I had read it earlier the same session.
+
+It surfaced because the everyday README describes a `filler` family of 18
+captures, which cannot coexist with zero disfluency markers. The instrument
+said zero and a document said eighteen, and the document was right.
+
+**Corrected counts, header-driven:**
+
+| corpus | captures | contain "so" | rule can fire on |
+|---|---|---|---|
+| devsets | 619 | 27 | 7 |
+| everyday (sealed) | 255 | 34 | **3** — E02, M03, W28 |
+| heldout (sealed) | 389 | 16 | **1** — C283 |
+| adversarial (sealed) | 120 | 1 | 0 |
+
+The everyday set is also the **most** spoken-sounding corpus here, not the
+least: 24% of its captures carry a spoken marker against 11% for held-out and
+9% for the development sets. The opposite of what I published.
+
+### What survives, and it matters for #57
+
+**The claim about adversarial was right and the claim about everyday was
+wrong.** The rule cannot reach any adversarial capture, so "adversarial
+unmoved" says nothing. It can reach three everyday captures, so "everyday
+unmoved" is real evidence — modest, and worth stating precisely: three is an
+*upper bound*, because the regex is only half the rule and the left-side
+`hasSubjectPredicate` guard cannot be evaluated without the tagger. So the
+change affects between zero and three sealed, never-tuned-against captures, and
+no everyday measure moved. At worst it did nothing there; at best it handled
+three correctly. Neither is a regression.
+
+**The held-out derivation is untouched.** `heldout.tsv` keeps its utterance in
+column two, which is what I read, so that count was right: the rule can reach
+exactly one held-out capture, C283, and the held-out thought count moved by
+exactly one. A rule that changes nothing where its pattern does not match makes
+those the same capture. Derived from the rule's reach, not from the sealed
+failure, which stays unread.
+
+C283's expected-count label is `1-2`. The strict reading compares against 1, so
+splitting it into 2 is marked wrong for producing a count its own label lists
+as correct.
+
+### The lesson, which is not the one I would have guessed
+
+I have spent this session cataloguing guards that pass vacuously, and I found
+this by looking for one more of them. The bug was not a vacuous guard — it was
+a **scan that read the wrong field and returned a confident zero**, which is
+the same family as the harvest defect that made `leak-check.py` read 18% of the
+gating corpus, and the same family as the `rglob` that descended no symlink.
+
+A zero is the most dangerous result a scan can return, because it is what a
+correct scan of clean material returns. Every other number invites the question
+"is that right?" and zero invites "good". **A scan that reports zero has to be
+run against a case known to be positive before the zero means anything** — the
+control the evaluation thread insisted on for its mutation harness, which I did
+not apply to my own one-off.
+
 ## 2026-09-11 20:38 — `abandoned-midthought` traced: the detector only ever reads the last word
 
 Run 34644656689, macos-26, branch at `8cfa1f5`, `language_only` with
