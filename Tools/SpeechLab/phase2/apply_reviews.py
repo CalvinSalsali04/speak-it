@@ -8,8 +8,10 @@ tool never invokes or reads the production parser.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 from pathlib import Path
+import statistics
 import sys
 
 LAB = Path(__file__).resolve().parents[1]
@@ -23,8 +25,15 @@ def positive(review):
 
 
 def apply_reviews(cases, submissions, review_schema):
-    by_id = {case['case_id']: case for case in cases}
+    # Do not mutate the authored snapshot. Keeping before/after artifacts
+    # distinct is required for an auditable adjudication diff.
+    by_id = {case['case_id']: deepcopy(case) for case in cases}
     seen_reviews = {review['review_id'] for case in cases for review in case['reviews']}
+    author_identities = {
+        review['reviewer']['identity']
+        for case in cases for review in case['reviews']
+        if review['independence'] == 'author_self_review'
+    }
     reviewer_case_pairs = {(case['case_id'], review['reviewer']['identity']) for case in cases for review in case['reviews'] if review['independence'] == 'independent'}
     for submission in submissions:
         if set(submission) != {'case_id', 'review'}:
@@ -35,6 +44,10 @@ def apply_reviews(cases, submissions, review_schema):
         validate_schema(review, review_schema)
         if review['independence'] != 'independent':
             raise ValueError('review submission is not independent')
+        if review['reviewer']['kind'] == 'machine':
+            raise ValueError('machine review cannot be submitted as independent')
+        if review['reviewer']['identity'] in author_identities:
+            raise ValueError('author self-review cannot be resubmitted as independent')
         if review['review_id'] in seen_reviews:
             raise ValueError('duplicate review ID')
         pair = (case_id, review['reviewer']['identity'])
@@ -49,6 +62,19 @@ def apply_reviews(cases, submissions, review_schema):
         adverse = [review for review in independent if review['proposed_contract_correct'] == 'no' or review['meaning_preservation'] == 'meaning_changed']
         uncertain = [review for review in independent if review['proposed_contract_correct'] == 'uncertain' or review['meaning_preservation'] == 'uncertain']
         approvals = [review for review in independent if positive(review)]
+        if independent:
+            # Keep the adjudicated surface fields conservative and deterministic.
+            # Individual reviewer judgments remain intact in ``reviews``.
+            case['naturalness'] = statistics.median_low(
+                review['naturalness'] for review in independent
+            )
+            preservation = {review['meaning_preservation'] for review in independent}
+            if 'meaning_changed' in preservation:
+                case['meaning_preservation'] = 'meaning_changed'
+            elif 'uncertain' in preservation:
+                case['meaning_preservation'] = 'uncertain'
+            else:
+                case['meaning_preservation'] = 'appears_preserved'
         if adverse or uncertain:
             case['label_state'] = 'disputed'
             case['trusted'] = False
