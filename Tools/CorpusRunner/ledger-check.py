@@ -158,6 +158,14 @@ def check(text):
 
     running = 0
     moved = 0
+    #: Which sealed measure each movement was in. A single running total is a
+    #: sum, and summing 254/310 with 34/56 is collapsing two instruments into
+    #: one number -- the thing this file's own rules forbid everywhere else.
+    #: It has been safe so far only because exactly one measure has ever moved,
+    #: which is a precondition nothing stated and nothing enforced. Now it is
+    #: enforced, so the day a second measure moves this fails and asks for a
+    #: per-measure total instead of quietly adding them up.
+    measures_moved = set()
     for row in table:
         if len(row) < 6:
             problems.append(f"a ledger row has {len(row)} cells, not 6: {row}")
@@ -176,6 +184,14 @@ def check(text):
         if measured is not None:
             running += measured
             moved += 1
+            measures_moved.add(row[2].strip().lower())
+
+    if len(measures_moved) > 1:
+        problems.append(
+            "rows record movements in more than one sealed measure "
+            f"({', '.join(sorted(measures_moved))}), so a single running "
+            "total would add up figures over different denominators. State a "
+            "total per measure instead, and update this check to read them.")
 
     claim = total_claim(section)
     if claim is None:

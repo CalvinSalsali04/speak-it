@@ -95,6 +95,35 @@ def acceptable_counts(label):
     return set(), None, False
 
 
+def reconciliation_problems(stats, clean, feeds, excluded):
+    """Where the clean denominators are not the legacy ones minus the exclusions.
+
+    Returns one sentence per measure that does not add up, and an empty list
+    when every measure does. Both sides come from the same run: the fall is
+    read off the two tallies, and the list of contributors is read off what
+    each capture was recorded as entering while it was counted. Deriving the
+    second from the labels instead is what made this wrong the first time --
+    it said eleven captures fed a denominator that had fallen by nine.
+    """
+    identities = [
+        ("destination", "destination",
+         (stats["dest_ok"] + stats["dest_miss"])
+         - (clean["dest_ok"] + clean["dest_miss"])),
+        ("thought count", "thought count",
+         stats["count_scored"] - clean["count_scored"]),
+        ("ambiguous/unsafe", "ambiguous",
+         stats["ambiguous"] - clean["ambiguous"]),
+    ]
+    problems = []
+    for label, measure, fell_by in identities:
+        listed = sum(1 for cid in excluded if label in feeds.get(cid, []))
+        if listed != fell_by:
+            problems.append(
+                f"{measure}: {listed} excluded captures are listed as feeding "
+                f"it, but its denominator fell by {fell_by}")
+    return problems
+
+
 def tally(rows):
     """Accumulate every measure over the given rows.
 
@@ -115,6 +144,18 @@ def tally(rows):
     # detail, `--verbose` unchanged. A finer-grained number is still a number.
     by_family = defaultdict(Counter)
     misses = []
+    #: Which subtotals each capture actually entered, recorded AS IT IS COUNTED
+    #: rather than re-derived afterwards. The exclusions block below reconciles
+    #: the clean denominators against the legacy ones, and its first version
+    #: worked out participation from the label with `^\d+`, which credited two
+    #: captures to the thought count they never reached: an Ambiguous capture
+    #: returns above before the count block, and a capture whose probe result
+    #: is an operation is skipped by the count block itself. The printed
+    #: reconciliation therefore did not reconcile -- it said eleven captures
+    #: feed the thought count while the denominator fell by nine. Same rule as
+    #: everywhere else here: a published figure has to come from the check that
+    #: computes it.
+    feeds = defaultdict(list)
     for cid, utt, fam, dest, n in rows:
         fam = fam.strip() or "untagged"
         got = seen.get(utt)
@@ -123,6 +164,7 @@ def tally(rows):
             continue
         stats["scored"] += 1
         by_family[fam]["scored"] += 1
+        feeds[cid].append(f"family:{fam}")
 
         # Preservation applies to ambiguous captures too. Count before the branch
         # below, otherwise an ambiguous capture silently producing nothing is
@@ -134,6 +176,7 @@ def tally(rows):
         if "Ambiguous" in dest:
             stats["ambiguous"] += 1
             by_family[fam]["ambiguous"] += 1
+            feeds[cid].append("ambiguous/unsafe")
             # The contract for an unpinnable capture: keep it, do not act on it.
             if got["operation"] or got["remind"] or got["due"]:
                 stats["unsafe"] += 1
@@ -150,6 +193,7 @@ def tally(rows):
             ok = bool(got["routes"]) and "Memory" in got["routes"]
         stats["dest_ok" if ok else "dest_miss"] += 1
         by_family[fam]["dest_ok" if ok else "dest_miss"] += 1
+        feeds[cid].append("destination")
         if not ok:
             misses.append(("DEST", cid, utt, dest, "/".join(got["routes"]) or "nothing"))
 
@@ -157,6 +201,7 @@ def tally(rows):
         if strict is not None and not got["operation"]:
             stats["count_scored"] += 1
             by_family[fam]["count_scored"] += 1
+            feeds[cid].append("thought count")
             if nonstandard:
                 stats["count_label_prose"] += 1
             if len(acceptable) > 1:
@@ -170,10 +215,10 @@ def tally(rows):
             # stays byte-for-byte what it was and both appear on one run.
             if got["rows"] in acceptable:
                 stats["count_ok_range"] += 1
-    return stats, by_family, misses
+    return stats, by_family, misses, feeds
 
 
-stats, by_family, misses = tally(rows)
+stats, by_family, misses, feeds = tally(rows)
 
 # The registry describes `heldout.tsv` and nothing else. This scorer also runs
 # the development sets, where excluding a held-out id would be meaningless and
@@ -195,7 +240,7 @@ if scoring_heldout:
                  f"{', '.join(missing)}")
 
 clean_rows = [r for r in rows if r[0] not in excluded_ids]
-clean, clean_by_family, _ = tally(clean_rows)
+clean, clean_by_family, _, _ = tally(clean_rows)
 
 d_total = stats["dest_ok"] + stats["dest_miss"]
 print()
@@ -276,19 +321,45 @@ if scoring_heldout:
   print("  Which subtotals the excluded captures feed, so the denominators")
   print("  above can be reconciled by hand:")
   for cid in sorted(compromised.EXCLUDED):
-      feeds = []
-      for r in rows:
-          if r[0] != cid:
-              continue
-          feeds.append(f"family:{r[2].strip()}")
-          feeds.append("ambiguous/unsafe" if "Ambiguous" in r[3] else "destination")
-          if re.match(r"^\d+", r[4].strip()):
-              feeds.append("thought count")
-      print(f"    {cid}  " + ", ".join(feeds))
+      entered = feeds.get(cid)
+      if not entered:
+          print(f"    {cid}  scored no subtotal at all")
+          continue
+      print(f"    {cid}  " + ", ".join(entered))
+  print()
+  print("  Read down each column to reconcile: the clean denominator for a")
+  print("  measure is the legacy one minus the excluded captures listed above")
+  print("  as feeding it. These are recorded while the capture is counted, not")
+  print("  worked out from the label afterwards, because an Ambiguous capture")
+  print("  and a capture the probe answers with an operation both carry a")
+  print("  numeric label and neither reaches the thought count.")
   print("=" * 66)
   print("  Ids only. No capture text and no failure reason is read or printed")
   print("  by this section, and an id must never be grepped from the")
   print("  repository root -- see the note in compromised.py.")
+
+  # ------------------------------------------------- the reconciliation check
+  #: The block above claims the clean denominators are the legacy ones minus
+  #: the excluded captures listed as feeding each measure. That is an
+  #: arithmetic identity, so it can be checked rather than asserted -- and it
+  #: failed the first time it was written, saying eleven captures fed a
+  #: denominator that fell by nine.
+  #:
+  #: This runs on the real data on every real run, which is worth more than a
+  #: fixture: the two things that broke it, an Ambiguous capture and a capture
+  #: the probe answers with an operation, are properties of the corpus rather
+  #: than of any test someone thought to write.
+  broken = reconciliation_problems(stats, clean, feeds, compromised.EXCLUDED)
+  print()
+  if broken:
+      print("  RECONCILIATION FAILED — the exclusions above do not explain the")
+      print("  difference between the two sets of denominators:")
+      for line in broken:
+          print(f"    {line}")
+      print("  Do not quote either number until this agrees.")
+      sys.exit(1)
+  print("  Reconciled: every measure's clean denominator is its legacy one")
+  print("  minus exactly the excluded captures listed above as feeding it.")
 
 
 def cell(ok, total):

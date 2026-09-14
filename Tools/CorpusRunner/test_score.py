@@ -1639,5 +1639,129 @@ class ThisFileRunsAllOfItselfTests(unittest.TestCase):
             "seen when this file runs as a script")
 
 
+class ReconciliationTests(unittest.TestCase):
+    """The exclusions block claims an arithmetic identity, so it is checked.
+
+    The clean denominator for a measure must be the legacy one minus exactly
+    the excluded captures recorded as entering that measure. The first version
+    worked participation out from the label with `^\\d+` and reported that
+    eleven captures fed a thought count whose denominator had fallen by nine:
+    an Ambiguous capture returns before the count block, and a capture the
+    probe answers with an operation is skipped by it, and both carry a numeric
+    label. A reconciliation that does not reconcile is worse than none, because
+    it reads as having been checked.
+    """
+
+    def check(self):
+        """`reconciliation_problems`, lifted out of the script around it."""
+        path = (pathlib.Path(__file__).resolve().parent
+                / "heldout" / "score.py")
+        source = path.read_text(encoding="utf-8")
+        start = source.index("def reconciliation_problems(")
+        end = source.index("def tally(", start)
+        namespace = {}
+        exec(compile(source[start:end], str(path), "exec"), namespace)  # noqa: S102
+        return namespace["reconciliation_problems"]
+
+    LEGACY = {"dest_ok": 200, "dest_miss": 120,       # destination over 320
+              "count_scored": 310, "ambiguous": 69}
+    CLEAN = {"dest_ok": 195, "dest_miss": 115,        # destination over 310
+             "count_scored": 301, "ambiguous": 68}
+
+    #: Eleven excluded captures: ten feed destination, nine feed the thought
+    #: count, one is ambiguous instead. That is the real shape of the held-out
+    #: registry and the shape the first version got wrong.
+    FEEDS = dict(
+        [(f"C{i:03d}", ["destination", "thought count"]) for i in range(1, 10)]
+        + [("C010", ["destination"]), ("C011", ["ambiguous/unsafe"])])
+    EXCLUDED = set(FEEDS)
+
+    def test_a_consistent_set_of_denominators_reports_nothing(self):
+        self.assertEqual(
+            self.check()(self.LEGACY, self.CLEAN, self.FEEDS, self.EXCLUDED), [])
+
+    def test_a_capture_credited_to_a_measure_it_never_entered_is_caught(self):
+        """The exact defect: the Ambiguous capture listed under thought count."""
+        feeds = dict(self.FEEDS)
+        feeds["C011"] = ["ambiguous/unsafe", "thought count"]
+        problems = self.check()(self.LEGACY, self.CLEAN, feeds, self.EXCLUDED)
+        self.assertTrue(any("thought count" in p for p in problems), problems)
+        self.assertTrue(any("fell by 9" in p for p in problems), problems)
+
+    def test_a_denominator_that_moved_on_its_own_is_caught(self):
+        """The other direction: the tally changed and the exclusions did not."""
+        clean = dict(self.CLEAN, count_scored=299)
+        problems = self.check()(self.LEGACY, clean, self.FEEDS, self.EXCLUDED)
+        self.assertTrue(any("fell by 11" in p for p in problems), problems)
+
+    def test_every_measure_is_checked_and_not_just_the_first(self):
+        """Three identities, so a break in any one has to surface."""
+        clean = dict(self.CLEAN, dest_ok=190, ambiguous=60)
+        problems = self.check()(self.LEGACY, clean, self.FEEDS, self.EXCLUDED)
+        self.assertTrue(any("destination" in p for p in problems), problems)
+        self.assertTrue(any("ambiguous" in p for p in problems), problems)
+
+
+class LedgerSingleMeasureTests(unittest.TestCase):
+    """A running total is a sum, and a sum needs one denominator.
+
+    The ledger states `Running total: **-1 rows**, across one change`, and the
+    check adds the rows up. That is only meaningful because exactly one sealed
+    measure has ever moved. Nothing said so and nothing enforced it, so the day
+    a second measure moved the total would have quietly become 254/310 added to
+    34/56 -- collapsing two instruments into one number, which is the thing
+    this repository forbids everywhere else.
+    """
+
+    def ledger(self):
+        return ledger_check_module()
+
+    #: Built here rather than by editing the real fixture. A test that edits a
+    #: document by string replacement skips itself the day the wording moves,
+    #: and a skipped test checks nothing.
+    def written(self, rows, total):
+        body = ["## Sealed-set cost ledger", "",
+                "| date | change | measure | from | to | |",
+                "| --- | --- | --- | --- | --- | --- |"]
+        body.extend(rows)
+        body += ["", total, "", "## Next heading", ""]
+        return "\n".join(body)
+
+    ONE = "| 2026-09-11 | a change | held-out thought count | 255/310 | 254/310 | **\u22121** |"
+    TWO = "| 2026-09-14 | another | consequence thought count | 30/56 | 34/56 | **+4** |"
+
+    def test_one_measure_under_one_running_total_is_accepted(self):
+        """The control. Without it the next test passes for any reason."""
+        text = self.written([self.ONE],
+                            "Running total: **\u22121 rows**, across one change.")
+        problems = [p for p in self.ledger().check(text)
+                    if "more than one sealed measure" in p]
+        self.assertEqual(problems, [])
+
+    def test_two_measures_under_one_running_total_is_refused(self):
+        text = self.written([self.ONE, self.TWO],
+                            "Running total: **+3 rows**, across two changes.")
+        problems = self.ledger().check(text)
+        self.assertTrue(
+            any("more than one sealed measure" in p for p in problems),
+            problems)
+
+    def test_the_refusal_names_both_measures_so_the_fix_is_obvious(self):
+        text = self.written([self.ONE, self.TWO],
+                            "Running total: **+3 rows**, across two changes.")
+        said = " ".join(self.ledger().check(text))
+        self.assertIn("held-out thought count", said)
+        self.assertIn("consequence thought count", said)
+
+    def test_the_real_ledger_still_moves_only_one_measure(self):
+        """If this fails, the ledger needs a per-measure total, not a patch."""
+        real = self.ledger().BASELINE.read_text(encoding="utf-8")
+        problems = self.ledger().check(real)
+        self.assertEqual(
+            [p for p in problems if "more than one sealed measure" in p], [],
+            "a second sealed measure has moved, so the single running total "
+            "in LANGUAGE_BASELINE.md is now a sum over two denominators")
+
+
 if __name__ == "__main__":
     unittest.main()

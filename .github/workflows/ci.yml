@@ -153,6 +153,8 @@ jobs:
       # the leak check moved here: the gate needs a Mac and is dispatch-only,
       # so a guard living there does not run on the pull request that
       # introduces the edit it exists to catch.
+      - name: Every sealed measure that moved is in the cost ledger
+        run: python3 Tools/CorpusRunner/ledger-check.py
       - name: No sealed capture was edited after it was scored
         run: python3 Tools/CorpusRunner/everyday/generation-check.py
 

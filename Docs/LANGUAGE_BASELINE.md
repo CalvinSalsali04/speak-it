@@ -56,6 +56,89 @@ The ledger is not a budget and no number in it is acceptable by being small.
 It is here so the question "has this been drifting?" has an answer that takes
 one glance instead of an afternoon.
 
+## Two held-out numbers, and which one a claim may use
+
+Asked for on 2026-09-12, after five held-out captures turned out not to be
+unseen. The rule going in was **by ID only**: no capture text and no failure
+reason is read or printed to build any of this, and none was.
+
+**The instrument prints this, and this section does not restate the figures.**
+`Tools/CorpusRunner/heldout/score.py` computes the totals, the exclusion
+categories, the denominators and the per-id subtotal participation, and prints
+them on every run. That is deliberate and it is the lesson from the
+compromised-capture count that read three when it was five: a published figure
+has to come from the check that computes it, or the first person to re-derive
+it gets a different answer. What follows is the scheme, not its values.
+
+### The two numbers
+
+**LEGACY** — every labelled capture, including the ones now known not to be
+unseen. It is what every section of this file dated before 2026-09-12 means,
+and it is kept for exactly that reason. Older numbers are not rewritten, not
+recomputed and not quietly corrected; they are marked legacy and left visible.
+
+**CLEAN SEALED** — the same measures over the captures still entitled to carry
+a claim about unseen speech. **Use this one for any statement about
+generalisation.** It is not a better score and it may read either higher or
+lower than legacy: it is the same instrument over a smaller, honest population.
+
+A third distinction cuts across both, and predates neither: **STRICT** compares
+a capture against the first number in its label, **RANGE-AWARE** accepts any
+count the label permits. Seventy-one captures carry a label like `1-2`, which
+is the author recording that both readings are defensible, and strict marks the
+upper one wrong. Every thought-count figure published in this file before
+2026-09-12 is a strict figure, and is marked so where it appears.
+
+### Why there are four exclusion categories and not one
+
+Each names a different way a capture stopped being unseen, and they are kept
+apart because the remedies differ and because collapsing distinct populations
+into one flag is the recurring bug in this repository.
+
+| category | what happened | can it be undone |
+| --- | --- | --- |
+| in tuned material | the capture's text is also a case the rules were tuned against | no |
+| verbatim in a document | the text appears in prose under `Docs/` | no — deleting a sentence does not un-see it |
+| near tuned material | a near-duplicate of tuned material, by Jaccard ≥ 0.70 | no, and the threshold is a judgement worth disagreeing with |
+| exposed without inspection | the text was printed into a session's context, never inspected, never used | no, and it is recorded even though nothing was learned from it |
+
+The first two are *compromised*: the parser may have been shaped by them. The
+last two are weaker claims and are still excluded, because the point of the
+clean number is that it is the one that can be defended without an argument.
+
+**The excluded total is a UNION and never a sum.** One capture sits in two
+categories, which is exactly how the published count once read three when the
+answer was five: one limb was reported as the whole. Adding the limbs
+overcounts in the other direction. The instrument computes the union and prints
+which ids are doubled, so neither mistake can be made from this file.
+
+### Denominators, and which subtotals an excluded capture was feeding
+
+Not every capture feeds every measure, so removing eleven rows does not lower
+eleven denominators by eleven. A capture labelled `Ambiguous-*` is excluded
+from the destination rate by design — the contract for an unpinnable capture is
+to keep it and not act, which the unsafe counter measures instead — so it feeds
+the ambiguous subtotal and not the destination one. The instrument prints, per
+excluded id, which subtotals it was feeding, so the clean denominators can be
+reconciled against the legacy ones by hand rather than taken on trust.
+
+### The guard
+
+`Tools/CorpusRunner/everyday/leak-check.py` compares every sealed set against
+tuned material and against the prose in `Docs/`, and fails the run when a
+sealed capture becomes referenced in either. `compromised.py` and the leak
+check are two separate records of one fact, with a test asserting they agree —
+restricted to held-out captures by the file named in each `(file, id)` key,
+since the leak check spans every sealed set. They are deliberately **not**
+derived from one another: the categories above do not map onto the leak
+check's, and deriving would flatten the distinction this section exists to
+draw. Two records plus an agreement check has already earned its keep by
+catching an error in the newer of the two.
+
+One hazard, recorded because it cost a second exposure of a sealed capture: **an
+id is safe to store and unsafe to grep.** Searching the repository root for a
+capture id matches that capture's own row and prints the text.
+
 ## Three standing rules, two of them learned by paying for them
 
 **Never quote a set total on its own.** On 2026-09-11 `runon.tsv` went from
@@ -228,6 +311,105 @@ already print the count, and coordination still has the strongest answer of the
 five — a missing row is a failure and the denominator stays whole. Switching the
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
+
+## 2026-09-14 — the resultive `so` boundary, measured against a set written by someone else
+
+Two `macos-26` runs over **the same 56 captures**, differing only in the parser:
+
+- **before** — `main` at `acc4249`,
+  [run 34904578543](https://github.com/CalvinSalsali04/speak-it/actions/runs/34904578543)
+- **after** — this branch at `18c2acb`,
+  [run 34905352493](https://github.com/CalvinSalsali04/speak-it/actions/runs/34905352493)
+
+`git diff origin/main HEAD -- SpeakIt/` is two files and 84 executable lines,
+all of them #57, and `consequence.tsv` is byte-identical on both sides. So
+every movement below is attributable to the resultive boundary and to nothing
+else, which is checkable rather than asserted.
+
+### What the set is, and why it counts as independent
+
+Calvin asked for evidence "not authored to fit the implementation... preferably
+from another writer, public language data where appropriate, or blinded
+generation/rewrite". This is the blinded-generation half. Another thread wrote
+it; the generation parameters were committed **before the first capture
+existed**, so the ordering is in git rather than in a sentence; and its author
+cannot run the engine, because the parser needs Apple's `NaturalLanguage` and
+does not build in that container. What it is not: the author had read the rule
+under test, which that set's README states rather than hides.
+
+One thing it costs, recorded in the set's own README: **reviewing #62 meant
+reading all 56 captures**, and this thread owns parser changes. The evidence
+below survives that only because the implementation was frozen first — `git
+diff 63e26de HEAD -- SpeakIt/ SpeakItTests/` is empty — so the parser being
+measured was chosen with none of these captures in view. For the *next* change
+this set is spent.
+
+### What moved
+
+| measure | before (`acc4249`) | after (`18c2acb`) | |
+| --- | --- | --- | --- |
+| consequence thought count | 30/56 (53.6%) | **34/56 (60.7%)** | **+4** |
+| — of the 32 rows that must SPLIT | 6/32 | **10/32** | **+4** |
+| — of the 24 rows that must stay WHOLE | 24/24 | 24/24 | — |
+| consequence destination | 51/56 | 51/56 | — |
+| consequence ACTED ON ANYWAY | 0 | 0 | — |
+| everyday routing / count / loss / invention | 168/240 · 193/232 · 230/244 · 14/22 | unchanged | — |
+| everyday over- / under-split | 16 · 23 | 16 · 23 | — |
+| adversarial | 52/116 · 78/105 | unchanged | — |
+| held-out destination / count strict | 233/320 · 254/310 | unchanged | — |
+| held-out ACTED ON ANYWAY | 7 | 7 | — |
+
+### Read the guard half honestly, because this is where it is tempting not to
+
+**24/24 on the do-not-split rows is NOT, on its own, evidence of anything.** A
+parser that under-splits passes every such row for free, and the split rows sit
+at 10 of 32, so most of that 24 is exactly that free pass. Printing it beside a
+target rate near the floor and calling it coverage is the defect this file
+already names.
+
+What the guard half *does* support is narrower and real. The rule can only fire
+where the word `so` appears, and **5 of the 24 whole rows contain it** — `CQ07
+CQ09 CQ42 CQ44 CQ50`. Those five are the rows the change could have broken, and
+all five held. That is a small, genuine no-cost result, and it is the whole of
+what this measurement says about over-splitting.
+
+### The +4 is exactly the shape the rule targets, which is the strongest part
+
+Seven of the 32 split rows contain `so`: `CQ06 CQ08 CQ10 CQ43 CQ45 CQ49 CQ55`.
+Of those, **four carry a resultive `so` in front of a first-person obligation**
+— the shape #57 admits. The other three open with `so` as a discourse marker
+and join their clauses with something else.
+
+The thought count moved by **exactly four**. A rule that had learned something
+broader, or something accidental, would not land on precisely the rows its
+stated condition describes and no others. The three discourse-`so` rows still
+fail, correctly declined.
+
+### The finding that is not about #57
+
+**The change fixes one connector out of eight, and the family has eight.** The
+set rotates `and`, `so`, `which means`, a bare comma, `then`, `that means`,
+`because of that`, and juxtaposition, five captures each. After the change the
+split rows stand at 10 of 32, so **22 captures of one phenomenon — a person
+states a fact and then the errand it creates — are still read as one thought.**
+
+That is not an argument against #57, which does what it claims. It is the
+measurement saying the phenomenon is a discourse relation and the
+implementation is a list of coordinators, and that the next improvement here is
+probably not a ninth coordinator. Recorded as a target rather than acted on.
+
+### The verdict, under the policy of 2026-09-12
+
+Calvin's rule: strong independent evidence plus a small unexplained sealed
+movement may be merged with the cost documented; weak or self-authored evidence
+plus a sealed regression holds; meaningful regression on multiple independent
+measures does not merge.
+
+The independent evidence is strong and it is not self-authored. **No measure on
+any other set moved in either direction** — everyday, adversarial and held-out
+destination are identical to the row. The only negative signal remains the one
+held-out thought-count row from 2026-09-11, already in the cost ledger, and
+range-aware scoring accepts the count it produces. Merged on that basis.
 
 ## 2026-09-14 — correction: I read the wrong column, and what survives it
 
