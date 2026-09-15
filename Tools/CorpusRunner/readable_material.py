@@ -155,9 +155,14 @@ NOT_READ = {
     "codex-repair-reviewer-b-20260914.jsonl",
     "Tools/SpeechLab/phase2/repair/candidate-1/decisions/"
     "codex-repair-reviewer-c-20260914.jsonl",
-    # The repair map stores before/after evidence and lineage. Both utterance
-    # values are already present in corpus case views, so this is provenance,
-    # not another body of captured material.
+    # HOLDS SPEECH, at the TOP LEVEL, under `before` and `after` -- 90
+    # distinct utterances across the two maps, of which four are counted
+    # nowhere else in this tree. The comment that stood here said both values
+    # were "already present in corpus case views, so this is provenance".
+    # That was a checkable claim and it was false, and nothing checked it
+    # because every guard in this module looks at nested keys or at names
+    # that sound like speech. `UNREAD_UTTERANCE_FIELDS` declares the two
+    # fields and `unread_speech_unaccounted_for` recomputes the claim.
     "Tools/SpeechLab/phase2/repair/candidate-1/repair-map.jsonl",
     "Tools/SpeechLab/phase2/repair/candidate-2/adjudication/reviews.jsonl",
     "Tools/SpeechLab/phase2/repair/candidate-2/decisions/"
@@ -214,12 +219,60 @@ CONVERSATIONAL_CONTEXT = frozenset({"prior_turns", "previous_turns"})
 #: unaccounted for and stops the run rather than being waved through.
 SPAN_OFFSETS = ("start_index", "end_index")
 
+#: The top-level fields that hold utterances inside a file `NOT_READ`
+#: declares, per file. The other half of the bargain `NOT_READ` makes.
+#:
+#: `NOT_READ` says a file is not a corpus. Each entry then says *why* in a
+#: comment, and one of those reasons -- "both utterance values are already
+#: present in corpus case views" -- was a claim about material that nothing
+#: recomputed, in a file that does hold speech, and it was wrong by four
+#: utterances. **This is the fourth filter in this module whose stated reason
+#: turned out to be narrower than its predicate**, after `LOOKS_LIKE_SPEECH`,
+#: #81's "they all end in `to`", and #84's container excused anywhere above a
+#: string. The fix for the third one is what left this one open: making the
+#: *nested* accounting total says nothing about a top level, and
+#: `nested_declared_strings` skips a key with no `.` in it by construction.
+#:
+#: So a prose reason that names material becomes a declaration the code can
+#: check. A field listed here has every one of its values put to
+#: `declared_unread_strings`, which demands a reason per value the way the
+#: nested sweep does.
+#:
+#: **Declared, and the declaration cannot be the only thing looking.** A list
+#: of field names is exactly the shape that misses the next instance: nobody
+#: writes down a field they have not noticed. `unread_fields_holding_speech`
+#: is the half that needs no declaration and no judgement -- a top-level
+#: string that this tree has read under some other name is speech, whatever
+#: its field is called, and that net finds `before` and `after` in these two
+#: files and nothing else in the other thirty-five. Declaring a field moves
+#: it from that net to the sweep; it does not take it out of the accounting.
+UNREAD_UTTERANCE_FIELDS = {
+    "Tools/SpeechLab/phase2/repair/candidate-1/repair-map.jsonl":
+        ("before", "after"),
+    "Tools/SpeechLab/phase2/repair/candidate-2/repair-map.jsonl":
+        ("before", "after"),
+}
+
+#: A repair row's two sides: `(the field holding a rendering's words, the
+#: field holding that rendering's id)`, entering the repair and leaving it.
+#:
+#: Pairing the text with its id is what makes the exception below derivable.
+#: Without it the four intermediates could only be a pinned list of strings,
+#: and a pinned list of strings is a marker standing in for the judgement it
+#: approximates -- it goes on excusing those four after the repair rounds
+#: that produced them have been replaced.
+REPAIR_SIDES = (("before", "original_rendering_id"),
+                ("after", "repaired_rendering_id"))
+
+
 #: Why a nested string is not a new utterance. Assigned in this order, so a
 #: string gets the strongest reason available to it: what it is beats where
 #: it sits, and both beat the bare fact that counting it would change nothing.
 CONVERSATION = "inside a named conversational-context container"
 SPAN = "a span of its own row's utterance, by its own offsets"
 ALREADY_READ = "already read from this tree under another key"
+INTERMEDIATE = ("repaired a second time, so no case view ever held it -- "
+                "derived from this tree's own repair lineage")
 
 
 #: Swift string literals, and the reason this is not a one-line regex.
@@ -289,6 +342,44 @@ def speechlab_files():
                     f"{shown(path)} is in corpus_paths.sealed()")
             out.append(path)
     return sorted(out)
+
+
+#: Where the gating corpus keeps its utterances. The second positional argument
+#: of `corpusCase(...)` is the capture; everything else in the call is a label,
+#: and the `note:` argument is reviewer prose. Reading the slot rather than the
+#: file is what keeps "the backfill must not invent a time of day" -- an XCTest
+#: failure message -- out of a count of things people said.
+CORPUS_CASES = ROOT / GATING
+
+_CORPUS_CASE = re.compile(r'corpusCase\(\s*\.[A-Za-z0-9_]+\s*,\s*"((?:[^"\\]|\\.)*)"')
+
+
+def corpus_utterances():
+    """The gating corpus's captures, by the slot they sit in.
+
+    `swift_literals` above harvests every literal in the tree, which is right
+    for a leak check and wrong here: most literals in these files are labels,
+    notes and assertion messages. Position is mechanical where content is not,
+    so the slot does the partitioning.
+
+    It lives here rather than beside its one caller because every other reader
+    of this repository's corpora lives here, and a reader somewhere else is
+    how a tree comes to be read two ways by two files that never compare
+    answers. `swift_utterances` below reads the same directory for the
+    opposite purpose -- everything anybody wrote, labels included -- and the
+    two belong where a reader can see that the difference is deliberate.
+    """
+    found = []
+    for path in sorted(CORPUS_CASES.glob("SemanticCorpusData*.swift")):
+        found += _CORPUS_CASE.findall(path.read_text(encoding="utf-8"))
+    if len(found) < 1000:
+        raise ValueError(
+            f"only {len(found)} corpus cases found in the utterance slot. The "
+            "corpus has been above a thousand cases since it was split into "
+            "these files, so this is a reader that has stopped reading rather "
+            "than a corpus that has shrunk."
+        )
+    return found
 
 
 def swift_utterances(root):
@@ -766,6 +857,205 @@ def speechlab_misdeclared(files=None, declared=None):
     return out
 
 
+def repair_intermediates(declared=None):
+    """Utterances that exist only between two repairs: `{rendering id: words}`.
+
+    A rendering repaired in one round and repaired *again* in the next never
+    reaches a case view: the case carries the final wording, and the middle
+    version survives only as one round's `after` and the next round's
+    `before`. So it is genuinely not new material the census is missing, and
+    it is genuinely counted nowhere -- which is the one honest gap between
+    "this file is provenance" and what `ALREADY_READ` can say.
+
+    **Derived from the lineage, never listed.** The property is that the same
+    rendering id is a round's output and a later round's input; `REPAIR_SIDES`
+    is what pairs each id with its own words. Four ids satisfy it today and
+    this function does not know which four. Pinning the strings instead would
+    leave them excused forever, including after the rounds that produced them
+    have been redone -- the marker-for-a-judgement substitution this codebase
+    keeps making.
+
+    **The identity is checked, not assumed.** A rendering whose two sides
+    disagree is not an intermediate at all, it is two different utterances
+    sharing an id, so it is left out here and both strings reach the caller
+    unaccounted for. That is the same direction `_is_a_span_of` fails in: the
+    lineage has to reconstruct the claim, or it does not excuse anything.
+    """
+    declared = UNREAD_UTTERANCE_FIELDS if declared is None else declared
+    (into_field, into_id), (out_of_field, out_of_id) = REPAIR_SIDES
+    into, out_of = {}, {}
+    for name in sorted(declared):
+        path = ROOT / name
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            for ident, words, side in (
+                    (row.get(into_id), row.get(into_field), into),
+                    (row.get(out_of_id), row.get(out_of_field), out_of)):
+                if isinstance(ident, str) and isinstance(words, str) and words:
+                    side.setdefault(ident, set()).add(words)
+    out = {}
+    for ident in sorted(set(into) & set(out_of)):
+        words = into[ident] | out_of[ident]
+        if len(words) == 1:
+            out[ident] = words.pop()
+    return out
+
+
+def declared_unread_strings(declared=None, known=None):
+    """Every value of a declared unread field, with its reason.
+
+    Yields `(relative path, field, value, reason)`, where `reason` is
+    `ALREADY_READ`, `INTERMEDIATE`, or **None** for a value this module
+    cannot account for -- the same bargain `nested_declared_strings` makes,
+    one level up, where the reader's blindness is the top level rather than
+    the depth.
+
+    `ALREADY_READ` is set membership here too, and carries the same caveat:
+    it answers "would counting this move a published figure", not "where did
+    this string come from". A repair that rewrote an utterance into one
+    another case already holds is absorbed by it and never reaches the
+    residual.
+    """
+    declared = UNREAD_UTTERANCE_FIELDS if declared is None else declared
+    if known is None:
+        known = frozenset().union(*source_texts().values())
+    excused = frozenset(repair_intermediates(declared).values())
+    for name in sorted(declared):
+        path = ROOT / name
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            for field in declared[name]:
+                value = row.get(field)
+                if not isinstance(value, str) or not value:
+                    continue
+                if value in known:
+                    reason = ALREADY_READ
+                elif value in excused:
+                    reason = INTERMEDIATE
+                else:
+                    reason = None
+                yield str(shown(path)), field, value, reason
+
+
+def unread_speech_unaccounted_for(declared=None, known=None):
+    """The declared unread values with no reason: `{path: {field: values}}`.
+
+    Empty is the passing state. A non-empty result says a file this census
+    has written down as not-a-corpus holds an utterance under a field this
+    census has written down as holding utterances, nothing else in the tree
+    has counted it, and the lineage does not explain it -- so the published
+    population is missing it and the comment above the file's name in
+    `NOT_READ` is describing material that is not there.
+    """
+    out = {}
+    for name, field, value, reason in declared_unread_strings(declared, known):
+        if reason is None:
+            out.setdefault(name, {}).setdefault(field, set()).add(value)
+    return out
+
+
+def unread_fields_holding_speech(files=None, declared=None, known=None):
+    """Undeclared top-level fields whose values this tree has read elsewhere.
+
+    `{relative path: {field: count of values already in the population}}`, and
+    the half of this accounting that needs nobody to have noticed anything.
+
+    Every other guard in this module keys on a **name**: `UTTERANCE_FIELDS`,
+    `LOOKS_LIKE_SPEECH`, `CONVERSATIONAL_CONTEXT`, and the declaration above.
+    Guards that share a vocabulary share a blind spot, and `before` and
+    `after` are in none of those vocabularies -- which is precisely why two
+    files sat in `NOT_READ` for a week holding ninety utterances while three
+    guards agreed there was nothing to see.
+
+    This one keys on **material** instead. If a top-level string in this tree
+    is a string the tree has already read under some other name, that field
+    holds speech, whatever it is called and whoever failed to declare it. It
+    needs no judgement, no list and no vocabulary, and it reports 26 of 27
+    `before` values in the first repair map from a standing start.
+
+    Run over every SpeechLab file, read and unread alike, with each read
+    file's own utterance column excluded as the one field that is in the
+    population by construction. A read file reporting here is a second
+    utterance column nobody is reading, which is the same defect wearing
+    different clothes.
+
+    **What it cannot do** is find a corpus whose every utterance is new:
+    novelty is exactly what it keys on, so a wholly fresh body of captures
+    arriving under `said` is invisible to it. That case belongs to
+    `speechlab_unclassified`, which fires on the file rather than the field.
+    The two nets are blind in opposite directions on purpose.
+    """
+    files = speechlab_files() if files is None else files
+    declared = UNREAD_UTTERANCE_FIELDS if declared is None else declared
+    if known is None:
+        known = frozenset().union(*source_texts().values())
+    out = {}
+    for path in files:
+        name = str(shown(path))
+        spoken_for = set(declared.get(name, ())) | {utterance_field(path)}
+        found = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            for field, value in json.loads(line).items():
+                if (field not in spoken_for and isinstance(value, str)
+                        and value in known):
+                    found.setdefault(field, set()).add(value)
+        if found:
+            out[name] = {field: len(values)
+                         for field, values in sorted(found.items())}
+    return out
+
+
+def unread_fields_missing(declared=None):
+    """Declared unread fields that are not there, or not unread.
+
+    `(name, why)` pairs, the half a declaration is never failed by, and the
+    third time this module has needed it: `speechlab_misdeclared` for a
+    `NOT_READ` name, `conversational_containers_missing` for a container.
+    A declaration that has stopped applying stops failing, and the prose
+    beside it goes on describing a tree that is not there.
+
+    Three ways to be wrong, and the first is the one worth spelling out: a
+    field declared on a file that `NOT_READ` does not name is a declaration
+    about a corpus the census *reads*, where it excuses nothing and hides the
+    fact that nothing is checking it.
+    """
+    declared = UNREAD_UTTERANCE_FIELDS if declared is None else declared
+    out = []
+    for name in sorted(declared):
+        if name not in NOT_READ:
+            out.append((name, "declares unread utterance fields, but is not "
+                              "in NOT_READ: the census reads this file, so "
+                              "the declaration excuses nothing and nothing "
+                              "recomputes it"))
+            continue
+        path = ROOT / name
+        if not path.exists():
+            out.append((name, "declares unread utterance fields, but is not "
+                              "on disk: renamed, deleted, or moved out of "
+                              "the tree"))
+            continue
+        seen = set()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                seen.update(json.loads(line))
+        for field in declared[name]:
+            if field not in seen:
+                out.append((name, f"declares {field!r}, which appears in no "
+                                  f"record of it: the declaration has "
+                                  f"stopped applying, silently"))
+    return out
+
+
 def readers():
     """(path, reader) for every declared source, in reading order.
 
@@ -774,6 +1064,13 @@ def readers():
     so the refusal belongs here rather than in a test: the census, the
     observation measure and the leak check all come through this function, and
     a guard held by one suite is a guard the other consumers do not have.
+
+    The two declaration-integrity checks are here for the same reason and are
+    cheap enough to be: neither needs the population, so neither is circular
+    with what this function produces. The checks that *do* need the population
+    -- `nested_speech_unaccounted_for`, `unread_speech_unaccounted_for` and
+    `unread_fields_holding_speech` -- would each cost a second full read of
+    the tree here, so they are tests.
 
     The cost is that adding a metadata file to SpeechLab stops the census
     until somebody classifies it. That is the same bargain `speechlab_files`
@@ -789,7 +1086,7 @@ def readers():
             f"{', '.join(str(shown(p)) for p in stray)} — read each one and "
             f"either "
             f"declare it or add its field to UTTERANCE_FIELDS")
-    wrong = speechlab_misdeclared()
+    wrong = speechlab_misdeclared() + unread_fields_missing()
     if wrong:
         raise ValueError(
             "NOT_READ no longer describes the tree: "
