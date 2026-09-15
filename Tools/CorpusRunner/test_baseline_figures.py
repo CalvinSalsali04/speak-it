@@ -825,6 +825,41 @@ class ASectionRecordsTheSetStateItWasMeasuredOver(FiguresCase):
         self.assertEqual(self.bf.stale_fingerprints(),
                          [("rambling.tsv", 57, 85)])
 
+    def test_two_sets_with_one_basename_are_refused_not_merged(self):
+        """The key is a basename because the prose names a basename.
+
+        Not a live defect and the test says so below: seven readable paths
+        with seven distinct names. It is here because the failure mode is a
+        plausible number and no error -- the dictionary would keep whichever
+        path sorted last, and a fingerprint naming that name would be checked
+        against one of the two sets with nothing recording which. The same
+        collision, on `renderings.jsonl`, really happened one module over.
+
+        Re-keying on the path is the wrong fix: the fingerprint has to name
+        what the sentence names, and a repository path in an English sentence
+        is worse than this refusal.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = pathlib.Path(tmp, "a"), pathlib.Path(tmp, "b")
+            for where in (first, second):
+                where.mkdir()
+                (where / "twins.tsv").write_text("id\ttext\nX1\thello\n")
+            with self.assertRaises(ValueError) as caught:
+                self.bf.devset_rows(paths=[first / "twins.tsv",
+                                           second / "twins.tsv"])
+        self.assertIn("twins.tsv", str(caught.exception))
+        self.assertIn("cannot say which one", str(caught.exception))
+
+    def test_the_readable_sets_do_not_collide_today(self):
+        """The other direction, or a `raise` on everything would pass above.
+
+        This is also the assertion that makes the refusal above a guard for a
+        case that does not exist rather than a fix for one that does.
+        """
+        paths = self.bf.corpus_paths.readable()
+        self.assertEqual(len({path.name for path in paths}), len(paths))
+        self.assertEqual(len(self.bf.devset_rows()), len(paths))
+
 
 if __name__ == "__main__":
     unittest.main()

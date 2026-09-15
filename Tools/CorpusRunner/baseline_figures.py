@@ -603,10 +603,31 @@ def devset_rows(paths=None):
     does not find it either, but it fires on the same cause and says which
     set moved and by how much, which is what sends somebody back to read the
     section.
+
+    **Keyed on the basename, and refuses when two of them collide.** The key
+    is a basename because the *prose* names a basename, and writing a
+    repository path into an English sentence would be the worse end of that
+    trade. But `source_texts` one module over carries a docstring about
+    exactly this: `renderings.jsonl` exists twice under `Tools/SpeechLab`, and
+    a dictionary keyed on the name silently merged two sources into one. There
+    is no collision among readable sets today -- seven paths, seven distinct
+    names -- so this is a refusal for a case that does not exist yet rather
+    than a fix for a live defect. It is here because the failure mode is a
+    plausible number and no error: the comprehension would keep whichever path
+    sorted last, and a fingerprint naming that basename would be checked
+    against one of the two sets with nothing saying which.
     """
     paths = corpus_paths.readable() if paths is None else paths
-    return {path.name: sum(1 for _ in corpus_paths.data_rows(path))
-            for path in sorted(paths)}
+    rows = {}
+    for path in sorted(paths):
+        if path.name in rows:
+            raise ValueError(
+                f"two readable sets are both called `{path.name}`, so a "
+                f"fingerprint naming it cannot say which one it was measured "
+                f"over and this function would silently report the second. "
+                f"Give the fingerprint pattern a path, or rename one set")
+        rows[path.name] = sum(1 for _ in corpus_paths.data_rows(path))
+    return rows
 
 
 def fingerprints(text=None):

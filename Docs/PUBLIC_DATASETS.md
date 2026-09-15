@@ -16,12 +16,23 @@ integrated.
 > is worse than a stale one. Read the section *"What the ranking depended on,
 > and what has changed under it"* at the foot of this file before reaching for
 > any entry here as an unblock. The short version: **no corpus surveyed here
-> supplies material for the failures this project has actually traced** —
-> not because each entry was re-examined, but because every one of them is an
-> assistant, dialogue or question-answering corpus, and that whole class
-> excludes the spontaneous multi-thought speech the open targets are made of.
-> Only Disfl-QA, the entry ranked first, was re-read individually. Both halves
-> of that are checkable rather than a matter of taste.
+> is both usable and a source of material for the failures this project has
+> actually traced** — and the two halves of that fail for different reasons,
+> which is the part a one-line summary loses.
+>
+> Every entry *ranked* here is an assistant, dialogue or question-answering
+> corpus, and that whole class excludes the spontaneous multi-thought speech
+> the open targets are made of. Not because each entry was re-examined: only
+> Disfl-QA, ranked first, was re-read individually. Both halves of that are
+> checkable rather than a matter of taste.
+>
+> **The class argument covers the ranked entries and not the excluded one.**
+> Switchboard, under *Excluded* below, is not in that class: it is
+> spontaneous telephone speech, this file calls its disfluency annotations
+> the academic standard, and it is out on **licensing rather than on
+> relevance**. So it is the one surveyed corpus that may well hold the
+> material, and it is the entry a searcher should go back to first. Read the
+> foot of this file before concluding the search is closed.
 
 ## The constraint that shapes every entry
 
@@ -194,9 +205,12 @@ actually says `which means`, `that means` or `because of that`, which
 `connective-census.py` reports as zero across all readable material and which
 that census explicitly cannot settle, since every row it counts was authored
 here. Answering it needs transcripts of spontaneous speech, and **no corpus of
-that class was surveyed at all** — Switchboard was excluded on licensing and
-the freely-redistributable spoken corpora were never considered. That is a gap
-in the search, not a finding about the corpora.
+that class was surveyed that this project could use** — Switchboard is the one
+that was reached and it was excluded on licensing, while the
+freely-redistributable spoken corpora were never considered at all. That is a
+gap in the search, not a finding about the corpora, and the second half of it
+is the larger one: a licence is a fact about one corpus, and never looking is
+a fact about the search.
 
 **How to read this whole file, stated once.** Public disfluency data is
 frequency and robustness material. It is not Calvin's own captures, it can
