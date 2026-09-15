@@ -149,11 +149,14 @@ otherwise. They were corrected against the corpus, which is the product
 contract; the app was not changed to match a label. When a case here disagrees
 with a gating corpus case, the corpus wins and the label is the bug.
 
-Two rows are expected to fail and are kept anyway: `DO02` and `DO03` ask for
-"delete the reminder to call Dave" and "remove the dentist appointment" to be
-recognised as operations. They are not, and they fail closed to a Memory row
-that nothing acts on. Widening the destructive vocabulary to close them would
-trade a safe gap for an unsafe one.
+`DO02` and `DO03` were kept here as two rows expected to fail for one reason.
+They are two rows failing for two reasons. `DO02`, "delete the reminder to call
+Dave", failed on word order — the rule wanted the container noun last — and is
+no longer expected to fail. `DO03`, "remove the dentist appointment", fails
+because `appointment` is not a container noun at all, and closing it means
+letting a second tier of destructive verb reach as far as `cancel` does. That
+is a decision, not a fix, so `DO03` stays expected to fail; see
+`Docs/KNOWN_ISSUES.md`.
 
 ## Recorded limits, and why they never move a number
 
