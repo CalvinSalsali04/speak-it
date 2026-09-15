@@ -148,6 +148,17 @@ def searchable(root=None):
 #: which cannot coexist with zero disfluency markers -- a document, not an
 #: instrument.
 #:
+#: That count is an aggregate over a sealed set, and it stays here on purpose
+#: while a second fact from the same correction -- a characterisation of how
+#: that corpus sounds compared with the others -- was removed from this file
+#: on 2026-09-15. The two are not the same kind of thing. The characterisation
+#: is what somebody would use to choose where to work next, which is the input
+#: a parser change may not have. The count is a function-word frequency for a
+#: connector that is already implemented, it is already published in
+#: `Docs/LANGUAGE_BASELINE.md` as the evidence for #57, and it is the whole
+#: force of the argument above: "the scan was wrong" is a sentence, and "it
+#: returned zero for a word used 34 times" is a reason.
+#:
 #: So every search here proves it can find something before it reports finding
 #: nothing. The canary costs one pass over material already being read, and it
 #: refuses to report rather than returning an empty result.
@@ -194,6 +205,181 @@ def _grep(pattern, root=None):
           f"{len(sealed())} sealed files were not searched, by construction, "
           f"and the search was confirmed able to find a known string first.")
     return 0 if hits else 1
+
+
+# --- Which lines are data, and which column holds the utterance -------------
+#
+# Four separate defects have come from four readers working this out again:
+#
+#   * `heldout/score.sh` cut column two off EVERY line, so a commented header's
+#     second cell -- the bare word `utterance` -- was fed to the probe as a
+#     390th capture.
+#   * A one-off scan hard-coded column two and reported that the everyday set
+#     contains no instance of the word "so". It keeps its utterance in column
+#     THREE, so the scan had been counting a label column, and the answer it
+#     gave was wrong rather than merely small. What the right answer is does
+#     not belong here: it is an aggregate over a sealed set's content, and a
+#     fact of that kind, sitting in a file every reader opens, is available to
+#     size the next change. The lesson needs only that the scan was wrong.
+#   * `corpus-shape.py` counted `everyday.tsv`'s header as a row and reported
+#     256 rows for a 255-capture set.
+#   * And `corpus-shape.py` had to solve the whole problem from scratch to do
+#     it, as did `leak-check.py`, `heldout/score.py` and `everyday/score.py`,
+#     by four different mechanisms.
+#
+# The mechanism that is right already existed, in `everyday/leak-check.py`,
+# which is the wrong place for it: one owner, in the module that already owns
+# which files exist.
+#
+# The asymmetry that causes it is worth naming, because it is one file wide.
+# Every corpus here comments its header EXCEPT `everyday.tsv`, which writes it
+# as an ordinary first line. So `startswith("#")` is correct ten times out of
+# eleven, which is the worst possible hit rate for a rule people copy.
+
+#: The cell that identifies a header line, in any of the layouts here.
+HEADER_KEY = "utterance"
+
+
+def cells_of(line):
+    """A line's cells as written, stripped, with any leading `#` removed."""
+    return [cell.strip() for cell in line.lstrip("#").strip().split("\t")]
+
+
+def header_cells(line):
+    """A line's cells lowered, which is the form column names are matched in."""
+    return [cell.lower() for cell in cells_of(line)]
+
+
+def header_row(lines):
+    """The header's column names as written, or None when there is no header.
+
+    `header_cells` lowers, because matching a name should not care how it was
+    typed. A tool printing the header for a reviewer wants it as written, and
+    lowering it there is how a display starts disagreeing with the file.
+    """
+    head = header_index(lines)
+    return None if head is None else cells_of(lines[head])
+
+
+def header_index(lines):
+    """Index of the line that carries the column names, or None.
+
+    The header is the line naming `utterance`, rather than the first line or
+    the commented one, because those two rules disagree across this directory
+    and each is right somewhere.
+    """
+    for number, line in enumerate(lines):
+        if HEADER_KEY in header_cells(line):
+            return number
+    return None
+
+
+def column_of(lines, name):
+    """Index of a named column, read from the header line.
+
+    From *the* header line, not from whichever line happens to carry the word.
+    Two columns resolved by two independent scans can land on two different
+    lines: a data cell reading `id` is a header as far as an id lookup is
+    concerned while the utterance lookup uses the real one, and every row then
+    reports the same id. That reads as a corpus with duplicate ids rather than
+    as a reader that lost track of which line it was on.
+
+    Returns None when the header does not name it, or when there is no header.
+    Callers that need the utterance column should use `utterance_column`,
+    which refuses instead: `column_of(...) or 0` is how a missing header
+    quietly becomes column one.
+    """
+    head = header_index(lines)
+    if head is None:
+        return None
+    cells = header_cells(lines[head])
+    return cells.index(name) if name in cells else None
+
+
+def utterance_column(lines):
+    """Which column a corpus file keeps its utterances in.
+
+    Raises rather than returning None. A corpus file with no header is not a
+    file whose utterances live in column two; it is a file this cannot read,
+    and guessing is the defect above rather than a fallback for it.
+    """
+    column = column_of(lines, HEADER_KEY)
+    if column is None:
+        raise ValueError(
+            "no line in this file names an `utterance` column, so which column "
+            "holds the capture is unknown. Assuming one is how a scan came to "
+            "report that a corpus contained no instance of a word it uses 34 "
+            "times -- see the note on that count above. Add a header rather "
+            "than defaulting.")
+    return column
+
+
+def id_column(lines):
+    """Which column carries the row id.
+
+    Raises, for the same reason `utterance_column` does and one the leak check
+    made concrete: its prose half exists to **name** a leak without printing
+    it, so an id that silently arrives as the empty string turns the one safe
+    report into one that says a sealed capture is committed somewhere and
+    cannot say which. Absent is not column zero, and it is not "".
+    """
+    column = column_of(lines, "id")
+    if column is None:
+        raise ValueError(
+            "no line in this file names an `id` column, so its rows cannot be "
+            "named. A row that cannot be named cannot be reported without "
+            "printing it, which for a sealed set is the thing being avoided.")
+    return column
+
+
+def data_rows(path):
+    """Yields (line number, cells) for the rows that are data.
+
+    A row is data when it is not blank, not a comment, and not the header --
+    the header identified by the cells it names rather than by being first or
+    by being commented, because those two rules disagree across this directory
+    and each is right somewhere.
+    """
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    head = header_index(lines)
+    for number, line in enumerate(lines):
+        if number == head or line.startswith("#") or not line.strip():
+            continue
+        yield number + 1, line.split("\t")
+
+
+def utterances(path):
+    """Yields (line number, id, utterance) for every data row of a corpus file.
+
+    The two questions answered together, which is how they are always asked.
+    """
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    column = utterance_column(lines)
+    ids = id_column(lines)
+    for number, cells in data_rows(path):
+        if len(cells) <= max(column, ids):
+            # Refused rather than skipped. A dropped row is a denominator one
+            # smaller and no message, on exactly the row worth knowing about:
+            # the file reads as clean and one capture shorter, and every rate
+            # computed from it is quietly wrong. No corpus file here has a
+            # short row today, so this costs nothing until one appears.
+            raise ValueError(
+                f"{pathlib.Path(path).name} line {number}: {len(cells)} "
+                f"cell(s), but the utterance is column {column + 1} and the id "
+                f"is column {ids + 1}. A row this reader cannot parse is not a "
+                f"row to skip.")
+        if not cells[ids].strip():
+            # Refusing the missing column and not the missing value is the
+            # half-measure this repository keeps writing. A row whose id cell
+            # is empty cannot be named either, and the caller that most needs
+            # the name had a `cid or "?"` standing in for it -- a placeholder
+            # for an id, in the one report whose whole safety property is that
+            # it names a leak instead of printing it.
+            raise ValueError(
+                f"{pathlib.Path(path).name} line {number}: the id cell "
+                f"(column {ids + 1}) is empty, so this row cannot be named. "
+                f"An unnamed row cannot be reported without printing it.")
+        yield number, cells[ids].strip(), cells[column]
 
 
 if __name__ == "__main__":
