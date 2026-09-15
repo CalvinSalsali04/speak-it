@@ -64,6 +64,12 @@
 		D300000000000000000F03 /* SemanticCorpusDataR.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000F03 /* SemanticCorpusDataR.swift */; };
 		D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000001 /* RenderingInvarianceTests.swift */; };
 		D200000000000000000002 /* RefinementGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000002 /* RefinementGuardTests.swift */; };
+		A100000000000000000001E5 /* CaptureInterpretation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E5 /* CaptureInterpretation.swift */; };
+		A100000000000000000001E6 /* InterpretationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E6 /* InterpretationPolicy.swift */; };
+		A100000000000000000001E7 /* InterpretationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E7 /* InterpretationBridge.swift */; };
+		A100000000000000000001E8 /* ModelInterpreter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001E8 /* ModelInterpreter.swift */; };
+		D200000000000000000008 /* InterpretationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000008 /* InterpretationPolicyTests.swift */; };
+		D200000000000000000009 /* InterpretationBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000009 /* InterpretationBridgeTests.swift */; };
 		D200000000000000000003 /* SpeechRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000003 /* SpeechRepairTests.swift */; };
 		D200000000000000000004 /* ObligationFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000004 /* ObligationFrameTests.swift */; };
 		D200000000000000000005 /* TutorialPracticeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000005 /* TutorialPracticeTests.swift */; };
@@ -237,6 +243,12 @@
 		E300000000000000000F03 /* SemanticCorpusDataR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataR.swift; sourceTree = "<group>"; };
 		E200000000000000000001 /* RenderingInvarianceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderingInvarianceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000002 /* RefinementGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefinementGuardTests.swift; sourceTree = "<group>"; };
+		B100000000000000000001E5 /* CaptureInterpretation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureInterpretation.swift; sourceTree = "<group>"; };
+		B100000000000000000001E6 /* InterpretationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterpretationPolicy.swift; sourceTree = "<group>"; };
+		B100000000000000000001E7 /* InterpretationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterpretationBridge.swift; sourceTree = "<group>"; };
+		B100000000000000000001E8 /* ModelInterpreter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelInterpreter.swift; sourceTree = "<group>"; };
+		E200000000000000000008 /* InterpretationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterpretationPolicyTests.swift; sourceTree = "<group>"; };
+		E200000000000000000009 /* InterpretationBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterpretationBridgeTests.swift; sourceTree = "<group>"; };
 		E200000000000000000003 /* SpeechRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRepairTests.swift; sourceTree = "<group>"; };
 		E200000000000000000004 /* ObligationFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObligationFrameTests.swift; sourceTree = "<group>"; };
 		E200000000000000000005 /* TutorialPracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialPracticeTests.swift; sourceTree = "<group>"; };
@@ -374,6 +386,7 @@
 				D10000000000000000000004 /* App */,
 				D10000000000000000000005 /* Models */,
 				D10000000000000000000006 /* Repositories */,
+				D10000000000000000000020 /* Interpretation */,
 				D10000000000000000000007 /* Features */,
 				D1000000000000000000000C /* Components */,
 				D1000000000000000000000D /* Preview Content */,
@@ -416,6 +429,17 @@
 				B10000000000000000000006 /* UserPreferences.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000020 /* Interpretation */ = {
+			isa = PBXGroup;
+			children = (
+				B100000000000000000001E5 /* CaptureInterpretation.swift */,
+				B100000000000000000001E6 /* InterpretationPolicy.swift */,
+				B100000000000000000001E7 /* InterpretationBridge.swift */,
+				B100000000000000000001E8 /* ModelInterpreter.swift */,
+			);
+			path = Interpretation;
 			sourceTree = "<group>";
 		};
 		D10000000000000000000006 /* Repositories */ = {
@@ -544,6 +568,8 @@
 				E300000000000000000F03 /* SemanticCorpusDataR.swift */,
 				E200000000000000000001 /* RenderingInvarianceTests.swift */,
 				E200000000000000000002 /* RefinementGuardTests.swift */,
+				E200000000000000000008 /* InterpretationPolicyTests.swift */,
+				E200000000000000000009 /* InterpretationBridgeTests.swift */,
 				E200000000000000000003 /* SpeechRepairTests.swift */,
 				E200000000000000000004 /* ObligationFrameTests.swift */,
 				E200000000000000000005 /* TutorialPracticeTests.swift */,
@@ -929,6 +955,10 @@
 				A20000000000000000000002 /* CaptureActivityManager.swift in Sources */,
 				A30000000000000000000001 /* DemoVideoView.swift in Sources */,
 				A40000000000000000000001 /* SharedCaptureInbox.swift in Sources */,
+				A100000000000000000001E5 /* CaptureInterpretation.swift in Sources */,
+				A100000000000000000001E6 /* InterpretationPolicy.swift in Sources */,
+				A100000000000000000001E7 /* InterpretationBridge.swift in Sources */,
+				A100000000000000000001E8 /* ModelInterpreter.swift in Sources */,
 				A50000000000000000000001 /* SharedTodayStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -966,6 +996,8 @@
 				D300000000000000000F03 /* SemanticCorpusDataR.swift in Sources */,
 				D200000000000000000001 /* RenderingInvarianceTests.swift in Sources */,
 				D200000000000000000002 /* RefinementGuardTests.swift in Sources */,
+				D200000000000000000008 /* InterpretationPolicyTests.swift in Sources */,
+				D200000000000000000009 /* InterpretationBridgeTests.swift in Sources */,
 				D200000000000000000003 /* SpeechRepairTests.swift in Sources */,
 				D200000000000000000004 /* ObligationFrameTests.swift in Sources */,
 				D200000000000000000005 /* TutorialPracticeTests.swift in Sources */,

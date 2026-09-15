@@ -1,5 +1,64 @@
 # Decisions
 
+## 2026-09-15 — Interpretation moves to the model, resolution and execution stay put
+
+A prototype, not a switch. `ThoughtExtractionEngine` calls none of it, and the
+production refinement path is untouched.
+
+The direction, in one line: **the model decides what was said, and the existing
+deterministic pipeline decides what Speak It does about it.** The boundary, the
+schema and what is not measured are in
+`Docs/FOUNDATION_MODELS_ARCHITECTURE.md`; three decisions are worth having here
+because someone will otherwise re-argue them.
+
+**The schema cannot carry a date, a destination or a decision.**
+`SpeakIt/Interpretation/CaptureInterpretation.swift` has no `Date` field, no
+Today, no Memory and no resolved target. Not "must not" — *has no field for*.
+That is what makes "the model never schedules" a property of the type rather
+than a rule somebody has to keep following, and it is why the bridge can hand
+every resolvable question to `ThoughtOrganizer` unchanged: the interpretation
+says which words are the time, and the same parser as ever says what the time
+is.
+
+**A destructive request executes only when both readings saw one.** The model
+may describe a cancellation; it may not be the only reading that did. This is
+the shape the app already uses for destination — two independent readings that
+must agree — applied to the half where being wrong destroys data. Anything else
+arrives with `needsReview` set, which is the existing behaviour for a target the
+app cannot resolve: it asks. A broad request is refused before agreement is
+considered, because both readings agreeing that somebody said "cancel
+everything" is not a reason to cancel everything.
+
+**The interpretation path is on-device, enforced on Linux.** The sealed sets may
+be pointed at it, and a set that has been sent to somebody's server cannot be
+made unseen again — there is no red build that undoes it. So the rule is
+mechanical rather than a promise:
+`Tools/CorpusRunner/test_interpretation_isolation.py` fails if anything under
+`SpeakIt/Interpretation/` names a URL, a session, a socket or any model other
+than `SystemLanguageModel`, and it runs on every pull request rather than on a
+Mac by dispatch.
+
+**What this is not.** Nothing was measured. No model has run, here or anywhere
+in this repository's history — the existing refinement path has never been
+measured either, in any direction, because no Apple Intelligence device has been
+available. The Swift was written in a Linux container; the `language` job builds
+the prototype and runs its self-check, which is where the first compile happened,
+and `interpret --availability` records what the framework says about the runner
+instead of the repository continuing to assume it.
+
+That question is now answered, and against the expectation recorded here. On
+`macos-26` with Xcode 26.6 (run 34992199253) the prototype **builds** and the
+self-check passes, and the framework is present in the toolchain — but
+availability is `deviceNotEligible`. Apple Intelligence is not reachable from a
+hosted runner and no CI setting changes that, so **every comparison between the
+two paths has to be generated on an eligible device and replayed elsewhere**,
+which is why the probe splits `--interpret` from `--replay`. Read
+`deviceNotEligible` as a fact about that runner: it says nothing about an
+iPhone and nothing about the model's quality.
+
+Until a run exists, every claim above is about what the code does with an
+interpretation, not about what an interpretation looks like.
+
 ## 2026-09-15 — The obligation lists stay five, and the disagreement is declared
 
 Five lists in four files say "this is an obligation": the clause splitter's

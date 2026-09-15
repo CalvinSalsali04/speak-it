@@ -54,3 +54,10 @@ node_modules/
 # Python scratch (Demo/create_contact_sheet.py, Website/tools).
 __pycache__/
 *.pyc
+
+# Interpretation probe runs. A `runs.jsonl` holds every capture it was given
+# verbatim, so a run made from a sealed set is itself sealed material and must
+# not enter history. See Tools/InterpretationProbe/README.md.
+Tools/InterpretationProbe/*.jsonl
+*.runs.jsonl
+runs.jsonl

@@ -90,6 +90,7 @@ jobs:
               - 'Tools/CorpusRunner/**'
               - 'Tools/LanguageMutations/**'
               - 'Tools/PipelineProbe/**'
+              - 'Tools/InterpretationProbe/**'
               - 'Tools/CI/**'
               - '.github/workflows/ci.yml'
             # The leak check walks EVERY Markdown file in the repository, not
@@ -207,6 +208,13 @@ jobs:
         run: python3 Tools/CorpusRunner/ledger-check.py
       - name: No sealed capture was edited after it was scored
         run: python3 Tools/CorpusRunner/everyday/generation-check.py
+      # The Foundation Models interpretation path may be pointed at a sealed
+      # set, and a set that has been sent to somebody's server cannot be made
+      # unseen again -- there is no red build that undoes it. Both rules it
+      # depends on are properties of the source text, so they are checked here,
+      # on Linux, on every pull request, rather than on a Mac by dispatch.
+      - name: The interpretation path is on-device only
+        run: python3 Tools/CorpusRunner/test_interpretation_isolation.py
 
   dashboard:
     name: Founder dashboard
@@ -378,3 +386,26 @@ jobs:
           path: ${{ runner.temp }}/language-metrics.txt
           retention-days: 30
           if-no-files-found: ignore
+
+      # The Foundation Models prototype, after the metrics rather than before
+      # them: a compile error in the prototype must not be the reason a
+      # dispatch someone paid for produces no language numbers.
+      #
+      # Two questions, both cheap. Does the prototype still compile against the
+      # live sources -- the only compile check it gets, since the unit suite
+      # does not run on pull requests. And can the model be reached on this
+      # runner at all: `--availability` prints what the framework says rather
+      # than assuming, and never fails the job, because "no Apple Intelligence
+      # here" is a finding to record, not a broken build. `--selfcheck` is the
+      # half that has to pass everywhere, because it needs no model.
+      - name: Build the interpretation prototype
+        if: always()
+        run: Tools/InterpretationProbe/build.sh
+
+      - name: What the Foundation Model reports on this runner
+        if: always()
+        run: Tools/InterpretationProbe/build/interpret --availability
+
+      - name: Interpretation selfcheck (no model needed)
+        if: always()
+        run: Tools/InterpretationProbe/build/interpret --selfcheck

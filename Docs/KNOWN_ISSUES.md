@@ -28,6 +28,25 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
+## A considered thought and a committed one look the same once stored
+
+`SemanticGap` names one reason per structural question the pipeline asks, and
+none of them is "the speaker was only considering this". "I might repaint the
+hallway tomorrow" and "I'm repainting the hallway tomorrow" differ by a modal
+and by whether anything is owed, and a row written from the first can record
+`needsClarification` but not *why*. The four gaps that come closest —
+`incompleteThought`, `reportedSpeech`, `unsupportedCondition`, `ambiguousActor` —
+are each about something else, and using one of them would be a marker standing
+in for a judgement it does not make.
+
+Found while building the interpretation prototype, which does have a field for
+it (`SegmentDisposition.hypothetical`) and has to drop it on the way into the
+stored model. Adding a case is allowed — the raw values are persisted, so a case
+may be added and none may ever be renamed — but it is a schema decision that
+wants evidence first: nothing here establishes how often people dictate a
+thought they have not committed to. See `Docs/FOUNDATION_MODELS_ARCHITECTURE.md`.
+
+
 ## A thought that stops and then keeps going is read as finished
 
 **Measured 2026-09-11, run 34644656689, and traced to source. Six named

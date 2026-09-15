@@ -1,8 +1,13 @@
 #!/bin/bash
-# Builds the standalone transcription probe from the live app sources.
-# ReminderCopy is sliced out of ReminderScheduler.swift (which imports AlarmKit
-# and UIKit and therefore cannot be compiled for the host) so the probe always
-# tracks the real copy logic rather than a drifting duplicate.
+# Builds the Foundation Models interpretation probe from the live app sources.
+#
+# Same source slicing as Tools/PipelineProbe/build.sh, plus SpeakIt/Interpretation.
+# It links FoundationModels when the toolchain has it; the binary runs either
+# way, because everything except `--interpret` is deterministic and needs no
+# model. That is deliberate: a CI runner with no Apple Intelligence can still
+# build this, run `--availability` to record what it has, `--selfcheck` to prove
+# the deterministic half works, and `--replay` to re-score a run somebody else
+# generated on hardware.
 set -euo pipefail
 SP="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SP/../.." && pwd)"
@@ -14,18 +19,13 @@ START=$(grep -n '^enum ReminderCopy {' SpeakIt/Repositories/ReminderScheduler.sw
 END=$(awk -v s="$START" 'NR>s && /^}/ {print NR; exit}' SpeakIt/Repositories/ReminderScheduler.swift)
 { echo "import Foundation"; sed -n "${START},${END}p" SpeakIt/Repositories/ReminderScheduler.swift; } > "$OUT/ReminderCopySlice.swift"
 
-# PersonMention's tail resolves names for Memory rows and needs the SwiftData
-# model. Extraction never calls it, so the probe compiles the file up to that
-# section marker.
 CUT=$(grep -n "^// MARK: - Memory.s reading of the same question" SpeakIt/Repositories/PersonMention.swift | cut -d: -f1)
 sed -n "1,$((CUT - 1))p" SpeakIt/Repositories/PersonMention.swift > "$OUT/PersonMentionSlice.swift"
 
-# LocationIntent's tail turns an intent into a monitorable region, which needs
-# CoreLocation and the saved-place store. Parsing stops well before that.
 LCUT=$(grep -n "^/// Turns a location intent into something monitorable" SpeakIt/Models/LocationIntent.swift | cut -d: -f1)
 sed -n "1,$((LCUT - 1))p" SpeakIt/Models/LocationIntent.swift > "$OUT/LocationIntentSlice.swift"
 
-DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcrun swiftc -O -o "$OUT/probe" \
+DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcrun swiftc -O -o "$OUT/interpret" \
   SpeakIt/Repositories/ClauseStructure.swift \
   SpeakIt/Repositories/TranscriptProvenance.swift \
   SpeakIt/Repositories/ThoughtExtractor.swift \
@@ -42,5 +42,12 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   "$OUT/LocationIntentSlice.swift" \
   SpeakIt/Models/TemporalIntent.swift \
   SpeakIt/Models/ReminderTrigger.swift \
-  "$OUT/ReminderCopySlice.swift" "$SP/shims.swift" "$SP/rowreport.swift" "$SP/main.swift" 2> "$OUT/build-errors.log" || { cat "$OUT/build-errors.log" >&2; exit 1; }
-test -x "$OUT/probe" && echo "probe built: $OUT/probe"
+  "$OUT/ReminderCopySlice.swift" \
+  SpeakIt/Interpretation/CaptureInterpretation.swift \
+  SpeakIt/Interpretation/InterpretationPolicy.swift \
+  SpeakIt/Interpretation/InterpretationBridge.swift \
+  SpeakIt/Interpretation/ModelInterpreter.swift \
+  "$SP/../PipelineProbe/shims.swift" \
+  "$SP/../PipelineProbe/rowreport.swift" \
+  "$SP/main.swift" 2> "$OUT/build-errors.log" || { cat "$OUT/build-errors.log" >&2; exit 1; }
+test -x "$OUT/interpret" && echo "interpretation probe built: $OUT/interpret"
