@@ -422,8 +422,15 @@ FAMILY_ROW = re.compile(r"^\|\s*`?([a-z][a-z0-9-]*)`?\s*\((\d+)\)\s*\|")
 
 #: The two halves of a twinned development set: the same content written
 #: twice under one id stem, so a measurement is the gap between the twins.
-#: Derived from the family labels rather than from the ids, because an id
-#: convention is a spelling and the label is what the row claims to be.
+#: Read off the family labels rather than the ids, because an id convention is
+#: a spelling and the label is what the row claims to be.
+#:
+#: These two words are DECLARED, and deriving them instead does not work.
+#: Pairing suffixes by shape reads `routed.tsv` as a family `reported` with
+#: halves `cancellation` (4 rows) and `day` (13) -- a false twin, and one that
+#: would then refuse the run for being unpaired. So the pair is written down,
+#: and `twinned_families` refuses rather than returning nothing when the data
+#: stops using these words.
 TWIN_HALVES = ("clean", "rambling")
 
 
@@ -439,6 +446,25 @@ def twinned_families(paths=None):
     Refuses when a family's two halves disagree in size. An unpaired twin is
     not a stale figure, it is a set that has stopped being twinned, and a gap
     measured across it means nothing; reporting it as a count would hide that.
+
+    Refuses again when NOTHING is twinned, because `TWIN_HALVES` is declared
+    and a declared word is one somebody can rename. An empty result is not a
+    clean bill of health -- `stale_family_rows` over an empty derivation
+    reports no stale row and no missing family, the same answer it gives for a
+    table that is genuinely current -- so it is not returned as one.
+
+    The two refusals divide the ways that happens, which was measured rather
+    than assumed: renaming ONE half (`-rambling` to `-spoken`) already fires
+    the unpaired refusal above, because the other half is still counted and
+    the family is then 8 against 0. What reaches this one is the set leaving
+    the derivation whole -- both halves renamed at once, the `family` column
+    renamed, the file gone -- where nothing is counted at all and there is no
+    disagreement to notice.
+
+    What neither can see is a SECOND twinned set arriving under different
+    half-names: this one stays non-empty, no refusal fires, and the new set
+    contributes nothing. Stated rather than guarded, because the guard would
+    be the derivation the comment on `TWIN_HALVES` rules out.
     """
     paths = corpus_paths.readable() if paths is None else paths
     out = {}
@@ -461,6 +487,15 @@ def twinned_families(paths=None):
             families[family] = sizes.pop()
         if families:
             out[str(shown(path))] = families
+    if not out:
+        raise ValueError(
+            f"no readable development set has a family label ending in "
+            f"`-{TWIN_HALVES[0]}` and `-{TWIN_HALVES[1]}`, so either the twin "
+            f"convention has been renamed or the twinned set is gone. Nothing "
+            f"is being compared against the per-family gap tables, and a "
+            f"check with nothing to compare reports no stale row -- which "
+            f"reads as the tables being current. Update TWIN_HALVES to the "
+            f"words the data uses now")
     return out
 
 
@@ -506,6 +541,14 @@ def stale_family_rows(text=None, twinned=None):
     data holds rather than by a declared line range or file name. A set-level
     row such as `routed (116)` names a file and not a family, and is left to
     the population block, which already generates it.
+
+    That means the whole document is scanned, and a line anywhere in its two
+    and a half thousand that happens to read `| long (5) |` is reported even
+    though it is nowhere near a gap table. That is the intended direction.
+    Scoping the scan would mean naming the table by line range or by heading,
+    and a line range goes stale exactly as the bracket does while a heading is
+    a spelling; a false report names a line somebody can look at in a second,
+    and a missed one is the failure the check was written for.
 
     **A count written in prose is out of reach and stays out of reach.** The
     same section says `coherent-long` is "7/7 on destination" and calls them

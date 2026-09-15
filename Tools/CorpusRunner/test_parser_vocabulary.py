@@ -23,6 +23,7 @@ splitter has held since it was written; the rest are checked here one by one.
 """
 import copy
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -285,6 +286,105 @@ class WhatTheListsAgreeOn(unittest.TestCase):
         whole = pv.union(lists)
         self.assertLess(len(AGREED), len(whole) / 2)
         self.assertEqual(len(whole), 37)
+
+
+#: Every subject in the gating corpus that `obligationBelongsToAnotherPerson`
+#: could read as an owner, with what it is. The rule's docstring says it does
+#: not decide animacy, and that the cost of not deciding is hypothetical
+#: because no inanimate subject is attested. That is a claim about a corpus
+#: that grows every week, written as a sentence that recomputes nowhere -- and
+#: it had already drifted: the docstring said 1,022 cases and
+#: `Docs/KNOWN_ISSUES.md` said 1,069 for the same corpus, which held 1,404
+#: that day.
+#:
+#: Animacy cannot be decided mechanically here -- that gap is the thing being
+#: documented -- so the subjects are pinned by hand and the screen below is
+#: what finds them. A new one fails this, and somebody looks at it once.
+THIRD_PERSON_SUBJECTS_IN_THE_CORPUS = {
+    "Mike": "a person",
+    "My brother": "a person",
+    "Priya": "a person",
+    "Dana": "a person",
+    "No": (
+        "not a subject: the screen is wider than the rule and catches the "
+        "bare `No` of `No need to book the table`. The corpus labels that row "
+        "`count: 0, operation: [.cancel]`, so the parser does not read it as "
+        "anybody's obligation. Kept here rather than excluded, because a "
+        "screen narrowed until it agrees with the rule stops being able to "
+        "disagree with it."
+    ),
+}
+
+
+class WhoTheCorpusSaysOwesSomething(unittest.TestCase):
+    """The attested half of the animacy decision, recomputed.
+
+    `Actionability.obligationBelongsToAnotherPerson` files an obligation with a
+    third-party subject in Memory without asking whether that subject is a
+    person, so "the car has to go in Tuesday" goes to Memory too. The rule
+    ships that way on purpose: it is the safer direction, and the corpus shows
+    nothing of the shape.
+
+    Only the second half of that is checkable, and only this way round. This
+    suite cannot tell an animate subject from an inanimate one; it hands every
+    subject of the shape to a person who can, and fails when the set changes.
+    """
+
+    def test_the_screen_finds_the_shape_it_claims_to(self):
+        """A screen matching nothing would pass the census below in silence."""
+        found = pv.third_person_subjects([
+            "Mike should call Sarah",
+            "The car has to go in Tuesday",
+            "I need to call Mike",
+            "Someone should build the deck",
+            "tomorrow I need to book the table",
+        ])
+        self.assertEqual(
+            [s for s, _ in found], ["Mike", "The car"],
+            "the screen must catch a third-party subject whatever it denotes, "
+            "and must not catch the speaker or an indefinite one"
+        )
+
+    def test_no_new_third_party_subject_has_appeared(self):
+        census = {}
+        for subject, text in pv.third_person_subjects():
+            census.setdefault(subject, []).append(text)
+        self.assertEqual(
+            sorted(census), sorted(THIRD_PERSON_SUBJECTS_IN_THE_CORPUS),
+            "the subjects the ownership rule could read as owners have "
+            "changed. Decide whether the new one is a person: if it is not, "
+            "the animacy gap in `obligationBelongsToAnotherPerson` has stopped "
+            "being hypothetical and `Docs/KNOWN_ISSUES.md` needs the case. "
+            "Either way, pin it in THIRD_PERSON_SUBJECTS_IN_THE_CORPUS with "
+            "what it is. Found: " + repr(sorted(census))
+        )
+
+    def test_the_corpus_reader_reads_the_utterance_slot(self):
+        """Reading these files as a bag of literals counts reviewer prose.
+
+        `readable_material.swift_literals` harvests every string in the tree,
+        which is right for a leak check and wrong for a census: most of the
+        distinct literals in these files are `note:` text, assertion messages
+        and label arguments (893 of 2,250 on 2026-09-15, a ratio that moves
+        every time somebody adds a case). Rather than name one of them and hope
+        it survives, this runs the bag reader beside the slot reader and
+        asserts the difference is thrown away, so the check holds whatever the
+        notes say next week.
+        """
+        utterances = pv.corpus_utterances()
+        self.assertIn("Mike should call Sarah", utterances)
+
+        bag = set()
+        for path in sorted(pv.CORPUS_CASES.glob("SemanticCorpusData*.swift")):
+            bag |= set(re.findall(r'"((?:[^"\\]|\\.)*)"',
+                                  path.read_text(encoding="utf-8")))
+        self.assertLess(
+            len(set(utterances)), len(bag) * 0.8,
+            "the reader is returning nearly every literal in the file, which "
+            "means it has stopped reading the utterance slot and started "
+            "reading the file"
+        )
+        self.assertTrue(set(utterances) < bag)
 
 
 if __name__ == "__main__":

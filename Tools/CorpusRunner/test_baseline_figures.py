@@ -645,6 +645,73 @@ class APerFamilyScoreCannotOutliveItsPopulation(FiguresCase):
         mismatched, unrowed = self.bf.stale_family_rows()
         self.assertEqual((mismatched, unrowed), ([], []))
 
+    def test_an_empty_result_is_a_refusal_and_not_a_clean_table(self):
+        """The hole `TWIN_HALVES` being a declared word leaves open.
+
+        The counterexample is asserted first, against the behaviour the
+        refusal replaces, so it cannot quietly stop being a counterexample:
+        with nothing twinned, `stale_family_rows` reports no stale row and no
+        missing family -- the same answer it gives for a table that is
+        genuinely up to date.
+
+        **The fixture renames BOTH halves, and the first version of this test
+        renamed one and proved nothing.** Renaming `-rambling` alone fires the
+        unpaired refusal above instead, because `errand` is then 8 clean rows
+        against 0 spoken ones. So does renaming `-clean` alone. The case that
+        actually reaches this refusal is the set leaving the derivation whole,
+        which is also what a renamed `family` column does.
+        """
+        self.assertEqual(
+            self.bf.stale_family_rows(text=self.bf.DOC.read_text("utf-8"),
+                                      twinned={}),
+            ([], []),
+            "an empty derivation no longer reads as a clean table, so this "
+            "test has stopped demonstrating why the refusal below exists")
+
+        path = pathlib.Path(self.bf.ROOT,
+                            "Tools/CorpusRunner/devsets/rambling.tsv")
+        text = path.read_text(encoding="utf-8")
+        for half in self.bf.TWIN_HALVES:
+            self.assertIn(f"-{half}\t", text, "the fixture's anchor is stale")
+        renamed = text
+        for half, other in zip(self.bf.TWIN_HALVES, ("plain", "spoken")):
+            renamed = renamed.replace(f"-{half}\t", f"-{other}\t")
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = pathlib.Path(tmp) / "rambling.tsv"
+            copy.write_text(renamed)
+            with self.assertRaises(ValueError) as caught:
+                self.bf.twinned_families(paths=[copy])
+        message = str(caught.exception)
+        self.assertIn("reads as the tables being current", message)
+        self.assertIn("TWIN_HALVES", message)
+
+    def test_the_refusal_does_not_fire_on_the_sets_as_they_are(self):
+        """The other direction, or a `raise` on every input would pass above.
+
+        Both halves of the refusal are checked here rather than left to the
+        rest of the class going green, because the rest of the class would go
+        green against a fixture too.
+        """
+        self.assertIn("Tools/CorpusRunner/devsets/rambling.tsv",
+                      self.bf.twinned_families())
+
+    def test_a_bracket_far_from_any_gap_table_is_still_reported(self):
+        """Deliberate, and pinned so that narrowing it has to argue with this.
+
+        The scan reads the whole document, so a sentence anywhere that happens
+        to hold `| long (5) |` is reported although it is nowhere near a gap
+        table. Scoping it would mean naming the table by line range or by
+        heading: the range goes stale exactly as the bracket does, and the
+        heading is a spelling. A false report names a line somebody can look
+        at in a second; a missed one is what this check was written for.
+        """
+        twinned = {"x.tsv": {"long": 3}}
+        stray = "\n".join(["# Something else entirely"] + ["prose"] * 40
+                           + ["| long (5) | unrelated |"])
+        self.assertEqual(
+            self.bf.stale_family_rows(text=stray, twinned=twinned),
+            ([("long", 5, 3)], []))
+
     def test_the_known_staleness_is_exactly_what_is_recorded(self):
         """The expected failure above says which rows and by how much.
 
