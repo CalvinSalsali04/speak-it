@@ -736,6 +736,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         pinning rather than trusting -- "multi-word" was standing in for a
         rule nobody had written down, and reading it three ways gave 3702,
         3760 and 3804.
+
+        The figure is a census of `SpeakItTests`, not a property of the
+        parser, so it moves whenever a test file gains a multi-word literal.
+        3702 -> 3739 on 2026-09-11: `StoredRowRemovalTests` added 37 and
+        removed none. What the test is actually guarding — that the two
+        readings of "multi-word" still agree exactly and in both directions —
+        is the assertion above, and it is unaffected.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -745,7 +752,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3702)
+        self.assertEqual(len(space), 3739)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
