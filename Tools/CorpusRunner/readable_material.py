@@ -280,7 +280,7 @@ def jsonl_utterances(path, field=None):
             yield value
 
 
-def contained_sources():
+def contained_sources(texts=None):
     """Pairs of sources where one's utterances are a subset of another's.
 
     Reported, not refused, and the distinction is worth the paragraph.
@@ -301,12 +301,19 @@ def contained_sources():
     It stays as output because a reader deciding how much independent evidence
     is here should see that twelve sources are not twelve populations.
 
-    Reads every source a second time rather than reusing the walk, because a
-    guard sharing state with the thing it guards fails with it. It shares that
-    second read with `independent_bodies` below, which is a different thing:
-    two guards reading one independent copy stay independent of the walk.
+    Reads every source a second time rather than reusing the census walk,
+    because a guard sharing state with the thing it guards fails with it. The
+    thing guarded here is the counted walk in `census()`, so independence from
+    THAT is the property; independence from the other guard buys nothing.
+
+    So the population is an argument, and the caller reads it once and hands
+    the same one to both guards. The docstring claimed that before the code
+    did it -- "two guards reading one independent copy" was written while each
+    guard called `source_texts()` for itself, three reads of the tree where
+    two are the design. Passing None still reads a fresh copy, which is what
+    every test that calls these directly relies on.
     """
-    texts = source_texts()
+    texts = source_texts() if texts is None else texts
     out = []
     for a in texts:
         for b in texts:
@@ -341,7 +348,7 @@ def reduce_to_bodies(texts):
     return bodies, maximal
 
 
-def independent_bodies(reduce=None):
+def independent_bodies(reduce=None, texts=None):
     """`(bodies, maximal)` — how many populations the sources amount to.
 
     `contained_sources` prints the pairs and leaves the reader arithmetic that
@@ -365,8 +372,12 @@ def independent_bodies(reduce=None):
     that the survivors covered 4683 of 5501 utterances. So the coverage is
     asserted rather than assumed, and `reduce` is an argument so a test can
     hand the guard the reduction it replaced and watch it raise.
+
+    `reduce` stays the first parameter because the tests that hand it a wrong
+    reduction pass it positionally, and `texts` arriving in front of it would
+    have been read as the population.
     """
-    texts = source_texts()
+    texts = source_texts() if texts is None else texts
     bodies, maximal = (reduce or reduce_to_bodies)(texts)
     covered = frozenset().union(*maximal) if maximal else frozenset()
     union = frozenset().union(*texts.values()) if texts else frozenset()

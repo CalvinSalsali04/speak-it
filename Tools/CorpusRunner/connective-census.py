@@ -154,10 +154,11 @@ def main():
     if read != distinct:
         print(f"  {read - distinct} row(s) repeat text counted under an")
         print("  earlier source and are not counted twice.")
-    contained = contained_sources()
+    texts = source_texts()
+    contained = contained_sources(texts)
     if contained:
         pairs = sorted({f"{a.name} inside {b.name}" for a, b in contained})
-        bodies, maximal = independent_bodies()
+        bodies, maximal = independent_bodies(texts=texts)
         print(f"  {len(pairs)} source pair(s) where one is wholly contained in")
         print("  the other. Not an error -- SpeechLab keeps several views of")
         print("  one population -- but it means the source count above is not")
