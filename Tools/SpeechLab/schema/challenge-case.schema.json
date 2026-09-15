@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/challenge-case.schema.json",
+  "title": "SpeechLab ambiguity/challenge candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "utterance", "relevant_context", "current_proposed_contract", "taxonomy_labels", "root_causes", "ambiguity_evidence", "evaluation_policy"],
+  "properties": {
+    "case_id": {"type": "string", "pattern": "^case-[a-f0-9]{24}$"},
+    "utterance": {"type": "string", "minLength": 1},
+    "relevant_context": {"type": "object"},
+    "current_proposed_contract": {"type": "object"},
+    "taxonomy_labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "root_causes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "minItems": 1},
+    "ambiguity_evidence": {"type": "string", "minLength": 1},
+    "evaluation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "exact_answer_scoreable", "scoring", "acceptable_outcomes_status"],
+      "properties": {
+        "role": {"const": "ambiguity-challenge"},
+        "exact_answer_scoreable": {"const": false},
+        "scoring": {"const": "explicit-review-required"},
+        "acceptable_outcomes_status": {"enum": ["not-yet-adjudicated", "adjudicated"]}
+      }
+    }
+  }
+}

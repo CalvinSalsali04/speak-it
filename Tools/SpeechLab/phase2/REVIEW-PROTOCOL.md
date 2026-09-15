@@ -16,6 +16,23 @@ For every case the reviewer records:
 - whether the rendering preserves that contract;
 - reviewer identity/source and review timestamp.
 
+Judge naturalness and semantic correctness independently. Awkward wording may
+still preserve the proposed meaning, and fluent wording may still contradict
+the contract. Do not use one score as a proxy for the other.
+
+`relevant_context` is part of the proposed semantic representation, not merely
+background prose. In particular, `relevant_context.timezone` is the
+authoritative default timezone. A spoken timezone is preserved when that field
+matches even if it is not duplicated inside every item. Prior turns may resolve
+a reference only when the referent and its required values are actually present
+in the supplied window.
+
+Mark ambiguity explicitly when the utterance or context supports multiple
+material outcomes. Do not affirm a contract that silently chooses an AM/PM
+value, cancellation target, pronoun referent, DST fold, or other branch that the
+speaker did not resolve. Conversely, do not call a field missing when it is
+already represented in the supplied context.
+
 The review object must validate against `schema/review.schema.json`. Submit one
 JSONL row per review in this shape:
 

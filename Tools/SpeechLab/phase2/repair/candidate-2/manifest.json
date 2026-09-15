@@ -1,0 +1,16 @@
+{
+  "version": "speechlab-corpus-repair-2",
+  "source_candidate": "candidate-1/adjudication",
+  "starting_cases": 818,
+  "candidate_cases": 818,
+  "repaired_cases": 20,
+  "removed_cases": 0,
+  "unchanged_cases": 798,
+  "repair_map_digest": "eba4df0306eb422c168064303f553e9f3bb6385601e46676fe1d4ec93c85c56f",
+  "candidate_case_digest": "4c0a636370a6d3620b1d33dcd45fc730332110afce1d27a023c771ee2be1f0ca",
+  "contracts_changed": 0,
+  "fresh_independent_reviews_required": 20,
+  "production_parser_invoked": false,
+  "parser_output_read": false,
+  "sealed_failures_read": 0
+}

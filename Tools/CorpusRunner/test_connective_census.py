@@ -883,7 +883,7 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
     Neither guard reaches SpeechLab, and neither does
     `corpus_paths.unclassified()`, which is about `*.tsv`. The tree is walked,
     every `.jsonl` in it is opened, and each one is dropped without a word the
-    moment `utterance_field` returns None. **Ten of the twenty-two are dropped
+    moment `utterance_field` returns None. **Twenty of the thirty-seven are dropped
     today.**
 
     Measured rather than assumed, on 2026-09-15 by mutation: dropping
