@@ -266,6 +266,12 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
         for path, _read in readable_material.readers():
             if path.suffix != ".jsonl":
                 continue
+            #: A second refusal, not the first one. `speechlab_files()`
+            #: raises on a sealed path before `readers()` can yield it, so
+            #: this cannot fire today and is stated as a duplicate rather
+            #: than counted as the guard. It stays because the cost of being
+            #: wrong here is reading sealed material, and because the walk
+            #: could gain a source that does not come through that refusal.
             self.assertNotIn(path.resolve(), sealed,
                              f"{readable_material.shown(path)} is sealed and "
                              f"this test opens it")
@@ -274,9 +280,11 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
                     if line.strip()]
             if not rows or not all("equivalence_class" in r for r in rows):
                 continue
+            #: Non-None by construction: `readers()` drops any file whose
+            #: `utterance_field` is None before yielding it. Asserting it
+            #: here would be a check that cannot fail, which reads the same
+            #: as one that passes.
             field = readable_material.utterance_field(path)
-            self.assertIsNotNone(field, f"{readable_material.shown(path)} "
-                                        f"declares a class but no utterance")
             found[str(readable_material.shown(path))] = [
                 (r[field], r["equivalence_class"],
                  r["equivalence_class"] == r.get("blueprint_id"))
@@ -314,20 +322,23 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
             Could you hang onto both of these--<errand>, plus <fact>
 
         **Measured on this one source, so that rows and groups share a
-        denominator.** An earlier version of this figure grouped every
-        readable row, falling back to the frame for rows declaring no class,
-        and reported `plus` as 44 rows over 32 groups and `wait` as 53 over
-        50. Those are two units in one column: only 41 of `plus`'s rows
-        declare a class and only 31 of `wait`'s, so `wait`'s "50" was 31
-        declared classes and 19 frames added together. The conclusion is
-        unchanged and the honest figures are wider apart, which is the usual
-        way round for a mixed denominator. On phase 2 alone:
+        denominator.** An earlier version grouped every readable row, falling
+        back to the frame for rows declaring no class, and reported `plus` as
+        44 rows over 32 groups and `wait` as 53 over 50. Those are two units
+        in one column: only 41 of `plus`'s rows declare a class and only 31
+        of `wait`'s, so `wait`'s "50" was 31 declared classes and 19 frames
+        added together. The conclusion was unchanged and the honest figures
+        are wider apart, which is the usual way round for a mixed
+        denominator -- the mixing diluted the effect rather than making it.
 
-            form   rows   by frame        by declared class
-            plus     41    9 frames 71%   29 classes  5%
-            wait     31    7 frames 61%   31 classes  3%
+        **The per-form figures are in `SHAPE_ON_PHASE_TWO` and asserted by
+        `test_the_table_in_the_argument_is_recomputed_per_form`, not written
+        out here.** They were written out here, in the very change that
+        corrected them, while the assertions in this test stayed aggregate
+        and caught nothing. A second copy in prose drifts from the copy that
+        is checked, which is the failure this whole class is about.
 
-        So the class erases the concentration this instrument exists to
+        The class erases the concentration this instrument exists to
         report. It is the right denominator for meaning coverage and the
         wrong one for form coverage, and a connective is a property of the
         form.
@@ -362,6 +373,53 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
             f"one frame carried {busiest} declared meanings, so the class no "
             f"longer separates what the frame merges and the unit is worth "
             f"revisiting")
+
+    #: The four figures per form the argument above is made of, so that the
+    #: table is this test's output rather than a claim beside it. Written
+    #: because the assertions in the test above are aggregates over all 818
+    #: rows -- `len(classes) < len(per_frame)` and `busiest >= 10` -- and not
+    #: one of them is per-form. They stood unchanged while the column was 31
+    #: declared classes and 19 frames added together, and they stand unchanged
+    #: now that it is 31 of 31: they did not catch that error and would not
+    #: catch the next one. A figure lives where something recomputes it, and
+    #: this figure was living in a docstring inside the pull request that
+    #: corrected it.
+    SHAPE_ON_PHASE_TWO = {
+        #  form:  (rows, frames, busiest frame, classes, busiest class)
+        "plus": (41, 9, 29, 29, 2),
+        "wait": (31, 7, 19, 31, 1),
+    }
+
+    def test_the_table_in_the_argument_is_recomputed_per_form(self):
+        """Each form's row against the one source, measured both ways."""
+        import collections
+        rows = self.declaring_sources()[
+            "Tools/SpeechLab/phase2/data/renderings.jsonl"]
+        for form, expected in sorted(self.SHAPE_ON_PHASE_TWO.items()):
+            pattern = observation.pattern_for(form)
+            hits = [(text, klass) for text, klass, _ in rows
+                    if pattern.search(text)]
+            texts = {text for text, _ in hits}
+            frames = collections.Counter(observation.stem(t) for t in texts)
+            classes = collections.Counter(k for t, k in hits if t in texts)
+            self.assertEqual(
+                (len(texts), len(frames), max(frames.values()),
+                 len(classes), max(classes.values())), expected, form)
+
+    def test_the_frame_concentrates_and_the_declared_class_does_not(self):
+        """The claim the table exists to support, as a comparison.
+
+        Stated as the inequality rather than as two percentages, because the
+        percentages are what drifted. Both forms are marked by the frame and
+        neither by the class, which is the whole result: adopting the class
+        erases both findings.
+        """
+        for form, (rows, _f, frame, _c, klass) in sorted(
+                self.SHAPE_ON_PHASE_TWO.items()):
+            self.assertGreaterEqual(frame / rows, observation.CROWDED_STEM,
+                                    f"{form} is concentrated by frame")
+            self.assertLess(klass / rows, observation.CROWDED_STEM,
+                            f"{form} is not concentrated by declared class")
 
     def test_the_probe_words_vary_where_the_measure_can_see(self):
         """`stem` drops digits, so a numeric probe varies nothing."""
