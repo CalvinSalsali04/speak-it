@@ -18,6 +18,7 @@ import json
 import pathlib
 import sys
 import unittest
+import unittest.mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -844,3 +845,124 @@ class TheReadersReadWhatTheyClaim(CensusCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
+
+
+class TheSpeechLabClassificationIsTotal(CensusCase):
+    """The arm of the walk with no declaration behind it.
+
+    #76 closed the devset arm from both ends: `readable()` hands back every
+    readable file on disk, and every file it hands back reaches `readers()`.
+    Neither guard reaches SpeechLab, and neither does
+    `corpus_paths.unclassified()`, which is about `*.tsv`. The tree is walked,
+    every `.jsonl` in it is opened, and each one is dropped without a word the
+    moment `utterance_field` returns None. **Ten of the twenty-two are dropped
+    today.**
+
+    Measured rather than assumed, on 2026-09-15 by mutation: dropping
+    `cases-adjudicated.jsonl` from the walk was caught by exactly one
+    assertion, and dropping `renderings.jsonl` by seven. Both are one file,
+    and the only difference is that the second is half of the basename
+    collision other tests pin by name. That is coverage by coincidence, and it
+    varies per file rather than per defect -- the number of checks standing
+    behind the denominator depends on which file goes.
+
+    So the decision gets written down. Every `.jsonl` under SpeechLab either
+    yields an utterance or is in `NOT_A_CORPUS`, and a file in neither fails
+    the run -- the shape `corpus_paths.unclassified()` has had since two scans
+    got their `*.tsv` lists wrong in opposite directions.
+    """
+
+    def test_the_speechlab_classification_is_total(self):
+        rm = self.census.readable_material
+        stray = rm.speechlab_unclassified()
+        self.assertEqual(
+            [rm.shown(p) for p in stray], [],
+            "these SpeechLab files hold no recognised utterance field and are "
+            "not in NOT_A_CORPUS, so they are dropped from every figure with "
+            "no record of the decision")
+
+    def test_no_declared_name_is_missing_or_actually_a_corpus(self):
+        rm = self.census.readable_material
+        self.assertEqual(rm.speechlab_misdeclared(), [])
+
+    def test_the_unclassified_check_reports_when_nothing_is_declared(self):
+        """The guard fires, rather than being empty because it looks nowhere.
+
+        An empty result is the same shape whether the classification is total
+        or the walk is broken, so the check is handed an empty declaration and
+        has to name every file it would otherwise wave through.
+        """
+        rm = self.census.readable_material
+        stray = rm.speechlab_unclassified(declared=frozenset())
+        self.assertEqual(len(stray), len(rm.NOT_A_CORPUS))
+        self.assertEqual(
+            sorted(str(p.relative_to(rm.ROOT)) for p in stray),
+            sorted(rm.NOT_A_CORPUS),
+            "the declared list and the files actually dropped by the walk "
+            "have stopped being the same set")
+
+    def test_a_declared_name_that_holds_speech_is_reported(self):
+        """The half a short list would never fail on.
+
+        A list that can only be too short is somewhere to put an inconvenient
+        corpus: declare it and the census stops counting it, silently. So a
+        declared name that does carry an utterance field is a failure, proved
+        here by declaring one that plainly does.
+        """
+        rm = self.census.readable_material
+        corpus = "Tools/SpeechLab/phase2/data/cases.jsonl"
+        found = rm.speechlab_misdeclared(declared={corpus})
+        self.assertEqual([name for name, _why in found], [corpus])
+        self.assertIn("utterance", found[0][1])
+
+    def test_a_declared_name_that_is_not_on_disk_is_reported(self):
+        rm = self.census.readable_material
+        gone = "Tools/SpeechLab/data/renamed-away.jsonl"
+        found = rm.speechlab_misdeclared(declared={gone})
+        self.assertEqual([name for name, _why in found], [gone])
+        self.assertIn("does not reach it", found[0][1])
+
+    def test_readers_refuses_rather_than_dropping_the_file(self):
+        """Where the guard runs decides who is protected by it.
+
+        The census, the observation measure and `leak-check.py` all reach the
+        tree through `readers()`, and a guard held in one test suite is a
+        guard the other two consumers do not have. So `readers()` raises, and
+        this hands it an empty declaration to watch it do so.
+        """
+        rm = self.census.readable_material
+        with unittest.mock.patch.object(rm, "NOT_A_CORPUS", frozenset()):
+            with self.assertRaises(ValueError) as caught:
+                rm.readers()
+        self.assertIn("NOT_A_CORPUS", str(caught.exception))
+        self.assertIn("blueprints.jsonl", str(caught.exception))
+
+    def test_no_caller_narrows_the_guard(self):
+        """`files` and `declared` are for tests, and this says so in code.
+
+        A guard whose caller can hand it a smaller world is a guard the caller
+        can switch off, and the switch reads as ordinary argument passing. The
+        only calls outside this file must pass neither.
+        """
+        rm = self.census.readable_material
+        root = pathlib.Path(rm.__file__).parents[2]
+        here = pathlib.Path(__file__).resolve()
+        calls, checked = [], 0
+        for path in sorted(root.rglob("*.py")):
+            if path.resolve() == here or ".git" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for name in ("speechlab_unclassified", "speechlab_misdeclared"):
+                if f"def {name}" in text:
+                    checked += 1
+                for line in text.splitlines():
+                    if f"{name}(" in line and f"def {name}(" not in line:
+                        calls.append((path.name, line.strip()))
+        self.assertEqual(checked, 2, "the two guards are no longer defined "
+                                     "where this search expects them, so it "
+                                     "is not searching what it thinks it is")
+        narrowed = [c for c in calls if not c[1].endswith("()")
+                    and "()" not in c[1]]
+        self.assertEqual(narrowed, [],
+                         "a caller outside the tests is handing the guard a "
+                         "population of its own choosing")

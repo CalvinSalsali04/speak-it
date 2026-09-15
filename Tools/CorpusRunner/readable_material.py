@@ -82,6 +82,45 @@ NOT_SPEECH = frozenset({
 })
 
 
+#: SpeechLab `.jsonl` files that carry no utterance, declared rather than
+#: inferred. Ten of the twenty-two under `Tools/SpeechLab` are dropped by
+#: `readers()` because `utterance_field` finds nothing in them, and until this
+#: list existed that decision was made afresh on every run and recorded
+#: nowhere. Each was opened and checked on 2026-09-15: every string in them is
+#: an identifier, a family label, or a machine-written description, and the
+#: comment beside each says which. None holds speech, so the 5,501 is not
+#: short by a file -- the risk this closes is the next file, not these ten.
+#:
+#: The pattern in `LOOKS_LIKE_SPEECH` is the first net and it is a name-shaped
+#: one: a corpus arriving with its utterances under `line` or `said` matches
+#: nothing, drops silently, and the census reports a smaller population in the
+#: same calm voice it reports a correct one. `corpus_paths.unclassified()`
+#: solved exactly this for `*.tsv` by making the classification **total**, and
+#: `speechlab_unclassified()` below is that check one directory over.
+#:
+#: Paths are relative to the repository root, and a name here that turns out
+#: to hold utterances fails the run as loudly as one that is missing. A list
+#: that can only be too short is the failure mode being fixed.
+NOT_A_CORPUS = {
+    # blueprints, families and schemas: ids and labels, no rendered speech
+    "Tools/SpeechLab/data/blueprints.jsonl",
+    "Tools/SpeechLab/data/family-definitions.jsonl",
+    "Tools/SpeechLab/phase2/data/blueprints.jsonl",
+    "Tools/SpeechLab/phase2/data/semantic-families.jsonl",
+    # adjudication reviews: a case id and a verdict, never the utterance
+    "Tools/SpeechLab/phase2/adjudication/reviews.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-a-20260914.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-b-20260914.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-c-20260914.jsonl",
+    # export artifacts: counts, and one JSON blob stored as a string
+    "Tools/SpeechLab/artifacts/export-for-ai/blueprint-batch.jsonl",
+    "Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl",
+}
+
+
 #: Swift string literals, and the reason this is not a one-line regex.
 #:
 #: It used to be `re.findall(r'"([^"\\]{12,})"', text)` over the whole file,
@@ -389,8 +428,93 @@ def independent_bodies(reduce=None, texts=None):
     return bodies, maximal
 
 
+def speechlab_unclassified(files=None, declared=None):
+    """Every SpeechLab `.jsonl` that is read by nobody and declared by nobody.
+
+    Must be empty, and that is the whole value: `readers()` drops a file the
+    moment `utterance_field` returns None, and a drop leaves no trace in any
+    output. Ten of the twenty-two files under `Tools/SpeechLab` are dropped
+    today, so the difference between "ten checked files hold no speech" and
+    "the census has silently stopped reading a corpus" is not visible anywhere
+    a reader looks.
+
+    `corpus_paths.unclassified()` made the same decision total for `*.tsv`
+    after two scans got their file lists wrong in opposite directions. This is
+    that check for the other arm of the walk: the classification is total, or
+    it is a convention, and a convention omits silently.
+
+    `files` and `declared` exist so a test can hand this a tree it controls
+    and watch it report, the way `independent_bodies` takes `reduce`. Every
+    caller in this repository passes neither, and a test asserts that, because
+    a guard a caller can narrow is a guard the caller can switch off.
+    """
+    files = speechlab_files() if files is None else files
+    declared = NOT_A_CORPUS if declared is None else declared
+    return sorted(path for path in files
+                  if utterance_field(path) is None
+                  and str(path.relative_to(ROOT)) not in declared)
+
+
+def speechlab_misdeclared(files=None, declared=None):
+    """Declared not-a-corpus names that are missing, or that do hold speech.
+
+    The mirror of the check above, and it is the half that is easy to leave
+    out. A list that can only be too short turns into somewhere to put a file
+    that has become inconvenient: declare it, and the census stops counting it
+    with no failure anywhere. So a declared name that `utterance_field` can
+    read is a failure, and so is a name that is not on disk -- the second
+    because a rename would otherwise leave the list describing a tree that no
+    longer exists, which is how a list stops being checked at all.
+
+    Returns `(name, why)` pairs, so the message says which of the two it is.
+    """
+    files = speechlab_files() if files is None else files
+    declared = NOT_A_CORPUS if declared is None else declared
+    walked = {str(path.relative_to(ROOT)): path for path in files}
+    out = []
+    for name in sorted(declared):
+        path = walked.get(name)
+        if path is None:
+            out.append((name, "is declared as holding no utterance, but the "
+                              "walk does not reach it: renamed, deleted, or "
+                              "moved out of the tree"))
+            continue
+        field = utterance_field(path)
+        if field is not None:
+            out.append((name, f"is declared as holding no utterance, but "
+                              f"carries {field!r}: it is a corpus, and the "
+                              f"census is not counting it"))
+    return out
+
+
 def readers():
-    """(path, reader) for every declared source, in reading order."""
+    """(path, reader) for every declared source, in reading order.
+
+    Refuses before it returns anything if the SpeechLab classification is not
+    total. A dropped file changes every figure downstream and prints nothing,
+    so the refusal belongs here rather than in a test: the census, the
+    observation measure and the leak check all come through this function, and
+    a guard held by one suite is a guard the other consumers do not have.
+
+    The cost is that adding a metadata file to SpeechLab stops the census
+    until somebody classifies it. That is the same bargain `speechlab_files`
+    already makes for a sealed path and `utterance_field` for a renamed
+    column, and it is one line to settle.
+    """
+    stray = speechlab_unclassified()
+    if stray:
+        raise ValueError(
+            f"{len(stray)} SpeechLab file(s) hold no field named "
+            f"{' or '.join(UTTERANCE_FIELDS)} and are not in NOT_A_CORPUS, so "
+            f"they are being dropped from every figure with no record: "
+            f"{', '.join(str(shown(p)) for p in stray)} — read each one and "
+            f"either "
+            f"declare it or add its field to UTTERANCE_FIELDS")
+    wrong = speechlab_misdeclared()
+    if wrong:
+        raise ValueError(
+            "NOT_A_CORPUS no longer describes the tree: "
+            + "; ".join(f"{name} {why}" for name, why in wrong))
     readers = [(p, tsv_utterances) for p in corpus_paths.readable()]
     readers.append((ROOT / GATING, swift_utterances))
     for path in speechlab_files():

@@ -407,7 +407,17 @@ def main(argv):
         "and": "anywhere", "so": "anywhere", "wait": "anywhere",
         "I mean": "anywhere", "hold on": "anywhere", "I forgot": "anywhere",
     }
-    pairs = list(readable_pairs())
+    try:
+        pairs = list(readable_pairs())
+    except ValueError as why:
+        #: The walk refuses on a sealed path, a renamed utterance column and
+        #: an unclassified SpeechLab file, and this consumer printed a
+        #: traceback for all three while `connective-census.py` printed a
+        #: sentence. A refusal is a result -- it means no number was produced
+        #: and says what to fix -- so it reads like one here too, and the exit
+        #: code matches the canary's above.
+        print(f"observation REFUSED: {why}")
+        return 2
     #: Distinct, to agree with the `rows` column: printing the pair count
     #: beside rows computed from the utterance count is how a header and a
     #: table come to disagree. The two figures are not written here -- they
