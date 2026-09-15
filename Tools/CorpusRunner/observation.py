@@ -11,15 +11,21 @@ proposals by hand and is the one nothing checks:
 
 Both failures happened on 2026-09-14, hours apart, on different material:
 
-  * `plus` appears in 41 readable utterances. All 41 are in one file, and
-    that file is reported by the census's own containment check as contained
-    in three others. Read off the table, `plus 41 2.1%` is an attested form.
-  * `wait` appears in 40. 31 are in one file and 28 of those are the same
-    frame, `I was going to ask— wait, ...`. A detector keyed on the phrase
-    would fire on 28 captures that are one sentence with the nouns changed.
+  * `plus` appears in 44 readable utterances across 5 sources. 41 of them
+    appear in each of four files the census's own containment check reports
+    as views of one population, and twelve stems carry all 44 rows with one
+    frame taking two thirds. Read off the census table, `plus 44 0.8%` is an
+    attested form with five sources behind it. It is one blueprint.
+  * `wait` appears in 53 over 14 sources, and a third of them are one frame,
+    `I was going to ask— wait, ...`. A detector keyed on the phrase would
+    fire on captures that are one sentence with the nouns changed.
 
 A row count cannot tell those apart from forty people saying a thing, and a
-row count is what every sizing in this repository has used.
+row count is what every sizing in this repository has used. **Neither can a
+source count**: both of the above pass that test, and the stem share is the
+only column here that catches them. Those figures are over the connective
+census's population; this module reads the development sets until the
+SpeechLab walk is wired, so running it will not reproduce them.
 
 WHAT THIS MEASURES, stated plainly because a concentration number is exactly
 the kind of figure that gets read as a verdict:
@@ -56,6 +62,13 @@ STEM_WORDS = 5
 ONE_SOURCE = 1
 CROWDED_STEM = 0.25
 
+#: Below this many rows, neither arm means anything: one utterance is one
+#: source and one stem, so it scores 100% concentrated and reads as a finding
+#: about a population of one. `hold on` does exactly this. The shape is still
+#: computed and printed -- only the mark is withheld, because the mark is the
+#: part that gets quoted.
+TOO_FEW = 4
+
 WHERE = ("anywhere", "leading", "trailing")
 
 
@@ -84,11 +97,21 @@ def pattern_for(phrase, where="anywhere"):
     """The pattern for a declared phrase. There is no other way to make one.
 
     **The phrase is the only input.** A hand-written regex beside a name is a
-    second owner of the same fact, and on 2026-09-14 three sizings were
+    second owner of the same fact, and on 2026-09-14 two sizings were
     published where the two had drifted: a row counted as `I lost it` was
-    matched by `I lost`, and one counted as trailing `I mean` was matched by
-    `I mean` anywhere. Each overstated its form by a factor of four or more,
-    in a section arguing that phrase-keyed detection is the wrong instrument.
+    matched by `I lost (it|my train)`, and one counted as trailing `I mean`
+    was matched by `I mean` anywhere. Each overstated its form by a factor of
+    four, in a section arguing that phrase-keyed detection is the wrong
+    instrument.
+
+    A third case is the better one, because nobody was careless in it. Two
+    readers counted "the `I was going to ask— wait` frame" stably and
+    differently for two days, 28 against 31. Three rows read `I was going to,
+    um, ask— wait, ...`: a pattern requiring `going to ask` adjacent finds 28
+    and one allowing the interpolation finds 31. Both were right about
+    different patterns, and what separated two careful counts was a
+    three-character optional group neither had written down. Naming the
+    phrase is not naming the pattern.
 
     So `where` is an argument rather than something the caller expresses by
     editing a pattern, and `test_observation.py` fails if any matched row
@@ -135,6 +158,23 @@ def shape(pairs):
                  sources <= ONE_SOURCE or share >= CROWDED_STEM)
 
 
+def mark_for(found):
+    """The word printed beside a row, which is the part that gets quoted.
+
+    Three outcomes, not two. A form nobody says and a form said fifty
+    different ways both come back `concentrated == False`, so printing only
+    CONCENTRATED or nothing makes absence and dispersion identical -- and
+    absence is the answer that ends a proposal, so it is the one that must
+    never be mistaken for a measurement. `TOO_FEW` is the third: a population
+    of one is concentrated by arithmetic and says nothing.
+    """
+    if found.rows == 0:
+        return "  ABSENT"
+    if found.rows < TOO_FEW:
+        return "  TOO FEW"
+    return "  CONCENTRATED" if found.concentrated else ""
+
+
 def census(forms, pairs):
     """`{name: Shape}` for declared forms over `(source, utterance)` pairs.
 
@@ -166,6 +206,42 @@ CANARY_VARIED = [(f"s{n}", f"{opening} thing before the week is out")
                  for n, opening in enumerate(VARIED_OPENINGS)]
 
 
+def frame_population(rows, on_one_stem, sources=4):
+    """`rows` distinct utterances, `on_one_stem` of them one frame.
+
+    **Several sources on purpose.** `concentrated` is an OR, so with a single
+    source `ONE_SOURCE` decides it alone and any fixture built that way
+    measures `CROWDED_STEM` not at all. That is exactly what the two canaries
+    above could not see: `CANARY_TEMPLATED` is one source, one stem and a
+    share of 1.0, concentrated twice over and at ceiling on both, so the
+    threshold could be moved to 0.99 without changing a single verdict.
+    A fixture at ceiling on the property under test cannot measure a
+    threshold below it.
+    """
+    if not 1 <= on_one_stem <= rows:
+        raise ValueError(f"on_one_stem must be 1..{rows}, not {on_one_stem}")
+    if max(on_one_stem, rows - on_one_stem) > len(VARIED_OPENINGS):
+        raise ValueError(
+            f"{rows} rows with {on_one_stem} on one stem needs more than the "
+            f"{len(VARIED_OPENINGS)} distinct openings available")
+    if sources < 1:
+        raise ValueError(f"sources must be at least 1, not {sources}")
+    texts = [f"I was going to ask wait about the {word}"
+             for word in VARIED_OPENINGS[:on_one_stem]]
+    texts += [f"{opening} thing before the week is out"
+              for opening in VARIED_OPENINGS[:rows - on_one_stem]]
+    return [(f"s{n % sources}", text) for n, text in enumerate(texts)]
+
+
+#: Two populations straddling `CROWDED_STEM`, derived from it rather than
+#: written at 0.25, so moving the threshold deliberately keeps these honest
+#: while the pinned shape in the tests catches it being moved accidentally.
+STRADDLE_ROWS = 20
+_CROWDED = int(-(-CROWDED_STEM * STRADDLE_ROWS // 1))  # ceil, no import
+CANARY_CROWDED = frame_population(STRADDLE_ROWS, _CROWDED)
+CANARY_SPREAD = frame_population(STRADDLE_ROWS, _CROWDED - 1)
+
+
 def self_check(measure=None):
     """True when `measure` can still tell the two canaries apart.
 
@@ -179,8 +255,14 @@ def self_check(measure=None):
     """
     measure = measure or shape
     templated, varied = measure(CANARY_TEMPLATED), measure(CANARY_VARIED)
+    crowded, spread = measure(CANARY_CROWDED), measure(CANARY_SPREAD)
     return (templated.concentrated and not varied.concentrated
-            and templated.stems == 1 and varied.stems == len(CANARY_VARIED))
+            and templated.stems == 1 and varied.stems == len(CANARY_VARIED)
+            # The threshold arm, which the two above cannot reach. Both of
+            # these carry several sources, so `ONE_SOURCE` is false for both
+            # and only `CROWDED_STEM` can separate them.
+            and crowded.sources > ONE_SOURCE and spread.sources > ONE_SOURCE
+            and crowded.concentrated and not spread.concentrated)
 
 
 #: The rule `swift_literals` is applied under, and the only rule the count
@@ -254,9 +336,8 @@ def main(argv):
     print(f"  {'form':16} {'rows':>5} {'srcs':>5} {'stems':>6} "
           f"{'top frame':>10}")
     for phrase, found in sorted(census(forms, pairs).items()):
-        mark = "  CONCENTRATED" if found.concentrated else ""
         print(f"  {phrase:16} {found.rows:5} {found.sources:5} "
-              f"{found.stems:6} {found.largest_share:9.0%}{mark}")
+              f"{found.stems:6} {found.largest_share:9.0%}{mark_for(found)}")
     print("-" * 74)
     print(f"  CONCENTRATED means {ONE_SOURCE} source or one frame taking "
           f"{CROWDED_STEM:.0%} of the rows.")
@@ -264,6 +345,12 @@ def main(argv):
           "two crude")
     print("  measures, never that the evidence is weak. Why they are alike "
           "is a reading.")
+    print(f"  ABSENT is no rows at all; TOO FEW is under {TOO_FEW}, where one "
+          f"utterance is")
+    print("  one source and one stem and scores 100% by arithmetic.")
+    print("  A stem drops digits, so variation that is only numeric is "
+          "invisible here:")
+    print("  `call Ana at 3` and `call Ana at 4` count as one frame.")
     print()
     print("  NOT READ by this run:")
     for where, why in NOT_READ:

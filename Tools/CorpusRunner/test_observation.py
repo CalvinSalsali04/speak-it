@@ -11,10 +11,13 @@ import observation  # noqa: E402
 class TheLabelAndTheMeasureAreOneObject(unittest.TestCase):
     """The defect this module was written after, in its own terms.
 
-    Three sizings published on 2026-09-14 named a phrase and counted a
-    different one: rows filed under `I lost it` were matched by `I lost`,
-    rows filed under trailing `I mean` were matched by `I mean` anywhere.
-    Each overstated its form by a factor of four or more. Nothing caught it,
+    Two sizings published on 2026-09-14 named a phrase and counted a
+    different one: rows filed under `I lost it` were matched by
+    `I lost (it|my train)`, rows filed under trailing `I mean` were matched
+    by `I mean` anywhere. Each overstated its form by a factor of four. A
+    third figure was reported as drifting and had not: it was read out of a
+    comma-separated list by position, against a phrase list in another order.
+    Nothing caught any of it,
     because the name lived in prose and the pattern lived in a script and
     neither had any way to disagree out loud.
 
@@ -180,6 +183,111 @@ class TheCensusReportsPerForm(unittest.TestCase):
         found = observation.census({"therefore": "anywhere"}, self.POOL)
         self.assertIn("therefore", found)
         self.assertEqual(found["therefore"].rows, 0)
+
+
+class TheThresholdIsTheDecisionAndIsPinnedLikeOne(unittest.TestCase):
+    """`CROWDED_STEM` could be moved from 0.25 to 0.99 with every test green.
+
+    Found by the core language thread's review. Not cosmetic: it silently
+    stops marking the exact population the stem measure was added for, and
+    the suite reports nothing, which is what a working suite also reports.
+
+    The reason the canaries missed it is the useful half. `concentrated` is
+    an OR of two arms, and both canaries are single-source, so `ONE_SOURCE`
+    decided them and `CROWDED_STEM` was never consulted. `CANARY_TEMPLATED`
+    is also at share 1.0 -- at ceiling on the property under test, so no
+    threshold below it can be measured. Same shape as a control already at
+    ceiling, and the same shape as `self_check` being asserted true by a test
+    that would accept a canary which always returns true.
+    """
+
+    def test_the_straddle_pair_sits_either_side_of_the_constant(self):
+        crowded = observation.shape(observation.CANARY_CROWDED)
+        spread = observation.shape(observation.CANARY_SPREAD)
+        self.assertGreaterEqual(crowded.largest_share, observation.CROWDED_STEM)
+        self.assertLess(spread.largest_share, observation.CROWDED_STEM)
+
+    def test_neither_straddle_fixture_is_decided_by_the_source_arm(self):
+        """If either were single-source this pair would prove nothing."""
+        for name in ("CANARY_CROWDED", "CANARY_SPREAD"):
+            found = observation.shape(getattr(observation, name))
+            self.assertGreater(found.sources, observation.ONE_SOURCE, name)
+
+    def test_the_straddle_is_derived_rather_than_written_at_0_25(self):
+        """Moving the threshold on purpose must not leave a stale fixture."""
+        source = pathlib.Path(observation.__file__).read_text()
+        derived = source.split("STRADDLE_ROWS = ")[1].split("CANARY_SPREAD")[0]
+        self.assertIn("CROWDED_STEM", derived,
+                      "the straddle must be computed from the constant")
+        self.assertNotIn("0.25", derived)
+
+    def test_the_threshold_still_marks_the_shape_it_was_chosen_for(self):
+        """The pinned half, and the one that catches 0.25 -> 0.99.
+
+        Ten distinct utterances, four of them one frame, over four sources.
+        That is the `wait` shape -- concentrated by frame while spread across
+        sources, which is precisely the half `ONE_SOURCE` cannot see. A
+        threshold that does not mark this is not the threshold this module
+        was built around, whatever the straddle pair says about itself.
+        """
+        found = observation.shape(observation.frame_population(10, 4))
+        self.assertEqual(found.rows, 10)
+        self.assertGreater(found.sources, observation.ONE_SOURCE)
+        self.assertAlmostEqual(found.largest_share, 0.4)
+        self.assertTrue(
+            found.concentrated,
+            f"CROWDED_STEM is {observation.CROWDED_STEM}, which no longer "
+            f"marks a population that is 40% one frame across four sources")
+
+    def test_the_canary_notices_a_threshold_that_marks_nothing(self):
+        def never_crowded(pairs):
+            found = observation.shape(pairs)
+            return found._replace(concentrated=found.sources <= 1)
+        self.assertFalse(observation.self_check(never_crowded))
+
+    def test_the_canary_notices_a_threshold_that_marks_everything(self):
+        def always_crowded(pairs):
+            return observation.shape(pairs)._replace(concentrated=True)
+        self.assertFalse(observation.self_check(always_crowded))
+
+    def test_a_population_too_large_for_the_openings_is_refused(self):
+        with self.assertRaises(ValueError):
+            observation.frame_population(100, 50)
+        with self.assertRaises(ValueError):
+            observation.frame_population(10, 0)
+
+
+class AbsenceAndDispersionDoNotPrintTheSame(unittest.TestCase):
+    """`concentrated` is False for a form nobody says and for one said fifty
+    ways. Printing only CONCENTRATED or nothing made those identical, and
+    absence is the answer that ends a proposal -- the one that must never be
+    mistaken for a measurement."""
+
+    def test_a_form_with_no_rows_reads_absent(self):
+        self.assertIn("ABSENT", observation.mark_for(observation.shape([])))
+
+    def test_a_population_of_one_is_too_few_rather_than_concentrated(self):
+        found = observation.shape([("a", "hold on I lost it")])
+        self.assertEqual(found.largest_share, 1.0)
+        self.assertTrue(found.concentrated, "the arithmetic is still true")
+        self.assertIn("TOO FEW", observation.mark_for(found))
+        self.assertNotIn("CONCENTRATED", observation.mark_for(found))
+
+    def test_a_real_concentration_still_says_so(self):
+        found = observation.shape(observation.frame_population(10, 4))
+        self.assertIn("CONCENTRATED", observation.mark_for(found))
+
+    def test_a_dispersed_population_gets_no_mark(self):
+        found = observation.shape(observation.CANARY_VARIED)
+        self.assertEqual(observation.mark_for(found).strip(), "")
+
+    def test_too_few_is_the_boundary_it_says_it_is(self):
+        at = observation.shape(observation.frame_population(
+            observation.TOO_FEW, observation.TOO_FEW))
+        self.assertNotIn("TOO FEW", observation.mark_for(at))
+        below = observation.shape(observation.frame_population(
+            observation.TOO_FEW - 1, observation.TOO_FEW - 1))
+        self.assertIn("TOO FEW", observation.mark_for(below))
 
 
 class TheFiguresItPrintsForWhatItDoesNotReadAreRecomputed(unittest.TestCase):
