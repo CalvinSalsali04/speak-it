@@ -1248,13 +1248,49 @@ enum RuleBasedThoughtExtractor {
 
     /// "Number two" announcing the second thought.
     ///
-    /// Held to a stricter gate than the words above, because this shape is
-    /// also how English identifies one thing among many — "gate number two",
-    /// "apartment number three". A post-nominal number is not followed by an
-    /// instruction, so requiring one is what separates the two readings
-    /// without naming the nouns it could attach to.
+    /// This shape is also how English identifies one thing among many — "gate
+    /// number two", "apartment number three" — so it needs separating from
+    /// that reading. What does the separating is `identifyingNumberContext`,
+    /// on the left; see there for why it moved from the right-hand gate it
+    /// used to have.
     private static let numberedEnumerator =
         #"(?:number\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}))"#
+
+    /// The other reading of "number two": a number identifying one thing among
+    /// many rather than announcing a thought.
+    ///
+    /// This used to be decided from the right — the gate required an
+    /// instruction behind the number, on the reasoning that a post-nominal
+    /// number is not followed by one. It is not, and neither is an enumerator
+    /// in front of a fact, so "call the dentist number two the garage code is
+    /// 4821" kept its marker and lost the boundary the speaker stated out
+    /// loud. `strongEnumerator` has never been held to that bar: "first of all
+    /// the garage code is 4821" cuts, and the two markers do the same job.
+    ///
+    /// So the identifying reading is recognised by what it *is* instead: a
+    /// number inside a phrase that locates a thing ("under plant pot number
+    /// two", "at gate number two") or equates one ("my locker is number
+    /// three"). Both are closed grammatical classes rather than a list of the
+    /// nouns a number could attach to, which is what the old gate was written
+    /// to avoid naming — a preposition or a copula, then at most three words,
+    /// then the marker.
+    ///
+    /// **What this deliberately still gets wrong**, because the alternative is
+    /// worse: an enumerator that genuinely follows a prepositional phrase —
+    /// "drop the parcel at the post office number two the garage code is
+    /// 4821" — is read as identifying and not cut. That is the behaviour
+    /// today for every fact-following enumerator, so it is no worse than what
+    /// it replaces, and the opposite error severs a locating phrase from the
+    /// thing it locates.
+    ///
+    /// Every repetition here is bounded because ICU only accepts a lookbehind
+    /// of bounded length; `\s+` and `*` would make it unbounded and the
+    /// expression would fail to compile.
+    private static let identifyingNumberContext =
+        #"(?:\b(?:at|in|on|under|behind|beside|near|from|by|inside|outside"#
+        + #"|through|past|above|below|over|opposite|between)\b"#
+        + #"|\b(?:is|are|was|were|be)\b)"#
+        + #"(?:\s{1,3}\p{L}[\p{L}'’\-]{0,19}){0,3}\s{1,3}"#
 
     /// What has to follow an enumerator for it to be announcing a clause
     /// rather than modifying the noun in front of it: an instruction, a noun
@@ -1265,7 +1301,7 @@ enum RuleBasedThoughtExtractor {
 
     static func splitClauses(_ text: String) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
-        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|\s+(?:\#(connectorRun)\s+)?\#(strongEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?\#(numberedEnumerator)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
+        let pattern = #"(?:\n+|;\s*|,\s*(?:\#(connectorRun)\s+)?(?=\#(actionLeadPattern))|\s+\#(connectorRun)\s*,?\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|\s+(?:\#(connectorRun)\s+)?\#(strongEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?(?<!\#(identifyingNumberContext))\#(numberedEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
 
         var parts: [String] = []
         for sentence in sentenceParts {

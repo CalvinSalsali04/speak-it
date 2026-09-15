@@ -197,10 +197,42 @@ enum SemanticCorpusF {
         corpusCase(.openers, "Pay the hydro bill secondly call the plumber", count: 2,
                    route: [.today, .today]),
 
+        // A numbered enumerator in front of a fact. The gate used to require an
+        // instruction behind the number, so the boundary the speaker stated
+        // out loud was not taken and the marker stayed in the title.
+        corpusCase(.openers, "Call the dentist number two the garage code is 4821",
+                   count: 2, route: [.today, .memory],
+                   note: "`strongEnumerator` has always cut in front of a fact; this is the same marker doing the same job."),
+        corpusCase(.openers, "Pick up the dry cleaning number two the wifi password is on the fridge",
+                   count: 2, route: [.today, .memory]),
+
         // And the guard: the same number identifying one thing among many.
         corpusCase(.openers, "We are in apartment number three", count: 1, route: [.memory]),
         corpusCase(.openers, "The spare key is under plant pot number two", count: 1,
                    route: [.memory]),
+
+        // The guard where it is actually load bearing. The two rows above pass
+        // whatever the gate does, because nothing follows the number for a
+        // boundary to open onto; these are the shapes that separate the two
+        // readings, and all three would be cut by the widened gate alone.
+        corpusCase(.openers, "The spare key is under plant pot number two the one by the fence",
+                   count: 1, route: [.memory],
+                   note: "An apposition, not a second thought. Severing it loses which plant pot."),
+        corpusCase(.openers, "Our flight leaves from gate number two the big one upstairs",
+                   count: 1, route: [.memory]),
+        corpusCase(.openers, "My locker is number three the one by the door", count: 1,
+                   route: [.memory],
+                   note: "The copula does the same work as the preposition above: it equates rather than enumerates."),
+
+        // The cost of deciding this from the left, pinned rather than
+        // described. An enumerator that genuinely follows a prepositional
+        // phrase reads as identifying and is not cut. That is what every
+        // fact-following enumerator did before this change, so the row records
+        // a limitation that did not get worse -- and it fails here, in a file
+        // somebody reads, if the cost is ever paid off.
+        corpusCase(.openers, "Drop the parcel at the post office number two the garage code is 4821",
+                   count: 1, route: [.today],
+                   note: "Accepted: `identifyingNumberContext` cannot tell this from \"at gate number two\". Deciding it needs to know whether the phrase has closed, which is a parse this layer does not have."),
     ]
 
     // MARK: - Clock forms dictation actually produces
