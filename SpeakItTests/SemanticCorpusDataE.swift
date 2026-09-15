@@ -509,6 +509,110 @@ enum SemanticCorpusE {
                    count: 1, route: [.today], delivery: [.notification],
                    kind: [.exactDateTime],
                    remind: [CorpusDate(month: 8, day: 4, hour: 12)]),
+
+        // A day the named month does not have is not a date, and the calendar
+        // must not be asked to make one. Building components leniently rolls
+        // them over silently, so "June 31" became July 1 and then, because
+        // July 1 had already passed, July 1 of the *following year* — a month,
+        // a day and a year the speaker never said. Found on Duckling's and
+        // chrono's negative corpora, which is where a parser's own authors
+        // record the strings that must not resolve.
+        corpusCase(.calendarEdges, "Book the appointment for June 31",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "June has thirty days. Was July 1 of next year."),
+        corpusCase(.calendarEdges, "The invoice is dated April 31",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "April has thirty days."),
+        corpusCase(.calendarEdges, "Book the appointment for February 30",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "No February has thirty days, in any year."),
+        // February 29 is a real date in a leap year, so it resolves like every
+        // other calendar date: the next occurrence that has not passed. 2026 is
+        // not a leap year, and rolling it into March would be inventing a day.
+        corpusCase(.calendarEdges, "Book the appointment for February 29",
+                   count: 1, due: [CorpusDate(month: 2, day: 29, hour: nil)],
+                   severityFloor: .behavioral,
+                   note: "The next February 29 is in 2028. Was March 1 of 2027."),
+        // A question is not a plan, so the day inside it is what is being asked
+        // about and never a deadline for the asking. The interrogative test
+        // wanted a wh-word, a space and an auxiliary, so it saw "what is the
+        // date today" and missed "what's the date today" — the same question,
+        // scheduled or not scheduled depending on how the recognizer wrote the
+        // contraction. Both renderings are pinned here for that reason; see
+        // `RenderingInvarianceTests`.
+        corpusCase(.calendarEdges, "What is the date today",
+                   count: 1, route: [.memory], due: [nil], remind: [nil]),
+        corpusCase(.calendarEdges, "What's the date today",
+                   count: 1, route: [.memory], due: [nil], remind: [nil],
+                   severityFloor: .behavioral,
+                   note: "Was an event on Today due today. 'What is' was already right."),
+        corpusCase(.calendarEdges, "Whats the date today",
+                   count: 1, route: [.memory], due: [nil], remind: [nil],
+                   severityFloor: .behavioral,
+                   note: "The apostrophe is the recognizer's choice, not the speaker's."),
+        corpusCase(.calendarEdges, "When's the meeting tomorrow",
+                   count: 1, route: [.memory], due: [nil], remind: [nil],
+                   severityFloor: .behavioral,
+                   note: "Tomorrow is when the meeting is, and the question has no deadline of its own."),
+        corpusCase(.calendarEdges, "Where's the party tonight",
+                   count: 1, route: [.memory], due: [nil], remind: [nil],
+                   severityFloor: .behavioral,
+                   note: "Was a due of 20:00."),
+        // The guard: a wh-word that opens something other than a question keeps
+        // its reading. "How to" is an idea, and "what if" is a proposal.
+        corpusCase(.calendarEdges, "Whose bike is in the driveway",
+                   count: 1, due: [nil], remind: [nil],
+                   note: "'Whose' must not be read as a contracted 'who'."),
+
+        // A polar question with a pronoun subject. The existing test wants a
+        // determiner ("was the meeting Wednesday") and deliberately excludes
+        // "have", because "have the car serviced Friday" is an instruction.
+        // An imperative cannot take "I" as its subject, so the pronoun is what
+        // makes this positional rather than a guess — and without it "have I
+        // set any alarm for today" scheduled an actual alarm in answer to a
+        // question about alarms.
+        corpusCase(.calendarEdges, "Have I set any alarm for today",
+                   count: 1, due: [nil], remind: [nil],
+                   severityFloor: .behavioral,
+                   note: "Was due today at noon with an alarm for 08:00 tomorrow."),
+        corpusCase(.calendarEdges, "Did I book the dentist for Tuesday",
+                   count: 1, due: [nil], remind: [nil]),
+        // Second-person inversion is a polite request, not a question, and is
+        // the reason "you" is excluded from the pronoun test above. The unit
+        // suite caught this the moment the pronoun branch was added.
+        corpusCase(.calendarEdges, "Can you remind me to submit the form at 4 PM",
+                   count: 1, route: [.today], delivery: [.notification],
+                   kind: [.exactDateTime],
+                   remind: [CorpusDate(month: 8, day: 3, hour: 16)],
+                   severityFloor: .behavioral,
+                   note: "An instruction wearing a question's shape."),
+        // The same request frame, but the errand is the other person's, so the
+        // action-ownership contract sends it to Memory. Kept because it marks
+        // where the two rules meet: the request is still not read as a
+        // question, it is read as somebody else's job. The expectation here was
+        // written as Today first and corrected against the contract, not the
+        // other way round.
+        corpusCase(.calendarEdges, "Could you book the dentist for Tuesday",
+                   count: 1, route: [.memory], due: [nil],
+                   note: "Memory by action ownership, the same as 'Dana is supposed to book the venue'."),
+        // The guard the pronoun buys: the same auxiliary heading a real
+        // instruction keeps its date.
+        corpusCase(.calendarEdges, "Have the car serviced Friday",
+                   count: 1, route: [.today],
+                   due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   note: "An imperative, not a question. The pronoun test is what separates them."),
+
+        // The guard: a real day in a real month keeps resolving, including the
+        // last day of a short month, which is the neighbour of every case above.
+        corpusCase(.calendarEdges, "Book the appointment for February 28",
+                   count: 1, due: [CorpusDate(month: 2, day: 28, hour: nil)],
+                   note: "February 28 2026 has passed, so the next one is in 2027."),
+        corpusCase(.calendarEdges, "Book the appointment for June 30",
+                   count: 1, due: [CorpusDate(month: 6, day: 30, hour: nil)],
+                   note: "The last day June does have."),
     ]
 
     // MARK: - Dictation renderings

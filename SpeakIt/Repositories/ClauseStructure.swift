@@ -552,6 +552,30 @@ enum TemporalCommitment {
             options: .regularExpression
         ) != nil { return .interrogative }
 
+        // The same inversion over a pronoun subject. "Do", "have", "has" and
+        // "had" are excluded above because they head imperatives, but an
+        // English imperative cannot take a subject pronoun — there is no
+        // reading of "have I" or "did I" that instructs anyone. That is what
+        // lets the excluded auxiliaries back in here without letting "have the
+        // car serviced Friday" in with them, and it is positional rather than a
+        // guess about meaning.
+        //
+        // Without it, "have I set any alarm for today" answered a question
+        // about alarms by scheduling one.
+        //
+        // "You" is excluded, and that exclusion is the whole care in this
+        // branch. Second-person inversion is how English forms a polite
+        // request rather than a question — "can you remind me to submit the
+        // form at 4 PM" is an instruction wearing a question's shape, and
+        // reading it as a question dropped the reminder it was asking for.
+        // First and third person invert only to ask.
+        if value.range(
+            of: #"(?i)^(?:is|are|was|were|do|does|did|have|has|had|will|would"#
+                + #"|can|could|should|shall|may|might|am)\s+"#
+                + #"(?:i|we|he|she|they|it|there)\b"#,
+            options: .regularExpression
+        ) != nil { return .interrogative }
+
         return nil
     }
 }

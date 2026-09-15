@@ -16,6 +16,51 @@ import XCTest
 /// Both are asserted here, where the contract is exactly string in, string out.
 final class SpeechRepairTests: XCTestCase {
 
+    func testHesitationDoesNotBreakCommandComplements() {
+        for (input, expected) in [
+            ("set alarm, um, for one hour from now", "set alarm for one hour from now"),
+            ("please wake, um, me up at seven thirty am", "please wake me up at seven thirty am"),
+            ("please sound, um, an alarm", "please sound an alarm"),
+            ("I wanna, um, get up at six am", "I wanna get up at six am"),
+            ("Today when, um, I go shopping", "Today when I go shopping"),
+            ("call Maya, um, email Alex", "call Maya, email Alex"),
+            ("Do not, um, call Maya", "Do not call Maya"),
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(input), expected)
+        }
+        let fluent = "Today we have a few errands that we need to do number one we need to call Maya"
+        for source in ["Um, " + fluent, fluent.replacingOccurrences(of: "we have", with: "we, um, have")] {
+            XCTAssertEqual(DisfluencyFilter.stripped(source), DisfluencyFilter.stripped(fluent))
+        }
+    }
+
+    func testListIntroductionNeedsAnOrdinalAndFollowingAction() {
+        XCTAssertEqual(DisfluencyFilter.stripped(
+            "Tomorrow we have several errands that we need to do first we need to go to Cedar Lane"),
+            "Tomorrow. we need to go to Cedar Lane")
+        for source in ["We have a couple goals that we need to accomplish",
+                       "We have several goals that we need to accomplish number one is better sleep",
+                       "After we eat we need to call Mom",
+                       "We need to go after we finish work"] {
+            XCTAssertEqual(DisfluencyFilter.stripped(source), source)
+        }
+    }
+
+    func testRepeatedUnfinishedTravelFrameKeepsContext() {
+        XCTAssertEqual(
+            SelfCorrectionResolver.resolved("Today when I go shopping, I want to go to or actually first I wanna go to Lucky star"),
+            "Today when I go shopping, I wanna go to Lucky star"
+        )
+        XCTAssertEqual(
+            SelfCorrectionResolver.resolved("Tomorrow I need to drive to, sorry I want to drive to the office"),
+            "Tomorrow I want to drive to the office"
+        )
+        for text in ["I want to go to Reading or actually stay home",
+                     "I want to go to", "I do not want to go to the mall"] {
+            XCTAssertEqual(SelfCorrectionResolver.resolved(text), text)
+        }
+    }
+
     // MARK: - Split compounds
 
     /// The recognizer writes one word as two when it hears a pause inside it.

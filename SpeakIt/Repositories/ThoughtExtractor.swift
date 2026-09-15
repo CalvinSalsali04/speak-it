@@ -379,9 +379,17 @@ enum RuleBasedThoughtExtractor {
         let normalized = normalize(transcript)
         guard !normalized.isEmpty else { return ([], []) }
 
-        // Repair before understanding. See `SpeechRepair.swift` for why the
-        // order matters.
+        // A selective cancellation must be associated while its restart marker
+        // and the sibling clauses are still intact. The general correction
+        // resolver otherwise treats "actually skip Costco" as replacement
+        // words for the preceding object and creates "buy skip Costco".
         let cleaned = DisfluencyFilter.stripped(normalized)
+        let localCancellation = permitsOperations
+            ? CaptureOperationDetector.resolvingInCaptureCancellations(cleaned)
+            : (operations: [], remainder: cleaned)
+
+        // Repair before the rest of understanding. See `SpeechRepair.swift` for
+        // why the order matters.
         let corrected = GroceryHomophoneRepair.repaired(
             DictationHomophoneRepair.repaired(
                 DictationPunctuationRepair.repaired(
@@ -389,7 +397,7 @@ enum RuleBasedThoughtExtractor {
                         SpokenShorthandRepair.repaired(
                             ClockDigitRepair.repaired(
                                 SelfCorrectionResolver.resolved(
-                                    SplitCompoundRepair.rejoined(cleaned)
+                                    SplitCompoundRepair.rejoined(localCancellation.remainder)
                                 )
                             )
                         )
@@ -408,7 +416,11 @@ enum RuleBasedThoughtExtractor {
         // `SwiftDataThoughtRepository.applyCaptureOperation`.
         let partition: (operations: [CaptureOperationRequest], remainder: String?)
         if permitsOperations {
-            partition = CaptureOperationDetector.partition(corrected)
+            let repairedPartition = CaptureOperationDetector.partition(corrected)
+            partition = (
+                localCancellation.operations + repairedPartition.operations,
+                repairedPartition.remainder
+            )
         } else {
             partition = ([], corrected)
         }
@@ -980,7 +992,7 @@ enum RuleBasedThoughtExtractor {
             }
         }
 
-        let parts = mergeDependentCommunication(splitClauses(transcript))
+        let parts = mergeVisitPurpose(mergeDependentCommunication(splitClauses(transcript)), in: transcript)
         guard parts.count > 1 else {
             return [Segment(quote: transcript, analysisText: transcript, suggestedTitle: nil)]
         }
@@ -1888,7 +1900,25 @@ enum RuleBasedThoughtExtractor {
         var segments: [String] = []
         tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
             let value = normalize(String(text[range]))
-            if !value.isEmpty { segments.append(value) }
+            // Dictation may lowercase the next instruction. NLTokenizer can
+            // then keep it inside the preceding memory sentence. Respect an
+            // explicit stop before an action, without cutting abbreviations.
+            let boundary = #"[.!?]\s+(?=\#(frontedLeadPattern)?\#(actionLeadPattern))"#
+            let regex = NSRegularExpression.speakItCached(boundary, options: [.caseInsensitive])
+            var start = value.startIndex
+            for match in regex?.matches(in: value, range: NSRange(value.startIndex..., in: value)) ?? [] {
+                guard let stop = Range(match.range, in: value) else { continue }
+                let prefix = String(value[..<stop.lowerBound])
+                if value[stop.lowerBound] == ".",
+                   prefix.range(of: #"(?i)(?:\b(?:dr|mr|mrs|ms|prof|st|sr|jr|vs|etc|inc|ltd)|\b\p{L}|(?:\b\p{L}\.)+\p{L})$"#, options: .regularExpression) != nil {
+                    continue
+                }
+                let piece = normalize(String(value[start..<stop.lowerBound]))
+                if !piece.isEmpty { segments.append(piece) }
+                start = stop.upperBound
+            }
+            let remainder = normalize(String(value[start...]))
+            if !remainder.isEmpty { segments.append(remainder) }
             return true
         }
         return segments.isEmpty ? [text] : segments
@@ -1924,6 +1954,33 @@ enum RuleBasedThoughtExtractor {
         )
         cleaned = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ",;.!? "))
         if !cleaned.isEmpty { parts.append(cleaned) }
+    }
+
+    /// A bare visit and its immediately spoken purchase are one errand. The
+    /// original adjacency check refuses sentence breaks and explicit “then”,
+    /// which can introduce a separate stop. Grocery lists retain their existing
+    /// product expansion and store-grouping path.
+    private static func mergeVisitPurpose(_ parts: [String], in transcript: String) -> [String] {
+        var result: [String] = []
+        for part in parts {
+            if let previous = result.last {
+                let bare = ThoughtTitleFormatter.polished(
+                    withoutLeadingTemporalContext(previous), itemType: .task
+                ).replacingOccurrences(of: #"(?i)^later\s+on\s+"#, with: "", options: .regularExpression)
+                let adjacency = NSRegularExpression.escapedPattern(for: previous)
+                    + #"\s+(?:and\s+)?"# + NSRegularExpression.escapedPattern(for: part)
+                if bare.range(of: #"(?i)^(?:go|head|drive|walk)\s+to\s+(?:[\p{L}\p{N}'’.-]+\s*){1,5}$"#, options: .regularExpression) != nil,
+                   part.range(of: #"(?i)^(?:buy|get|grab|pick\s+up)\s+\S"#, options: .regularExpression) != nil,
+                   !containsExplicitTiming(part),
+                   ThoughtOrganizer.organize(part).itemType != .shopping,
+                   transcript.range(of: adjacency, options: [.regularExpression, .caseInsensitive]) != nil {
+                    result[result.count - 1] = normalize("\(previous) and \(part)")
+                    continue
+                }
+            }
+            result.append(part)
+        }
+        return result
     }
 
     private static func mergeDependentCommunication(_ parts: [String]) -> [String] {
@@ -2398,8 +2455,17 @@ enum RuleBasedThoughtExtractor {
         // review, exactly like any other capture whose point cannot be read.
         // Anchored to an interrogative plus its auxiliary so "how to fix the
         // fence" (an idea wearing 'how') is never caught.
+        //
+        // The auxiliary may also be fused onto the wh-word, and dictation
+        // writes that contraction with an apostrophe or without one. Requiring
+        // a separate auxiliary meant "what is the date today" was held and
+        // "what's the date today" became an event on Today due today — the
+        // same question, scheduled or not according to a punctuation mark the
+        // speaker never chose. `['’]?s` keeps "whose" out, because the word
+        // boundary after the s falls inside it.
         let isQuestion = lowercase.range(
-            of: #"^(?:what|when|where|who|which|how)\s+(?:is|are|was|were|do|does|did|can|could|will|would|should)\b"#,
+            of: #"^(?:what|when|where|who|which|how)"#
+                + #"(?:['’]?s\b|\s+(?:is|are|was|were|do|does|did|can|could|will|would|should)\b)"#,
             options: .regularExpression
         ) != nil
         return isDestructiveCommand || isNegated || isReportedSpeech || isQuestion

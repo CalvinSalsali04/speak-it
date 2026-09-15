@@ -92,6 +92,8 @@ func rowTitle(_ candidate: ExtractedThought, spokenFallback: String = "") -> Str
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
+let jsonOutput = arguments.contains("--json")
+arguments.removeAll { $0 == "--json" }
 var showRepairs = false
 if let index = arguments.firstIndex(of: "--repairs") {
     showRepairs = true
@@ -268,6 +270,62 @@ for utterance in utterances {
         referenceDate: referenceDate,
         calendar: calendar
     )
+
+    if jsonOutput {
+        let items: [[String: Any]] = result.items.map { item in
+            let o = item.organization
+            return [
+                "title": rowTitle(item, spokenFallback: utterance),
+                "quote": item.sourceQuote, "rawQuote": item.rawQuote,
+                "analysis": item.analysisText, "wasRepaired": item.wasRepaired,
+                "route": o.itemType.isActionable || o.reminderDate != nil ? "Today" : "Memory",
+                "type": o.itemType.rawValue,
+                "category": o.category.rawValue,
+                "priority": o.priority.rawValue,
+                "due": o.dueDate.map { $0.timeIntervalSince1970 } as Any? ?? NSNull(),
+                "reminder": o.reminderDate.map { $0.timeIntervalSince1970 } as Any? ?? NSNull(),
+                "delivery": o.reminderDelivery.rawValue,
+                "temporal": o.temporalIntent.kind.rawValue,
+                "temporalDay": o.temporalIntent.day.map {
+                    ["year": $0.year, "month": $0.month, "day": $0.day]
+                } as Any? ?? NSNull(),
+                "wallClock": o.temporalIntent.time.map {
+                    ["hour": $0.hour, "minute": $0.minute]
+                } as Any? ?? NSNull(),
+                "relativeSeconds": o.temporalIntent.relativeSeconds as Any? ?? NSNull(),
+                "timeZone": o.temporalIntent.timeZoneIdentifier as Any? ?? NSNull(),
+                "unsupportedTrigger": o.temporalIntent.unsupportedTrigger?.rawValue as Any? ?? NSNull(),
+                "temporalSource": o.temporalIntent.sourceText as Any? ?? NSNull(),
+                "person": o.personName as Any? ?? NSNull(),
+                "recurrence": describe(o.recurrenceRule),
+                "recurrenceRule": o.recurrenceRule.map {
+                    [
+                        "frequency": $0.frequency.rawValue,
+                        "interval": $0.interval,
+                        "weekdays": $0.weekdays,
+                        "anchor": $0.anchor.rawValue,
+                        "ordinalWeekday": $0.ordinalWeekday.map {
+                            ["ordinal": $0.ordinal, "weekday": $0.weekday]
+                        } as Any? ?? NSNull(),
+                        "intervalSeconds": $0.intervalSeconds as Any? ?? NSNull()
+                    ] as [String: Any]
+                } as Any? ?? NSNull(),
+                "location": describe(o.locationIntent),
+                "shoppingGroup": item.shoppingGroup as Any? ?? NSNull(),
+                "needsReview": item.needsReview,
+                "state": o.state.kind.rawValue,
+                "stateGap": o.state.gap.map { $0.rawValue } as Any? ?? NSNull()
+            ]
+        }
+        let operations: [[String: Any]] = result.operations.map {
+            ["operation": $0.operation.rawValue, "target": $0.target as Any? ?? NSNull(), "scoped": $0.isScoped]
+        }
+        let data = try JSONSerialization.data(withJSONObject: [
+            "text": utterance, "items": items, "operations": operations
+        ], options: [.sortedKeys, .withoutEscapingSlashes])
+        print(String(decoding: data, as: UTF8.self))
+        continue
+    }
 
     print("── \"\(utterance)\"")
 

@@ -7,6 +7,7 @@ Where rules are worked out. **Not a gate, and not held out.**
 ./Tools/CorpusRunner/devsets/route-score.sh routed [--verbose]
 ./Tools/CorpusRunner/devsets/unfinished-score.sh [--verbose]
 ./Tools/CorpusRunner/devsets/abandonment-score.sh [--verbose]
+./Tools/CorpusRunner/devsets/cancellation-scope-score.sh
 ```
 
 These exist so that `../heldout/` never has to be opened during development.
@@ -20,6 +21,16 @@ if nobody looked. Iterating needs somewhere else to iterate.
 | `routed.tsv` | full rules path | `../heldout/score.py` | destination, and unsafe action on an ambiguous capture |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
+| `cancellation-scope-10k.jsonl` | full rules path | `cancellation-scope-score.py` | the 187 saved 10K cases where full or selective cancellation leaked an active action |
+
+`cancellation-scope-10k.jsonl` is a fixed extraction from the saved SpeechLab
+10K results, not a generated corpus. Recreate it only from that result file:
+
+```bash
+python3 Tools/CorpusRunner/devsets/extract-cancellation-scope.py \
+  output/speechlab-stress-bank-v1/results.jsonl \
+  Tools/CorpusRunner/devsets/cancellation-scope-10k.jsonl
+```
 
 `routed.tsv` is deliberately scored by the **held-out scorer**, on the same five
 columns, so the number being developed against is the same number being reported

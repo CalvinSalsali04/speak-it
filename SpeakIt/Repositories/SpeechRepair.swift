@@ -34,7 +34,7 @@ enum DisfluencyFilter {
     /// A comma sitting after one of these was the pause around a hesitation,
     /// not a boundary between two thoughts — "Someday I want to, uh, learn
     /// piano" is one sentence with a stumble in the middle of it.
-    private static let danglingWord = #"(?:to|and|or|but|so|the|an?|my|your|our|their|his|her|its|of|for|with|in|on|at|from|that|i|we|you|he|she|they|it|is|are|was|were|need|want|have|has|gotta|going)"#
+    private static let danglingWord = #"(?:to|and|or|but|so|the|an?|my|your|our|their|his|her|its|of|for|with|in|on|at|from|that|i|we|you|he|she|they|it|is|are|was|were|need|want|have|has|gotta|going|wanna|gonna|needa|hafta|when|while|if|unless|because|not|never)"#
 
     /// Sounds that are filler in one position and a family name in another.
     /// Oh, Ah and Er are ordinary surnames, so stripping them mid-sentence
@@ -190,6 +190,16 @@ enum DisfluencyFilter {
             #"(?i)\b(\#(danglingWord))\s*,\s*(?:\#(pureFillers)|you\s+know|y['’]know|i\s+guess|i\s+mean|like)\s*,"#,
             "$1"
         )
+        // The pause belongs to the hesitation when a command continues into
+        // its complement: “set alarm, um, for…” and “wake, um, me…”. Keeping
+        // the comma here can disable the reminder or split one intention.
+        // A following independent verb still keeps its clause boundary.
+        value = replace(value,
+            #",\s*(?:\#(alwaysFillers))\s*,\s*(?=(?:for|to|of|at|in|on|from|with|by)\b)"#,
+            " ")
+        value = replace(value,
+            #"\b(wake|alert|remind|tell|ask|sound)\s*,\s*(?:\#(alwaysFillers))\s*,\s*(?=(?:me|us|him|her|them|an?|the)\b)"#,
+            "$1 ")
         value = replace(value, #",\s*(?:\#(pureFillers)|you\s+know|y['’]know|i\s+guess|i\s+mean)\s*,"#, ",")
 
         // A bare filler with no commas around it. "You know" and "I guess" join
@@ -207,6 +217,22 @@ enum DisfluencyFilter {
             " "
         )
         value = replace(value, #"\s+(?:\#(ambiguousFillers))\s*$"#, "")
+
+        // Interpret discourse frames only after their own hesitations have
+        // been removed. “Um, today we…” and “Today we, um, have…” must reach
+        // the same list-introduction rule as fluent speech.
+        // An explicit list introduction announces the following actions. Keep
+        // its day, and require both an ordinal and a real intention so a note
+        // about somebody's goals is never deleted.
+        value = replace(value,
+            #"^(?:(today|tomorrow|tonight)[\s,]+)?(?:i|we)\s+have\s+(?:a\s+(?:couple|few)(?:\s+of)?|some|several|\d+)\s+(?:goals|things|tasks|errands)\s+(?:(?:that\s+)?(?:i|we)\s+need\s+to\s+(?:accomplish|do|finish|get\s+done))[\s,.:;]+(?:number\s+(?:one|1)|first)[\s,.:;]+(?=(?:i|we)\s+(?:need|want|have)\s+to\s+\#(imperativeLead)\b)"#,
+            "$1. ")
+        value = replace(value, #"^\s*\.\s*"#, "")
+        // Here “after” resumes a sequence. “After we eat” is a condition and
+        // does not match: it must follow “then” and precede an intention.
+        value = replace(value,
+            #"\bthen\s+after\s+(?=(?:i|we)\s+(?:need|want|have)\s+to\b)"#,
+            "then ")
 
         return normalize(value)
     }
@@ -380,6 +406,13 @@ enum ClockDigitRepair {
                 + #"(?<!(?i:\bwe['’]re\s))(?<!(?i:\bwe\sare\s))(?<!(?i:\bi['’]m\s))(?<!(?i:\bi\sam\s))"#
                 // "Set the oven at 450" is a temperature.
                 + #"(?<!(?i:\b(?:oven|broiler|thermostat|smoker)\s))"#
+                // An amount noun directly in front of the cue means the number
+                // is the amount: "set the price at 1250" is a price, and was
+                // read as 12:50. The list above only covers the "<noun> is
+                // <number>" shape, so the same noun one word closer to the
+                // digits was unguarded — and that is the shape the
+                // unpunctuated rendering of "at 12.50" collapses into.
+                + #"(?<!(?i:\b(?:price|budget|invoice|balance|bill|total|quote|estimate|cost|rate|rent|mortgage|payment|deposit|fee|salary|premium|fare|toll|tuition)\s))"#
                 // A leading zero is kept: "0620" is a 24-hour reading of the
                 // morning, and "06:20" is what tells the clock parser so.
                 // Dropping it made the unpunctuated rendering of "06:20"
@@ -388,7 +421,15 @@ enum ClockDigitRepair {
                 + #"\b([Aa]t|[Ff]or|[Bb]y|[Aa]round|[Uu]ntil|[Tt]ill|[Aa]larms?|[Tt]imer)\s+(0[1-9]|[1-9]|1[0-2])\s?([0-5][0-9])\b"#
                 // A third digit group means a phone number, not a clock:
                 // "call the pharmacy at 416 555 0134" became 4:16 PM.
-                + #"(?![-\s]?\d)"#
+                //
+                // The separator list includes the dot because a recognizer
+                // punctuates a phone number as often as it spaces one, and
+                // "416.555.0134" was rewritten to "4:16.555.0134" — a clock
+                // the person never said, written into the row title and the
+                // quote. A dot with no digit behind it is the full stop that
+                // ends a dictated sentence, so "dinner at 830." keeps its
+                // clock. Found on Duckling's negative corpus.
+                + #"(?![-.\s]?\d)"#
                 // A title-cased word after the digits is an address.
                 + #"(?!\s+[A-Z][a-z])"#
                 // A predicate or a unit after the digits means the number is a
@@ -430,7 +471,7 @@ enum ClockDigitRepair {
         // as above keep phone numbers, addresses and quantities out.
         value = value.replacingOccurrences(
             of: #"\b((?i:moved|pushed|bumped|rescheduled|shifted|switched|changed)(?:\s+(?i:from)\s+\S+(?:\s+(?i:[ap]\.?m\.?))?)?\s+(?i:to)|(?i:from)\s+\d{1,2}(?::[0-5]\d)?(?:\s*(?i:[ap]\.?m\.?))?\s+(?i:to|until|till))\s+(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b"#
-                + #"(?![-\s]?\d)"#
+                + #"(?![-.\s]?\d)"#
                 + #"(?!\s+[A-Z][a-z])"#
                 + #"(?!\s+(?i:people|units?|dollars?|bucks?|percent|days?|weeks?|months?|years?|grams?|kilos?|kg|lbs?|miles?|km)\b)"#
                 + #"(?!\s+\p{Ll}+\s(?:street|avenue|ave|road|boulevard|blvd|lane|crescent|terrace)\b)"#,
@@ -444,14 +485,14 @@ enum ClockDigitRepair {
         // a clock with no preposition. Both orders are taken; the same
         // phone-number, address and unit guards as above apply.
         let dayWord = #"(?i:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight)"#
-        let quantityGuard = #"(?![-\s]?\d)(?!\s+[A-Z][a-z])(?!\s+(?i:people|units?|dollars?|bucks?|percent|days?|weeks?|months?|years?|grams?|kilos?|kg|lbs?|miles?|km)\b)"#
+        let quantityGuard = #"(?![-.\s]?\d)(?!\s+[A-Z][a-z])(?!\s+(?i:people|units?|dollars?|bucks?|percent|days?|weeks?|months?|years?|grams?|kilos?|kg|lbs?|miles?|km)\b)"#
         value = value.replacingOccurrences(
             of: #"\b("# + dayWord + #")\s+(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b"# + quantityGuard,
             with: "$1 $2:$3",
             options: .regularExpression
         )
         value = value.replacingOccurrences(
-            of: #"\b(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b(?![-\s]?\d)(?=\s+"# + dayWord + #"\b)"#,
+            of: #"\b(0[1-9]|[1-9]|1[0-2])([0-5][0-9])\b(?![-.\s]?\d)(?=\s+"# + dayWord + #"\b)"#,
             with: "$1:$2",
             options: .regularExpression
         )
@@ -462,7 +503,7 @@ enum ClockDigitRepair {
         // clock reading, which is what leaves "buy 2 and 315 stamps" alone.
         if value.range(of: #"\b\d{1,2}:[0-5]\d\b"#, options: .regularExpression) != nil {
             value = value.replacingOccurrences(
-                of: #"(?i)\b(and|or)\s+([1-9]|1[0-2])([0-5][0-9])\b(?![-\s]?\d)"#,
+                of: #"(?i)\b(and|or)\s+([1-9]|1[0-2])([0-5][0-9])\b(?![-.\s]?\d)"#,
                 with: "$1 $2:$3",
                 options: .regularExpression
             )
@@ -609,7 +650,7 @@ enum SpokenShorthandRepair {
             // not evening clock readings. Only "at" and "around" keep the
             // 24-hour reading for 20xx, because no year attaches to those in
             // English — "meet at 2030" is half eight.
-            of: #"(?i)\b(at|by|around|until|till|from)\s+(?!(?<=\b(?:by|until|till|from)\s)20[2-5]\d\b)(1[3-9]|2[0-3])([0-5]\d)\b(?![-\s]?\d)"#
+            of: #"(?i)\b(at|by|around|until|till|from)\s+(?!(?<=\b(?:by|until|till|from)\s)20[2-5]\d\b)(1[3-9]|2[0-3])([0-5]\d)\b(?![-.\s]?\d)"#
                 // A unit after the digits makes them a quantity: "the loan is
                 // at 1700 dollars" is money, not five in the afternoon.
                 + #"(?!\s+(?:dollars|bucks|euros|pounds|cents|is|was|are|were|needs|owed|hours|feet|miles|km|calories|steps|words|people))"#,
@@ -889,7 +930,14 @@ enum SelfCorrectionResolver {
         // the *first* value standing and the alarm ringing at the wrong hour.
         // Repeating until the text settles is what makes the last thing said
         // win, which is the contract this file exists to keep.
-        var value = text
+        // A repeated unfinished travel frame is a restart, not a new errand.
+        // Keep preceding context (including dates) and require the same verb
+        // plus a real destination after the restarted frame.
+        var value = text.replacingOccurrences(
+            of: #"(?i)\bi\s+(?:want\s+to|wanna|need\s+to)\s+(go|head|drive|walk)\s+to[\s,]+(?:or[\s,]+)?(?:actually|no\s+wait|sorry)[\s,]+(?:first[\s,]+)?(i\s+(?:want\s+to|wanna|need\s+to)\s+\1\s+to\s+)(?=[\p{L}\p{N}])"#,
+            with: "$2",
+            options: .regularExpression
+        )
         for _ in 0..<4 {
             let next = resolvedOnce(value)
             if next == value { break }
@@ -1763,13 +1811,17 @@ enum CaptureOperationDetector {
     static func partition(
         _ text: String
     ) -> (operations: [CaptureOperationRequest], remainder: String?) {
-        let pieces = clauses(in: text)
+        let local = resolvingInCaptureCancellations(text)
+        let pieces = clauses(in: local.remainder)
         guard pieces.count > 1 else {
-            if let single = detect(text) { return ([single], nil) }
-            return ([], text)
+            if let single = detect(local.remainder) {
+                return (local.operations + [single], nil)
+            }
+            return (local.operations, local.remainder)
         }
 
-        var operations: [CaptureOperationRequest] = []
+        var operations = local.operations
+
         var remainders: [String] = []
         for piece in pieces {
             if let operation = detect(piece, within: text) {
@@ -1783,7 +1835,8 @@ enum CaptureOperationDetector {
                 if operation.operation == .retract,
                    operation.target == nil,
                    !remainders.isEmpty {
-                    remainders.removeLast()
+                    let start = semanticGroupStart(in: remainders)
+                    remainders.removeSubrange(start...)
                     operations.append(
                         CaptureOperationRequest(
                             operation: operation.operation,
@@ -1807,6 +1860,151 @@ enum CaptureOperationDetector {
         guard !operations.isEmpty else { return ([], text) }
         let remainder = remainders.joined(separator: ", ")
         return (operations, remainder.isEmpty ? nil : remainder)
+    }
+
+    /// Resolves cancellation that targets a sibling in the capture before the
+    /// general self-correction pass can consume its restart marker and splice
+    /// the target words into the sibling's purpose clause.
+    static func resolvingInCaptureCancellations(
+        _ text: String
+    ) -> (operations: [CaptureOperationRequest], remainder: String) {
+        var pieces = clauses(in: text)
+        guard let selective = selectiveCancellation(in: pieces) else {
+            return ([], text)
+        }
+        if selective.groupRange.lowerBound == pieces.startIndex,
+           selective.groupRange.upperBound < pieces.index(before: pieces.endIndex),
+           let prefix = visitPrefix(in: pieces[selective.groupRange.lowerBound]) {
+            let survivor = selective.groupRange.upperBound
+            pieces[survivor] = "\(prefix) \(pieces[survivor])"
+        }
+        pieces.removeSubrange(selective.directiveRange)
+        pieces.removeSubrange(selective.groupRange)
+        let operation = CaptureOperationRequest(
+            operation: .cancel,
+            target: selective.target,
+            sourceQuote: selective.source,
+            needsReview: false,
+            isScoped: true
+        )
+        return ([operation], pieces.joined(separator: ", "))
+    }
+
+    /// A terminal, restart-marked selective cancellation can refer to a sibling
+    /// already spoken in this capture. Resolve it here, while the clauses and
+    /// their order still exist, rather than sending it to the repository where
+    /// it could only target an older stored item.
+    ///
+    /// Association is deliberately exact and unique. If two visit groups name
+    /// the same destination, or none does, the directive remains visible text;
+    /// deleting a guessed sibling is worse than asking the person to review it.
+    private static func selectiveCancellation(
+        in pieces: [String]
+    ) -> (groupRange: Range<Int>, directiveRange: Range<Int>, target: String, source: String)? {
+        guard pieces.count > 1, let tail = pieces.last else { return nil }
+
+        let source: String
+        let directiveRange: Range<Int>
+        if tail.range(
+            of: #"(?i)^(?:actually|wait|no|sorry|i\s+mean)\s*,?\s*skip\s+(?:the\s+)?.+?\s*[.!?]*$"#,
+            options: .regularExpression
+        ) != nil {
+            source = tail
+            directiveRange = pieces.index(before: pieces.endIndex)..<pieces.endIndex
+        } else if pieces.count > 2,
+                  let marker = pieces.dropLast().last,
+                  marker.range(
+                    of: #"(?i)^(?:actually|wait|no|sorry|i\s+mean)\s*[.!?]*$"#,
+                    options: .regularExpression
+                  ) != nil,
+                  tail.range(
+                    of: #"(?i)^skip\s+(?:the\s+)?.+?\s*[.!?]*$"#,
+                    options: .regularExpression
+                  ) != nil {
+            source = "\(marker), \(tail)"
+            directiveRange = pieces.index(pieces.endIndex, offsetBy: -2)..<pieces.endIndex
+        } else {
+            return nil
+        }
+
+        let cleanedTarget = tail.replacingOccurrences(
+            of: #"(?i)^(?:(?:actually|wait|no|sorry|i\s+mean)\s*,?\s*)?skip\s+(?:the\s+)?"#,
+            with: "",
+            options: .regularExpression
+        ).trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
+        guard !cleanedTarget.isEmpty else { return nil }
+
+        let visits = visitGroups(in: Array(pieces[..<directiveRange.lowerBound]))
+        let matches = visits.filter {
+            canonicalDestination($0.destination) == canonicalDestination(cleanedTarget)
+        }
+        guard matches.count == 1, let match = matches.first else { return nil }
+        return (match.range, directiveRange, cleanedTarget, source)
+    }
+
+    /// The start of the semantic group ending at the final remainder. A visit
+    /// and every purpose clause following it form one plan until another visit
+    /// begins. This is the missing layer between raw clause splitting and a
+    /// destructive withdrawal decision.
+    private static func semanticGroupStart(in pieces: [String]) -> Int {
+        guard pieces.count > 1 else { return pieces.startIndex }
+        return visitGroups(in: pieces).last(where: { $0.range.upperBound == pieces.endIndex })?.range.lowerBound
+            ?? pieces.index(before: pieces.endIndex)
+    }
+
+    private static func visitGroups(
+        in pieces: [String]
+    ) -> [(range: Range<Int>, destination: String)] {
+        let starts = pieces.indices.compactMap { index -> (Int, String)? in
+            guard let destination = visitDestination(in: pieces[index]) else { return nil }
+            return (index, destination)
+        }
+        return starts.enumerated().map { offset, visit in
+            let upper = offset + 1 < starts.count ? starts[offset + 1].0 : pieces.endIndex
+            return (visit.0..<upper, visit.1)
+        }
+    }
+
+    /// Reads the destination from a complete visit clause. Requiring the visit
+    /// to end at the destination keeps incidental phrases such as "call Alex
+    /// before I go to Costco" from becoming cancellation anchors.
+    private static func visitDestination(in clause: String) -> String? {
+        guard let range = clause.range(
+            of: #"(?i)\b(?:go|head|come|drive|walk|run)\s+to\s+.+?\s*[.!?]*$"#,
+            options: .regularExpression
+        ) else { return nil }
+        let visit = String(clause[range])
+        let cleaned = visit.replacingOccurrences(
+            of: #"(?i)^(?:go|head|come|drive|walk|run)\s+to\s+"#,
+            with: "",
+            options: .regularExpression
+        ).trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    /// Context spoken before the first visit belongs to the coordinated list,
+    /// not to the first destination alone. If that first sibling is canceled,
+    /// move the prefix onto the first survivor so a shared "Tomorrow" (or an
+    /// obligation frame such as "I need to") is not canceled with it.
+    private static func visitPrefix(in clause: String) -> String? {
+        guard let range = clause.range(
+            of: #"(?i)\b(?:go|head|come|drive|walk|run)\s+to\s+"#,
+            options: .regularExpression
+        ) else { return nil }
+        let prefix = String(clause[..<range.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;."))
+        return prefix.isEmpty ? nil : prefix
+    }
+
+    private static func canonicalDestination(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(
+                of: #"^(?:the|a|an|my)\s+"#,
+                with: "",
+                options: .regularExpression
+            )
+            .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
     }
 
     /// Clause boundaries wide enough to find an operation riding alongside a

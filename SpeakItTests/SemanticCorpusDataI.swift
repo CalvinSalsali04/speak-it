@@ -335,6 +335,31 @@ enum SemanticCorpusK {
         corpusCase(.quantitiesNotClocks, "She lives at 425 king street",
                    count: 1, due: [nil],
                    note: "Was corrupted only in the lowercase rendering — a rendering-invariance break."),
+
+        // A dot between digit groups is a phone number or a decimal, and both
+        // were being read as clocks. The existing third-digit-group guard only
+        // refused a space or a dash, so "416 555 0134" was safe and
+        // "416.555.0134" was rewritten to "4:16.555.0134" — a time the person
+        // never said, inside a quote that no longer matched their words.
+        corpusCase(.quantitiesNotClocks, "Call the pharmacy at 416.555.0134",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "Was a due of 16:16 and a title reading '4:16.555.0134'."),
+        // Stated as instructions on purpose. The past-tense versions of these
+        // route to Memory and never reach the clock reader, so they would pass
+        // without the fix and protect nothing.
+        corpusCase(.quantitiesNotClocks, "Keep the bag at 6.5 kilograms",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "A decimal weight. The bare-hour rule took the 6, dropped the .5, and was a due of 18:00."),
+        corpusCase(.quantitiesNotClocks, "Set the price at 12.50",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "A price, not half past twelve."),
+        corpusCase(.quantitiesNotClocks, "Set the budget at 1,250 dollars",
+                   count: 1, due: [nil],
+                   severityFloor: .behavioral,
+                   note: "A thousands separator is not a clock either. Was a due of 13:00."),
     ]
 
     /// The readings that must keep happening. A guard that silences a real
@@ -342,6 +367,11 @@ enum SemanticCorpusK {
     static let quantityGuards: [CorpusCase] = [
         corpusCase(.quantitiesNotClocks, "Meet me at 630 on the dot",
                    count: 1, due: [CorpusDate(month: 8, day: 3, hour: 18, minute: 30)]),
+        // A sentence-final full stop is not a decimal point. The decimal guard
+        // has to look for a digit behind the dot, or it silences a real clock
+        // every time dictation punctuates the end of the sentence.
+        corpusCase(.quantitiesNotClocks, "Let's do dinner at 6.",
+                   count: 1, due: [CorpusDate(month: 8, day: 3, hour: 18, minute: 0)]),
         corpusCase(.quantitiesNotClocks, "Dinner at 830 on the patio",
                    count: 1, due: [CorpusDate(month: 8, day: 3, hour: 20, minute: 30)]),
         corpusCase(.quantitiesNotClocks, "Dentist at 230 on Friday",

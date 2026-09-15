@@ -11,6 +11,81 @@ import XCTest
 @MainActor
 final class ObligationFrameTests: XCTestCase {
 
+    func testLowercaseInstructionAfterMemoryKeepsItsOwnRow() {
+        for source in [
+            "remember alex singh likes socks. go to elm shop to buy socks.",
+            "remember alex singh likes socks. tomorrow go to elm shop to buy socks.",
+            "remember the version is 2.5. go to elm shop to buy socks.",
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 2, source)
+            XCTAssertEqual(items.first?.organization.itemType, .note, source)
+            XCTAssertEqual(items.last?.organization.itemType, .task, source)
+            XCTAssertFalse(items.first?.sourceQuote.contains("go to") ?? true, source)
+            XCTAssertTrue(items.last?.sourceQuote.contains("go to elm shop") ?? false, source)
+        }
+        for source in ["call dr. cook about dinner.", "go to st. john square.",
+                       "remember the sign says go. stop. look."] {
+            XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(source).items.count, 1, source)
+        }
+    }
+
+    func testSpokenErrandListKeepsEachVisitWithItsPurpose() {
+        let source = "Today we have a couple goals that we need to accomplish number one. We need to go eat at Lucky star and then after we need to go to Bendy Melville and get some clothes and then also we need to later on go to Mooji get some socks ."
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        // The recognizer's capitalization and punctuation cannot decide how
+        // many intentions someone meant. Names are preserved as transcribed.
+        for transcript in [source, source.lowercased(), source.replacingOccurrences(of: ".", with: "")] {
+            let items = ThoughtExtractionEngine.extractWithRules(
+                transcript, referenceDate: reference, calendar: calendar
+            ).items
+            XCTAssertEqual(items.map {
+                ThoughtTitleFormatter.polished($0.suggestedTitle ?? $0.sourceQuote, itemType: $0.organization.itemType).lowercased()
+            }, ["go eat at lucky star", "go to bendy melville and get some clothes",
+                "go to mooji and get some socks"])
+            for item in items {
+                XCTAssertEqual(item.organization.dueDate, calendar.startOfDay(for: reference))
+                XCTAssertNil(item.organization.reminderDate)
+            }
+        }
+        for (transcript, count) in [
+            ("Go to Cedar Lane and get a jacket", 1),
+            ("Go to Maple House get some gloves", 1),
+            ("Go to Cedar Lane then get a jacket", 2),
+            ("Go to Cedar Lane. Get a jacket", 2),
+            ("Go to Cedar Lane and get a jacket tomorrow", 2),
+            ("Go to Cedar Lane and call Mom", 2),
+        ] {
+            XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
+                transcript, referenceDate: reference, calendar: calendar
+            ).items.count, count, transcript)
+        }
+    }
+
+    func testShoppingCaptureRemovesRestartAndSignoff() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        let source = "Today when I go shopping, I want to go to or actually first I wanna go to Lucky star and then I want to go to Brandy Melville to buy clothes and then I wanna go to Mooji to buy socks and then I wanna go to Long Fong Mall to buy cosmetics bye."
+        let items = ThoughtExtractionEngine.extractWithRules(
+            source, referenceDate: reference, calendar: calendar
+        ).items
+        XCTAssertEqual(items.map {
+            ThoughtTitleFormatter.polished($0.suggestedTitle ?? $0.sourceQuote, itemType: $0.organization.itemType)
+        }, ["Go to Lucky star", "Go to Brandy Melville to buy clothes",
+            "Go to Mooji to buy socks", "Go to Long Fong Mall to buy cosmetics"])
+        XCTAssertEqual(items.count, 4)
+        for item in items {
+            XCTAssertEqual(item.organization.dueDate, calendar.startOfDay(for: reference))
+            XCTAssertNil(item.organization.reminderDate)
+        }
+        XCTAssertEqual(title("Say bye"), "Say bye")
+        XCTAssertEqual(title("Buy Goodbye"), "Buy Goodbye")
+        XCTAssertEqual(title("Buy a book by Bye"), "Buy a book by Bye")
+    }
+
     func testHadBetterRequiresAClearActionComplement() {
         for (source, expected) in [
             ("I had better drop the car off on Thursday", "Drop the car off on Thursday"),

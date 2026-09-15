@@ -5,6 +5,7 @@
 set -euo pipefail
 SP="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${1:-$(cd "$SP/../.." && pwd)}"
+CORPUS_ROOT="${CORPUS_ROOT:-$ROOT}"
 OUT="${PROBE_OUT:-$SP/build}"
 rm -rf "$OUT"; mkdir -p "$OUT"
 cd "$ROOT"
@@ -22,7 +23,7 @@ sed -n "1,$((LCUT - 1))p" SpeakIt/Models/LocationIntent.swift > "$OUT/LocationIn
 # The corpus and evaluator, with the test-target import removed.
 mkdir -p "$OUT/corpus"
 for f in SpeakItTests/SemanticCorpus.swift SpeakItTests/SemanticCorpusData*.swift SpeakItTests/CorpusEvaluator.swift; do
-  sed 's/^@testable import SpeakIt$//; s/^import XCTest$//' "$f" > "$OUT/corpus/$(basename "$f")"
+  sed 's/^@testable import SpeakIt$//; s/^import XCTest$//' "$CORPUS_ROOT/$f" > "$OUT/corpus/$(basename "$f")"
 done
 
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcrun swiftc -O -o "$OUT/corpus-run" \
