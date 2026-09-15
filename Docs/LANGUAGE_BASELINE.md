@@ -332,14 +332,25 @@ The phrases that section names as the six captures' closings are `I forgot`,
 `I lost it`, `hold on`, `what was it` and a trailing `I mean`. Counted again
 over readable utterances:
 
-| phrase | utterances | where |
+| phrase, as that section names it | utterances | where |
 |---|---|---|
 | `hold on` | 1 | `unfinished.tsv` |
 | `what was it` | 1 | `unfinished.tsv` |
 | `I forgot` | 5 | `unfinished.tsv` |
-| `I lost it` | 4 | 3 SpeechLab, 1 `unfinished.tsv` |
-| `I mean` | 11 | 5 SpeechLab, 4 `rambling.tsv`, 2 `unfinished.tsv` |
+| `I lost it` | 1 | `unfinished.tsv` |
+| `I mean`, trailing | 1 | `unfinished.tsv` |
 | **`wait`** | **40** | **34 SpeechLab** (31 of them one frame), 3 `unfinished.tsv`, 2 `rambling.tsv`, 1 `abandonment.tsv` |
+
+Each phrase is counted as the section writes it, which is not how a first pass
+counted them: `I lost it` read as `I lost (it|my train)` gives 4 and `I mean`
+counted anywhere rather than clause-finally gives 11. Both were caught on
+recount by the evaluation thread. They are the same defect this file names
+everywhere else — a marker standing in for the judgement it approximates —
+committed inside a section arguing that a phrase-keyed detector is the wrong
+instrument, which is worth leaving visible rather than quietly correcting.
+
+The five named phrases total **9** on the strict readings, against `wait`'s
+40.
 
 `wait` is the marker two of the six failing captures actually turn on — INC49
 `Tomorrow I need to, um, wait, I forgot` and INC50 `Next week I should, wait,
@@ -378,17 +389,21 @@ counts instantiations of a blueprint:
 
 - 818 distinct utterances over **330 distinct five-word stems**;
 - the twelve commonest stems account for **308** of the 818;
-- `equivalence_class` groups renderings of one blueprint: 260 classes, 189 of
-  them holding a single rendering.
+- `lineage.base_semantic_family` groups them into **137 families over 818
+  rows, of which 2 are singletons** — about six renderings per meaning.
+
+So the corpus is 137 meanings rendered six ways, and a count over it counts
+renderings.
 
 `phase2/CORPUS-QUALITY-REPORT.md` reports "Structural templates: 816" against
-818 cases. It caveats itself in the next paragraph — "not proof of 816 wholly
-independent syntactic structures" — and `ADJUDICATION-REPORT.md` lists that
-gate as passing. The caveat is right; the headline is the number a reader
-carries away. A five-word prefix is a cruder measure than a function-word
-skeleton and disagrees with it by a factor of two and a half, which is worth
-recording plainly: **on this corpus the skeleton metric is not measuring frame
-diversity, and no gate currently does.**
+818 cases, with "Largest structural template: 2 records (0.24%)". It caveats
+itself in the next paragraph — "not proof of 816 wholly independent syntactic
+structures" — and `ADJUDICATION-REPORT.md` lists that gate as passing. The
+caveat is right; the headline is the number a reader carries away. Against the
+five-word stem the largest bucket is **38 rows, 4.6%**. So the two measures
+disagree by a factor of two and a half on distinctness and **nineteen on the
+largest bucket**, which is the comparison worth recording: **on this corpus
+the skeleton metric is not measuring frame diversity, and no gate is.**
 
 This is not a complaint about the corpus. It was built to test whether one
 meaning is read correctly across many renderings, and 44 distinct frames carry
