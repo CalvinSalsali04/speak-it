@@ -1051,6 +1051,42 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
         self.assertEqual([reason for _n, _k, _v, reason in found],
                          [rm.CONVERSATION])
 
+    def test_a_corpus_nested_inside_a_turn_is_not_excused_by_the_turn(self):
+        """The hold this change was graded on, pinned so it cannot widen back.
+
+        The first version asked whether ANY segment of the key was a declared
+        container, which excuses a string at any depth below a turn. So a
+        corpus arriving at `context.prior_turns[].nested_corpus[].text` was
+        invisible -- to a sweep whose entire claim is that it is total, in the
+        one place it is supposed to admit nothing. The core language thread
+        found it by injecting that key into a real SpeechLab file and watching
+        all seventy tests pass.
+
+        Matching the immediate parent costs nothing: every live instance is
+        `container.prior_turns[].text`, the counts are identical either way,
+        and the wider form bought only the hole. This test is the half that
+        keeps it narrow, because `any(...)` is what somebody reaches for on
+        the day a container gains a level.
+        """
+        rm = self.census.readable_material
+        turn = "ring the roofer back about the valley tomorrow"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "nested_in_a_turn.jsonl"
+            path.write_text(json.dumps({
+                "id": "x1",
+                "context": {"prior_turns": [
+                    {"text": "are you around on Saturday",
+                     "nested_corpus": [{"text": turn}]}]}}) + "\n")
+            found = {key: reason for _n, key, _v, reason
+                     in rm.nested_declared_strings(
+                         files=[path], known=frozenset())}
+        self.assertEqual(found["context.prior_turns[].text"], rm.CONVERSATION,
+                         "a turn's own text is still conversational context")
+        self.assertIsNone(
+            found["context.prior_turns[].nested_corpus[].text"],
+            "a corpus nested inside a turn is excused by the turn above it, "
+            "so the sweep is not total after all")
+
     def test_markup_that_has_drifted_from_its_row_is_not_a_span(self):
         """Offsets are verified, never taken as a signal that they exist.
 

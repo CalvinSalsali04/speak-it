@@ -467,22 +467,29 @@ def twinned_families(paths=None):
 
 def _family_column(path):
     """The `family` cell of every data row, or nothing when there is no such
-    column. Reads the header rather than assuming position, because the
-    corpora here do not agree on a layout and the sixth reader to work it out
-    for itself got it right by luck."""
-    header = None
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#") or not line.strip():
-            continue
-        cells = line.split("\t")
-        if header is None:
-            header = cells
-            continue
-        if "family" not in header:
-            return
-        value = dict(zip(header, cells)).get("family")
-        if value:
-            yield value
+    column.
+
+    Through `corpus_paths`, never by splitting the file here. The first
+    version of this did split it here, and `test_score.py` refused it by name:
+    this directory has produced six readers that each worked the
+    tab-separated format out for themselves, and that guard exists so there is
+    no seventh. It was right to. Reading a corpus a new way is how a scan
+    picks up a header as data or drops the rows a comment convention hides,
+    and the figure it then reports looks exactly like a correct one -- which
+    is the defect this whole module was written against, arriving inside it.
+
+    The column is found by name from the header rather than by position,
+    because the corpora here do not agree on a layout.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = corpus_paths.header_row(lines)
+    names = [name.lower() for name in header] if header else []
+    if "family" not in names:
+        return
+    at = names.index("family")
+    for _number, cells in corpus_paths.data_rows(path):
+        if at < len(cells) and cells[at]:
+            yield cells[at]
 
 
 def stale_family_rows(text=None, twinned=None):
@@ -500,6 +507,16 @@ def stale_family_rows(text=None, twinned=None):
     data holds rather than by a declared line range or file name. A set-level
     row such as `routed (116)` names a file and not a family, and is left to
     the population block, which already generates it.
+
+    **A count written in prose is out of reach and stays out of reach.** The
+    same section says `coherent-long` is "7/7 on destination" and calls them
+    "those seven rows", where the set now holds eleven, and no bracket check
+    can see that. Matching counts in sentences would mean a regex over prose
+    deciding which numbers are denominators, which is the kind of net this
+    directory distrusts everywhere else. The general form is a per-section
+    fingerprint -- a dated section records the set state it was measured over,
+    older sections keep theirs because they are records, and the newest
+    section's fingerprint must match the data -- and that is its own change.
     """
     text = DOC.read_text(encoding="utf-8") if text is None else text
     twinned = twinned_families() if twinned is None else twinned

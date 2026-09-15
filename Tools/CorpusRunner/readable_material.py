@@ -156,6 +156,18 @@ NOT_READ = {
 #: at their top level. A reader that descends and declines a named container
 #: is still one rule, applied at every depth.
 #:
+#: **Matched as the string's immediate parent, never anywhere above it.** The
+#: first version asked whether any segment of the key was a declared container,
+#: which excuses a string at any depth below a turn -- so a corpus arriving at
+#: `context.prior_turns[].nested_corpus[].text` is invisible to a sweep whose
+#: whole claim is that it is total. That is a marker standing in for the
+#: judgement it approximates, this codebase's recurring defect, arriving in the
+#: one place the accounting is supposed to admit nothing. The narrower form
+#: costs nothing: every live instance is `container.prior_turns[].text`, the
+#: counts are identical either way, and the wider form bought only the hole.
+#: Found by the core language thread grading this, by injecting that key into a
+#: real file and watching the suite pass.
+#:
 #: Declared rather than derived, and the honesty is in the two directions it
 #: is held: `nested_declared_strings` gives a string under one of these names
 #: the reason CONVERSATION and gives a string under any other nested name no
@@ -167,7 +179,12 @@ NOT_READ = {
 CONVERSATIONAL_CONTEXT = frozenset({"prior_turns", "previous_turns"})
 
 #: The sibling keys that make a string a span of its own row rather than a
-#: separate utterance. Named, but never trusted: a holder carrying these is
+#: separate utterance. These are markup offsets and the strings they cut out
+#: are not sentences: the nine live ones include `'7 pm'` and `'8'`, so
+#: descending would not merely add non-captures to the published population,
+#: it would add **tokens**.
+#:
+#: Named, but never trusted: a holder carrying these is
 #: only a span if the offsets actually cut the value out of the record's own
 #: utterance, so markup that has drifted from the text it annotates reads as
 #: unaccounted for and stops the run rather than being waved through.
@@ -606,6 +623,22 @@ def nested_declared_strings(files=None, known=None):
     correct rather than a hole: reading it would move no figure. The guard
     fires on material, not on shape.
 
+    **`ALREADY_READ` is set membership, not provenance.** A string gets it
+    when an identical string is read somewhere in this tree, which is the right
+    test for "would counting this move a figure" and is not what the label
+    sounds like: a genuinely new nested utterance that happens to duplicate an
+    existing one is absorbed by it and never reaches the residual. Correct for
+    protecting a population, and worth knowing before anybody reads the 481 as
+    a claim about where those strings came from.
+
+    **`SPAN` is unreachable in the ten files with no top-level utterance
+    column.** `owner` is None there, so `_is_a_span_of` cannot return True and
+    a span in such a file lands as unaccounted for. That is the right direction
+    to fail in -- a span with no row to cut it out of is not something this
+    module should wave through -- but reading `_is_a_span_of` alone suggests
+    spans are recognised everywhere, and they are recognised only where there
+    is an utterance to reconstruct them from.
+
     `known` is the population to count a string as already read against, and
     defaults to everything `readers()` reads. It is a parameter because
     computing it here would make this circular -- `readers()` is what produces
@@ -627,7 +660,7 @@ def nested_declared_strings(files=None, known=None):
                 if leaf not in UTTERANCE_FIELDS or "." not in key:
                     continue
                 names = _container_names(key)
-                if any(name in CONVERSATIONAL_CONTEXT for name in names):
+                if names[-2] in CONVERSATIONAL_CONTEXT:
                     reason = CONVERSATION
                 elif _is_a_span_of(holder, value, owner):
                     reason = SPAN
