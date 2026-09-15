@@ -66,10 +66,10 @@ enum InterpretationBridge {
         let carriesObligation = segment.disposition.mayCarryObligation
             && segment.obligation != .otherOwes
             && segment.obligation != .noObligation
-        let mayAct = segment.disposition.mayCarryObligation
-        let organization = carriesObligation && mayAct
+        let afterDisposition = carriesObligation
             ? deterministic
             : withdrawn(deterministic, for: segment)
+        let organization = narrowed(afterDisposition, for: segment)
         let demoted = organization != deterministic
 
         let title = segment.suggestedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,6 +77,9 @@ enum InterpretationBridge {
             || confidence < 0.82
             || segment.disposition == .abandoned
             || segment.disposition == .reported
+            // An unsettled actor is the one obligation value that keeps its
+            // schedule and still has to be seen. See `narrowed`.
+            || segment.obligation == .unclear
             || !segment.references.filter { $0.refersToExistingItem }.isEmpty
 
         let thought = ExtractedThought(
@@ -140,6 +143,67 @@ enum InterpretationBridge {
             temporalIntent: organization.temporalIntent,
             locationIntent: nil,
             state: state
+        )
+    }
+
+    /// What the two role fields and an unsettled actor take away.
+    ///
+    /// This is the half of the interpretation the rules cannot read for
+    /// themselves, and it is the reason the fields exist rather than being
+    /// recorded and never looked at. Like every other override here it runs in
+    /// one direction: a role can remove a date or a place trigger and can never
+    /// add one. If the model calls something a deadline and `ThoughtOrganizer`
+    /// found no date, nothing appears.
+    ///
+    /// **Time that is not a deadline.** `topic` is "ask Dana about Friday" — a
+    /// weekday in the sentence and nothing due — and `standingFact` is "the
+    /// nursery closes at six on weekdays". Both are readings the rules reach by
+    /// inference from the wording; when the interpretation says so outright,
+    /// the schedule comes off.
+    ///
+    /// **Place that is not a trigger.** Only `arrivalTrigger` and
+    /// `departureTrigger` keep a `locationIntent`. Everything else — including
+    /// a segment where the model named no place at all — loses it. That is a
+    /// real cost and it is chosen: a model that simply omits the role can never
+    /// arm a geofence through this path, and a geofence armed on a place the
+    /// person only mentioned is the failure nobody can undo. Whether the model
+    /// omits the role in practice is a thing to measure, not to assume.
+    ///
+    /// **An unsettled actor keeps its schedule.** `unclear` is "the report by
+    /// Friday" — wording that names no actor. It would be easy to withdraw the
+    /// deadline here for symmetry, and it would be wrong: a reminder the person
+    /// did not ask for is loud and dismissed in one tap, while a deadline
+    /// quietly dropped is never seen again. So `unclear` keeps what the rules
+    /// resolved and forces review, which is the visible failure rather than the
+    /// silent one.
+    private static func narrowed(
+        _ organization: OrganizedThought,
+        for segment: InterpretedSegment
+    ) -> OrganizedThought {
+        let timeIsNotADeadline = segment.temporalRole == .topic
+            || segment.temporalRole == .standingFact
+        let placeIsNotATrigger: Bool
+        switch segment.locationRole {
+        case .arrivalTrigger, .departureTrigger: placeIsNotATrigger = false
+        case .none, .mention, .whereItHappens: placeIsNotATrigger = true
+        }
+        let unsettledActor = segment.obligation == .unclear
+        guard timeIsNotADeadline || placeIsNotATrigger || unsettledActor else {
+            return organization
+        }
+        return OrganizedThought(
+            itemType: organization.itemType,
+            category: organization.category,
+            priority: organization.priority,
+            personName: organization.personName,
+            dueDate: timeIsNotADeadline ? nil : organization.dueDate,
+            reminderDate: timeIsNotADeadline ? nil : organization.reminderDate,
+            reminderDelivery: timeIsNotADeadline ? .none : organization.reminderDelivery,
+            recurrenceRule: timeIsNotADeadline ? nil : organization.recurrenceRule,
+            needsClarification: organization.needsClarification || unsettledActor,
+            temporalIntent: organization.temporalIntent,
+            locationIntent: placeIsNotATrigger ? nil : organization.locationIntent,
+            state: organization.state
         )
     }
 

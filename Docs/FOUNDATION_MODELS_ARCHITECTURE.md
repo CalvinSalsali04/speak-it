@@ -43,6 +43,16 @@ The split is not "rules for the easy half". It is: **anything whose failure the
 person cannot undo stays deterministic, and anything that is a judgement about
 language goes to the model.**
 
+That principle needs a second axis, because on its own it does not separate the
+two ways this pipeline gets a field wrong. **A loud failure is recoverable and a
+silent one is not.** Marking a topic mention as a deadline fires a notification
+nobody asked for: annoying, and dismissed in one tap. Marking a real deadline as
+a topic drops the reminder and nobody ever knows to look. No data is destroyed
+either way, and only one of them is ever found. The same asymmetry decides the
+obligation field below — a task that lands in Memory is not lost, it is unseen —
+and it is why `unclear` keeps its schedule and gets flagged instead of being
+quietly made safe.
+
 | Question | Who answers | Why |
 |---|---|---|
 | Which words belong to one thought | model | Segmentation is the top failure family and is a linguistic judgement; `run-on` is split correctly 2 of 10 times on the held-out set. |
@@ -51,11 +61,34 @@ language goes to the model.**
 | Which words are the time, the place, the person | model | Naming a span is what a model is good at. |
 | **What that time is** | **rules** | `TemporalIntent` and the recurrence parser. A model has no field for a date; the schema physically cannot carry one. |
 | **Whether it schedules** | **rules** | "A date says when something is true, not that there is something to do" is a product contract, not a reading. |
-| **Today or Memory** | **rules** | Derived from the evidence above by `ThoughtOrganizer` and `ActionabilityReader`, which already have to agree with each other. |
+| **Today or Memory** | **rules, over a model-supplied field** | `ThoughtOrganizer` and `ActionabilityReader` decide, and they already have to agree with each other — but see the paragraph under this table. This row is the one place the boundary is easier to state than to hold. |
 | **Whether a place becomes a geofence** | **rules** | `LocationIntentParser` plus the saved-place store. |
 | **Which stored row a "cancel that" means** | **rules** | `CaptureTargetMatcher`. The model reports the words; matching needs the store and is where a wrong answer destroys data. |
 | **Whether a destructive request runs at all** | **rules, plus agreement** | See below. |
 | Persistence, migration, notifications, recurrence arithmetic, Live Activity, StoreKit | rules | None of it is language. |
+
+**Where this boundary is thinnest, said plainly.** `obligation` is not the same
+kind of field as `temporalRole`. `ActionabilityReader.read` contains
+`if obligationBelongsToAnotherPerson(value) { return .knowledge }` — whose
+errand it is *is* the Today-or-Memory decision, not an input to it. So calling
+destination deterministic while the model supplies the obligation is true about
+which code runs and misleading about what decides. The honest statement: the
+mapping from obligation to destination stays a deterministic product contract,
+and the evidence that mapping consumes now comes from the model. That is the
+trade, and it is the thing the comparison has to measure first.
+
+Two prior facts make the size of it visible, both from this repository rather
+than from reasoning. The obligation vocabulary lives in five lists in four
+files, which agree on five of the thirty-seven forms between them, and the
+2026-09-15 decision is that merging them is wrong because three of the
+differences are load-bearing. One of those differences is a safety property a
+classifier cannot have: `ObligationFrame.link` is safe *by omission* — a form it
+does not list can never sit inside the span it deletes, so an unrecognised
+wording keeps its words. A model asked for `obligation` answers for every input,
+including wordings nobody has seen; it cannot decline. It converts "I did not
+recognise this" into a confident third option. That is not a reason to keep the
+field in the rules, but it is a property being traded away on purpose rather
+than by accident.
 
 **The destructive rule.** An operation the model reported executes only when the
 deterministic partitioner independently read an operation of the same kind in
@@ -94,9 +127,28 @@ enforceable rather than aspirational:
 `temporalRole` and `obligation` deserve a note. They are the two fields that
 carry a linguistic judgement the deterministic layer currently has to infer from
 substrings: "ask Dana about Friday" has a weekday in it and no deadline, and
-"Sarah needs to send the invoice" has an obligation that is not the speaker's.
-Recording them is not resolving them — `ThoughtOrganizer` still reads
-`temporalText` with the same parser it always has.
+somebody else's "needs to" is an obligation that is not the speaker's. Recording
+`temporalText` is not resolving it — `ThoughtOrganizer` still reads those words
+with the same parser it always has. `obligation` is the field where "recording
+is not deciding" does *not* hold, for the reason in section 1.
+
+**Which fields are read, and which are only recorded.** An enum case nothing
+downstream can observe is a marker standing in for a judgement, which is this
+codebase's recurring defect, so the list is stated rather than implied.
+
+Read by `InterpretationBridge`: `disposition`, `obligation`, `temporalRole`
+(`topic` and `standingFact` remove a schedule), `locationRole` (only
+`arrivalTrigger` and `departureTrigger` keep a place trigger),
+`references.refersToExistingItem`, `confidencePercent`, `suggestedTitle`,
+`quote` and `carriedContext`.
+
+Recorded and not read: `polarity`, `attributedTo`, `personNamed`,
+`supersededBy` and `references.refersToQuote`. Each is checked by the policy —
+`supersededBy` must name another segment, `attributedTo` and `personNamed` must
+be in the transcript — and each is carried for a reader rather than acted on:
+the organizer infers the person itself, and the negation is in the words it
+reads. Acting on them is a behaviour change, and behaviour changes here want a
+measurement first.
 
 ## 3. The prototype
 
@@ -123,6 +175,12 @@ policy, bridge or schema import FoundationModels. It runs on Linux on every pull
 request. The rule exists because the sealed sets may be pointed at this path,
 and a set that has been sent to somebody's server cannot be made unseen again —
 there is no red build that undoes it.
+
+**Know its shape before citing it as total.** It is keyed on names, and guards
+that share a vocabulary share a blind spot. A network call reached through a
+helper in another directory, or through a type alias, is invisible to it. It
+catches the way this rule would actually be broken — somebody adding a call
+here later — and it is not a proof.
 
 ## 4. How the comparison runs
 

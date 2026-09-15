@@ -788,7 +788,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         review of that change found the copula guard taking a boundary away:
         two more rows and one more `note:`. 3758 -> 3788 the same day: the
         Foundation Models interpretation prototype landed two test classes
-        whose fixtures are hand-written captures. What the test is actually guarding — that the two
+        whose fixtures are hand-written captures. 3788 -> 3797 in review of
+        that change, which made the two role fields load-bearing and added
+        four cases for them. What the test is actually guarding — that the two
         readings of "multi-word" still agree exactly and in both directions —
         is the assertion above, and it is unaffected.
         """
@@ -800,7 +802,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3788)
+        self.assertEqual(len(space), 3797)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
