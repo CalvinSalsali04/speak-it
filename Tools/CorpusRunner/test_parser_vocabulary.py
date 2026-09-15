@@ -14,10 +14,12 @@ The one property that is not a matter of taste is the one that already bit:
     Memory note titled "I hafta" beside the errand, because `hafta`, `oughta`
     and `needa` were in the route and title lists and not in the splitter's.
 
-Every multi-word frame ends in `to`, and `to` has been the first entry of
-`clauseInternalLead` since it was written, so multi-word frames are protected
-whether or not anyone decided to protect them. Only single tokens are exposed,
-which is what makes this checkable rather than a matter of judgement.
+What makes it checkable rather than a matter of judgement is that the exposed
+position is mechanical. `ClauseJuxtaposition` decides a cut from the single
+token standing in front of the candidate verb, so the position at risk is the
+frame's **last** word -- `to` in "have to call", `better` in "had better call",
+the whole word in "hafta call". Most of those last words are `to`, which the
+splitter has held since it was written; the rest are checked here one by one.
 """
 import copy
 import pathlib
@@ -32,23 +34,43 @@ sys.path.insert(0, str(HERE))
 import parser_vocabulary as pv  # noqa: E402
 
 
-#: Single-token obligation forms the splitter deliberately does not hold, and
-#: why. An entry here is a decision somebody made, not a gap.
+#: Exposed words that `clauseInternalLead` deliberately does not hold, and the
+#: mechanism that holds them instead. An entry here is not an unprotected form;
+#: it is one protected somewhere a set of single tokens cannot reach. Each is
+#: checked below, both that the exception is still needed and that the
+#: mechanism it names still does the work.
 #:
-#: Keep this list short and keep the reasons specific. A form added here
-#: without a reason that survives reading is how the defect above comes back.
-DELIBERATELY_UNPROTECTED = {
+#: Keep this list short and keep the reasons specific. An entry whose reason
+#: names no mechanism is how the defect above comes back.
+PROTECTED_BY_A_SECOND_MECHANISM = {
     "better": (
         "also an ordinary comparative, and a comparative is exactly where a "
         "spoken sentence ends one clause and starts another -- 'the weather is "
-        "better book the campsite' has to split. See `deonticBetterSubject`."
+        "better book the campsite' has to split. A set of single tokens cannot "
+        "tell the two apart, so `SpeechRepair` reads the word in front of it "
+        "instead: `deonticBetterSubject`, at the same guard and to the same "
+        "effect. That is what protects `better`, `had better`, `i/we better` "
+        "and `'d better`, and it is checked by "
+        "`test_the_second_mechanism_holds_every_subject_those_frames_carry`."
     ),
+}
+
+#: The tokens a transcript puts in front of `better` for each frame that ends
+#: in it, which are what `deonticBetterSubject` has to hold for the exception
+#: above to be true. `i/we better` gives `i` and `we` and `had better` gives
+#: `had` mechanically. `['’]d better` does not: the router writes the clitic as
+#: its own alternative, but a transcript tokenises "I'd" as one word, so the
+#: token the splitter sees is the pronoun carrying it -- spelled out here in
+#: both apostrophes and in the apostrophe-less form dictation produces.
+BETTER_SUBJECTS = {
+    "i", "we", "had",
+    "i'd", "i’d", "id", "we'd", "we’d",
 }
 
 #: What each list held when this suite was written. Pinned so that a list
 #: quietly losing an entry fails here; a deliberate change re-pins it and says
 #: why in the commit, exactly as `test_observation.py`'s census does.
-SIZES = {"split": 144, "route": 23, "whose": 9, "title": 24, "glue": 10}
+SIZES = {"split": 144, "route": 22, "whose": 9, "title": 24, "glue": 10}
 
 #: Forms all four claimants agree are obligations.
 #:
@@ -67,6 +89,16 @@ AGREED = {"have to", "must", "need to", "ought to", "should"}
 AGREED_IN_THE_DOCUMENTED_THREE = {
     "gotta", "have to", "must", "need to", "ought to", "should", "want to",
 }
+
+
+def the_filter_this_replaced(forms):
+    """`single_token` as it stood: kept a form only if it had no space in it.
+
+    Here as a control. A mutation that the old filter would also have caught
+    proves nothing about the reformulation, so the test below checks its
+    counterexample against this before checking it against the new filter.
+    """
+    return {f for f in forms if " " not in f and "/" not in f}
 
 
 class EveryListCanBeRead(unittest.TestCase):
@@ -91,18 +123,24 @@ class EveryListCanBeRead(unittest.TestCase):
         """The failure this module exists to make loud.
 
         Reformat a constant and a regex reader stops finding it. Returning an
-        empty set there would pass `single_token(...) <= split` trivially, and
+        empty set there would pass `exposed_tail(...) <= split` trivially, and
         the suite would report a clean bill for a vocabulary it could not see.
+
+        Every reader is here, the two protection mechanisms included. A reader
+        left out is one that can start returning empty without anything saying
+        so.
         """
         cases = {
-            "SpeechRepair.swift": ("clauseInternalLead", pv.clause_internal_lead),
-            "Actionability.swift": ("obligationLead", pv.obligation_lead),
-            "ThoughtOrganizer.swift": ("let link", pv.obligation_frame_link),
-            "ThoughtExtractor.swift": (r'of: #"^(?:i\s+)?(?:', pv.dangling_auxiliary),
+            "split": ("SpeechRepair.swift", "clauseInternalLead", pv.clause_internal_lead),
+            "route": ("Actionability.swift", "obligationLead", pv.obligation_lead),
+            "whose": ("Actionability.swift", "thirdPersonObligation", pv.third_person_obligation),
+            "title": ("ThoughtOrganizer.swift", "let link", pv.obligation_frame_link),
+            "glue": ("ThoughtExtractor.swift", r'of: #"^(?:i\s+)?(?:', pv.dangling_auxiliary),
+            "better": ("SpeechRepair.swift", "deonticBetterSubject", pv.deontic_better_subject),
         }
         original = pv.REPOS
-        for filename, (needle, reader) in cases.items():
-            with self.subTest(filename), tempfile.TemporaryDirectory() as tmp:
+        for label, (filename, needle, reader) in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
                 tree = pathlib.Path(tmp) / "Repositories"
                 shutil.copytree(original, tree)
                 target = tree / filename
@@ -130,18 +168,19 @@ class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
 
     def setUp(self):
         self.lists = pv.read_all()
-        self.singles = pv.single_token(pv.union(self.lists))
+        self.tails = pv.exposed_tail(pv.union(self.lists))
 
-    def test_every_single_token_form_is_held_by_the_splitter(self):
-        unprotected = self.singles - self.lists["split"]
-        undeclared = unprotected - set(DELIBERATELY_UNPROTECTED)
+    def test_every_exposed_word_is_held_by_the_splitter(self):
+        unprotected = self.tails - self.lists["split"]
+        undeclared = unprotected - set(PROTECTED_BY_A_SECOND_MECHANISM)
         self.assertFalse(
             undeclared,
-            f"{sorted(undeclared)} are obligation forms of one word that "
-            "`clauseInternalLead` does not hold, so a sentence can be cut "
-            "between them and what they govern -- the `I hafta` defect. Add "
-            "them to `clauseInternalLead`, or to DELIBERATELY_UNPROTECTED with "
-            "a reason."
+            f"{sorted(undeclared)} end an obligation frame and "
+            "`clauseInternalLead` does not hold them, so a sentence can be cut "
+            "between the frame and what it governs -- the `I hafta` defect. "
+            "Add them to `clauseInternalLead`, drop the frames that end in "
+            "them, or add an entry to PROTECTED_BY_A_SECOND_MECHANISM naming "
+            "the mechanism that protects them instead."
         )
 
     def test_every_declared_exception_is_still_one(self):
@@ -151,26 +190,64 @@ class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
         becomes a comment that reads like a rule and checks nothing, and the
         next form added beside it inherits that.
         """
-        for form, reason in DELIBERATELY_UNPROTECTED.items():
-            with self.subTest(form):
+        for word, reason in PROTECTED_BY_A_SECOND_MECHANISM.items():
+            with self.subTest(word):
                 self.assertIn(
-                    form, self.singles,
-                    f"`{form}` is declared unprotected but no list calls it an "
-                    "obligation any more; drop the declaration."
+                    word, self.tails,
+                    f"`{word}` is declared an exception but no obligation frame "
+                    "ends in it any more; drop the declaration."
                 )
                 self.assertNotIn(
-                    form, self.lists["split"],
-                    f"`{form}` is declared unprotected and the splitter now "
+                    word, self.lists["split"],
+                    f"`{word}` is declared an exception and the splitter now "
                     "holds it; drop the declaration."
                 )
                 self.assertGreater(len(reason), 40, "a reason, not a label")
 
-    def test_the_check_notices_a_form_that_slips_through(self):
-        """The mutation the test above exists for, run against it."""
+    def test_the_second_mechanism_holds_every_subject_those_frames_carry(self):
+        """The exception's reason, checked rather than read.
+
+        `better` leaves the filter above naming `deonticBetterSubject` as what
+        protects it. Nothing checked that set existed, let alone that it held
+        the subjects the four `better` frames carry -- so trimming it would
+        have reopened the `I better` row with the declaration still reading
+        like a rule.
+        """
+        subjects = pv.deontic_better_subject()
+        missing = BETTER_SUBJECTS - subjects
+        self.assertFalse(
+            missing,
+            f"{sorted(missing)} stand in front of `better` in a frame the "
+            "router calls an obligation, and `deonticBetterSubject` no longer "
+            "holds them, so those sentences are cut at `better` after all."
+        )
+
+    def test_the_check_notices_a_single_word_that_slips_through(self):
+        """The mutation the invariant exists for, run against it."""
         lists = copy.deepcopy(self.lists)
         lists["route"] = lists["route"] | {"mustnt"}
-        slipped = pv.single_token(pv.union(lists)) - lists["split"]
-        self.assertIn("mustnt", slipped - set(DELIBERATELY_UNPROTECTED))
+        slipped = pv.exposed_tail(pv.union(lists)) - lists["split"]
+        self.assertIn("mustnt", slipped - set(PROTECTED_BY_A_SECOND_MECHANISM))
+
+    def test_the_check_notices_a_multi_word_frame_that_slips_through(self):
+        """The mutation the reformulation exists for.
+
+        The filter this replaced kept only forms with no space in them, on the
+        reasoning that every multi-word frame ends in `to`. Four did not, and
+        `got ta` -- a real entry of `obligationLead` until this change -- was
+        exposed at `ta` and left the old filter looking protected. Any frame
+        whose last word the splitter does not hold has to be caught, however
+        many words stand in front of it.
+        """
+        lists = copy.deepcopy(self.lists)
+        lists["route"] = lists["route"] | {"got ta"}
+        self.assertNotIn(
+            "got ta", the_filter_this_replaced(lists["route"]),
+            "the mutation is not a counterexample to the old filter, so it "
+            "says nothing about the reformulation"
+        )
+        slipped = pv.exposed_tail(pv.union(lists)) - lists["split"]
+        self.assertIn("ta", slipped - set(PROTECTED_BY_A_SECOND_MECHANISM))
 
 
 class WhatTheListsAgreeOn(unittest.TestCase):
@@ -207,7 +284,7 @@ class WhatTheListsAgreeOn(unittest.TestCase):
         lists = pv.read_all()
         whole = pv.union(lists)
         self.assertLess(len(AGREED), len(whole) / 2)
-        self.assertEqual(len(whole), 38)
+        self.assertEqual(len(whole), 37)
 
 
 if __name__ == "__main__":

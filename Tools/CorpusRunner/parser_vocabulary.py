@@ -154,6 +154,24 @@ def dangling_auxiliary():
     return _alternatives(blob)
 
 
+def deontic_better_subject():
+    """`SpeechRepair.deonticBetterSubject` -- the second protection mechanism.
+
+    `better` cannot go in `clauseInternalLead`, which sees one token and would
+    then refuse to cut "the weather is better book the campsite". The splitter
+    reads the word *in front of* `better` instead, at the same `guard` and to
+    the same effect, so every `better` frame is protected -- by a mechanism the
+    one-token check cannot see. Read here so the suite can check it holds the
+    subjects those frames carry.
+    """
+    body = _one(
+        r"private static let deonticBetterSubject: Set<String> = \[(.*?)\n    \]",
+        _source("SpeechRepair.swift"),
+        "deonticBetterSubject",
+    )
+    return {s for s in re.findall(r'"((?:[^"\\]|\\.)*)"', re.sub(r"//[^\n]*", "", body))}
+
+
 #: Every list, by the thing it gates. The key is what a reader has to know.
 LISTS = {
     "split": clause_internal_lead,
@@ -183,11 +201,21 @@ def union(lists=None):
     return out
 
 
-def single_token(forms):
-    """Forms of one word, which are the ones clause splitting can sever.
+def exposed_tail(forms):
+    """The one word of each form that clause splitting can be cut after.
 
-    A multi-word frame ends in `to`, and `to` has been the first entry of
-    `clauseInternalLead` since it was written, so those are protected without
-    anyone deciding to protect them.
+    `ClauseJuxtaposition` decides a cut by looking at the single token standing
+    in front of the candidate verb, and for an obligation frame that token is
+    the frame's **last** word: `to` in "have to call", `better` in "had better
+    call", the whole word in "hafta call". So the last word is the position that
+    has to be protected, and a form of one word is just the case where the last
+    word is the only word.
+
+    This used to filter on "contains no space" and justify it with "every
+    multi-word frame ends in `to`, which the splitter already holds". Those are
+    two different sets: four multi-word forms do not end in `to`, and they left
+    by the door marked protected without satisfying the condition it is named
+    after. One of them, `got ta`, had no protection at all. Filtering on the
+    position the mechanism actually reads makes the check say what it means.
     """
-    return {f for f in forms if " " not in f and "/" not in f}
+    return {f.split()[-1] for f in forms}

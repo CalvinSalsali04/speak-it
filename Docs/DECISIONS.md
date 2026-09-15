@@ -5,7 +5,7 @@
 Five lists in four files say "this is an obligation": the clause splitter's
 `clauseInternalLead`, the router's `obligationLead`, the third-person guard,
 the title layer's `ObligationFrame.link`, and the fragment-gluer's dangling
-auxiliary. They agree on five of the thirty-eight forms between them.
+auxiliary. They agree on five of the thirty-seven forms between them.
 
 The obvious fix is one list, and it is the wrong one. Three of the differences
 are load-bearing. `ObligationFrame.link` calls its omissions safety by
@@ -19,16 +19,42 @@ errand somebody owes. Merging any pair of these breaks the narrower one.
 So the five stay five. What changes is that their differences are now
 **declared and checked** rather than accidental.
 
-The one property that is not a matter of taste is the one that already bit. A
-single-token obligation form missing from `clauseInternalLead` gets cut off
-from what it governs — that is how "I hafta drop the car off on Thursday"
-filed a Memory note titled "I hafta" beside the errand. Multi-word frames end
-in `to`, and `to` has been the first entry of that set since it was written, so
-they are safe without anyone deciding they should be; only single tokens are
-exposed. `Tools/CorpusRunner/test_parser_vocabulary.py` asserts that every
-single-token form any obligation list claims is held by the splitter, with one
-declared exception carrying its reason: `better`, which is also an ordinary
-comparative and is exactly where a spoken sentence starts a new clause.
+The one property that is not a matter of taste is the one that already bit. An
+obligation frame whose last word `clauseInternalLead` does not hold gets cut
+off from what it governs — that is how "I hafta drop the car off on Thursday"
+filed a Memory note titled "I hafta" beside the errand.
+
+The position is the frame's **last** word, because that is the single token
+`ClauseJuxtaposition` reads in front of a candidate verb: `to` in "have to
+call", `better` in "had better call", the whole word in "hafta call".
+`Tools/CorpusRunner/test_parser_vocabulary.py` asserts that the last word of
+every form any obligation list claims is held by the splitter.
+
+The first version of that check filtered on "has no space" and justified it
+with "every multi-word frame ends in `to`". Those are different sets and the
+difference was not empty. Four frames do not end in `to`. Three are the
+`better` family, and they are protected — by `deonticBetterSubject`, which
+reads the word in front of `better` at the same guard, because `better` is also
+an ordinary comparative and cannot live in a set that sees one token. That is a
+real second mechanism, so it is now read and checked alongside the five: it
+must still hold every subject those frames carry.
+
+**The fourth had no mechanism, and it is gone.** `got\s+ta` sat in
+`obligationLead` as a second spelling of `gotta`, in no other vocabulary, no
+test, and none of the seven development sets. It was exposed at `ta`, which the
+splitter does not hold, so "I got ta call Dave" was severed into a Memory row
+titled "I got ta" and an errand — the `I hafta` defect, reached by the one
+spelling the entry existed to serve. Removing it was preferred to adding `ta`
+to `clauseInternalLead`: `ta` is also a noun people say ("email the TA send the
+form"), so holding it would suppress a real boundary to protect a spelling with
+no observed instance. A router entry that cannot survive the splitter is not a
+capability the router has.
+
+Recording the shape rather than the instance: an exception list that grows
+every time the filter is wrong is a marker standing in for the judgement it
+approximates. The filter was changed to read the position the mechanism
+actually reads, and the one remaining exception names the mechanism that covers
+it and is checked against it.
 
 It is a Python check over the Swift source rather than an XCTest because the
 constants are `private` and a test cannot read them, and because it then runs
