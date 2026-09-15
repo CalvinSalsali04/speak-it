@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://speakit.local/speechlab/failure-signature.schema.json",
+  "title": "SpeechLab failure signature", "type": "object", "additionalProperties": false,
+  "required": ["literal", "normalized_directional", "family", "changed_fields", "count", "first_seen", "representatives", "counterexamples"],
+  "properties": {
+    "literal": {"type": "string"}, "normalized_directional": {"type": "string"}, "family": {"type": "string"},
+    "changed_fields": {"type": "array", "items": {"type": "string"}}, "count": {"type": "integer", "minimum": 1},
+    "first_seen": {"type": "string"}, "representatives": {"type": "array", "items": {"type": "object"}}, "counterexamples": {"type": "array", "items": {"type": "object"}}
+  }
+}

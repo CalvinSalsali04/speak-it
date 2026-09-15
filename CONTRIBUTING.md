@@ -56,9 +56,32 @@ the pull request.
 | Job | Runner | Runs when |
 | --- | --- | --- |
 | Secrets, workflow and shell lint | Linux | always |
+| Language tooling (mutation generator and scorer self-tests) | Linux | iOS or `Tools/` files changed |
 | Founder dashboard (lint + tests) | Linux | `FounderDashboard/` changed |
 | Referral service (tests) | Linux | `ReferralService/` changed |
 | iOS app (corpus gate, unit tests, Release compile on `main`) | macOS | iOS files changed **and** a Mac runner is available (below) |
+| Language metrics (corpus gate, development sets, held-out set) | macOS | **dispatch only for now** — see below |
+
+### The language metrics job
+
+`Tools/CI/language-metrics.sh` produces every language number in one run: the
+gating corpus, the four development sets, any corpus directory exposing an
+argument-free `score.sh`, and the held-out set. It needs a Mac because the
+parser links Apple's `NaturalLanguage`, but no simulator, no unit suite and no
+release build — so it is a small fraction of the iOS job's cost.
+
+Dispatch it with `language_only` (Actions → CI → Run workflow) to get those
+numbers without also paying for the unit suite.
+
+It is dispatch-only until one real run has confirmed its runtime, its cost, its
+output format and that every scorer works. Enabling it per pull request is one
+line in `ci.yml` — add `|| vars.IOS_RUNNER != ''` to the `language` job's `if` —
+and should happen once that run has been read.
+
+The script **refuses** `--verbose` and `--failures` rather than forwarding
+them, and passes no flag to any scorer, so no CI run can print held-out
+failures. Reviewing those at release stays a deliberate, separate command:
+`./Tools/CorpusRunner/heldout/score.sh --verbose`.
 
 ### Why the iOS job needs a Mac of its own
 

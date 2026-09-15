@@ -1,0 +1,389 @@
+{
+  "algorithm": "deterministic greedy set cover",
+  "selection": [
+    {
+      "rendering_id": "rd-fc0dc910314e3026ef24ab25",
+      "new_features": [
+        "phenomenon:repetition"
+      ]
+    },
+    {
+      "rendering_id": "rd-fb399649d7813f48091cf4d9",
+      "new_features": [
+        "phenomenon:punctuation-corruption"
+      ]
+    },
+    {
+      "rendering_id": "rd-fa5697086fc80bf7315c01aa",
+      "new_features": [
+        "phenomenon:shared-date"
+      ]
+    },
+    {
+      "rendering_id": "rd-e2b1f8ffe420c1135006393b",
+      "new_features": [
+        "phenomenon:location-inheritance"
+      ]
+    },
+    {
+      "rendering_id": "rd-d50bcd6986f75ac0443a5c9f",
+      "new_features": [
+        "phenomenon:shared-time"
+      ]
+    },
+    {
+      "rendering_id": "rd-d429c4c43a47ffe12657cdbe",
+      "new_features": [
+        "phenomenon:ordinary-word-name"
+      ]
+    },
+    {
+      "rendering_id": "rd-ccc876ad8f5e2370e9929595",
+      "new_features": [
+        "phenomenon:partial-thought"
+      ]
+    },
+    {
+      "rendering_id": "rd-c9f410bad1f0704aec730085",
+      "new_features": [
+        "phenomenon:false-start"
+      ]
+    },
+    {
+      "rendering_id": "rd-c6857defa7453f576b541d16",
+      "new_features": [
+        "phenomenon:information-mixed-with-action"
+      ]
+    },
+    {
+      "rendering_id": "rd-c5c9f3612c59346d988d3850",
+      "new_features": [
+        "phenomenon:abandoned-thought"
+      ]
+    },
+    {
+      "rendering_id": "rd-c30db03168dbc72685a6855f",
+      "new_features": [
+        "phenomenon:multiple-thoughts"
+      ]
+    },
+    {
+      "rendering_id": "rd-c1257996f9e1c59b05be9303",
+      "new_features": [
+        "phenomenon:prohibition"
+      ]
+    },
+    {
+      "rendering_id": "rd-bf0ec6cf8c3b9557b354df6e",
+      "new_features": [
+        "phenomenon:rambling-introduction"
+      ]
+    },
+    {
+      "rendering_id": "rd-bccabbda4001080441cf8444",
+      "new_features": [
+        "phenomenon:asr-substitution"
+      ]
+    },
+    {
+      "rendering_id": "rd-b97fd51194cdbe065becfd25",
+      "new_features": [
+        "phenomenon:shared-subject"
+      ]
+    },
+    {
+      "rendering_id": "rd-b5e3fb407d75185b077d2089",
+      "new_features": [
+        "phenomenon:never-mind-withdrawal"
+      ]
+    },
+    {
+      "rendering_id": "rd-b574e2539c7da70addcacb13",
+      "new_features": [
+        "phenomenon:self-correction-location"
+      ]
+    },
+    {
+      "rendering_id": "rd-b39a0eb67bb481956e6e5f23",
+      "new_features": [
+        "phenomenon:multiple-tasks"
+      ]
+    },
+    {
+      "rendering_id": "rd-b34be9b0f5b0b381004c376d",
+      "new_features": [
+        "phenomenon:asr-deletion"
+      ]
+    },
+    {
+      "rendering_id": "rd-b20dd3f91d3ded87051bf967",
+      "new_features": [
+        "phenomenon:unnumbered-list"
+      ]
+    },
+    {
+      "rendering_id": "rd-ae46d208c3dd4a658b142057",
+      "new_features": [
+        "phenomenon:conjunction-ambiguity"
+      ]
+    },
+    {
+      "rendering_id": "rd-ab7f35672ace8e8b24bdcb69",
+      "new_features": [
+        "phenomenon:future-intention"
+      ]
+    },
+    {
+      "rendering_id": "rd-a25513f97aaca777ef5b7be4",
+      "new_features": [
+        "phenomenon:question-mixed-with-action"
+      ]
+    },
+    {
+      "rendering_id": "rd-9e52ad88b8120f958a81cf6a",
+      "new_features": [
+        "phenomenon:filler-words"
+      ]
+    },
+    {
+      "rendering_id": "rd-9a6177c4a96c7026aefe361c",
+      "new_features": [
+        "phenomenon:outstanding-obligation"
+      ]
+    },
+    {
+      "rendering_id": "rd-9861124c303503d90841c01b",
+      "new_features": [
+        "phenomenon:sign-off-trailing-noise"
+      ]
+    },
+    {
+      "rendering_id": "rd-90da97909e306cb613208755",
+      "new_features": [
+        "phenomenon:long-capture"
+      ]
+    },
+    {
+      "rendering_id": "rd-8cb41a36b32bf217d1047d0c",
+      "new_features": [
+        "phenomenon:shared-object"
+      ]
+    },
+    {
+      "rendering_id": "rd-8a0d1ae4729cc14800474a9e",
+      "new_features": [
+        "phenomenon:store-brand-product-name"
+      ]
+    },
+    {
+      "rendering_id": "rd-89813487a6b3b8afd4500a55",
+      "new_features": [
+        "phenomenon:uncertainty"
+      ]
+    },
+    {
+      "rendering_id": "rd-86b4ce258315bd154182b7f5",
+      "new_features": [
+        "phenomenon:quoted-speech"
+      ]
+    },
+    {
+      "rendering_id": "rd-83e1f6798f76237bd28894fb",
+      "new_features": [
+        "phenomenon:short-fragment"
+      ]
+    },
+    {
+      "rendering_id": "rd-811ab05b4d1169238ae0de16",
+      "new_features": [
+        "phenomenon:pronoun-resolution"
+      ]
+    },
+    {
+      "rendering_id": "rd-800af686b1cb9a6e8e6b6b54",
+      "new_features": [
+        "phenomenon:self-correction-person"
+      ]
+    },
+    {
+      "rendering_id": "rd-7198ff2143d625f607c5d638",
+      "new_features": [
+        "phenomenon:reported-speech"
+      ]
+    },
+    {
+      "rendering_id": "rd-718f9d8a607a6034d40cd4cd",
+      "new_features": [
+        "phenomenon:code-switch-token"
+      ]
+    },
+    {
+      "rendering_id": "rd-6fdf0960e00efe86debd2a8c",
+      "new_features": [
+        "phenomenon:uncommon-proper-noun"
+      ]
+    },
+    {
+      "rendering_id": "rd-683e78c36e81492f70f18d6c",
+      "new_features": [
+        "phenomenon:lowercase"
+      ]
+    },
+    {
+      "rendering_id": "rd-68387f0ec0346ca6bfeac981",
+      "new_features": [
+        "phenomenon:numbered-list"
+      ]
+    },
+    {
+      "rendering_id": "rd-6373e84a54a6091be7c3fb71",
+      "new_features": [
+        "phenomenon:hesitation"
+      ]
+    },
+    {
+      "rendering_id": "rd-5aee3401a901396f1352a870",
+      "new_features": [
+        "phenomenon:recurrence"
+      ]
+    },
+    {
+      "rendering_id": "rd-56cd28643194a8b75ea20a17",
+      "new_features": [
+        "phenomenon:ambiguous-pronoun"
+      ]
+    },
+    {
+      "rendering_id": "rd-54d7bcd9c6b64bdc8f63188a",
+      "new_features": [
+        "phenomenon:change-of-intent"
+      ]
+    },
+    {
+      "rendering_id": "rd-50f27d93265ef691f1fb5d84",
+      "new_features": [
+        "phenomenon:cancellation"
+      ]
+    },
+    {
+      "rendering_id": "rd-506a322902f61a59e98db0d0",
+      "new_features": [
+        "phenomenon:casing-corruption"
+      ]
+    },
+    {
+      "rendering_id": "rd-4d2f8c2cfd643a129ec4e354",
+      "new_features": [
+        "phenomenon:completed-action"
+      ]
+    },
+    {
+      "rendering_id": "rd-49cd313ac56979c6b51f02be",
+      "new_features": [
+        "phenomenon:shared-location"
+      ]
+    },
+    {
+      "rendering_id": "rd-480d7ff3d7204072a2a7a1c3",
+      "new_features": [
+        "phenomenon:self-correction-quantity"
+      ]
+    },
+    {
+      "rendering_id": "rd-46972e81db1a1c89dc6c6116",
+      "new_features": [
+        "phenomenon:exact-time"
+      ]
+    },
+    {
+      "rendering_id": "rd-442628e9869a7577a8f651f1",
+      "new_features": [
+        "phenomenon:punctuation-loss"
+      ]
+    },
+    {
+      "rendering_id": "rd-373e2ef659e9333d8c17eb72",
+      "new_features": [
+        "phenomenon:past-event"
+      ]
+    },
+    {
+      "rendering_id": "rd-32f1d136481e28521c90df1f",
+      "new_features": [
+        "phenomenon:sequencing"
+      ]
+    },
+    {
+      "rendering_id": "rd-2e044a36436b1498ed0a6fb7",
+      "new_features": [
+        "phenomenon:conditional-intent"
+      ]
+    },
+    {
+      "rendering_id": "rd-2b97cb69b95349d575dd6474",
+      "new_features": [
+        "phenomenon:temporal-inheritance"
+      ]
+    },
+    {
+      "rendering_id": "rd-26f8ca77b69984da96182ae8",
+      "new_features": [
+        "phenomenon:relative-date"
+      ]
+    },
+    {
+      "rendering_id": "rd-26ddb728d7440e1b038c2cdc",
+      "new_features": [
+        "phenomenon:rephrasing"
+      ]
+    },
+    {
+      "rendering_id": "rd-1dda7ed2a60e6bd87116f41b",
+      "new_features": [
+        "phenomenon:self-correction-date"
+      ]
+    },
+    {
+      "rendering_id": "rd-1a96ffb7cae2c34daedf2730",
+      "new_features": [
+        "phenomenon:asr-insertion"
+      ]
+    },
+    {
+      "rendering_id": "rd-16b1698aaeaba8b47d3ca82d",
+      "new_features": [
+        "phenomenon:relative-duration"
+      ]
+    },
+    {
+      "rendering_id": "rd-167e81dc1006bcb213d6923c",
+      "new_features": [
+        "phenomenon:restart"
+      ]
+    },
+    {
+      "rendering_id": "rd-15b012580b0a51cdaa80ec00",
+      "new_features": [
+        "phenomenon:self-correction-time"
+      ]
+    },
+    {
+      "rendering_id": "rd-154c3459c1e8f3abc80f2f7f",
+      "new_features": [
+        "phenomenon:homophone"
+      ]
+    },
+    {
+      "rendering_id": "rd-07bc54aae85101b47e3cc763",
+      "new_features": [
+        "phenomenon:rambling-ending"
+      ]
+    },
+    {
+      "rendering_id": "rd-03a1d4cebf1f5bad7036ead4",
+      "new_features": [
+        "phenomenon:negation"
+      ]
+    }
+  ]
+}

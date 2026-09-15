@@ -1,0 +1,259 @@
+{
+  "submitted": 150,
+  "accepted": 148,
+  "rejected": 2,
+  "rejection_rate": 0.013333,
+  "rejection_reasons": {
+    "exact_duplicate_existing": 2
+  },
+  "rejections": [
+    {
+      "input_line": 10,
+      "blueprint_id": "bp-fb0212d38298178cb17872f7",
+      "reason": "exact_duplicate_existing",
+      "text": "Cancel the saved reminder to water the basil for the launch."
+    },
+    {
+      "input_line": 13,
+      "blueprint_id": "bp-f90739cf40cf1dcb76ad1a3d",
+      "reason": "exact_duplicate_existing",
+      "text": "Do not send the confidential draft for the appointment on Thu Aug 6 at 16:15."
+    }
+  ],
+  "blueprint_identity_violations": 0,
+  "lexical_anchor_warnings": 33,
+  "anchor_warning_details": [
+    {
+      "input_line": 1,
+      "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+      "missing": [
+        "record that the invoice was not sent for the birthday"
+      ]
+    },
+    {
+      "input_line": 2,
+      "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+      "missing": [
+        "record that the invoice was not sent for the birthday"
+      ]
+    },
+    {
+      "input_line": 3,
+      "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+      "missing": [
+        "record that the invoice was not sent for the birthday"
+      ]
+    },
+    {
+      "input_line": 16,
+      "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+      "missing": [
+        "remember the window-seat preference for the appointment"
+      ]
+    },
+    {
+      "input_line": 17,
+      "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+      "missing": [
+        "remember the window-seat preference for the appointment"
+      ]
+    },
+    {
+      "input_line": 18,
+      "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+      "missing": [
+        "remember the window-seat preference for the appointment"
+      ]
+    },
+    {
+      "input_line": 22,
+      "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+      "missing": [
+        "remember the design-team detail for the launch"
+      ]
+    },
+    {
+      "input_line": 23,
+      "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+      "missing": [
+        "remember the design-team detail for the launch"
+      ]
+    },
+    {
+      "input_line": 24,
+      "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+      "missing": [
+        "remember the design-team detail for the launch"
+      ]
+    },
+    {
+      "input_line": 31,
+      "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+      "missing": [
+        "remember the design-team detail for the appointment"
+      ]
+    },
+    {
+      "input_line": 32,
+      "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+      "missing": [
+        "remember the design-team detail for the appointment"
+      ]
+    },
+    {
+      "input_line": 33,
+      "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+      "missing": [
+        "remember the design-team detail for the appointment"
+      ]
+    },
+    {
+      "input_line": 40,
+      "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+      "missing": [
+        "remember the window-seat preference for the core project"
+      ]
+    },
+    {
+      "input_line": 41,
+      "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+      "missing": [
+        "remember the window-seat preference for the core project"
+      ]
+    },
+    {
+      "input_line": 42,
+      "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+      "missing": [
+        "remember the window-seat preference for the core project"
+      ]
+    },
+    {
+      "input_line": 61,
+      "blueprint_id": "bp-e9215ccf5e30707512893404",
+      "missing": [
+        "record that the invoice was not sent for the interview"
+      ]
+    },
+    {
+      "input_line": 62,
+      "blueprint_id": "bp-e9215ccf5e30707512893404",
+      "missing": [
+        "record that the invoice was not sent for the interview"
+      ]
+    },
+    {
+      "input_line": 63,
+      "blueprint_id": "bp-e9215ccf5e30707512893404",
+      "missing": [
+        "record that the invoice was not sent for the interview"
+      ]
+    },
+    {
+      "input_line": 64,
+      "blueprint_id": "bp-e8926551bb071365f1833cc1",
+      "missing": [
+        "remember the design-team detail for the interview"
+      ]
+    },
+    {
+      "input_line": 65,
+      "blueprint_id": "bp-e8926551bb071365f1833cc1",
+      "missing": [
+        "remember the design-team detail for the interview"
+      ]
+    },
+    {
+      "input_line": 66,
+      "blueprint_id": "bp-e8926551bb071365f1833cc1",
+      "missing": [
+        "remember the design-team detail for the interview"
+      ]
+    },
+    {
+      "input_line": 73,
+      "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+      "missing": [
+        "record that the invoice was not sent for the family trip"
+      ]
+    },
+    {
+      "input_line": 74,
+      "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+      "missing": [
+        "record that the invoice was not sent for the family trip"
+      ]
+    },
+    {
+      "input_line": 75,
+      "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+      "missing": [
+        "record that the invoice was not sent for the family trip"
+      ]
+    },
+    {
+      "input_line": 79,
+      "blueprint_id": "bp-e528e4e96df64cba249fd038",
+      "missing": [
+        "remember the window-seat preference for the interview"
+      ]
+    },
+    {
+      "input_line": 80,
+      "blueprint_id": "bp-e528e4e96df64cba249fd038",
+      "missing": [
+        "remember the window-seat preference for the interview"
+      ]
+    },
+    {
+      "input_line": 81,
+      "blueprint_id": "bp-e528e4e96df64cba249fd038",
+      "missing": [
+        "remember the window-seat preference for the interview"
+      ]
+    },
+    {
+      "input_line": 85,
+      "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+      "missing": [
+        "record that the invoice was not sent for the travel plan"
+      ]
+    },
+    {
+      "input_line": 86,
+      "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+      "missing": [
+        "record that the invoice was not sent for the travel plan"
+      ]
+    },
+    {
+      "input_line": 87,
+      "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+      "missing": [
+        "record that the invoice was not sent for the travel plan"
+      ]
+    },
+    {
+      "input_line": 145,
+      "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+      "missing": [
+        "remember the window-seat preference for the client account"
+      ]
+    },
+    {
+      "input_line": 146,
+      "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+      "missing": [
+        "remember the window-seat preference for the client account"
+      ]
+    },
+    {
+      "input_line": 147,
+      "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+      "missing": [
+        "remember the window-seat preference for the client account"
+      ]
+    }
+  ],
+  "note": "Anchor warnings are review signals, not automatic semantic-label verdicts."
+}

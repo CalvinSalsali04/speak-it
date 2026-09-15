@@ -1,0 +1,153 @@
+{
+  "measures": [
+    "new semantic families",
+    "new semantic feature combinations",
+    "new normalized rendering structures",
+    "new failure signatures",
+    "new broad failure families",
+    "marginal failures per 10K/100K",
+    "marginal novel failures per compute hour"
+  ],
+  "snapshots": [
+    {
+      "cases": 1,
+      "semantic_families": 1,
+      "semantic_feature_combinations": 1,
+      "normalized_rendering_structures": 1,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 2,
+      "semantic_families": 2,
+      "semantic_feature_combinations": 2,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 3,
+      "semantic_families": 3,
+      "semantic_feature_combinations": 3,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 4,
+      "semantic_families": 4,
+      "semantic_feature_combinations": 4,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 5,
+      "semantic_families": 5,
+      "semantic_feature_combinations": 5,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 6,
+      "semantic_families": 6,
+      "semantic_feature_combinations": 6,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 7,
+      "semantic_families": 7,
+      "semantic_feature_combinations": 7,
+      "normalized_rendering_structures": 2,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 8,
+      "semantic_families": 8,
+      "semantic_feature_combinations": 8,
+      "normalized_rendering_structures": 3,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 9,
+      "semantic_families": 9,
+      "semantic_feature_combinations": 9,
+      "normalized_rendering_structures": 3,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 10,
+      "semantic_families": 10,
+      "semantic_feature_combinations": 10,
+      "normalized_rendering_structures": 3,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 100,
+      "semantic_families": 87,
+      "semantic_feature_combinations": 100,
+      "normalized_rendering_structures": 22,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 200,
+      "semantic_families": 167,
+      "semantic_feature_combinations": 200,
+      "normalized_rendering_structures": 41,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 300,
+      "semantic_families": 241,
+      "semantic_feature_combinations": 300,
+      "normalized_rendering_structures": 62,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    },
+    {
+      "cases": 324,
+      "semantic_families": 260,
+      "semantic_feature_combinations": 324,
+      "normalized_rendering_structures": 65,
+      "failure_signatures": 0,
+      "broad_failure_families": null,
+      "marginal_failures_per_10k": null,
+      "marginal_novel_failures_per_compute_hour": null
+    }
+  ]
+}

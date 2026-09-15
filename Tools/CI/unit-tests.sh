@@ -5,6 +5,7 @@
 #
 #   Tools/CI/unit-tests.sh                                  # SpeakItTests (the unit suite)
 #   Tools/CI/unit-tests.sh SpeakItTests/TemporalFullPathTests
+#   Tools/CI/unit-tests.sh SpeakItTests/AbandonmentTests,SpeakItTests/SpeechRepairTests
 #   Tools/CI/unit-tests.sh SpeakItUITests                   # the XCUITest suite, slow
 #   SPEAKIT_SHARDS=3 Tools/CI/unit-tests.sh                 # the unit suite across three slim simulators
 #
@@ -28,27 +29,27 @@ DERIVED_DATA="${SPEAKIT_DERIVED_DATA:-/tmp/SpeakItClaudeTests}"
 RESULT_BUNDLE="${SPEAKIT_RESULT_BUNDLE:-}"
 SHARDS="${SPEAKIT_SHARDS:-1}"
 
-# Best-effort pass/fail summary for the GitHub job summary; the .xcresult is
-# the authoritative record and is uploaded as an artifact on failure.
+# Reads the failing assertions out of an .xcresult and prints them.
+#
+# They go to stdout as well as to the GitHub job summary on purpose. The
+# .xcresult is the authoritative record and is uploaded as an artifact, but an
+# artifact is downloaded from a blob host, and a session reviewing a CI failure
+# may not be able to reach one - which leaves a list of test names and no
+# message. The job log is the one place every reader can already see.
 summarize() {
   local title="$1" bundle="$2"
-  [ -n "$bundle" ] && [ -d "$bundle" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
-  local summary_file
+  [ -n "$bundle" ] && [ -d "$bundle" ] || return 0
+  local summary_file text_file
   summary_file="$(mktemp)"
+  text_file="$(mktemp)"
   if xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$summary_file" 2>/dev/null; then
-    python3 - "$title" "$summary_file" <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
-import json, sys
-data = json.load(open(sys.argv[2]))
-print(f"### {sys.argv[1]}")
-print()
-print("| Result | Passed | Failed | Skipped |")
-print("|---|---|---|---|")
-print(f"| {data.get('result', '?')} | {data.get('passedTests', '?')} | {data.get('failedTests', '?')} | {data.get('skippedTests', '?')} |")
-for failure in data.get("testFailures", [])[:25]:
-    print(f"- `{failure.get('testName', '?')}` — {failure.get('failureText', '').strip()[:300]}")
-PY
+    python3 "$HERE/xcresult-failures.py" "$title" "$summary_file" > "$text_file" 2>/dev/null || true
+    cat "$text_file"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      cat "$text_file" >> "$GITHUB_STEP_SUMMARY"
+    fi
   fi
-  rm -f "$summary_file"
+  rm -f "$summary_file" "$text_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -62,9 +63,16 @@ if [ "$SHARDS" = "1" ] || [[ "$ONLY" == */* ]]; then
     -scheme SpeakIt
     -destination "platform=iOS Simulator,id=$SIMULATOR"
     -derivedDataPath "$DERIVED_DATA"
-    -only-testing:"$ONLY"
     CODE_SIGNING_ALLOWED=NO
   )
+  # A comma-separated list is several -only-testing arguments, not one.
+  # Iterating on a defect usually means two or three classes — the one that
+  # failed and the one that is supposed to protect it — and passing them as a
+  # single identifier matched nothing and reported a build that ran no tests.
+  IFS=',' read -r -a only_classes <<< "$ONLY"
+  for only_class in "${only_classes[@]}"; do
+    [ -n "$only_class" ] && args+=(-only-testing:"$only_class")
+  done
   if [ -n "$RESULT_BUNDLE" ]; then
     rm -rf "$RESULT_BUNDLE"
     args+=(-resultBundlePath "$RESULT_BUNDLE")

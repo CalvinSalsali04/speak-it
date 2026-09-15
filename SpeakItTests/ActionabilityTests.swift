@@ -358,6 +358,118 @@ final class ActionabilityTests: XCTestCase {
                        ["tomorrow morning email the landlord"])
     }
 
+    /// An ordinal ends a noun phrase; an amount modifies the noun behind it.
+    ///
+    /// The guard that reads a digit in front of a verb-shaped word exists for
+    /// "the $89 charge", where the number belongs to the phrase that follows.
+    /// "The 26th" is finished, and the guard was swallowing the boundary
+    /// behind every spoken date, so a fact and the errand it prompted arrived
+    /// as one row that kept the fact and lost the errand.
+    func testAnOrdinalDoesNotReadAsAnAmountInFrontOfAVerb() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "Priya starts on the 14th order her a laptop"),
+            ["Priya starts on the 14th", "order her a laptop"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "the invoice went out on the 3rd chase the payment"),
+            ["the invoice went out on the 3rd", "chase the payment"]
+        )
+        // A fronted ordinal is still an adjunct, not a clause of its own.
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "on the 1st renew the car insurance"),
+            ["on the 1st renew the car insurance"]
+        )
+    }
+
+    /// An adjunct in front of a cut has to announce itself with a preposition,
+    /// and a verbless head ending on a time is not enough on its own.
+    ///
+    /// Measured on 2026-09-11 (run 34597902006). Accepting any verbless head
+    /// that ends on a time — so that "first thing tomorrow email the landlord"
+    /// would stop being cut — lost the boundary in both captures below.
+    /// `NLTagger` does not reliably call a sentence-initial "book" or "text" a
+    /// verb, so a head that is plainly an instruction reads as verbless and
+    /// ends on a day, and the rule swallowed the errand behind it. The
+    /// preposition is the half of the test the tagger cannot be wrong about.
+    ///
+    /// The over-split that relaxation was aimed at is real and still open:
+    /// "first thing tomorrow email the landlord about the damp" arrives as two
+    /// rows. Its root cause is the same vocabulary in `Actionability`, which
+    /// routes the merged capture to Memory rather than Today, so the fix
+    /// belongs there and wants its own measurement.
+    func testAnAdjunctInFrontOfACutNeedsAPrepositionAndNotJustATime() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "book the car in for Thursday renew my passport"),
+            ["book the car in for Thursday", "renew my passport"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "text Marcus about Saturday move the standup to 9:15"),
+            ["text Marcus about Saturday", "move the standup to 9:15"]
+        )
+        // A head with a verb in it is a clause and keeps its cut.
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "buy the milk tomorrow call the dentist"),
+            ["buy the milk tomorrow", "call the dentist"]
+        )
+    }
+
+    /// A complement-taking verb governs the clause behind it, so the verb in
+    /// that clause is its predicate rather than a fresh instruction.
+    func testAClausalComplementIsNotASecondInstruction() {
+        for text in [
+            "remind me the bins go out on Tuesday",
+            "I told Ines the meeting moved to Thursday",
+            "remember the car needs an oil change",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+    }
+
+    /// Nothing cuts between two juxtaposed **statements**, and this is the
+    /// list any rule that one day does must leave alone.
+    ///
+    /// A rule was written and measured on 2026-09-11 (run 34596594804). It cut
+    /// where the second clause opened on the speaker's own possessive, a
+    /// first-person obligation, or a resolved proper name — and it gained
+    /// nothing at all on `statement-runon`, the development family it was
+    /// written for, which stayed at 0 of 6 on thought count. It also broke four
+    /// cases of the gating corpus, and all four say the same thing: a subject
+    /// and a predicate in the words in front of the cut **do not make those
+    /// words a finished clause**. "I have no idea where" has both and is
+    /// plainly unfinished; so does "It reminded me of something", which a
+    /// relative clause with no relativizer is about to modify.
+    ///
+    /// The first block is the original guard list, and it remains the hard
+    /// part: structurally these are the same shape as the sentences a
+    /// boundary rule wants to cut — complete clause, noun phrase, verb — so
+    /// nothing but whether the second half is findable alone separates them,
+    /// and a row severed wrongly retrieves under nothing. The second block is
+    /// what the measured attempt actually broke, kept here so the next one
+    /// fails in a second rather than in a dispatch.
+    func testNothingCutsBetweenTwoJuxtaposedStatements() {
+        for text in [
+            // Findable only through the clause in front of them.
+            "the dentist is on Pine Street the parking is round the back",
+            "the boiler pressure sits at one bar the manual says one and a half",
+            "we booked the Halifax hotel the deposit is non refundable",
+            "the car is due its service the mileage limit is thirty thousand",
+            "the recipe takes an hour it serves six",
+            "Priya moved to the Toronto office she starts on the 14th",
+            "our lease runs to March the rent is fixed until then",
+            // A head that is unfinished despite carrying a subject and a verb.
+            "I have no idea where my passport is",
+            "It reminded me of something my dad used to say",
+            "I keep telling myself I'll get to it and I never do, anyway I have to renew my passport",
+            // A verb of saying or thinking takes the whole clause behind it,
+            // whoever it is aimed at.
+            "I told Priya yesterday Marcus is bringing the deck",
+            "I think Priya is bringing the deck",
+            "Sarah said Marcus is chairing the panel this year",
+        ] {
+            XCTAssertEqual(ClauseJuxtaposition.pieces(in: text), [text], text)
+        }
+    }
+
     /// A condition on the speaker in front of the verb is a trigger, and the
     /// body the reader tests starts behind it. A statement behind the
     /// condition is not an errand, and "before I forget" is not a condition.

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/semantic-blueprint.schema.json",
+  "title": "SpeechLab semantic blueprint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["blueprint_id", "family_id", "version", "source_type", "source_provenance", "license_notes", "capture_context", "expected", "semantic_tags", "difficulty_dimensions", "safety_critical"],
+  "properties": {
+    "blueprint_id": {"type": "string", "pattern": "^bp-[a-f0-9]{24}$"},
+    "family_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "source_type": {"enum": ["authored", "public_derived", "human", "adversarial", "production_derived"]},
+    "source_provenance": {"type": "object"},
+    "license_notes": {"type": "string"},
+    "capture_context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reference_time", "timezone", "stored_items", "prior_turns"],
+      "properties": {
+        "reference_time": {"type": "string", "minLength": 1}, "timezone": {"type": "string", "minLength": 1},
+        "stored_items": {"type": "array", "items": {"type": "object"}}, "prior_turns": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "expected": {
+      "type": "object", "additionalProperties": false,
+      "required": ["item_count", "items", "operations", "ambiguity_policy", "shared_context"],
+      "properties": {
+        "item_count": {"type": "integer", "minimum": 0},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+        "operations": {"type": "array", "items": {"type": "object"}},
+        "ambiguity_policy": {"enum": ["act", "review", "preserve-only", "other"]},
+        "shared_context": {"type": "object", "additionalProperties": false, "required": ["temporal", "location", "person"], "properties": {"temporal": {"type": ["string", "null"]}, "location": {"type": ["string", "null"]}, "person": {"type": ["string", "null"]}}}
+      }
+    },
+    "semantic_tags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "difficulty_dimensions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "safety_critical": {"type": "boolean"}
+  },
+  "$defs": {
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["route", "type", "title", "facts", "forbidden_facts", "date", "time", "recurrence", "location", "person", "negation", "prohibition", "state", "needs_review"],
+      "properties": {
+        "route": {"enum": ["Today", "Memory"]}, "type": {"type": "string", "minLength": 1}, "title": {"type": "string"},
+        "facts": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}, "forbidden_facts": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "date": {"type": ["string", "number", "null"]}, "time": {"type": ["string", "number", "null"]}, "recurrence": {"type": ["string", "null"]},
+        "location": {"type": ["string", "null"]}, "person": {"type": ["string", "null"]}, "negation": {"type": "boolean"}, "prohibition": {"type": "boolean"},
+        "state": {"type": "string"}, "needs_review": {"type": "boolean"}
+      }
+    }
+  }
+}

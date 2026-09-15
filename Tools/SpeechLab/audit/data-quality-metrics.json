@@ -1,0 +1,554 @@
+{
+  "methodology": {
+    "population_measurement": "all current 324 renderings and all 472 post-import renderings",
+    "manual_stratified_sample": 104,
+    "sample_contents": "all 64 phenomenon variants plus 40 SHA-256-selected base renderings",
+    "near_duplicate_definition": "token-set Jaccard >= 0.80, excluding normalized-identical pairs",
+    "sealed_cases_read": 0,
+    "parser_output_used_as_label": false
+  },
+  "current": {
+    "renderings": 324,
+    "exact_unique_texts": 324,
+    "families_represented": 260,
+    "word_length": {
+      "min": 4,
+      "median": 15.0,
+      "mean": 16.704,
+      "max": 48
+    },
+    "phenomena_per_rendering": {
+      "0": 260,
+      "1": 64
+    },
+    "multi_phenomenon_renderings": 0,
+    "multi_phenomenon_rate": 0.0,
+    "basic_clean_single_item": 180,
+    "basic_clean_single_item_rate": 0.555556,
+    "semantic_archetypes": 26,
+    "context_overlays": 10,
+    "archetype_balance": {
+      "single-task": 10,
+      "reminder": 10,
+      "memory": 10,
+      "idea": 10,
+      "event": 10,
+      "person-fact": 10,
+      "location-trigger": 10,
+      "date-only": 10,
+      "exact-date-time": 10,
+      "recurrence": 10,
+      "negative-statement": 10,
+      "prohibition": 10,
+      "cancellation": 10,
+      "two-independent-tasks": 10,
+      "two-tasks-shared-time": 10,
+      "two-tasks-shared-location": 10,
+      "task-plus-memory": 10,
+      "task-plus-question": 10,
+      "information-plus-task": 10,
+      "person-correction": 10,
+      "date-correction": 10,
+      "time-correction": 10,
+      "change-of-mind": 10,
+      "partial-review": 10,
+      "ambiguous-review": 10,
+      "completed-action": 10
+    },
+    "overlay_balance": {
+      "plain": 26,
+      "person": 26,
+      "relative-date": 26,
+      "exact-time": 26,
+      "named-location": 26,
+      "person-date": 26,
+      "person-time": 26,
+      "shared-context": 26,
+      "priority-context": 26,
+      "weekend-context": 26
+    },
+    "value_agnostic_semantic_shapes": 133,
+    "structural_text_templates": 134,
+    "largest_structural_template": 25,
+    "largest_structural_template_share": 0.07716,
+    "top_structural_templates": [
+      {
+        "template": "<slot> with <slot> on <slot>",
+        "count": 25
+      },
+      {
+        "template": "<slot> with <slot> at <slot> on <slot> at <slot>",
+        "count": 25
+      },
+      {
+        "template": "<slot> with <slot> on <slot> at <slot>",
+        "count": 19
+      },
+      {
+        "template": "<slot> on <slot> at <slot>",
+        "count": 13
+      },
+      {
+        "template": "maybe <slot> with <slot>",
+        "count": 12
+      },
+      {
+        "template": "<slot> on <slot>",
+        "count": 11
+      },
+      {
+        "template": "<slot> with <slot>",
+        "count": 10
+      },
+      {
+        "template": "cancel the saved reminder to <slot>",
+        "count": 10
+      },
+      {
+        "template": "<slot>",
+        "count": 9
+      },
+      {
+        "template": "<slot> at <slot>",
+        "count": 8
+      }
+    ],
+    "renderings_with_all_facts_verbatim": 314,
+    "verbatim_fact_coupling_rate": 0.969136,
+    "family_rendering_count": {
+      "min": 1,
+      "median": 1.0,
+      "max": 25
+    },
+    "normalized_duplicate_groups": 3,
+    "normalized_duplicate_records": 9,
+    "lexical_jaccard_0_80_pairs": 77,
+    "lexical_near_duplicate_records": 66,
+    "lexical_near_duplicate_record_rate": 0.203704,
+    "cross_blueprint_near_pairs": 20
+  },
+  "after_ai_import": {
+    "renderings": 472,
+    "exact_unique_texts": 472,
+    "families_represented": 260,
+    "word_length": {
+      "min": 4,
+      "median": 18.0,
+      "mean": 20.318,
+      "max": 52
+    },
+    "phenomena_per_rendering": {
+      "0": 308,
+      "1": 69,
+      "2": 25,
+      "3": 63,
+      "5": 7
+    },
+    "multi_phenomenon_renderings": 95,
+    "multi_phenomenon_rate": 0.201271,
+    "basic_clean_single_item": 214,
+    "basic_clean_single_item_rate": 0.45339,
+    "semantic_archetypes": 26,
+    "context_overlays": 10,
+    "archetype_balance": {
+      "single-task": 10,
+      "reminder": 10,
+      "memory": 10,
+      "idea": 10,
+      "event": 10,
+      "person-fact": 10,
+      "location-trigger": 10,
+      "date-only": 10,
+      "exact-date-time": 10,
+      "recurrence": 10,
+      "negative-statement": 10,
+      "prohibition": 10,
+      "cancellation": 10,
+      "two-independent-tasks": 10,
+      "two-tasks-shared-time": 10,
+      "two-tasks-shared-location": 10,
+      "task-plus-memory": 10,
+      "task-plus-question": 10,
+      "information-plus-task": 10,
+      "person-correction": 10,
+      "date-correction": 10,
+      "time-correction": 10,
+      "change-of-mind": 10,
+      "partial-review": 10,
+      "ambiguous-review": 10,
+      "completed-action": 10
+    },
+    "overlay_balance": {
+      "plain": 26,
+      "person": 26,
+      "relative-date": 26,
+      "exact-time": 26,
+      "named-location": 26,
+      "person-date": 26,
+      "person-time": 26,
+      "shared-context": 26,
+      "priority-context": 26,
+      "weekend-context": 26
+    },
+    "value_agnostic_semantic_shapes": 133,
+    "structural_text_templates": 266,
+    "largest_structural_template": 25,
+    "largest_structural_template_share": 0.052966,
+    "top_structural_templates": [
+      {
+        "template": "<slot> with <slot> on <slot>",
+        "count": 25
+      },
+      {
+        "template": "<slot> with <slot> at <slot> on <slot> at <slot>",
+        "count": 25
+      },
+      {
+        "template": "<slot> with <slot> on <slot> at <slot>",
+        "count": 19
+      },
+      {
+        "template": "<slot> on <slot> at <slot>",
+        "count": 13
+      },
+      {
+        "template": "maybe <slot> with <slot>",
+        "count": 12
+      },
+      {
+        "template": "<slot> on <slot>",
+        "count": 11
+      },
+      {
+        "template": "<slot> with <slot>",
+        "count": 10
+      },
+      {
+        "template": "cancel the saved reminder to <slot>",
+        "count": 10
+      },
+      {
+        "template": "<slot>",
+        "count": 9
+      },
+      {
+        "template": "<slot> at <slot>",
+        "count": 8
+      }
+    ],
+    "renderings_with_all_facts_verbatim": 429,
+    "verbatim_fact_coupling_rate": 0.908898,
+    "family_rendering_count": {
+      "min": 1,
+      "median": 1.0,
+      "max": 25
+    },
+    "normalized_duplicate_groups": 3,
+    "normalized_duplicate_records": 9,
+    "lexical_jaccard_0_80_pairs": 116,
+    "lexical_near_duplicate_records": 136,
+    "lexical_near_duplicate_record_rate": 0.288136,
+    "cross_blueprint_near_pairs": 24
+  },
+  "manual_sample_naturalness": {
+    "plausible_spoken": 24,
+    "plausible_but_synthetic": 57,
+    "implausible_or_broken": 23
+  },
+  "manual_sample_semantic_contract": {
+    "appears_preserved": 85,
+    "meaning_changed": 12,
+    "uncertain": 7
+  },
+  "reviewed_mutation_preservation": {
+    "reviewed_variants": 57,
+    "assistant_identified_meaning_changes": 12,
+    "apparent_preservation_rate": 0.789474,
+    "failures": {
+      "self-correction-quantity": "adds a new quantity-bearing action absent from the blueprint",
+      "self-correction-location": "adds work while the contracted location remains Farm Boy",
+      "shared-object": "invents a document shared by unrelated milk/call actions",
+      "temporal-inheritance": "adds tomorrow while contracted items are on Friday",
+      "location-inheritance": "adds office while contracted items are at Farm Boy",
+      "pronoun-resolution": "adds a reply action absent from the blueprint",
+      "reported-speech": "adds Maya as source and changes the discourse status",
+      "quoted-speech": "adds Maya as source and quoted imperative scope",
+      "conditional-intent": "adds a Maya-calls condition absent from the blueprint",
+      "past-event": "adds yesterday although the blueprint has no temporal fact",
+      "relative-duration": "adds a 90-minute trigger absent from the blueprint",
+      "store-brand-product-name": "invents Oatly, which is absent from the blueprint"
+    }
+  },
+  "ai_generation": {
+    "submitted": 150,
+    "accepted": 148,
+    "rejected": 2,
+    "rejection_rate": 0.013333,
+    "rejection_reasons": {
+      "exact_duplicate_existing": 2
+    },
+    "rejections": [
+      {
+        "input_line": 10,
+        "blueprint_id": "bp-fb0212d38298178cb17872f7",
+        "reason": "exact_duplicate_existing",
+        "text": "Cancel the saved reminder to water the basil for the launch."
+      },
+      {
+        "input_line": 13,
+        "blueprint_id": "bp-f90739cf40cf1dcb76ad1a3d",
+        "reason": "exact_duplicate_existing",
+        "text": "Do not send the confidential draft for the appointment on Thu Aug 6 at 16:15."
+      }
+    ],
+    "blueprint_identity_violations": 0,
+    "lexical_anchor_warnings": 33,
+    "anchor_warning_details": [
+      {
+        "input_line": 1,
+        "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+        "missing": [
+          "record that the invoice was not sent for the birthday"
+        ]
+      },
+      {
+        "input_line": 2,
+        "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+        "missing": [
+          "record that the invoice was not sent for the birthday"
+        ]
+      },
+      {
+        "input_line": 3,
+        "blueprint_id": "bp-ff8d242a19f9b6dc173d3649",
+        "missing": [
+          "record that the invoice was not sent for the birthday"
+        ]
+      },
+      {
+        "input_line": 16,
+        "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+        "missing": [
+          "remember the window-seat preference for the appointment"
+        ]
+      },
+      {
+        "input_line": 17,
+        "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+        "missing": [
+          "remember the window-seat preference for the appointment"
+        ]
+      },
+      {
+        "input_line": 18,
+        "blueprint_id": "bp-f8a3444cee61ef3ea45f6608",
+        "missing": [
+          "remember the window-seat preference for the appointment"
+        ]
+      },
+      {
+        "input_line": 22,
+        "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+        "missing": [
+          "remember the design-team detail for the launch"
+        ]
+      },
+      {
+        "input_line": 23,
+        "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+        "missing": [
+          "remember the design-team detail for the launch"
+        ]
+      },
+      {
+        "input_line": 24,
+        "blueprint_id": "bp-f62c3e3d16fd5c2f8a0da44d",
+        "missing": [
+          "remember the design-team detail for the launch"
+        ]
+      },
+      {
+        "input_line": 31,
+        "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+        "missing": [
+          "remember the design-team detail for the appointment"
+        ]
+      },
+      {
+        "input_line": 32,
+        "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+        "missing": [
+          "remember the design-team detail for the appointment"
+        ]
+      },
+      {
+        "input_line": 33,
+        "blueprint_id": "bp-f2c5821d9662b5a9e0f98d65",
+        "missing": [
+          "remember the design-team detail for the appointment"
+        ]
+      },
+      {
+        "input_line": 40,
+        "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+        "missing": [
+          "remember the window-seat preference for the core project"
+        ]
+      },
+      {
+        "input_line": 41,
+        "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+        "missing": [
+          "remember the window-seat preference for the core project"
+        ]
+      },
+      {
+        "input_line": 42,
+        "blueprint_id": "bp-f1800406a780afd1e1dfa86b",
+        "missing": [
+          "remember the window-seat preference for the core project"
+        ]
+      },
+      {
+        "input_line": 61,
+        "blueprint_id": "bp-e9215ccf5e30707512893404",
+        "missing": [
+          "record that the invoice was not sent for the interview"
+        ]
+      },
+      {
+        "input_line": 62,
+        "blueprint_id": "bp-e9215ccf5e30707512893404",
+        "missing": [
+          "record that the invoice was not sent for the interview"
+        ]
+      },
+      {
+        "input_line": 63,
+        "blueprint_id": "bp-e9215ccf5e30707512893404",
+        "missing": [
+          "record that the invoice was not sent for the interview"
+        ]
+      },
+      {
+        "input_line": 64,
+        "blueprint_id": "bp-e8926551bb071365f1833cc1",
+        "missing": [
+          "remember the design-team detail for the interview"
+        ]
+      },
+      {
+        "input_line": 65,
+        "blueprint_id": "bp-e8926551bb071365f1833cc1",
+        "missing": [
+          "remember the design-team detail for the interview"
+        ]
+      },
+      {
+        "input_line": 66,
+        "blueprint_id": "bp-e8926551bb071365f1833cc1",
+        "missing": [
+          "remember the design-team detail for the interview"
+        ]
+      },
+      {
+        "input_line": 73,
+        "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+        "missing": [
+          "record that the invoice was not sent for the family trip"
+        ]
+      },
+      {
+        "input_line": 74,
+        "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+        "missing": [
+          "record that the invoice was not sent for the family trip"
+        ]
+      },
+      {
+        "input_line": 75,
+        "blueprint_id": "bp-e68262b6ba0a4023871910e6",
+        "missing": [
+          "record that the invoice was not sent for the family trip"
+        ]
+      },
+      {
+        "input_line": 79,
+        "blueprint_id": "bp-e528e4e96df64cba249fd038",
+        "missing": [
+          "remember the window-seat preference for the interview"
+        ]
+      },
+      {
+        "input_line": 80,
+        "blueprint_id": "bp-e528e4e96df64cba249fd038",
+        "missing": [
+          "remember the window-seat preference for the interview"
+        ]
+      },
+      {
+        "input_line": 81,
+        "blueprint_id": "bp-e528e4e96df64cba249fd038",
+        "missing": [
+          "remember the window-seat preference for the interview"
+        ]
+      },
+      {
+        "input_line": 85,
+        "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+        "missing": [
+          "record that the invoice was not sent for the travel plan"
+        ]
+      },
+      {
+        "input_line": 86,
+        "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+        "missing": [
+          "record that the invoice was not sent for the travel plan"
+        ]
+      },
+      {
+        "input_line": 87,
+        "blueprint_id": "bp-e3438f2b92ad898c9992db02",
+        "missing": [
+          "record that the invoice was not sent for the travel plan"
+        ]
+      },
+      {
+        "input_line": 145,
+        "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+        "missing": [
+          "remember the window-seat preference for the client account"
+        ]
+      },
+      {
+        "input_line": 146,
+        "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+        "missing": [
+          "remember the window-seat preference for the client account"
+        ]
+      },
+      {
+        "input_line": 147,
+        "blueprint_id": "bp-d329d07bbdcdb30e7eb23131",
+        "missing": [
+          "remember the window-seat preference for the client account"
+        ]
+      }
+    ],
+    "note": "Anchor warnings are review signals, not automatic semantic-label verdicts.",
+    "candidates_requiring_review_or_preserve_only_policy": 21,
+    "candidates_not_lexically_expressing_that_policy": 0,
+    "semantic_review_note": "Schema acceptance is not promotion; all AI candidates remain uncertain pending human contract review."
+  },
+  "difficulty_distribution_definition": {
+    "basic": "zero phenomena, <=1 expected item, act policy",
+    "single_phenomenon": "exactly one tagged phenomenon",
+    "interaction": "two or more tagged phenomena"
+  },
+  "label_circularity": {
+    "production_parser_used_to_create_expected": false,
+    "blueprint_and_rendering_share_generator": true,
+    "risk": "High for synthetic self-confirmation: expected facts are authored in catalog.py and copied almost verbatim by render_text."
+  }
+}

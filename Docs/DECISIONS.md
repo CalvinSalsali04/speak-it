@@ -1,5 +1,85 @@
 # Decisions
 
+## 2026-09-11 — "So" can end a thought, but only in front of an obligation
+
+Clause splitting was built for one coordinator. `splittableAndRanges` matched
+`\s+and\s+` and nothing else, and the other path in `splitClauses` does carry
+`so` in `connectorRun` but requires `actionLeadPattern` immediately after,
+which excludes `obligationLead`. So "so book the service" could split and "so I
+need to book the service" never could.
+
+The consequence was visible to anyone speaking rather than typing. "The lease
+ends in March **and** I need to draft the renewal" arrived as a date to know
+and an errand to do; "the lease ends in March **so** I need to draft the
+renewal" arrived as a single row. Same content, same speaker, same two
+thoughts — and *so* is the word people actually reach for, because the
+relationship between a fact and the errand it causes is a resultive one. A
+development set pairing each capture with a clean twin scored that family 3 of
+3 typed and 0 of 3 spoken, and all six rows are explained by which connector
+the twin used.
+
+`so` is not admitted on the same terms as `and`, because most of what follows
+it is not a second thought: a purpose clause ("buy milk *so the kids have
+breakfast*"), a degree phrase ("*so tired*"), a subordinator ("*so that* I
+don't forget"). The shape that is reliably a thought of its own is a
+first-person obligation, since a commitment is not a property of the fact that
+prompted it. The boundary therefore needs an obligation on the right **and** a
+left side that already parses as a thought — the second half is what keeps
+"Okay so I need to call Catherine tomorrow" and "So basically I need to submit
+the report Friday" at one thought each, their left side being a discourse
+marker rather than a clause.
+
+`ClauseScope.coordinatorEndsComplement` gains the matching case: a report
+cannot carry the speaker's own obligation. "The guy said the warranty expires
+in November so I need to book the service" is his news and the speaker's
+errand, and the *so* clause is never part of what he said. This is scoped to
+the resultive coordinator, because "and" genuinely does continue a report —
+"Sarah said the meeting is off and the demo moved" is all Sarah's.
+
+**What it cost, stated because it is not free.** The target family went 0/3 to
+3/3 and the gating corpus stayed at zero failures over 1,401 cases, but
+held-out thought count went 255/310 to 254/310. That set is scored non-verbose
+and its failures are not read to steer parser work, so which capture moved is
+not known. Everyday and adversarial did not move. The full accounting is in
+`Docs/LANGUAGE_BASELINE.md` under 2026-09-11 19:29.
+
+## 2026-09-11 — Speech is framed at both ends, and the second end now has an owner
+
+The everyday held-out set (235 captures, never tuned against) put the worst
+routing families in one place: `run-on` 0/8, `rambling-intro` 1/6,
+`trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. Merges
+outnumbered splits 23 to 17, and 14 of the 18 title defects were framing
+material still sitting in the shown title. The families that read what a
+sentence *means*, once it has been cut out correctly, scored in the eighties
+and nineties. The problem was the cutting, not the reading.
+
+Two things were missing rather than wrong. Nothing in the app handled a
+farewell — a search for one returned no code at all — so every "bye", "thanks"
+and "that's it" a person ends a voice note with became the last word of a
+title. And nothing treated enumeration as a boundary, although "number one …
+number two …" is a speaker saying out loud where one thought ends.
+`IntentConsolidation` owns the elaborative frame but stands down by design the
+moment two substantive clauses are present, so it collapses rambling with a
+single point and never sees a recording with three.
+
+`DiscourseFrame` in `SpeechRepair.swift` owns the closing frame, and the clause
+splitter gained the enumeration vocabulary it did not have. Both are decided
+structurally rather than by phrase. A sign-off is a discourse move, not an
+argument of a verb: "call Dana and tell her thanks" keeps its message because
+the farewell is governed by `tell`, and a remainder that cannot end an English
+clause blocks the cut so "I'll see you later" is not reduced to "I'll". An
+enumerator is a discourse move rather than a post-nominal modifier: "number
+two" only opens a clause when an instruction follows it, which is what leaves
+"gate number two" and "apartment number three" alone without naming the nouns
+they attach to.
+
+`second`, `third`, `finally` and `one more thing` were already in the splitter
+and are deliberately untouched. The new vocabulary is a separate alternation so
+that widening the gate cannot change what those four do.
+
+This is measured by `Tools/CorpusRunner/devsets/framing.tsv`, written from the
+everyday set's per-family *rates* and from none of its sentences.
+
 ## 2026-09-08 — Keep monthly and annual with ten free captures
 
 Retain $2.99/month and $14.99/year launch pricing against $29.99 standard annual. No weekly product or additional auto-renewing trial for launch. The ten lifetime captures already let users try the whole app without committing to billing. A seven-day trial remains a future experiment, not something category-level correlations can decide. Paywall sale claims now require the configured USD 14.99 StoreKit price as well as the build flag and date; other currencies show localized pricing without an unverified percentage. Remove the unconditional lifetime-rate promise until price preservation is verified in App Store Connect. See `PRICING_DECISION_2026-09-08.html` for evidence, tradeoffs and launch configuration.
@@ -2444,6 +2524,43 @@ The development ambiguity count improved from 4/32 acted on to 3/32; the
 untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
 7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
 improvement is claimed, and no held-out failures were read.
+
+## 2026-09-11 — Measure language in CI, because the parser only runs on macOS
+
+The engine depends on Apple's `NaturalLanguage`, and `NLEmbedding` is
+load-bearing: it decides whether an unknown word is an ordinary noun or a
+person's name. So the parser cannot run on Linux or in a container, and
+stubbing the framework would produce numbers that do not match the shipping
+app. Until now the only language check CI ran was the corpus gate, and the
+development-set and held-out numbers came solely from a hand-run on one Mac.
+Anyone else changing language rules was working blind, and three sessions doing
+so at once is how unverified claims enter the record.
+
+`Tools/CI/language-metrics.sh` now produces every language number this project
+quotes in one run: the gating corpus, all four development sets, and the
+held-out set. The `language` job in `ci.yml` runs it with no simulator, no unit
+suite and no release build, which costs roughly five macOS minutes against the
+allowance's two hundred — about thirty measurements a month where the iOS job
+affords one or two. Dispatching with `language_only` skips the iOS job so the
+question "did this parser change help" never costs a unit-suite run.
+
+Two deliberate choices in it:
+
+The scorers report and do not gate. Only the corpus gate's blocking count sets
+the exit status. Destination accuracy moves either way for defensible reasons,
+and a number that blocks a merge is a number people eventually learn to game.
+
+The script refuses `--verbose` rather than forwarding it. Scoring the held-out
+set is safe; reading its failures during development is what destroys it, per
+`Tools/CorpusRunner/heldout/README.md`. Refusing the flag means running the
+metrics can never be the thing that unseals the set, and reviewing those
+failures at release stays a deliberate act with its own command.
+
+No accuracy claim is attached to this change. It alters no parsing behaviour;
+it only makes the existing measurements reachable by more than one machine.
+The script was verified for argument handling, `shellcheck` and `actionlint` on
+Linux; its macOS path is unrun here by construction and needs a Mac or a
+dispatch.
 
 ## 2026-09-11 — A removal names a row by the head of its noun phrase
 

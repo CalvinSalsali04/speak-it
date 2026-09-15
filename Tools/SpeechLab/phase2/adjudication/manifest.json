@@ -1,0 +1,44 @@
+{
+  "review_round": "speechlab-independent-review-1",
+  "reviewers": [
+    "codex-blind-reviewer-a-20260914",
+    "codex-blind-reviewer-b-20260914",
+    "codex-blind-reviewer-c-20260914"
+  ],
+  "reviewer_sources": [
+    {
+      "identity": "codex-blind-reviewer-a-20260914",
+      "kind": "external_ai"
+    },
+    {
+      "identity": "codex-blind-reviewer-b-20260914",
+      "kind": "external_ai"
+    },
+    {
+      "identity": "codex-blind-reviewer-c-20260914",
+      "kind": "external_ai"
+    }
+  ],
+  "case_count": 818,
+  "assignments_per_case": {
+    "1": 304,
+    "2": 514
+  },
+  "reviews_required": 1332,
+  "reviewer_counts": {
+    "codex-blind-reviewer-a-20260914": 442,
+    "codex-blind-reviewer-b-20260914": 445,
+    "codex-blind-reviewer-c-20260914": 445
+  },
+  "assignment_digest": "b4322196721c2eb644d66118e487f323db43b059adaa2f9e142e992f980bf77f",
+  "parser_output_included": false,
+  "production_behavior_included": false,
+  "reviewed_at": "2026-09-14T07:13:00-04:00",
+  "completed": true,
+  "submission_count": 1332,
+  "submission_digest": "67ae6c9d637294b9ffe43e5500e8da060720792b4bb3728c262bddcff6df7ad0",
+  "adjudicated_case_digest": "80acf524c65c5475e14ef136619b9bccc93c9bd5e21a89ce67fe25d3f3966d7b",
+  "production_parser_invoked": false,
+  "parser_output_exposed_to_reviewers": false,
+  "sealed_failures_read": 0
+}

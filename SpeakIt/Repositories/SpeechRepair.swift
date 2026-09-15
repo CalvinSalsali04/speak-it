@@ -160,6 +160,15 @@ enum DisfluencyFilter {
         value = replace(value, #"^(?:actually[\s,]+)?(?:no[\s,]+)?wait[\s,]+(?=\S)"#, "")
         value = replace(value, #"^(?:one|another)\s+more\s+thing\b[\s,]*"#, "")
         value = replace(value, #"^another\s+thing\b[\s,]*"#, "")
+        // "Number one, call the dentist. Number two, …": the first enumerator
+        // has nothing in front of it to end, so the clause splitter — which
+        // only sees a boundary *between* two clauses — never reaches it, and
+        // the marker stayed in the title of the first row.
+        value = replace(
+            value,
+            #"^(?:number\s+(?:one|1)|first\s+(?:of\s+all|off)|firstly)\b[\s,:;\-–—]*(?=\S)"#,
+            ""
+        )
         value = replace(value, #"^do\s+me\s+a\s+favou?r\s+and\b[\s,]*"#, "")
         value = replace(value, #"^hey\s+speak\s+it\b[\s,]*"#, "")
         value = replace(value, #"^you\s+know\s+what\b[\s,]*"#, "")
@@ -208,6 +217,9 @@ enum DisfluencyFilter {
         )
         value = replace(value, #"\s+(?:\#(ambiguousFillers))\s*$"#, "")
 
+        // How the recording ends. See `DiscourseFrame`.
+        value = DiscourseFrame.strippingSignOff(value)
+
         return normalize(value)
     }
 
@@ -253,6 +265,94 @@ enum DisfluencyFilter {
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\s+([,.;])"#, with: "$1", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Discourse frame
+
+/// How people close a recording.
+///
+/// Speech is framed at both ends. The opening frame — "okay so", "note to
+/// self", "right" — has been handled since the first sweep, in
+/// `DisfluencyFilter` above. The closing frame had no owner at all: a search
+/// of the app for a farewell of any kind returned nothing, and the everyday
+/// held-out set measured the consequence at **0 of 7 clean titles** for
+/// captures that end the way people end a voice note.
+///
+/// A sign-off is a discourse move, not an argument of a verb, and that is the
+/// whole distinction this makes. "Call the dentist tomorrow, thanks" ends with
+/// a sign-off; "call Dana and tell her thanks" ends with the thing Dana is to
+/// be told. The test is government: if the words in front of the farewell are
+/// a verb that takes it as an object, the farewell is content and stays.
+///
+/// The original wording is never touched. This runs on the repaired copy, and
+/// `TranscriptProvenance` keeps what the person actually said.
+enum DiscourseFrame {
+    /// Closings that cannot be the object of anything.
+    private static let pureSignOff =
+        #"(?:bye(?:\s*bye)?|goodbye|good\s*bye"#
+        + #"|see\s+(?:you|ya)(?:\s+(?:later|soon|then|around))?"#
+        + #"|talk\s+(?:to\s+you\s+)?(?:soon|later)|catch\s+you\s+later"#
+        + #"|over\s+and\s+out|that['’]?s\s+(?:it|all|everything)"#
+        + #"|that\s+is\s+(?:it|all|everything))"#
+
+    /// Closings that are also ordinary objects, and so need the guard below.
+    private static let gratitudeSignOff =
+        #"(?:thanks(?:\s+a\s+(?:lot|million|bunch))?|thank\s+you(?:\s+very\s+much)?"#
+        + #"|cheers|ta)"#
+
+    /// The throat-clearing people put in front of a farewell.
+    private static let closingLeadIn =
+        #"(?:ok|okay|alright|right|well|and|so|anyway|anyways|um|uh|yeah)"#
+
+    /// Words an English clause cannot end on. A farewell behind one of these
+    /// was part of the sentence rather than the end of the recording.
+    private static let danglingRemainder =
+        #"(?:to|and|or|but|so|the|an?|my|your|our|their|his|her|its|of|for|with"#
+        + #"|in|on|at|from|that|i|i['’]ll|we|we['’]ll|you|you['’]ll|he|she|they"#
+        + #"|it|is|are|was|were|will|need|want|have|has|gotta|gonna|going|say"#
+        + #"|said|tell|told)"#
+
+    /// A verb that would take a farewell as its object. Three tokens of reach,
+    /// which covers "tell her", "tell the team" and "say".
+    private static let governingVerb =
+        #"(?:say|says|said|saying|tell|tells|told|telling|send|sends|sent|sending"#
+        + #"|give|gives|gave|giving|wish|wishes|wished|owe|owes|owed"#
+        + #"|text|texts|texted|email|emails|emailed|write|writes|wrote|pass\s+on)"#
+
+    /// Removes the farewell a recording ends on, if it has one.
+    ///
+    /// Nothing is removed when the farewell is all there is — a capture of
+    /// nothing but "bye" is still the person's words, and an empty row is
+    /// worse than an odd one.
+    static func strippingSignOff(_ text: String) -> String {
+        let signOff = #"(?:\#(pureSignOff)|\#(gratitudeSignOff))"#
+        let pattern = #"(?i)[\s,.;!—–-]+(?:\#(closingLeadIn)[\s,]+)*"#
+            + #"\#(signOff)(?:[\s,.!]+\#(signOff))*[\s,.!]*$"#
+        guard let range = text.range(of: pattern, options: .regularExpression) else {
+            return text
+        }
+        let remainder = String(text[text.startIndex..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty else { return text }
+        // "I'll see you later" is a sentence, not an errand followed by a
+        // farewell, and cutting it leaves "I'll". A closing frame sits behind
+        // something that finished; a remainder that cannot end an English
+        // clause is the evidence that these words were the clause.
+        if remainder.range(
+            of: #"(?i)(?:^\S+$|\b\#(danglingRemainder)$)"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
+        // "Call Dana and tell her thanks": the farewell is what Dana is told.
+        if remainder.range(
+            of: #"(?i)\b\#(governingVerb)(?:\s+\S+){0,2}$"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
+        return remainder
     }
 }
 
@@ -1490,6 +1590,39 @@ enum ClauseJuxtaposition {
         ) != nil
     }
 
+    /// Verbs that take a whole clause as their complement, beyond the verbs of
+    /// saying `ClauseScope.reportingVerb` already names. A closed grammatical
+    /// class rather than a list of phrases: every one of them licenses the same
+    /// "… that X did Y" frame, and the next one to arrive should not need its
+    /// own defect first.
+    private static let complementTakingVerb =
+        #"(?:\#(ClauseScope.reportingVerb)"#
+        + #"|remind|think|know|knows|knew|remember|remembers|hope|hopes"#
+        + #"|guess|guesses|bet|bets|reckon|notice|notices|noticed"#
+        + #"|realise|realises|realised|realize|realizes|realized"#
+        + #"|see|sees|saw|worry|worries|worried)"#
+
+    /// Whether the head has already opened a clausal complement, so the verb
+    /// behind it is that complement's predicate rather than a new instruction.
+    ///
+    /// `endsOnReportedSpeech` reads the head ending *on* the verb of saying —
+    /// "Sarah said call Mike". This reads the other shape, where the
+    /// complement has begun and its subject is sitting at the end of the head:
+    /// "remind me the bins go out on Tuesday" is one reminder about the bins,
+    /// and was arriving as a reminder plus an errand called "Go out on
+    /// Tuesday". The determiner is what makes it safe to do structurally —
+    /// what follows a determiner is the head of a noun phrase, and a noun
+    /// phrase between a complement-taking verb and a verb is a subject.
+    private static func opensAClausalComplement(_ head: String) -> Bool {
+        head.range(
+            of: #"(?i)\b\#(complementTakingVerb)\b"#
+                + #"(?:\s+(?:me|us|him|her|them|everyone|[A-Z][\p{L}'’-]+))?"#
+                + #"\s+(?:the|a|an|my|your|his|her|their|our|this|that|these|those)"#
+                + #"\s+[\p{L}'’-]+\s*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     /// Whether the text ends inside a place or condition clause that has not
     /// reached its verb yet.
     ///
@@ -1523,6 +1656,17 @@ enum ClauseJuxtaposition {
     /// tagging of the whole sentence, carries no verb. "After I finish the
     /// essay call Dave" keeps its cut, because "finish" is a verb and the head
     /// is a clause of its own.
+    ///
+    /// **The preposition is load-bearing and was measured to be.** Dropping it
+    /// — accepting any verbless head that *ends* on a time, so that "first
+    /// thing tomorrow email the landlord" would stop being cut — reads the
+    /// tagger's uncertainty as a fact. "Book the car in for Thursday renew my
+    /// passport" and "text Marcus about Saturday move the standup to 9:15"
+    /// both lost their boundary under that rule, because `NLTagger` does not
+    /// reliably call a sentence-initial "book" or "text" a verb, so a head
+    /// that is an instruction reads as verbless and ends on a day. An adjunct
+    /// has no verb *and* announces itself with a preposition; only the second
+    /// half is something the tagger cannot be wrong about.
     private static func isFrontedAdjunct(
         _ clause: String,
         headEnd: String.Index,
@@ -1603,6 +1747,7 @@ enum ClauseJuxtaposition {
             }
             guard !hasOpenTriggerClause(head),
                   !endsOnReportedSpeech(head),
+                  !opensAClausalComplement(head),
                   // "Idea for the app: let people share lists" is one idea
                   // however many verbs it describes; a capture that opens by
                   // naming itself an idea or a note is not cut.
@@ -1615,8 +1760,16 @@ enum ClauseJuxtaposition {
                   !clauseInternalLead.contains(last),
                   // A possessive or an amount in front of a verb-shaped word
                   // makes it a noun: "Maya's swim lesson", "the $89 charge".
+                  //
+                  // An ordinal is not an amount. "The 26th" is a complete noun
+                  // phrase with nothing following it inside the phrase, so
+                  // "Dad's appointment is on the 26th arrange a lift for him"
+                  // and "Priya starts on the 14th order her a laptop" were
+                  // both refused their boundary by a guard written for "3
+                  // eggs", and arrived as one row that lost the errand.
                   !last.hasSuffix("'s"), !last.hasSuffix("’s"),
-                  last.range(of: #"^[$€£]?\d"#, options: .regularExpression) == nil,
+                  last.range(of: #"^[$€£]?\d"#, options: .regularExpression) == nil
+                    || last.range(of: #"^\d{1,2}(?:st|nd|rd|th)$"#, options: .regularExpression) != nil,
                   // "The Friday sign off": a day behind a determiner is an
                   // adjective, and the verb-shaped word after it is a noun.
                   !(dayWords.contains(last) && recent.dropLast().last.map(nounDeterminers.contains) == true),
