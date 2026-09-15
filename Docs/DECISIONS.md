@@ -41,11 +41,22 @@ Mac by dispatch.
 **What this is not.** Nothing was measured. No model has run, here or anywhere
 in this repository's history — the existing refinement path has never been
 measured either, in any direction, because no Apple Intelligence device has been
-available. The Swift was written in a Linux container and has not been compiled;
-the `language` job now builds the prototype and runs its self-check, which is
-where the first compile happens, and `interpret --availability` records what the
-framework says about the runner instead of the repository continuing to assume
-it. Until a run exists, every claim above is about what the code does with an
+available. The Swift was written in a Linux container; the `language` job builds
+the prototype and runs its self-check, which is where the first compile happened,
+and `interpret --availability` records what the framework says about the runner
+instead of the repository continuing to assume it.
+
+That question is now answered, and against the expectation recorded here. On
+`macos-26` with Xcode 26.6 (run 34992199253) the prototype **builds** and the
+self-check passes, and the framework is present in the toolchain — but
+availability is `deviceNotEligible`. Apple Intelligence is not reachable from a
+hosted runner and no CI setting changes that, so **every comparison between the
+two paths has to be generated on an eligible device and replayed elsewhere**,
+which is why the probe splits `--interpret` from `--replay`. Read
+`deviceNotEligible` as a fact about that runner: it says nothing about an
+iPhone and nothing about the model's quality.
+
+Until a run exists, every claim above is about what the code does with an
 interpretation, not about what an interpretation looks like.
 
 ## 2026-09-15 — The obligation lists stay five, and the disagreement is declared

@@ -287,15 +287,29 @@ This is the section to read before quoting anything above.
 
 - **No model has run.** Not once, not here. Every claim above is about what the
   code does with an interpretation, not about what an interpretation looks like.
-- **The Swift in this change has not been compiled.** It was written on Linux,
-  where Apple's NaturalLanguage and FoundationModels do not exist. The `language`
-  CI job now builds the prototype and runs its self-check, which is where the
-  first compile happens.
-- **Whether the model can be reached on our CI at all is an open question with a
-  cheap answer.** `interpret --availability` prints what the framework reports
-  and never fails the job. The expectation, from `Docs/DECISIONS.md`, is
-  `appleIntelligenceNotEnabled` or `deviceNotEligible` on a hosted runner; the
-  point of the step is to stop expecting and know.
+- **The Swift compiles; the model cannot be reached from CI.** Both were open
+  when this document was first written and both are now answered, on
+  `macos-26` with Xcode 26.6, run 34992199253:
+
+      interpretation probe built: …/Tools/InterpretationProbe/build/interpret
+      foundation-models: framework present
+      locale:            en_US
+      availability:      deviceNotEligible
+      sampling:          greedy
+      instructions:      cd888336
+      interpretation selfcheck ok
+
+  The framework is in the toolchain and the whole `#if canImport(FoundationModels)`
+  path builds, so nothing about this prototype is unbuildable. Apple Intelligence
+  itself is not available: `deviceNotEligible` is the hosted runner saying the
+  hardware does not qualify, which no CI configuration changes. **So every number
+  comparing the two paths has to be generated on somebody's eligible device and
+  replayed.** That is what `--interpret … --out runs.jsonl` and `--replay` exist
+  for, and it is why the split between them is the shape of this tool rather than
+  a convenience.
+
+  Read `deviceNotEligible` as a fact about this runner and nothing more. It says
+  nothing about an iPhone, and nothing about the model's quality.
 - **`--repair` is an unanswered fork**, not a setting. The rules have always been
   given repaired text; a model is supposed to handle disfluency itself. Which one
   it should get is a measurement, and the flag is recorded in every run so the
