@@ -608,15 +608,28 @@ identical to the run at `707ac32` recorded above — everyday 168/240 · 193/232
 consequence 51/56 · 34/56. So the `+1` in the ledger is the enumerator change's
 and the repair costs nothing; **no second ledger row is due.**
 
-The label itself was right and the *reason* written beside it was not. "A dated
-event is an upcoming item" is wider than this corpus: `My passport expires in
-March` and `The lease on the apartment ends in November.` are dated events
-routed to Memory, and `Nadia's birthday is October 12.` is Memory as a fact
-about a person. The line the corpus draws is the **named day**, not the date —
-`The parking pass expires Friday` is Today — and the row's note now cites that
-instead. A stated reason wider than its own predicate is the defect this file
-keeps finding in filters; it is no better in a corpus note, which is where
-somebody looks the rule up.
+The label itself was right and the *reason* written beside it took three
+attempts, each one wider than the corpus and each killed by a row in it:
+
+| attempt | killed by |
+| --- | --- |
+| "a dated event is an upcoming item" | `My passport expires in March` — Memory |
+| "the named day, not the date" | `The store closes Sunday` — Memory, and `The parcel arrived Friday`, Memory because it already happened |
+| **"the speaker has to be somewhere or act by then"** | holds on every row in both clusters |
+
+What survives is the reason one row states for itself: *"an expiry on a named
+day is the last moment to act."* `The guests arrive Friday`, `The party is
+Saturday` and `The parking pass expires Friday` are Today because the speaker
+has to be there or act; `The store closes Sunday` and `Nadia's birthday is
+October 12.` are Memory because there is nothing for the speaker to do. A bare
+month is knowledge either way, which is a separate cut the notes also state.
+
+**Three passes at one sentence is the point, not an aside.** A stated reason
+wider than its own predicate is the defect this file keeps finding in filters,
+and the first two attempts here were each contradicted by a row within four
+lines of the rows they cited. A corpus note is where a future reader looks the
+rule up, so it is the worst place for a rule that is almost right. Caught by
+the grade on #90, twice.
 
 ## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
 
