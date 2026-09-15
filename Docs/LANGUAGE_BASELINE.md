@@ -312,6 +312,142 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-15 — the retrieval-failure sizing left out the one word with volume, and it argues the other way
+
+The 20:38 section below stops the `abandoned-midthought` target on a count:
+25 readable sentences contain a retrieval-failure phrase, 6 have one
+clause-finally, and all 6 are rows in `unfinished.tsv`. That conclusion still
+holds. The count behind it does not cover the family's most common surface
+form, and covering it turns a shortage of evidence into evidence against.
+
+No parser change and no run. Every figure here is a count over committed text
+taken with `connective-census.py`'s reader, which walks rather than globs and
+refuses a source that yields nothing. The population is its 5501 distinct
+readable utterances — the corpus files, the SpeechLab tree and the gating
+corpus — which is the population **after** the gating corpus was added to that
+reader on the same day, roughly three times what a first pass counted. Figures
+taken against the smaller population are marked where they appear.
+
+### `wait` was not in the phrase set
+
+The phrases that section names as the six captures' closings are `I forgot`,
+`I lost it`, `hold on`, `what was it` and a trailing `I mean`. Counted again
+over readable utterances:
+
+| phrase, as that section names it | utterances | where |
+|---|---|---|
+| `hold on` | 1 | `unfinished.tsv` |
+| `what was it` | 1 | `unfinished.tsv` |
+| `I forgot` | 9 | 5 `unfinished.tsv`, 4 `SpeakItTests` |
+| `I lost it` | 1 | `unfinished.tsv` |
+| `I mean`, trailing | 2 | 1 `unfinished.tsv`, 1 `SpeakItTests` |
+| **`wait`** | **53** | **34 SpeechLab** (31 of them one frame), 13 `SpeakItTests`, 3 `unfinished.tsv`, 2 `rambling.tsv`, 1 `abandonment.tsv` |
+
+Each phrase is counted as the section writes it, which is not how a first pass
+counted them: over the smaller population, `I lost it` read as
+`I lost (it|my train)` gave 4 and `I mean` counted anywhere rather than
+clause-finally gave 11. Both were caught on
+recount by the evaluation thread. They are the same defect this file names
+everywhere else — a marker standing in for the judgement it approximates —
+committed inside a section arguing that a phrase-keyed detector is the wrong
+instrument, which is worth leaving visible rather than quietly correcting.
+
+The five named phrases total **14** on the strict readings, against `wait`'s
+**53**.
+
+**`31 of them one frame` was read as 28 by the evaluation thread, and both are
+right.** The three that differ are `I was going to, um, ask— wait, …`: a
+filler sits inside the frame, so a pattern requiring `going to ask` adjacent
+finds 28 and one allowing an interpolation finds 31. Nothing about the row set
+differs, which is what both of us first assumed.
+
+Kept at 31, because a hesitation dropped into the middle of a template does
+not make it a second template — and the argument here is precisely that these
+rows are one generated frame. But the disagreement is the more useful half:
+two readers counted "the same frame" stably and differently for two days, and
+what separated them was a three-character optional group neither had written
+down. A count of a frame is a count of whatever pattern was used for it, and
+naming the phrase is not naming the pattern.
+
+`wait` is the marker two of the six failing captures actually turn on — INC49
+`Tomorrow I need to, um, wait, I forgot` and INC50 `Next week I should, wait,
+I lost it` — and it is the only one of the six forms with more than a handful
+of instances. Leaving it out is defensible on its face, because a bare `wait`
+is ambiguous in a way `what was it` is not. It is also the omission that
+decides the shape of the evidence.
+
+### All 31 of its SpeechLab instances complete the thought
+
+They are one frame, `I was going to ask— wait, …`, and every one of them
+carries a finished instruction after the marker: "I was going to ask— wait,
+keep track of the Montréal train with Nadia Patel for me." The speaker false-
+starts and then says the thing. That is the opposite of the shape
+`unfinished.tsv` uses `wait` for.
+
+So a detector reading `wait` as evidence that a frame is still open flags 31
+captures that finished, against a `finished misflagged` record of `0/96`. This
+is the second falsifier for the family and the first from material nobody here
+wrote — the other being `FP27 I think I forgot`, recorded below, which the set
+supplies against itself.
+
+The two together bound the shape of any fix more tightly than the sizing did.
+A rule keyed on the phrase fails on both. The structural discriminator the
+20:38 section proposes — an infinitive or modal frame followed by a finite
+clause that cannot fill it — survives both, since `I was going to ask` has its
+complement before the marker and `I think` is not a frame of that kind. That
+sharpens the design and does not change the decision, which rests on there
+being no observations to build against.
+
+### Why 818 new cases did not supply any
+
+The SpeechLab adjudication corpus is the largest readable material the
+repository has gained, and it cannot size a family, because a count over it
+counts instantiations of a blueprint:
+
+- 818 distinct utterances over **330 distinct five-word stems**;
+- the twelve commonest stems account for **308** of the 818;
+- `lineage.base_semantic_family` groups them into **137 families over 818
+  rows, of which 2 are singletons** — about six renderings per meaning.
+
+So the corpus is 137 meanings rendered six ways, and a count over it counts
+renderings.
+
+`phase2/CORPUS-QUALITY-REPORT.md` reports "Structural templates: 816" against
+818 cases, with "Largest structural template: 2 records (0.24%)". It caveats
+itself in the next paragraph — "not proof of 816 wholly independent syntactic
+structures" — and `ADJUDICATION-REPORT.md` lists that gate as passing. The
+caveat is right; the headline is the number a reader carries away. Against the
+five-word stem the largest bucket is **38 rows, 4.6%**. So the two measures
+disagree by a factor of two and a half on distinctness and **nineteen on the
+largest bucket**, which is the comparison worth recording: **on this corpus
+the skeleton metric is not measuring frame diversity, and no gate is.**
+
+This is not a complaint about the corpus. It was built to test whether one
+meaning is read correctly across many renderings, and 44 distinct frames carry
+an inserted repetition, which is a real robustness population. Its own report
+draws the same line from the other side: "the split remains unfrozen, and
+parser evaluation must not be joined to these labels yet." Counting surface
+forms is not joining evaluation to the labels, which is why the counts above
+are legitimate; scoring these rows would not be.
+
+### What this changes
+
+Not the decision, and not the request for real captures that three stopped
+targets rest on. What it changes is what would answer that request. 818 cases
+arrived and the readable instance count for the shape under investigation went
+from 6 to 6, while the one form with volume gained 31 counter-examples.
+**A generated corpus grows the denominator of a robustness test and cannot
+grow the numerator of a frequency one.** Those are two questions and they have
+to be asked in that order before a family is named.
+
+### What is not claimed
+
+No rate moved and none was measured. The 31 captures were read for their shape
+and not scored. That a phrase-keyed detector would flag them is a reading of
+the utterances against `ThoughtCompletion.unfinished`, not a run. Nothing here
+measures how often anybody actually says any of these things, which is still
+the unmeasured quantity and still the reason all of this stops.
+
 ## 2026-09-14 — the resultive `so` boundary, measured against a set written by someone else
 
 Two `macos-26` runs over **the same 56 captures**, differing only in the parser:
@@ -410,6 +546,133 @@ any other set moved in either direction** — everyday, adversarial and held-out
 destination are identical to the row. The only negative signal remains the one
 held-out thought-count row from 2026-09-11, already in the cost ledger, and
 range-aware scoring accepts the count it produces. Merged on that basis.
+
+## 2026-09-14 — the next target, traced to source, and why it is not being built
+
+After #57 the consequence set reported 34 of 56 on thought count, with 22 of
+the 32 must-split captures still arriving as one thought. The reading published
+beside that number was that the rule fixes one connector of eight, and that the
+next improvement is probably not a ninth. This section traces that claim to the
+source, tries to size it against every readable set in the repository, and
+stops there on purpose.
+
+### What the source says
+
+The splitter does not have a list of eight connectors. It has three unrelated
+mechanisms, and three of the eight are in none of them.
+
+| connector | where it is handled |
+| --- | --- |
+| `and` | `splittableCoordinatorRanges`, a literal regex, and in `connectorRun` |
+| `so` | the same regex behind a first-person-obligation lookahead, and in `connectorRun` |
+| comma | `splitClauses`, only before an `actionLeadPattern` |
+| `then` | `connectorRun`, plus its own branch before a `triggerLeadPattern` |
+| juxtaposition | `ClauseJuxtaposition`, its own module |
+| `which means` | nowhere |
+| `that means` | nowhere |
+| `because of that` | nowhere |
+
+The last three occur in `SpeakIt/` only inside comments. `connectorRun` is
+`so|and|also|then|plus`, so it carries two more forms the consequence rotation
+never used; the table is that rotation's eight and not an inventory of the
+splitter.
+
+Counted by mechanism rather than by connector, the picture is sharper than
+"eight surface forms". Two of them have a dedicated boundary finder. Four ride
+a shared run of connector words that can only open a boundary when an action
+or a trigger lead follows it. One has a module to itself. Three have nothing at
+all.
+
+The interesting half is not the absence. It is that **the machinery deciding
+whether a tail is a thought of its own is already general, and is only ever
+consulted at positions a two-word regex nominates.** `isIndependentConjunct`
+takes spans into a `SentenceContext` rather than loose strings, asks
+`hasSubjectPredicate` and `hasOwnSubject` about them, and already carries a
+relation distinction: a `resultive: Bool`, derived from whether the boundary
+ends in `so`, which turns on the guard that a consequence needs a cause and
+that an imperative is not a fact.
+
+So a stronger design is visible from the source alone, without measuring
+anything: candidate boundaries generated separately from the adjudication that
+accepts them, each candidate carrying a relation rather than one boolean
+hard-wired to one word. `which means`, `that means` and `because of that` are
+all resultive and would want precisely the guard `so` already has.
+
+That is a design sketch. It is not a plan, for the reason below.
+
+### Why it is not being built
+
+**Nothing in this repository can size the family.**
+
+`Tools/CorpusRunner/connective-census.py` counts how many readable rows contain
+each form, across the seven development sets and SpeechLab's renderings and
+audit data. It reads no sealed set: sources come from `corpus_paths.readable()`
+plus a declared SpeechLab list checked against `corpus_paths.sealed()` at the
+point of use, and it refuses to run rather than score a zero if any source
+stops yielding rows.
+
+Run it for the figures rather than reading them here. The load-bearing result
+is the one this document does state, because a test recomputes it: **`which
+means`, `that means`, `because of that` and `therefore` appear in no readable
+row at all**, while `and` and `so` appear in hundreds.
+<!-- recomputed: absent-connectives which means, that means, because of that, therefore -->
+
+**The two lists are the same list.** Every connective the splitter handles is
+attested in readable material — including `also` and `plus`, which the census
+found only because reading `connectorRun` turned them up and which the
+consequence rotation never used — and every
+connective it does not handle is attested in none. That correspondence is not a
+coincidence and it is not a compliment to the parser: the corpora and the rules
+were written by the same hands, working from the same intuitions about how a
+sentence goes. The parser handles what we thought to write down. A census over
+our own material can therefore confirm that a family is unsizeable and can
+never establish that one is rare.
+
+**Read that in both directions, and the second one matters more.** A zero is
+not evidence that people do not say these things. Every row counted was
+authored by this project, so the census largely records what we have thought to
+write down, and treating it as a fact about speech would be the circular step
+that has already killed four targets.
+
+What it does settle is narrower and sufficient. The only material in which this
+family appears at all is the consequence set — and that set's eight-connector
+rotation is a **design parameter fixed in advance**, not an observation of how
+anyone talks. Choosing the next parser change from where that set fails is
+optimising against a sealed set at low resolution, which is the single thing
+the set exists to prevent. It would also be the fifth instance of the pattern
+that killed the previous four: the readable material could not size the family,
+and every example was a sentence written for the occasion.
+
+The readable sets cannot break the tie either: they are at or near their
+ceilings, which is why they have stopped producing new targets rather than
+because the parser is finished. Their rates are recorded in their own sections
+above and are deliberately not repeated here — this document already carries
+three copies of them, and a fourth is how the count in `choice-balance.py` came
+to be two generations out of date while everything around it was correct.
+
+### What would settle it
+
+Real recordings, which is the open ask from 2026-09-11. Four properties matter
+more than the count: whatever someone happened to record rather than captures
+picked to match a family we named; more than one speaker, since one author is
+still one author; whole recordings rather than sentences; and a portion sealed
+before any thread reads a line.
+
+Until then this is recorded as an **architectural observation with a design
+sketch and no evidence of use** — which is its honest state — and not as queued
+work. Building a relation model for connectives that appear zero times outside
+a set authored to exercise them would be the ninth coordinator with a better
+vocabulary.
+
+### What is not claimed
+
+- Not that the current splitter is adequate. It plainly under-splits on the
+  consequence set, and that number stands unchanged.
+- Not that the three absent connectors are rare in speech. This repository
+  cannot say either way, and the census says so in its own output.
+- Not a measurement of any kind. Nothing here ran the parser: the table of
+  mechanisms is read from source and the census reads corpora, in a container
+  where the engine does not build.
 
 ## 2026-09-14 — correction: I read the wrong column, and what survives it
 

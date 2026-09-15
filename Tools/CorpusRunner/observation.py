@@ -206,10 +206,11 @@ SWIFT_LITERALS = 3702
 #: nothing holding it to account -- it reads as measured, and no run disagrees.
 NOT_READ = (
     ("Tools/SpeechLab/**.jsonl",
-     "the walk that reaches these safely, with its sealed-by-filename "
-     "refusal, is in #66; this calls it rather than growing a second one. "
-     "How many utterances that is, is #66's figure to report and not one "
-     "this report can check, so it is not repeated here."),
+     "NOT YET CALLED. The walk that reaches these safely, with its "
+     "sealed-by-filename refusal, landed on main with the connective census; "
+     "this report will call it rather than grow a second walk, and does not "
+     "call it yet. How many utterances that is, is the census's figure to "
+     "report and not one this report can check, so it is not repeated here."),
     ("SpeakItTests/*.swift",
      f"{SWIFT_LITERALS} distinct literals of {SWIFT_LITERAL_FLOOR}+ "
      f"characters containing a space. `swift_literals` lives in "
