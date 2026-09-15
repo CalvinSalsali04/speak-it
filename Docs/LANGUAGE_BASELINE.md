@@ -355,14 +355,19 @@ instrument, which is worth leaving visible rather than quietly correcting.
 The five named phrases total **14** on the strict readings, against `wait`'s
 **53**.
 
-**The `31 of them one frame` figure is contested.** The evaluation thread
-recounts it as 28, stably, under three separate loosenings of the pattern; 31
-reproduces here under those same three. The pattern is therefore not what
-differs, and the row set is — most likely how each reader deduplicates an
-utterance that appears in more than one source. Left at 31 and marked, because
-a figure two readers reach stably and differently is the exact shape of the
-defect family this file catalogues, and resolving it belongs with the
-instrument rather than in a footnote.
+**`31 of them one frame` was read as 28 by the evaluation thread, and both are
+right.** The three that differ are `I was going to, um, ask— wait, …`: a
+filler sits inside the frame, so a pattern requiring `going to ask` adjacent
+finds 28 and one allowing an interpolation finds 31. Nothing about the row set
+differs, which is what both of us first assumed.
+
+Kept at 31, because a hesitation dropped into the middle of a template does
+not make it a second template — and the argument here is precisely that these
+rows are one generated frame. But the disagreement is the more useful half:
+two readers counted "the same frame" stably and differently for two days, and
+what separated them was a three-character optional group neither had written
+down. A count of a frame is a count of whatever pattern was used for it, and
+naming the phrase is not naming the pattern.
 
 `wait` is the marker two of the six failing captures actually turn on — INC49
 `Tomorrow I need to, um, wait, I forgot` and INC50 `Next week I should, wait,
