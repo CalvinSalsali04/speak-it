@@ -678,17 +678,29 @@ capture in another language, or one that rambles without any of these markers,
 falls through to clause splitting as before. The failure mode is the old one —
 over-splitting — not a new one, and the raw transcript is preserved either way.
 
-## Obligation vocabulary lives in four places and they still disagree
+## Obligation vocabulary lives in five places and they still disagree
 
-Four separate lists state "this is an obligation", and they agree on only 7 of
-the 32 forms between them (22%):
+Five separate lists state "this is an obligation". The four that claim a form
+*is* one agree on five of the thirty-eight forms between them; the splitter is
+a sixth kind of list and is counted separately below.
 
 | list | file | what it gates |
 |---|---|---|
-| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1289` | whether the sentence gets cut here |
-| `ActionabilityReader.obligationLead` | `Actionability.swift:109` | Today versus Memory |
-| `ObligationFrame.link` | `ThoughtOrganizer.swift` | what the row title reads |
-| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1538` | whether a severed piece is glued back on |
+| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1517` | whether the sentence gets cut here |
+| `ActionabilityReader.obligationLead` | `Actionability.swift:123` | Today versus Memory |
+| `ActionabilityReader.thirdPersonObligation` | `Actionability.swift:723` | whether the obligation is the speaker's own |
+| `ObligationFrame.link` | `ThoughtOrganizer.swift:226` | what the row title reads |
+| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1872` | whether a severed piece is glued back on |
+
+`clauseInternalLead` is not really an obligation list — it is a "cannot end a
+clause" set holding conjunctions, copulas, pronouns and motion verbs as well —
+so counting it as a claimant would make every conjunction an obligation. It is
+in the table because it is what severs the others.
+
+Every *count* in this section is recomputed from the source by
+`Tools/CorpusRunner/test_parser_vocabulary.py`; the ones that were here before
+(four lists, 7 of 32, 22%) were hand-typed. The line numbers in the table are
+not checked and will go stale again — two of the four already had.
 
 Every *multi-word* frame is protected for free, because it ends in `to` and
 `"to"` is the first entry in `clauseInternalLead`. Only single-token forms are
@@ -697,11 +709,32 @@ exposed, and the four that were missing from both of the first two lists —
 off on Thursday" filed a Memory note titled **"I hafta"** beside the errand.
 Those four are now closed and pinned by nine `.dictation` corpus cases.
 
-The structural problem is not closed. The four lists are still four lists, and
-the next form somebody says will find whichever one is short. The fix is to
-derive them from one shared definition. It is deliberately staged: three of the
-four gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity, so
-unifying them needs its own measurement pass and its own release.
+**The structural problem is not closed.** The lists are still five lists.
+`thirdPersonObligation` is the smallest on purpose and declines `gotta` and
+`want to`, which is right — "Mike gotta call Sarah" is not English and "Mike
+wants to call Sarah" is a preference rather than an errand the person owes — so
+the disagreement is not simply one of them being short. Converging them is
+still staged and still waits for its own measurement pass: three of the five
+gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity.
+
+**What is closed is the half that needs no judgement.** The defect that
+actually bit was positional, not a matter of which vocabulary is right: a
+single-token obligation form missing from `clauseInternalLead` gets cut off
+from what it governs. Multi-word frames end in `to`, and `to` has been the
+first entry of that set since it was written, so they are protected whether or
+not anyone decided to protect them; only single tokens are exposed, which makes
+this checkable. The suite asserts that every single-token form any obligation
+list claims is held by the splitter, with one declared exception — `better`,
+which is also an ordinary comparative and is named with its reason. A form
+added to one list without a decision about the others now fails on Linux, on
+the pull request that adds it, rather than in somebody's Memory tab.
+
+Graded by mutation, control green either side: the splitter losing `hafta`, a
+new single-token form entering the route list, the splitter gaining the
+declared exception, the title list losing an entry, and a reader returning an
+empty set instead of refusing were all caught. Two size-preserving swaps — so
+the pinned counts cannot see them — were caught by the invariant alone, which
+is what establishes it is doing work the census is not.
 
 **Measured, and the reason a partial fix is not enough:** widening `isFragment`
 alone — gluing the fragment back on without teaching `obligationLead` to read

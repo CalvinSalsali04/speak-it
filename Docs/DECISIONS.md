@@ -1,5 +1,51 @@
 # Decisions
 
+## 2026-09-15 — The obligation lists stay five, and the disagreement is declared
+
+Five lists in four files say "this is an obligation": the clause splitter's
+`clauseInternalLead`, the router's `obligationLead`, the third-person guard,
+the title layer's `ObligationFrame.link`, and the fragment-gluer's dangling
+auxiliary. They agree on five of the thirty-eight forms between them.
+
+The obvious fix is one list, and it is the wrong one. Three of the differences
+are load-bearing. `ObligationFrame.link` calls its omissions safety by
+omission: a form it does not list can never sit inside the span it deletes, so
+"I had to cancel the appointment" keeps its words. `obligationLead` is tested
+unanchored, so a bare `better` in it would read "the weather is better
+tomorrow" as an errand. `thirdPersonObligation` declines `gotta` and `want to`
+because "Mike gotta call Sarah" is not English and a preference is not an
+errand somebody owes. Merging any pair of these breaks the narrower one.
+
+So the five stay five. What changes is that their differences are now
+**declared and checked** rather than accidental.
+
+The one property that is not a matter of taste is the one that already bit. A
+single-token obligation form missing from `clauseInternalLead` gets cut off
+from what it governs — that is how "I hafta drop the car off on Thursday"
+filed a Memory note titled "I hafta" beside the errand. Multi-word frames end
+in `to`, and `to` has been the first entry of that set since it was written, so
+they are safe without anyone deciding they should be; only single tokens are
+exposed. `Tools/CorpusRunner/test_parser_vocabulary.py` asserts that every
+single-token form any obligation list claims is held by the splitter, with one
+declared exception carrying its reason: `better`, which is also an ordinary
+comparative and is exactly where a spoken sentence starts a new clause.
+
+It is a Python check over the Swift source rather than an XCTest because the
+constants are `private` and a test cannot read them, and because it then runs
+on Linux on every pull request instead of waiting for a dispatched Mac — which
+is where a vocabulary edit is introduced. The cost of reading source as text is
+that a reformatted constant stops being found, so every reader raises `Refused`
+rather than returning an empty set: an empty vocabulary passes every subset
+check ever written, which would make the suite report a clean bill for
+something it could not see.
+
+**Not done, and still staged.** Converging the vocabularies changes `count` and
+`route`, and the measurement from the last attempt says why that needs its own
+pass: widening the fragment-gluer alone cost 37 rows over a 233-capture stress
+set, all 37 moving a Today task to a Memory note, while the gating corpus
+showed exactly zero change. The corpus can neither detect that defect nor
+certify its fix.
+
 ## 2026-09-11 — "So" can end a thought, but only in front of an obligation
 
 Clause splitting was built for one coordinator. `splittableAndRanges` matched

@@ -177,6 +177,14 @@ jobs:
       # check -- the mechanical part of the held-out boundary -- never running
       # on a pull request, which is the one place a leak is introduced. All
       # three are pure Python and take about twenty seconds together.
+      # Five lists in four files say "this is an obligation" and they agree on
+      # five forms of the thirty-eight between them. Converging them changes
+      # `count` and `route`, so it waits for its own measurement pass; what
+      # runs here is the half that needs no judgement -- a single-token form
+      # missing from the clause splitter gets cut off from what it governs,
+      # which is how "I hafta drop the car off" filed a note titled "I hafta".
+      - name: Obligation vocabularies agree where they must
+        run: python3 Tools/CorpusRunner/test_parser_vocabulary.py
       - name: Held-out scorer self-tests (carries the leak check)
         run: python3 Tools/CorpusRunner/everyday/test_score.py
       - name: Held-out boundary
