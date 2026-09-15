@@ -13,14 +13,20 @@
 > as a finding.
 >
 > *2026-09-15.* The animacy entry was sized as well as read, and it is **an
-> accepted decision, not open work** — see the table in it. Two things the
-> sizing turned up apply to the whole document. Its corpus figure was wrong and
-> disagreed with the same figure in the source it describes (1,069 here, 1,022
-> there, 1,404 in fact), and three of its line-number citations pointed at the
-> wrong lines, one of them at a fragment of an unrelated docstring
-> (`ThoughtRepository.swift:206`, in the cancellation entry, is `/// it.`). Both
-> are the same defect: **a number typed into prose recomputes nowhere and says
-> nothing when it goes wrong.** A citation here is a claim like any other.
+> accepted decision, not open work** — see the table in it. What the sizing
+> turned up applies to the whole document: its corpus figure was wrong, and
+> disagreed with the same figure in the source it describes — 1,069 here, 1,022
+> there, 1,404 in fact. **A number typed into prose recomputes nowhere and says
+> nothing when it goes wrong.**
+>
+> The line-number citations were checked at the same time and are in better
+> shape than that. Of the sixteen `File.swift:N` citations here, none points
+> anywhere wrong, and one is off by a line: `ThoughtRepository.swift:206`, in
+> the cancellation entry, lands on the last line of the docstring for
+> `consumesFreeCapture`, declared on 207. They are the same kind of claim as
+> the figure and they drift the same silent way — the two `Actionability.swift`
+> citations in the animacy entry were correct until the commit that wrote this
+> paragraph grew a docstring above them, and nothing said so.
 
 ## A thought that stops and then keeps going is read as finished
 
