@@ -1,5 +1,77 @@
 # Decisions
 
+## 2026-09-15 — The obligation lists stay five, and the disagreement is declared
+
+Five lists in four files say "this is an obligation": the clause splitter's
+`clauseInternalLead`, the router's `obligationLead`, the third-person guard,
+the title layer's `ObligationFrame.link`, and the fragment-gluer's dangling
+auxiliary. They agree on five of the thirty-seven forms between them.
+
+The obvious fix is one list, and it is the wrong one. Three of the differences
+are load-bearing. `ObligationFrame.link` calls its omissions safety by
+omission: a form it does not list can never sit inside the span it deletes, so
+"I had to cancel the appointment" keeps its words. `obligationLead` is tested
+unanchored, so a bare `better` in it would read "the weather is better
+tomorrow" as an errand. `thirdPersonObligation` declines `gotta` and `want to`
+because "Mike gotta call Sarah" is not English and a preference is not an
+errand somebody owes. Merging any pair of these breaks the narrower one.
+
+So the five stay five. What changes is that their differences are now
+**declared and checked** rather than accidental.
+
+The one property that is not a matter of taste is the one that already bit. An
+obligation frame whose last word `clauseInternalLead` does not hold gets cut
+off from what it governs — that is how "I hafta drop the car off on Thursday"
+filed a Memory note titled "I hafta" beside the errand.
+
+The position is the frame's **last** word, because that is the single token
+`ClauseJuxtaposition` reads in front of a candidate verb: `to` in "have to
+call", `better` in "had better call", the whole word in "hafta call".
+`Tools/CorpusRunner/test_parser_vocabulary.py` asserts that the last word of
+every form any obligation list claims is held by the splitter.
+
+The first version of that check filtered on "has no space" and justified it
+with "every multi-word frame ends in `to`". Those are different sets and the
+difference was not empty. Four frames do not end in `to`. Three are the
+`better` family, and they are protected — by `deonticBetterSubject`, which
+reads the word in front of `better` at the same guard, because `better` is also
+an ordinary comparative and cannot live in a set that sees one token. That is a
+real second mechanism, so it is now read and checked alongside the five: it
+must still hold every subject those frames carry.
+
+**The fourth had no mechanism, and it is gone.** `got\s+ta` sat in
+`obligationLead` as a second spelling of `gotta`, in no other vocabulary, no
+test, and none of the seven development sets. It was exposed at `ta`, which the
+splitter does not hold, so "I got ta call Dave" was severed into a Memory row
+titled "I got ta" and an errand — the `I hafta` defect, reached by the one
+spelling the entry existed to serve. Removing it was preferred to adding `ta`
+to `clauseInternalLead`: `ta` is also a noun people say ("email the TA send the
+form"), so holding it would suppress a real boundary to protect a spelling with
+no observed instance. A router entry that cannot survive the splitter is not a
+capability the router has.
+
+Recording the shape rather than the instance: an exception list that grows
+every time the filter is wrong is a marker standing in for the judgement it
+approximates. The filter was changed to read the position the mechanism
+actually reads, and the one remaining exception names the mechanism that covers
+it and is checked against it.
+
+It is a Python check over the Swift source rather than an XCTest because the
+constants are `private` and a test cannot read them, and because it then runs
+on Linux on every pull request instead of waiting for a dispatched Mac — which
+is where a vocabulary edit is introduced. The cost of reading source as text is
+that a reformatted constant stops being found, so every reader raises `Refused`
+rather than returning an empty set: an empty vocabulary passes every subset
+check ever written, which would make the suite report a clean bill for
+something it could not see.
+
+**Not done, and still staged.** Converging the vocabularies changes `count` and
+`route`, and the measurement from the last attempt says why that needs its own
+pass: widening the fragment-gluer alone cost 37 rows over a 233-capture stress
+set, all 37 moving a Today task to a Memory note, while the gating corpus
+showed exactly zero change. The corpus can neither detect that defect nor
+certify its fix.
+
 ## 2026-09-11 — "So" can end a thought, but only in front of an obligation
 
 Clause splitting was built for one coordinator. `splittableAndRanges` matched
@@ -2561,3 +2633,57 @@ it only makes the existing measurements reachable by more than one machine.
 The script was verified for argument handling, `shellcheck` and `actionlint` on
 Linux; its macOS path is unrun here by construction and needs a Mac or a
 dispatch.
+
+## 2026-09-11 — A removal names a row by the head of its noun phrase
+
+Two cases were filed together as "delete and remove are not operation verbs".
+They fail for different reasons and only one of them was a defect.
+
+"Delete the reminder to call Dave" failed on **word order**: the rule required
+the container noun to be the final token of the sentence, so it recognised the
+pre-modified phrasing of a request and refused the post-modified phrasing of
+the same request. The fix reads the head of the object noun phrase instead of
+its last word, admitting head-initial phrases only through a complement (`to`,
+`about`, `for`, `regarding`) and head-final phrases only when no preposition
+stands in front of the head. Verb particles are deliberately not prepositions:
+"pick up the parcel reminder" has a head, "drop the kids off at the
+appointment" does not. No other guard on the destructive path moved.
+
+`that` and `which` were in the first version of the complement set and are out.
+They open a relative clause, the peel in `cleaned()` only ever handled the four
+above, and a word admitted as a complement but not peeled is recognised and
+then handed to `CaptureTargetMatcher` with the frame still attached — a match
+that cannot happen, which reads like a feature. The two lists are now the same
+list, which is what the comment above the peel had been claiming.
+
+"Remove the dentist appointment" failed on **reach**, and is left open. It is
+not a word-order problem: `appointment` has never been a container noun. The
+change deliberately does not add one. Reading the shape of a noun phrase and
+widening what a destructive verb may reach are different changes with different
+risks, and the second belongs to whoever owns the product, not to this rule.
+
+The plurals of the six existing container nouns were added, because
+`CaptureTargetMatcher.stopWords` already treated "reminders" and "reminder" as
+the same word; the singular-only spelling was an inflection gap, not a boundary.
+
+The **verbs** did not move: `removalVerb` is exactly what the two patterns it
+replaces admitted. `erase` is the obvious addition and is left out on the same
+grounds as `appointment` — it would make "erase the gym reminder" destroy a row
+that is an ordinary capture today, which is reach. It went in by accident in
+the first version of this change and was caught in review; both the code and
+the tests now say out loud that it is absent on purpose.
+
+One thing is newly admitted beyond the shape: a leading "please". It moves no
+verb and no noun, and `cancelsAnArrangement` has always taken one, so the two
+tiers now agree on this much. Recorded rather than left to be found, because an
+undeclared widening is undeclared however small it is.
+
+**Measured on macOS, after the fact.** The change was written in a Linux
+container; the engine depends on Apple's `NaturalLanguage` and cannot run
+there, so the first evidence was a pattern-level model of the old and new rules
+over 31 utterances — 7 shapes newly recognised, no false positive over 18
+errands and calendar nouns. That model is not the engine, and the real numbers
+came from dispatched macOS runs: the corpus gate green over 1,404 cases with
+`DO02` gone from the routed development set's failures and `DO03` still there,
+and the capture-operation classes green on a simulator. The whole unit suite
+and the release compile check have still not run.

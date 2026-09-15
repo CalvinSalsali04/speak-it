@@ -70,6 +70,7 @@ jobs:
       ios: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ios == 'true' }}
       dashboard: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.dashboard == 'true' }}
       referral: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.referral == 'true' }}
+      prose: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.prose == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,6 +91,22 @@ jobs:
               - 'Tools/LanguageMutations/**'
               - 'Tools/PipelineProbe/**'
               - 'Tools/CI/**'
+              - '.github/workflows/ci.yml'
+            # The leak check walks EVERY Markdown file in the repository, not
+            # only the ones under Docs/, because a README beside a corpus is
+            # the more tempting place to quote a capture. It was reachable
+            # only through the `ios` filter, whose globs contain no Markdown
+            # at all -- so a documentation-only pull request ran no sealed-set
+            # check. #56 nearly put a held-out capture verbatim into
+            # LANGUAGE_BASELINE.md and was caught by a reader, not by CI.
+            #
+            # This is its own output rather than another glob under `ios`
+            # because `ios` also gates the macOS job, and a prose change must
+            # not bill a Mac. Kept as `**/*.md` rather than `Docs/**` to match
+            # what the check actually reads; test_score.py fails when a file
+            # the check reads is matched by none of these globs.
+            prose:
+              - '**/*.md'
               - '.github/workflows/ci.yml'
             dashboard:
               - 'FounderDashboard/**'
@@ -125,7 +142,7 @@ jobs:
   language-tools:
     name: Language tooling (no Mac needed)
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    if: needs.changes.outputs.ios == 'true' || needs.changes.outputs.prose == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -147,11 +164,35 @@ jobs:
         run: python3 Tools/CorpusRunner/test_choice_balance.py
       - name: Per-connector report self-tests
         run: python3 Tools/CorpusRunner/consequence/test_block_report.py
+      - name: Connective census self-tests
+        run: python3 Tools/CorpusRunner/test_connective_census.py
+      # The population figures in LANGUAGE_BASELINE.md are generated from the
+      # corpus walk rather than typed, and this is what notices when the two
+      # disagree. It has to run on a pull request that touches no Python at
+      # all: the gating corpus is two thirds of that population, so a change
+      # adding three test strings moves every figure in the section while
+      # touching nothing under this directory.
+      - name: Baseline population figures match the corpus
+        run: python3 Tools/CorpusRunner/test_baseline_figures.py
+      # The second question a target has to survive, after the census's "is
+      # this form attested": are the N rows carrying it N observations, or one
+      # frame written N times? Two proposals were stopped by asking it by hand
+      # on 2026-09-14 and nothing checked it.
+      - name: Observation-shape measure self-tests
+        run: python3 Tools/CorpusRunner/test_observation.py
       # These three were reachable only through corpus-gate.sh, which needs a
       # Swift toolchain and so runs on a Mac by dispatch. That left the leak
       # check -- the mechanical part of the held-out boundary -- never running
       # on a pull request, which is the one place a leak is introduced. All
       # three are pure Python and take about twenty seconds together.
+      # Five lists in four files say "this is an obligation" and they agree on
+      # five forms of the thirty-eight between them. Converging them changes
+      # `count` and `route`, so it waits for its own measurement pass; what
+      # runs here is the half that needs no judgement -- a single-token form
+      # missing from the clause splitter gets cut off from what it governs,
+      # which is how "I hafta drop the car off" filed a note titled "I hafta".
+      - name: Obligation vocabularies agree where they must
+        run: python3 Tools/CorpusRunner/test_parser_vocabulary.py
       - name: Held-out scorer self-tests (carries the leak check)
         run: python3 Tools/CorpusRunner/everyday/test_score.py
       - name: Held-out boundary

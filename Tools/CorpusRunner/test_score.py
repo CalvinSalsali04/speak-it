@@ -3,6 +3,7 @@ import collections
 import contextlib
 import csv
 import io
+import os
 import pathlib
 import re
 import subprocess
@@ -1283,6 +1284,39 @@ class CorpusPathTests(unittest.TestCase):
         """Deleting a corpus must not pass as quietly as adding one."""
         self.assertEqual(self.paths().missing(), [])
 
+    def test_readable_hands_back_every_readable_file_on_disk(self):
+        """The list being total does not make what is handed out total.
+
+        `unclassified()` and `missing()` both read `READABLE_NAMES` directly,
+        so neither can see `readable()` returning fewer paths than it declares.
+        Slicing one off its return passes every suite in this repository: each
+        consumer derives from that one call, so all of them move together, the
+        census prints one fewer source and 5,482 utterances instead of 5,501,
+        and nothing compares either number to anything.
+
+        That is not hypothetical here. The census read 1,908 utterances until
+        `SpeakItTests` was added, and #68 described two corpora it was not
+        reading. Both were a population short while reporting confidently.
+
+        So this derives the answer a second way -- everything on disk that is
+        not sealed and not a manifest -- rather than restating the constant.
+        It is the exact complement of `unclassified()`: that one says the
+        lists cover the disk, this one says `readable()` returns all of the
+        part it owns.
+        """
+        paths = self.paths()
+        sealed = set(paths.sealed())
+        manifest = {paths.HERE / name for name in paths.MANIFEST_NAMES}
+        on_disk = sorted(path for path in paths.HERE.rglob("*.tsv")
+                         if path not in sealed and path not in manifest)
+        self.assertTrue(on_disk, "no readable corpus found on disk at all, "
+                                 "so this test is measuring nothing")
+        self.assertEqual(
+            paths.readable(), on_disk,
+            "readable() and the directory disagree; every figure derived "
+            "from it moves with it, so neither the count nor the report "
+            "can show this")
+
     def test_the_readable_search_cannot_return_a_sealed_file(self):
         """The search that caused the second exposure, made safe by construction.
 
@@ -1407,6 +1441,428 @@ Running total: **\u22121 row**, across one change, on one of the measures.
 
 ## Next heading
 """
+
+
+class TheHeaderIsReadInOnePlace(unittest.TestCase):
+    """Which line is the header, and which column holds the capture.
+
+    Four defects have come from four readers working this out separately, and
+    the reason is one file wide: every corpus here comments its header except
+    `everyday.tsv`, which writes it as an ordinary first line. So
+    `startswith("#")` is right ten times out of eleven -- the worst hit rate a
+    rule people copy can have, because the tenth reader has no reason to doubt
+    it. One of those four re-derivations reported 256 rows for a 255-capture
+    set; another reported that a corpus contains no instance of a word it uses
+    34 times.
+
+    So these tests are about the two questions being answered in one place and
+    answered the same way, not about any one scan being right.
+    """
+
+    #: The four sealed sets are published denominators. A reader that gains or
+    #: loses a row changes a rate nobody re-derives, so the sizes are pinned
+    #: here by count alone -- no id, no text.
+    SEALED_SIZES = {
+        "heldout.tsv": 389,
+        "everyday.tsv": 255,
+        "adversarial.tsv": 120,
+        "consequence.tsv": 56,
+    }
+
+    def paths(self):
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def corpus(self, body):
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        path = pathlib.Path(room.name) / "set.tsv"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_both_header_layouts_in_this_repository_are_read(self):
+        """The asymmetry itself, pinned in both directions.
+
+        A rule that reads only the commented one is right ten times and wrong
+        on the largest readable corpus; a rule that reads only the first line
+        is right once.
+        """
+        paths = self.paths()
+        commented = ["# id\tutterance\tfamily", "C1\thello\tx"]
+        bare = ["id\tdomain\tutterance", "C1\twork\thello"]
+        self.assertEqual(paths.utterance_column(commented), 1)
+        self.assertEqual(paths.utterance_column(bare), 2)
+        self.assertEqual(paths.header_index(commented), 0)
+        self.assertEqual(paths.header_index(bare), 0)
+
+    def test_the_header_line_is_never_counted_as_data(self):
+        """The 256-for-255 defect, in both layouts."""
+        paths = self.paths()
+        for body in ("# id\tutterance\nC1\thello\nC2\tthere\n",
+                     "id\tutterance\nC1\thello\nC2\tthere\n"):
+            with self.subTest(body=body.splitlines()[0]):
+                path = self.corpus(body)
+                self.assertEqual(len(list(paths.data_rows(path))), 2)
+                self.assertEqual([u for _n, _i, u in paths.utterances(path)],
+                                 ["hello", "there"])
+
+    def test_every_column_is_read_from_the_same_line(self):
+        """Two columns resolved by two independent scans can disagree.
+
+        `column_of` looked for its name on any line rather than on the header
+        line, so a commented-out old header still names an `id` column as far
+        as the id lookup is concerned, while the utterance lookup uses the
+        real one. Every row then reports the wrong field as its id, and the
+        report that names a leak names the wrong thing -- which is worse than
+        naming nothing, because nothing looks like a failure and this does not.
+        """
+        paths = self.paths()
+        path = self.corpus("# id\told_utterance\n"
+                           "# ref\tid\tutterance\n"
+                           "R1\tX01\thello\n"
+                           "R2\tX02\tthere\n")
+        self.assertEqual(paths.id_column(
+            path.read_text(encoding="utf-8").splitlines()), 1)
+        found = [cid for _n, cid, _u in paths.utterances(path)]
+        self.assertEqual(
+            found, ["X01", "X02"],
+            "the id column was resolved from a line other than the one the "
+            f"utterance column came from; got {found}")
+
+    def test_a_row_too_short_for_the_utterance_column_is_refused(self):
+        """A dropped row is a smaller denominator and no message.
+
+        This is the shape this repository keeps finding: the malformed row is
+        exactly the row worth knowing about, and skipping it makes the file
+        look clean and one capture smaller. No corpus file here has one today,
+        so refusing costs nothing and stays cheap only while that holds.
+        """
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\nC1\thello\nC2\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception),
+                      "the refusal must name the line, or it sends a reader "
+                      "looking through the whole file")
+
+    def test_a_row_with_an_empty_id_is_refused_too(self):
+        """Found by mutation: restoring `cid or "?"` in the leak check changed
+        no verdict, which looked like the deleted line being dead. It was not
+        -- a header can name an id column and a row can still leave the cell
+        empty, and the fallback was quietly printing a placeholder where the
+        report is supposed to print a name. Refusing the missing column and
+        not the missing value is the half-measure, so both refuse now and the
+        fallback really is dead."""
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\nX01\thello\n\tthere\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception))
+        self.assertIn("empty", str(raised.exception))
+
+    def test_the_id_cell_is_stripped(self):
+        """`harvest_ids` stripped it before the conversion; the contract that
+        replaced it has to keep doing so, or a padded cell reaches a report
+        that is compared against ids elsewhere."""
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\n  X01  \thello\n")
+        self.assertEqual([cid for _n, cid, _u in paths.utterances(path)],
+                         ["X01"])
+
+    def test_a_row_too_short_for_the_id_column_is_refused_as_cleanly(self):
+        """A layout with the id after the utterance is not one we have, which
+        is why the short-row check could ignore it and no test would notice.
+        On such a file the refusal became an IndexError with no line number --
+        the difference between a reader that declines and one that crashes."""
+        paths = self.paths()
+        path = self.corpus("# utterance\tid\nhello\tX01\nthere\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception))
+
+    def test_a_corpus_with_no_id_header_refuses_rather_than_naming_nothing(self):
+        """An unnamed row is worse here than a missing one.
+
+        The leak check's prose half exists to **name** a leak without printing
+        it. An id lookup that returns None and becomes the empty string turns
+        the one safe report into one that says a sealed capture is committed
+        somewhere and cannot say which. Absent is not column zero and it is
+        not "". Raised by the reader, because the previous version of this was
+        a `fields[0]` in the caller, and the conversion that removed it made
+        the failure quieter rather than louder.
+        """
+        paths = self.paths()
+        path = self.corpus("# ref\tutterance\nX01\thello\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("id", str(raised.exception))
+        with self.assertRaises(ValueError):
+            paths.id_column(["# ref\tutterance"])
+
+    def test_every_corpus_file_names_an_id_column(self):
+        """Counts only. The refusal above costs nothing while this holds."""
+        paths = self.paths()
+        for path in sorted(paths.sealed() + paths.readable()):
+            with self.subTest(corpus=path.name):
+                lines = path.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(paths.id_column(lines), 0)
+
+    def test_a_corpus_with_no_utterance_header_refuses_rather_than_guessing(self):
+        paths = self.paths()
+        with self.assertRaises(ValueError):
+            paths.utterance_column(["# id\tcapture", "C1\thello"])
+
+    def test_column_of_returns_none_rather_than_something_usable(self):
+        """`column_of(...) or 0` is how a missing header becomes column one."""
+        paths = self.paths()
+        self.assertIsNone(paths.column_of(["# id\tutterance"], "domain"))
+
+    def test_every_corpus_file_reads_and_nothing_is_dropped(self):
+        """Counts only -- no id and no text leaves this test.
+
+        `data_rows` and `utterances` must agree on every file: the second is
+        the first plus a column lookup, and a gap between them is a silently
+        skipped row.
+        """
+        paths = self.paths()
+        for path in sorted(paths.sealed() + paths.readable()):
+            with self.subTest(corpus=path.name):
+                rows = len(list(paths.data_rows(path)))
+                utterances = len(list(paths.utterances(path)))
+                self.assertGreater(rows, 0)
+                self.assertEqual(rows, utterances)
+                if path.name in self.SEALED_SIZES:
+                    self.assertEqual(rows, self.SEALED_SIZES[path.name])
+
+    def test_the_corpora_do_not_agree_on_a_column(self):
+        """Why a hard-coded index is not merely untidy.
+
+        If every set kept its utterance in the same column, every hard-coded
+        reader would be correct and this whole family would be invisible until
+        the layout changed. They do not, so this records what is actually true
+        -- and if it ever stops being true, the reader that hard-codes the new
+        common index starts passing by luck.
+        """
+        paths = self.paths()
+        columns = {paths.utterance_column(
+            p.read_text(encoding="utf-8").splitlines())
+            for p in paths.sealed() + paths.readable()}
+        self.assertGreater(len(columns), 1, f"one column everywhere: {columns}")
+
+
+class EveryCorpusReaderIsDeclared(unittest.TestCase):
+    """Who is still working out the file format for themselves.
+
+    Five defects have come from five readers deriving the same two rules --
+    which lines are data, which column holds the capture -- and each was found
+    by accident, years of reading apart in instrument time. The rules now have
+    one owner in `corpus_paths`. That on its own fixes nothing, because the
+    sixth reader will be written by somebody who has not read this class.
+
+    So the list below is the point. A file that slices a tab-separated line
+    itself is either on it, with a reason, or the run fails. The list is
+    allowed to shrink and nothing else; an entry that stops matching fails too,
+    so a converted reader cannot be left on it and a stale entry cannot sit
+    here looking like remaining work.
+
+    It is not a claim that the listed readers are wrong. It is a claim that
+    each is a place the next defect in this family will appear, written down
+    where the next person changing one will see it.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+
+    #: `cut -f` for shell, a tab split for Python. Deliberately crude: a
+    #: detector with exceptions is a detector somebody routes around, and the
+    #: cost of a false positive here is one line in the list below.
+    SLICES = re.compile(r"""split\("\\t"\)|split\('\\t'\)|cut -f""")
+
+    #: Every file that still reads a corpus its own way, and why it has not
+    #: moved yet. Shrinks; never grows without the reason being written here.
+    HAND_ROLLED = {
+        "adversarial/lengths.py":
+            "reads label columns as well as the utterance; moves with the "
+            "adversarial scorer",
+        "adversarial/score.sh":
+            "`cut -f3` into the probe's input file. Shell cannot call Python "
+            "cheaply here, and the extraction is checked by comparing the "
+            "file it writes against `corpus_paths.utterances`",
+        "choice-balance.py":
+            "reads the tag column, not the utterance; the tag grammar is its "
+            "own and belongs to it",
+        "consequence/block-report.py":
+            "reads the connector and block columns; same reason",
+        "consequence/score.sh":
+            "`cut -f2` into the probe's input file, checked the same way as "
+            "the adversarial one",
+        "devsets/abandonment-score.py":
+            "development-set scorer, reads its own label columns",
+        "devsets/score.py":
+            "development-set scorer, reads its own label columns",
+        "devsets/unfinished-score.py":
+            "development-set scorer, reads its own label columns",
+        "everyday/generation-check.py":
+            "hashes whole rows rather than reading a column, so the format "
+            "question it asks is a different one",
+        "everyday/score.py":
+            "the largest scorer; converting it needs the everyday suite green "
+            "on a Mac, which this container cannot do",
+        "everyday/score.sh":
+            "`cut -f3` into the probe's input file, checked the same way as the "
+            "adversarial one. This is the one that has to say three",
+        "heldout/score.py":
+            "scores the sealed set; converting it needs its own suite green on a "
+            "Mac, which this container cannot do",
+        "heldout/score.sh":
+            "`cut -f2` into the probe's input file. This is the one whose "
+            "commented header used to arrive as a 390th capture",
+    }
+
+    #: Suites build corpora inline to test readers, which is the one place
+    #: writing the format out by hand is the job rather than a copy of it.
+    TESTS = re.compile(r"(^|/)test_[^/]+\.py$")
+
+    def readers(self):
+        found = []
+        for path in sorted(self.HERE.rglob("*")):
+            if path.suffix not in (".py", ".sh") or not path.is_file():
+                continue
+            relative = str(path.relative_to(self.HERE))
+            if relative == "corpus_paths.py" or self.TESTS.search(relative):
+                continue
+            if self.SLICES.search(path.read_text(encoding="utf-8")):
+                found.append(relative)
+        return found
+
+    def test_the_detector_finds_a_hand_rolled_reader(self):
+        """Without this, a detector that matches nothing passes every
+        assertion below and reports the family as solved."""
+        with tempfile.TemporaryDirectory() as room:
+            room = pathlib.Path(room)
+            (room / "a.py").write_text('cells = line.split("\\t")\n')
+            (room / "b.sh").write_text('cut -f2 corpus.tsv\n')
+            (room / "c.py").write_text('import corpus_paths\n')
+            hits = [p.name for p in sorted(room.iterdir())
+                    if self.SLICES.search(p.read_text())]
+            self.assertEqual(hits, ["a.py", "b.sh"])
+
+    def test_no_undeclared_reader_slices_a_corpus_itself(self):
+        undeclared = [r for r in self.readers() if r not in self.HAND_ROLLED]
+        self.assertEqual(
+            undeclared, [],
+            "these read a tab-separated corpus their own way and are not in "
+            "HAND_ROLLED. Use corpus_paths.utterances / data_rows, or add the "
+            "file here with the reason it cannot")
+
+    def test_the_list_only_shrinks(self):
+        """A converted reader left on the list is a to-do that reads as done.
+
+        The same shape as an annotation that documents a failure and then
+        absolves it: the entry stays, the defect is gone, and the list stops
+        being a measurement of anything.
+        """
+        readers = set(self.readers())
+        stale = sorted(set(self.HAND_ROLLED) - readers)
+        self.assertEqual(
+            stale, [],
+            "no longer slice a corpus by hand, so remove them from "
+            "HAND_ROLLED rather than leaving the list overstating the work")
+
+    def test_the_reasons_are_reasons(self):
+        for name, why in sorted(self.HAND_ROLLED.items()):
+            with self.subTest(reader=name):
+                self.assertGreater(
+                    len(why.split()), 3,
+                    f"{name} is listed without saying why it has not moved")
+
+
+class TheShellExtractionAgreesWithTheReader(unittest.TestCase):
+    """The four `score.sh` scripts cut a column out of a corpus with `cut -f`.
+
+    Shell cannot call the one reader cheaply, so those four stay hand-rolled
+    and are declared in `EveryCorpusReaderIsDeclared`. Declaring them is not
+    the same as checking them, and this family's whole history is readers
+    quietly disagreeing: `heldout/score.sh` used to cut column two off EVERY
+    line, so the commented header's second cell -- the bare word `utterance`
+    -- reached the probe as a 390th capture, and nothing said so.
+
+    So each script's extraction is run and compared against
+    `corpus_paths.utterances` for the same file. By count and by digest, never
+    by value: three of these four corpora are sealed, and a unittest failure
+    message prints both sides of an assertEqual. A mismatch here reports the
+    first line number that differs and nothing else.
+    """
+
+    HERE = pathlib.Path(__file__).resolve().parent
+
+    #: The script, and the corpus it extracts from. The command is read out of
+    #: the script rather than repeated here: a copy of a command is a fifth
+    #: reader, which is the thing this file is about.
+    SCRIPTS = (
+        ("adversarial/score.sh", "adversarial/adversarial.tsv"),
+        ("heldout/score.sh", "heldout/heldout.tsv"),
+        ("consequence/score.sh", "consequence/consequence.tsv"),
+        ("everyday/score.sh", "everyday/everyday.tsv"),
+    )
+
+    def paths(self):
+        sys.path.insert(0, str(self.HERE))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def extraction(self, script):
+        """The pipeline the script uses to write its utterance file."""
+        lines = [l for l in (self.HERE / script).read_text(encoding="utf-8")
+                 .splitlines()
+                 if "cut -f" in l and not l.lstrip().startswith("#")]
+        self.assertEqual(len(lines), 1,
+                         f"{script}: expected one extraction line, found "
+                         f"{len(lines)}")
+        return lines[0].split(">")[0].strip()
+
+    def test_each_script_extracts_exactly_what_the_reader_reads(self):
+        paths = self.paths()
+        for script, corpus in self.SCRIPTS:
+            with self.subTest(script=script):
+                command = self.extraction(script)
+                shelled = subprocess.run(
+                    ["sh", "-c", command],
+                    cwd=self.HERE, capture_output=True, text=True,
+                    env={**os.environ, "SP": str((self.HERE / script).parent)})
+                self.assertEqual(shelled.returncode, 0, shelled.stderr)
+                got = shelled.stdout.splitlines()
+                want = [u for _n, _i, u in paths.utterances(self.HERE / corpus)]
+                self.assertEqual(
+                    len(got), len(want),
+                    f"{script} extracts {len(got)} lines, the reader reads "
+                    f"{len(want)} from {corpus}")
+                first = next((i for i, (a, b) in enumerate(zip(got, want))
+                              if a != b), None)
+                self.assertIsNone(
+                    first,
+                    f"{script} and corpus_paths disagree from extracted line "
+                    f"{(first or 0) + 1} onward. Not printed: these sets are "
+                    f"sealed and an assertEqual would render both sides")
+
+    def test_the_comparison_can_actually_fail(self):
+        """A command that returns nothing would agree with nothing, and the
+        length check is the only thing standing between that and a pass."""
+        paths = self.paths()
+        want = [u for _n, _i, u in
+                paths.utterances(self.HERE / "devsets/routed.tsv")]
+        shelled = subprocess.run(
+            ["sh", "-c", "cut -f2 devsets/routed.tsv"],
+            cwd=self.HERE, capture_output=True, text=True)
+        #: Column two with no header handling: one line too many, and the
+        #: extra one is the header. Exactly the 390th-capture defect.
+        self.assertNotEqual(len(shelled.stdout.splitlines()), len(want))
 
 
 class SealedSetsDoNotRenderAsText(unittest.TestCase):
@@ -1650,6 +2106,35 @@ class CorpusShapeTests(unittest.TestCase):
                              "the shape report printed a capture, which is the "
                              "one thing it exists to avoid")
 
+    #: `everyday.tsv`'s layout: the utterance third, not second. Every test
+    #: above uses the common layout, which is precisely why a reader that
+    #: hard-codes column one passed all of them.
+    EVERYDAY_SHAPED = ("id\tdomain\tutterance\tkeep\n"
+                       "X01\twork\tthe lease ends in March\ty\n"
+                       "X02\thome\tthe bin goes out on Thursday\ty\n")
+
+    def test_an_empty_utterance_is_found_in_the_other_layout_too(self):
+        """The check read column one until 2026-09-14.
+
+        On the one corpus that keeps its utterance third it was therefore
+        reading `domain`, which is never empty -- so the empty-utterance check
+        could not fail on the 255-capture set, and reported nothing, which is
+        what a working check also reports. It sat six lines under a comment
+        saying the column is never assumed.
+        """
+        status, said = self.run_on(
+            self.EVERYDAY_SHAPED + "X03\tmoney\t\ty\n")
+        self.assertEqual(status, 1, said)
+        self.assertIn("empty utterance", said)
+        self.assertIn("X03", said)
+
+    def test_an_empty_cell_that_is_not_the_utterance_is_not_reported(self):
+        """The other direction, or the test above passes on a check that
+        reports every empty cell anywhere."""
+        status, said = self.run_on(
+            self.EVERYDAY_SHAPED + "X03\t\tthe kettle needs descaling\ty\n")
+        self.assertNotIn("empty utterance", said)
+
     def test_a_duplicate_row_is_named_by_id_and_not_by_text(self):
         """Even the error path stays blind, which is where text usually leaks."""
         status, said = self.run_on(self.GOOD + "X03\tthe lease ends in March\ta\t1\n")
@@ -1867,6 +2352,177 @@ class LedgerSingleMeasureTests(unittest.TestCase):
             [p for p in problems if "more than one sealed measure" in p], [],
             "a second sealed measure has moved, so the single running total "
             "in LANGUAGE_BASELINE.md is now a sum over two denominators")
+
+
+class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
+    """Every file the leak check reads must also start the job that runs it.
+
+    `leak-check.py` walks every Markdown file in the repository, because a
+    README beside a corpus is a more tempting place to quote a capture than a
+    design document is. The job that runs it, `language-tools`, was gated on
+    the `ios` path filter, and that filter lists no Markdown at all -- so a
+    documentation-only pull request ran no sealed-set check whatsoever. #56
+    nearly committed a held-out capture verbatim into `LANGUAGE_BASELINE.md`
+    and was stopped by a person reading the diff.
+
+    This is the totality shape this repository keeps finding in its own
+    instruments, one level up: the check was correct, its coverage complete,
+    and nothing ran it. So the property under test is not "the filter mentions
+    Markdown" -- that is satisfied by `Docs/**`, which would leave `CLAUDE.md`
+    and every `Tools/**/README.md` outside a language directory uncovered. It
+    is that **no file the check reads is missed by every glob**, tested
+    against the files actually on disk.
+
+    What it cannot do, stated because the same hole is everywhere else here:
+    it reads the globs, not GitHub's matcher. A glob this translator and
+    picomatch disagree about passes here and fails there, or worse.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+
+    #: The filter outputs that gate `language-tools`. Read from the job's own
+    #: `if:` rather than written here, so adding a third output to the gate
+    #: without widening this test is not possible.
+    JOB = "language-tools"
+
+    @staticmethod
+    def as_regex(glob):
+        """A paths-filter glob as a regex. `**` spans directories, `*` does not."""
+        out, i = "", 0
+        while i < len(glob):
+            if glob.startswith("**/", i):
+                out += "(?:[^/]+/)*"
+                i += 3
+            elif glob.startswith("**", i):
+                out += ".*"
+                i += 2
+            elif glob[i] == "*":
+                out += "[^/]*"
+                i += 1
+            elif glob[i] == "?":
+                out += "[^/]"
+                i += 1
+            else:
+                out += re.escape(glob[i])
+                i += 1
+        return re.compile(f"^{out}$")
+
+    def job_body(self, job=None):
+        """The lines of one job, from its key to the next key at that indent.
+
+        `\n  ` is not the delimiter: it is also the prefix of every `\n    `
+        inside the body, so splitting on it returns an empty job and every
+        test below then passes or fails for a reason that is not the one it
+        is named for. It cost a run to notice.
+        """
+        lines = self.WORKFLOW.read_text(encoding="utf-8").splitlines()
+        want = f"  {job or self.JOB}:"
+        if want not in lines:
+            raise self.failureException(
+                f"no job named `{want.strip()}` in the workflow, so every "
+                f"assertion about it below would pass vacuously")
+        start = lines.index(want)
+        for j, later in enumerate(lines[start + 1:], start + 1):
+            if re.fullmatch(r"  \S.*", later):
+                return "\n".join(lines[start:j])
+        return "\n".join(lines[start:])
+
+    def gate_outputs(self):
+        """The `needs.changes.outputs.X` names in the job's `if:` condition."""
+        return set(re.findall(r"needs\.changes\.outputs\.(\w+)",
+                              self.job_body()))
+
+    def globs(self, outputs):
+        """Every glob listed under the named filters."""
+        text = self.WORKFLOW.read_text(encoding="utf-8")
+        found, current = [], None
+        #: Skipping the `filters: |` line itself, which sits two levels out
+        #: from the block it introduces and so ends the walk immediately.
+        block = text[text.index("filters: |"):].splitlines()[1:]
+        for line in block:
+            if re.fullmatch(r" {12}(\w+):", line):
+                current = line.strip().rstrip(":")
+            elif line.strip().startswith("- '") and current in outputs:
+                found.append(line.strip()[3:-1])
+            elif line.strip() and not line.startswith(" " * 12):
+                break
+        return found
+
+    def markdown_the_check_reads(self):
+        """Every `.md` path `leak-check.py` would walk, relative to the root."""
+        out = []
+        for here, folders, files in os.walk(self.ROOT, followlinks=True):
+            folders[:] = [f for f in folders if f != ".git"]
+            for name in files:
+                if name.endswith(".md"):
+                    out.append(str(pathlib.Path(here, name)
+                                   .relative_to(self.ROOT)))
+        return out
+
+    def test_the_job_is_gated_on_something(self):
+        """An `if:` this cannot parse would make every test below vacuous."""
+        self.assertTrue(self.gate_outputs(),
+                        f"no `needs.changes.outputs.*` found in {self.JOB}")
+
+    def test_the_globs_were_found(self):
+        """No globs makes the coverage test below fail for the wrong reason,
+        and an empty read is the one input that looks like total failure."""
+        self.assertGreater(len(self.globs(self.gate_outputs())), 5)
+
+    def test_the_translator_agrees_with_itself_in_both_directions(self):
+        """A matcher that matches nothing reports every file as uncovered; one
+        that matches everything reports the filter as complete. Both wrong."""
+        star = self.as_regex("**/*.md")
+        for hit in ("CLAUDE.md", "Docs/README.md", "Tools/a/b/c.md"):
+            self.assertIsNotNone(star.match(hit), hit)
+        for miss in ("Docs/README.txt", "notes.md.swift"):
+            self.assertIsNone(star.match(miss), miss)
+        narrow = self.as_regex("Docs/**")
+        self.assertIsNotNone(narrow.match("Docs/a/b.md"))
+        self.assertIsNone(narrow.match("CLAUDE.md"))
+        one = self.as_regex("Tools/*/x.md")
+        self.assertIsNotNone(one.match("Tools/CI/x.md"))
+        self.assertIsNone(one.match("Tools/a/b/x.md"))
+
+    def test_every_output_the_gate_names_is_actually_exported(self):
+        """The `if:` and the `filters:` block are two of three parts.
+
+        The third is the `outputs:` map on the `changes` job, and it is the
+        one nothing above reads. Delete `prose:` from it and the filter still
+        evaluates, the `if:` still names it, every other test here still
+        passes -- and `needs.changes.outputs.prose` is the empty string, so
+        `language-tools` is gated on `ios` alone and a documentation-only
+        pull request runs no sealed-set check. That is this pull request's
+        own hole, reopened by deleting one line, with the suite green.
+
+        A check that never runs and a check that passes are the same output;
+        so is a gate wired to an output nobody exports.
+        """
+        body = self.job_body("changes")
+        for name in sorted(self.gate_outputs()):
+            exported = re.search(
+                rf"^      {name}: .*steps\.filter\.outputs\.{name}\b",
+                body, re.MULTILINE)
+            self.assertIsNotNone(
+                exported,
+                f"`{self.JOB}` is gated on needs.changes.outputs.{name}, but "
+                f"the `changes` job exports no `{name}` built from "
+                f"steps.filter.outputs.{name}. That expression is the empty "
+                f"string at runtime, so the gate silently drops the filter.")
+
+    def test_every_markdown_file_the_check_reads_starts_the_job(self):
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        files = self.markdown_the_check_reads()
+        self.assertGreater(len(files), 20, "no Markdown found to check")
+        uncovered = [f for f in files
+                     if not any(p.match(f) for p in patterns)]
+        self.assertEqual(
+            uncovered[:10], [],
+            f"{len(uncovered)} Markdown file(s) are read by leak-check.py and "
+            f"match no path filter that starts language-tools, so changing "
+            f"only them runs no sealed-set check at all")
+
 
 
 if __name__ == "__main__":

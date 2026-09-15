@@ -90,11 +90,19 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
 import corpus_paths  # noqa: E402  (needs ROOT resolved first)
 
+#: Every importable module beside this tree, by glob rather than by name.
+#: This line read `corpus_paths.py` until `readable_material.py` was split out
+#: of the census and `leak-check.py` began importing it: the scratch tree then
+#: had no such module, every test died on the import, and the control went
+#: red. Which is the control working -- and it is the fifth hand-written list
+#: in this directory to know about N things when there were N+1. A glob
+#: cannot go stale the same way, and a module that arrives unused costs a
+#: symlink.
 LINKED = [ROOT / "SpeakItTests",
           ROOT / "Docs",
           ROOT / "Tools/CI",
-          ROOT / "Tools/CorpusRunner/corpus_paths.py",
-          ROOT / "Tools/CorpusRunner/devsets"] + [
+          ROOT / "Tools/CorpusRunner/devsets"] + sorted(
+          (ROOT / "Tools/CorpusRunner").glob("*.py")) + [
           #: Every sealed set's directory, whatever the list says today. The
           #: everyday one is copied rather than linked, since it is the tree
           #: under mutation, so it is excluded here.
