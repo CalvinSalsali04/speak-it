@@ -510,12 +510,12 @@ def independent_bodies(reduce=None, texts=None):
     """`(bodies, maximal)` — how many populations the sources amount to.
 
     `contained_sources` prints the pairs and leaves the reader arithmetic that
-    cannot be done by eye: twenty-eight pairs over twenty sources is not a
+    cannot be done by eye: containment pairs over twenty-five sources is not a
     number anyone reduces while reading. This reduces it, because "the source
     count is not a count of independent bodies" is worth saying only if the
-    count it is not is available. It is 20 sources, 17 distinct bodies and 10
+    count it is not is available. It is 25 sources, 22 distinct bodies and 12
     inside no other -- and one of those ten is two thirds of the material and
-    is test fixtures, which is a different sentence from "twenty sources".
+    is test fixtures, which is a different sentence from "twenty-five sources".
 
     Two steps, and the order is the whole difficulty. Sources holding the same
     utterances are one body, grouped FIRST; then a body wholly inside another
