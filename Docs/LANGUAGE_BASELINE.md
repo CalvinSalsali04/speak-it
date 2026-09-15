@@ -331,85 +331,105 @@ census and `observation.py` use, reproduced with
 
 ### The reduction
 
-Sources holding exactly the same utterances are one body, grouped first. Then a
-body wholly inside another is not a second population. 20 sources reduce to 17
-distinct bodies and **10 that sit inside no other**:
+**The block below is generated, not typed.** `baseline_figures.py` recomputes
+every figure in it from the corpus walk and `test_baseline_figures.py` fails
+when the committed text and a fresh walk disagree, so it describes the corpus
+**as it stands now** rather than as it stood on this section's date. Regenerate
+it with `python3 Tools/CorpusRunner/baseline_figures.py --write`; do not edit it
+by hand. The snapshot this section was written from, on 2026-09-15, was 5,501
+distinct utterances over 20 sources reducing to 17 bodies and 10 populations,
+of which 3,702 were the gating corpus — kept here so a later regeneration
+cannot quietly restate what the section originally said.
 
-| utterances | share of 5,501 | population |
+<!-- begin generated: population -->
+
+Sources holding exactly the same utterances are one body, grouped first. Then
+a body wholly inside another is not a second population. 20 sources reduce to
+17 distinct bodies and **10 that sit inside no other**:
+
+| utterances | share of 5,543 | population |
 |---:|---:|---|
-| 3,702 | 67.3% | the gating corpus in `SpeakItTests` |
-| 818 | 14.9% | `SpeechLab/phase2`, in four byte-identical files |
-| 472 | 8.6% | `SpeechLab/audit/combined-renderings.jsonl` |
-| 163 | 3.0% | `devsets/unfinished.tsv` |
-| 121 | 2.2% | `devsets/coordination.tsv` |
-| 114 | 2.1% | `devsets/routed.tsv` |
-| 85 | 1.5% | `devsets/rambling.tsv` |
-| 55 | 1.0% | `devsets/abandonment.tsv` |
-| 46 | 0.8% | `devsets/runon.tsv` |
-| 45 | 0.8% | `devsets/framing.tsv` |
+| 3,745 | 67.6% | the gating corpus in `SpeakItTests` |
+| 818 | 14.8% | `Tools/SpeechLab/phase2`, in four byte-identical files |
+| 472 | 8.5% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 163 | 2.9% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
+| 121 | 2.2% | `Tools/CorpusRunner/devsets/coordination.tsv` |
+| 114 | 2.1% | `Tools/CorpusRunner/devsets/routed.tsv` |
+| 85 | 1.5% | `Tools/CorpusRunner/devsets/rambling.tsv` |
+| 55 | 1.0% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
+| 46 | 0.8% | `Tools/CorpusRunner/devsets/runon.tsv` |
+| 45 | 0.8% | `Tools/CorpusRunner/devsets/framing.tsv` |
 
-**That column sums to 5,621 and its shares to 102.2%, because the ten
-populations are maximal rather than disjoint.** A body inside no other body
-may still overlap one. The excess of 120 is the 109 development-set
-utterances that are also fixtures, plus 11 that appear in two development
-sets. Only the union, 5,501, is a total.
-
-The four phase 2 files are the same 818 utterances four times:
-`adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
-`data/renderings.jsonl` and `review/independent-review-pack.jsonl`. A form
+The four files under `Tools/SpeechLab/phase2` are the same 818 utterances four
+times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
+`data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
+
+**That column sums to 5,664 and its shares to 102.2%, because the ten
+populations are maximal rather than disjoint.** A body inside no other body
+may still overlap one. The excess of 121 is the 110 development-set utterances
+that are also fixtures, plus 11 that appear in two development sets. Only the
+union, 5,543, is a total.
 
 ### By kind, and the one place two kinds overlap
 
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
-tree and a development set. The development sets and the fixtures do overlap,
-by 109, so the three kinds are 3,702 + 1,290 + 618 = 5,610 against a union of
-5,501 and do not add up. Written out so that they do:
+tree and a development set. The development sets and the fixtures overlap by
+110, so the three kinds are 3,745 + 1,290 + 618 = 5,653 against a union of
+5,543 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 5,501 |
+| kind | utterances | share of 5,543 |
 |---|---:|---:|
-| test fixtures only | 3,593 | 65.3% |
-| generated renderings (the SpeechLab tree) | 1,290 | 23.5% |
-| development sets only | 509 | 9.3% |
-| in both a development set and a fixture | 109 | 2.0% |
-| **total** | **5,501** | |
+| test fixtures only | 3,635 | 65.6% |
+| generated renderings (the SpeechLab tree) | 1,290 | 23.3% |
+| development sets only | 508 | 9.2% |
+| in both a development set and a fixture | 110 | 2.0% |
+| **total** | **5,543** | |
 
-**90.7% of everything this project may read — 4,992 of 5,501 — is either a
+**90.8% of everything this project may read — 5,035 of 5,543 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
-utterances, of which 509 exist nowhere else.
+utterances, of which 508 exist nowhere else.
 
-### The 109 are not spread evenly, and where they land is the interesting part
+### The 110 are not spread evenly, and where they land is the interesting part
 
 | development set | also a fixture | of |
 |---|---:|---:|
 | `abandonment.tsv` | 36 | 55 (65.5%) |
 | `runon.tsv` | 13 | 46 (28.3%) |
 | `unfinished.tsv` | 43 | 163 (26.4%) |
-| `routed.tsv` | 12 | 114 (10.5%) |
+| `routed.tsv` | 13 | 114 (11.4%) |
 | `coordination.tsv` | 12 | 121 (9.9%) |
-| `rambling.tsv` | 0 | 85 |
 | `framing.tsv` | 0 | 45 |
+| `rambling.tsv` | 0 | 85 |
 
-**That column sums to 116 against a heading of 109**, for the same reason one
-level down: 7 of the 109 sit in two development sets each and are counted in
+**That column sums to 117 against a heading of 110**, for the same reason one
+level down: 7 of the 110 sit in two development sets each and are counted in
 both rows — three in `coordination` and `routed`, two in `abandonment` and
-`unfinished`, two in `routed` and `unfinished`. 116 − 7 = 109.
+`unfinished`, two in `routed` and `unfinished`. 117 − 7 = 110.
+
+<!-- end generated: population -->
 
 Two sets share nothing with the test suite and three share a quarter or more.
 The three that share most — abandonment, run-on, unfinished — are the families
 this project has spent the most parser effort on, which is not a coincidence:
 a row that motivated a fix tends to end up as the test for that fix.
 
-That gives those 109 a status neither bucket describes. They are the material
-tuned against *and* the material regressed against, so for the families where
-the overlap is heaviest, a green unit suite is partly a restatement of the
-examples the rule was written from. It does not make the suite wrong — a fix
-should keep passing its motivating case — but two thirds of `abandonment.tsv`
-sitting in the test target means a green run on that family is less independent
-evidence than its row count suggests, and nothing in the current tooling says
-by how much.
+That is not a historical observation. #79 closed a `routed.tsv` failure on
+2026-09-15 and its test carries the row verbatim, so the overlap column above
+gained one while the pull request touched no corpus file and every check
+stayed green. The table is generated, so it moved; before that it would not
+have.
+
+That gives the overlapping rows a status neither bucket describes. They are
+the material tuned against *and* the material regressed against, so for the
+families where the overlap is heaviest, a green unit suite is partly a
+restatement of the examples the rule was written from. It does not make the
+suite wrong — a fix should keep passing its motivating case — but the heaviest
+row in the table above has most of its set sitting in the test target, which
+means a green run on that family is less independent evidence than its row
+count suggests, and nothing in the current tooling says by how much.
 
 To be exact about which population this is: the overlap is between the
 development sets and the Swift string literals in `SpeakItTests`. It says
@@ -425,7 +445,7 @@ census reads here is every Swift string literal in the test target.)
 
 It is evidence about **one thing only: breadth of provenance.** All ten
 populations were authored by this project. Not one utterance in the readable
-5,501 is speech a person produced without knowing what it was for. That is the
+population is speech a person produced without knowing what it was for. That is the
 same fact the connective census reached from the other side — four of the
 eleven forms it tracks appear in zero readable rows — and it is why five traced
 targets are dead on one cause. Our corpora and our parser are blind in the same
@@ -436,18 +456,18 @@ one of which is two thirds and is test fixtures, does not.
 
 ### Two things not claimed
 
-**The 5,501 is not 5,501 utterances.** The gating corpus is Swift string
-literals of twelve characters or more carrying more than one word, so it picks
-up assertion messages and explanatory prose beside the test utterances — "A name
-followed by a department is an organisation." is in the 3,702. That inflates the
-denominator, so the 11.2% is a floor rather than a point estimate. It does not
-touch the provenance finding, which is about who wrote the material and not how
-much there is.
+**The population is not that many utterances.** The gating corpus is Swift
+string literals of twelve characters or more carrying more than one word, so it
+picks up assertion messages and explanatory prose beside the test utterances —
+"A name followed by a department is an organisation." is counted in it. That
+inflates the denominator, so the development-set share in the table above is a
+floor rather than a point estimate. It does not touch the provenance finding,
+which is about who wrote the material and not how much there is.
 
 **The reduction is by exact utterance set, which is the strict reading.** Two
-sources sharing 95% of their rows are two bodies here, not one. The ten is
-therefore an upper bound on independent populations, and the real figure is
-lower.
+sources sharing almost all of their rows are two bodies here, not one. The
+population count is therefore an upper bound on independent populations, and
+the real figure is lower.
 
 ## 2026-09-15 — the retrieval-failure sizing left out the one word with volume, and it argues the other way
 
