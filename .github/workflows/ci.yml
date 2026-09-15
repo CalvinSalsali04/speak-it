@@ -166,6 +166,14 @@ jobs:
         run: python3 Tools/CorpusRunner/consequence/test_block_report.py
       - name: Connective census self-tests
         run: python3 Tools/CorpusRunner/test_connective_census.py
+      # The population figures in LANGUAGE_BASELINE.md are generated from the
+      # corpus walk rather than typed, and this is what notices when the two
+      # disagree. It has to run on a pull request that touches no Python at
+      # all: the gating corpus is two thirds of that population, so a change
+      # adding three test strings moves every figure in the section while
+      # touching nothing under this directory.
+      - name: Baseline population figures match the corpus
+        run: python3 Tools/CorpusRunner/test_baseline_figures.py
       # The second question a target has to survive, after the census's "is
       # this form attested": are the N rows carrying it N observations, or one
       # frame written N times? Two proposals were stopped by asking it by hand
