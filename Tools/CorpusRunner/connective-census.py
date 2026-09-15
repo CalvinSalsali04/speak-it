@@ -197,9 +197,17 @@ def swift_utterances(root):
     `.tsv` under `Tools/CorpusRunner`, and this reader opens only `.swift`
     under `SpeakItTests`, so the branch cannot fire. A guard that cannot fire
     is worse than none -- it reads as protection and a test for it would make
-    dead code look covered. The two facts that make it unnecessary are pinned
-    in `SealedPathsAreRefusedByName` instead, so if either stops holding the
-    suite says so and the guard comes back.
+    dead code look covered.
+
+    Both facts are pinned in `SealedPathsAreRefusedByName`, so the guard comes
+    back if either stops holding. **Both**, because the first version pinned
+    only that `sealed()` names `.tsv` files: widening this reader to
+    `(".swift", ".tsv")` passed the whole suite. A dead fallback and a dead
+    refusal are not the same risk -- a fallback that never fires does nothing,
+    a refusal that never fires reads a sealed path -- so a removal is worth
+    exactly what its pin is worth, and half a pin is worth nothing. Caught by
+    the evaluation thread asking which half had been written rather than
+    taking the removal on trust.
 
     Note what this reader can legitimately count: a sealed capture that has
     been copied into tuned material is readable in fact once it sits in a file
