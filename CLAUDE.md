@@ -136,6 +136,12 @@ Discover simulators when a UDID is needed by hand:
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project SpeakIt.xcodeproj -scheme SpeakIt -showdestinations
 ```
 
+Run the Foundation Models interpretation prototype (`SpeakIt/Interpretation/`), which production does not call. `--availability` and `--selfcheck` need no model; `--interpret` needs an Apple Intelligence device; `--replay` re-scores somebody else's run anywhere. See `Tools/InterpretationProbe/README.md` and `Docs/FOUNDATION_MODELS_ARCHITECTURE.md`:
+
+```bash
+./Tools/InterpretationProbe/build.sh && ./Tools/InterpretationProbe/build/interpret --availability
+```
+
 For a narrow change, run focused tests first. Before declaring app-level work done, run the corpus gate, the full unit suite, and the release compile check. Run UI tests and inspect simulator screenshots for changed interaction/layout flows. Physical Back Tap, microphone quality, interruptions, AirPods, lock-screen behavior, notifications, purchases, and device-only animation quality still require hands-on iPhone QA.
 
 ## Definition of done
