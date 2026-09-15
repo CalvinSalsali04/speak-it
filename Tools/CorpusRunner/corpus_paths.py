@@ -148,6 +148,17 @@ def searchable(root=None):
 #: which cannot coexist with zero disfluency markers -- a document, not an
 #: instrument.
 #:
+#: That count is an aggregate over a sealed set, and it stays here on purpose
+#: while a second fact from the same correction -- a characterisation of how
+#: that corpus sounds compared with the others -- was removed from this file
+#: on 2026-09-15. The two are not the same kind of thing. The characterisation
+#: is what somebody would use to choose where to work next, which is the input
+#: a parser change may not have. The count is a function-word frequency for a
+#: connector that is already implemented, it is already published in
+#: `Docs/LANGUAGE_BASELINE.md` as the evidence for #57, and it is the whole
+#: force of the argument above: "the scan was wrong" is a sentence, and "it
+#: returned zero for a word used 34 times" is a reason.
+#:
 #: So every search here proves it can find something before it reports finding
 #: nothing. The canary costs one pass over material already being read, and it
 #: refuses to report rather than returning an empty result.
@@ -298,7 +309,8 @@ def utterance_column(lines):
             "no line in this file names an `utterance` column, so which column "
             "holds the capture is unknown. Assuming one is how a scan came to "
             "report that a corpus contained no instance of a word it uses 34 "
-            "times. Add a header rather than defaulting.")
+            "times -- see the note on that count above. Add a header rather "
+            "than defaulting.")
     return column
 
 
