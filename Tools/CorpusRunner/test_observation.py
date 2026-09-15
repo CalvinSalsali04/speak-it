@@ -239,6 +239,34 @@ class TheThresholdIsTheDecisionAndIsPinnedLikeOne(unittest.TestCase):
             f"CROWDED_STEM is {observation.CROWDED_STEM}, which no longer "
             f"marks a population that is 40% one frame across four sources")
 
+    def test_the_threshold_still_leaves_a_dispersed_population_unmarked(self):
+        """The other direction, and it is not symmetric with the first.
+
+        A threshold drifting down marks ordinary dispersion, and the mark is
+        the part that gets quoted, so it would stop good proposals rather
+        than let bad ones through. At 0.10 this module's own report marks
+        `I mean` at 17%, which is a form spread over six stems in six rows.
+        """
+        found = observation.shape(observation.frame_population(20, 3))
+        self.assertAlmostEqual(found.largest_share, 0.15)
+        self.assertGreater(found.sources, observation.ONE_SOURCE)
+        self.assertFalse(
+            found.concentrated,
+            f"CROWDED_STEM is {observation.CROWDED_STEM}, which now marks a "
+            f"population that is 15% one frame over four sources")
+
+    def test_the_band_these_tests_leave_free_is_stated_not_implied(self):
+        """Two pinned shapes bound the constant to (0.15, 0.40].
+
+        Inside that band a change is deliberate and these tests stay green,
+        which is what the straddle pair is for and is the reviewer's own
+        requirement. Saying where the band ends is the honest part: a test
+        suite that pins a constant loosely and implies it pins it exactly is
+        the same defect as a marker standing in for a judgement.
+        """
+        self.assertGreater(observation.CROWDED_STEM, 0.15)
+        self.assertLessEqual(observation.CROWDED_STEM, 0.40)
+
     def test_the_canary_notices_a_threshold_that_marks_nothing(self):
         def never_crowded(pairs):
             found = observation.shape(pairs)
