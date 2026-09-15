@@ -12,6 +12,7 @@ wrong reason.
 """
 import contextlib
 import importlib.util
+import inspect
 import io
 import json
 import pathlib
@@ -157,16 +158,27 @@ class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
     def reduce(self, groups):
         """Run the reduction over planted sources: a list of lists of texts.
 
-        Patches the walk's own `readers`, not the census's re-exported name:
-        `source_texts` calls the one in its own module, so patching the alias
-        would leave the real tree read and the test passing for the wrong
-        reason.
+        Patches the walk's own `readers`, because the caller here is
+        `source_texts`, which is in that module and calls the name beside it.
+        Patching the census's re-export would leave the real tree read and
+        this passing for the wrong reason.
+
+        **The rule is the caller, not the module.** This docstring used to say
+        "patch `readable_material`, not the census's re-export", stated as
+        general -- and it is the special case that happens to be right for
+        this fixture. `connective-census.py` does `from readable_material
+        import source_texts`, so `main()` holds a binding of its own that
+        rebinding the walk's name never reaches. Following the general-sounding
+        version, `TheTwoGuardsReadOnePopulation` below counted zero reads of a
+        tree the run had just read 170 times. So: find the caller and patch the
+        binding it holds, or patch every binding that can reach the function --
+        `patch()` below does the latter, which is why it sets both.
 
         Same family as the `words=STEM_WORDS` default #70 fixed one module
         over: an alias is a second copy of a name meant to have one, and
-        rebinding the copy changes the name and not the behaviour. Both fail
-        by passing while measuring nothing, which is the answer that raises
-        no alarm.
+        rebinding the copy changes the name and not the behaviour. All of them
+        fail by passing while measuring nothing, which is the answer that
+        raises no alarm.
         """
         planted = []
         for number, texts in enumerate(groups):
@@ -262,6 +274,149 @@ class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
                            "the collision this guards against is gone; if "
                            "that is deliberate, this test should go too")
         self.assertEqual(len(texts), len(self.census.readers()))
+
+
+class TheTwoGuardsReadOnePopulation(CensusCase):
+    """The report walks the tree twice, not three times, and says which two.
+
+    One walk is counted and printed. The second is the guards', deliberately
+    independent of it, because a guard reading the counted walk's own state
+    fails whenever that walk does. The third was an accident of writing the
+    two guards separately: each called `source_texts()` for itself, so the
+    tree was read three times and the two guards reduced two different reads.
+
+    `contained_sources` said otherwise -- "two guards reading one independent
+    copy" -- and had said it since the walk was split out. Nothing related the
+    sentence to the calls, so it was true about the design and false about the
+    code, and the fix is the code, because one population reduced twice is
+    what the sentence describes and the better arrangement.
+    """
+
+    def patch(self, name, wrap):
+        """Replace `name` under BOTH the walk and the census, with `wrap`.
+
+        Which name has to be patched depends on who calls, and here both do.
+        The guards call the module-global inside `readable_material`; the
+        report calls the census's own binding, made by `from readable_material
+        import ...`, which a later rebinding of the walk's name does not
+        reach. Patching one caught the guards and missed the report, and the
+        first run of the test below counted zero reads of a tree it had just
+        read -- an alias is a second copy of a name meant to have one, and
+        this is the third shape of that in three days.
+        """
+        walk = self.census.readable_material
+        real = getattr(walk, name)
+        replacement = wrap(real)
+        setattr(walk, name, replacement)
+        setattr(self.census, name, replacement)
+        return real
+
+    def counted_source_texts(self):
+        """Count every read of the tree, by whichever name reaches it."""
+        calls = []
+
+        def wrap(real):
+            def counting():
+                calls.append(None)
+                return real()
+            return counting
+
+        self.patch("source_texts", wrap)
+        return calls
+
+    def test_the_report_reads_the_population_once_for_both_guards(self):
+        calls = self.counted_source_texts()
+        code, _ = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 1,
+                         "the report should walk the tree once for the "
+                         "guards and hand that one population to both")
+
+    def test_both_guards_are_handed_the_same_population(self):
+        """One call proves one read; this proves both guards got that read.
+
+        A version calling `source_texts()` once and passing it to only one
+        guard, the other reducing a population built some other way, counts
+        one call and is the defect this exists to catch.
+        """
+        seen = []
+
+        def wrap(real):
+            def recording(*args, **kwargs):
+                bound = inspect.signature(real).bind(*args, **kwargs)
+                seen.append((real.__name__, bound.arguments.get("texts")))
+                return real(*args, **kwargs)
+            return recording
+
+        for name in ("contained_sources", "independent_bodies"):
+            self.patch(name, wrap)
+        self.run_main()
+        self.assertEqual([name for name, _ in seen],
+                         ["contained_sources", "independent_bodies"])
+        first, second = (population for _, population in seen)
+        self.assertIsNotNone(first, "the population was not passed at all")
+        self.assertIs(first, second,
+                      "the two guards reduced two different reads")
+
+    def test_a_population_handed_in_is_the_one_reduced(self):
+        """Otherwise both tests above pass against guards ignoring the
+        argument -- they would read three times and count three, but a guard
+        that takes the argument and drops it is a real way to write this."""
+        walk = self.census.readable_material
+        planted = {pathlib.Path("planted-whole.tsv"): frozenset(
+                       ["one thought", "two thought", "three thought"]),
+                   pathlib.Path("planted-part.tsv"): frozenset(
+                       ["one thought", "two thought"])}
+        self.assertEqual(
+            [(a.name, b.name) for a, b in walk.contained_sources(planted)],
+            [("planted-part.tsv", "planted-whole.tsv")])
+        bodies, maximal = walk.independent_bodies(texts=planted)
+        self.assertEqual(len(bodies), 2)
+        self.assertEqual(len(maximal), 1)
+
+    def test_the_shared_population_is_the_whole_one(self):
+        """Reading once is only an improvement if the once reads everything.
+
+        Byte-identical output is the obvious control for a refactor and it is
+        necessary rather than sufficient: a walk that quietly stopped visiting
+        a source would print identically wherever the report does not name
+        what it dropped. So this pins the population itself against the
+        separate counted walk in `census()`, which is the one number the
+        report does print.
+        """
+        seen = []
+
+        def wrap(real):
+            def recording(*args, **kwargs):
+                bound = inspect.signature(real).bind(*args, **kwargs)
+                seen.append(bound.arguments.get("texts"))
+                return real(*args, **kwargs)
+            return recording
+
+        self.patch("contained_sources", wrap)
+        self.run_main()
+        population, = seen
+        self.assertIsNotNone(
+            population,
+            "the report called the guard without a population, so there is "
+            "no shared read to check the completeness of")
+        self.assertEqual(len(population), len(self.census.readers()),
+                         "every declared source is in the shared population")
+        _counts, distinct, _sources = self.census.census()
+        self.assertEqual(
+            len(frozenset().union(*population.values())), distinct,
+            "the population the guards reduce holds exactly the utterances "
+            "the counted walk counts; if these drift, one of the two walks "
+            "has stopped reading something and the report cannot show it")
+
+    def test_each_guard_still_reads_for_itself_when_called_alone(self):
+        """Every other test in this file calls them with no population, and
+        the census is not the only caller that may exist."""
+        calls = self.counted_source_texts()
+        self.assertTrue(self.census.contained_sources())
+        _bodies, maximal = self.census.independent_bodies()
+        self.assertTrue(maximal)
+        self.assertEqual(len(calls), 2, "one fresh read each")
 
 
 class AbsenceIsReportedAsAbsenceAndNotAsCoverage(CensusCase):
