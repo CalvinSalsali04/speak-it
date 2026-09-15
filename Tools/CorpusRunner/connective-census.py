@@ -170,14 +170,24 @@ def utterance_field(path):
 
 
 def tsv_utterances(path):
-    """Column two of every data row. The devsets all put the utterance there."""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("#") or not line.strip():
-            continue
-        cells = line.split("\t")
-        if len(cells) < 2 or cells[0] == "id":
-            continue
-        yield cells[1]
+    """Every data row's utterance, from the one reader that knows the layout.
+
+    This used to take column two and skip a row whose first cell read `id`,
+    which is right for every devset and right by luck: the corpora here do not
+    agree on a column, and a header is identified by the names it carries
+    rather than by a cell reading `id`. It was the sixth reader to work the
+    format out for itself, and `EveryCorpusReaderIsDeclared` caught it on the
+    merge that introduced the list -- which is the list doing its job on the
+    first file to arrive after it.
+
+    Reading it right matters more here than in most readers. A census reports
+    absence, so a reader that silently drops rows or picks up a header reports
+    a form as rarer than it is, and the conclusion this tool exists to reach
+    is exactly "there is not enough material". Every one of its failures looks
+    like the finding.
+    """
+    for _number, _cid, utterance in corpus_paths.utterances(path):
+        yield utterance
 
 
 def jsonl_utterances(path, field=None):
