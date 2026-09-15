@@ -1320,6 +1320,10 @@ twice under one id stem, `RB04C` clean and `RB04R` the same content spoken with
 filler, so the clean family is a control and **the measurement is the gap
 between the twins**, with content held fixed by construction.
 
+*Measured over `rambling.tsv` at 57 rows.* (Added 2026-09-15, recording the
+state this run read rather than the state today; `stale_fingerprints` in
+`baseline_figures.py` fails once the two differ, which they now do.)
+
 Whole set: destination 54/57, thought count 46/57. Neither number is the
 finding, and the per-family gaps are:
 

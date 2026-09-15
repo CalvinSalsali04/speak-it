@@ -422,8 +422,15 @@ FAMILY_ROW = re.compile(r"^\|\s*`?([a-z][a-z0-9-]*)`?\s*\((\d+)\)\s*\|")
 
 #: The two halves of a twinned development set: the same content written
 #: twice under one id stem, so a measurement is the gap between the twins.
-#: Derived from the family labels rather than from the ids, because an id
-#: convention is a spelling and the label is what the row claims to be.
+#: Read off the family labels rather than the ids, because an id convention is
+#: a spelling and the label is what the row claims to be.
+#:
+#: These two words are DECLARED, and deriving them instead does not work.
+#: Pairing suffixes by shape reads `routed.tsv` as a family `reported` with
+#: halves `cancellation` (4 rows) and `day` (13) -- a false twin, and one that
+#: would then refuse the run for being unpaired. So the pair is written down,
+#: and `twinned_families` refuses rather than returning nothing when the data
+#: stops using these words.
 TWIN_HALVES = ("clean", "rambling")
 
 
@@ -439,6 +446,25 @@ def twinned_families(paths=None):
     Refuses when a family's two halves disagree in size. An unpaired twin is
     not a stale figure, it is a set that has stopped being twinned, and a gap
     measured across it means nothing; reporting it as a count would hide that.
+
+    Refuses again when NOTHING is twinned, because `TWIN_HALVES` is declared
+    and a declared word is one somebody can rename. An empty result is not a
+    clean bill of health -- `stale_family_rows` over an empty derivation
+    reports no stale row and no missing family, the same answer it gives for a
+    table that is genuinely current -- so it is not returned as one.
+
+    The two refusals divide the ways that happens, which was measured rather
+    than assumed: renaming ONE half (`-rambling` to `-spoken`) already fires
+    the unpaired refusal above, because the other half is still counted and
+    the family is then 8 against 0. What reaches this one is the set leaving
+    the derivation whole -- both halves renamed at once, the `family` column
+    renamed, the file gone -- where nothing is counted at all and there is no
+    disagreement to notice.
+
+    What neither can see is a SECOND twinned set arriving under different
+    half-names: this one stays non-empty, no refusal fires, and the new set
+    contributes nothing. Stated rather than guarded, because the guard would
+    be the derivation the comment on `TWIN_HALVES` rules out.
     """
     paths = corpus_paths.readable() if paths is None else paths
     out = {}
@@ -461,6 +487,15 @@ def twinned_families(paths=None):
             families[family] = sizes.pop()
         if families:
             out[str(shown(path))] = families
+    if not out:
+        raise ValueError(
+            f"no readable development set has a family label ending in "
+            f"`-{TWIN_HALVES[0]}` and `-{TWIN_HALVES[1]}`, so either the twin "
+            f"convention has been renamed or the twinned set is gone. Nothing "
+            f"is being compared against the per-family gap tables, and a "
+            f"check with nothing to compare reports no stale row -- which "
+            f"reads as the tables being current. Update TWIN_HALVES to the "
+            f"words the data uses now")
     return out
 
 
@@ -507,6 +542,14 @@ def stale_family_rows(text=None, twinned=None):
     row such as `routed (116)` names a file and not a family, and is left to
     the population block, which already generates it.
 
+    That means the whole document is scanned, and a line anywhere in its two
+    and a half thousand that happens to read `| long (5) |` is reported even
+    though it is nowhere near a gap table. That is the intended direction.
+    Scoping the scan would mean naming the table by line range or by heading,
+    and a line range goes stale exactly as the bracket does while a heading is
+    a spelling; a false report names a line somebody can look at in a second,
+    and a missed one is the failure the check was written for.
+
     **A count written in prose is out of reach and stays out of reach.** The
     same section says `coherent-long` is "7/7 on destination" and calls them
     "those seven rows", where the set now holds eleven, and no bracket check
@@ -535,6 +578,105 @@ def stale_family_rows(text=None, twinned=None):
             mismatched.append((family, cited, known[family]))
     unrowed = sorted((f, n) for f, n in known.items() if f not in seen)
     return sorted(mismatched), unrowed
+
+
+#: A section records the shape the development set had when it was measured:
+#:
+#:     *Measured over `rambling.tsv` at 57 rows.*
+#:
+#: Visible prose rather than an HTML comment, because a marker only a script
+#: can see is a marker nobody maintains -- and this one has to be written by
+#: hand, once, by whoever reports a measurement.
+MEASURED_OVER = re.compile(
+    r"Measured over\s+`([a-z][a-z0-9_-]*\.tsv)`\s+at\s+(\d+)\s+rows")
+
+
+def devset_rows(paths=None):
+    """`{filename: data rows}` for every readable development set.
+
+    The shape a fingerprint is compared against. Rows rather than families,
+    deliberately: `stale_family_rows` already checks the per-family brackets,
+    and what this adds is the half that check cannot reach -- a count written
+    in prose. The same section that cites `restart (4)` also calls
+    `coherent-long` "those seven rows" where the set now holds eleven, and no
+    amount of parsing table brackets finds that sentence. A whole-set count
+    does not find it either, but it fires on the same cause and says which
+    set moved and by how much, which is what sends somebody back to read the
+    section.
+
+    **Keyed on the basename, and refuses when two of them collide.** The key
+    is a basename because the *prose* names a basename, and writing a
+    repository path into an English sentence would be the worse end of that
+    trade. But `source_texts` one module over carries a docstring about
+    exactly this: `renderings.jsonl` exists twice under `Tools/SpeechLab`, and
+    a dictionary keyed on the name silently merged two sources into one. There
+    is no collision among readable sets today -- seven paths, seven distinct
+    names -- so this is a refusal for a case that does not exist yet rather
+    than a fix for a live defect. It is here because the failure mode is a
+    plausible number and no error: the comprehension would keep whichever path
+    sorted last, and a fingerprint naming that basename would be checked
+    against one of the two sets with nothing saying which.
+    """
+    paths = corpus_paths.readable() if paths is None else paths
+    rows = {}
+    for path in sorted(paths):
+        if path.name in rows:
+            raise ValueError(
+                f"two readable sets are both called `{path.name}`, so a "
+                f"fingerprint naming it cannot say which one it was measured "
+                f"over and this function would silently report the second. "
+                f"Give the fingerprint pattern a path, or rename one set")
+        rows[path.name] = sum(1 for _ in corpus_paths.data_rows(path))
+    return rows
+
+
+def fingerprints(text=None):
+    """Every recorded measurement shape, in document order.
+
+    Returns `[(filename, rows)]`. Order is the point: the last fingerprint
+    for a set is the live one, the ones before it are records of runs that
+    happened, and a record is not stale for describing the past correctly.
+    """
+    text = DOC.read_text(encoding="utf-8") if text is None else text
+    return [(found.group(1), int(found.group(2)))
+            for found in MEASURED_OVER.finditer(text)]
+
+
+def stale_fingerprints(text=None, rows=None):
+    """`[(filename, recorded, actual)]` where the live fingerprint has moved.
+
+    **Only the last fingerprint for each set is checked.** An earlier one
+    describes a set state that really was the state when that run happened,
+    and failing it would be asking a dated record to change, which is the
+    thing this file's own corrections argue against.
+
+    This is deliberately not a check on which sections *ought* to carry a
+    fingerprint. Deciding that mechanically means a heuristic for "does this
+    section report a measurement", and the obvious ones misfire badly: a
+    section merely naming `rambling.tsv` in a source table, with an unrelated
+    rate somewhere in it, reads as a measurement of the rambling set. A
+    heuristic standing in for that judgement is the defect this module keeps
+    removing, so the judgement stays with whoever writes the section and what
+    is mechanical is the consequence -- once a fingerprint is written, the
+    day its set changes, the run fails.
+
+    The failure therefore arrives on the next data change rather than at the
+    moment somebody omits a fingerprint. That is weaker than it sounds: the
+    omission costs nothing until the set moves, and when the set moves is
+    exactly when the figures went wrong.
+    """
+    text = DOC.read_text(encoding="utf-8") if text is None else text
+    rows = devset_rows() if rows is None else rows
+    live = {}
+    for name, recorded in fingerprints(text):
+        live[name] = recorded
+    out = []
+    for name, recorded in sorted(live.items()):
+        if name not in rows:
+            out.append((name, recorded, None))
+        elif rows[name] != recorded:
+            out.append((name, recorded, rows[name]))
+    return out
 
 
 def marked_region(text):
