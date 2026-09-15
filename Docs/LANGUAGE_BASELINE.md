@@ -312,6 +312,110 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-15 — the retrieval-failure sizing left out the one word with volume, and it argues the other way
+
+The 20:38 section below stops the `abandoned-midthought` target on a count:
+25 readable sentences contain a retrieval-failure phrase, 6 have one
+clause-finally, and all 6 are rows in `unfinished.tsv`. That conclusion still
+holds. The count behind it does not cover the family's most common surface
+form, and covering it turns a shortage of evidence into evidence against.
+
+No parser change and no run. Every figure here is a count over committed text
+taken with `connective-census.py`'s reader, which walks rather than globs,
+refuses any sealed path by name, and refuses a source that yields nothing.
+Recompute with that reader over `readable()` plus the SpeechLab tree; the
+phrase set is the table below.
+
+### `wait` was not in the phrase set
+
+The phrases that section names as the six captures' closings are `I forgot`,
+`I lost it`, `hold on`, `what was it` and a trailing `I mean`. Counted again
+over readable utterances:
+
+| phrase | utterances | where |
+|---|---|---|
+| `hold on` | 1 | `unfinished.tsv` |
+| `what was it` | 1 | `unfinished.tsv` |
+| `I forgot` | 5 | `unfinished.tsv` |
+| `I lost it` | 4 | 3 SpeechLab, 1 `unfinished.tsv` |
+| `I mean` | 11 | 5 SpeechLab, 4 `rambling.tsv`, 2 `unfinished.tsv` |
+| **`wait`** | **40** | **34 SpeechLab** (31 of them one frame), 3 `unfinished.tsv`, 2 `rambling.tsv`, 1 `abandonment.tsv` |
+
+`wait` is the marker two of the six failing captures actually turn on — INC49
+`Tomorrow I need to, um, wait, I forgot` and INC50 `Next week I should, wait,
+I lost it` — and it is the only one of the six forms with more than a handful
+of instances. Leaving it out is defensible on its face, because a bare `wait`
+is ambiguous in a way `what was it` is not. It is also the omission that
+decides the shape of the evidence.
+
+### All 31 of its SpeechLab instances complete the thought
+
+They are one frame, `I was going to ask— wait, …`, and every one of them
+carries a finished instruction after the marker: "I was going to ask— wait,
+keep track of the Montréal train with Nadia Patel for me." The speaker false-
+starts and then says the thing. That is the opposite of the shape
+`unfinished.tsv` uses `wait` for.
+
+So a detector reading `wait` as evidence that a frame is still open flags 31
+captures that finished, against a `finished misflagged` record of `0/96`. This
+is the second falsifier for the family and the first from material nobody here
+wrote — the other being `FP27 I think I forgot`, recorded below, which the set
+supplies against itself.
+
+The two together bound the shape of any fix more tightly than the sizing did.
+A rule keyed on the phrase fails on both. The structural discriminator the
+20:38 section proposes — an infinitive or modal frame followed by a finite
+clause that cannot fill it — survives both, since `I was going to ask` has its
+complement before the marker and `I think` is not a frame of that kind. That
+sharpens the design and does not change the decision, which rests on there
+being no observations to build against.
+
+### Why 818 new cases did not supply any
+
+The SpeechLab adjudication corpus is the largest readable material the
+repository has gained, and it cannot size a family, because a count over it
+counts instantiations of a blueprint:
+
+- 818 distinct utterances over **330 distinct five-word stems**;
+- the twelve commonest stems account for **308** of the 818;
+- `equivalence_class` groups renderings of one blueprint: 260 classes, 189 of
+  them holding a single rendering.
+
+`phase2/CORPUS-QUALITY-REPORT.md` reports "Structural templates: 816" against
+818 cases. It caveats itself in the next paragraph — "not proof of 816 wholly
+independent syntactic structures" — and `ADJUDICATION-REPORT.md` lists that
+gate as passing. The caveat is right; the headline is the number a reader
+carries away. A five-word prefix is a cruder measure than a function-word
+skeleton and disagrees with it by a factor of two and a half, which is worth
+recording plainly: **on this corpus the skeleton metric is not measuring frame
+diversity, and no gate currently does.**
+
+This is not a complaint about the corpus. It was built to test whether one
+meaning is read correctly across many renderings, and 44 distinct frames carry
+an inserted repetition, which is a real robustness population. Its own report
+draws the same line from the other side: "the split remains unfrozen, and
+parser evaluation must not be joined to these labels yet." Counting surface
+forms is not joining evaluation to the labels, which is why the counts above
+are legitimate; scoring these rows would not be.
+
+### What this changes
+
+Not the decision, and not the request for real captures that three stopped
+targets rest on. What it changes is what would answer that request. 818 cases
+arrived and the readable instance count for the shape under investigation went
+from 6 to 6, while the one form with volume gained 31 counter-examples.
+**A generated corpus grows the denominator of a robustness test and cannot
+grow the numerator of a frequency one.** Those are two questions and they have
+to be asked in that order before a family is named.
+
+### What is not claimed
+
+No rate moved and none was measured. The 31 captures were read for their shape
+and not scored. That a phrase-keyed detector would flag them is a reading of
+the utterances against `ThoughtCompletion.unfinished`, not a run. Nothing here
+measures how often anybody actually says any of these things, which is still
+the unmeasured quantity and still the reason all of this stops.
+
 ## 2026-09-14 — the resultive `so` boundary, measured against a set written by someone else
 
 Two `macos-26` runs over **the same 56 captures**, differing only in the parser:
