@@ -397,11 +397,25 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
             "Tools/SpeechLab/phase2/data/renderings.jsonl"]
         for form, expected in sorted(self.SHAPE_ON_PHASE_TWO.items()):
             pattern = observation.pattern_for(form)
-            hits = [(text, klass) for text, klass, _ in rows
-                    if pattern.search(text)]
-            texts = {text for text, _ in hits}
+            #: One class per distinct utterance, asserted rather than
+            #: assumed, so both columns are counted over the same thing.
+            #: This was `Counter(k for t, k in hits if t in texts)`, where
+            #: `texts` was built from `hits` -- so the filter read as a
+            #: deduplication and removed nothing, leaving frames counted over
+            #: distinct texts and classes over rows. Identical today, since
+            #: phase 2 holds 818 distinct texts over 818 rows, and this
+            #: pull request's own defect one level down the moment it is not.
+            declared = {}
+            for text, klass, _degenerate in rows:
+                if not pattern.search(text):
+                    continue
+                self.assertEqual(declared.setdefault(text, klass), klass,
+                                 f"{form}: one utterance, two declared "
+                                 f"classes, so the two columns would stop "
+                                 f"sharing a denominator")
+            texts = set(declared)
             frames = collections.Counter(observation.stem(t) for t in texts)
-            classes = collections.Counter(k for t, k in hits if t in texts)
+            classes = collections.Counter(declared.values())
             self.assertEqual(
                 (len(texts), len(frames), max(frames.values()),
                  len(classes), max(classes.values())), expected, form)
