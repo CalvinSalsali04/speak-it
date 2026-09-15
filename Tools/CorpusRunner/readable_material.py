@@ -79,11 +79,13 @@ NOT_SPEECH = frozenset({
     "text_hash",          # a digest of an utterance, not one
     "rendering_id",       # an identifier
     "rendering_count",
+    "original_rendering_id",  # lineage identifier, not an utterance
+    "repaired_rendering_id",  # lineage identifier, not an utterance
 })
 
 
 #: SpeechLab `.jsonl` files that `readers()` does not read, declared rather
-#: than inferred. Ten of the twenty-two under `Tools/SpeechLab` are dropped
+#: than inferred. Twenty of the thirty-seven under `Tools/SpeechLab` are dropped
 #: because `utterance_field` finds nothing in them, and until this list
 #: existed that decision was made afresh on every run and recorded nowhere.
 #:
@@ -92,7 +94,7 @@ NOT_SPEECH = frozenset({
 #: and `utterance_field` reads top-level keys -- the same blind spot twice,
 #: which is why nothing contradicted it. Caught in review. What each file
 #: holds is written beside it now, and every nested occurrence in the tree,
-#: in these ten files and in the twelve that are read, is accounted for by
+#: in these twenty files and in the seventeen that are read, is accounted for by
 #: `nested_declared_strings` below.
 #:
 #: The list earns its place anyway, and for the reason it was written: the
@@ -143,6 +145,28 @@ NOT_READ = {
     # this file is unread: it is unread because the reader looks at
     # top-level keys. See CONVERSATIONAL_CONTEXT.
     "Tools/SpeechLab/phase2/data/blueprints.jsonl",
+    # Repair-review records contain annotator analysis rather than captured
+    # speech. Their corresponding utterances are counted through the retained,
+    # triaged, challenged, deferred, or excluded case views below this tree.
+    "Tools/SpeechLab/phase2/repair/candidate-1/adjudication/reviews.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-1/decisions/"
+    "codex-repair-reviewer-a-20260914.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-1/decisions/"
+    "codex-repair-reviewer-b-20260914.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-1/decisions/"
+    "codex-repair-reviewer-c-20260914.jsonl",
+    # The repair map stores before/after evidence and lineage. Both utterance
+    # values are already present in corpus case views, so this is provenance,
+    # not another body of captured material.
+    "Tools/SpeechLab/phase2/repair/candidate-1/repair-map.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-2/adjudication/reviews.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-2/decisions/"
+    "codex-repair2-reviewer-a-20260915.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-2/decisions/"
+    "codex-repair2-reviewer-b-20260915.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-2/decisions/"
+    "codex-repair2-reviewer-c-20260915.jsonl",
+    "Tools/SpeechLab/phase2/repair/candidate-2/repair-map.jsonl",
 }
 
 #: Container names whose contents are somebody else's turn in a conversation
@@ -528,8 +552,8 @@ def speechlab_unclassified(files=None, declared=None):
 
     Must be empty, and that is the whole value: `readers()` drops a file the
     moment `utterance_field` returns None, and a drop leaves no trace in any
-    output. Ten of the twenty-two files under `Tools/SpeechLab` are dropped
-    today, so the difference between "ten checked files hold no speech" and
+    output. Twenty of the thirty-seven files under `Tools/SpeechLab` are dropped
+    today, so the difference between "twenty checked files hold no speech" and
     "the census has silently stopped reading a corpus" is not visible anywhere
     a reader looks.
 
@@ -631,7 +655,7 @@ def nested_declared_strings(files=None, known=None):
     protecting a population, and worth knowing before anybody reads the 481 as
     a claim about where those strings came from.
 
-    **`SPAN` is unreachable in the ten files with no top-level utterance
+    **`SPAN` is unreachable in the twenty files with no top-level utterance
     column.** `owner` is None there, so `_is_a_span_of` cannot return True and
     a span in such a file lands as unaccounted for. That is the right direction
     to fail in -- a span with no row to cut it out of is not something this
