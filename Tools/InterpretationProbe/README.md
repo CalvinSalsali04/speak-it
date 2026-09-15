@@ -44,16 +44,28 @@ exactly one tab is `id<TAB>capture`: the id rides along on every record, and
 reports that must not print capture text — `--spread` — name captures by it. A
 sealed set is the case this exists for.
 
-**A corpus TSV is not this format and the reader refuses one.** These files are
-`id, utterance, family, expected_destination, expected_thoughts` — five columns
-in `heldout.tsv` and `devsets/routed.tsv`, eight in `everyday.tsv` — and
-everything after the utterance is the expected answer. A reader that split on the
-first tab and kept the remainder would hand the model `utterance<TAB>family<TAB>
-destination<TAB>count` as the capture and record that string as the grounding
-input: the expected answer, in the prompt. The run would fail eventually, at the
-scorer, but only after the device time had been paid for. So a line carrying a
-second tab stops the tool on that line number, and a corpus file is cut to its
-first two columns first, which are already `id<TAB>capture`:
+**A corpus TSV is not this format and the reader refuses one.** The columns after
+the utterance are the expected answers, so a reader that split on the first tab
+and kept the remainder would hand the model its own labels as if they were words
+the person said, and record that string as the grounding input. The run would
+fail eventually, at the scorer, but only after the device time had been paid for.
+So a line carrying a second tab stops the tool on that line number.
+
+**The layouts differ, and the utterance is not always column two.** Check the
+file before cutting rather than reusing a command:
+
+| file | columns | the cut |
+|---|---|---|
+| `heldout/heldout.tsv` | `id, utterance, family, expected_destination, expected_thoughts` | `cut -f1,2` |
+| `devsets/*.tsv` | the same five | `cut -f1,2` |
+| `everyday/everyday.tsv` | `id, domain, utterance, expect, keep, reject, families, note` | `cut -f1,3` |
+
+`cut -f1,2 everyday.tsv` yields `id<TAB>domain`, which is two fields, so the
+reader **accepts** it and the model is handed 255 domain names as captures. That
+is not the labels-in-the-prompt failure the two-field rule closes — a domain name
+is not the expected answer — but it is the same bought-and-spent device run, and
+it looks identical at the scorer, where every block comes back missing. The rule
+catches a file that was not cut; it cannot catch a file that was cut wrong.
 
 ```bash
 grep -v '^#' Tools/CorpusRunner/devsets/routed.tsv | tail -n +2 | cut -f1,2 > /tmp/captures.tsv

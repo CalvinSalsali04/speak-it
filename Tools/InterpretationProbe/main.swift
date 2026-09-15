@@ -86,15 +86,20 @@ func utterances(fromPath path: String) -> [Input] {
             inputs.append(Input(id: id, text: body))
         default:
             // The whole reason this refuses instead of taking the rest of
-            // the line: the corpus files here are `id, utterance, family,
-            // expected_destination, expected_thoughts` — five columns, eight in
-            // everyday — so everything after the utterance is the expected
-            // answer. Splitting on the first tab and keeping the remainder
-            // would hand the model `utterance<TAB>family<TAB>destination` as
-            // the capture and record that string as the grounding input: the
-            // answer, in the prompt. It fails eventually, at the scorer, but
-            // only after somebody has paid for the device time and, on a sealed
-            // set, after the labels have already been through a model.
+            // the line: the corpus files here are multi-column TSVs whose
+            // columns after the utterance are the expected answers. Splitting
+            // on the first tab and keeping the remainder would hand the model
+            // those labels as if they were words the person said, and record
+            // that string as the grounding input. It fails eventually, at the
+            // scorer, but only after somebody has paid for the device time
+            // and, on a sealed set, after the labels have already been through
+            // a model.
+            //
+            // This rule catches a file that was not cut. It cannot catch one
+            // cut wrong: the layouts differ — heldout and the dev sets put the
+            // utterance in column two, everyday in column three — so
+            // `cut -f1,2 everyday.tsv` yields `id<TAB>domain`, which is two
+            // fields and is accepted. The README carries the per-file cut.
             fail(
                 path: path,
                 line: offset + 1,
