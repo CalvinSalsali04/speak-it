@@ -1,0 +1,48 @@
+{
+  "review_round": "speechlab-repair-review-1",
+  "reviewers": [
+    "codex-repair2-reviewer-a-20260915",
+    "codex-repair2-reviewer-b-20260915",
+    "codex-repair2-reviewer-c-20260915"
+  ],
+  "reviewer_sources": [
+    {
+      "identity": "codex-repair2-reviewer-a-20260915",
+      "kind": "external_ai"
+    },
+    {
+      "identity": "codex-repair2-reviewer-b-20260915",
+      "kind": "external_ai"
+    },
+    {
+      "identity": "codex-repair2-reviewer-c-20260915",
+      "kind": "external_ai"
+    }
+  ],
+  "case_count": 20,
+  "assignments_per_case": {
+    "1": 3,
+    "2": 17
+  },
+  "reviews_required": 37,
+  "reviewer_counts": {
+    "codex-repair2-reviewer-a-20260915": 13,
+    "codex-repair2-reviewer-b-20260915": 12,
+    "codex-repair2-reviewer-c-20260915": 12
+  },
+  "assignment_digest": "ea323344e1fd448c2aadd29ad9b4c8f7e4e28fb008b2f7aabeb5390771e1219c",
+  "parser_output_included": false,
+  "production_behavior_included": false,
+  "reviewed_at": "2026-09-15T00:30:00-04:00",
+  "completed": true,
+  "submission_count": 37,
+  "submission_digest": "a3ff3863145080bdb4c238df4ffe2049d1f052ab506025c8054713077d6af673",
+  "reviewed_candidate_digest": "d5e72bb458c5cf1a084ed1b8d1e7dfc208ed9943f086aae458451f0e8344ad4f",
+  "repair_outcomes": {
+    "trusted": 16,
+    "disputed": 4
+  },
+  "production_parser_invoked": false,
+  "parser_output_exposed_to_reviewers": false,
+  "sealed_failures_read": 0
+}

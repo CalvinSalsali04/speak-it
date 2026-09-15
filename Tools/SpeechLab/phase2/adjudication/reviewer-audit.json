@@ -1,0 +1,824 @@
+{
+  "methodology": {
+    "production_parser_invoked": false,
+    "parser_output_read": false,
+    "sealed_failures_read": 0,
+    "disagreement_unit": "same case, distinct independent reviewers"
+  },
+  "reviewers": [
+    {
+      "identity": "codex-blind-reviewer-a-20260914",
+      "reviews": 442,
+      "safety_reviews": 341,
+      "naturalness_distribution": {
+        "1": 1,
+        "2": 63,
+        "3": 139,
+        "4": 170,
+        "5": 69
+      },
+      "mean_naturalness": 3.549774,
+      "broken_or_implausible_rate": 0.144796,
+      "contract_judgments": {
+        "yes": 420,
+        "no": 20,
+        "uncertain": 2
+      },
+      "semantic_rejection_rate": 0.045249,
+      "semantic_uncertainty_rate": 0.004525,
+      "preservation_judgments": {
+        "appears_preserved": 420,
+        "meaning_changed": 20,
+        "uncertain": 2
+      },
+      "multi_review_cases": 341,
+      "verdict_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.032258,
+      "naturalness_disagreement_cases": 189,
+      "naturalness_disagreement_rate": 0.554252
+    },
+    {
+      "identity": "codex-blind-reviewer-b-20260914",
+      "reviews": 445,
+      "safety_reviews": 345,
+      "naturalness_distribution": {
+        "1": 1,
+        "2": 13,
+        "3": 133,
+        "4": 287,
+        "5": 11
+      },
+      "mean_naturalness": 3.660674,
+      "broken_or_implausible_rate": 0.031461,
+      "contract_judgments": {
+        "yes": 427,
+        "no": 14,
+        "uncertain": 4
+      },
+      "semantic_rejection_rate": 0.031461,
+      "semantic_uncertainty_rate": 0.008989,
+      "preservation_judgments": {
+        "appears_preserved": 427,
+        "meaning_changed": 10,
+        "uncertain": 8
+      },
+      "multi_review_cases": 345,
+      "verdict_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.031884,
+      "naturalness_disagreement_cases": 166,
+      "naturalness_disagreement_rate": 0.481159
+    },
+    {
+      "identity": "codex-blind-reviewer-c-20260914",
+      "reviews": 445,
+      "safety_reviews": 342,
+      "naturalness_distribution": {
+        "1": 0,
+        "2": 29,
+        "3": 203,
+        "4": 206,
+        "5": 7
+      },
+      "mean_naturalness": 3.429213,
+      "broken_or_implausible_rate": 0.065169,
+      "contract_judgments": {
+        "yes": 421,
+        "no": 20,
+        "uncertain": 4
+      },
+      "semantic_rejection_rate": 0.044944,
+      "semantic_uncertainty_rate": 0.008989,
+      "preservation_judgments": {
+        "appears_preserved": 421,
+        "meaning_changed": 20,
+        "uncertain": 4
+      },
+      "multi_review_cases": 342,
+      "verdict_disagreement_cases": 12,
+      "verdict_disagreement_rate": 0.035088,
+      "naturalness_disagreement_cases": 155,
+      "naturalness_disagreement_rate": 0.453216
+    }
+  ],
+  "safety_disagreement": {
+    "multi_review_cases": 514,
+    "verdict_disagreement_cases": 17,
+    "verdict_disagreement_rate": 0.033074,
+    "naturalness_disagreement_cases": 255,
+    "naturalness_disagreement_rate": 0.496109
+  },
+  "all_multi_review_cases": 514,
+  "phenomena": [
+    {
+      "phenomenon_id": "abandoned-thought",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "ambiguous-pronoun",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "asr-boundary-error",
+      "cases": 30,
+      "multi_review_cases": 19,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.578947
+    },
+    {
+      "phenomenon_id": "asr-deletion",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "asr-dropped-token",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "asr-duplicated-token",
+      "cases": 31,
+      "multi_review_cases": 20,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 8,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.4
+    },
+    {
+      "phenomenon_id": "asr-insertion",
+      "cases": 32,
+      "multi_review_cases": 17,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 4,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.235294
+    },
+    {
+      "phenomenon_id": "asr-name-corruption",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "asr-partial-recognition",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "asr-substitution",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "cancellation",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "cancellation-scope",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "casing-corruption",
+      "cases": 26,
+      "multi_review_cases": 18,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 10,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.555556
+    },
+    {
+      "phenomenon_id": "casual-grammar",
+      "cases": 33,
+      "multi_review_cases": 22,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 8,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.363636
+    },
+    {
+      "phenomenon_id": "change-of-intent",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "code-switch-token",
+      "cases": 31,
+      "multi_review_cases": 21,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 9,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.428571
+    },
+    {
+      "phenomenon_id": "completed-action",
+      "cases": 8,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "contact-person-ambiguity",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "correction-chain",
+      "cases": 20,
+      "multi_review_cases": 12,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 8,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.666667
+    },
+    {
+      "phenomenon_id": "cross-turn-reference",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "cross-turn-reference-ambiguity",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "discourse-marker",
+      "cases": 23,
+      "multi_review_cases": 13,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.384615
+    },
+    {
+      "phenomenon_id": "dst-transition",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "exact-time",
+      "cases": 17,
+      "multi_review_cases": 9,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.555556
+    },
+    {
+      "phenomenon_id": "false-start",
+      "cases": 31,
+      "multi_review_cases": 17,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.647059
+    },
+    {
+      "phenomenon_id": "filler-words",
+      "cases": 23,
+      "multi_review_cases": 13,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 3,
+      "verdict_disagreement_rate": 0.076923,
+      "naturalness_disagreement_rate": 0.230769
+    },
+    {
+      "phenomenon_id": "future-intention",
+      "cases": 24,
+      "multi_review_cases": 21,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 9,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.428571
+    },
+    {
+      "phenomenon_id": "hesitation",
+      "cases": 26,
+      "multi_review_cases": 14,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 8,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.571429
+    },
+    {
+      "phenomenon_id": "homophone",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "incomplete-clause",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 1.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "information-mixed-with-action",
+      "cases": 9,
+      "multi_review_cases": 7,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 4,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.571429
+    },
+    {
+      "phenomenon_id": "location-inheritance",
+      "cases": 3,
+      "multi_review_cases": 3,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 2,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.666667
+    },
+    {
+      "phenomenon_id": "long-capture",
+      "cases": 27,
+      "multi_review_cases": 16,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 7,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.4375
+    },
+    {
+      "phenomenon_id": "lowercase",
+      "cases": 30,
+      "multi_review_cases": 19,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 8,
+      "verdict_disagreement_rate": 0.052632,
+      "naturalness_disagreement_rate": 0.421053
+    },
+    {
+      "phenomenon_id": "multiple-tasks",
+      "cases": 5,
+      "multi_review_cases": 4,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 3,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.75
+    },
+    {
+      "phenomenon_id": "multiple-thoughts",
+      "cases": 12,
+      "multi_review_cases": 8,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 2,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.25
+    },
+    {
+      "phenomenon_id": "negation",
+      "cases": 17,
+      "multi_review_cases": 17,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 7,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.411765
+    },
+    {
+      "phenomenon_id": "never-mind-withdrawal",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "numbered-list",
+      "cases": 13,
+      "multi_review_cases": 9,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 4,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.444444
+    },
+    {
+      "phenomenon_id": "ordinary-word-name",
+      "cases": 12,
+      "multi_review_cases": 3,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 2,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.666667
+    },
+    {
+      "phenomenon_id": "outstanding-obligation",
+      "cases": 21,
+      "multi_review_cases": 16,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 7,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.4375
+    },
+    {
+      "phenomenon_id": "partial-thought",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 1.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "past-event",
+      "cases": 9,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "prohibition",
+      "cases": 7,
+      "multi_review_cases": 7,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 6,
+      "verdict_disagreement_rate": 0.142857,
+      "naturalness_disagreement_rate": 0.857143
+    },
+    {
+      "phenomenon_id": "pronoun-resolution",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "punctuation-corruption",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "punctuation-loss",
+      "cases": 22,
+      "multi_review_cases": 15,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 6,
+      "verdict_disagreement_rate": 0.066667,
+      "naturalness_disagreement_rate": 0.4
+    },
+    {
+      "phenomenon_id": "question-mixed-with-action",
+      "cases": 12,
+      "multi_review_cases": 8,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.625
+    },
+    {
+      "phenomenon_id": "quoted-speech",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "rambling-ending",
+      "cases": 24,
+      "multi_review_cases": 16,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 13,
+      "verdict_disagreement_rate": 0.0625,
+      "naturalness_disagreement_rate": 0.8125
+    },
+    {
+      "phenomenon_id": "rambling-introduction",
+      "cases": 19,
+      "multi_review_cases": 12,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.083333,
+      "naturalness_disagreement_rate": 0.416667
+    },
+    {
+      "phenomenon_id": "recurrence",
+      "cases": 7,
+      "multi_review_cases": 7,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.714286
+    },
+    {
+      "phenomenon_id": "relative-date",
+      "cases": 22,
+      "multi_review_cases": 9,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 4,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.444444
+    },
+    {
+      "phenomenon_id": "relative-duration",
+      "cases": 4,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "repetition",
+      "cases": 29,
+      "multi_review_cases": 18,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 10,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.555556
+    },
+    {
+      "phenomenon_id": "rephrasing",
+      "cases": 24,
+      "multi_review_cases": 15,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 3,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.2
+    },
+    {
+      "phenomenon_id": "reported-speech",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "resolved-alternative",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "restart",
+      "cases": 25,
+      "multi_review_cases": 16,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.6875
+    },
+    {
+      "phenomenon_id": "scoped-withdrawal",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "self-correction-date",
+      "cases": 18,
+      "multi_review_cases": 11,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.454545
+    },
+    {
+      "phenomenon_id": "self-correction-location",
+      "cases": 20,
+      "multi_review_cases": 16,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 6,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.375
+    },
+    {
+      "phenomenon_id": "self-correction-person",
+      "cases": 17,
+      "multi_review_cases": 9,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 3,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.333333
+    },
+    {
+      "phenomenon_id": "self-correction-time",
+      "cases": 14,
+      "multi_review_cases": 13,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 9,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.692308
+    },
+    {
+      "phenomenon_id": "sequencing",
+      "cases": 7,
+      "multi_review_cases": 6,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 3,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.5
+    },
+    {
+      "phenomenon_id": "shared-date",
+      "cases": 2,
+      "multi_review_cases": 2,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.5
+    },
+    {
+      "phenomenon_id": "shared-location",
+      "cases": 2,
+      "multi_review_cases": 2,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 2,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 1.0
+    },
+    {
+      "phenomenon_id": "shared-subject",
+      "cases": 9,
+      "multi_review_cases": 8,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 4,
+      "verdict_disagreement_rate": 0.125,
+      "naturalness_disagreement_rate": 0.5
+    },
+    {
+      "phenomenon_id": "shared-time",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "short-fragment",
+      "cases": 1,
+      "multi_review_cases": 0,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0,
+      "naturalness_disagreement_rate": 0
+    },
+    {
+      "phenomenon_id": "sign-off-trailing-noise",
+      "cases": 29,
+      "multi_review_cases": 19,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 11,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.578947
+    },
+    {
+      "phenomenon_id": "store-brand-product-name",
+      "cases": 7,
+      "multi_review_cases": 2,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.5
+    },
+    {
+      "phenomenon_id": "stutter-like-repetition",
+      "cases": 31,
+      "multi_review_cases": 17,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 10,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.588235
+    },
+    {
+      "phenomenon_id": "temporal-inheritance",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "timezone-sensitive",
+      "cases": 1,
+      "multi_review_cases": 1,
+      "verdict_disagreement_cases": 1,
+      "naturalness_disagreement_cases": 0,
+      "verdict_disagreement_rate": 1.0,
+      "naturalness_disagreement_rate": 0.0
+    },
+    {
+      "phenomenon_id": "uncertainty",
+      "cases": 8,
+      "multi_review_cases": 8,
+      "verdict_disagreement_cases": 2,
+      "naturalness_disagreement_cases": 6,
+      "verdict_disagreement_rate": 0.25,
+      "naturalness_disagreement_rate": 0.75
+    },
+    {
+      "phenomenon_id": "uncommon-proper-noun",
+      "cases": 6,
+      "multi_review_cases": 3,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 1,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.333333
+    },
+    {
+      "phenomenon_id": "unnumbered-list",
+      "cases": 8,
+      "multi_review_cases": 6,
+      "verdict_disagreement_cases": 0,
+      "naturalness_disagreement_cases": 5,
+      "verdict_disagreement_rate": 0.0,
+      "naturalness_disagreement_rate": 0.833333
+    }
+  ],
+  "naturalness_semantics_separation": {
+    "low_naturalness_reviews": 107,
+    "low_naturalness_with_contract_affirmed": 99,
+    "low_naturalness_affirmation_rate": 0.925234,
+    "high_naturalness_reviews": 750,
+    "high_naturalness_with_rejection_or_uncertainty": 44,
+    "high_naturalness_adverse_rate": 0.058667,
+    "interpretation": "Naturalness and semantic correctness were scored separately: low-naturalness cases were often semantically affirmed and some high-naturalness cases still received adverse semantic judgments."
+  }
+}

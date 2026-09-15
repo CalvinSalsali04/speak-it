@@ -67,3 +67,57 @@ duplicate, enum, schema, or digest errors. The batch inputs are intentionally
 not committed because they are deterministic projections of the existing blind
 review pack. Reviewer submissions record source and identity; none is
 represented as human review.
+
+## Repair and trust closure
+
+The deterministic candidates and non-review reports are reproduced with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/reviewer_audit.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/triage_problem_cases.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/repair_corpus.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/prepare_review_batches.py \
+  --cases Tools/SpeechLab/phase2/repair/candidate-1/repair-cases.jsonl \
+  --review-pack Tools/SpeechLab/phase2/repair/candidate-1/repair-review-pack.jsonl \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-1/review-batches \
+  --reviewer codex-repair-reviewer-a-20260914 \
+  --reviewer codex-repair-reviewer-b-20260914 \
+  --reviewer codex-repair-reviewer-c-20260914
+```
+
+Compile the committed round-one decisions:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/run_repair_review.py \
+  --candidate-dir Tools/SpeechLab/phase2/repair/candidate-1 \
+  --decision codex-repair-reviewer-a-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-a-20260914.jsonl \
+  --decision codex-repair-reviewer-b-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-b-20260914.jsonl \
+  --decision codex-repair-reviewer-c-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-c-20260914.jsonl \
+  --reviewed-at 2026-09-15T00:00:00-04:00 \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-1/adjudication
+```
+
+Compile round two and rebuild the strict subset:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/repair_corpus_round2.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/prepare_review_batches.py \
+  --cases Tools/SpeechLab/phase2/repair/candidate-2/repair-cases.jsonl \
+  --review-pack Tools/SpeechLab/phase2/repair/candidate-2/repair-review-pack.jsonl \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-2/review-batches \
+  --reviewer codex-repair2-reviewer-a-20260915 \
+  --reviewer codex-repair2-reviewer-b-20260915 \
+  --reviewer codex-repair2-reviewer-c-20260915
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/run_repair_review.py \
+  --candidate-dir Tools/SpeechLab/phase2/repair/candidate-2 \
+  --decision codex-repair2-reviewer-a-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-a-20260915.jsonl \
+  --decision codex-repair2-reviewer-b-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-b-20260915.jsonl \
+  --decision codex-repair2-reviewer-c-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-c-20260915.jsonl \
+  --reviewed-at 2026-09-15T00:30:00-04:00 \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-2/adjudication
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/trust_closure.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tools/SpeechLab/tests -v
+git diff --check
+```
