@@ -183,23 +183,39 @@ def self_check(measure=None):
             and templated.stems == 1 and varied.stems == len(CANARY_VARIED))
 
 
+#: The rule `swift_literals` is applied under, and the only rule the count
+#: beside it is correct for: at least this many characters, and containing a
+#: space. Typing "multi-word" and meaning "two word tokens" is a 58-literal
+#: difference on this corpus, so the rule is written down beside the number
+#: and `test_observation.py` recomputes both.
+SWIFT_LITERAL_FLOOR = 12
+SWIFT_LITERALS = 3702
+
 #: Populations this report does NOT read yet, printed on every run.
 #:
 #: A tool that reads some of the material and says "readable material" is the
 #: defect this repository has caught in four instruments now, most recently in
-#: a census that omitted the gating corpus -- 3,704 distinct literals, the
-#: material this project reads most -- while describing itself as covering
-#: what may be read. So the gap is output rather than a known limitation, and
-#: it costs three lines.
+#: a census that omitted the gating corpus -- the material this project reads
+#: most -- while describing itself as covering what may be read. So the gap is
+#: output rather than a known limitation, and it costs three lines.
+#:
+#: Every figure here is recomputed by a test rather than typed, because the
+#: first version of this block typed three: one was wrong (3,704 for 3702),
+#: one appears nowhere else in the repository, and one was a hedge. A count of
+#: a population the report declines to read is precisely the figure with
+#: nothing holding it to account -- it reads as measured, and no run disagrees.
 NOT_READ = (
     ("Tools/SpeechLab/**.jsonl",
-     "about 1,290 distinct utterances. The walk that reaches them safely, "
-     "with its sealed-by-filename refusal, is in #66; this calls it rather "
-     "than growing a second one."),
+     "the walk that reaches these safely, with its sealed-by-filename "
+     "refusal, is in #66; this calls it rather than growing a second one. "
+     "How many utterances that is, is #66's figure to report and not one "
+     "this report can check, so it is not repeated here."),
     ("SpeakItTests/*.swift",
-     "3,704 distinct multi-word literals, a superset of the 1,380 gating "
-     "captures. `swift_literals` lives in `everyday/leak-check.py` and wants "
-     "a home before a third reader imports it by path."),
+     f"{SWIFT_LITERALS} distinct literals of {SWIFT_LITERAL_FLOOR}+ "
+     f"characters containing a space. `swift_literals` lives in "
+     f"`everyday/leak-check.py` and wants a home before a third reader "
+     f"imports it by path -- which is why this states the count rather than "
+     f"becoming that third reader."),
 )
 
 

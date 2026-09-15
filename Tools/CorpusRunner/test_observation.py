@@ -182,5 +182,72 @@ class TheCensusReportsPerForm(unittest.TestCase):
         self.assertEqual(found["therefore"].rows, 0)
 
 
+class TheFiguresItPrintsForWhatItDoesNotReadAreRecomputed(unittest.TestCase):
+    """The block naming unread populations typed three figures and got one
+    wrong, which is the defect that block exists to complain about.
+
+    A count of a population the report declines to read is the figure with
+    nothing holding it to account: no run recomputes it, and it reads as
+    measured. So the count lives here, where a run does recompute it, and
+    the report prints this module's constant rather than a literal.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+    def literals(self):
+        """`swift_literals` as `everyday/leak-check.py` defines it.
+
+        Imported by spec because of the hyphen, and by path because that is
+        the honest statement of where it lives -- the report declines to do
+        this, which is the whole reason the count is a constant over there.
+        """
+        import importlib.util
+        source = self.ROOT / "Tools/CorpusRunner/everyday/leak-check.py"
+        spec = importlib.util.spec_from_file_location("leak_check", source)
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except SystemExit:
+            pass
+        found = set()
+        for swift in sorted((self.ROOT / "SpeakItTests").glob("*.swift")):
+            text = swift.read_text(encoding="utf-8", errors="replace")
+            for literal in module.swift_literals(
+                    text, minimum=observation.SWIFT_LITERAL_FLOOR):
+                if " " in literal.strip():
+                    found.add(literal)
+        return found
+
+    def test_the_swift_literal_count_is_what_the_stated_rule_produces(self):
+        self.assertEqual(len(self.literals()), observation.SWIFT_LITERALS)
+
+    def test_the_report_prints_the_constant_rather_than_a_second_copy(self):
+        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
+        self.assertIn(str(observation.SWIFT_LITERALS), line)
+        self.assertNotIn("3,704", line)
+
+    def test_multi_word_is_stated_as_the_rule_it_is(self):
+        """`contains a space` and `two word tokens` differ by 58 literals on
+        this corpus. The first version said `multi-word` and meant neither
+        out loud, so the rule is named in the report's own text."""
+        import re as _re
+        floor = {l for l in self.literals()}
+        tokens = {l for l in floor if len(_re.findall(r"[A-Za-z']+", l)) >= 2}
+        self.assertNotEqual(len(floor), len(tokens),
+                            "if these ever agree this test proves nothing")
+        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
+        self.assertIn("containing a space", line)
+
+    def test_no_unread_population_carries_a_figure_nothing_here_checks(self):
+        """The SpeechLab line used to carry `about 1,290`, which no run here
+        recomputes and #66 has since moved. A hedge is not a source."""
+        speechlab = dict(observation.NOT_READ)["Tools/SpeechLab/**.jsonl"]
+        # A pull-request reference is a pointer to who owns the figure, which
+        # is the opposite of an unchecked figure, so it is not a count.
+        without_refs = re.sub(r"#\d+", "", speechlab)
+        self.assertNotRegex(without_refs, r"\d",
+                            "counts for that population belong to #66's walk")
+
+
 if __name__ == "__main__":
     unittest.main()
