@@ -44,12 +44,14 @@ walking committed text, the same walk the census uses.
 """
 import collections
 import difflib
+import re
 import pathlib
 import posixpath
 import sys
 import textwrap
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import corpus_paths  # noqa: E402
 import readable_material  # noqa: E402
 from readable_material import GATING, ROOT, SPEECHLAB, shown  # noqa: E402
 
@@ -409,6 +411,114 @@ def block(figs=None):
     out.append("")
     out.append(END)
     return "\n".join(out)
+
+
+#: A per-family row in a gap table names its family and, in brackets, how many
+#: pairs that figure was measured over: `| restart (4) | 4/4 -> 4/4 | ...`.
+#: The bracket is what makes the row checkable, and it is the half that goes
+#: stale first -- a development set grows, the scores stay where they were, and
+#: the table goes on asserting a number about a population that has moved.
+#: `restart` was measured over four pairs and `rambling.tsv` now holds six.
+FAMILY_ROW = re.compile(r"^\|\s*`?([a-z][a-z0-9-]*)`?\s*\((\d+)\)\s*\|")
+
+#: The two halves of a twinned development set: the same content written
+#: twice under one id stem, so a measurement is the gap between the twins.
+#: Derived from the family labels rather than from the ids, because an id
+#: convention is a spelling and the label is what the row claims to be.
+TWIN_HALVES = ("clean", "rambling")
+
+
+def twinned_families(paths=None):
+    """`{path: {family: pairs}}` for every readable set written as twins.
+
+    Recomputed from the development sets, never declared. Which sets are
+    twinned, which families they carry and how many pairs each holds are all
+    read off the `family` column, so the answer moves when the data does --
+    which is the whole point, since the failure being caught is a document
+    asserting a count the data no longer has.
+
+    Refuses when a family's two halves disagree in size. An unpaired twin is
+    not a stale figure, it is a set that has stopped being twinned, and a gap
+    measured across it means nothing; reporting it as a count would hide that.
+    """
+    paths = corpus_paths.readable() if paths is None else paths
+    out = {}
+    for path in sorted(paths):
+        halves = collections.defaultdict(collections.Counter)
+        for row in _family_column(path):
+            family, _, half = row.rpartition("-")
+            if family and half in TWIN_HALVES:
+                halves[family][half] += 1
+        families = {}
+        for family, counts in halves.items():
+            sizes = {counts[half] for half in TWIN_HALVES}
+            if len(sizes) != 1:
+                raise ValueError(
+                    f"{shown(path)}: `{family}` has "
+                    f"{counts[TWIN_HALVES[0]]} clean rows and "
+                    f"{counts[TWIN_HALVES[1]]} spoken ones, so it is not a "
+                    f"twinned family any more and a gap measured across it "
+                    f"is not a gap between twins")
+            families[family] = sizes.pop()
+        if families:
+            out[str(shown(path))] = families
+    return out
+
+
+def _family_column(path):
+    """The `family` cell of every data row, or nothing when there is no such
+    column. Reads the header rather than assuming position, because the
+    corpora here do not agree on a layout and the sixth reader to work it out
+    for itself got it right by luck."""
+    header = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        cells = line.split("\t")
+        if header is None:
+            header = cells
+            continue
+        if "family" not in header:
+            return
+        value = dict(zip(header, cells)).get("family")
+        if value:
+            yield value
+
+
+def stale_family_rows(text=None, twinned=None):
+    """Per-family rows citing a population the development set no longer has.
+
+    Returns `(mismatched, unrowed)`. `mismatched` is
+    `[(family, cited, actual)]` for a row whose bracket disagrees with the
+    set; `unrowed` is `[(family, pairs)]` for a twinned family with no row at
+    all -- which matters because the table introduces itself as *the*
+    per-family gaps, so a family missing from it is a claim of completeness
+    that has quietly stopped being true.
+
+    A row is recognised as a per-family row by its label being a twinned
+    family name, so the table is matched to its development set by what the
+    data holds rather than by a declared line range or file name. A set-level
+    row such as `routed (116)` names a file and not a family, and is left to
+    the population block, which already generates it.
+    """
+    text = DOC.read_text(encoding="utf-8") if text is None else text
+    twinned = twinned_families() if twinned is None else twinned
+    known = {family: pairs
+             for families in twinned.values()
+             for family, pairs in families.items()}
+    mismatched, seen = [], set()
+    for line in text.splitlines():
+        found = FAMILY_ROW.match(line)
+        if not found:
+            continue
+        family, cited = found.group(1), int(found.group(2))
+        if family not in known:
+            continue
+        seen.add(family)
+        if cited != known[family]:
+            mismatched.append((family, cited, known[family]))
+    unrowed = sorted((f, n) for f, n in known.items() if f not in seen)
+    return sorted(mismatched), unrowed
 
 
 def marked_region(text):
