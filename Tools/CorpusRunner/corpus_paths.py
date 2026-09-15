@@ -205,8 +205,11 @@ def _grep(pattern, root=None):
 #     390th capture.
 #   * A one-off scan hard-coded column two and reported that the everyday set
 #     contains no instance of the word "so". It keeps its utterance in column
-#     THREE. The real answer is 34, and that set turns out to be the most
-#     spoken-sounding corpus in the repository rather than the least.
+#     THREE, so the scan had been counting a label column, and the answer it
+#     gave was wrong rather than merely small. What the right answer is does
+#     not belong here: it is an aggregate over a sealed set's content, and a
+#     fact of that kind, sitting in a file every reader opens, is available to
+#     size the next change. The lesson needs only that the scan was wrong.
 #   * `corpus-shape.py` counted `everyday.tsv`'s header as a row and reported
 #     256 rows for a 255-capture set.
 #   * And `corpus-shape.py` had to solve the whole problem from scratch to do
@@ -299,6 +302,24 @@ def utterance_column(lines):
     return column
 
 
+def id_column(lines):
+    """Which column carries the row id.
+
+    Raises, for the same reason `utterance_column` does and one the leak check
+    made concrete: its prose half exists to **name** a leak without printing
+    it, so an id that silently arrives as the empty string turns the one safe
+    report into one that says a sealed capture is committed somewhere and
+    cannot say which. Absent is not column zero, and it is not "".
+    """
+    column = column_of(lines, "id")
+    if column is None:
+        raise ValueError(
+            "no line in this file names an `id` column, so its rows cannot be "
+            "named. A row that cannot be named cannot be reported without "
+            "printing it, which for a sealed set is the thing being avoided.")
+    return column
+
+
 def data_rows(path):
     """Yields (line number, cells) for the rows that are data.
 
@@ -322,9 +343,9 @@ def utterances(path):
     """
     lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
     column = utterance_column(lines)
-    ids = column_of(lines, "id")
+    ids = id_column(lines)
     for number, cells in data_rows(path):
-        if len(cells) <= column:
+        if len(cells) <= max(column, ids):
             # Refused rather than skipped. A dropped row is a denominator one
             # smaller and no message, on exactly the row worth knowing about:
             # the file reads as clean and one capture shorter, and every rate
@@ -332,10 +353,21 @@ def utterances(path):
             # short row today, so this costs nothing until one appears.
             raise ValueError(
                 f"{pathlib.Path(path).name} line {number}: {len(cells)} "
-                f"cell(s), but the utterance is column {column + 1}. A row "
-                f"this reader cannot parse is not a row to skip.")
-        yield number, (cells[ids].strip()
-                       if ids is not None and len(cells) > ids else ""), cells[column]
+                f"cell(s), but the utterance is column {column + 1} and the id "
+                f"is column {ids + 1}. A row this reader cannot parse is not a "
+                f"row to skip.")
+        if not cells[ids].strip():
+            # Refusing the missing column and not the missing value is the
+            # half-measure this repository keeps writing. A row whose id cell
+            # is empty cannot be named either, and the caller that most needs
+            # the name had a `cid or "?"` standing in for it -- a placeholder
+            # for an id, in the one report whose whole safety property is that
+            # it names a leak instead of printing it.
+            raise ValueError(
+                f"{pathlib.Path(path).name} line {number}: the id cell "
+                f"(column {ids + 1}) is empty, so this row cannot be named. "
+                f"An unnamed row cannot be reported without printing it.")
+        yield number, cells[ids].strip(), cells[column]
 
 
 if __name__ == "__main__":

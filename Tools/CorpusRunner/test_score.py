@@ -1480,19 +1480,25 @@ class TheHeaderIsReadInOnePlace(unittest.TestCase):
     def test_every_column_is_read_from_the_same_line(self):
         """Two columns resolved by two independent scans can disagree.
 
-        `column_of` looked for its name on any line, so a data cell that
-        happens to read `id` is a header as far as the id lookup is concerned
-        while the utterance lookup uses the real one. Every row then reports
-        the same id, which reads as a duplicate-id corpus rather than as a
-        reader that lost track of which line it was on.
+        `column_of` looked for its name on any line rather than on the header
+        line, so a commented-out old header still names an `id` column as far
+        as the id lookup is concerned, while the utterance lookup uses the
+        real one. Every row then reports the wrong field as its id, and the
+        report that names a leak names the wrong thing -- which is worse than
+        naming nothing, because nothing looks like a failure and this does not.
         """
         paths = self.paths()
-        path = self.corpus("# capture\tutterance\nid\thello\nC2\tthere\n")
+        path = self.corpus("# id\told_utterance\n"
+                           "# ref\tid\tutterance\n"
+                           "R1\tX01\thello\n"
+                           "R2\tX02\tthere\n")
+        self.assertEqual(paths.id_column(
+            path.read_text(encoding="utf-8").splitlines()), 1)
         found = [cid for _n, cid, _u in paths.utterances(path)]
         self.assertEqual(
-            found, ["", ""],
-            "the id column was resolved from a data row, not from the header "
-            f"line the utterance column came from; got {found}")
+            found, ["X01", "X02"],
+            "the id column was resolved from a line other than the one the "
+            f"utterance column came from; got {found}")
 
     def test_a_row_too_short_for_the_utterance_column_is_refused(self):
         """A dropped row is a smaller denominator and no message.
@@ -1509,6 +1515,68 @@ class TheHeaderIsReadInOnePlace(unittest.TestCase):
         self.assertIn("3", str(raised.exception),
                       "the refusal must name the line, or it sends a reader "
                       "looking through the whole file")
+
+    def test_a_row_with_an_empty_id_is_refused_too(self):
+        """Found by mutation: restoring `cid or "?"` in the leak check changed
+        no verdict, which looked like the deleted line being dead. It was not
+        -- a header can name an id column and a row can still leave the cell
+        empty, and the fallback was quietly printing a placeholder where the
+        report is supposed to print a name. Refusing the missing column and
+        not the missing value is the half-measure, so both refuse now and the
+        fallback really is dead."""
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\nX01\thello\n\tthere\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception))
+        self.assertIn("empty", str(raised.exception))
+
+    def test_the_id_cell_is_stripped(self):
+        """`harvest_ids` stripped it before the conversion; the contract that
+        replaced it has to keep doing so, or a padded cell reaches a report
+        that is compared against ids elsewhere."""
+        paths = self.paths()
+        path = self.corpus("# id\tutterance\n  X01  \thello\n")
+        self.assertEqual([cid for _n, cid, _u in paths.utterances(path)],
+                         ["X01"])
+
+    def test_a_row_too_short_for_the_id_column_is_refused_as_cleanly(self):
+        """A layout with the id after the utterance is not one we have, which
+        is why the short-row check could ignore it and no test would notice.
+        On such a file the refusal became an IndexError with no line number --
+        the difference between a reader that declines and one that crashes."""
+        paths = self.paths()
+        path = self.corpus("# utterance\tid\nhello\tX01\nthere\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("3", str(raised.exception))
+
+    def test_a_corpus_with_no_id_header_refuses_rather_than_naming_nothing(self):
+        """An unnamed row is worse here than a missing one.
+
+        The leak check's prose half exists to **name** a leak without printing
+        it. An id lookup that returns None and becomes the empty string turns
+        the one safe report into one that says a sealed capture is committed
+        somewhere and cannot say which. Absent is not column zero and it is
+        not "". Raised by the reader, because the previous version of this was
+        a `fields[0]` in the caller, and the conversion that removed it made
+        the failure quieter rather than louder.
+        """
+        paths = self.paths()
+        path = self.corpus("# ref\tutterance\nX01\thello\n")
+        with self.assertRaises(ValueError) as raised:
+            list(paths.utterances(path))
+        self.assertIn("id", str(raised.exception))
+        with self.assertRaises(ValueError):
+            paths.id_column(["# ref\tutterance"])
+
+    def test_every_corpus_file_names_an_id_column(self):
+        """Counts only. The refusal above costs nothing while this holds."""
+        paths = self.paths()
+        for path in sorted(paths.sealed() + paths.readable()):
+            with self.subTest(corpus=path.name):
+                lines = path.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(paths.id_column(lines), 0)
 
     def test_a_corpus_with_no_utterance_header_refuses_rather_than_guessing(self):
         paths = self.paths()

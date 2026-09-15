@@ -50,10 +50,17 @@ import corpus_paths  # noqa: E402  (after the path insert, which it needs)
 #: reading the file has to be computed the same way everywhere, and this file
 #: contributed two of the four defects the move was written for.
 def read(path):
-    """Rows and the header, however the file happens to write it."""
+    """Rows, the header, and the utterance column. One read of the file.
+
+    All three together because they are one question asked three ways, and
+    asking it three times is how this tool came to disagree with itself: it
+    read the header in `read`, and then worked out the utterance column again
+    in `main` from that header, by a second rule.
+    """
     lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
     return ([cells for _number, cells in corpus_paths.data_rows(path)],
-            corpus_paths.header_row(lines))
+            corpus_paths.header_row(lines),
+            corpus_paths.column_of(lines, "utterance"))
 
 
 def digest(values):
@@ -73,7 +80,7 @@ def main(argv):
     block = None
     if "--blocks" in argv:
         block = int(argv[argv.index("--blocks") + 1])
-    rows, header = read(path)
+    rows, header, column = read(path)
 
     problems = []
     print(f"{path}")
@@ -106,8 +113,6 @@ def main(argv):
     #: column, which of course contains no prose. Zero is the one result that
     #: looks the same whether the scan worked, so a tool whose whole purpose is
     #: to let a reviewer skip reading the file must not guess where to look.
-    column = corpus_paths.column_of(
-        pathlib.Path(path).read_text(encoding="utf-8").splitlines(), "utterance")
     if column is None:
         problems.append("no column named 'utterance' in the header, so this "
                         "tool cannot tell which field holds the captures and "

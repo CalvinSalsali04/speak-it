@@ -84,6 +84,16 @@ numbers make everyday the **most** spoken-sounding corpus we have, not the
 least, with roughly a quarter of its captures carrying a spoken marker against
 about a tenth of the development sets.
 
+> **Both of those figures are aggregates over a sealed set's content, and they
+> must not be used to size, shape or justify a parser change.** They are here
+> because they are the recorded *cause* of the amendment below, and a stated
+> cause that gets deleted leaves a decision with no reason attached — which is
+> a worse record than the exposure. That is the narrow case in which such a
+> figure may stand: it is already spent on a decision that has been made.
+> Writing one down anywhere it is merely colour on a point that survives
+> without it is a new exposure for nothing, and the same figure was removed
+> from `corpus_paths.py` on exactly that ground.
+
 So a set written entirely in clean prose is testing the wrong register for the
 thing it is evidence about. Sixteen captures were added, `CQ41`-`CQ56`, two per
 connector block as before, eight that must split and eight that must stay one

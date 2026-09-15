@@ -167,7 +167,12 @@ def mine(path):
         rows = list(corpus_paths.utterances(path))
     except ValueError as why:
         raise SystemExit(f"leak check: {Path(path).name}: {why}")
-    return {norm(utterance): cid or "?" for _number, cid, utterance in rows}
+    #: No `cid or "?"`. `corpus_paths.utterances` refuses a file whose header
+    #: names no id column, so the fallback became a branch nothing could reach
+    #: -- and a placeholder for a name is exactly what the prose check must not
+    #: print, since "a sealed capture is committed somewhere" without the id is
+    #: the report that cannot be acted on.
+    return {norm(utterance): cid for _number, cid, utterance in rows}
 
 
 #: Both of these moved into `corpus_paths`, which already owns which files
