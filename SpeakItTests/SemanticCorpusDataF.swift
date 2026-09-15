@@ -243,10 +243,10 @@ enum SemanticCorpusF {
         // this file had, so nothing would have said so. Found in review on
         // #90; these two rows are why it cannot happen quietly again.
         corpusCase(.openers, "The meeting is tomorrow number two call the dentist",
-                   count: 2, route: [.memory, .today],
-                   note: "`is tomorrow` is a finished statement, not an equating clause. The equating arm stands down where an instruction follows."),
+                   count: 2, route: [.today, .today],
+                   note: "`is tomorrow` is a finished statement, not an equating clause, so the equating arm stands down where an instruction follows -- that is what `count: 2` pins. The first row is Today because a dated event is an upcoming item, which is the same call as `My flight is on 22 September` in `dayMonthOrder`; these rows were first written as Memory from intuition and the gate said otherwise."),
         corpusCase(.openers, "My flight is Tuesday number two book the cat sitter",
-                   count: 2, route: [.memory, .today]),
+                   count: 2, route: [.today, .today]),
     ]
 
     // MARK: - Clock forms dictation actually produces
