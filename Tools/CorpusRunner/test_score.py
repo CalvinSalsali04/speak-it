@@ -1,4 +1,5 @@
 """Regression coverage for the evaluation instrument, independent of parser output."""
+import ast
 import collections
 import contextlib
 import csv
@@ -2022,7 +2023,10 @@ class LedgerCheckTests(unittest.TestCase):
                             for p in problems), problems)
 
     def test_an_emptied_table_is_distinguishable_from_a_quiet_year(self):
-        empty = LEDGER.split("| 2026-09-11")[0] + "\n## Next heading\n"
+        # Split on the first row in full, not on its date: both rows carry
+        # `| 2026-09-11`, so the bare date names two places and `[0]` quietly
+        # picks one. Caught by `EveryMutationInThisFileApplies`.
+        empty = LEDGER.split("| 2026-09-11 | a boundary")[0] + "\n## Next heading\n"
         problems = self.ledger.check(empty)
         self.assertTrue(any("no rows" in p for p in problems), problems)
 
@@ -2585,6 +2589,97 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
             f"match no path filter that starts language-tools, so changing "
             f"only them runs no sealed-set check at all")
 
+
+
+class EveryMutationInThisFileApplies(unittest.TestCase):
+    """A test that mutates a module constant must actually change it.
+
+    Several tests here take a document constant and rewrite one literal in it
+    to build the broken version they assert on. When the constant's wording
+    moves, the literal stops occurring, `str.replace` returns the string
+    unchanged, and the test goes on passing -- against the *unmutated*
+    document, which is the one case it was written to say nothing about. It is
+    silent: no error, no skip, a green line in the report.
+
+    That happened on 2026-09-15. The ledger's running total was reworded from
+    `**-1 row**` to `count: -1 row` and
+    `test_a_total_that_disagrees_with_its_rows_fails` kept passing while
+    measuring nothing. It was caught by accident, inside a branch, and never
+    reached `main` -- but five sibling mutations in this file had the same
+    shape and nothing would have caught the next one.
+
+    So the property is mechanical and covers all of them at once: for every
+    `CONSTANT.replace(literal, ...)` and `CONSTANT.split(literal)` in this
+    file, the literal occurs **exactly once** in that constant. Zero is the
+    silent no-op. More than one is the other half: a mutation that fires in
+    two places at once is not the edit the test's name describes, and which
+    one the assertion is about stops being readable.
+
+    Deliberately not a check that each test asserts its own mutation applied.
+    That needs a judgement about which call is the mutation, and this needs
+    none: it reads the source, not the intent. The one thing it cannot see is
+    a mutation built by string formatting rather than a literal.
+    """
+
+    SOURCE = pathlib.Path(__file__).resolve()
+    #: The methods whose first argument is matched against the constant.
+    MUTATORS = {"replace", "split"}
+
+    def module_constants(self, tree):
+        """Module-level `NAME = "..."` assignments, by name."""
+        found = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if (isinstance(target, ast.Name)
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)):
+                found[target.id] = node.value.value
+        return found
+
+    def mutations(self):
+        """Every (line, constant name, literal) this file mutates."""
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        constants = self.module_constants(tree)
+        out = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr in self.MUTATORS):
+                continue
+            if not (isinstance(func.value, ast.Name) and func.value.id in constants):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                continue
+            out.append((node.lineno, func.value.id, node.args[0].value))
+        return out
+
+    def test_the_scan_finds_mutations_at_all(self):
+        """Nothing found makes the test below pass for the emptiest reason."""
+        self.assertGreaterEqual(
+            len(self.mutations()), 5,
+            "no constant mutations found -- either they moved to a shape this "
+            "cannot read, or the scan is broken; both need looking at, and "
+            "neither is a clean run")
+
+    def test_every_mutated_literal_occurs_exactly_once(self):
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        constants = self.module_constants(tree)
+        wrong = []
+        for line, name, literal in self.mutations():
+            count = constants[name].count(literal)
+            if count != 1:
+                wrong.append(f"{self.SOURCE.name}:{line}  {name}.replace/split "
+                             f"({literal!r}) occurs {count} times in {name}")
+        self.assertEqual(
+            wrong, [],
+            "a mutation that does not apply exactly once: 0 means the test "
+            "runs against the unmutated document and passes for that reason; "
+            "more than 1 means it changes somewhere the test's name does not "
+            "describe. Fix the literal, not this check.")
 
 
 if __name__ == "__main__":

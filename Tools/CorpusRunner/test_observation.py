@@ -784,7 +784,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         removed none. 3739 -> 3745 the same day, when review of that change
         added three more tests to the class. 3745 -> 3755 on 2026-09-15: six
         `corpusCase` rows and four `note:` arguments for the numbered
-        enumerator in front of a fact. What the test is actually guarding — that the two
+        enumerator in front of a fact. 3755 -> 3758 the same day, when the
+        review of that change found the copula guard taking a boundary away:
+        two more rows and one more `note:`. What the test is actually guarding — that the two
         readings of "multi-word" still agree exactly and in both directions —
         is the assertion above, and it is unaffected.
         """
@@ -796,7 +798,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3755)
+        self.assertEqual(len(space), 3758)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

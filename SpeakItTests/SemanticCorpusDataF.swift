@@ -232,7 +232,21 @@ enum SemanticCorpusF {
         // somebody reads, if the cost is ever paid off.
         corpusCase(.openers, "Drop the parcel at the post office number two the garage code is 4821",
                    count: 1, route: [.today],
-                   note: "Accepted: `identifyingNumberContext` cannot tell this from \"at gate number two\". Deciding it needs to know whether the phrase has closed, which is a parse this layer does not have."),
+                   note: "Accepted: `locatingNumberContext` cannot tell this from \"at gate number two\". Deciding it needs to know whether the phrase has closed, which is a parse this layer does not have. No worse than the gate it replaces, which did not cut here either."),
+
+        // The boundary the copula guard nearly took away, and the reason it
+        // has two arms instead of one. A statement that has just finished puts
+        // a copula three words to the left of the marker as readily as an
+        // equating clause does -- and here an instruction follows, which is
+        // what the OLD gate cut on. A single lookbehind over prepositions and
+        // copulas together would have lost both of these, in a shape no row in
+        // this file had, so nothing would have said so. Found in review on
+        // #90; these two rows are why it cannot happen quietly again.
+        corpusCase(.openers, "The meeting is tomorrow number two call the dentist",
+                   count: 2, route: [.memory, .today],
+                   note: "`is tomorrow` is a finished statement, not an equating clause. The equating arm stands down where an instruction follows."),
+        corpusCase(.openers, "My flight is Tuesday number two book the cat sitter",
+                   count: 2, route: [.memory, .today]),
     ]
 
     // MARK: - Clock forms dictation actually produces
