@@ -17,6 +17,7 @@ import inspect
 import io
 import json
 import pathlib
+import re
 import sys
 import tempfile
 import unittest
@@ -1165,6 +1166,222 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
         self.assertIn("NOT_READ", str(caught.exception))
         self.assertIn("blueprints.jsonl", str(caught.exception))
 
+    def test_every_declared_unread_string_is_accounted_for(self):
+        """The sweep one level up from the nested one, on the top level.
+
+        The nested sweep is total over depth and says nothing about a key
+        with no `.` in it, which is where `before` and `after` sit. A value
+        here must be already read, or an intermediate the repair lineage
+        explains; a value with neither is an utterance the published
+        population is missing, in a file whose comment says it holds none.
+        """
+        rm = self.census.readable_material
+        self.maxDiff = None
+        stray = rm.unread_speech_unaccounted_for()
+        self.assertEqual(
+            stray, {},
+            "a file declared unread holds an utterance under a field "
+            "declared as holding utterances, nothing else in the tree has "
+            "counted it, and the repair lineage does not explain it: "
+            + "; ".join(f"{name} {sorted(fields)}"
+                        for name, fields in sorted(stray.items())))
+
+    def test_no_undeclared_top_level_field_holds_read_speech(self):
+        """The net that needs no vocabulary, over the whole tree.
+
+        Every other guard here keys on a name, and `before` and `after` are
+        in none of those vocabularies -- which is how ninety utterances sat
+        in `NOT_READ` while three guards agreed there was nothing to see.
+        This one keys on material: a top-level string the tree has already
+        read under another name is speech whatever its field is called.
+
+        Read files are swept too, with their own utterance column excluded.
+        A read file reporting here has a second utterance column nobody
+        reads, which is the same defect in different clothes.
+        """
+        rm = self.census.readable_material
+        found = rm.unread_fields_holding_speech()
+        self.assertEqual(
+            found, {},
+            "these top-level fields hold strings this tree has read "
+            "elsewhere, and no declaration says they hold utterances")
+
+    def test_the_net_names_the_fields_the_vocabularies_missed(self):
+        """The guard fires, rather than being empty because it looks nowhere.
+
+        An empty net is the same shape whether the tree is clean or the net
+        is broken, so it is handed an empty declaration and has to rediscover
+        what a week of three name-keyed guards did not: `before` and `after`,
+        in both repair maps, and nothing in the other thirty-five files.
+        """
+        rm = self.census.readable_material
+        found = rm.unread_fields_holding_speech(declared={})
+        self.assertEqual(
+            sorted(found), sorted(rm.UNREAD_UTTERANCE_FIELDS),
+            "the net finds top-level speech in a different set of files than "
+            "the declaration covers")
+        for name, fields in found.items():
+            self.assertEqual(sorted(fields),
+                             sorted(rm.UNREAD_UTTERANCE_FIELDS[name]))
+
+    def test_an_intermediate_is_derived_rather_than_listed(self):
+        """Recomputed a second way, from the text rather than from the ids.
+
+        `repair_intermediates` walks the lineage columns. This walks the
+        rows: a string it excuses must appear as some row's `after` and some
+        other row's `before`, and the two rows must chain -- the first row's
+        repaired id being the second row's original id. Two routes to the
+        same four, because a check agreeing with itself is the failure mode.
+
+        No count is pinned. What is pinned is that every excused string earns
+        it, so the day a repair round is redone the exception moves with the
+        data instead of outliving it.
+        """
+        rm = self.census.readable_material
+        rows = []
+        for name in sorted(rm.UNREAD_UTTERANCE_FIELDS):
+            for line in (rm.ROOT / name).read_text(
+                    encoding="utf-8").splitlines():
+                if line.strip():
+                    rows.append(json.loads(line))
+        derived = rm.repair_intermediates()
+        self.assertTrue(derived, "no intermediate is derived at all, so the "
+                                 "branch below has never run on real data")
+        for ident, words in derived.items():
+            made = [r for r in rows if r.get("repaired_rendering_id") == ident]
+            used = [r for r in rows if r.get("original_rendering_id") == ident]
+            self.assertTrue(made and used,
+                            f"{ident} is not both produced and consumed")
+            self.assertEqual({r["after"] for r in made} |
+                             {r["before"] for r in used}, {words},
+                             f"{ident} carries two different utterances")
+    def test_a_rendering_repaired_once_is_not_excused(self):
+        """Both directions on a tree this test builds.
+
+        One round: the repaired wording is what the case view carries, so a
+        value missing from the population is missing, and the sweep says so.
+        Two rounds: the middle wording never reached a case view, and the
+        lineage is what establishes that. Without the first half the
+        exception could excuse every `after` in the file.
+        """
+        rm = self.census.readable_material
+        once = {"original_rendering_id": "rd-a", "before": "book the van",
+                "repaired_rendering_id": "rd-b",
+                "after": "book the van for Friday"}
+        twice = {"original_rendering_id": "rd-b",
+                 "before": "book the van for Friday",
+                 "repaired_rendering_id": "rd-c",
+                 "after": "book the van for Friday morning"}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "repair-map.jsonl"
+            declared = {str(path): ("before", "after")}
+            path.write_text(json.dumps(once) + "\n")
+            alone = rm.unread_speech_unaccounted_for(
+                declared=declared, known=frozenset())
+            path.write_text(json.dumps(once) + "\n" + json.dumps(twice) + "\n")
+            chained = rm.unread_speech_unaccounted_for(
+                declared=declared, known=frozenset())
+        self.assertEqual(
+            alone, {str(path): {"before": {"book the van"},
+                                "after": {"book the van for Friday"}}},
+            "one repair round excuses nothing: the repaired wording is what "
+            "a case view carries")
+        self.assertEqual(
+            chained,
+            {str(path): {"before": {"book the van"},
+                         "after": {"book the van for Friday morning"}}},
+            "the twice-repaired middle wording is excused and the two ends "
+            "of the chain are not")
+
+    def test_two_sides_of_one_id_that_disagree_are_not_an_intermediate(self):
+        """The lineage has to reconstruct the claim, not merely assert it.
+
+        Same shape as `_is_a_span_of` refusing markup that has drifted from
+        its row. An id that leaves one round saying one thing and enters the
+        next saying another is not a rendering repaired twice, it is two
+        utterances sharing an id, and excusing either would be the weaker
+        check waving through exactly the case worth stopping on.
+        """
+        rm = self.census.readable_material
+        drifted = [
+            {"original_rendering_id": "rd-a", "before": "call the vet",
+             "repaired_rendering_id": "rd-b", "after": "call the vet today"},
+            {"original_rendering_id": "rd-b",
+             "before": "call the vet on Tuesday",
+             "repaired_rendering_id": "rd-c",
+             "after": "call the vet on Tuesday morning"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "repair-map.jsonl"
+            path.write_text("".join(json.dumps(r) + "\n" for r in drifted))
+            declared = {str(path): ("before", "after")}
+            self.assertEqual(rm.repair_intermediates(declared), {})
+            stray = rm.unread_speech_unaccounted_for(
+                declared=declared, known=frozenset())
+        self.assertEqual(
+            sorted(stray[str(path)]["after"]),
+            ["call the vet on Tuesday morning", "call the vet today"],
+            "an id whose two sides disagree excused one of them anyway")
+
+    def test_a_declared_field_that_is_in_no_record_is_reported(self):
+        """The half a field declaration is never failed by.
+
+        A renamed column leaves the declaration excusing nothing, forever,
+        while the comment beside it goes on describing the file it used to
+        be. `NOT_READ` has `speechlab_misdeclared` for this and the container
+        names have `conversational_containers_missing`; this is the third.
+        """
+        rm = self.census.readable_material
+        self.assertEqual(rm.unread_fields_missing(), [])
+        real = sorted(rm.UNREAD_UTTERANCE_FIELDS)[0]
+        found = rm.unread_fields_missing(declared={real: ("said",)})
+        self.assertEqual([name for name, _why in found], [real])
+        self.assertIn("appears in no record", found[0][1])
+
+    def test_a_field_declared_on_a_file_the_census_reads_is_reported(self):
+        """Declaring fields on a read file excuses nothing and hides that.
+
+        The sweep only looks at declared files, so a declaration pointing at
+        a corpus the census already reads would sit there looking like
+        accounting while checking nothing at all.
+        """
+        rm = self.census.readable_material
+        read = "Tools/SpeechLab/phase2/data/cases.jsonl"
+        found = rm.unread_fields_missing(declared={read: ("utterance",)})
+        self.assertEqual([name for name, _why in found], [read])
+        self.assertIn("not in NOT_READ", found[0][1])
+
+    def test_a_declared_file_that_left_the_tree_is_reported(self):
+        """A rename must not leave the declaration describing a dead tree.
+
+        `speechlab_misdeclared` reports the same file, and this stays anyway:
+        it is what keeps `unread_fields_missing` from opening a path that is
+        not there, which would replace both diagnoses with a traceback.
+        """
+        rm = self.census.readable_material
+        gone = "Tools/SpeechLab/phase2/repair/candidate-9/repair-map.jsonl"
+        with unittest.mock.patch.object(rm, "NOT_READ", rm.NOT_READ | {gone}):
+            found = rm.unread_fields_missing(declared={gone: ("before",)})
+        self.assertEqual([name for name, _why in found], [gone])
+        self.assertIn("not on disk", found[0][1])
+
+    def test_readers_refuses_when_a_field_declaration_has_rotted(self):
+        """Where the guard runs decides who is protected by it.
+
+        `unread_fields_missing` needs no population, so it is not circular
+        with `readers()` and belongs in it beside `speechlab_misdeclared`:
+        the census, the observation measure and `leak-check.py` all reach the
+        tree through this one function.
+        """
+        rm = self.census.readable_material
+        real = sorted(rm.UNREAD_UTTERANCE_FIELDS)[0]
+        with unittest.mock.patch.object(
+                rm, "UNREAD_UTTERANCE_FIELDS", {real: ("said",)}):
+            with self.assertRaises(ValueError) as caught:
+                rm.readers()
+        self.assertIn("appears in no record", str(caught.exception))
+        self.assertIn("repair-map.jsonl", str(caught.exception))
+
     def test_no_caller_narrows_the_guard(self):
         """`files` and `declared` are for tests, and this says so in code.
 
@@ -1182,13 +1399,16 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
             text = path.read_text(encoding="utf-8", errors="ignore")
             for name in ("speechlab_unclassified", "speechlab_misdeclared",
                          "nested_speech_unaccounted_for",
-                         "conversational_containers_missing"):
+                         "conversational_containers_missing",
+                         "unread_speech_unaccounted_for",
+                         "unread_fields_holding_speech",
+                         "unread_fields_missing"):
                 if f"def {name}" in text:
                     checked += 1
                 for line in text.splitlines():
                     if f"{name}(" in line and f"def {name}(" not in line:
                         calls.append((path.name, line.strip()))
-        self.assertEqual(checked, 4, "the four guards are no longer defined "
+        self.assertEqual(checked, 7, "the seven guards are no longer defined "
                                      "where this search expects them, so it "
                                      "is not searching what it thinks it is")
         narrowed = [c for c in calls if not c[1].endswith("()")
@@ -1196,6 +1416,39 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
         self.assertEqual(narrowed, [],
                          "a caller outside the tests is handing the guard a "
                          "population of its own choosing")
+
+
+    def test_the_corpus_reader_reads_the_utterance_slot(self):
+        """Reading these files as a bag of literals counts reviewer prose.
+
+        `swift_literals` in the same module harvests every string in the tree,
+        which is right for a leak check and wrong for a census: most of the
+        distinct literals in these files are `note:` text, assertion messages
+        and label arguments (893 of 2,250 on 2026-09-15, a ratio that moves
+        every time somebody adds a case). Rather than name one of them and hope
+        it survives, this runs the bag reader beside the slot reader and
+        asserts the difference is thrown away, so the check holds whatever the
+        notes say next week.
+
+        Moved here with the reader it is about: it was written beside its one
+        caller in `parser_vocabulary`, which is how a repository ends up with
+        two readers of one tree that never compare answers.
+        """
+        rm = self.census.readable_material
+        utterances = rm.corpus_utterances()
+        self.assertIn("Mike should call Sarah", utterances)
+
+        bag = set()
+        for path in sorted(rm.CORPUS_CASES.glob("SemanticCorpusData*.swift")):
+            bag |= set(re.findall(r'"((?:[^"\\]|\\.)*)"',
+                                  path.read_text(encoding="utf-8")))
+        self.assertLess(
+            len(set(utterances)), len(bag) * 0.8,
+            "the reader is returning nearly every literal in the file, which "
+            "means it has stopped reading the utterance slot and started "
+            "reading the file"
+        )
+        self.assertTrue(set(utterances) < bag)
 
 
 class NoTestIsStrandedBelowTheRunner(CensusCase):

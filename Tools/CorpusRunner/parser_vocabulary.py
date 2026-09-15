@@ -19,6 +19,10 @@ subset check ever written. `Refused` is raised instead.
 """
 import pathlib
 import re
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import readable_material  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REPOS = ROOT / "SpeakIt" / "Repositories"
@@ -219,3 +223,42 @@ def exposed_tail(forms):
     position the mechanism actually reads makes the check say what it means.
     """
     return {f.split()[-1] for f in forms}
+
+
+def third_person_subjects(utterances=None):
+    """Subjects that `obligationBelongsToAnotherPerson` could read as owners.
+
+    **A screen, not a reimplementation.** The Swift rule adds a first-person
+    check over the head, a stoplist, and `isVerbless` from `NLTagger`, none of
+    which run here. This is deliberately *wider*: it exists to hand a human
+    every utterance of the shape, so that "no inanimate subject appears in the
+    corpus" is checked instead of remembered. Predicting the rule's verdict is
+    not its job and it would be wrong at it.
+    
+    **A sentence boundary here is a period, so an honorific splits one.**
+    `(?:^|[.!?]\\s+)` starts a subject after any period, and `Dr.` ends in
+    one -- so `Dr. Okafor needs to sign it` reports the subject as `Okafor`
+    rather than `Dr. Okafor`. The screen still hands the utterance to a human,
+    which is all it is for, and the name it prints beside it is clipped. Worth
+    knowing before anybody reads this output as a list of subjects; not worth
+    a title list, which would be the marker standing in for the judgement
+    again.
+    """
+    forms = "|".join(
+        re.escape(f).replace(r"\ ", r"\s+") for f in sorted(third_person_obligation())
+    )
+    pronoun = (r"(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody"
+               r"|nobody|no\s+one|there|it|this|that|these|those|our|us)")
+    shape = re.compile(
+        r"(?i)(?:^|[.!?]\s+)(?:(?:and|but|so|also|okay|ok|well|yeah)\s+)*"
+        r"((?!" + pronoun + r"\b)(?:my|his|her|their)?\s*[\w'’-]+"
+        r"(?:\s+[\w'’-]+)?)\s+(?:" + forms + r")\s+(?!be\b)[\w'’-]+"
+    )
+    speaker = re.compile(r"(?i)\b(?:i|we|i'?m|i'?ve|i'?ll)\b")
+    out = []
+    for text in (readable_material.corpus_utterances()
+                 if utterances is None else utterances):
+        found = shape.search(text)
+        if found and not speaker.search(text[: found.end(1)]):
+            out.append((found.group(1).strip(), text))
+    return out

@@ -2,15 +2,26 @@
 """Recompute the sealed-set cost ledger instead of reading its conclusions.
 
 `Docs/LANGUAGE_BASELINE.md` carries one row per change that moved a sealed
-measure, and then a sentence stating the running total. Both are written by
-hand, at different times, by whoever measured the change -- which is the
-arrangement that has already produced a wrong figure in this repository twice
-today. A stated total is a claim about the rows above it, and the only reason
-to believe it is that somebody added them up correctly on the day.
+measure, and then a line per measure stating that measure's running total. Both
+are written by hand, at different times, by whoever measured the change --
+which is the arrangement that has already produced a wrong figure in this
+repository twice today. A stated total is a claim about the rows above it, and
+the only reason to believe it is that somebody added them up correctly on the
+day.
 
-So the total is not read here. It is recomputed from the rows and the run fails
-if the two disagree. Same for each row's direction: `255/310 -> 254/310` is a
-loss of one whatever the last cell says.
+So the totals are not read here. Each is recomputed from the rows for that
+measure and the run fails if the two disagree. Same for each row's direction:
+`255/310 -> 254/310` is a loss of one whatever the last cell says.
+
+**One total per measure, never one total.** Until 2026-09-15 exactly one sealed
+measure had ever moved, so a single running total was arithmetically harmless
+and this file said so while refusing to rely on it. The second measure moved on
+2026-09-15 and the guard written for that day fired. What replaced the single
+total is a line per measure, because 254/310 and 246/255 are different sets
+asking different questions: their sum is not a quantity, and a reader who nets
+a loss on one against a gain on the other has learned nothing true about
+either. A measure with rows and no line is a failure, and so is a line naming a
+measure no row moved.
 
 WHAT THIS CANNOT DO, and the reason it is written at the top rather than
 mentioned in a message somewhere:
@@ -121,23 +132,48 @@ def stated_delta(row):
     return -value if cell.lstrip().startswith((MINUS, "-")) else value
 
 
-def total_claim(section):
-    """The running-total sentence, as (rows, changes), or None if absent."""
-    text = " ".join(section)
-    match = re.search(
-        rf"Running total:\s*\*\*([{MINUS}\-+]?\s*\d+)\s*rows?\*\*,\s*"
-        rf"across\s+(\w+)\s+changes?", text)
-    if not match:
-        return None
-    raw = match.group(1).replace(" ", "")
-    value = int(raw.lstrip(MINUS + "-+"))
-    if raw.startswith((MINUS, "-")):
-        value = -value
-    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-             "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-    changes = match.group(2)
-    return value, words.get(changes.lower(), int(changes) if changes.isdigit()
-                            else None)
+#: How many changes a per-measure line says it covers, spelled out.
+WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+         "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+#: A per-measure running total:
+#:
+#:     - **held-out thought count: -1 row**, across one change.
+#:
+#: The measure name is matched against the row's own measure cell rather than
+#: against a list kept here, so a measure this file has never heard of still
+#: gets checked and a typo in either place shows up as a mismatch instead of
+#: being silently accepted by a fuzzy rule.
+TOTAL_LINE = re.compile(
+    rf"^\s*[-*]\s+\*\*(?P<measure>[^:*]+?):\s*"
+    rf"(?P<delta>[{MINUS}\-+]?\s*\d+)\s*rows?\*\*,\s*"
+    rf"across\s+(?P<changes>\w+)\s+changes?")
+
+
+def total_claims(section):
+    """Each per-measure running total, as {measure: (rows, changes)}.
+
+    Duplicates are kept rather than collapsed: two lines for one measure is a
+    disagreement to report, not a last-one-wins.
+    """
+    claims = {}
+    duplicates = []
+    for line in section:
+        match = TOTAL_LINE.match(line)
+        if not match:
+            continue
+        measure = match.group("measure").strip().lower()
+        raw = match.group("delta").replace(" ", "")
+        value = int(raw.lstrip(MINUS + "-+"))
+        if raw.startswith((MINUS, "-")):
+            value = -value
+        changes = match.group("changes")
+        count = WORDS.get(changes.lower(),
+                          int(changes) if changes.isdigit() else None)
+        if measure in claims:
+            duplicates.append(measure)
+        claims[measure] = (value, count)
+    return claims, duplicates
 
 
 def check(text):
@@ -156,16 +192,11 @@ def check(text):
                         "those need different responses and this cannot tell "
                         "them apart")
 
-    running = 0
-    moved = 0
-    #: Which sealed measure each movement was in. A single running total is a
-    #: sum, and summing 254/310 with 34/56 is collapsing two instruments into
-    #: one number -- the thing this file's own rules forbid everywhere else.
-    #: It has been safe so far only because exactly one measure has ever moved,
-    #: which is a precondition nothing stated and nothing enforced. Now it is
-    #: enforced, so the day a second measure moves this fails and asks for a
-    #: per-measure total instead of quietly adding them up.
-    measures_moved = set()
+    #: Rows and changes per sealed measure. Never one running total: summing
+    #: 254/310 with 246/255 is collapsing two instruments into one number, the
+    #: thing this file's own rules forbid everywhere else.
+    running = {}
+    moved = {}
     for row in table:
         if len(row) < 6:
             problems.append(f"a ledger row has {len(row)} cells, not 6: {row}")
@@ -182,43 +213,132 @@ def check(text):
                 f"{'nothing moved' if measured is None else measured}")
             continue
         if measured is not None:
-            running += measured
-            moved += 1
-            measures_moved.add(row[2].strip().lower())
+            measure = row[2].strip().lower()
+            if not measure or measure == ABSENT:
+                problems.append(
+                    f"row {row[1]!r} records a movement "
+                    f"({row[3]} -> {row[4]}) but names no measure, so nothing "
+                    f"can say which sealed set it was in")
+                continue
+            running[measure] = running.get(measure, 0) + measured
+            moved[measure] = moved.get(measure, 0) + 1
 
-    if len(measures_moved) > 1:
+    claims, duplicates = total_claims(section)
+    for measure in sorted(set(duplicates)):
         problems.append(
-            "rows record movements in more than one sealed measure "
-            f"({', '.join(sorted(measures_moved))}), so a single running "
-            "total would add up figures over different denominators. State a "
-            "total per measure instead, and update this check to read them.")
+            f"the ledger states more than one running total for "
+            f"{measure!r}; one measure gets one line")
 
-    claim = total_claim(section)
-    if claim is None:
-        if table:
-            problems.append("the ledger has rows but no running total, which "
-                            "is the one line a reader takes at a glance")
-    else:
-        stated_total, stated_changes = claim
-        if stated_total != running:
+    if table and not claims:
+        problems.append("the ledger has rows but no per-measure running "
+                        "total, which is the line a reader takes at a glance")
+
+    for measure in sorted(set(running) | set(claims)):
+        if measure not in claims:
             problems.append(
-                f"the running total says {stated_total:+d} but the rows sum to "
-                f"{running:+d}")
-        if stated_changes is not None and stated_changes != moved:
+                f"rows move {measure!r} by {running[measure]:+d} across "
+                f"{moved[measure]} change(s), but no running total names it. "
+                f"A movement with no total is a cost that no glance finds, "
+                f"which is the whole reason this section exists.")
+            continue
+        if measure not in running:
             problems.append(
-                f"the running total says it is across {stated_changes} "
-                f"change(s), but {moved} row(s) record a movement")
+                f"a running total names {measure!r}, but no row records a "
+                f"movement in it. Either the row was lost or the measure is "
+                f"misspelled in one of the two places.")
+            continue
+        stated_total, stated_changes = claims[measure]
+        if stated_total != running[measure]:
+            problems.append(
+                f"the running total for {measure!r} says "
+                f"{stated_total:+d} but its rows sum to {running[measure]:+d}")
+        if stated_changes is not None and stated_changes != moved[measure]:
+            problems.append(
+                f"the running total for {measure!r} says it is across "
+                f"{stated_changes} change(s), but {moved[measure]} row(s) "
+                f"record a movement in it")
     return problems
 
 
+def _document(rows, totals):
+    """A minimal ledger section, for the self-tests below."""
+    return "\n".join(
+        [HEADING, "", "| date | change | measure | from | to | |",
+         "| --- | --- | --- | --- | --- | --- |"]
+        + rows + [""] + totals + ["", "## Something else"])
+
+
+GOOD_ROW = "| 2026-09-11 | a change | held-out thought count | 255/310 | 254/310 | **−1** |"
+GOOD_TOTAL = "- **held-out thought count: −1 row**, across one change."
+OTHER_ROW = "| 2026-09-15 | another change | everyday clean titles | 245/255 | 246/255 | **+1** |"
+OTHER_TOTAL = "- **everyday clean titles: +1 row**, across one change."
+
+#: Each case is (name, document, a substring the failure must contain, or None
+#: for "this must pass"). These run on every invocation rather than behind a
+#: flag: a checker whose own parser is never exercised is the instrument that
+#: cannot fail, and this one's parser was rewritten the day a second measure
+#: moved. Cheap enough -- no file is read.
+SELF_TESTS = [
+    ("one measure, consistent", _document([GOOD_ROW], [GOOD_TOTAL]), None),
+    ("two measures, each with its own total",
+     _document([GOOD_ROW, OTHER_ROW], [GOOD_TOTAL, OTHER_TOTAL]), None),
+    ("two measures summed into one total",
+     _document([GOOD_ROW, OTHER_ROW], ["- **held-out thought count: 0 rows**, across two changes."]),
+     "no running total names it"),
+    ("a total for a measure no row moved",
+     _document([GOOD_ROW], [GOOD_TOTAL, OTHER_TOTAL]),
+     "no row records a movement in it"),
+    ("a per-measure total with the wrong sum",
+     _document([GOOD_ROW, OTHER_ROW],
+               ["- **held-out thought count: −2 rows**, across one change.", OTHER_TOTAL]),
+     "says -2 but its rows sum to -1"),
+    ("a per-measure total with the wrong change count",
+     _document([GOOD_ROW, OTHER_ROW],
+               [GOOD_TOTAL, "- **everyday clean titles: +1 row**, across two changes."]),
+     "says it is across 2 change(s), but 1 row(s)"),
+    ("one measure named twice",
+     _document([GOOD_ROW], [GOOD_TOTAL, GOOD_TOTAL]),
+     "more than one running total"),
+    ("rows but no total", _document([GOOD_ROW], []),
+     "no per-measure running total"),
+    ("a movement with no measure named",
+     _document(["| 2026-09-11 | a change | — | 255/310 | 254/310 | **−1** |"],
+               [GOOD_TOTAL]),
+     "names no measure"),
+]
+
+
+def self_test():
+    """Every disagreement the self-tests found. Empty means the parser works."""
+    failures = []
+    for name, document, expected in SELF_TESTS:
+        found = check(document)
+        if expected is None:
+            if found:
+                failures.append(f"{name}: expected a clean run, got {found}")
+        elif not any(expected in problem for problem in found):
+            failures.append(f"{name}: expected a problem containing "
+                            f"{expected!r}, got {found}")
+    return failures
+
+
 def main():
+    broken = self_test()
+    if broken:
+        print("ledger check SELF-TEST FAILED -- the checker itself is wrong, "
+              "so its verdict on the real ledger means nothing:")
+        for failure in broken:
+            print(f"  {failure}")
+        return 1
+
     if not BASELINE.exists():
         print(f"ledger check: {BASELINE} does not exist")
         return 1
     problems = check(BASELINE.read_text(encoding="utf-8"))
     if not problems:
-        print("ledger check ok: every row's direction matches its own figures, "
-              "and the running total is the sum of the rows.")
+        print(f"ledger check ok ({len(SELF_TESTS)} self-tests, then the file): "
+              "every row's direction matches its own figures, and each "
+              "measure's running total is the sum of that measure's rows.")
         print("  It cannot tell you about a change that moved a measure and "
               "was never written down.")
         return 0

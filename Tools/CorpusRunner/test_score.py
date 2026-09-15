@@ -1,4 +1,5 @@
 """Regression coverage for the evaluation instrument, independent of parser output."""
+import ast
 import collections
 import contextlib
 import csv
@@ -1437,7 +1438,7 @@ LEDGER = """## Sealed-set cost ledger
 | 2026-09-11 | a boundary (#57) | held-out thought count | 255/310 | 254/310 | **\u22121** |
 | 2026-09-11 | a tightening (#57) | \u2014 | \u2014 | \u2014 | no sealed measure moved |
 
-Running total: **\u22121 row**, across one change, on one of the measures.
+- **held-out thought count: \u22121 row**, across one change.
 
 ## Next heading
 """
@@ -1939,11 +1940,11 @@ class SealedSetsDoNotRenderAsText(unittest.TestCase):
 
 
 class LedgerCheckTests(unittest.TestCase):
-    """The ledger states a total, and a stated total is a claim about its rows.
+    """The ledger states a total per measure, each a claim about its own rows.
 
     Both halves are hand-written, at different times, by whoever measured the
     change. That is the arrangement that produced a wrong published figure
-    twice in one day here, so the total is recomputed rather than read.
+    twice in one day here, so the totals are recomputed rather than read.
     """
 
     def setUp(self):
@@ -1954,9 +1955,21 @@ class LedgerCheckTests(unittest.TestCase):
         self.assertEqual(self.ledger.check(LEDGER), [])
 
     def test_a_total_that_disagrees_with_its_rows_fails(self):
-        """The failure this exists for: prose drifting from the table above it."""
-        problems = self.ledger.check(
-            LEDGER.replace("**\u22121 row**", "**\u22123 rows**"))
+        """The failure this exists for: prose drifting from the table above it.
+
+        The `assertNotEqual` is not decoration. This test spent a day passing
+        for the wrong reason: it mutated the literal `**\u22121 row**`, the
+        ledger's wording changed to `count: \u22121 row`, the replacement
+        became a no-op, and a clean run on an unmutated document read as the
+        check working. A mutation test has to assert that its mutation applied
+        -- that is the same defect as the `sed` that failed silently and let a
+        whole suite report OK on an untouched tree.
+        """
+        drifted = LEDGER.replace("count: \u22121 row", "count: \u22123 rows")
+        self.assertNotEqual(drifted, LEDGER,
+                            "the mutation did not apply, so everything below "
+                            "would be measuring the unmutated document")
+        problems = self.ledger.check(drifted)
         self.assertTrue(any("sum to" in p for p in problems), problems)
         self.assertTrue(any("-3" in p or "\u22123" in p for p in problems),
                         "the report must name the stated figure, or a reader "
@@ -2010,7 +2023,10 @@ class LedgerCheckTests(unittest.TestCase):
                             for p in problems), problems)
 
     def test_an_emptied_table_is_distinguishable_from_a_quiet_year(self):
-        empty = LEDGER.split("| 2026-09-11")[0] + "\nRunning total: **0 rows**, across 0 changes.\n\n## Next heading\n"
+        # Split on the first row in full, not on its date: both rows carry
+        # `| 2026-09-11`, so the bare date names two places and `[0]` quietly
+        # picks one. Caught by `EveryMutationInThisFileApplies`.
+        empty = LEDGER.split("| 2026-09-11 | a boundary")[0] + "\n## Next heading\n"
         problems = self.ledger.check(empty)
         self.assertTrue(any("no rows" in p for p in problems), problems)
 
@@ -2293,15 +2309,26 @@ class ReconciliationTests(unittest.TestCase):
         self.assertTrue(any("ambiguous" in p for p in problems), problems)
 
 
-class LedgerSingleMeasureTests(unittest.TestCase):
+class LedgerPerMeasureTotalTests(unittest.TestCase):
     """A running total is a sum, and a sum needs one denominator.
 
-    The ledger states `Running total: **-1 rows**, across one change`, and the
-    check adds the rows up. That is only meaningful because exactly one sealed
-    measure has ever moved. Nothing said so and nothing enforced it, so the day
-    a second measure moved the total would have quietly become 254/310 added to
-    34/56 -- collapsing two instruments into one number, which is the thing
-    this repository forbids everywhere else.
+    Until 2026-09-15 the ledger stated one total across every row, and adding
+    them up was meaningful only because exactly one sealed measure had ever
+    moved. Nothing said so and nothing enforced it, so a guard was added that
+    refused a second measure and told whoever hit it to state a total per
+    measure instead.
+
+    **On 2026-09-15 a second measure moved** -- everyday clean titles, 245/255
+    to 246/255, from the numbered-enumerator boundary -- and the guard fired on
+    the real ledger exactly as designed. What replaced the single total is a
+    line per measure, so the tests below describe the arrangement that guard
+    asked for rather than the one it was protecting.
+
+    The property is unchanged and is the only one that matters: **254/310 and
+    246/255 are never added together**, and a measure that moved never goes
+    without a total a reader can find at a glance. Both failure directions are
+    tested, because a check that only catches the missing total accepts a total
+    for a measure nothing moved, and that is how a row gets deleted quietly.
     """
 
     def ledger(self):
@@ -2309,49 +2336,88 @@ class LedgerSingleMeasureTests(unittest.TestCase):
 
     #: Built here rather than by editing the real fixture. A test that edits a
     #: document by string replacement skips itself the day the wording moves,
-    #: and a skipped test checks nothing.
-    def written(self, rows, total):
+    #: and a skipped test checks nothing. That is not hypothetical: the
+    #: wording moved on 2026-09-15 and took a sibling test with it.
+    def written(self, rows, totals):
         body = ["## Sealed-set cost ledger", "",
                 "| date | change | measure | from | to | |",
                 "| --- | --- | --- | --- | --- | --- |"]
         body.extend(rows)
-        body += ["", total, "", "## Next heading", ""]
+        body += [""] + totals + ["", "## Next heading", ""]
         return "\n".join(body)
 
     ONE = "| 2026-09-11 | a change | held-out thought count | 255/310 | 254/310 | **\u22121** |"
     TWO = "| 2026-09-14 | another | consequence thought count | 30/56 | 34/56 | **+4** |"
+    ONE_TOTAL = "- **held-out thought count: \u22121 row**, across one change."
+    TWO_TOTAL = "- **consequence thought count: +4 rows**, across one change."
 
-    def test_one_measure_under_one_running_total_is_accepted(self):
-        """The control. Without it the next test passes for any reason."""
-        text = self.written([self.ONE],
-                            "Running total: **\u22121 rows**, across one change.")
-        problems = [p for p in self.ledger().check(text)
-                    if "more than one sealed measure" in p]
-        self.assertEqual(problems, [])
+    def test_one_measure_with_its_own_total_is_accepted(self):
+        """The control. Without it every test below passes for any reason."""
+        self.assertEqual(self.ledger().check(
+            self.written([self.ONE], [self.ONE_TOTAL])), [])
 
-    def test_two_measures_under_one_running_total_is_refused(self):
-        text = self.written([self.ONE, self.TWO],
-                            "Running total: **+3 rows**, across two changes.")
-        problems = self.ledger().check(text)
-        self.assertTrue(
-            any("more than one sealed measure" in p for p in problems),
-            problems)
+    def test_two_measures_each_with_its_own_total_is_accepted(self):
+        """The arrangement that replaced the single total, and it must pass.
 
-    def test_the_refusal_names_both_measures_so_the_fix_is_obvious(self):
-        text = self.written([self.ONE, self.TWO],
-                            "Running total: **+3 rows**, across two changes.")
-        said = " ".join(self.ledger().check(text))
-        self.assertIn("held-out thought count", said)
+        This is the case the old guard refused. If it ever starts failing,
+        the ledger has no legal shape at all for a second measure and the
+        next person to move one is stuck.
+        """
+        self.assertEqual(self.ledger().check(
+            self.written([self.ONE, self.TWO],
+                         [self.ONE_TOTAL, self.TWO_TOTAL])), [])
+
+    def test_two_measures_under_one_total_is_still_refused(self):
+        """The original property: no figure is ever a sum over two sets."""
+        problems = self.ledger().check(
+            self.written([self.ONE, self.TWO],
+                         ["- **held-out thought count: +3 rows**, "
+                          "across two changes."]))
+        said = " ".join(problems)
+        self.assertIn("no running total names it", said)
+        self.assertIn("consequence thought count", said,
+                      "the report must name the measure that has no total, or "
+                      "the fix is a hunt")
+
+    def test_a_total_for_a_measure_no_row_moved_is_refused(self):
+        """The other direction, and the one a missing-total check accepts.
+
+        A total whose row was deleted still reads as a live cost. Nothing
+        catches that except comparing the two sets of names both ways.
+        """
+        problems = self.ledger().check(
+            self.written([self.ONE], [self.ONE_TOTAL, self.TWO_TOTAL]))
+        said = " ".join(problems)
+        self.assertIn("no row records a movement in it", said)
         self.assertIn("consequence thought count", said)
 
-    def test_the_real_ledger_still_moves_only_one_measure(self):
-        """If this fails, the ledger needs a per-measure total, not a patch."""
+    def test_each_measure_keeps_its_own_change_count(self):
+        """`across one change` is the denominator of that measure's total.
+
+        The same net figure across one change and across nine are different
+        findings, and per-measure totals give the wrong one a second place to
+        hide.
+        """
+        problems = self.ledger().check(
+            self.written([self.ONE, self.TWO],
+                         [self.ONE_TOTAL,
+                          "- **consequence thought count: +4 rows**, "
+                          "across three changes."]))
+        self.assertTrue(any("change(s)" in p for p in problems), problems)
+
+    def test_the_real_ledger_gives_every_moved_measure_a_total(self):
+        """The real document, not a fixture, under the real check."""
         real = self.ledger().BASELINE.read_text(encoding="utf-8")
-        problems = self.ledger().check(real)
-        self.assertEqual(
-            [p for p in problems if "more than one sealed measure" in p], [],
-            "a second sealed measure has moved, so the single running total "
-            "in LANGUAGE_BASELINE.md is now a sum over two denominators")
+        self.assertEqual(self.ledger().check(real), [])
+
+    def test_the_checker_self_tests_pass(self):
+        """`ledger-check.py` carries its own parser tests and runs them first.
+
+        Repeated here so the failure is attributed. A broken parser makes
+        every assertion in this class meaningless, and a suite that reports
+        one generic failure sends the reader to the wrong file.
+        """
+        self.assertEqual(self.ledger().self_test(), [])
 
 
 class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
@@ -2523,6 +2589,97 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
             f"match no path filter that starts language-tools, so changing "
             f"only them runs no sealed-set check at all")
 
+
+
+class EveryMutationInThisFileApplies(unittest.TestCase):
+    """A test that mutates a module constant must actually change it.
+
+    Several tests here take a document constant and rewrite one literal in it
+    to build the broken version they assert on. When the constant's wording
+    moves, the literal stops occurring, `str.replace` returns the string
+    unchanged, and the test goes on passing -- against the *unmutated*
+    document, which is the one case it was written to say nothing about. It is
+    silent: no error, no skip, a green line in the report.
+
+    That happened on 2026-09-15. The ledger's running total was reworded from
+    `**-1 row**` to `count: -1 row` and
+    `test_a_total_that_disagrees_with_its_rows_fails` kept passing while
+    measuring nothing. It was caught by accident, inside a branch, and never
+    reached `main` -- but five sibling mutations in this file had the same
+    shape and nothing would have caught the next one.
+
+    So the property is mechanical and covers all of them at once: for every
+    `CONSTANT.replace(literal, ...)` and `CONSTANT.split(literal)` in this
+    file, the literal occurs **exactly once** in that constant. Zero is the
+    silent no-op. More than one is the other half: a mutation that fires in
+    two places at once is not the edit the test's name describes, and which
+    one the assertion is about stops being readable.
+
+    Deliberately not a check that each test asserts its own mutation applied.
+    That needs a judgement about which call is the mutation, and this needs
+    none: it reads the source, not the intent. The one thing it cannot see is
+    a mutation built by string formatting rather than a literal.
+    """
+
+    SOURCE = pathlib.Path(__file__).resolve()
+    #: The methods whose first argument is matched against the constant.
+    MUTATORS = {"replace", "split"}
+
+    def module_constants(self, tree):
+        """Module-level `NAME = "..."` assignments, by name."""
+        found = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            target = node.targets[0]
+            if (isinstance(target, ast.Name)
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)):
+                found[target.id] = node.value.value
+        return found
+
+    def mutations(self):
+        """Every (line, constant name, literal) this file mutates."""
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        constants = self.module_constants(tree)
+        out = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr in self.MUTATORS):
+                continue
+            if not (isinstance(func.value, ast.Name) and func.value.id in constants):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                continue
+            out.append((node.lineno, func.value.id, node.args[0].value))
+        return out
+
+    def test_the_scan_finds_mutations_at_all(self):
+        """Nothing found makes the test below pass for the emptiest reason."""
+        self.assertGreaterEqual(
+            len(self.mutations()), 5,
+            "no constant mutations found -- either they moved to a shape this "
+            "cannot read, or the scan is broken; both need looking at, and "
+            "neither is a clean run")
+
+    def test_every_mutated_literal_occurs_exactly_once(self):
+        tree = ast.parse(self.SOURCE.read_text(encoding="utf-8"))
+        constants = self.module_constants(tree)
+        wrong = []
+        for line, name, literal in self.mutations():
+            count = constants[name].count(literal)
+            if count != 1:
+                wrong.append(f"{self.SOURCE.name}:{line}  {name}.replace/split "
+                             f"({literal!r}) occurs {count} times in {name}")
+        self.assertEqual(
+            wrong, [],
+            "a mutation that does not apply exactly once: 0 means the test "
+            "runs against the unmutated document and passes for that reason; "
+            "more than 1 means it changes somewhere the test's name does not "
+            "describe. Fix the literal, not this check.")
 
 
 if __name__ == "__main__":
