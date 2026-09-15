@@ -16,8 +16,12 @@ integrated.
 > is worse than a stale one. Read the section *"What the ranking depended on,
 > and what has changed under it"* at the foot of this file before reaching for
 > any entry here as an unblock. The short version: **no corpus surveyed here
-> supplies material for the failures this project has actually traced**, and
-> the reason is checkable rather than a matter of taste.
+> supplies material for the failures this project has actually traced** —
+> not because each entry was re-examined, but because every one of them is an
+> assistant, dialogue or question-answering corpus, and that whole class
+> excludes the spontaneous multi-thought speech the open targets are made of.
+> Only Disfl-QA, the entry ranked first, was re-read individually. Both halves
+> of that are checkable rather than a matter of taste.
 
 ## The constraint that shapes every entry
 
@@ -143,6 +147,8 @@ not the top family:
   three are literal suffixes. The two added pairs have not been scored — that
   needs a macOS run. Neither caveat points at restarts being the top family;
   both mean nobody should quote 4/4 as current.
+  After both caveats the twin gap establishes very little, so read this as
+  the weaker of the two lines below rather than as half the case.
 - Every target traced since is a different phenomenon. The baseline's own
   table of stopped targets names the doubled infinitive frame, the
   retrieval-failure tail and deliberation; connectives the clause splitter
@@ -198,6 +204,23 @@ never be a sealed set — it is public, so any thread may have read it — and i
 closes nothing about the request for real recordings. What the work above does
 is narrow that request: we now know *specifically* why the best-ranked public
 substitute is not one.
+
+**How well attested each half of this is, since they are not the same.**
+Everything above that the repository can settle was recomputed from the
+repository, by two sessions independently: the devset family counts, the
+census zeros, `incomplete-complement` at 1/10, and that INC57 is a readable
+development-set row rather than a sealed one. **The Disfl-QA paper claims are
+not in that category.** The annotation instruction, the five-category
+taxonomy and its percentages, and the 2026-09-15 licence re-read were read by
+one session and taken on that reading by the grader, deliberately: a summary
+of the same reading arriving by a second route is the same source, not a
+second one. That is enough for what this section does with them, because the
+de-ranking rests on the recomputed half — the ranking's own stated dependency
+is false on evidence in this repository, whatever the paper says. It is **not**
+enough for a stronger use. If anybody cites exclusion-by-construction as a
+reason to stop looking for a spoken corpus at all, rather than as a reason not
+to rank this one first, that use is load-bearing and wants a real read of the
+paper by somebody who did not write this section.
 
 **Before using this ranking, retest its dependency.** Read the current failure
 ranking in `Docs/LANGUAGE_BASELINE.md` first and ask whether the corpus you
