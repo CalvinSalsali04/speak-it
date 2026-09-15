@@ -18,6 +18,7 @@ import json
 import pathlib
 import sys
 import unittest
+import unittest.mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -870,6 +871,245 @@ class TheReadersReadWhatTheyClaim(CensusCase):
         under = [p for p in sources
                  if self.census.GATING in str(p)]
         self.assertEqual(len(under), 1, f"{len(under)} gating sources")
+
+
+class TheSpeechLabClassificationIsTotal(CensusCase):
+    """The arm of the walk with no declaration behind it.
+
+    #76 closed the devset arm from both ends: `readable()` hands back every
+    readable file on disk, and every file it hands back reaches `readers()`.
+    Neither guard reaches SpeechLab, and neither does
+    `corpus_paths.unclassified()`, which is about `*.tsv`. The tree is walked,
+    every `.jsonl` in it is opened, and each one is dropped without a word the
+    moment `utterance_field` returns None. **Ten of the twenty-two are dropped
+    today.**
+
+    Measured rather than assumed, on 2026-09-15 by mutation: dropping
+    `cases-adjudicated.jsonl` from the walk was caught by exactly one
+    assertion, and dropping `renderings.jsonl` by seven. Both are one file,
+    and the only difference is that the second is half of the basename
+    collision other tests pin by name. That is coverage by coincidence, and it
+    varies per file rather than per defect -- the number of checks standing
+    behind the denominator depends on which file goes.
+
+    So the decision gets written down. Every `.jsonl` under SpeechLab either
+    yields an utterance or is in `NOT_READ`, and a file in neither fails
+    the run -- the shape `corpus_paths.unclassified()` has had since two scans
+    got their `*.tsv` lists wrong in opposite directions.
+    """
+
+    def test_the_speechlab_classification_is_total(self):
+        rm = self.census.readable_material
+        stray = rm.speechlab_unclassified()
+        self.assertEqual(
+            [rm.shown(p) for p in stray], [],
+            "these SpeechLab files hold no recognised utterance field and are "
+            "not in NOT_READ, so they are dropped from every figure with "
+            "no record of the decision")
+
+    def test_no_declared_name_is_missing_or_actually_a_corpus(self):
+        rm = self.census.readable_material
+        self.assertEqual(rm.speechlab_misdeclared(), [])
+
+    def test_the_unclassified_check_reports_when_nothing_is_declared(self):
+        """The guard fires, rather than being empty because it looks nowhere.
+
+        An empty result is the same shape whether the classification is total
+        or the walk is broken, so the check is handed an empty declaration and
+        has to name every file it would otherwise wave through.
+        """
+        rm = self.census.readable_material
+        stray = rm.speechlab_unclassified(declared=frozenset())
+        self.assertEqual(
+            len(stray), len(rm.NOT_READ),
+            "the walk drops a different number of files than the list "
+            "declares, so one of the two has moved without the other")
+        self.assertEqual(
+            sorted(str(p.relative_to(rm.ROOT)) for p in stray),
+            sorted(rm.NOT_READ),
+            "the declared list and the files actually dropped by the walk "
+            "have stopped being the same set")
+
+    def test_a_declared_name_that_holds_speech_is_reported(self):
+        """The half a short list would never fail on.
+
+        A list that can only be too short is somewhere to put an inconvenient
+        corpus: declare it and the census stops counting it, silently. So a
+        declared name that does carry an utterance field is a failure, proved
+        here by declaring one that plainly does.
+        """
+        rm = self.census.readable_material
+        corpus = "Tools/SpeechLab/phase2/data/cases.jsonl"
+        found = rm.speechlab_misdeclared(declared={corpus})
+        self.assertEqual([name for name, _why in found], [corpus])
+        self.assertIn("utterance", found[0][1])
+
+    def test_a_declared_name_that_is_not_on_disk_is_reported(self):
+        rm = self.census.readable_material
+        gone = "Tools/SpeechLab/data/renamed-away.jsonl"
+        found = rm.speechlab_misdeclared(declared={gone})
+        self.assertEqual([name for name, _why in found], [gone])
+        self.assertIn("does not reach it", found[0][1])
+
+    def test_the_nested_speech_gap_is_exactly_the_two_named_files(self):
+        """The declaration says two of the ten hold speech. This recomputes it.
+
+        The first draft of `NOT_READ` said every one of the ten held only ids
+        and labels. That was written from an audit of top-level string values,
+        which is the same blind spot `utterance_field` has, so nothing in the
+        suite contradicted it and a reviewer found it by reading the data.
+
+        A sentence would go stale the same way, so the set is derived: every
+        unread file carrying a name from `UTTERANCE_FIELDS` at any depth. When
+        the reader is taught to descend, this fails, and it should -- the gap
+        will have closed and the constant will be describing nothing.
+        """
+        rm = self.census.readable_material
+        found = rm.speechlab_nested_speech()
+        self.assertEqual(set(found), rm.SPEECH_UNDER_A_NESTED_KEY)
+        self.assertTrue(
+            rm.SPEECH_UNDER_A_NESTED_KEY <= rm.NOT_READ,
+            "a file named as a known gap is no longer in the unread list, so "
+            "either it is being read now or it has gone; either way the "
+            "comment above it is describing something that is not there")
+
+    def test_the_cost_of_the_gap_is_known_and_is_not_zero(self):
+        """How much material the two files would add, measured not guessed.
+
+        `failure-pack.jsonl` is entirely duplicates -- every one of its 48 is
+        already counted elsewhere -- so the whole cost sits in the other file.
+        A gap worth deferring is one somebody has priced; this is the price.
+        """
+        rm = self.census.readable_material
+        population = set()
+        for path, read in self.census.readers():
+            population |= set(read(path))
+        unseen = {name: values - population
+                  for name, values in rm.speechlab_nested_speech().items()}
+        self.assertEqual(
+            {name: len(values) for name, values in unseen.items()},
+            {"Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl": 0,
+             "Tools/SpeechLab/phase2/data/blueprints.jsonl": 17})
+
+    def test_the_reader_is_blind_below_the_top_level_and_says_so(self):
+        """The property the two files above are an instance of.
+
+        Pinned on a record this test builds, so it holds when those files
+        change. Both halves: the field is not found, AND the rename refusal
+        does not fire either -- which is the half that matters, because a
+        guard that stays silent is indistinguishable from a file with nothing
+        in it.
+        """
+        import tempfile
+        rm = self.census.readable_material
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "nested.jsonl"
+            path.write_text(json.dumps(
+                {"id": "x1", "turns": [{"text": "call the dentist tomorrow"}]})
+                + "\n")
+            self.assertIsNone(rm.utterance_field(path))
+        self.assertIn("TOP LEVEL ONLY", rm.utterance_field.__doc__)
+
+    def test_readers_refuses_rather_than_dropping_the_file(self):
+        """Where the guard runs decides who is protected by it.
+
+        The census, the observation measure and `leak-check.py` all reach the
+        tree through `readers()`, and a guard held in one test suite is a
+        guard the other two consumers do not have. So `readers()` raises, and
+        this hands it an empty declaration to watch it do so.
+        """
+        rm = self.census.readable_material
+        with unittest.mock.patch.object(rm, "NOT_READ", frozenset()):
+            with self.assertRaises(ValueError) as caught:
+                rm.readers()
+        self.assertIn("NOT_READ", str(caught.exception))
+        self.assertIn("blueprints.jsonl", str(caught.exception))
+
+    def test_no_caller_narrows_the_guard(self):
+        """`files` and `declared` are for tests, and this says so in code.
+
+        A guard whose caller can hand it a smaller world is a guard the caller
+        can switch off, and the switch reads as ordinary argument passing. The
+        only calls outside this file must pass neither.
+        """
+        rm = self.census.readable_material
+        root = pathlib.Path(rm.__file__).parents[2]
+        here = pathlib.Path(__file__).resolve()
+        calls, checked = [], 0
+        for path in sorted(root.rglob("*.py")):
+            if path.resolve() == here or ".git" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for name in ("speechlab_unclassified", "speechlab_misdeclared"):
+                if f"def {name}" in text:
+                    checked += 1
+                for line in text.splitlines():
+                    if f"{name}(" in line and f"def {name}(" not in line:
+                        calls.append((path.name, line.strip()))
+        self.assertEqual(checked, 2, "the two guards are no longer defined "
+                                     "where this search expects them, so it "
+                                     "is not searching what it thinks it is")
+        narrowed = [c for c in calls if not c[1].endswith("()")
+                    and "()" not in c[1]]
+        self.assertEqual(narrowed, [],
+                         "a caller outside the tests is handing the guard a "
+                         "population of its own choosing")
+
+
+class NoTestIsStrandedBelowTheRunner(CensusCase):
+    """A class defined after `unittest.main()` is a class CI never runs.
+
+    `unittest.main()` calls `sys.exit()`, so anything below it in the file is
+    never reached when the file is executed as a script -- and every step in
+    the `language-tools` job runs these files as scripts. Importing the module
+    collects them, so `python3 -m unittest` sees a suite the job does not.
+
+    Not hypothetical. `TheSpeechLabClassificationIsTotal` was appended to the
+    end of this file and spent one green CI run entirely uncollected: 64 tests
+    by import, 54 as a script, and the ten missing were exactly the ones the
+    change existed to add. Nothing said so. A green tick over a suite that
+    silently omits the new tests is the same shape as a check that never runs,
+    which is the defect this directory keeps finding in everything else.
+
+    Static rather than dynamic on purpose: comparing two collection counts
+    needs both runs and tells you a number, while reading the file names the
+    class. It covers every test file under `Tools/`, because the trap is a
+    property of the idiom and not of this file.
+    """
+
+    def files(self):
+        """Derived from this file's own location, not from the census.
+
+        Nothing here needs the census loaded, and reaching for it would make
+        a check about file layout depend on a module import succeeding.
+        """
+        root = HERE.parents[1]
+        return sorted((root / "Tools").rglob("test_*.py"))
+
+    def test_the_search_finds_the_suites_it_is_about(self):
+        """An empty sweep passes every assertion below it perfectly."""
+        names = {path.name for path in self.files()}
+        self.assertIn("test_connective_census.py", names)
+        self.assertIn("test_observation.py", names)
+        self.assertGreaterEqual(len(names), 6)
+
+    def test_nothing_is_defined_below_the_runner(self):
+        import re
+        stranded = {}
+        for path in self.files():
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            found = re.search(r"^if __name__ == [\"']__main__[\"']:",
+                              text, re.M)
+            if not found:
+                continue
+            below = re.findall(r"^(class \w+|    def test_\w+)",
+                               text[found.end():], re.M)
+            if below:
+                stranded[path.name] = below
+        self.assertEqual(
+            stranded, {},
+            "these are defined after `unittest.main()`, so running the file "
+            "as a script -- which is what CI does -- never collects them")
 
 
 if __name__ == "__main__":
