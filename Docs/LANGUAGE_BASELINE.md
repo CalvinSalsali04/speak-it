@@ -30,11 +30,24 @@ against on purpose and their movements belong in the dated sections.
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
 | 2026-09-11 | resultive guard tightened to a statement cause (#57) | — | — | — | no sealed measure moved |
+| 2026-09-15 | numbered enumerator decided from its left context | everyday clean titles | 245/255 | 246/255 | **+1** |
 
-Running total: **−1 row**, across one change. The only sealed measure that has
-moved is **held-out thought count**. Held-out destination and held-out
-acted-on-anyway are unmoved since `2cc2ac5`, as are the everyday and
-adversarial measures.
+**Running total, per measure.** There is no single total here and there will
+not be one. Adding 254/310 to 246/255 is collapsing two instruments into one
+number, which is the move this file forbids everywhere else; `ledger-check.py`
+recomputes each line below from the rows above and fails if a measure moves and
+no line names it.
+
+- **held-out thought count: −1 row**, across one change.
+- **everyday clean titles: +1 row**, across one change.
+
+Two sealed measures have moved, across two changes. **The two do not cancel and
+must not be read as if they did** — they are different sets, different
+denominators and different questions, and a reader who nets them to zero has
+learned nothing about either. Every other sealed measure — held-out
+destination, held-out acted-on-anyway, everyday routing, count, nothing lost
+and nothing invented, and every adversarial and consequence measure — has never
+been moved by a change recorded here.
 
 **No count of "how many sealed measures there are" is asserted here, and the
 one that used to be was wrong twice over.** It read "one of the eight sealed
@@ -311,6 +324,102 @@ already print the count, and coordination still has the strongest answer of the
 five — a missing row is a failure and the denominator stays whole. Switching the
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
+
+## 2026-09-15 — "number two" decided from its left, and the one sealed measure that moved
+
+One `macos-26` run, branch `claude/hearth-thread-uq6bmy` at `707ac32`, cut from
+`66d338d`:
+[run 34960158656](https://github.com/CalvinSalsali04/speak-it/actions/runs/34960158656),
+`language_only`, Xcode 26.6, job `Language metrics` **success**.
+
+There is no paired before-run. The "before" column below is the figure already
+recorded in this file at `66d338d`, which is the same parser with the one
+change removed; the diff against `origin/main` is one property and one
+alternative in `ThoughtExtractor.splitClauses`, six `corpusCase` rows, a
+regenerated population block and a pinned count. No other executable line
+changed, so the movement is attributable to the guard or to nothing.
+
+### The gate, quoted rather than inferred from the job's exit status
+
+```
+GATING CORPUS — regression net, authored from the product contract
+...
+rendering=identity  TOTAL 1410 cases, 0 failing, 1410 clean
+CRITICAL 0  BEHAVIORAL 0  METADATA 0  COSMETIC 0
+BLOCKING(crit+beh) = 0
+corpus gate ok: 0 blocking failures
+```
+
+1,404 → 1,410 is the six rows this change adds. **Zero failing is saturated
+coverage of a net authored from the contract, not product accuracy**, and it
+says the six new rows hold at the labels they were written with — which is the
+only thing this container could not establish, since the Swift does not build
+here.
+
+### What moved: one measure, one capture
+
+| measure | before (`66d338d`) | after (`707ac32`) | |
+| --- | --- | --- | --- |
+| everyday clean titles | 245/255 (96.1%) | **246/255 (96.5%)** | **+1** |
+| — `work-school` | 47/51 (92.2%) | **48/51 (94.1%)** | **+1** |
+| — title defect `preamble 'number two' kept` | 1 | **0** | **−1** |
+
+The remaining title defects are `8 title is the whole capture` and `1 preamble
+'what happened was' kept`. In the cost ledger as a gain on **everyday clean
+titles**, which is the second sealed measure ever to move; the ledger's single
+running total was replaced by one total per measure on the same day, because
+`ledger-check.py` refuses to add 246/255 to 254/310 and it was right to.
+
+### What did not move, stated rather than left to be assumed
+
+Every figure this file already records at `66d338d` came back identical:
+
+| set | measures | |
+| --- | --- | --- |
+| everyday (255) | routing 168/240 · count 193/232 · nothing lost 230/244 · nothing invented 14/22 | — |
+| everyday | over-segmented 16 · under-segmented 23 · genuinely ambiguous 15 · ACTED ON ANYWAY 0 | — |
+| held-out legacy (389) | destination 233/320 · count strict 254/310 · harm 7 | — |
+| adversarial (120) | routing 52/116 · count 78/105 · loss 113/116 · invention 10/24 · clean titles 117/120 · harm 1 | — |
+| consequence (56) | destination 51/56 · count strict 34/56 | — |
+
+**Four more figures have no recorded "before" in this file, so "unchanged" is
+not something this section may say about them.** Under the rule in "Two
+held-out numbers", the clean-sealed measures and range-aware scoring are
+printed by `heldout/score.py` on every run and deliberately not restated in
+these sections — so there is no earlier value here to compare this run
+against, and the honest form is a value rather than a movement. What the run
+printed:
+
+| held-out legacy (389) | range-aware count | 271/310 |
+| --- | --- | --- |
+| held-out clean sealed (378) | destination | 225/310 |
+| held-out clean sealed (378) | count strict | 247/301 |
+| held-out clean sealed (378) | range-aware count | 263/301 |
+| held-out clean sealed (378) | ACTED ON ANYWAY | 7 |
+
+That distinction is small and it is the one this file has been wrong about
+before: a figure read off one run and written beside three that *were*
+compared reads as a comparison, and the next person quotes it as one.
+
+### The honest size of this
+
+**It is one capture on one sealed measure.** `run-on` is still 0/8 on routing
+and 0/8 on count, `multi-thought` 19/40 and 22/40, `sequencing` 7/17 and 8/17:
+the family this sits inside did not move at all, and nothing here is evidence
+that it will. What the change does is remove a defect that was *stated* in
+`Docs/KNOWN_ISSUES.md` as a narrow gap and is now closed, at the price of one
+accepted failure pinned as a corpus row.
+
+**The wider fix was sized first and rejected.** The obvious widening — give the
+enumerator the same `clauseOpenerPattern` lookahead its sibling rule already
+uses — cuts three post-nominal shapes that must stay whole ("the spare key is
+under plant pot number two the one by the fence", "our flight leaves from gate
+number two the big one upstairs", "my locker is number three the one by the
+door"). **The two corpus rows that already existed pass either way**, because
+nothing follows the number in them, so the gate as it stood would not have
+caught that regression. The three guards above were written for this change and
+exist to catch it now. That sizing is the part of this worth keeping; the guard
+that shipped is the smaller half of it.
 
 ## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
 
