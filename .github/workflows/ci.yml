@@ -164,6 +164,8 @@ jobs:
         run: python3 Tools/CorpusRunner/test_choice_balance.py
       - name: Per-connector report self-tests
         run: python3 Tools/CorpusRunner/consequence/test_block_report.py
+      - name: Connective census self-tests
+        run: python3 Tools/CorpusRunner/test_connective_census.py
       # These three were reachable only through corpus-gate.sh, which needs a
       # Swift toolchain and so runs on a Mac by dispatch. That left the leak
       # check -- the mechanical part of the held-out boundary -- never running
