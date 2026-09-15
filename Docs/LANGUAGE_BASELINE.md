@@ -321,10 +321,12 @@ holds. The count behind it does not cover the family's most common surface
 form, and covering it turns a shortage of evidence into evidence against.
 
 No parser change and no run. Every figure here is a count over committed text
-taken with `connective-census.py`'s reader, which walks rather than globs,
-refuses any sealed path by name, and refuses a source that yields nothing.
-Recompute with that reader over `readable()` plus the SpeechLab tree; the
-phrase set is the table below.
+taken with `connective-census.py`'s reader, which walks rather than globs and
+refuses a source that yields nothing. The population is its 5501 distinct
+readable utterances — the corpus files, the SpeechLab tree and the gating
+corpus — which is the population **after** the gating corpus was added to that
+reader on the same day, roughly three times what a first pass counted. Figures
+taken against the smaller population are marked where they appear.
 
 ### `wait` was not in the phrase set
 
@@ -336,21 +338,22 @@ over readable utterances:
 |---|---|---|
 | `hold on` | 1 | `unfinished.tsv` |
 | `what was it` | 1 | `unfinished.tsv` |
-| `I forgot` | 5 | `unfinished.tsv` |
+| `I forgot` | 9 | 5 `unfinished.tsv`, 4 `SpeakItTests` |
 | `I lost it` | 1 | `unfinished.tsv` |
-| `I mean`, trailing | 1 | `unfinished.tsv` |
-| **`wait`** | **40** | **34 SpeechLab** (31 of them one frame), 3 `unfinished.tsv`, 2 `rambling.tsv`, 1 `abandonment.tsv` |
+| `I mean`, trailing | 2 | 1 `unfinished.tsv`, 1 `SpeakItTests` |
+| **`wait`** | **53** | **34 SpeechLab** (31 of them one frame), 13 `SpeakItTests`, 3 `unfinished.tsv`, 2 `rambling.tsv`, 1 `abandonment.tsv` |
 
 Each phrase is counted as the section writes it, which is not how a first pass
-counted them: `I lost it` read as `I lost (it|my train)` gives 4 and `I mean`
-counted anywhere rather than clause-finally gives 11. Both were caught on
+counted them: over the smaller population, `I lost it` read as
+`I lost (it|my train)` gave 4 and `I mean` counted anywhere rather than
+clause-finally gave 11. Both were caught on
 recount by the evaluation thread. They are the same defect this file names
 everywhere else — a marker standing in for the judgement it approximates —
 committed inside a section arguing that a phrase-keyed detector is the wrong
 instrument, which is worth leaving visible rather than quietly correcting.
 
-The five named phrases total **9** on the strict readings, against `wait`'s
-40.
+The five named phrases total **14** on the strict readings, against `wait`'s
+**53**.
 
 **The `31 of them one frame` figure is contested.** The evaluation thread
 recounts it as 28, stably, under three separate loosenings of the pattern; 31
