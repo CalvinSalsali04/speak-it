@@ -197,10 +197,56 @@ enum SemanticCorpusF {
         corpusCase(.openers, "Pay the hydro bill secondly call the plumber", count: 2,
                    route: [.today, .today]),
 
+        // A numbered enumerator in front of a fact. The gate used to require an
+        // instruction behind the number, so the boundary the speaker stated
+        // out loud was not taken and the marker stayed in the title.
+        corpusCase(.openers, "Call the dentist number two the garage code is 4821",
+                   count: 2, route: [.today, .memory],
+                   note: "`strongEnumerator` has always cut in front of a fact; this is the same marker doing the same job."),
+        corpusCase(.openers, "Pick up the dry cleaning number two the wifi password is on the fridge",
+                   count: 2, route: [.today, .memory]),
+
         // And the guard: the same number identifying one thing among many.
         corpusCase(.openers, "We are in apartment number three", count: 1, route: [.memory]),
         corpusCase(.openers, "The spare key is under plant pot number two", count: 1,
                    route: [.memory]),
+
+        // The guard where it is actually load bearing. The two rows above pass
+        // whatever the gate does, because nothing follows the number for a
+        // boundary to open onto; these are the shapes that separate the two
+        // readings, and all three would be cut by the widened gate alone.
+        corpusCase(.openers, "The spare key is under plant pot number two the one by the fence",
+                   count: 1, route: [.memory],
+                   note: "An apposition, not a second thought. Severing it loses which plant pot."),
+        corpusCase(.openers, "Our flight leaves from gate number two the big one upstairs",
+                   count: 1, route: [.memory]),
+        corpusCase(.openers, "My locker is number three the one by the door", count: 1,
+                   route: [.memory],
+                   note: "The copula does the same work as the preposition above: it equates rather than enumerates."),
+
+        // The cost of deciding this from the left, pinned rather than
+        // described. An enumerator that genuinely follows a prepositional
+        // phrase reads as identifying and is not cut. That is what every
+        // fact-following enumerator did before this change, so the row records
+        // a limitation that did not get worse -- and it fails here, in a file
+        // somebody reads, if the cost is ever paid off.
+        corpusCase(.openers, "Drop the parcel at the post office number two the garage code is 4821",
+                   count: 1, route: [.today],
+                   note: "Accepted: `locatingNumberContext` cannot tell this from \"at gate number two\". Deciding it needs to know whether the phrase has closed, which is a parse this layer does not have. No worse than the gate it replaces, which did not cut here either."),
+
+        // The boundary the copula guard nearly took away, and the reason it
+        // has two arms instead of one. A statement that has just finished puts
+        // a copula three words to the left of the marker as readily as an
+        // equating clause does -- and here an instruction follows, which is
+        // what the OLD gate cut on. A single lookbehind over prepositions and
+        // copulas together would have lost both of these, in a shape no row in
+        // this file had, so nothing would have said so. Found in review on
+        // #90; these two rows are why it cannot happen quietly again.
+        corpusCase(.openers, "The meeting is tomorrow number two call the dentist",
+                   count: 2, route: [.today, .today],
+                   note: "`is tomorrow` is a finished statement, not an equating clause, so the equating arm stands down where an instruction follows -- that is what `count: 2` pins. Today because the speaker has to BE somewhere by then, which is the line the corpus draws and not the two wider ones this note tried first. \"A dated event is an upcoming item\" dies on `My passport expires in March` (Memory). \"A named day, not the date\" dies on `The store closes Sunday` (Memory) and `The parcel arrived Friday` (Memory, already happened). What holds is the reason `The parking pass expires Friday` states for itself -- an expiry on a named day is the LAST MOMENT TO ACT -- with a bare month filed as knowledge either way. Both rows here were first labelled Memory from intuition and the gate said otherwise."),
+        corpusCase(.openers, "My flight is Tuesday number two book the cat sitter",
+                   count: 2, route: [.today, .today]),
     ]
 
     // MARK: - Clock forms dictation actually produces

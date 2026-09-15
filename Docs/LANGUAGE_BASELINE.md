@@ -30,11 +30,24 @@ against on purpose and their movements belong in the dated sections.
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-11 | resultive `so` boundary (#57) | held-out thought count | 255/310 | 254/310 | **−1** |
 | 2026-09-11 | resultive guard tightened to a statement cause (#57) | — | — | — | no sealed measure moved |
+| 2026-09-15 | numbered enumerator decided from its left context | everyday clean titles | 245/255 | 246/255 | **+1** |
 
-Running total: **−1 row**, across one change. The only sealed measure that has
-moved is **held-out thought count**. Held-out destination and held-out
-acted-on-anyway are unmoved since `2cc2ac5`, as are the everyday and
-adversarial measures.
+**Running total, per measure.** There is no single total here and there will
+not be one. Adding 254/310 to 246/255 is collapsing two instruments into one
+number, which is the move this file forbids everywhere else; `ledger-check.py`
+recomputes each line below from the rows above and fails if a measure moves and
+no line names it.
+
+- **held-out thought count: −1 row**, across one change.
+- **everyday clean titles: +1 row**, across one change.
+
+Two sealed measures have moved, across two changes. **The two do not cancel and
+must not be read as if they did** — they are different sets, different
+denominators and different questions, and a reader who nets them to zero has
+learned nothing about either. Every other sealed measure — held-out
+destination, held-out acted-on-anyway, everyday routing, count, nothing lost
+and nothing invented, and every adversarial and consequence measure — has never
+been moved by a change recorded here.
 
 **No count of "how many sealed measures there are" is asserted here, and the
 one that used to be was wrong twice over.** It read "one of the eight sealed
@@ -438,6 +451,185 @@ not move any published figure.
 
 The cheapest retest is free: the table is printed by every `language_only`
 dispatch, so the next run reprints it and a reader can compare.
+## 2026-09-15 — "number two" decided from its left, and the one sealed measure that moved
+
+**The same run, read for a different question.** The section above records
+the held-out per-family table out of this run; #91 paid nothing to read it
+and states which of its figures were already on record. Nothing here depends
+on that table and nothing there depends on this section.
+
+One `macos-26` run, branch `claude/hearth-thread-uq6bmy` at `707ac32`, cut from
+`66d338d`:
+[run 34960158656](https://github.com/CalvinSalsali04/speak-it/actions/runs/34960158656),
+`language_only`, Xcode 26.6, job `Language metrics` **success**.
+
+There is no paired before-run. The "before" column below is the figure already
+recorded in this file at `66d338d`, which is the same parser with the one
+change removed; the diff against `origin/main` is one property and one
+alternative in `ThoughtExtractor.splitClauses`, six `corpusCase` rows, a
+regenerated population block and a pinned count. No other executable line
+changed, so the movement is attributable to the guard or to nothing.
+
+### The gate, quoted rather than inferred from the job's exit status
+
+```
+GATING CORPUS — regression net, authored from the product contract
+...
+rendering=identity  TOTAL 1410 cases, 0 failing, 1410 clean
+CRITICAL 0  BEHAVIORAL 0  METADATA 0  COSMETIC 0
+BLOCKING(crit+beh) = 0
+corpus gate ok: 0 blocking failures
+```
+
+1,404 → 1,410 is the six rows this change adds. **Zero failing is saturated
+coverage of a net authored from the contract, not product accuracy**, and it
+says the six new rows hold at the labels they were written with — which is the
+only thing this container could not establish, since the Swift does not build
+here.
+
+### What moved: one measure, one capture
+
+| measure | before (`66d338d`) | after (`707ac32`) | |
+| --- | --- | --- | --- |
+| everyday clean titles | 245/255 (96.1%) | **246/255 (96.5%)** | **+1** |
+| — `work-school` | 47/51 (92.2%) | **48/51 (94.1%)** | **+1** |
+| — title defect `preamble 'number two' kept` | 1 | **0** | **−1** |
+
+The remaining title defects are `8 title is the whole capture` and `1 preamble
+'what happened was' kept`. In the cost ledger as a gain on **everyday clean
+titles**, which is the second sealed measure ever to move; the ledger's single
+running total was replaced by one total per measure on the same day, because
+`ledger-check.py` refuses to add 246/255 to 254/310 and it was right to.
+
+### What did not move, stated rather than left to be assumed
+
+Every figure this file already records at `66d338d` came back identical:
+
+| set | measures | |
+| --- | --- | --- |
+| everyday (255) | routing 168/240 · count 193/232 · nothing lost 230/244 · nothing invented 14/22 | — |
+| everyday | over-segmented 16 · under-segmented 23 · genuinely ambiguous 15 · ACTED ON ANYWAY 0 | — |
+| held-out legacy (389) | destination 233/320 · count strict 254/310 · harm 7 | — |
+| adversarial (120) | routing 52/116 · count 78/105 · loss 113/116 · invention 10/24 · clean titles 117/120 · harm 1 | — |
+| consequence (56) | destination 51/56 · count strict 34/56 | — |
+
+**Four more figures have no recorded "before" in this file, so "unchanged" is
+not something this section may say about them.** Under the rule in "Two
+held-out numbers", the clean-sealed measures and range-aware scoring are
+printed by `heldout/score.py` on every run and deliberately not restated in
+these sections — so there is no earlier value here to compare this run
+against, and the honest form is a value rather than a movement. What the run
+printed:
+
+| held-out legacy (389) | range-aware count | 271/310 |
+| --- | --- | --- |
+| held-out clean sealed (378) | destination | 225/310 |
+| held-out clean sealed (378) | count strict | 247/301 |
+| held-out clean sealed (378) | range-aware count | 263/301 |
+| held-out clean sealed (378) | ACTED ON ANYWAY | 7 |
+
+That distinction is small and it is the one this file has been wrong about
+before: a figure read off one run and written beside three that *were*
+compared reads as a comparison, and the next person quotes it as one.
+
+### The honest size of this
+
+**It is one capture on one sealed measure.** `run-on` is still 0/8 on routing
+and 0/8 on count, `multi-thought` 19/40 and 22/40, `sequencing` 7/17 and 8/17:
+the family this sits inside did not move at all, and nothing here is evidence
+that it will. What the change does is remove a defect that was *stated* in
+`Docs/KNOWN_ISSUES.md` as a narrow gap and is now closed, at the price of one
+accepted failure pinned as a corpus row.
+
+**The wider fix was sized first and rejected.** The obvious widening — give the
+enumerator the same `clauseOpenerPattern` lookahead its sibling rule already
+uses — cuts three post-nominal shapes that must stay whole ("the spare key is
+under plant pot number two the one by the fence", "our flight leaves from gate
+number two the big one upstairs", "my locker is number three the one by the
+door"). **The two corpus rows that already existed pass either way**, because
+nothing follows the number in them, so the gate as it stood would not have
+caught that regression. The three guards above were written for this change and
+exist to catch it now. That sizing is the part of this worth keeping; the guard
+that shipped is the smaller half of it.
+
+### What review then found, and the two runs it cost
+
+The section above was written after one green run and it was not finished. The
+grade on #90 held it on a boundary the change would have **taken away**, which
+is the opposite direction from the one being measured and is not visible in any
+figure above.
+
+`identifyingNumberContext` declined on a preposition **or** a copula within
+three words to the left. The copula arm is right where the number *is* the
+thing ("my locker is number three"). It is wrong where a statement has simply
+finished and an instruction follows:
+
+| | at `66d338d` | at `707ac32` | at `fc1be70` |
+| --- | --- | --- | --- |
+| the meeting is tomorrow number two call the dentist | cut | **not cut** | cut |
+| my flight is Tuesday number two book the cat sitter | cut | **not cut** | cut |
+
+The old gate cut both, because it asked only whether an instruction followed
+the number. **No row in the gating corpus had that shape**, so the gate was
+green either way — the same asymmetry this change was written to fix, pointing
+the other direction, and found by a reader rather than by an instrument.
+
+The repair splits the lookbehind into `locatingNumberContext` and
+`equatingNumberContext`. Both guard the clause-opener alternative; only the
+locating arm guards a second alternative whose lookahead is the old gate's own
+`actionLeadPattern`. The two rows are pinned.
+
+**Two macOS runs, and the first one failed, which is worth recording rather
+than tidying away:**
+
+- [run 34975096286](https://github.com/CalvinSalsali04/speak-it/actions/runs/34975096286)
+  on `0f4f589` — **failed**, on exactly the two rows just added, on one field
+  of each: `route[0]: expected Memory, got Today`. `count: 2` passed on both,
+  so the boundary was restored and the *label* was wrong. Routing was written
+  from intuition in the same motion as a splitting fix whose Python emulation
+  had been validated against six already-scored rows — and that emulation says
+  nothing about routing. A probe that is right about one dimension is not
+  evidence about the dimension beside it.
+- [run 34976825027](https://github.com/CalvinSalsali04/speak-it/actions/runs/34976825027)
+  on `fc1be70` — **success**, after relabelling to `[.today, .today]`:
+
+```
+rendering=identity  TOTAL 1412 cases, 0 failing, 1412 clean
+CRITICAL 0  BEHAVIORAL 0  METADATA 0  COSMETIC 0
+BLOCKING(crit+beh) = 0
+corpus gate ok: 0 blocking failures
+```
+
+**The repair moved no sealed measure.** Every figure on the green run is
+identical to the run at `707ac32` recorded above — everyday 168/240 · 193/232 ·
+230/244 · 14/22, clean titles **246/255** with `work-school` 48/51, held-out
+233/320 · 254/310 · 271/310 · harm 7, clean sealed 225/310 · 247/301 · 263/301
+· harm 7, adversarial 52/116 · 78/105 · 113/116 · 10/24 · 117/120 · harm 1,
+consequence 51/56 · 34/56. So the `+1` in the ledger is the enumerator change's
+and the repair costs nothing; **no second ledger row is due.**
+
+The label itself was right and the *reason* written beside it took three
+attempts, each one wider than the corpus and each killed by a row in it:
+
+| attempt | killed by |
+| --- | --- |
+| "a dated event is an upcoming item" | `My passport expires in March` — Memory |
+| "the named day, not the date" | `The store closes Sunday` — Memory, and `The parcel arrived Friday`, Memory because it already happened |
+| **"the speaker has to be somewhere or act by then"** | holds on every row in both clusters |
+
+What survives is the reason one row states for itself: *"an expiry on a named
+day is the last moment to act."* `The guests arrive Friday`, `The party is
+Saturday` and `The parking pass expires Friday` are Today because the speaker
+has to be there or act; `The store closes Sunday` and `Nadia's birthday is
+October 12.` are Memory because there is nothing for the speaker to do. A bare
+month is knowledge either way, which is a separate cut the notes also state.
+
+**Three passes at one sentence is the point, not an aside.** A stated reason
+wider than its own predicate is the defect this file keeps finding in filters,
+and the first two attempts here were each contradicted by a row within four
+lines of the rows they cited. A corpus note is where a future reader looks the
+rule up, so it is the worst place for a rule that is almost right. Caught by
+the grade on #90, twice.
 
 ## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
 
@@ -485,9 +677,9 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 5,586 | population |
+| utterances | share of 5,599 | population |
 |---:|---:|---|
-| 3,745 | 67.0% | the gating corpus in `SpeakItTests` |
+| 3,758 | 67.1% | the gating corpus in `SpeakItTests` |
 | 818 | 14.6% | `Tools/SpeechLab/phase2`, in four byte-identical files |
 | 695 | 12.4% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
 | 472 | 8.4% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
@@ -505,10 +697,10 @@ times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 6,482 and its shares to 116.0%, because the twelve
+**That column sums to 6,495 and its shares to 116.0%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
 may still overlap one. The excess of 896 counts an utterance once for every
-additional maximal population that contains it. Only the union, 5,586, is a
+additional maximal population that contains it. Only the union, 5,599, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -516,18 +708,18 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-110, so the three kinds are 3,745 + 1,333 + 618 = 5,696 against a union of
-5,586 and do not add up. Written out so that they do:
+110, so the three kinds are 3,758 + 1,333 + 618 = 5,709 against a union of
+5,599 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 5,586 |
+| kind | utterances | share of 5,599 |
 |---|---:|---:|
-| test fixtures only | 3,635 | 65.1% |
-| generated renderings (the SpeechLab tree) | 1,333 | 23.9% |
+| test fixtures only | 3,648 | 65.2% |
+| generated renderings (the SpeechLab tree) | 1,333 | 23.8% |
 | development sets only | 508 | 9.1% |
 | in both a development set and a fixture | 110 | 2.0% |
-| **total** | **5,586** | |
+| **total** | **5,599** | |
 
-**90.9% of everything this project may read — 5,078 of 5,586 — is either a
+**90.9% of everything this project may read — 5,091 of 5,599 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
 utterances, of which 508 exist nowhere else.

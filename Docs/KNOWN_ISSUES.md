@@ -726,11 +726,32 @@ Under-segmentation outnumbers over-segmentation 23 to 16 on that set.
 
 Two narrower gaps sit inside the same area:
 
-- A numbered enumerator in front of a **fact** is not read as a boundary.
-  "Number two the garage code is 4821" keeps the marker, because the gate
-  requires an instruction behind the number — which is what keeps "gate number
-  two" and "apartment number three" from being cut. One capture in the everyday
-  set still carries `number two` in its title for this reason.
+- A numbered enumerator in front of a **fact** was not read as a boundary, and
+  that half is now closed. "Call the dentist number two the garage code is
+  4821" arrived as one row, because the gate asked what came *behind* the
+  number and required an instruction there — which is also what kept "gate
+  number two" and "apartment number three" whole. The gate now asks what stands
+  in *front* of the number instead: it declines only where a preposition or a
+  copula sits within three words to the left, so "from gate number two", "under
+  plant pot number two" and "my locker is number three" are still one row while
+  a bare `number two` before a fact is a boundary. The copula half of that
+  guard declines only where no instruction follows, so "the meeting is tomorrow
+  number two call the dentist" still cuts — it did before the change, and
+  review caught the first version taking that boundary away in a shape no
+  corpus row had. Measured on `macos-26`
+  ([run 34960158656](https://github.com/CalvinSalsali04/speak-it/actions/runs/34960158656),
+  gate re-confirmed on
+  [run 34976825027](https://github.com/CalvinSalsali04/speak-it/actions/runs/34976825027)):
+  the everyday title-defect list no longer carries `preamble 'number two'
+  kept`, and everyday clean titles moved 245/255 → 246/255. **The family around
+  it did not move** — `run-on` is still 0/8 on routing and 0/8 on count — so
+  this closes one narrow gap and is not evidence about the larger half above.
+  One accepted cost ships with it: "Drop the parcel at the post office number
+  two the garage code is 4821" is still one row, because a preposition three
+  words to the left is exactly the shape of "at gate number two" and telling
+  the two apart needs to know whether the phrase has closed. That is a parse
+  this layer does not have; the case is pinned as a corpus row carrying that
+  reason rather than left to be rediscovered.
 - A long capture whose title is the whole capture — 8 of them — was never
   summarised at all. That is a different stage from framing.
 
