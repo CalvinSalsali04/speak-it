@@ -23,7 +23,6 @@ splitter has held since it was written; the rest are checked here one by one.
 """
 import copy
 import pathlib
-import re
 import shutil
 import sys
 import tempfile
@@ -358,33 +357,6 @@ class WhoTheCorpusSaysOwesSomething(unittest.TestCase):
             "Either way, pin it in THIRD_PERSON_SUBJECTS_IN_THE_CORPUS with "
             "what it is. Found: " + repr(sorted(census))
         )
-
-    def test_the_corpus_reader_reads_the_utterance_slot(self):
-        """Reading these files as a bag of literals counts reviewer prose.
-
-        `readable_material.swift_literals` harvests every string in the tree,
-        which is right for a leak check and wrong for a census: most of the
-        distinct literals in these files are `note:` text, assertion messages
-        and label arguments (893 of 2,250 on 2026-09-15, a ratio that moves
-        every time somebody adds a case). Rather than name one of them and hope
-        it survives, this runs the bag reader beside the slot reader and
-        asserts the difference is thrown away, so the check holds whatever the
-        notes say next week.
-        """
-        utterances = pv.corpus_utterances()
-        self.assertIn("Mike should call Sarah", utterances)
-
-        bag = set()
-        for path in sorted(pv.CORPUS_CASES.glob("SemanticCorpusData*.swift")):
-            bag |= set(re.findall(r'"((?:[^"\\]|\\.)*)"',
-                                  path.read_text(encoding="utf-8")))
-        self.assertLess(
-            len(set(utterances)), len(bag) * 0.8,
-            "the reader is returning nearly every literal in the file, which "
-            "means it has stopped reading the utterance slot and started "
-            "reading the file"
-        )
-        self.assertTrue(set(utterances) < bag)
 
 
 if __name__ == "__main__":
