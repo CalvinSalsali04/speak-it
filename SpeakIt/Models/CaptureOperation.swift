@@ -68,14 +68,17 @@ struct CaptureOperationRequest: Equatable, Sendable {
     /// time, not the clock) and extraction only reports what was asked.
     let newTimingText: String?
 
-    /// True when a bare withdrawal has already taken back the one thought it
-    /// was spoken after, and must not also be applied to the capture as a whole.
+    /// True when an operation has already been resolved inside this capture and
+    /// must not also be applied to the repository as an operation on an older
+    /// item.
     ///
     /// "Buy milk and tomorrow I need to, never mind" retracts the fragment and
     /// nothing else. Read as a whole-capture retraction it discarded the milk
     /// too — a thought the person had finished saying, deleted because of one
     /// they had not. The request still travels with the extraction so the
     /// refinement model stays out of a capture whose words have been withdrawn.
+    /// The same marker is used when "skip the pharmacy" has already removed the
+    /// pharmacy sibling from a multi-stop capture.
     let isScoped: Bool
 
     init(

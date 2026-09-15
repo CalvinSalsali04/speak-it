@@ -8,6 +8,7 @@ Where rules are worked out. **Not a gate, and not held out.**
 ./Tools/CorpusRunner/devsets/route-score.sh framing [--verbose]
 ./Tools/CorpusRunner/devsets/unfinished-score.sh [--verbose]
 ./Tools/CorpusRunner/devsets/abandonment-score.sh [--verbose]
+./Tools/CorpusRunner/devsets/cancellation-scope-score.sh
 ```
 
 These exist so that `../heldout/` never has to be opened during development.
@@ -24,6 +25,16 @@ if nobody looked. Iterating needs somewhere else to iterate.
 | `rambling.tsv` | full rules path | `../heldout/score.py` | whether filler, false starts and length change the reading, measured against a clean twin of the same content |
 | `unfinished.tsv` | full rules path | `unfinished-score.py` | whether a thought was finished at all |
 | `abandonment.tsv` | full rules path | `abandonment-score.py` | whether "never mind" was this speaker taking this thought back |
+| `cancellation-scope-10k.jsonl` | full rules path | `cancellation-scope-score.py` | the 187 saved 10K cases where full or selective cancellation leaked an active action |
+
+`cancellation-scope-10k.jsonl` is a fixed extraction from the saved SpeechLab
+10K results, not a generated corpus. Recreate it only from that result file:
+
+```bash
+python3 Tools/CorpusRunner/devsets/extract-cancellation-scope.py \
+  output/speechlab-stress-bank-v1/results.jsonl \
+  Tools/CorpusRunner/devsets/cancellation-scope-10k.jsonl
+```
 
 `framing.tsv` was written from the everyday set's per-family *rates* — `run-on`
 0/8, `rambling-intro` 1/6, `trailing-goodbye` 2/7, `sequencing` 6/17 — and from

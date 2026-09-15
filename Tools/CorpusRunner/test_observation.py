@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (53, 18, 26, 36)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (54, 18, 27, 35)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -790,8 +790,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         Foundation Models interpretation prototype landed two test classes
         whose fixtures are hand-written captures. 3788 -> 3797 in review of
         that change, which made the two role fields load-bearing and added
-        four cases for them. What the test is actually guarding — that the two
-        readings of "multi-word" still agree exactly and in both directions —
+        four cases for them. 3797 -> 3904 when the cancellation-scope fixture
+        added its focused production controls. What the test is actually
+        guarding — that the two readings of "multi-word" still agree exactly
+        and in both directions —
         is the assertion above, and it is unaffected.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -802,7 +804,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3797)
+        self.assertEqual(len(space), 3904)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

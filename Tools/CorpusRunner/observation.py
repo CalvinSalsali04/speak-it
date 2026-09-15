@@ -17,7 +17,7 @@ Both failures happened on 2026-09-14, hours apart, on different material:
     twelve stems carry all 48 rows with one frame taking 65%. Read off the
     census table, `plus 48 0.9%` is an attested form with eight sources behind
     it. It is one blueprint.
-  * `wait` appears in 53 over 18 sources, and a third of them are one frame,
+  * `wait` appears in 54 over 18 sources, and a third of them are one frame,
     `I was going to ask— wait, ...`. A detector keyed on the phrase would
     fire on captures that are one sentence with the nouns changed.
 

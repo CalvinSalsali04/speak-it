@@ -45,3 +45,9 @@ duplicate that would drift:
 
 If a build fails after those files are restructured, the section markers
 `build.sh` greps for are what moved.
+
+## Structured output
+
+`probe --json utterances.txt` emits one JSON object per capture, including items,
+source wording, dates as Unix seconds, and detected operations. This is the
+input to `Tools/UnderstandingLab/lab.py`; its other modes remain unchanged.

@@ -598,6 +598,30 @@ enum ThoughtTitleFormatter {
         )
         let conversationalFallback = value
 
+        if reduceFrames && itemType.isActionable {
+            // A shared day belongs to scheduling. Require a following intent
+            // frame, and do not rely on the tokenizer splitting at punctuation
+            // (lowercase dictation may keep “today. we need…” together).
+            value = value.replacingOccurrences(
+                of: #"(?i)^(?:today|tomorrow|tonight)[\s,.]+(?=(?:i|we)\s+(?:need\s+to|want\s+to|have\s+to|wanna)\b)"#,
+                with: "", options: .regularExpression
+            )
+            // Shopping context stays in analysis for dates; the title names
+            // the actual stop. Require an explicit intention after the frame.
+            value = value.replacingOccurrences(
+                of: #"(?i)^(?:(?:today|tomorrow|tonight)\s+)?when\s+i\s+go\s+shopping[\s,]+(?=i\s+(?:want\s+to|wanna|need\s+to)\b)"#,
+                with: "", options: .regularExpression
+            )
+            // A sign-off after a purchase is dictation chatter. Keep speech
+            // instructions and names such as “say bye” and “buy Goodbye”.
+            if value.range(of: #"(?i)\bbuy\s+.+\s+bye[.!?]*$"#, options: .regularExpression) != nil,
+               value.range(of: #"(?i)\b(?:say|saying|named|called|by|from|mr|ms|dr)\s+bye\b"#, options: .regularExpression) == nil {
+                value = value.replacingOccurrences(
+                    of: #"(?i)\s+bye[.!?]*$"#, with: "", options: .regularExpression
+                )
+            }
+        }
+
         if itemType.isActionable {
             value = ReminderCopy.action(from: value)
             // "Let's order the new filters": the proposal frame is not part
@@ -649,6 +673,15 @@ enum ThoughtTitleFormatter {
             layers = ObligationFrame.recording
         }
         value = ObligationFrame.peeled(value, using: layers)
+
+        // Vague sequencing is retained in analysis, but does not obscure the
+        // action in a generated title. Never assign a clock time for “later”.
+        if reduceFrames && itemType.isActionable {
+            value = value.replacingOccurrences(
+                of: #"(?i)^later\s+on\s+(?=(?:go|head|drive|walk)\b)"#,
+                with: "", options: .regularExpression
+            )
+        }
 
         value = value.replacingOccurrences(
             of: #"\bi\b"#,
@@ -3091,7 +3124,12 @@ private enum TemporalIntentParser {
             if let base = calendar.date(byAdding: .month, value: offset, to: referenceDate) {
                 var components = calendar.dateComponents([.year, .month], from: base)
                 components.day = day
-                if let resolved = calendar.date(from: components) {
+                // "The 31st of next month" said in a month that has thirty
+                // days named no date. Lenient construction rolled it into the
+                // month after, which is not the month the person named.
+                if let resolved = calendar.date(from: components),
+                   calendar.component(.day, from: resolved) == day,
+                   calendar.component(.month, from: resolved) == components.month {
                     // "The 3rd of this month" said on the 5th means next month:
                     // a date that has passed is not a plan.
                     if offset == 0, resolved < calendar.startOfDay(for: referenceDate),
@@ -3196,16 +3234,37 @@ private enum TemporalIntentParser {
         referenceDate: Date,
         calendar: Calendar
     ) -> Date? {
-        var components = calendar.dateComponents([.year], from: referenceDate)
-        components.month = month
-        components.day = day
-        components.hour = 0
-        components.minute = 0
-        guard var date = calendar.date(from: components) else { return nil }
-        if date < calendar.startOfDay(for: referenceDate) {
-            date = calendar.date(byAdding: .year, value: 1, to: date) ?? date
+        // A day the named month does not have is not a date, and the calendar
+        // must not be asked to invent one. `Calendar.date(from:)` resolves
+        // out-of-range components leniently, so June 31 came back as July 1;
+        // that had already passed, so the year rolled too, and "book the
+        // appointment for June 31" was filed as July 1 of the *following*
+        // year — a month, a day and a year nobody said. The contract is that
+        // dates are never invented, so the date is searched for rather than
+        // constructed, and a day no year has returns nothing.
+        guard (1...12).contains(month), (1...31).contains(day) else { return nil }
+        let start = calendar.startOfDay(for: referenceDate)
+        guard let referenceYear = calendar.dateComponents([.year], from: start).year else {
+            return nil
         }
-        return date
+        // February 29 is a real date, so the search walks forward to the next
+        // year that actually has it rather than refusing it. The window covers
+        // the leap cycle including the skipped century year, where the gap
+        // between one February 29 and the next is eight years, not four.
+        for offset in 0...8 {
+            var components = DateComponents()
+            components.year = referenceYear + offset
+            components.month = month
+            components.day = day
+            components.hour = 0
+            components.minute = 0
+            guard let candidate = calendar.date(from: components),
+                  calendar.component(.month, from: candidate) == month,
+                  calendar.component(.day, from: candidate) == day,
+                  candidate >= start else { continue }
+            return candidate
+        }
+        return nil
     }
 
     /// The wall clock the capture itself happened on, for wording that refers
@@ -3232,6 +3291,32 @@ private enum TemporalIntentParser {
     /// fell outside 1-12 the range check returned nil for the *whole* parse, so
     /// the clock time the person actually stated was never examined at all.
     private static let durationUnitGuard = #"(?!\s*(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|days?|weeks?|months?)\b)"#
+
+    /// Refuses a number that a separator continues into another digit.
+    ///
+    /// A dot or a comma between digits makes the number a price, a
+    /// measurement, a version or a phone number. The clock patterns stop at
+    /// the separator and a word boundary sits there, so the leading digits
+    /// were read as an hour and the rest was dropped on the floor: "keep the
+    /// bag at 6.5 kilograms" resolved to six o'clock, and "set the budget at
+    /// 1,250 dollars" to one.
+    ///
+    /// The digit *behind* the separator is what does the work. Without it this
+    /// would silence a real clock every time dictation ends the sentence with
+    /// a full stop, and "let's do dinner at 6." is an ordinary way to say it.
+    private static let decimalGuard = #"(?![.,]\d)"#
+
+    /// Refuses a bare hour that another number follows.
+    ///
+    /// `ClockDigitRepair` runs first and is the layer that decides whether an
+    /// hour and a minute arrived spaced apart: it turns "at 5 45" into "at
+    /// 5:45", and it deliberately declines when the digits are an address, a
+    /// phone number or an amount. A bare hour still standing in front of
+    /// another digit group is therefore one the repair already refused, and
+    /// reading it as a clock is this parser overruling that decision — which
+    /// is how the comma-free rendering of "set the budget at 1,250 dollars"
+    /// became one o'clock while the punctuated rendering stayed a number.
+    private static let adjacentNumberGuard = #"(?!\s+\d)"#
 
     /// The clock the person actually stated, read by the **same grammar every
     /// other clock in the app goes through**.
@@ -3423,6 +3508,8 @@ private enum TemporalIntentParser {
             pattern: #"\b(?:at|by|before|around|after|for(?!\s+(?:sharp\s+)?(?:"# + clockHourPattern
                 + #")(?::\d{2})?\s+(?:at\s+(?:\d|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)|people|guests|persons|adults|kids|of\s+us)\b))\s+(?:sharp\s+)?("#
                 + clockHourPattern + #")(?::(\d{2}))?\b"#
+                + decimalGuard
+                + adjacentNumberGuard
                 + durationUnitGuard
         ), match.count >= 3, let hour = number(from: match[1]) {
             let minute = Int(match[2]) ?? 0

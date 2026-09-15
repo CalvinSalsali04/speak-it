@@ -170,6 +170,69 @@ final class AbandonmentTests: XCTestCase {
         XCTAssertNil(alone.remainder, "the withdrawn fragment must not survive as a row")
         XCTAssertTrue(alone.operations.contains { $0.operation == .retract })
     }
+
+    /// Corpus SB10K-03011. The trip and its purpose are one plan even though
+    /// conjunction splitting exposes them as two clauses.
+    func testFullAbandonmentRetractsAVisitAndItsPurposeTogether() {
+        let result = partition(
+            "I need to go to the hardware store and return storage bins actually forget that."
+        )
+        XCTAssertNil(result.remainder)
+        XCTAssertEqual(result.operations.map(\.operation), [.retract])
+        XCTAssertTrue(result.operations.allSatisfy(\.isScoped))
+    }
+
+    /// Corpus SB10K-04689. A selective cancellation names one semantic sibling,
+    /// not a new action and not an older item in the repository.
+    func testSelectiveCancellationRemovesTheNamedVisitGroupOnly() {
+        let result = partition(
+            "Tomorrow morning go to the print shop and pick up notebooks and go to Brandy Melville and buy a jacket, actually skip Brandy Melville."
+        )
+        XCTAssertEqual(result.remainder, "Tomorrow morning go to the print shop, pick up notebooks")
+        XCTAssertEqual(result.operations.map(\.operation), [.cancel])
+        XCTAssertEqual(result.operations.map(\.target), ["Brandy Melville"])
+        XCTAssertTrue(result.operations.allSatisfy(\.isScoped))
+    }
+
+    func testSelectiveCancellationPreservesSharedContextAndLaterSiblings() {
+        let result = partition(
+            "October 22 go to Brandy Melville and buy a backpack and go to Muji and pick up a water bottle and go to the pet store and get dog treats, actually skip Muji."
+        )
+        XCTAssertEqual(
+            result.remainder,
+            "October 22 go to Brandy Melville, buy a backpack, go to the pet store, get dog treats"
+        )
+        XCTAssertEqual(result.operations.map(\.target), ["Muji"])
+    }
+
+    func testSelectiveCancellationOfFirstSiblingMovesSharedContextToTheSurvivor() {
+        let result = partition(
+            "Tomorrow go to Costco and buy milk and go to Walmart and get shampoo, WAIT, SKIP COSTCO!"
+        )
+        XCTAssertEqual(result.remainder, "Tomorrow go to Walmart, get shampoo")
+        XCTAssertEqual(result.operations.map(\.target), ["COSTCO"])
+        XCTAssertTrue(result.operations.allSatisfy(\.isScoped))
+    }
+
+    func testSelectiveCancellationDoesNotGuessAnUnmatchedOrDuplicateDestination() {
+        let unmatched = partition(
+            "Tomorrow go to the market and buy pasta, actually skip the pharmacy."
+        )
+        XCTAssertEqual(unmatched.operations, [])
+        XCTAssertEqual(
+            unmatched.remainder,
+            "Tomorrow go to the market and buy pasta, actually skip the pharmacy."
+        )
+
+        let duplicate = partition(
+            "Go to Costco and buy milk and go to Costco and get bread, actually skip Costco."
+        )
+        XCTAssertEqual(duplicate.operations, [])
+        XCTAssertEqual(
+            duplicate.remainder,
+            "Go to Costco and buy milk and go to Costco and get bread, actually skip Costco."
+        )
+    }
 }
 
 /// The same question asked of the app rather than of the rules: what does a
@@ -288,6 +351,36 @@ final class AbandonedCaptureTests: XCTestCase {
         )
         XCTAssertNil(items[0].dueDate)
         XCTAssertNil(items[0].reminderDate)
+    }
+
+    func testCorpusFullAbandonmentLeavesNoActiveVisitOrPurpose() async throws {
+        _ = try await capture(
+            "I need to go to the hardware store and return storage bins actually forget that."
+        )
+        XCTAssertTrue(
+            try stored().isEmpty,
+            "a fully abandoned visit-purpose group left an active row"
+        )
+    }
+
+    func testCorpusSelectiveCancellationLeavesOnlyUncancelledVisitContent() async throws {
+        _ = try await capture(
+            "Tomorrow morning go to the print shop and pick up notebooks and go to Brandy Melville and buy a jacket, actually skip Brandy Melville."
+        )
+        let items = try stored()
+        XCTAssertFalse(items.isEmpty)
+        XCTAssertTrue(items.contains {
+            $0.displayTitle.localizedCaseInsensitiveContains("print shop")
+                || $0.displayTitle.localizedCaseInsensitiveContains("notebooks")
+        })
+        XCTAssertFalse(items.contains {
+            $0.originalTextSegment.localizedCaseInsensitiveContains("Brandy Melville")
+                || $0.originalTextSegment.localizedCaseInsensitiveContains("jacket")
+                || $0.displayTitle.localizedCaseInsensitiveContains("skip")
+        }, "the canceled sibling or its directive survived as an active row")
+        XCTAssertTrue(items.allSatisfy {
+            $0.dueDate != nil || $0.reminderDate != nil
+        }, "shared tomorrow context did not survive selective cancellation")
     }
 
     func testAFactSurvivesTheWithdrawalOfTheReminderSpokenAfterIt() async throws {
