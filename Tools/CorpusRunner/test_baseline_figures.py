@@ -238,6 +238,38 @@ class TheWalkRefusesRatherThanGeneratingZeroes(FiguresCase):
             self.bf.figures(texts=outside)
         self.assertIn("Tools/Elsewhere/x.tsv", str(caught.exception))
 
+    def test_a_sibling_directory_is_refused_rather_than_absorbed(self):
+        """The refusal above, for the paths that look like they belong.
+
+        `kind_of` asked `GATING in str(path)`, so a tree whose name merely
+        extends one of the three was filed as that one instead of refused.
+        Which is the worst version of the catch-all rather than a weaker one:
+        `devsets2` classified as **spoken**, the same wrong direction, and
+        reachable by a plausible new directory rather than by nothing.
+
+        Unreachable today -- `readers()` cannot yield such a path -- so it is
+        pinned here or it is not pinned anywhere, and the fix would have been
+        free to rot straight back to a substring. This is also `corpus_paths`'
+        bug from #80 in code written after #80 landed, which is why the test
+        names all three rather than the one that was found.
+        """
+        for name in ("Tools/SpeechLab2/x.jsonl",
+                     "Tools/CorpusRunner/devsets2/x.tsv",
+                     "SpeakItTestsExtra/x.swift"):
+            with self.subTest(name):
+                self.assertIsNone(self.bf.kind_of(self.bf.ROOT / name))
+
+    def test_the_three_trees_themselves_still_classify(self):
+        """The control for the test above: a refusal that refuses everything
+        would pass it, and `test_every_source_is_classified` reaches only the
+        paths `readers()` happens to yield today."""
+        for name, kind in (("SpeakItTests/x.swift", self.bf.FIXTURES),
+                           ("Tools/SpeechLab/x.jsonl", self.bf.GENERATED),
+                           ("Tools/CorpusRunner/devsets/x.tsv",
+                            self.bf.SPOKEN)):
+            with self.subTest(name):
+                self.assertEqual(self.bf.kind_of(self.bf.ROOT / name), kind)
+
     def test_a_development_set_that_yields_nothing_refuses(self):
         """A reader that has quietly stopped reading, rather than a row of
         zeroes. `census()` says this about its own walk; this one does not go
@@ -306,10 +338,25 @@ class WritingIsTheOnlyWayToFixAStaleDocument(FiguresCase):
         """
         text = self.copy.read_text(encoding="utf-8")
         largest = max(count for count, _ in self.figures["populations"])
-        edited = text.replace(f"| {largest:,} |", "| 1,111 |", 1)
-        self.assertNotEqual(edited, text,
-                            "the fixture edited nothing, so the tests below "
-                            "check a document that is not stale")
+        row = f"| {largest:,} |"
+        edited = text.replace(row, "| 1,111 |", 1)
+        # `assertNotEqual(edited, text)` says this and prints both documents to
+        # say it: 283 KB of baseline for a one-line message. This file has a
+        # `quietly()` because a suite that prints its fixtures hides its own
+        # failures in the noise, and the failure path is where that costs most.
+        #
+        # Counting the row is the quiet form, and the first attempt at it was
+        # **weaker** as well as quieter: `text.count(row) >= 1` passes a
+        # substitution that finds the row and replaces it with itself, which is
+        # the no-op this whole docstring is about. The difference of the two
+        # counts is the property -- one occurrence went -- and it fails for
+        # both causes, the row being absent and the replacement doing nothing.
+        self.assertEqual(
+            text.count(row) - edited.count(row), 1,
+            f"the fixture edited nothing: it looked for {row!r} and the "
+            f"document carries it {text.count(row)} time(s) before and "
+            f"{edited.count(row)} after, so the tests below check a document "
+            f"that is not stale")
         self.copy.write_text(edited, encoding="utf-8")
 
     def test_a_stale_document_fails_the_check(self):
@@ -352,10 +399,21 @@ class NoFigureOutsideTheBlockRestatesOneInsideIt(FiguresCase):
     record, it is expected never to change, and the test fails if it does.
     """
 
-    SNAPSHOT = (
-        "The snapshot this section was written from, on 2026-09-15, was 5,501\n"
-        "distinct utterances over 20 sources reducing to 17 bodies and 10 "
-        "populations,\nof which 3,702 were the gating corpus")
+    #: The legacy sentence, as words rather than as laid out. It used to be
+    #: pinned as an exact three-line string with the hard newlines in it, so a
+    #: reflow that changed nothing anybody means would fail as a count
+    #: mismatch — a failure whose message cannot be read as "somebody rewrapped
+    #: a paragraph". Matching whitespace-insensitively keeps the guarantee that
+    #: matters (these words and these figures, unchanged) and drops the trap.
+    SNAPSHOT = ("The snapshot this section was written from, on 2026-09-15, "
+                "was 5,501 distinct utterances over 20 sources reducing to 17 "
+                "bodies and 10 populations, of which 3,702 were the gating "
+                "corpus")
+
+    def snapshot_pattern(self):
+        import re
+        return re.compile(r"\s+".join(
+            re.escape(word) for word in self.SNAPSHOT.split()))
 
     def section(self):
         text = self.bf.DOC.read_text(encoding="utf-8")
@@ -364,34 +422,77 @@ class NoFigureOutsideTheBlockRestatesOneInsideIt(FiguresCase):
         return text[start:text.index("\n## ", start + 4)]
 
     def test_the_legacy_snapshot_is_present_and_unchanged(self):
-        self.assertEqual(self.bf.DOC.read_text(encoding="utf-8")
-                         .count(self.SNAPSHOT), 1)
+        """Calvin's rule: old numbers stay visible and marked legacy rather
+        than being silently rewritten. So the one place this document states
+        the superseded figures is pinned, and `--write` must never reach it."""
+        found = self.snapshot_pattern().findall(
+            self.bf.DOC.read_text(encoding="utf-8"))
+        self.assertEqual(
+            len(found), 1,
+            "the dated snapshot above the block is the legacy record and is "
+            "expected never to change; regenerate the block, not the sentence "
+            "saying what it used to say")
+
+    def owned(self):
+        """Every figure the block computes, in both spellings prose uses.
+
+        Hoisted out of the sweep so that the canary below tests the set the
+        sweep is actually built from. It was a local, and the canary built a
+        one-element stand-in of its own — so `owned = set()` in the sweep swept
+        nothing, found nothing, and the whole suite stayed green. That is the
+        `kind_of` catch-all again, in the test file, in the same change: a
+        coverage check that cannot fire looks exactly like one that finds
+        nothing to report.
+        """
+        numbers = [value for value in self.figures.values()
+                   if isinstance(value, int) and value > 99]
+        return ({f"{value:,}" for value in numbers}
+                | {str(value) for value in numbers})
+
+    def restated_in(self, prose):
+        """Every owned figure `prose` states, by the sweep's own matching.
+
+        One implementation for the real sweep and the canary. Two copies would
+        let the canary keep passing over a sweep whose matching had been
+        changed underneath it, which is the half of this that already failed.
+        """
+        import re
+        return sorted(figure for figure in self.owned()
+                      if re.search(rf"(?<![\d,]){re.escape(figure)}(?![\d,])",
+                                   prose))
 
     def test_no_surrounding_prose_restates_a_figure_the_block_owns(self):
-        import re
         section = self.section()
         start, end = self.bf.marked_region(section)
-        outside = (section[:start] + section[end:]).replace(self.SNAPSHOT, "")
-        owned = {f"{value:,}" for value in self.figures.values()
-                 if isinstance(value, int) and value > 99}
-        owned |= {str(value) for value in self.figures.values()
-                  if isinstance(value, int) and value > 99}
-        found = sorted(figure for figure in owned
-                       if re.search(rf"(?<![\d,]){re.escape(figure)}(?![\d,])",
-                                    outside))
+        outside = self.snapshot_pattern().sub(
+            "", section[:start] + section[end:], count=1)
         self.assertEqual(
-            found, [],
+            self.restated_in(outside), [],
             "the prose around the generated block states a figure the block "
             "computes, so it will go stale the next time anybody adds a test "
             "string; say it once, inside the block")
 
     def test_the_sweep_would_notice(self):
-        """An empty sweep and a clean one are the same output, and this
-        section has been clean since the prose was reworded for it."""
-        import re
-        owned = f"{self.figures['distinct']:,}"
-        self.assertTrue(re.search(rf"(?<![\d,]){re.escape(owned)}(?![\d,])",
-                                  "a sentence saying " + owned))
+        """Plant an owned figure in prose and watch the sweep return it.
+
+        A clean sweep and a sweep over an empty set print the same result, so
+        the test above passes either way and this is the only thing standing
+        between them. It has to run the real `owned()` and the real matching
+        to say anything: the first version asserted a regex against a string
+        it wrote itself, which left the set unguarded.
+        """
+        owned = self.owned()
+        self.assertGreaterEqual(
+            len(owned), 8,
+            f"the sweep owns {len(owned)} figures, so it cannot find one and "
+            f"the sweep above reports clean for a document it never read")
+        headline = f"{self.figures['distinct']:,}"
+        self.assertIn(headline, owned)
+        self.assertIn(
+            headline,
+            self.restated_in(f"the readable population is {headline} "
+                             f"distinct utterances."),
+            "the sweep did not find a figure it owns, stated plainly")
 
 
 class TheDocumentSaysHowToRegenerateIt(FiguresCase):

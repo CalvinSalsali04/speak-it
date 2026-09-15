@@ -72,7 +72,27 @@ FIXTURES, GENERATED, SPOKEN = "fixtures", "generated", "spoken"
 #: Where a development set lives. Named rather than left as the
 #: else-branch of the other two, so that a source in neither tree is
 #: unclassified and refused instead of quietly becoming spoken material.
-DEVSETS = "CorpusRunner/devsets"
+DEVSETS = ROOT / "Tools" / "CorpusRunner" / "devsets"
+
+#: The three trees, as directories a path is inside rather than as strings a
+#: path contains. `in` was the first spelling, and it absorbs a sibling whose
+#: name merely extends one of the three: `Tools/SpeechLab2` read as generated,
+#: `SpeakItTestsExtra` as fixtures, and `CorpusRunner/devsets2` as **spoken** --
+#: the same direction the removed catch-all fell, and the same figure this
+#: document argues from. So the guard below did not refuse the unanticipated
+#: source it exists for; it misfiled it.
+#:
+#: Latent rather than live: `readers()` yields only `corpus_paths.readable()`,
+#: `ROOT/SpeakItTests` and the walk under `ROOT/Tools/SpeechLab`, so no such
+#: path arrives today. It is still worth three lines, because a classifier that
+#: mis-classifies is not the same thing as a guard that cannot fire -- refusing
+#: what nobody anticipated is this function's whole job.
+#:
+#: It is also `corpus_paths`' bug from #80, in new code written after #80
+#: landed. Fixing the instance is not checking the siblings.
+TREES = ((ROOT / GATING, FIXTURES),
+         (ROOT / SPEECHLAB, GENERATED),
+         (DEVSETS, SPOKEN))
 
 #: Small counts read as words in prose and as digits in a table, which is how
 #: the hand-written section read before it was generated. Only the range the
@@ -100,14 +120,20 @@ def kind_of(path):
     outside these three trees would have been counted as a development set,
     and the development-set total is the one figure in this document used as
     evidence about how much material sounds like somebody talking.
+
+    **Containment, not substring.** The second version asked `GATING in
+    str(path)`, which answers a question about spelling rather than about
+    location: a sibling directory extending one of the three names was
+    absorbed into it instead of refused, and `devsets2` landed on `spoken`
+    -- the catch-all's direction again, by a different route. See `TREES`.
     """
-    text = str(path)
-    if GATING in text:
-        return FIXTURES
-    if SPEECHLAB in text:
-        return GENERATED
-    if DEVSETS in text:
-        return SPOKEN
+    # `is_relative_to` is reflexive, which is what classifies the gating
+    # source: `readers()` yields the `SpeakItTests` directory itself rather
+    # than the files under it. An `or path == tree` beside this reads as the
+    # case that handles it and is a branch nothing can reach.
+    for tree, kind in TREES:
+        if path.is_relative_to(tree):
+            return kind
     return None
 
 
