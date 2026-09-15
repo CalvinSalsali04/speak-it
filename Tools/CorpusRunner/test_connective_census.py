@@ -10,6 +10,7 @@ answer looks like.
 So most of what is here checks that the census cannot report absence for the
 wrong reason.
 """
+import collections
 import contextlib
 import importlib.util
 import inspect
@@ -17,6 +18,7 @@ import io
 import json
 import pathlib
 import sys
+import tempfile
 import unittest
 import unittest.mock
 
@@ -951,45 +953,148 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
         self.assertEqual([name for name, _why in found], [gone])
         self.assertIn("does not reach it", found[0][1])
 
-    def test_the_nested_speech_gap_is_exactly_the_two_named_files(self):
-        """The declaration says two of the ten hold speech. This recomputes it.
+    def test_every_nested_declared_string_is_accounted_for(self):
+        """The sweep. No string under a declared field name is new speech.
 
-        The first draft of `NOT_READ` said every one of the ten held only ids
-        and labels. That was written from an audit of top-level string values,
-        which is the same blind spot `utterance_field` has, so nothing in the
-        suite contradicted it and a reviewer found it by reading the data.
+        This is the change's whole finding, recomputed rather than written
+        down. It replaces a constant naming the two files that happened to
+        carry nested speech, and a test pinning what reading them would cost
+        at 17 utterances. Both were wrong, and wrong in the way an enumeration
+        is: the constant could only ever name files `utterance_field` returns
+        None for, so a nested key inside a file with a top-level utterance
+        column was invisible to it -- and 8 of the 25 strings were exactly
+        that, annotation spans in `phase2/public/source-records.jsonl`, a file
+        the walk reads every run. **The enumerated cost being wrong is what
+        paid for this.**
 
-        A sentence would go stale the same way, so the set is derived: every
-        unread file carrying a name from `UTTERANCE_FIELDS` at any depth. When
-        the reader is taught to descend, this fails, and it should -- the gap
-        will have closed and the constant will be describing nothing.
+        What is pinned instead is the property: every nested occurrence has a
+        reason it is not a new utterance, and a string with no reason fails.
+        Teaching the reader to descend would add 25 strings and no speech, so
+        the number this protects is a population that does not move.
         """
         rm = self.census.readable_material
-        found = rm.speechlab_nested_speech()
-        self.assertEqual(set(found), rm.SPEECH_UNDER_A_NESTED_KEY)
-        self.assertTrue(
-            rm.SPEECH_UNDER_A_NESTED_KEY <= rm.NOT_READ,
-            "a file named as a known gap is no longer in the unread list, so "
-            "either it is being read now or it has gone; either way the "
-            "comment above it is describing something that is not there")
-
-    def test_the_cost_of_the_gap_is_known_and_is_not_zero(self):
-        """How much material the two files would add, measured not guessed.
-
-        `failure-pack.jsonl` is entirely duplicates -- every one of its 48 is
-        already counted elsewhere -- so the whole cost sits in the other file.
-        A gap worth deferring is one somebody has priced; this is the price.
-        """
-        rm = self.census.readable_material
-        population = set()
-        for path, read in self.census.readers():
-            population |= set(read(path))
-        unseen = {name: values - population
-                  for name, values in rm.speechlab_nested_speech().items()}
+        self.maxDiff = None
+        stray = rm.nested_speech_unaccounted_for()
         self.assertEqual(
-            {name: len(values) for name, values in unseen.items()},
-            {"Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl": 0,
-             "Tools/SpeechLab/phase2/data/blueprints.jsonl": 17})
+            stray, {},
+            "a SpeechLab file carries material under a name this project "
+            "has committed to meaning 'an utterance', nothing else in the "
+            "tree has counted it, and it is neither somebody else's turn nor "
+            "a span of its own row -- so the census is reporting a "
+            "population that is missing it: "
+            + "; ".join(f"{name} {sorted(keys)}" for name, keys in
+                        sorted(stray.items())))
+
+    def test_each_reason_is_carrying_rows_in_the_real_tree(self):
+        """A reason nothing reaches is a branch nobody has tested.
+
+        Counts, not a rate, and no exact total: a raw total makes a bad pin
+        and this one moves whenever SpeechLab gains a file. What must hold is
+        that all three reasons are load-bearing on the real data, so none of
+        them is a plausible-looking branch that has never run.
+
+        Says nothing about strings with no reason: that is the sweep's job,
+        and this test sorting a `None` in with the three would raise a
+        TypeError instead of failing, which loses the diagnosis exactly when
+        there is one to lose.
+        """
+        rm = self.census.readable_material
+        seen = collections.Counter(
+            reason for _n, _k, _v, reason in rm.nested_declared_strings()
+            if reason is not None)
+        self.assertEqual(sorted(seen), sorted(
+            [rm.ALREADY_READ, rm.CONVERSATION, rm.SPAN]),
+            f"the reasons in use are no longer the three declared: {seen}")
+        for reason in (rm.ALREADY_READ, rm.CONVERSATION, rm.SPAN):
+            self.assertGreater(seen[reason], 0, f"nothing reaches {reason}")
+
+    def test_a_corpus_under_an_undeclared_nested_key_is_not_accounted_for(self):
+        """The guard fires. Pinned on a tree this test builds.
+
+        The case worth being stopped by: a corpus arrives under
+        `dialogue[].text`, which is not a declared container, carries no
+        offsets, and says something nothing else in the tree has said. The
+        reader cannot see it, the rename refusal cannot see it, and without
+        this the population quietly stops including it.
+        """
+        rm = self.census.readable_material
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "arrived.jsonl"
+            path.write_text(json.dumps(
+                {"id": "x1",
+                 "dialogue": [{"text": "so I need to call the plumber back"}]})
+                + "\n")
+            stray = rm.nested_speech_unaccounted_for(
+                files=[path], known=frozenset())
+        self.assertEqual(
+            {name: {key: sorted(v) for key, v in keys.items()}
+             for name, keys in stray.items()},
+            {str(rm.shown(path)): {
+                "dialogue[].text": ["so I need to call the plumber back"]}})
+
+    def test_a_declared_container_excuses_the_same_corpus(self):
+        """The other direction, or a guard that refuses everything passes.
+
+        Same record, same string, one word of the key different. Without this
+        pair, `nested_declared_strings` could return None for every nested
+        string and the test above would still be green.
+        """
+        rm = self.census.readable_material
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "arrived.jsonl"
+            path.write_text(json.dumps(
+                {"id": "x1",
+                 "prior_turns": [{"text": "so I need to call the plumber"}]})
+                + "\n")
+            found = list(rm.nested_declared_strings(
+                files=[path], known=frozenset()))
+        self.assertEqual([reason for _n, _k, _v, reason in found],
+                         [rm.CONVERSATION])
+
+    def test_markup_that_has_drifted_from_its_row_is_not_a_span(self):
+        """Offsets are verified, never taken as a signal that they exist.
+
+        The weaker guard -- does this holder carry `start_index` -- would wave
+        through markup that has come loose from the text it annotates, and
+        loose markup is the one case where a string under `text` really might
+        be something nobody in that row said. So the offsets must cut the
+        value out of the record's own utterance character for character.
+
+        Both directions on one record: the segment whose offsets reconstruct
+        it is a span, and the segment whose offsets point somewhere else is
+        not accounted for at all.
+        """
+        rm = self.census.readable_material
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "spans.jsonl"
+            path.write_text(json.dumps({
+                "utterance": "remind me to call Dave on Thursday",
+                "annotation": {"segments": [
+                    {"text": "call Dave", "start_index": 13, "end_index": 22},
+                    {"text": "call Dave", "start_index": 0, "end_index": 9},
+                ]}}) + "\n")
+            found = [(key, value, reason) for _n, key, value, reason
+                     in rm.nested_declared_strings(
+                         files=[path], known=frozenset())]
+        self.assertEqual([reason for _k, _v, reason in found],
+                         [rm.SPAN, None],
+                         "the first segment's offsets cut 'call Dave' out of "
+                         "the utterance and the second's cut 'remind me' out "
+                         "of it, so exactly one of them is a span")
+
+    def test_a_declared_container_that_left_the_tree_is_reported(self):
+        """The half a declaration is never failed by.
+
+        `NOT_READ` has `speechlab_misdeclared` for this reason and the
+        container names need it for the same one: a name renamed out of the
+        data goes on excusing nothing forever, and the paragraph above it goes
+        on describing a tree that is not there.
+        """
+        rm = self.census.readable_material
+        self.assertEqual(rm.conversational_containers_missing(), [])
+        self.assertEqual(
+            rm.conversational_containers_missing(declared={"earlier_turns"}),
+            ["earlier_turns"])
 
     def test_the_reader_is_blind_below_the_top_level_and_says_so(self):
         """The property the two files above are an instance of.
@@ -1000,7 +1105,6 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
         guard that stays silent is indistinguishable from a file with nothing
         in it.
         """
-        import tempfile
         rm = self.census.readable_material
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "nested.jsonl"
@@ -1040,13 +1144,15 @@ class TheSpeechLabClassificationIsTotal(CensusCase):
             if path.resolve() == here or ".git" in path.parts:
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
-            for name in ("speechlab_unclassified", "speechlab_misdeclared"):
+            for name in ("speechlab_unclassified", "speechlab_misdeclared",
+                         "nested_speech_unaccounted_for",
+                         "conversational_containers_missing"):
                 if f"def {name}" in text:
                     checked += 1
                 for line in text.splitlines():
                     if f"{name}(" in line and f"def {name}(" not in line:
                         calls.append((path.name, line.strip()))
-        self.assertEqual(checked, 2, "the two guards are no longer defined "
+        self.assertEqual(checked, 4, "the four guards are no longer defined "
                                      "where this search expects them, so it "
                                      "is not searching what it thinks it is")
         narrowed = [c for c in calls if not c[1].endswith("()")
