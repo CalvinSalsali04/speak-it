@@ -29,6 +29,12 @@ See [ADJUDICATION-REPORT.md](ADJUDICATION-REPORT.md) for the current decision,
 [REVIEW-PROTOCOL.md](REVIEW-PROTOCOL.md) for adjudication, and
 [REPRODUCE.md](REPRODUCE.md) for exact commands.
 
+The subsequent repair work is under `repair/`. See
+[`repair/REPAIR-REPORT.md`](repair/REPAIR-REPORT.md) for the 695-case strict
+trust-closure result, [`repair/SCORING.md`](repair/SCORING.md) for role-specific
+scoring, and [`repair/CONTRACT-GAPS.md`](repair/CONTRACT-GAPS.md) for the five
+concepts deliberately left uncovered.
+
 ## Non-negotiable status
 
 The corpus is useful for development and targeted remediation. It is not an
@@ -43,3 +49,9 @@ accuracy benchmark yet because:
 
 Do not run the production parser against a future independent split before its
 semantics are frozen.
+
+The repair artifacts do not change that freeze decision. They establish a
+high-trust 695-case scoreable subset, but the exact existing gate suite is 12 of
+14 because the corpus is now below 800 and fewer than 300 weakly composed
+multi-phenomenon cases remain. The subset is therefore versioned and hashed but
+not frozen or sealed.

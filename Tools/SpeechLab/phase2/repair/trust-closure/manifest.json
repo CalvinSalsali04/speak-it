@@ -1,0 +1,27 @@
+{
+  "version": "speechlab-trust-closure-1",
+  "frozen": false,
+  "reason": "do not freeze or scale; failed gates or unresolved adjudication remain",
+  "starting_cases": 818,
+  "scoreable_cases": 695,
+  "excluded_cases": 123,
+  "roles": {
+    "safety": 406,
+    "development": 164,
+    "synthetic-stress": 99,
+    "public-derived": 26
+  },
+  "hashes": {
+    "semantic-families.jsonl": "4ebc6ec4bce2e0b9d4a8370d45e4b26b8693e4ad537094e01775eb3598dccad0",
+    "blueprints.jsonl": "475ed511a771fda1caa4c4e0f1285e16da90d68c0cd871979554c738eb5d2436",
+    "renderings.jsonl": "e16d5204f4c7bac409a1aa5b3de704e703e56ac8fc69566684523d6e950ddb95",
+    "cases.jsonl": "2517c14e9a2a31eadc01b8de604fc35013718d64d064c3c024730d15561a09a7",
+    "review-pack.jsonl": "adbe8162d6597e89402c077e77f1e5f32ba0d8065dddf51bad2747b6a7846814",
+    "exclusions.jsonl": "4aaf97ff42d28aca11723fda8033239f9e42cf674309de0ea3393d72f1794e5c",
+    "report.json": "0b86db0d5ebd9bb644192597b1f8fd7e158520246cb9a198eadb683bf18295f1"
+  },
+  "manifest_digest": "7fdf081066453aaf9d1c687711e342de6deb9ba372b06566c6056a57f25bc30f",
+  "production_parser_invoked": false,
+  "parser_results_included": false,
+  "sealed_content_included": false
+}

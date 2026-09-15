@@ -1,0 +1,344 @@
+{
+  "methodology": {
+    "starting_corpus_size": 818,
+    "problematic_cases": 134,
+    "production_parser_invoked": false,
+    "parser_output_read": false,
+    "sealed_failures_read": 0,
+    "root_cause_counts_are_multi_label": true
+  },
+  "supported_root_causes": [
+    "unnatural wording",
+    "broken grammar",
+    "benchmark-like language",
+    "transformation changed meaning",
+    "incorrect semantic contract",
+    "ambiguous semantic contract",
+    "invalid phenomenon composition",
+    "cancellation-scope ambiguity",
+    "negation-scope ambiguity",
+    "temporal contradiction",
+    "reference/pronoun ambiguity",
+    "bad shared context",
+    "bad ASR/noise mutation",
+    "taxonomy mismatch",
+    "public-derived mapping issue",
+    "entity/value mismatch",
+    "reviewer disagreement with legitimate ambiguity",
+    "reviewer disagreement caused by bad instructions",
+    "other"
+  ],
+  "supported_dispositions": {
+    "A": "keep unchanged",
+    "B": "repair rendering",
+    "C": "repair contract",
+    "D": "repair taxonomy/phenomenon metadata",
+    "E": "move to ambiguity/challenge",
+    "F": "remove",
+    "G": "defer because representation is insufficient"
+  },
+  "root_cause_distribution": {
+    "unnatural wording": 90,
+    "broken grammar": 21,
+    "benchmark-like language": 52,
+    "transformation changed meaning": 17,
+    "incorrect semantic contract": 11,
+    "ambiguous semantic contract": 9,
+    "invalid phenomenon composition": 24,
+    "cancellation-scope ambiguity": 1,
+    "negation-scope ambiguity": 1,
+    "temporal contradiction": 7,
+    "reference/pronoun ambiguity": 3,
+    "bad shared context": 4,
+    "bad ASR/noise mutation": 16,
+    "taxonomy mismatch": 0,
+    "public-derived mapping issue": 16,
+    "entity/value mismatch": 14,
+    "reviewer disagreement with legitimate ambiguity": 8,
+    "reviewer disagreement caused by bad instructions": 1,
+    "other": 2
+  },
+  "disposition_distribution": {
+    "A": 1,
+    "B": 111,
+    "C": 7,
+    "D": 0,
+    "E": 13,
+    "F": 0,
+    "G": 2
+  },
+  "safety_problematic_cases": 100,
+  "representative_examples": {
+    "transformation changed meaning": [
+      {
+        "case_id": "case-7f6be5608be2e206b2240779",
+        "utterance": "Save this idea for later: sort receipts by project rather than by date.",
+        "explanation": "The proposal changes “rather than by date” to “instead of month,” which is a material mismatch."
+      },
+      {
+        "case_id": "case-58edb0035294595df18e9154",
+        "utterance": "Just making a note that April Young mentioned that the parcel was left by the side entrance at Harbourfront Centre on December 6 at 15:05.",
+        "explanation": "“Left by the side entrance” does not entail “behind the side gate.”"
+      },
+      {
+        "case_id": "case-e6da41181f547673a5e04b83",
+        "utterance": "Two separate notes for me: the parcel was left by the side entrance. The other one is get a thank-you message out the day before the flight at 10:00.",
+        "explanation": "“Left by the side entrance” does not entail “behind the side gate.”"
+      }
+    ],
+    "entity/value mismatch": [
+      {
+        "case_id": "case-7f6be5608be2e206b2240779",
+        "utterance": "Save this idea for later: sort receipts by project rather than by date.",
+        "explanation": "The proposal changes “rather than by date” to “instead of month,” which is a material mismatch."
+      },
+      {
+        "case_id": "case-58edb0035294595df18e9154",
+        "utterance": "Just making a note that April Young mentioned that the parcel was left by the side entrance at Harbourfront Centre on December 6 at 15:05.",
+        "explanation": "“Left by the side entrance” does not entail “behind the side gate.”"
+      },
+      {
+        "case_id": "case-e6da41181f547673a5e04b83",
+        "utterance": "Two separate notes for me: the parcel was left by the side entrance. The other one is get a thank-you message out the day before the flight at 10:00.",
+        "explanation": "“Left by the side entrance” does not entail “behind the side gate.”"
+      }
+    ],
+    "temporal contradiction": [
+      {
+        "case_id": "case-1c755b9e2667964b1c0a3862",
+        "utterance": "Uh, remind me to put more money on the transit card the morning after the exam at 21:00.",
+        "explanation": "“The morning after the exam at 21:00” is internally inconsistent about time of day."
+      },
+      {
+        "case_id": "case-abff9023022199585b4e1a29",
+        "utterance": "Can you keep track of this for me: take the soup out for tonight when I am at the rental counter on the last day of the month?",
+        "explanation": "The utterance combines “tonight” with the last day of the month; the proposal drops that conflict instead of preserving or reviewing it."
+      },
+      {
+        "case_id": "case-0c4a73ebd9c01c18ee521a18",
+        "utterance": "Save this idea for later: turn the spare fabric into gift wrapping—an idea Elena García suggested tomorrow at 19:25.",
+        "explanation": "Past-tense “suggested” is combined with tomorrow, creating a temporal contradiction that the act policy does not preserve."
+      }
+    ],
+    "invalid phenomenon composition": [
+      {
+        "case_id": "case-1c755b9e2667964b1c0a3862",
+        "utterance": "Uh, remind me to put more money on the transit card the morning after the exam at 21:00.",
+        "explanation": "“The morning after the exam at 21:00” is internally inconsistent about time of day."
+      },
+      {
+        "case_id": "case-abff9023022199585b4e1a29",
+        "utterance": "Can you keep track of this for me: take the soup out for tonight when I am at the rental counter on the last day of the month?",
+        "explanation": "The utterance combines “tonight” with the last day of the month; the proposal drops that conflict instead of preserving or reviewing it."
+      },
+      {
+        "case_id": "case-0c4a73ebd9c01c18ee521a18",
+        "utterance": "Save this idea for later: turn the spare fabric into gift wrapping—an idea Elena García suggested tomorrow at 19:25.",
+        "explanation": "Past-tense “suggested” is combined with tomorrow, creating a temporal contradiction that the act policy does not preserve."
+      }
+    ],
+    "unnatural wording": [
+      {
+        "case_id": "case-34bb7d3db79be16d8aa05d33",
+        "utterance": "Before I forget, forward the receipt from the fundraiser starting the last day of the month at 15:05, every school day.",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-28a76fe974becc61833be9ae",
+        "utterance": "Can you hang onto this detail: it is not true that the dog is allergic to chicken treats on January 12 at 13:10?",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-abff9023022199585b4e1a29",
+        "utterance": "Can you keep track of this for me: take the soup out for tonight when I am at the rental counter on the last day of the month?",
+        "explanation": "The utterance combines “tonight” with the last day of the month; the proposal drops that conflict instead of preserving or reviewing it."
+      }
+    ],
+    "benchmark-like language": [
+      {
+        "case_id": "case-ab750946f45bc11bd6068433",
+        "utterance": "Two separate notes for me: book a visit with the vet with Hassan Ali when I am at the climbing gym three weeks from today at 11:45. The other one is double-check that the dinner booking is set with Hassan Ali when I am at the daycare on Ossington three weeks from today at 11:45.",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-e6e16f01ac549d6e6c089b37",
+        "utterance": "I need to move some money into the savings account with Wanjiku Njoroge when I am at Union Station starting the second week of November at 20:10, every day—can you hang onto that?",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-7116fb7343a90b1727e4dcf1",
+        "utterance": "Before I forget, book a room for the meeting when I am at Union Station on December 6; also, move some money into the savings account with Daniel Kim when I am at Union Station two days from now.",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      }
+    ],
+    "reference/pronoun ambiguity": [
+      {
+        "case_id": "case-55e360569d058267c6374751",
+        "utterance": "Please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "Neither the utterance nor its supplied context identifies a museum-membership fact; the proposed content is unsupported. | The utterance and supplied prior turns do not identify the museum-membership proposition asserted by the proposal."
+      },
+      {
+        "case_id": "case-f455dac339c1d4353593e627",
+        "utterance": "Before I head out for errands: please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "The context names two possible speakers but never supplies the proposed radiator proposition. | The utterance intentionally preserves an unresolved person and referent; the proposal invents radiator content."
+      },
+      {
+        "case_id": "case-65ae5d91892c246bd2bf8b6a",
+        "utterance": "While I am sorting out the trip: please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "The context does not contain the proposed school-pickup proposition. | The utterance intentionally preserves an unresolved person and referent; the proposal invents school-pickup content."
+      }
+    ],
+    "bad shared context": [
+      {
+        "case_id": "case-55e360569d058267c6374751",
+        "utterance": "Please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "Neither the utterance nor its supplied context identifies a museum-membership fact; the proposed content is unsupported. | The utterance and supplied prior turns do not identify the museum-membership proposition asserted by the proposal."
+      },
+      {
+        "case_id": "case-f455dac339c1d4353593e627",
+        "utterance": "Before I head out for errands: please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "The context names two possible speakers but never supplies the proposed radiator proposition. | The utterance intentionally preserves an unresolved person and referent; the proposal invents radiator content."
+      },
+      {
+        "case_id": "case-65ae5d91892c246bd2bf8b6a",
+        "utterance": "While I am sorting out the trip: please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "The context does not contain the proposed school-pickup proposition. | The utterance intentionally preserves an unresolved person and referent; the proposal invents school-pickup content."
+      }
+    ],
+    "incorrect semantic contract": [
+      {
+        "case_id": "case-55e360569d058267c6374751",
+        "utterance": "Please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "Neither the utterance nor its supplied context identifies a museum-membership fact; the proposed content is unsupported. | The utterance and supplied prior turns do not identify the museum-membership proposition asserted by the proposal."
+      },
+      {
+        "case_id": "case-e7041f278fa1b89a944c7e10",
+        "utterance": "Can you keep track of this for me: put the p…",
+        "explanation": "The partial recognition does not support inferring an upload of a portfolio draft."
+      },
+      {
+        "case_id": "case-f455dac339c1d4353593e627",
+        "utterance": "Before I head out for errands: please save what they said about that, but flag it because the reference is unclear.",
+        "explanation": "The context names two possible speakers but never supplies the proposed radiator proposition. | The utterance intentionally preserves an unresolved person and referent; the proposal invents radiator content."
+      }
+    ],
+    "bad ASR/noise mutation": [
+      {
+        "case_id": "case-dbeec01900af09ee8699edba",
+        "utterance": "Keep [inaudible] of the volunteer intro session for me.",
+        "explanation": "The event is identifiable, but the inaudible verb leaves some uncertainty about the exact requested action."
+      },
+      {
+        "case_id": "case-e8382e71eefaf320e5cff828",
+        "utterance": "Just so I remember, I noted this: Mina mentioned that I sent the rental deposit by bank transfer.",
+        "explanation": "The utterance attributes the statement to Mina, but the proposed contract attributes it to Sofia Ionescu."
+      },
+      {
+        "case_id": "case-e7041f278fa1b89a944c7e10",
+        "utterance": "Can you keep track of this for me: put the p…",
+        "explanation": "The partial recognition does not support inferring an upload of a portfolio draft."
+      }
+    ],
+    "ambiguous semantic contract": [
+      {
+        "case_id": "case-dbeec01900af09ee8699edba",
+        "utterance": "Keep [inaudible] of the volunteer intro session for me.",
+        "explanation": "The event is identifiable, but the inaudible verb leaves some uncertainty about the exact requested action."
+      },
+      {
+        "case_id": "case-f6cc7f7abfc5cc78bcbc005d",
+        "utterance": "An idea I want to keep: maybe do the weekly check-in while walking on November 1, 2026 at 01:30. That is in America/Toronto during the clock change.",
+        "explanation": "01:30 occurs twice during the stated America/Toronto fall-back; the proposal acts without preserving the unresolved offset. | 01:30 occurs twice during the stated Toronto clock change; the utterance does not choose a fold and the act policy loses that ambiguity."
+      },
+      {
+        "case_id": "case-099dc2c219ee636b03dcfc7e",
+        "utterance": "Just so I remember, I noted this last Friday: pick up bread flower.",
+        "explanation": "The likely homophone is bread flour, but the utterance could be preserving a past note rather than creating a current task."
+      }
+    ],
+    "reviewer disagreement with legitimate ambiguity": [
+      {
+        "case_id": "case-f6cc7f7abfc5cc78bcbc005d",
+        "utterance": "An idea I want to keep: maybe do the weekly check-in while walking on November 1, 2026 at 01:30. That is in America/Toronto during the clock change.",
+        "explanation": "01:30 occurs twice during the stated America/Toronto fall-back; the proposal acts without preserving the unresolved offset. | 01:30 occurs twice during the stated Toronto clock change; the utterance does not choose a fold and the act policy loses that ambiguity."
+      },
+      {
+        "case_id": "case-099dc2c219ee636b03dcfc7e",
+        "utterance": "Just so I remember, I noted this last Friday: pick up bread flower.",
+        "explanation": "The likely homophone is bread flour, but the utterance could be preserving a past note rather than creating a current task."
+      },
+      {
+        "case_id": "case-529d4526bb942a551b963b58",
+        "utterance": "Their exact words were, “Save this idea for later: make a checklist out of the interview notes—an idea Priya Nair suggested this Sunday.”",
+        "explanation": "Quotation makes use-versus-mention unclear; executing the embedded command is not certain."
+      }
+    ],
+    "broken grammar": [
+      {
+        "case_id": "case-0c07d00c68c4139eb917b33f",
+        "utterance": "I need to swap out the bulb in the kitchen starting October 3 at 14:30? twice a week—can you hang onto that?",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-9bfdeb2d56442607fc04ab06",
+        "utterance": "Before I forget, I am supposed to be at the volunteer intro session when I am at the coworking space.",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      },
+      {
+        "case_id": "case-81f12ecc6c326554e67a6466",
+        "utterance": "Could you hang onto both of these—take the the soup out for tonight with Imani Brooks when I am at North York General on October 3 at 19:25, plus book a visit with the vet with Imani Brooks when I am at Billy Bishop Airport on October 3 at 19:25?",
+        "explanation": "Independent reviewers assigned a conservative naturalness score of 2/5."
+      }
+    ],
+    "reviewer disagreement caused by bad instructions": [
+      {
+        "case_id": "case-1d491885557d06d2f46ae4ff",
+        "utterance": "Just so I remember, I noted this the previous weekend at 22:30: Noah Williams mentioned that it is the blue key that works for the locker at the Junction post office. Use the time in Europe/London.",
+        "explanation": "The proposed contract omits the explicit Europe/London timezone."
+      }
+    ],
+    "negation-scope ambiguity": [
+      {
+        "case_id": "case-3515b3ffc6adb07b08740895",
+        "utterance": "I want to send an email to my sister, no boss.",
+        "explanation": "“No boss” probably repairs “my sister” to “my boss,” but the missing pause/comma permits a negated-boss reading."
+      }
+    ],
+    "public-derived mapping issue": [
+      {
+        "case_id": "case-3515b3ffc6adb07b08740895",
+        "utterance": "I want to send an email to my sister, no boss.",
+        "explanation": "“No boss” probably repairs “my sister” to “my boss,” but the missing pause/comma permits a negated-boss reading."
+      },
+      {
+        "case_id": "case-bb73192576a7d82f8fbbd96c",
+        "utterance": "Make Wes a, restart, send a thank you card by message to Wes.",
+        "explanation": "The recipient is clear, but “thank-you card by message” leaves the requested medium or artifact unclear."
+      },
+      {
+        "case_id": "case-20aa2d011a5bf71f6de53e8d",
+        "utterance": "wake me up at five am this week",
+        "explanation": "This is an alarm request, not a Memory note, and “this week” leaves the day or recurrence unresolved. | The alarm’s day and recurrence are unresolved; preserving uncertainty is reasonable, but Memory routing may not satisfy the alarm request."
+      }
+    ],
+    "cancellation-scope ambiguity": [
+      {
+        "case_id": "case-f2ac18aaf73ae694b283c575",
+        "utterance": "cancel dinner tonight",
+        "explanation": "The stored title matches exactly, but ordinary speech can also mean cancel the dinner itself; operational scope remains uncertain."
+      }
+    ],
+    "other": [
+      {
+        "case_id": "case-cda5032cf127eafe3e2eed53",
+        "utterance": "What times are available?",
+        "explanation": "This is an actionable availability question in the active booking flow, not a memory note."
+      },
+      {
+        "case_id": "case-c4ece8a922849a44c8cd946a",
+        "utterance": "Yes please.",
+        "explanation": "This is an action confirmation in the booking flow, not an uncertain memory item. | The assent clearly authorizes account use in the current booking; it is not an uncertain memory."
+      }
+    ]
+  }
+}

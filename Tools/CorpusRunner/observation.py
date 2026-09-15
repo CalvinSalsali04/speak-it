@@ -11,12 +11,13 @@ proposals by hand and is the one nothing checks:
 
 Both failures happened on 2026-09-14, hours apart, on different material:
 
-  * `plus` appears in 44 readable utterances across 5 sources. 41 of them
+  * `plus` appears in 48 readable utterances across 8 sources. 41 of them
     appear in each of four files the census's own containment check reports
-    as views of one population, and twelve stems carry all 44 rows with one
-    frame taking two thirds. Read off the census table, `plus 44 0.8%` is an
-    attested form with five sources behind it. It is one blueprint.
-  * `wait` appears in 53 over 15 sources, and a third of them are one frame,
+    as views of one population, and repair views add further occurrences;
+    twelve stems carry all 48 rows with one frame taking 65%. Read off the
+    census table, `plus 48 0.9%` is an attested form with eight sources behind
+    it. It is one blueprint.
+  * `wait` appears in 53 over 18 sources, and a third of them are one frame,
     `I was going to ask— wait, ...`. A detector keyed on the phrase would
     fire on captures that are one sentence with the nouns changed.
 
@@ -381,7 +382,7 @@ def readable_pairs():
     the tool to check a figure from it got the wrong answer with no error.
 
     **The source key is the repository-relative path, not the basename.**
-    Two of the twenty sources are both called `renderings.jsonl`, under
+    Two of the twenty-five sources are both called `renderings.jsonl`, under
     different SpeechLab directories, so keying on the name silently merged
     them: nineteen sources reported for twenty, and any form appearing in
     only those two would report `sources == 1` and be marked CONCENTRATED by
