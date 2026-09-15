@@ -91,8 +91,9 @@ NOT_SPEECH = frozenset({
 #: said otherwise, because the audit behind it read top-level string values
 #: and `utterance_field` reads top-level keys -- the same blind spot twice,
 #: which is why nothing contradicted it. Caught in review. What each file
-#: holds is written beside it now, and the two exceptions are named again in
-#: `SPEECH_UNDER_A_NESTED_KEY` below, where a test recomputes them.
+#: holds is written beside it now, and every nested occurrence in the tree,
+#: in these ten files and in the twelve that are read, is accounted for by
+#: `nested_declared_strings` below.
 #:
 #: The list earns its place anyway, and for the reason it was written: the
 #: pattern in `LOOKS_LIKE_SPEECH` is a name-shaped net, so a corpus arriving
@@ -132,35 +133,69 @@ NOT_READ = {
     # HOLDS SPEECH, under `representatives[].text` and
     # `counterexamples[].text` -- 48 distinct, and every one of them is
     # already counted through another source, so reading it would add
-    # nothing to the population. See SPEECH_UNDER_A_NESTED_KEY.
+    # nothing to the population. `nested_declared_strings` recomputes that.
     "Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl",
     # HOLDS SPEECH, under `capture_context.prior_turns[].text` -- 26
-    # distinct, 17 of them counted nowhere else. Prior turns are the
-    # conversation a blueprint sets up around the capture rather than the
-    # capture, but that is a judgement and not the reason this file is
-    # unread: it is unread because the reader looks at top-level keys.
-    # See SPEECH_UNDER_A_NESTED_KEY.
+    # distinct, 17 of them counted nowhere else, and the same 17 turns sit
+    # under `prior_turns` in four phase2 files this walk does read. Prior
+    # turns are the conversation a blueprint sets up around the capture
+    # rather than the capture, but that is a judgement and not the reason
+    # this file is unread: it is unread because the reader looks at
+    # top-level keys. See CONVERSATIONAL_CONTEXT.
     "Tools/SpeechLab/phase2/data/blueprints.jsonl",
 }
 
-#: The two above that do hold speech, named so the gap is a measured figure
-#: rather than a sentence. `speechlab_nested_speech()` recomputes this set
-#: from the files, so it moves when the data does and when the reader does.
+#: Container names whose contents are somebody else's turn in a conversation
+#: the capture sits inside, rather than the capture. A blueprint sets up what
+#: was said before the user spoke; those turns are material the project wrote
+#: to give a capture a context, and counting them as captures would inflate
+#: the population with the project's own stage directions.
 #:
-#: Both carry strings under a key that IS in `UTTERANCE_FIELDS` -- `text` --
-#: and are dropped only because it sits under a list or a dict.
-#: `utterance_field` reads `record.get(field)` and `record.items()`, both top
-#: level, so a nested corpus is invisible to the reader AND to the
-#: renamed-column refusal that exists to catch a corpus going missing. That is
-#: this module's gap, not a property of these two files, and it wants the
-#: reader taught to descend rather than a longer list here. Costed before
-#: being deferred: reading declared field names at any depth would add **17
-#: distinct utterances**, all from `phase2/data/blueprints.jsonl`, since
-#: `failure-pack.jsonl` is entirely duplicates of material already counted.
-SPEECH_UNDER_A_NESTED_KEY = {
-    "Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl",
-    "Tools/SpeechLab/phase2/data/blueprints.jsonl",
-}
+#: **This is a statement about the key, not about the file.** Four of the five
+#: files carrying these turns are read, and read correctly, for the utterance
+#: at their top level. A reader that descends and declines a named container
+#: is still one rule, applied at every depth.
+#:
+#: **Matched as the string's immediate parent, never anywhere above it.** The
+#: first version asked whether any segment of the key was a declared container,
+#: which excuses a string at any depth below a turn -- so a corpus arriving at
+#: `context.prior_turns[].nested_corpus[].text` is invisible to a sweep whose
+#: whole claim is that it is total. That is a marker standing in for the
+#: judgement it approximates, this codebase's recurring defect, arriving in the
+#: one place the accounting is supposed to admit nothing. The narrower form
+#: costs nothing: every live instance is `container.prior_turns[].text`, the
+#: counts are identical either way, and the wider form bought only the hole.
+#: Found by the core language thread grading this, by injecting that key into a
+#: real file and watching the suite pass.
+#:
+#: Declared rather than derived, and the honesty is in the two directions it
+#: is held: `nested_declared_strings` gives a string under one of these names
+#: the reason CONVERSATION and gives a string under any other nested name no
+#: reason at all, so an undeclared container carrying material nothing else
+#: has counted fails the run; and `conversational_containers_missing` fails on
+#: a name here that no longer appears anywhere in the tree, so this cannot
+#: quietly become somewhere to put an inconvenient key. That is the bargain
+#: `NOT_READ` and `speechlab_misdeclared` already make one level up.
+CONVERSATIONAL_CONTEXT = frozenset({"prior_turns", "previous_turns"})
+
+#: The sibling keys that make a string a span of its own row rather than a
+#: separate utterance. These are markup offsets and the strings they cut out
+#: are not sentences: the nine live ones include `'7 pm'` and `'8'`, so
+#: descending would not merely add non-captures to the published population,
+#: it would add **tokens**.
+#:
+#: Named, but never trusted: a holder carrying these is
+#: only a span if the offsets actually cut the value out of the record's own
+#: utterance, so markup that has drifted from the text it annotates reads as
+#: unaccounted for and stops the run rather than being waved through.
+SPAN_OFFSETS = ("start_index", "end_index")
+
+#: Why a nested string is not a new utterance. Assigned in this order, so a
+#: string gets the strongest reason available to it: what it is beats where
+#: it sits, and both beat the bare fact that counting it would change nothing.
+CONVERSATION = "inside a named conversational-context container"
+SPAN = "a span of its own row's utterance, by its own offsets"
+ALREADY_READ = "already read from this tree under another key"
 
 
 #: Swift string literals, and the reason this is not a one-line regex.
@@ -311,14 +346,18 @@ def utterance_field(path):
     so a corpus whose utterances are nested reads here as holding none -- and
     the rename refusal above, which exists precisely to stop a corpus going
     missing, is blind in the same place and so agrees. Two files in this tree
-    are in that position today, `speechlab_nested_speech` measures them, and
-    `SPEECH_UNDER_A_NESTED_KEY` names them.
+    are in that position today; `nested_declared_strings` accounts for every
+    nested occurrence in the tree, in those two and in the files that are
+    read, and says why each one is not a new utterance.
 
-    Stated rather than fixed, deliberately: teaching this to descend changes
-    which files are corpora and moves the published population, so it is its
-    own change with its own measurement. What is not acceptable is the limit
-    being undocumented, which is how a declaration of "holds no speech" came
-    to be written about a file that holds twenty-six strings of it.
+    Stated rather than fixed, and the measurement is now the reason rather
+    than the deferral. Teaching this to descend would add 25 strings to the
+    population and not one utterance: 17 are prior turns, and 8 are annotation
+    spans cut out of their own row's text. So the limit stays, and the guard
+    that matters is the one watching for a nested string that is neither.
+    What is not acceptable is the limit being undocumented, which is how a
+    declaration of "holds no speech" came to be written about a file that
+    holds twenty-six strings of it.
     """
     keys = set()
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -511,53 +550,164 @@ def speechlab_unclassified(files=None, declared=None):
                   and str(path.relative_to(ROOT)) not in declared)
 
 
-def _strings(value, path=""):
-    """Every `(dotted key, string)` in a decoded JSON record, at any depth.
+def _strings(value, path="", holder=None):
+    """Every `(dotted key, string, holder)` in a decoded JSON record, at depth.
 
     A list contributes `[]` to the key rather than an index, so the twenty-six
     strings under `capture_context.prior_turns[].text` report as one key.
+
+    `holder` is the dict the string is a value of, which is what lets a
+    caller ask the string's own siblings about it -- the offsets beside an
+    annotation span, say. A list does not become a holder: its elements keep
+    the dict above them, so a string in a list of strings is still held by the
+    record that named the list.
     """
     if isinstance(value, dict):
         for key, inner in value.items():
-            yield from _strings(inner, f"{path}.{key}" if path else key)
+            yield from _strings(inner, f"{path}.{key}" if path else key, value)
     elif isinstance(value, list):
         for inner in value:
-            yield from _strings(inner, f"{path}[]")
+            yield from _strings(inner, f"{path}[]", holder)
     elif isinstance(value, str) and value:
-        yield path, value
+        yield path, value, holder
 
 
-def speechlab_nested_speech(files=None):
-    """Unread files that carry a declared utterance field below the top level.
+def _container_names(key):
+    """The key's segments with any `[]` removed, for matching a container."""
+    return [part.replace("[]", "") for part in key.split(".")]
 
-    `utterance_field` reads `record.get(field)` and `record.items()`, so it
-    sees the top level and nothing under it. A corpus whose utterances sit in
-    a list or a dict therefore reads as holding none -- and so does the
-    `LOOKS_LIKE_SPEECH` refusal that exists to catch a corpus going missing,
-    which is the half that makes this worth measuring rather than noting. Two
-    guards agreeing is not two guards when both are blind the same way.
 
-    This descends, and looks only for the field names already declared in
-    `UTTERANCE_FIELDS`, because a name the project has committed to meaning
-    "an utterance" is not a judgement call at depth either. It returns
-    `{relative path: distinct strings}`, so a test can compare the set of
-    files against `SPEECH_UNDER_A_NESTED_KEY` and see the gap change.
+def _is_a_span_of(holder, value, owner):
+    """Whether `value`'s own offsets cut it out of `owner`, exactly.
+
+    The verification is the point. Asking only whether a holder carries
+    offsets would let markup that has drifted from the text it annotates
+    through, and drifted markup is the case where a string under `text` really
+    might be something nobody said. So the offsets must reconstruct the value
+    from the record's own utterance, character for character, or this is
+    False and the string goes to the caller unaccounted for.
+    """
+    start, end = (holder or {}).get(SPAN_OFFSETS[0]), (holder or {}).get(
+        SPAN_OFFSETS[1])
+    return (isinstance(owner, str) and isinstance(start, int)
+            and isinstance(end, int) and owner[start:end] == value)
+
+
+def nested_declared_strings(files=None, known=None):
+    """Every nested occurrence of a declared utterance field, with its reason.
+
+    Yields `(relative path, dotted key, string, reason)`, where `reason` is
+    `CONVERSATION`, `SPAN`, `ALREADY_READ`, or **None** for a string this
+    module cannot account for. None is the whole point of the function.
+
+    `utterance_field` reads `record.get(field)` and `record.items()`, so the
+    reader sees the top level and nothing under it, and so does the
+    `LOOKS_LIKE_SPEECH` refusal that exists to catch a corpus going missing.
+    Two guards agreeing is not two guards when both are blind the same way.
+    What closes that is not a list of the files it happens to affect -- such a
+    list can only name files `utterance_field` returns None for, so it is
+    blind by construction to a nested key inside a file that has a top-level
+    utterance column, which is where 8 of the 25 turned out to be. What closes
+    it is making the accounting **total**, the way `corpus_paths.unclassified`
+    made the `*.tsv` classification total after two scans got their file lists
+    wrong in opposite directions.
+
+    So this descends through every SpeechLab file, read and unread alike, and
+    every string it finds under a name from `UTTERANCE_FIELDS` below the top
+    level must have a reason it is not new speech. A string with none is a
+    corpus that has arrived under a nested key, which is the thing worth being
+    stopped by.
+
+    **Total over strings, not over container names.** An undeclared container
+    whose strings are all already read gets `ALREADY_READ` and passes. That is
+    correct rather than a hole: reading it would move no figure. The guard
+    fires on material, not on shape.
+
+    **`ALREADY_READ` is set membership, not provenance.** A string gets it
+    when an identical string is read somewhere in this tree, which is the right
+    test for "would counting this move a figure" and is not what the label
+    sounds like: a genuinely new nested utterance that happens to duplicate an
+    existing one is absorbed by it and never reaches the residual. Correct for
+    protecting a population, and worth knowing before anybody reads the 481 as
+    a claim about where those strings came from.
+
+    **`SPAN` is unreachable in the ten files with no top-level utterance
+    column.** `owner` is None there, so `_is_a_span_of` cannot return True and
+    a span in such a file lands as unaccounted for. That is the right direction
+    to fail in -- a span with no row to cut it out of is not something this
+    module should wave through -- but reading `_is_a_span_of` alone suggests
+    spans are recognised everywhere, and they are recognised only where there
+    is an utterance to reconstruct them from.
+
+    `known` is the population to count a string as already read against, and
+    defaults to everything `readers()` reads. It is a parameter because
+    computing it here would make this circular -- `readers()` is what produces
+    it -- which is also why this is a test rather than a refusal inside
+    `readers()`: every consumer would pay for a second full read of the tree.
     """
     files = speechlab_files() if files is None else files
-    out = {}
+    if known is None:
+        known = frozenset().union(*source_texts().values())
     for path in files:
-        if utterance_field(path) is not None:
-            continue
-        found = set()
+        top = utterance_field(path)
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            for key, value in _strings(json.loads(line)):
-                if key.split(".")[-1].replace("[]", "") in UTTERANCE_FIELDS:
-                    found.add(value)
-        if found:
-            out[str(path.relative_to(ROOT))] = found
+            record = json.loads(line)
+            owner = record.get(top) if top else None
+            for key, value, holder in _strings(record):
+                leaf = key.split(".")[-1].replace("[]", "")
+                if leaf not in UTTERANCE_FIELDS or "." not in key:
+                    continue
+                names = _container_names(key)
+                if names[-2] in CONVERSATIONAL_CONTEXT:
+                    reason = CONVERSATION
+                elif _is_a_span_of(holder, value, owner):
+                    reason = SPAN
+                elif value in known:
+                    reason = ALREADY_READ
+                else:
+                    reason = None
+                yield str(shown(path)), key, value, reason
+
+
+def nested_speech_unaccounted_for(files=None, known=None):
+    """The nested strings with no reason: `{relative path: {key: strings}}`.
+
+    Empty is the passing state, and a non-empty result is not a stylistic
+    complaint. It says a file in this tree carries material under a name this
+    project has committed to meaning "an utterance", nothing else in the tree
+    has counted it, and it is neither somebody else's turn nor a span of the
+    row it sits in -- so the census is reporting a population that is missing
+    it, in the same calm voice it reports a correct one.
+    """
+    out = {}
+    for name, key, value, reason in nested_declared_strings(files, known):
+        if reason is None:
+            out.setdefault(name, {}).setdefault(key, set()).add(value)
     return out
+
+
+def conversational_containers_missing(files=None, declared=None):
+    """Declared container names that appear nowhere in the tree.
+
+    The half a declaration is never failed by, and the reason `NOT_READ` has
+    `speechlab_misdeclared` beside it. A name that has been renamed out of the
+    data goes on excusing nothing forever, and the comment above it goes on
+    describing a tree that no longer exists -- which is how a list stops being
+    checked at all. So a stale name is a failure, and the set stays as small
+    as the data makes it.
+    """
+    files = speechlab_files() if files is None else files
+    declared = CONVERSATIONAL_CONTEXT if declared is None else declared
+    seen = set()
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            for key, _value, _holder in _strings(json.loads(line)):
+                seen.update(_container_names(key))
+    return sorted(name for name in declared if name not in seen)
 
 
 def speechlab_misdeclared(files=None, declared=None):

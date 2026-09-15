@@ -14,6 +14,7 @@ the runner at the bottom; `test_connective_census.py` sweeps for that.
 import importlib.util
 import pathlib
 import sys
+import tempfile
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -512,6 +513,148 @@ class TheDocumentSaysHowToRegenerateIt(FiguresCase):
         self.assertTrue(quoted)
         for path in quoted:
             self.assertTrue((self.bf.ROOT / path).exists(), path)
+
+
+class APerFamilyScoreCannotOutliveItsPopulation(FiguresCase):
+    """A per-family row cites the population it was measured over, in brackets.
+
+    The generated block fixed the figures nothing recomputed. It does not
+    reach the per-family gap tables, which are dated run records and are
+    deliberately left alone -- rewriting a run record is the thing #83 argues
+    against. But a run record that reads as current is a stale figure whoever
+    wrote it, and `| restart (4) |` says four pairs while `rambling.tsv` now
+    holds six.
+
+    So the bracket is checked rather than the score. Which sets are twinned,
+    which families they carry and how many pairs each holds are all recomputed
+    from the `family` column, and a row is matched to its set by its label
+    being a twinned family name -- never by a line range, a file name or a
+    declared list, all three of which go stale the same way the figure did.
+    """
+
+    def setUp(self):
+        self.twinned = self.bf.twinned_families()
+
+    def test_the_sets_that_are_twinned_are_read_from_the_data(self):
+        """Without this the checks below could be looking at nothing.
+
+        `coherent-long` is the case that makes the derivation worth having: it
+        is eleven rows of `rambling.tsv` and it is NOT twinned, because it is
+        the guard family that must stay one row however long it gets. A
+        declared list of families would have to remember that; reading the
+        `family` column cannot forget it.
+        """
+        self.assertEqual(
+            sorted(self.twinned), ["Tools/CorpusRunner/devsets/rambling.tsv"])
+        families = self.twinned["Tools/CorpusRunner/devsets/rambling.tsv"]
+        self.assertNotIn("coherent-long", families,
+                         "the guard family has become twinned, or the "
+                         "derivation has started counting untwinned rows")
+        self.assertGreater(len(families), 4)
+
+    def test_an_unpaired_twin_refuses_rather_than_reporting_a_count(self):
+        """A half-count is not a small error in a gap measurement.
+
+        A gap between twins needs two twins. If a family gains a clean row
+        with no spoken one, every score across it is measuring something else,
+        and a count reported for it would read exactly like a sound one.
+        """
+        path = pathlib.Path(self.bf.ROOT, "Tools/CorpusRunner/devsets/rambling.tsv")
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = pathlib.Path(tmp) / "rambling.tsv"
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("restart-clean", text, "the fixture's anchor is stale")
+            copy.write_text(text + "RB99C\tan added clean row with no twin\t"
+                                   "restart-clean\tToday\t1\n")
+            with self.assertRaises(ValueError) as caught:
+                self.bf.twinned_families(paths=[copy])
+        self.assertIn("restart", str(caught.exception))
+        self.assertIn("not a twinned family any more", str(caught.exception))
+
+    def test_a_row_citing_the_wrong_population_is_reported(self):
+        """Both directions on a document this test writes.
+
+        A checker that reported everything, or nothing, would pass a
+        one-directional test. So: the same family, one row with the count the
+        data holds and one without.
+        """
+        twinned = {"x.tsv": {"restart": 6}}
+        good = "| restart (6) | 4/4 \u2192 4/4 |"
+        bad = "| restart (4) | 4/4 \u2192 4/4 |"
+        self.assertEqual(
+            self.bf.stale_family_rows(text=good, twinned=twinned), ([], []))
+        self.assertEqual(
+            self.bf.stale_family_rows(text=bad, twinned=twinned),
+            ([("restart", 4, 6)], []))
+
+    def test_a_twinned_family_with_no_row_at_all_is_reported(self):
+        """The half a bracket check would never fail on.
+
+        The table introduces itself as *the* per-family gaps. A family that
+        exists in the set and has no row is a completeness claim that has
+        stopped being true, and no amount of checking the rows that are there
+        can see it -- which is how `deliberation-open` came to be two pairs
+        that the table has never mentioned.
+        """
+        twinned = {"x.tsv": {"restart": 6, "deliberation-open": 2}}
+        mismatched, unrowed = self.bf.stale_family_rows(
+            text="| restart (6) | 4/4 |", twinned=twinned)
+        self.assertEqual(mismatched, [])
+        self.assertEqual(unrowed, [("deliberation-open", 2)])
+
+    def test_a_set_level_row_is_not_mistaken_for_a_family(self):
+        """`routed (116)` names a file, not a family, and is not this check's.
+
+        The population block already generates the set-level figures. A
+        checker that grabbed every `name (number)` row would report a
+        disagreement here the moment the two counted different things -- and
+        they do: 116 is `routed.tsv`'s row count and its distinct-utterance
+        count is 114.
+        """
+        twinned = {"x.tsv": {"restart": 6}}
+        self.assertEqual(
+            self.bf.stale_family_rows(
+                text="| routed (116) | destination | 74/84 |",
+                twinned=twinned),
+            ([], [("restart", 6)]))
+
+    @unittest.expectedFailure
+    def test_no_per_family_row_cites_a_population_the_set_no_longer_has(self):
+        """KNOWN STALE, and the decorator is the record of it.
+
+        `rambling.tsv` was 57 rows when the gap table was measured and is 85
+        now. Four things are out of date and none can be fixed from Linux,
+        because the scores themselves need a macOS run:
+
+            restart            cited 4 pairs, the set holds 6
+            decision           cited 4 pairs, the set holds 10
+            deliberation-open  2 pairs, no row
+            two-facts          2 pairs, no row
+
+        Marked expected rather than fixed by hand, and marked here rather than
+        as a sentence above the table, because a sentence recomputes nothing
+        and goes stale the next time somebody adds ten rows -- which is the
+        defect being recorded, one level up.
+
+        **The decorator cannot be left behind.** `unittest` reports a passing
+        expected-failure as an unexpected success and exits non-zero, so the
+        run that refreshes this table fails until somebody removes this line.
+        A marker that can only be too generous is the shape this codebase
+        keeps getting caught by; this one fails in both directions.
+        """
+        mismatched, unrowed = self.bf.stale_family_rows()
+        self.assertEqual((mismatched, unrowed), ([], []))
+
+    def test_the_known_staleness_is_exactly_what_is_recorded(self):
+        """The expected failure above says which rows and by how much.
+
+        Without this it says only "something is stale", and a fifth
+        discrepancy could arrive with the suite still green and the docstring
+        still naming four.
+        """
+        mismatched, unrowed = self.bf.stale_family_rows()
+        self.assertEqual(mismatched, [("decision", 4, 10), ("restart", 4, 6)])
+        self.assertEqual(unrowed, [("deliberation-open", 2), ("two-facts", 2)])
 
 
 if __name__ == "__main__":
