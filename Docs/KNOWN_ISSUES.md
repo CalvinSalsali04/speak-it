@@ -11,6 +11,22 @@
 > audited**, and at least one is believed to describe something already fixed.
 > Treat an unmarked entry as a claim to verify before ranking work from it, not
 > as a finding.
+>
+> *2026-09-15.* The animacy entry was sized as well as read, and it is **an
+> accepted decision, not open work** — see the table in it. What the sizing
+> turned up applies to the whole document: its corpus figure was wrong, and
+> disagreed with the same figure in the source it describes — 1,069 here, 1,022
+> there, 1,404 in fact. **A number typed into prose recomputes nowhere and says
+> nothing when it goes wrong.**
+>
+> The line-number citations were checked at the same time and are in better
+> shape than that. Of the sixteen `File.swift:N` citations here, none points
+> anywhere wrong, and one is off by a line: `ThoughtRepository.swift:206`, in
+> the cancellation entry, lands on the last line of the docstring for
+> `consumesFreeCapture`, declared on 207. They are the same kind of claim as
+> the figure and they drift the same silent way — the two `Actionability.swift`
+> citations in the animacy entry were correct until the commit that wrote this
+> paragraph grew a docstring above them, and nothing said so.
 
 ## A thought that stops and then keeps going is read as finished
 
@@ -525,11 +541,11 @@ the cost stays visible.
 Sarah" in Memory, correctly, and would file "the car has to go in Tuesday" there
 too, incorrectly. Separating an animate subject from an inanimate one needs
 either a lexicon or an embedding query, and the rule — a regex over a pronoun
-stoplist at `Actionability.swift:766` — does neither.
+stoplist at `Actionability.swift:779` — does neither.
 
 *Corrected 2026-09-11:* the previous wording said "deliberately does neither",
 which reads as though querying an embedding would be a departure for this
-codebase. It would not. `Actionability.swift:934` already loads
+codebase. It would not. `Actionability.swift:947` already loads
 `NLEmbedding.wordEmbedding(for: .english)` in this same file, and
 `PersonMentionResolver.readsAsOccupation` already decides the adjacent
 role-versus-person question that way, measured over 30 trade nouns and 36
@@ -540,9 +556,60 @@ see the paragraph below.
 
 It is the safer wrong: the words are kept and nothing is scheduled, where the
 opposite error puts a job the person never accepted on the list they work from.
-No utterance of that shape appears in the 1,069-case corpus, so the cost is
-currently hypothetical and the benefit is measured. If a real capture hits it,
-the fix is a new corpus family, not a widening of the rule.
+If a real capture hits it, the fix is a new corpus family, not a widening of the
+rule.
+
+*Sized 2026-09-15.* The claim under that decision — that nothing of the shape is
+attested — holds, and both figures it was written with were wrong. This entry
+said 1,069 cases and the rule's own docstring said 1,022, for a gating corpus
+then holding **1,404**. Neither number recomputed anywhere, which is the same defect
+[#82](https://github.com/CalvinSalsali04/speak-it/pull/82) fixed for the
+baseline's population section.
+
+Screening every readable utterance for the subject slot the rule reads:
+
+| population | of the shape | inanimate subject in an utterance position |
+| --- | --- | --- |
+| gating corpus, `corpusCase` utterance slot | 6 | 0 |
+| the seven development sets | 4 | 0 |
+| everything readable | 89 distinct, on 2026-09-15 | 0 |
+
+The row counts are deliberately not in that table. Between opening this change
+and merging it the readable population went from 10,139 rows to 11,106, twice,
+because other work landed on `main` — which is the argument of this entry
+happening to the entry itself. What is checked is the first row's subjects; the
+third row's 89 is dated for the same reason the denominators are gone, since
+nothing recomputes it either. The qualifier in the last column is load bearing:
+outside an utterance position the readable population is full of inanimate
+subjects, and they are the assertion messages described below.
+
+The gating corpus's six are *Mike* twice, *My brother*, *Priya*, *Dana*, and a
+bare *No* — the last being the screen reaching wider than the rule, off "No need
+to book the table", a row the corpus labels `count: 0, operation: [.cancel]`.
+The development sets add *Mike* three more times and *my brother*, in
+`routed.tsv` and `unfinished.tsv`.
+
+The 89 in the third row look alarming and are not. Six of them sit in the
+`corpusCase` utterance slot — the same six above. **Two more are development-set
+rows with human subjects** — "Mike needs to sign it" in `unfinished.tsv` and "my
+brother has to renew his passport" in `routed.tsv`; the other two development-set
+hits are strings that also sit in the gating slot, so they are inside the six
+rather than beside them. **Every one of the rest is an XCTest assertion
+message**: "A reschedule must never complete or remove the item", "The reminder
+must land on a Friday". The readable-material census reads Swift by harvesting
+literals, which is right for a leak check and counts reviewer prose as speech
+here; position is what separates them, so the check added with this entry reads
+the slot instead. Every inanimate subject in the readable population is one of
+those assertion messages.
+
+So the item is an accepted decision rather than an open defect, and it stays one
+until a capture of the shape exists. What changed is that the sentence carrying
+it now fails when it stops being true: `WhoTheCorpusSaysOwesSomething` in
+`Tools/CorpusRunner/test_parser_vocabulary.py` pins those subjects, recomputes
+them from the slot on every CI run, and fails when a new one appears. Animacy
+still cannot be decided mechanically here, so the check does not try — it hands
+a new subject to a person, which is the smallest thing that makes an
+unrecomputable claim fail out loud.
 
 ## Removal requests: one defect closed, one decision open
 
