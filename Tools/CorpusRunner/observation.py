@@ -286,6 +286,15 @@ STEM_PROBE = (
 #: `wait` -- the two findings this instrument exists to produce -- change
 #: between six and eight. A constant that moves a verdict is a decision and
 #: has to fail like one.
+#:
+#: **This pin is prophylactic, not a correction, and the difference is worth
+#: stating plainly.** `plus` reads CONCENTRATED at three, four, five and six
+#: words and only collapses at eight; `wait` at 42, 42, 36, 36 and then 6. So
+#: both published findings hold across every plausible width and fail only
+#: where the stem is long enough to be most of the utterance. The forms that
+#: flip at a plausible width -- `then` and `meaning` -- are ones no conclusion
+#: has been drawn about. A reader given only "a parameter nothing pinned was
+#: moving verdicts" would distrust the right things for the wrong reason.
 WIDE_ON_ONE_STEM = 8
 
 

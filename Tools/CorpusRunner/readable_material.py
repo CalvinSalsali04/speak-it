@@ -171,20 +171,36 @@ def swift_utterances(root):
     `.tsv` under `Tools/CorpusRunner`, and this reader opens only `.swift`
     under `SpeakItTests`, so the branch cannot fire. A guard that cannot fire
     is worse than none -- it reads as protection and a test for it would make
-    dead code look covered. The two facts that make it unnecessary are pinned
-    in `SealedPathsAreRefusedByName` instead, so if either stops holding the
-    suite says so and the guard comes back.
+    dead code look covered.
+
+    Both facts are pinned in `SealedPathsAreRefusedByName`, so the guard comes
+    back if either stops holding. **Both**, because the first version pinned
+    only that `sealed()` names `.tsv` files: widening this reader to
+    `(".swift", ".tsv")` passed the whole suite. A dead fallback and a dead
+    refusal are not the same risk -- a fallback that never fires does nothing,
+    a refusal that never fires reads a sealed path -- so a removal is worth
+    exactly what its pin is worth, and half a pin is worth nothing. Caught by
+    the evaluation thread asking which half had been written rather than
+    taking the removal on trust.
 
     Note what this reader can legitimately count: a sealed capture that has
     been copied into tuned material is readable in fact once it sits in a file
     anybody opens, and counting a form in it is honest. Finding those is
     `leak-check.py`'s job, not this one's.
 
-    Literal extraction comes from `leak-check.py`, which already owns what
-    counts as a string literal in this codebase -- its twelve-character floor,
-    its escape handling -- and is covered by its own suite. A second
-    implementation here is the defect `EveryCorpusReaderIsDeclared` exists
-    for, one language over.
+    Literal extraction is `swift_literals` above -- its twelve-character
+    floor, its escape handling -- and `everyday/leak-check.py` imports it from
+    here. A second implementation would be the defect
+    `EveryCorpusReaderIsDeclared` exists for, one language over.
+
+    Until this module existed that sentence read the other way round: the
+    literal scanner lived in `leak-check.py`, this was the borrower, and the
+    paragraph named it as the owner. The move reversed the direction and the
+    paragraph did not follow, so the file written to establish one owner
+    spent a commit naming the wrong one. Flagged in review rather than by any
+    check here, because nothing holds a docstring to the imports above it --
+    which is the same gap `TheMarkedListInTheBaselineIsRecomputed` closes for
+    a figure and nobody has closed for a provenance claim.
 
     Single-word literals are dropped. They are overwhelmingly identifiers,
     keys and accessibility labels rather than anything anybody said. That is a

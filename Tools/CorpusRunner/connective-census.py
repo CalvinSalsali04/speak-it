@@ -47,8 +47,6 @@ declared list of SpeechLab files, and the declared list is checked against
 seals by filename convention -- `sealed` in the name or path -- so that is
 refused too, and its real holdout lives outside the repository entirely.
 """
-import json
-import os
 import pathlib
 import re
 import sys
