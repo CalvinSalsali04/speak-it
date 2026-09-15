@@ -11,9 +11,15 @@ import Foundation
 // drifting apart would turn a comparison between two paths into a comparison
 // between two formats.
 
-var calendar = Calendar(identifier: .gregorian)
-calendar.timeZone = TimeZone(identifier: "America/Toronto")!
-let referenceDate = calendar.date(from: DateComponents(
+// Built in a closure rather than mutated in place: a statement at file scope is
+// legal only in `main.swift`, and these moved out of one. Nothing reassigns the
+// calendar, so an immutable global is what it always was in effect.
+let calendar: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+    return calendar
+}()
+let referenceDate: Date = calendar.date(from: DateComponents(
     year: 2026, month: 8, day: 3, hour: 10, minute: 0
 ))!
 

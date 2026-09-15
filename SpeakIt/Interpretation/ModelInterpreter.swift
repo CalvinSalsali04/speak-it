@@ -117,8 +117,16 @@ enum ModelInterpreter {
 }
 
 #if canImport(FoundationModels)
+/// The half that only exists where the framework does.
+///
+/// A separate namespace rather than an extension on `ModelInterpreter`, and
+/// deliberately the same shape as the `IntelligentThoughtExtractor` that already
+/// ships in `ThoughtExtractor.swift`: one `@available` enum at file scope inside
+/// the `#if`, with the `@Generable` types nested in it. That shape is known to
+/// compile in this project, which is worth more than a tidier one that has to be
+/// found out on a paid macOS run.
 @available(iOS 26.0, macOS 26.0, *)
-extension ModelInterpreter {
+enum OnDeviceInterpreter {
 
     // MARK: - The generated mirror of CaptureInterpretation
 
@@ -198,7 +206,7 @@ extension ModelInterpreter {
 
     // MARK: - Running it
 
-    static func availability() -> Unavailability? {
+    static func availability() -> ModelInterpreter.Unavailability? {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
@@ -221,9 +229,12 @@ extension ModelInterpreter {
     /// silently returns the rules reading is exactly what would make a
     /// comparison meaningless — a family would look solved because the model
     /// never answered.
-    static func interpret(_ transcript: String) async -> Result<CaptureInterpretation, Unavailability> {
+    static func interpret(_ transcript: String) async -> Result<CaptureInterpretation, ModelInterpreter.Unavailability> {
         if let reason = availability() { return .failure(reason) }
-        let session = LanguageModelSession(model: SystemLanguageModel.default, instructions: instructions)
+        let session = LanguageModelSession(
+            model: SystemLanguageModel.default,
+            instructions: ModelInterpreter.instructions
+        )
         do {
             let response = try await session.respond(
                 to: "Interpret this transcript:\n\(transcript)",

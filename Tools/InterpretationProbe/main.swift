@@ -101,7 +101,7 @@ let outPath = value("--out")
 func reportAvailability() {
 #if canImport(FoundationModels)
     if #available(iOS 26.0, macOS 26.0, *) {
-        let reason = ModelInterpreter.availability()
+        let reason = OnDeviceInterpreter.availability()
         print("foundation-models: framework present")
         print("locale:            \(Locale.current.identifier)")
         print("availability:      \(reason.map(\.rawValue) ?? "available")")
@@ -153,7 +153,7 @@ func generate(_ paths: [String]) async {
             )
 #if canImport(FoundationModels)
             if #available(iOS 26.0, macOS 26.0, *) {
-                switch await ModelInterpreter.interpret(input) {
+                switch await OnDeviceInterpreter.interpret(input) {
                 case let .success(interpretation): record.interpretation = interpretation
                 case let .failure(reason): record.unavailable = reason.rawValue
                 }
@@ -209,16 +209,20 @@ func replay(_ path: String) {
             let operations = InterpretationBridge.operations(
                 for: checked, rulesRead: rules.operations.map(\.operation)
             )
-            printRows(
-                utterance: record.utterance,
-                items: rows.map(\.thought),
-                operations: operations,
-                annotate: annotate ? { index in
+            var annotation: ((Int) -> [String])? = nil
+            if annotate {
+                annotation = { index in
                     let row = rows[index]
                     var lines = ["     disposition: \(row.disposition.rawValue)   obligation: \(row.obligation.rawValue)"]
                     if row.demoted { lines.append("     demoted:    true") }
                     return lines
-                } : nil
+                }
+            }
+            printRows(
+                utterance: record.utterance,
+                items: rows.map(\.thought),
+                operations: operations,
+                annotate: annotation
             )
         }
     }
