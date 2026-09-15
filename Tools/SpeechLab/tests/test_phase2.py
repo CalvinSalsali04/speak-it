@@ -10,13 +10,18 @@ sys.path.insert(0, str(LAB))
 sys.path.insert(0, str(LAB / 'phase2'))
 
 from Sources.composition import validate_composition
-from Sources.contracts import digest, read_jsonl
+from Sources.contracts import digest, read_jsonl, validate_schema
 from adjudication_report import adjudication_metrics
 from apply_reviews import apply_reviews
 from build_corpus import build
 from compile_review_decisions import compile_decisions
 from prepare_review_batches import contains_forbidden_key, prepare
 from quality import language_lint_results, validate_all
+from reviewer_audit import audit as reviewer_audit
+from repair_corpus import build_candidate as build_repair_candidate
+from triage_problem_cases import (
+    ROOT_CAUSES, build as build_triage, challenge_records, summarize as summarize_triage,
+)
 
 
 class Phase2CorpusTests(unittest.TestCase):
@@ -179,6 +184,86 @@ class Phase2CorpusTests(unittest.TestCase):
         self.assertEqual(report['success_gate']['total'], 14)
         self.assertFalse(report['success_gate']['ready_to_freeze'])
         self.assertFalse(report['success_gate']['ready_to_scale_to_10000'])
+
+    def test_reviewer_audit_keeps_naturalness_and_semantics_separate(self):
+        reviewed = list(read_jsonl(
+            self.phase2 / 'adjudication' / 'cases-adjudicated.jsonl'
+        ))
+        report = reviewer_audit(reviewed)
+        self.assertEqual(len(report['reviewers']), 3)
+        self.assertEqual(report['safety_disagreement']['multi_review_cases'], 514)
+        separation = report['naturalness_semantics_separation']
+        self.assertGreater(separation['low_naturalness_with_contract_affirmed'], 0)
+        self.assertGreater(separation['high_naturalness_with_rejection_or_uncertainty'], 0)
+        self.assertFalse(report['methodology']['production_parser_invoked'])
+
+    def test_problem_triage_is_complete_and_concrete(self):
+        reviewed = list(read_jsonl(
+            self.phase2 / 'adjudication' / 'cases-adjudicated.jsonl'
+        ))
+        rows = build_triage(reviewed)
+        report = summarize_triage(reviewed, rows)
+        self.assertEqual(len(rows), 134)
+        self.assertEqual(len({row['case_id'] for row in rows}), 134)
+        # Primary split role understates this because some public-derived and
+        # synthetic-stress cases are also safety-critical.
+        self.assertEqual(sum(row['safety_critical'] for row in rows), 100)
+        self.assertTrue(all(row['root_causes'] for row in rows))
+        self.assertEqual(set(report['supported_root_causes']), set(ROOT_CAUSES))
+        self.assertEqual(report['disposition_distribution']['A'], 1)
+        self.assertEqual(report['disposition_distribution']['G'], 2)
+        challenges = challenge_records(reviewed, rows)
+        self.assertEqual(len(challenges), 13)
+        self.assertTrue(all(
+            not row['evaluation_policy']['exact_answer_scoreable'] for row in challenges
+        ))
+        schema = json.loads((LAB / 'schema' / 'challenge-case.schema.json').read_text())
+        for challenge in challenges:
+            validate_schema(challenge, schema)
+
+    def test_first_repair_candidate_preserves_lineage_and_requires_fresh_review(self):
+        adjudicated = list(read_jsonl(
+            self.phase2 / 'adjudication' / 'cases-adjudicated.jsonl'
+        ))
+        taxonomy = json.loads((LAB / 'config' / 'taxonomy-v2.json').read_text())
+        renderings, cases, review_pack, repair_map = build_repair_candidate(
+            self.families, self.blueprints, self.renderings, adjudicated, taxonomy,
+        )
+        self.assertEqual(len(cases), 818)
+        self.assertEqual(len(renderings), 818)
+        self.assertEqual(len(repair_map), 27)
+        # Sixteen repaired cases were already disputed; eleven previously
+        # trusted cases are conservatively reset after the repeated flaw was found.
+        self.assertEqual(sum(not case['trusted'] for case in cases), 61)
+        repaired_ids = {row['repaired_case_id'] for row in repair_map}
+        repaired = [case for case in cases if case['case_id'] in repaired_ids]
+        self.assertTrue(all(not case['reviews'] for case in repaired))
+        self.assertTrue(all(case['meaning_preservation'] == 'uncertain' for case in repaired))
+        self.assertTrue(all(case['lineage']['repairs'] for case in repaired))
+        self.assertEqual(
+            {row['case_id'] for row in review_pack}, {case['case_id'] for case in cases}
+        )
+
+    def test_committed_repair_reviews_and_trust_closure_are_honest(self):
+        repair = self.phase2 / 'repair'
+        first = json.loads((repair / 'candidate-1' / 'adjudication' / 'manifest.json').read_text())
+        second = json.loads((repair / 'candidate-2' / 'adjudication' / 'manifest.json').read_text())
+        self.assertEqual(first['submission_count'], 37)
+        self.assertEqual(first['repair_outcomes'], {'trusted': 21, 'disputed': 6})
+        self.assertEqual(second['submission_count'], 37)
+        self.assertEqual(second['repair_outcomes'], {'trusted': 16, 'disputed': 4})
+        self.assertEqual(len(set(first['reviewers']) | set(second['reviewers'])), 6)
+        closure = json.loads((repair / 'trust-closure' / 'report.json').read_text())
+        manifest = json.loads((repair / 'trust-closure' / 'manifest.json').read_text())
+        cases = list(read_jsonl(repair / 'trust-closure' / 'cases.jsonl'))
+        self.assertEqual(len(cases), 695)
+        self.assertTrue(all(case['trusted'] for case in cases))
+        self.assertEqual(closure['adjudication']['disputed_cases'], 0)
+        self.assertEqual(closure['adjudication']['audited_broken_language']['rate'], 0)
+        self.assertEqual(closure['adjudication']['audited_meaning_preservation']['rate'], 1)
+        self.assertEqual(closure['success_gate']['passed'], 12)
+        self.assertFalse(manifest['frozen'])
+        self.assertFalse(manifest['parser_results_included'])
 
     def test_quality_gate_is_honest(self):
         report = json.loads((self.phase2 / 'artifacts' / 'quality-report.json').read_text())

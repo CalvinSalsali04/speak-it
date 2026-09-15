@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (44, 5, 12, 66), "wait": (53, 15, 26, 36)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (53, 18, 26, 36)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
