@@ -312,6 +312,132 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
+
+Every sizing in this file quotes a source count. `plus` is "44 rows over 5
+sources"; `wait` is "53 over 15". The census has said since #66 that the source
+count "is not a count of independent bodies of material" and printed the
+containment pairs, but nobody reduces twenty-eight pairs over twenty sources by
+eye, so the caveat read as handled and the twenty is what got quoted — by me,
+an hour before writing #71, in the same sentence as "views of one population".
+
+#71 makes the census do the reduction. It is four lines of output and it
+changes what the evidence base looks like.
+
+No parser change, no run, no sealed set read. Every figure below is a count
+over committed text through `readable_material.readers()`, the same walk the
+census and `observation.py` use, reproduced with
+`python3 Tools/CorpusRunner/connective-census.py`.
+
+### The reduction
+
+Sources holding exactly the same utterances are one body, grouped first. Then a
+body wholly inside another is not a second population. 20 sources reduce to 17
+distinct bodies and **10 that sit inside no other**:
+
+| utterances | share of 5,501 | population |
+|---:|---:|---|
+| 3,702 | 67.3% | the gating corpus in `SpeakItTests` |
+| 818 | 14.9% | `SpeechLab/phase2`, in four byte-identical files |
+| 472 | 8.6% | `SpeechLab/audit/combined-renderings.jsonl` |
+| 163 | 3.0% | `devsets/unfinished.tsv` |
+| 121 | 2.2% | `devsets/coordination.tsv` |
+| 114 | 2.1% | `devsets/routed.tsv` |
+| 85 | 1.5% | `devsets/rambling.tsv` |
+| 55 | 1.0% | `devsets/abandonment.tsv` |
+| 46 | 0.8% | `devsets/runon.tsv` |
+| 45 | 0.8% | `devsets/framing.tsv` |
+
+The four phase 2 files are the same 818 utterances four times:
+`adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
+`data/renderings.jsonl` and `review/independent-review-pack.jsonl`. A form
+appearing only there reads as four sources and is one.
+
+### By kind, and the one place two kinds overlap
+
+Two of the three pairs share nothing: not one utterance is in both
+`SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
+tree and a development set. The development sets and the fixtures do overlap,
+by 109, so the three kinds are 3,702 + 1,290 + 618 = 5,610 against a union of
+5,501 and do not add up. Written out so that they do:
+
+| kind | utterances | share of 5,501 |
+|---|---:|---:|
+| test fixtures only | 3,593 | 65.3% |
+| generated renderings (the SpeechLab tree) | 1,290 | 23.5% |
+| development sets only | 509 | 9.3% |
+| in both a development set and a fixture | 109 | 2.0% |
+| **total** | **5,501** | |
+
+**90.7% of everything this project may read — 4,992 of 5,501 — is either a
+fixture written to exercise the parser or a rendering generated from a
+blueprint.** The material written to look like somebody talking is 618
+utterances, of which 509 exist nowhere else.
+
+### The 109 are not spread evenly, and where they land is the interesting part
+
+| development set | also a fixture | of |
+|---|---:|---:|
+| `abandonment.tsv` | 36 | 55 (65.5%) |
+| `runon.tsv` | 13 | 46 (28.3%) |
+| `unfinished.tsv` | 43 | 163 (26.4%) |
+| `routed.tsv` | 12 | 114 (10.5%) |
+| `coordination.tsv` | 12 | 121 (9.9%) |
+| `rambling.tsv` | 0 | 85 |
+| `framing.tsv` | 0 | 45 |
+
+Two sets share nothing with the test suite and three share a quarter or more.
+The three that share most — abandonment, run-on, unfinished — are the families
+this project has spent the most parser effort on, which is not a coincidence:
+a row that motivated a fix tends to end up as the test for that fix.
+
+That gives those 109 a status neither bucket describes. They are the material
+tuned against *and* the material regressed against, so for the families where
+the overlap is heaviest, a green unit suite is partly a restatement of the
+examples the rule was written from. It does not make the suite wrong — a fix
+should keep passing its motivating case — but two thirds of `abandonment.tsv`
+sitting in the test target means a green run on that family is less independent
+evidence than its row count suggests, and nothing in the current tooling says
+by how much.
+
+To be exact about which population this is: the overlap is between the
+development sets and the Swift string literals in `SpeakItTests`. It says
+nothing about the 1,404-case corpus gate, which is scored from a different
+list, and nothing about any sealed set, none of which is read here.
+
+### What this is evidence for, and what it is not
+
+It is not evidence that the corpora are bad. A fixture corpus is the right
+shape for regression coverage and that is what `SpeakItTests` is for. (It is
+not the 1,404-case corpus gate, which is a different population: what the
+census reads here is every Swift string literal in the test target.)
+
+It is evidence about **one thing only: breadth of provenance.** All ten
+populations were authored by this project. Not one utterance in the readable
+5,501 is speech a person produced without knowing what it was for. That is the
+same fact the connective census reached from the other side — four of the
+eleven forms it tracks appear in zero readable rows — and it is why five traced
+targets are dead on one cause. Our corpora and our parser are blind in the same
+places, because the same people wrote both.
+
+A source count hid this. Twenty sources sounds like breadth. Ten populations,
+one of which is two thirds and is test fixtures, does not.
+
+### Two things not claimed
+
+**The 5,501 is not 5,501 utterances.** The gating corpus is Swift string
+literals of twelve characters or more carrying more than one word, so it picks
+up assertion messages and explanatory prose beside the test utterances — "A name
+followed by a department is an organisation." is in the 3,702. That inflates the
+denominator, so the 11.2% is a floor rather than a point estimate. It does not
+touch the provenance finding, which is about who wrote the material and not how
+much there is.
+
+**The reduction is by exact utterance set, which is the strict reading.** Two
+sources sharing 95% of their rows are two bodies here, not one. The ten is
+therefore an upper bound on independent populations, and the real figure is
+lower.
+
 ## 2026-09-15 — the retrieval-failure sizing left out the one word with volume, and it argues the other way
 
 The 20:38 section below stops the `abandoned-midthought` target on a count:
