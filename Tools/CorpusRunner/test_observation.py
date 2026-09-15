@@ -598,6 +598,72 @@ class AbsenceAndDispersionDoNotPrintTheSame(unittest.TestCase):
         self.assertIn("TOO FEW", observation.mark_for(below))
 
 
+class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
+    """The two bullets opening `observation.py` are the argument for it.
+
+    They are also a paragraph of figures with nothing holding them to the
+    corpus, and one went stale exactly that way: the `wait` bullet said 14
+    sources, #70 fixed the `path.name` collision that produced 14 and wrote
+    "`wait` is 15 sources rather than the 14 reported in #68" into its own
+    commit message, and the bullet went on saying 14 for a day. The same paragraph told a reader that running this module "will
+    not reproduce them", which #70 had made false in the other direction --
+    it reproduces both lines exactly.
+
+    Neither was caught by anything. Sweeping every digit written inside a
+    comment or a string in this one file turned up three sites that needed
+    changing, all three found by reading rather than by an instrument. This
+    pins the two bullets, which are the claims the module is argued from; it
+    is not a general mechanism for prose, and the rest of the file's prose
+    remains unpinned.
+    """
+
+    #: (rows, sources, stems, largest frame as a whole percent) for the two
+    #: forms the module docstring is about, recomputed below rather than
+    #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
+    #: reason: a figure lives where something recomputes it.
+    MOTIVATING = {"plus": (44, 5, 12, 66), "wait": (53, 15, 26, 36)}
+
+    def test_the_corpus_still_says_what_the_bullets_say(self):
+        forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
+        found = observation.census(forms, list(observation.readable_pairs()))
+        measured = {phrase: (shape.rows, shape.sources, shape.stems,
+                             round(shape.largest_share * 100))
+                    for phrase, shape in found.items()}
+        self.assertEqual(measured, self.MOTIVATING)
+
+    def test_the_bullets_state_those_figures(self):
+        """The tuple above pins the corpus; this pins the prose to the tuple.
+
+        Only the figures written as digits are matched. `twelve stems`, `two
+        thirds` and `a third` are words in that paragraph and are not parsed
+        here -- they ride on the tuple, which fails first and puts whoever
+        fixes it in the right paragraph.
+        """
+        rows, sources, _stems, _share = self.MOTIVATING["plus"]
+        self.assertIn(f"`plus` appears in {rows} readable utterances across "
+                      f"{sources} sources", observation.__doc__)
+        self.assertIn(f"carry all {rows} rows", observation.__doc__)
+        rows, sources, _stems, _share = self.MOTIVATING["wait"]
+        self.assertIn(f"`wait` appears in {rows} over {sources} sources",
+                      observation.__doc__)
+
+    def test_the_paragraph_does_not_say_the_figures_will_not_reproduce(self):
+        """The sentence that went false in the other direction.
+
+        It said this module reads the development sets alone, so running it
+        would not reproduce the bullets. #70 wired the walk and made that
+        untrue, and a docstring warning a reader off correct output is worse
+        than one quoting a stale number, because there is no digit to check.
+
+        This is the weak half deliberately. The test above is what actually
+        establishes that the bullets reproduce, by reproducing them; this
+        only stops the retracted sentence returning in the wording it had,
+        and a denial worded differently would pass it.
+        """
+        self.assertNotIn("will not reproduce", observation.__doc__)
+        self.assertIn("python3 observation.py plus wait", observation.__doc__)
+
+
 class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
     """This module used to print a list of populations it did not read.
 
