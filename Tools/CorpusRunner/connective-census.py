@@ -57,6 +57,17 @@ from collections import Counter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import corpus_paths  # noqa: E402
 
+#: `leak-check.py` owns what counts as a Swift string literal here. The
+#: hyphen in its name means it cannot be imported by statement, and copying
+#: the twenty lines out of it would make a second owner of the one rule two
+#: readers already got wrong in this directory.
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "leak_check", pathlib.Path(__file__).resolve().parent
+    / "everyday" / "leak-check.py")
+leak_check = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(leak_check)
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 #: Where SpeechLab keeps its material. Everything under here is walked rather
@@ -71,6 +82,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 #: lesson did not transfer on its own, so the rule is repeated here: ask the
 #: directory, not your memory of it.
 SPEECHLAB = "Tools/SpeechLab"
+
+#: The gating corpus. `SpeakItTests/*.swift` holds roughly twice as many
+#: distinct multi-word strings as every corpus file combined, and it is the
+#: material this project reads and edits most. A census that says "readable
+#: material" and leaves it out is the coverage claim this file exists to
+#: distrust, made by this file. Found on review of the first version, which
+#: counted 1908 utterances and called that readable material.
+GATING = "SpeakItTests"
 
 #: Field names that hold an utterance. Closed, and checked for completeness
 #: below rather than assumed.
@@ -156,6 +175,57 @@ def speechlab_files():
                     f"{shown(path)} is in corpus_paths.sealed()")
             out.append(path)
     return sorted(out)
+
+
+def swift_utterances(root):
+    """Multi-word Swift string literals from the whole gating corpus.
+
+    **One source, not one per file.** Two hundred test files are not two
+    hundred populations -- they are one, written here, and the finding this
+    census keeps producing is precisely that a source count is not a
+    population count. Collapsing them also keeps the empty-source refusal
+    meaningful: most individual test files hold no multi-word literal at all,
+    so a per-file canary would have to be switched off, and a canary with an
+    exception is the check that stopped checking.
+
+    Walked rather than globbed, since `rglob` does not descend a symlinked
+    directory and the claim is about a tree.
+
+    **There is deliberately no sealed-path refusal here**, unlike
+    `speechlab_files`. One was written and then removed, because mutating it
+    away changed no verdict: every path `corpus_paths.sealed()` can name is a
+    `.tsv` under `Tools/CorpusRunner`, and this reader opens only `.swift`
+    under `SpeakItTests`, so the branch cannot fire. A guard that cannot fire
+    is worse than none -- it reads as protection and a test for it would make
+    dead code look covered. The two facts that make it unnecessary are pinned
+    in `SealedPathsAreRefusedByName` instead, so if either stops holding the
+    suite says so and the guard comes back.
+
+    Note what this reader can legitimately count: a sealed capture that has
+    been copied into tuned material is readable in fact once it sits in a file
+    anybody opens, and counting a form in it is honest. Finding those is
+    `leak-check.py`'s job, not this one's.
+
+    Literal extraction comes from `leak-check.py`, which already owns what
+    counts as a string literal in this codebase -- its twelve-character floor,
+    its escape handling -- and is covered by its own suite. A second
+    implementation here is the defect `EveryCorpusReaderIsDeclared` exists
+    for, one language over.
+
+    Single-word literals are dropped. They are overwhelmingly identifiers,
+    keys and accessibility labels rather than anything anybody said. That is a
+    judgement, and it is the only filter between this source and a large pile
+    of non-speech, so it is stated here rather than buried in a comprehension.
+    """
+    for here, _folders, files in os.walk(root, followlinks=True):
+        for name in sorted(files):
+            if not name.endswith(".swift"):
+                continue
+            path = pathlib.Path(here, name)
+            for literal in leak_check.swift_literals(
+                    path.read_text(encoding="utf-8", errors="ignore")):
+                if len(literal.split()) > 1:
+                    yield literal
 
 
 def utterance_field(path):
@@ -258,6 +328,7 @@ def contained_sources():
 def _readers():
     """(path, reader) for every declared source, in reading order."""
     readers = [(p, tsv_utterances) for p in corpus_paths.readable()]
+    readers.append((ROOT / GATING, swift_utterances))
     for path in speechlab_files():
         field = utterance_field(path)
         if field is not None:

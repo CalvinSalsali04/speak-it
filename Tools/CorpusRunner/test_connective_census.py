@@ -222,6 +222,23 @@ class SealedPathsAreRefusedByName(CensusCase):
         for path in files:
             self.assertNotIn("sealed", str(path).lower())
 
+    def test_the_gating_reader_needs_no_refusal_because_it_cannot_reach_one(self):
+        """`swift_utterances` deliberately has no sealed check, and these are
+        the two facts that make it unnecessary rather than missing.
+
+        One was written. Mutating it away changed no verdict, because every
+        path `sealed()` can name is a `.tsv` and that reader opens only
+        `.swift`. A branch that cannot fire reads as protection and is not, so
+        the guard came out and the reasoning came here. If either half stops
+        holding -- a sealed set gains a Swift file, or one moves under the
+        gating tree -- this fails and the guard goes back in.
+        """
+        gating = (self.census.ROOT / self.census.GATING).resolve()
+        for path in self.census.corpus_paths.sealed():
+            self.assertEqual(path.suffix, ".tsv", f"{path.name} is not a TSV")
+            self.assertNotIn(gating, path.resolve().parents,
+                             f"{path.name} is inside the gating corpus")
+
 
 class TheMarkedListInTheBaselineIsRecomputed(CensusCase):
     """The document names which forms are absent; the census decides.
@@ -344,6 +361,62 @@ class TheReadersReadWhatTheyClaim(CensusCase):
                         + json.dumps({"archive_sha256": "abc"}) + "\n\n")
         self.assertEqual(list(self.census.jsonl_utterances(path)),
                          ["call mom"])
+
+    def test_the_swift_reader_takes_sentences_and_leaves_identifiers(self):
+        (self.dir / "T.swift").write_text(
+            'let a = "pick up milk and eggs"\n'
+            'let b = "identifier"\n'
+            'let c = "todayTabAccessibilityLabel"\n')
+        self.assertEqual(list(self.census.swift_utterances(self.dir)),
+                         ["pick up milk and eggs"])
+
+    def test_the_swift_reader_descends_and_ignores_other_languages(self):
+        nested = self.dir / "Deep" / "Deeper"
+        nested.mkdir(parents=True)
+        (nested / "T.swift").write_text('let a = "call the dentist tomorrow"')
+        (self.dir / "T.py").write_text('a = "call the plumber tomorrow"')
+        self.assertEqual(list(self.census.swift_utterances(self.dir)),
+                         ["call the dentist tomorrow"])
+
+    def test_the_swift_reader_uses_the_leak_check_harvester(self):
+        """Not a second implementation. `leak-check.py` owns what a literal is
+        in this codebase, including the twelve-character floor, and two
+        readers of one rule is the defect that produced this whole family.
+
+        Pinned by behaviour rather than by identity: a short literal is
+        dropped because that harvester drops it, so a private copy that
+        forgot the floor fails here.
+        """
+        self.assertEqual(
+            pathlib.Path(self.census.leak_check.__file__).name,
+            "leak-check.py",
+            "the harvester no longer comes from the file that owns it")
+        (self.dir / "T.swift").write_text(
+            'let a = "buy eggs"\n'                 # 9 chars, under the floor
+            'let b = "buy eggs and whole milk"\n')
+        self.assertEqual(list(self.census.swift_utterances(self.dir)),
+                         ["buy eggs and whole milk"])
+
+    def test_the_gating_corpus_is_actually_among_the_sources(self):
+        """The omission this reader was added for.
+
+        The first version of this census counted 1908 utterances and called
+        that readable material, while `SpeakItTests` -- roughly twice as much
+        distinct text, and the material this project reads most -- was not
+        read at all. A coverage claim cannot be asserted, which is the lesson
+        the census itself is built on, so it is checked here.
+        """
+        sources = [p for p, _ in self.census._readers()]
+        self.assertIn(self.census.ROOT / self.census.GATING, sources)
+
+    def test_the_gating_corpus_is_one_source_and_not_two_hundred(self):
+        """A source count is not a population count, and this file says so in
+        its own report. Listing every test file separately would make the
+        largest single authored population look like the most diverse one."""
+        sources = [p for p, _ in self.census._readers()]
+        under = [p for p in sources
+                 if self.census.GATING in str(p)]
+        self.assertEqual(len(under), 1, f"{len(under)} gating sources")
 
 
 if __name__ == "__main__":
