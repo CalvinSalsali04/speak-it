@@ -327,20 +327,50 @@ class EveryDeclaredSourceReachesTheWalk(CensusCase):
         self.assertIn(self.census.ROOT / self.census.GATING, reading)
         self.assertTrue(
             [path for path in reading
-             if str(path).startswith(str(self.census.ROOT / self.census.SPEECHLAB))],
+             if path.is_relative_to(self.census.ROOT / self.census.SPEECHLAB)],
             "no SpeechLab file reaches the walk")
 
     def test_the_walk_reads_nothing_that_is_not_declared(self):
         """The other direction: a reader nobody declared is material from
-        nowhere, and a sealed one would be worse than that."""
+        nowhere, and a sealed one would be worse than that.
+
+        **The SpeechLab tree gets an answer to "declared" rather than an
+        exemption.** The first version of this test skipped every path under
+        it with a `continue`, so its name was broader than its check by
+        fifteen of the twenty sources. Planting a reader for
+        `Tools/SpeechLab2/planted.jsonl` passed it: the skip was written as
+        `str(path).startswith(str(ROOT / SPEECHLAB))`, and a sibling whose
+        name extends the directory's satisfies that. Both halves of that line
+        were wrong and they hid each other.
+
+        A SpeechLab path is declared by being inside the declared tree, so
+        that is what it is held to. Deliberately not `speechlab_files()`:
+        `readers()` builds those entries out of that function, so asserting
+        the result is a subset of it could not fail.
+
+        **What the sealed assertion here is worth, stated rather than
+        implied.** It now runs over every reader instead of the non-SpeechLab
+        ones, but for a SpeechLab path it cannot fire today: every path
+        `corpus_paths.sealed()` can name is a `.tsv` under `Tools/CorpusRunner`
+        (4 files, one suffix, none inside the tree), and `speechlab_files()`
+        raises on a sealed path before `readers()` sees it. So it is a second
+        line on an arrangement `SealedPathsAreRefusedByName` already pins, not
+        a live catch, and it is kept only because it costs one line over the
+        paths where it can fire. The `continue` is the defect this fixes; the
+        sealed widening is tidying.
+        """
         paths_module = corpus_paths_module()
         allowed = set(paths_module.readable())
         allowed.add(self.census.ROOT / self.census.GATING)
+        speechlab = self.census.ROOT / self.census.SPEECHLAB
         sealed = {path.resolve() for path in paths_module.sealed()}
-        for path, _ in self.census.readers():
-            if str(path).startswith(str(self.census.ROOT / self.census.SPEECHLAB)):
-                continue
-            self.assertIn(path, allowed, f"{path} is read and not declared")
+        read = [path for path, _ in self.census.readers()]
+        self.assertTrue(read, "the walk reads nothing at all")
+        for path in read:
+            self.assertTrue(
+                path in allowed or path.is_relative_to(speechlab),
+                f"{path} is read and is neither a declared development set, "
+                f"the gating corpus, nor inside {self.census.SPEECHLAB}")
             self.assertNotIn(path.resolve(), sealed, f"{path} is sealed")
 
 
