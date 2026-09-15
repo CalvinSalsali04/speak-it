@@ -57,8 +57,15 @@ file before cutting rather than reusing a command:
 | file | columns | the cut |
 |---|---|---|
 | `heldout/heldout.tsv` | `id, utterance, family, expected_destination, expected_thoughts` | `cut -f1,2` |
-| `devsets/*.tsv` | the same five | `cut -f1,2` |
+| `devsets/framing, rambling, routed, runon` | the same five | `cut -f1,2` |
+| `devsets/abandonment, unfinished, coordination` | different columns; the utterance is still column two | `cut -f1,2` |
 | `everyday/everyday.tsv` | `id, domain, utterance, expect, keep, reject, families, note` | `cut -f1,3` |
+
+The dev sets are split across two rows because they do not share a layout —
+`abandonment` and `unfinished` are `id, utterance, family, expectation, note`
+and `coordination` is four columns — and naming one layout for all seven would
+be the mistake this table exists to prevent, one level up. What holds across
+every one of them is the only thing the cut needs: the utterance is column two.
 
 `cut -f1,2 everyday.tsv` yields `id<TAB>domain`, which is two fields, so the
 reader **accepts** it and the model is handed 255 domain names as captures. That
