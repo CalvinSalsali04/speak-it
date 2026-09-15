@@ -108,6 +108,12 @@ NOT_SPEECH = frozenset({
 #: Paths are relative to the repository root, and a name here that turns out
 #: to hold a top-level utterance field fails the run as loudly as one that is
 #: missing. A list that can only be too short is the failure mode being fixed.
+#:
+#: **The comment beside each name is load-bearing and is not checked.** A file
+#: here is outside `speechlab_unclassified` by construction, so a declared file
+#: that gains a top-level field of wholly new utterances is caught by nothing
+#: in this module. `unread_fields_holding_speech` says what that costs, what
+#: would close it, and why closing it is a judgement rather than arithmetic.
 NOT_READ = {
     # 260 blueprint rows: ids, family labels, and `expected.items[].title`
     # with `facts[]` -- 254 distinct strings naming what the parser should
@@ -987,11 +993,36 @@ def unread_fields_holding_speech(files=None, declared=None, known=None):
     utterance column nobody is reading, which is the same defect wearing
     different clothes.
 
-    **What it cannot do** is find a corpus whose every utterance is new:
-    novelty is exactly what it keys on, so a wholly fresh body of captures
-    arriving under `said` is invisible to it. That case belongs to
-    `speechlab_unclassified`, which fires on the file rather than the field.
-    The two nets are blind in opposite directions on purpose.
+    **What it cannot do, and what covers that case: nothing, today.** Novelty
+    is exactly what this keys on, so a wholly fresh body of captures arriving
+    under `said` is invisible to it. The first version of this paragraph sent
+    that case to `speechlab_unclassified` and called the two nets blind in
+    opposite directions on purpose. **That was false**, and the filter says so
+    in one line: it drops any path already in `NOT_READ`, so it takes the
+    undeclared-*file* case and never the undeclared-*field*-inside-a-declared-
+    file one. A `NOT_READ` file that gains a top-level field of wholly new
+    utterances falls through every guard in this module -- this net, the
+    nested sweep, the rename refusal and `readers()` alike.
+
+    Established by injection into a real file rather than by reading: 37 rows
+    of `candidate-1/adjudication/reviews.jsonl` given a top-level `said`
+    holding new utterances containing `which means`, and the census went on
+    reporting `which means 0` with all five checks silent and the suite green.
+    Found by the core language thread grading this change, and reproduced here
+    before this paragraph was written.
+
+    **So the `NOT_READ` comments are the only thing standing over that
+    residual** -- which is what this change discovered them to be, one
+    condition away from the hole it closes. Closing it is not out of reach and
+    the size is measured rather than guessed: the twenty declared files carry
+    97 top-level `(file, field)` string pairs over 30 distinct names, of which
+    `before` and `after` are declared above and `original_rendering_id` and
+    `repaired_rendering_id` are in `NOT_SPEECH`, leaving 26 names to classify.
+    Most are ids and reviewer prose that classify on sight. `intended_meaning`
+    does not: 72 values, every one counted nowhere, each a sentence
+    paraphrasing what a capture meant. **That is the judgement a declaration
+    forces and a comment lets somebody skip**, and it is a change of its own
+    rather than a widening of this one.
     """
     files = speechlab_files() if files is None else files
     declared = UNREAD_UTTERANCE_FIELDS if declared is None else declared
