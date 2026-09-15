@@ -724,5 +724,142 @@ class APerFamilyScoreCannotOutliveItsPopulation(FiguresCase):
         self.assertEqual(unrowed, [("deliberation-open", 2), ("two-facts", 2)])
 
 
+class ASectionRecordsTheSetStateItWasMeasuredOver(FiguresCase):
+    """The half `stale_family_rows` cannot reach: a count written in prose.
+
+    The bracket check reads `| restart (4) |`. The same section also calls
+    `coherent-long` "those seven rows" where the set holds eleven, and no
+    amount of parsing table brackets finds that sentence. A whole-set
+    fingerprint does not find it either -- it fires on the same cause and
+    names the set that moved, which is what sends somebody back to read the
+    section rather than trusting it.
+
+    Deliberately NOT a check on which sections ought to carry a fingerprint.
+    Deciding that mechanically needs a heuristic for "does this section report
+    a measurement", and the obvious one misfires: seventeen of this document's
+    twenty-nine sections name a development set and contain a rate somewhere,
+    including one whose only mention of `rambling.tsv` is a row in a source
+    table. A heuristic standing in for that judgement is the defect this
+    module exists to remove, so the judgement stays with whoever writes the
+    section and only its consequence is mechanical.
+    """
+
+    def test_the_document_carries_at_least_one_fingerprint(self):
+        """Otherwise every check below passes over nothing.
+
+        A sweep with an empty population reports clean in the same voice as a
+        sweep that found nothing wrong, which is this file's recurring bug and
+        the reason `test_the_sweep_would_notice` exists twenty lines up.
+        """
+        found = self.bf.fingerprints()
+        self.assertTrue(
+            found,
+            "no section records the set state it was measured over, so "
+            "`stale_fingerprints` is checking nothing and will go on "
+            "reporting clean however far the development sets drift")
+        for name, rows in found:
+            self.assertIn(name, self.bf.devset_rows(),
+                          f"{name} is fingerprinted and is not a readable "
+                          f"development set")
+            self.assertGreater(rows, 0)
+
+    def test_only_the_last_fingerprint_for_a_set_is_checked(self):
+        """An earlier one is a record of a run that happened, not a stale claim.
+
+        Two fingerprints for one set, the older disagreeing with the data and
+        the newer agreeing. Only the newer decides. Without this the check
+        would ask a dated record to change, which is what this document's own
+        corrections argue against.
+        """
+        text = ("*Measured over `rambling.tsv` at 57 rows.* ... later ... "
+                "*Measured over `rambling.tsv` at 85 rows.*")
+        self.assertEqual(
+            self.bf.stale_fingerprints(text=text, rows={"rambling.tsv": 85}),
+            [])
+        self.assertEqual(
+            self.bf.stale_fingerprints(text=text, rows={"rambling.tsv": 90}),
+            [("rambling.tsv", 85, 90)])
+
+    def test_a_fingerprint_naming_a_set_that_is_gone_is_reported(self):
+        """The direction a count comparison never fails on.
+
+        A renamed or deleted development set leaves its fingerprint behind
+        agreeing with nothing, and a checker that only compares numbers reads
+        that as silence.
+        """
+        self.assertEqual(
+            self.bf.stale_fingerprints(
+                text="*Measured over `retired.tsv` at 12 rows.*",
+                rows={"rambling.tsv": 85}),
+            [("retired.tsv", 12, None)])
+
+    def test_the_pattern_does_not_match_prose_about_fingerprints(self):
+        """A sentence describing the convention is not a fingerprint.
+
+        This docstring and the ones around it say the words; if the pattern
+        were loose enough to match them, the document would fingerprint itself
+        and the count above would be meaningless.
+        """
+        for prose in ("we should record what each run was measured over",
+                      "Measured over rambling.tsv at 57 rows",
+                      "*Measured over `rambling.tsv`.*"):
+            with self.subTest(prose=prose):
+                self.assertEqual(self.bf.fingerprints(text=prose), [])
+
+    @unittest.expectedFailure
+    def test_no_live_fingerprint_has_outlived_its_set(self):
+        """KNOWN STALE, the same staleness the bracket check records.
+
+        `rambling.tsv` was 57 rows when the 16:54 run read it and is 85 now.
+        Two instruments now fail on that one cause, and they are not
+        redundant: the bracket check names which family rows are wrong, and
+        this names the set and the size of the drift, which is what covers
+        the counts written in sentences. Both clear in the same macOS run,
+        and the decorator cannot be left behind -- `unittest` reports a
+        passing expected-failure as an unexpected success and exits non-zero.
+        """
+        self.assertEqual(self.bf.stale_fingerprints(), [])
+
+    def test_the_known_drift_is_exactly_what_is_recorded(self):
+        """So a second set cannot drift while the suite stays green."""
+        self.assertEqual(self.bf.stale_fingerprints(),
+                         [("rambling.tsv", 57, 85)])
+
+    def test_two_sets_with_one_basename_are_refused_not_merged(self):
+        """The key is a basename because the prose names a basename.
+
+        Not a live defect and the test says so below: seven readable paths
+        with seven distinct names. It is here because the failure mode is a
+        plausible number and no error -- the dictionary would keep whichever
+        path sorted last, and a fingerprint naming that name would be checked
+        against one of the two sets with nothing recording which. The same
+        collision, on `renderings.jsonl`, really happened one module over.
+
+        Re-keying on the path is the wrong fix: the fingerprint has to name
+        what the sentence names, and a repository path in an English sentence
+        is worse than this refusal.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = pathlib.Path(tmp, "a"), pathlib.Path(tmp, "b")
+            for where in (first, second):
+                where.mkdir()
+                (where / "twins.tsv").write_text("id\ttext\nX1\thello\n")
+            with self.assertRaises(ValueError) as caught:
+                self.bf.devset_rows(paths=[first / "twins.tsv",
+                                           second / "twins.tsv"])
+        self.assertIn("twins.tsv", str(caught.exception))
+        self.assertIn("cannot say which one", str(caught.exception))
+
+    def test_the_readable_sets_do_not_collide_today(self):
+        """The other direction, or a `raise` on everything would pass above.
+
+        This is also the assertion that makes the refusal above a guard for a
+        case that does not exist rather than a fix for one that does.
+        """
+        paths = self.bf.corpus_paths.readable()
+        self.assertEqual(len({path.name for path in paths}), len(paths))
+        self.assertEqual(len(self.bf.devset_rows()), len(paths))
+
+
 if __name__ == "__main__":
     unittest.main()
