@@ -187,35 +187,17 @@ column_of = corpus_paths.column_of
 utterance_column = corpus_paths.utterance_column
 
 
-#: Swift string literals, and the reason this is not a one-line regex.
+#: What a Swift string literal is here now lives in `readable_material`,
+#: with the long explanation of why it is not a one-line regex. It moved out
+#: of this file when a third reader wanted it: the hyphen in this filename
+#: means nobody can `import leak_check`, so every consumer reached in by path,
+#: and the comment that used to sit here warning against a third path-importer
+#: had already been overtaken by one.
 #:
-#: It used to be `re.findall(r'"([^"\\]{12,})"', text)` over the whole file,
-#: which pairs quote characters left to right without knowing which of them
-#: opens a literal. The closing quote of one literal and the opening quote of
-#: the next are a perfectly good pair for that pattern whenever the code
-#: between them is twelve characters long, so the scan drifts out of phase and
-#: harvests the *gaps* instead of the strings. Whether any given utterance is
-#: seen then depends on how many quote characters precede it in the file.
-#:
-#: It is not a rounding error. On `SpeakItTests/SemanticCorpusData*.swift` the
-#: old pattern returned 2,465 strings, which reads as thorough, while missing
-#: 1,128 of the 1,380 `corpusCase` utterances — 82% of the gating corpus — and
-#: padding the count with 1,224 fragments of source code that are not strings
-#: at all. Everyday F02 and W17 are `corpusCase` rows in `SemanticCorpusDataG`
-#: and sit in the part it could not see, so the overlap check printed
-#: `exact collisions 0` about a set with two verbatim rows in the regression
-#: net. That is the failure this file exists to make impossible, and the
-#: printed total is what hid it: 2,465 reads as more thorough than 2,101.
-#:
-#: A literal cannot span a line here, so scanning per line keeps an unbalanced
-#: quote inside a comment from swallowing the rest of the file.
-def swift_literals(text, minimum=12):
-    out = []
-    for line in text.splitlines():
-        for found in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
-            if len(found) >= minimum:
-                out.append(found)
-    return out
+#: Re-exported rather than referenced through the module, so that
+#: `leak_check.swift_literals` keeps working for the callers and tests that
+#: already had it. There is one implementation and this is a name for it.
+from readable_material import swift_literals  # noqa: E402,F401
 
 
 def harvest(path):

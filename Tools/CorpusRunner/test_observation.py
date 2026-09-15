@@ -163,6 +163,155 @@ class TheMeasureCanTellTheTwoApart(unittest.TestCase):
         self.assertEqual(observation.stem("one two three four five six"),
                          "one two three four five")
 
+    def test_the_constant_is_the_only_copy_of_the_width(self):
+        """`words=STEM_WORDS` in the signature made the constant a copy.
+
+        A default argument binds once, at definition. So rebinding
+        `observation.STEM_WORDS` renamed a value nothing read, and the
+        obvious test of whether the width matters -- set it, call `stem`,
+        watch the answer move -- would have reported that it does not,
+        while passing. The width has to be resolved when `stem` runs.
+        """
+        was = observation.STEM_WORDS
+        try:
+            observation.STEM_WORDS = 2
+            self.assertEqual(observation.stem("one two three four"),
+                             "one two")
+            self.assertEqual(
+                observation.shape([("s", "one two three four"),
+                                   ("s", "one two nine ten")]).stems, 1,
+                "shape must take the width from the constant too")
+        finally:
+            observation.STEM_WORDS = was
+        self.assertEqual(observation.stem("one two three four"),
+                         "one two three four")
+
+
+class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
+    """`STEM_WORDS` moves verdicts, and only its own value pinned it.
+
+    Mutating it to 3, 4, 6 or 8 failed exactly one test -- the
+    `assertEqual(STEM_WORDS, 5)` above -- and `self_check()` returned True at
+    every one of those widths. A value pin catches an edit and says nothing
+    about what the value buys, so the next reader with a reason to widen it
+    updates the number, gets green, and loses findings silently.
+
+    On readable material the width is not a rounding choice. `then` carries
+    37% on one frame at four words and 5% at five; `meaning` 35% and 18%.
+    `plus` holds 66% through six words and falls to 11% at eight, and `wait`
+    36% to 6% -- so the two forms this instrument was built to find both stop
+    being marked somewhere between six words and eight.
+    """
+
+    def widths(self, population):
+        return {n: observation.shape(population, n).concentrated
+                for n in range(3, 9)}
+
+    def test_the_narrow_canary_differs_at_exactly_word_five(self):
+        """The fixture's shape, pinned so an edit cannot flatten it.
+
+        If these sentences stopped agreeing through word four, or started
+        agreeing at word five, the straddle would keep passing and pin
+        nothing -- which is how a fixture that cannot tell two states apart
+        gets written in the first place.
+        """
+        texts = [text for _, text in observation.CANARY_NARROW]
+        self.assertEqual(len(set(texts)), len(observation.STEM_PROBE))
+        self.assertEqual(len({observation.stem(x, 4) for x in texts}), 1)
+        self.assertEqual(len({observation.stem(x, 5) for x in texts}),
+                         len(texts))
+
+    def test_the_wide_canary_differs_at_exactly_word_six(self):
+        texts = [text for _, text in observation.CANARY_WIDE]
+        shared = [x for x in texts if x.startswith("I was going to ask")]
+        self.assertEqual(len(shared), observation.WIDE_ON_ONE_STEM)
+        self.assertEqual(len({observation.stem(x, 5) for x in shared}), 1)
+        self.assertEqual(len({observation.stem(x, 6) for x in shared}),
+                         len(shared))
+
+    def test_neither_canary_is_decided_by_the_source_arm(self):
+        """`concentrated` is an OR. A single-source fixture measures the
+        width not at all, which is how the threshold went unpinned."""
+        for name in ("CANARY_NARROW", "CANARY_WIDE"):
+            found = observation.shape(getattr(observation, name))
+            self.assertGreater(found.sources, observation.ONE_SOURCE, name)
+
+    def test_narrowing_the_width_invents_a_template(self):
+        marks = self.widths(observation.CANARY_NARROW)
+        self.assertEqual(marks, {3: True, 4: True, 5: False,
+                                 6: False, 7: False, 8: False})
+
+    def test_widening_the_width_loses_a_real_template(self):
+        marks = self.widths(observation.CANARY_WIDE)
+        self.assertEqual(marks, {3: True, 4: True, 5: True,
+                                 6: False, 7: False, 8: False})
+
+    def test_exactly_one_width_satisfies_the_whole_canary_set(self):
+        """The straddle, stated as the single claim it exists to make."""
+        passing = [n for n in range(3, 9)
+                   if observation.self_check(
+                       lambda pairs, n=n: observation.shape(pairs, n))]
+        self.assertEqual(passing, [observation.STEM_WORDS])
+
+    def test_the_declared_class_is_not_a_sharper_stem(self):
+        """Why the unit is the frame and not the class the corpus declares.
+
+        `Tools/SpeechLab/phase2` states an `equivalence_class` per rendering:
+        818 renderings over 137 declared meanings, which looks like ground
+        truth for "how many independent observations is this" and would
+        retire the five-word heuristic. It is ground truth for a different
+        question. Two renderings are in different classes when they *mean*
+        different things, and the generator varies meaning by refilling the
+        slots of one sentence:
+
+            Could you hang onto both of these--<errand>, plus <fact>
+
+        Twenty-nine `plus` rows are that sentence and they carry 26 distinct
+        declared classes. Swapping the unit moves `plus` from 66% on one
+        frame to 5% and `wait` from 36% to 6%, and both stop being marked --
+        the two findings this instrument exists to produce, erased by a
+        change that reads like a strict improvement in precision.
+
+        So the measure stays the frame. This asserts the fact the argument
+        rests on, because an argument in a comment is worth nothing once the
+        corpus it describes has moved on: if the generator ever stops reusing
+        frames across meanings, this fails and the choice is worth re-making.
+        """
+        import json, collections, readable_material
+        path = (readable_material.ROOT / readable_material.SPEECHLAB
+                / "phase2" / "data" / "renderings.jsonl")
+        sealed = {p.resolve() for p in readable_material.corpus_paths.sealed()}
+        self.assertNotIn(path.resolve(), sealed,
+                         "this test reads the file, so it must not be sealed")
+        rows = [json.loads(line) for line in
+                path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertGreater(len(rows), 500, "a file that shrank to nothing "
+                           "would satisfy every assertion below")
+
+        per_frame = collections.defaultdict(set)
+        for row in rows:
+            per_frame[observation.stem(row["text"])].add(row["equivalence_class"])
+        classes = {row["equivalence_class"] for row in rows}
+        busiest = max(len(seen) for seen in per_frame.values())
+
+        self.assertLess(len(classes), len(per_frame),
+                        "fewer declared meanings than frames would make the "
+                        "class the coarser unit, and this argument the wrong "
+                        "way round")
+        self.assertGreaterEqual(
+            busiest, 10,
+            f"one frame carried {busiest} declared meanings, so the class no "
+            f"longer separates what the frame merges and the unit is worth "
+            f"revisiting")
+
+    def test_the_probe_words_vary_where_the_measure_can_see(self):
+        """`stem` drops digits, so a numeric probe varies nothing."""
+        import re
+        self.assertEqual(len(set(observation.STEM_PROBE)),
+                         len(observation.STEM_PROBE))
+        for word in observation.STEM_PROBE:
+            self.assertRegex(word, r"^[a-z]+$")
+
 
 class TheCensusReportsPerForm(unittest.TestCase):
 
@@ -318,71 +467,97 @@ class AbsenceAndDispersionDoNotPrintTheSame(unittest.TestCase):
         self.assertIn("TOO FEW", observation.mark_for(below))
 
 
-class TheFiguresItPrintsForWhatItDoesNotReadAreRecomputed(unittest.TestCase):
-    """The block naming unread populations typed three figures and got one
-    wrong, which is the defect that block exists to complain about.
+class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
+    """This module used to print a list of populations it did not read.
 
-    A count of a population the report declines to read is the figure with
-    nothing holding it to account: no run recomputes it, and it reads as
-    measured. So the count lives here, where a run does recompute it, and
-    the report prints this module's constant rather than a literal.
+    Honest, and the reason every figure it produced needed qualifying: `plus`
+    reported 0 rows here and 44 in the census, and a reader checking a figure
+    got the wrong answer with no error. Both populations are read now, so the
+    list is gone and the claim it was hedging -- that this reads all readable
+    material -- has to be checked instead, because a silent claim of total
+    coverage is worse than a stated gap. Four instruments in this directory
+    have described themselves as covering readable material while omitting
+    some of it, this one included.
     """
 
-    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    @classmethod
+    def setUpClass(cls):
+        import readable_material
+        cls.rm = readable_material
+        cls.pairs = list(observation.readable_pairs())
 
-    def literals(self):
-        """`swift_literals` as `everyday/leak-check.py` defines it.
+    def test_it_reads_the_same_population_the_census_reports(self):
+        """Against the census's own reported figure, not against the walk.
 
-        Imported by spec because of the hyphen, and by path because that is
-        the honest statement of where it lives -- the report declines to do
-        this, which is the whole reason the count is a constant over there.
+        Comparing `readable_pairs()` to `readers()` would be very nearly a
+        tautology, since the first is built on the second: both would go to
+        zero together and agree perfectly. So this asks the other instrument
+        what it counted and requires the same number.
         """
         import importlib.util
-        source = self.ROOT / "Tools/CorpusRunner/everyday/leak-check.py"
-        spec = importlib.util.spec_from_file_location("leak_check", source)
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)
-        except SystemExit:
-            pass
+        here = pathlib.Path(observation.__file__).resolve().parent
+        spec = importlib.util.spec_from_file_location(
+            "connective_census_for_test", here / "connective-census.py")
+        census = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(census)
+        _counts, distinct, sources = census.census()
+
+        mine = {text for _s, text in self.pairs}
+        self.assertGreater(distinct, 5000, "the census itself read nothing")
+        self.assertEqual(len(mine), distinct)
+        # `census()` returns sources as (path, rows, distinct) triples.
+        self.assertEqual(len({s for s, _t in self.pairs}), len(sources))
+        self.assertTrue(all(rows > 0 for _p, rows, _d in sources),
+                        "a source reading nothing reports every form absent")
+
+    def test_every_declared_source_actually_contributed(self):
+        """A source reading nothing reports every form absent, and absence is
+        the answer that ends a proposal."""
+        carried = {name for name, _t in self.pairs}
+        self.assertEqual(len(carried), len(self.rm.readers()))
+
+    def test_the_source_key_is_a_path_and_not_a_basename(self):
+        """The bug this caught in itself, kept as a regression.
+
+        Two sources are both named `renderings.jsonl`, under different
+        SpeechLab directories. Keyed on the basename they merged: nineteen
+        sources for twenty, and any form appearing in only those two would
+        report `sources == 1` and be marked CONCENTRATED by the source arm --
+        a false mark from the half of the measure that exists to catch
+        exactly this.
+        """
+        names = [p.name for p, _r in self.rm.readers()]
+        self.assertLess(len(set(names)), len(names),
+                        "if basenames stop colliding this proves nothing")
+        keys = {name for name, _t in self.pairs}
+        self.assertEqual(len(keys), len(self.rm.readers()))
+
+    def test_the_two_multi_word_rules_have_not_drifted_apart(self):
+        """`swift_utterances` filters `len(split()) > 1`; the count this
+        module used to publish was measured with `" " in strip()`. They agree
+        on this corpus, exactly and in both directions, which is worth
+        pinning rather than trusting -- "multi-word" was standing in for a
+        rule nobody had written down, and reading it three ways gave 3702,
+        3760 and 3804.
+        """
+        root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
-        for swift in sorted((self.ROOT / "SpeakItTests").glob("*.swift")):
+        for swift in sorted((root / "SpeakItTests").glob("*.swift")):
             text = swift.read_text(encoding="utf-8", errors="replace")
-            for literal in module.swift_literals(
-                    text, minimum=observation.SWIFT_LITERAL_FLOOR):
-                if " " in literal.strip():
-                    found.add(literal)
-        return found
+            found.update(self.rm.swift_literals(text))
+        space = {l for l in found if " " in l.strip()}
+        split = {l for l in found if len(l.split()) > 1}
+        self.assertEqual(space, split)
+        self.assertEqual(len(space), 3702)
 
-    def test_the_swift_literal_count_is_what_the_stated_rule_produces(self):
-        self.assertEqual(len(self.literals()), observation.SWIFT_LITERALS)
+    def test_the_coverage_statement_carries_no_hand_typed_figure(self):
+        """It says what is read, not how much. A count in there is one
+        nothing recomputes, which is how the last three got in."""
+        self.assertNotRegex(re.sub(r"#\d+", "", observation.READ_WHAT), r"\d")
 
-    def test_the_report_prints_the_constant_rather_than_a_second_copy(self):
-        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
-        self.assertIn(str(observation.SWIFT_LITERALS), line)
-        self.assertNotIn("3,704", line)
-
-    def test_multi_word_is_stated_as_the_rule_it_is(self):
-        """`contains a space` and `two word tokens` differ by 58 literals on
-        this corpus. The first version said `multi-word` and meant neither
-        out loud, so the rule is named in the report's own text."""
-        import re as _re
-        floor = {l for l in self.literals()}
-        tokens = {l for l in floor if len(_re.findall(r"[A-Za-z']+", l)) >= 2}
-        self.assertNotEqual(len(floor), len(tokens),
-                            "if these ever agree this test proves nothing")
-        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
-        self.assertIn("containing a space", line)
-
-    def test_no_unread_population_carries_a_figure_nothing_here_checks(self):
-        """The SpeechLab line used to carry `about 1,290`, which no run here
-        recomputes and #66 has since moved. A hedge is not a source."""
-        speechlab = dict(observation.NOT_READ)["Tools/SpeechLab/**.jsonl"]
-        # A pull-request reference is a pointer to who owns the figure, which
-        # is the opposite of an unchecked figure, so it is not a count.
-        without_refs = re.sub(r"#\d+", "", speechlab)
-        self.assertNotRegex(without_refs, r"\d",
-                            "counts for that population belong to #66's walk")
+    def test_the_coverage_statement_names_the_owner(self):
+        self.assertIn("readable_material", observation.READ_WHAT)
+        self.assertIn("sealed", observation.READ_WHAT)
 
 
 if __name__ == "__main__":

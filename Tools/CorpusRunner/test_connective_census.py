@@ -15,12 +15,25 @@ import importlib.util
 import io
 import json
 import pathlib
+import sys
 import unittest
 
 HERE = pathlib.Path(__file__).resolve().parent
 
 
 def census_module():
+    """A freshly executed census, and a freshly executed walk under it.
+
+    The walk used to live in the census, so reloading one reloaded both and
+    every test started from the real `ROOT`. Now it is an ordinary importable
+    module, which means `sys.modules` caches it: a test that points `ROOT` at
+    a temporary tree leaves it pointing there, and the next test reads an
+    empty gating corpus and fails with the census's own "a reader that has
+    quietly stopped reading" refusal -- the right error about the wrong
+    thing. Dropping it from the cache restores the isolation the split took
+    away rather than leaving each test to remember.
+    """
+    sys.modules.pop("readable_material", None)
     spec = importlib.util.spec_from_file_location(
         "connective_census", HERE / "connective-census.py")
     module = importlib.util.module_from_spec(spec)
@@ -91,8 +104,8 @@ class OverlappingSourcesAreCountedOnce(CensusCase):
     def test_reading_a_source_twice_does_not_change_any_count(self):
         """The original defect, reproduced against the current design."""
         before, distinct_before, _ = self.census.census()
-        real = self.census._readers()
-        self.census._readers = lambda: real + real
+        real = self.census.readers()
+        self.census.readers = lambda: real + real
         after, distinct_after, _ = self.census.census()
         self.assertEqual(distinct_before, distinct_after)
         self.assertEqual(before, after)
@@ -138,16 +151,16 @@ class ASilentReaderIsRefused(CensusCase):
     """Every way the census can stop reading looks like a discovery."""
 
     def test_a_source_that_yields_nothing_refuses_rather_than_scoring_zero(self):
-        real = self.census._readers()
-        self.census._readers = lambda: [(p, lambda _p: iter(()))
+        real = self.census.readers()
+        self.census.readers = lambda: [(p, lambda _p: iter(()))
                                         for p, _ in real]
         with self.assertRaises(ValueError) as caught:
             self.census.census()
         self.assertIn("quietly stopped reading", str(caught.exception))
 
     def test_the_refusal_reaches_the_exit_code(self):
-        real = self.census._readers()
-        self.census._readers = lambda: [(p, lambda _p: iter(()))
+        real = self.census.readers()
+        self.census.readers = lambda: [(p, lambda _p: iter(()))
                                         for p, _ in real]
         code, text = self.run_main()
         self.assertEqual(code, 2)
@@ -225,7 +238,10 @@ class SealedPathsAreRefusedByName(CensusCase):
             tree = pathlib.Path(root) / "Tools" / "SpeechLab" / "data"
             tree.mkdir(parents=True)
             (tree / "sealed-renderings.jsonl").write_text("{}\n")
-            self.census.ROOT = pathlib.Path(root)
+            # The walk reads its own module's ROOT, which is where it now
+            # lives; patching the census's copy would leave the real tree
+            # walked and the test passing for the wrong reason.
+            self.census.readable_material.ROOT = pathlib.Path(root)
             with self.assertRaises(ValueError) as caught:
                 self.census.speechlab_files()
             self.assertIn("sealed", str(caught.exception))
@@ -421,19 +437,27 @@ class TheReadersReadWhatTheyClaim(CensusCase):
         self.assertEqual(list(self.census.swift_utterances(self.dir)),
                          ["call the dentist tomorrow"])
 
-    def test_the_swift_reader_uses_the_leak_check_harvester(self):
-        """Not a second implementation. `leak-check.py` owns what a literal is
-        in this codebase, including the twelve-character floor, and two
-        readers of one rule is the defect that produced this whole family.
+    def test_the_swift_reader_uses_the_one_harvester(self):
+        """Not a second implementation. One module owns what a literal is in
+        this codebase, including the twelve-character floor, and two readers
+        of one rule is the defect that produced this whole family.
+
+        The owner moved from `leak-check.py` to `readable_material.py` when
+        the third consumer arrived: a hyphenated filename cannot be imported
+        by statement, so every consumer reached it by path, and the comment
+        warning against a third path-importer had already been overtaken by
+        one. Moving it is what makes the rule importable rather than copied.
 
         Pinned by behaviour rather than by identity: a short literal is
         dropped because that harvester drops it, so a private copy that
         forgot the floor fails here.
         """
         self.assertEqual(
-            pathlib.Path(self.census.leak_check.__file__).name,
-            "leak-check.py",
-            "the harvester no longer comes from the file that owns it")
+            pathlib.Path(self.census.readable_material.__file__).name,
+            "readable_material.py",
+            "the harvester no longer comes from the module that owns it")
+        self.assertIs(self.census.swift_literals,
+                      self.census.readable_material.swift_literals)
         (self.dir / "T.swift").write_text(
             'let a = "buy eggs"\n'                 # 9 chars, under the floor
             'let b = "buy eggs and whole milk"\n')
@@ -449,14 +473,14 @@ class TheReadersReadWhatTheyClaim(CensusCase):
         read at all. A coverage claim cannot be asserted, which is the lesson
         the census itself is built on, so it is checked here.
         """
-        sources = [p for p, _ in self.census._readers()]
+        sources = [p for p, _ in self.census.readers()]
         self.assertIn(self.census.ROOT / self.census.GATING, sources)
 
     def test_the_gating_corpus_is_one_source_and_not_two_hundred(self):
         """A source count is not a population count, and this file says so in
         its own report. Listing every test file separately would make the
         largest single authored population look like the most diverse one."""
-        sources = [p for p, _ in self.census._readers()]
+        sources = [p for p, _ in self.census.readers()]
         under = [p for p in sources
                  if self.census.GATING in str(p)]
         self.assertEqual(len(under), 1, f"{len(under)} gating sources")
