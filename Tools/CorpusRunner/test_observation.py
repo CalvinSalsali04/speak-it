@@ -3,6 +3,7 @@ import pathlib
 import re
 import sys
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import observation  # noqa: E402
@@ -662,6 +663,46 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
         """
         self.assertNotIn("will not reproduce", observation.__doc__)
         self.assertIn("python3 observation.py plus wait", observation.__doc__)
+
+
+class ARefusalFromTheWalkReadsAsARefusal(unittest.TestCase):
+    """A raise from `readers()` is a result, not a crash.
+
+    `connective-census.py` prints "REFUSED: ..." and exits 2 for the same
+    three conditions -- a sealed path, a renamed utterance column, an
+    unclassified SpeechLab file -- while this module printed a traceback.
+    Both are loud, so this is not a correctness fix; it is that one of the two
+    tells a reader what to do and the other makes them read a stack.
+    """
+
+    def test_it_prints_a_sentence_and_exits_two(self):
+        import contextlib, io
+        def refuse():
+            raise ValueError("a source is unclassified")
+        out = io.StringIO()
+        with unittest.mock.patch.object(observation, "readable_pairs", refuse):
+            with contextlib.redirect_stdout(out):
+                code = observation.main([])
+        self.assertEqual(code, 2)
+        self.assertIn("REFUSED", out.getvalue())
+        self.assertIn("a source is unclassified", out.getvalue())
+        self.assertNotIn("Traceback", out.getvalue())
+
+    def test_it_prints_no_figure_after_refusing(self):
+        """A refusal that still prints a table is the worse of the two.
+
+        The exit code is read by CI and the table is read by a person, so a
+        run that says REFUSED and then prints numbers hands the person a
+        figure produced from a population the tool has just disowned.
+        """
+        import contextlib, io
+        def refuse():
+            raise ValueError("a source is unclassified")
+        out = io.StringIO()
+        with unittest.mock.patch.object(observation, "readable_pairs", refuse):
+            with contextlib.redirect_stdout(out):
+                observation.main([])
+        self.assertNotIn("ARE THESE N INSTANCES", out.getvalue())
 
 
 class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):

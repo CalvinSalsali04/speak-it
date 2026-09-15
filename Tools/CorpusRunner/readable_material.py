@@ -82,6 +82,87 @@ NOT_SPEECH = frozenset({
 })
 
 
+#: SpeechLab `.jsonl` files that `readers()` does not read, declared rather
+#: than inferred. Ten of the twenty-two under `Tools/SpeechLab` are dropped
+#: because `utterance_field` finds nothing in them, and until this list
+#: existed that decision was made afresh on every run and recorded nowhere.
+#:
+#: **Not "holds no speech". Two of them do**, and the first draft of this list
+#: said otherwise, because the audit behind it read top-level string values
+#: and `utterance_field` reads top-level keys -- the same blind spot twice,
+#: which is why nothing contradicted it. Caught in review. What each file
+#: holds is written beside it now, and the two exceptions are named again in
+#: `SPEECH_UNDER_A_NESTED_KEY` below, where a test recomputes them.
+#:
+#: The list earns its place anyway, and for the reason it was written: the
+#: pattern in `LOOKS_LIKE_SPEECH` is a name-shaped net, so a corpus arriving
+#: with its utterances under `line` or `said` matches nothing, drops silently,
+#: and the census reports a smaller population in the same calm voice it
+#: reports a correct one. `corpus_paths.unclassified()` solved exactly that
+#: for `*.tsv` by making the classification **total**, and
+#: `speechlab_unclassified()` below is that check one directory over.
+#:
+#: Paths are relative to the repository root, and a name here that turns out
+#: to hold a top-level utterance field fails the run as loudly as one that is
+#: missing. A list that can only be too short is the failure mode being fixed.
+NOT_READ = {
+    # 260 blueprint rows: ids, family labels, and `expected.items[].title`
+    # with `facts[]` -- 254 distinct strings naming what the parser should
+    # produce, which are contract labels and not anything anybody said.
+    "Tools/SpeechLab/data/blueprints.jsonl",
+    # 260 rows of `archetype` / `description`, machine-composed from the
+    # family's own shape ("single-task with plain semantic context").
+    "Tools/SpeechLab/data/family-definitions.jsonl",
+    # 137 rows, the same shape one phase on. No nested strings at all.
+    "Tools/SpeechLab/phase2/data/semantic-families.jsonl",
+    # adjudication: a case id and a verdict per row, plus an annotator's
+    # gloss under `review.intended_meaning` and its siblings -- 958 distinct
+    # in the combined file. Analysis *about* a capture, in the annotator's
+    # words, never the capture.
+    "Tools/SpeechLab/phase2/adjudication/reviews.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-a-20260914.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-b-20260914.jsonl",
+    "Tools/SpeechLab/phase2/adjudication/reviews/"
+    "codex-blind-reviewer-c-20260914.jsonl",
+    # 50 rows of the same blueprint shape as `data/blueprints.jsonl`, with
+    # the contract nested one level under `blueprint`.
+    "Tools/SpeechLab/artifacts/export-for-ai/blueprint-batch.jsonl",
+    # HOLDS SPEECH, under `representatives[].text` and
+    # `counterexamples[].text` -- 48 distinct, and every one of them is
+    # already counted through another source, so reading it would add
+    # nothing to the population. See SPEECH_UNDER_A_NESTED_KEY.
+    "Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl",
+    # HOLDS SPEECH, under `capture_context.prior_turns[].text` -- 26
+    # distinct, 17 of them counted nowhere else. Prior turns are the
+    # conversation a blueprint sets up around the capture rather than the
+    # capture, but that is a judgement and not the reason this file is
+    # unread: it is unread because the reader looks at top-level keys.
+    # See SPEECH_UNDER_A_NESTED_KEY.
+    "Tools/SpeechLab/phase2/data/blueprints.jsonl",
+}
+
+#: The two above that do hold speech, named so the gap is a measured figure
+#: rather than a sentence. `speechlab_nested_speech()` recomputes this set
+#: from the files, so it moves when the data does and when the reader does.
+#:
+#: Both carry strings under a key that IS in `UTTERANCE_FIELDS` -- `text` --
+#: and are dropped only because it sits under a list or a dict.
+#: `utterance_field` reads `record.get(field)` and `record.items()`, both top
+#: level, so a nested corpus is invisible to the reader AND to the
+#: renamed-column refusal that exists to catch a corpus going missing. That is
+#: this module's gap, not a property of these two files, and it wants the
+#: reader taught to descend rather than a longer list here. Costed before
+#: being deferred: reading declared field names at any depth would add **17
+#: distinct utterances**, all from `phase2/data/blueprints.jsonl`, since
+#: `failure-pack.jsonl` is entirely duplicates of material already counted.
+SPEECH_UNDER_A_NESTED_KEY = {
+    "Tools/SpeechLab/artifacts/export-for-ai/failure-pack.jsonl",
+    "Tools/SpeechLab/phase2/data/blueprints.jsonl",
+}
+
+
 #: Swift string literals, and the reason this is not a one-line regex.
 #:
 #: It used to be `re.findall(r'"([^"\\]{12,})"', text)` over the whole file,
@@ -224,6 +305,20 @@ def utterance_field(path):
     Raises when a file holds no known field but has one that looks like it
     should: that is a rename, and a rename skipped silently takes a whole
     corpus out of the denominator without changing a single line of output.
+
+    **TOP LEVEL ONLY, both halves.** `record.get(field)` and `record.items()`
+    see the keys of the record and nothing inside a list or a dict under them,
+    so a corpus whose utterances are nested reads here as holding none -- and
+    the rename refusal above, which exists precisely to stop a corpus going
+    missing, is blind in the same place and so agrees. Two files in this tree
+    are in that position today, `speechlab_nested_speech` measures them, and
+    `SPEECH_UNDER_A_NESTED_KEY` names them.
+
+    Stated rather than fixed, deliberately: teaching this to descend changes
+    which files are corpora and moves the published population, so it is its
+    own change with its own measurement. What is not acceptable is the limit
+    being undocumented, which is how a declaration of "holds no speech" came
+    to be written about a file that holds twenty-six strings of it.
     """
     keys = set()
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -389,8 +484,142 @@ def independent_bodies(reduce=None, texts=None):
     return bodies, maximal
 
 
+def speechlab_unclassified(files=None, declared=None):
+    """Every SpeechLab `.jsonl` that is read by nobody and declared by nobody.
+
+    Must be empty, and that is the whole value: `readers()` drops a file the
+    moment `utterance_field` returns None, and a drop leaves no trace in any
+    output. Ten of the twenty-two files under `Tools/SpeechLab` are dropped
+    today, so the difference between "ten checked files hold no speech" and
+    "the census has silently stopped reading a corpus" is not visible anywhere
+    a reader looks.
+
+    `corpus_paths.unclassified()` made the same decision total for `*.tsv`
+    after two scans got their file lists wrong in opposite directions. This is
+    that check for the other arm of the walk: the classification is total, or
+    it is a convention, and a convention omits silently.
+
+    `files` and `declared` exist so a test can hand this a tree it controls
+    and watch it report, the way `independent_bodies` takes `reduce`. Every
+    caller in this repository passes neither, and a test asserts that, because
+    a guard a caller can narrow is a guard the caller can switch off.
+    """
+    files = speechlab_files() if files is None else files
+    declared = NOT_READ if declared is None else declared
+    return sorted(path for path in files
+                  if utterance_field(path) is None
+                  and str(path.relative_to(ROOT)) not in declared)
+
+
+def _strings(value, path=""):
+    """Every `(dotted key, string)` in a decoded JSON record, at any depth.
+
+    A list contributes `[]` to the key rather than an index, so the twenty-six
+    strings under `capture_context.prior_turns[].text` report as one key.
+    """
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield from _strings(inner, f"{path}.{key}" if path else key)
+    elif isinstance(value, list):
+        for inner in value:
+            yield from _strings(inner, f"{path}[]")
+    elif isinstance(value, str) and value:
+        yield path, value
+
+
+def speechlab_nested_speech(files=None):
+    """Unread files that carry a declared utterance field below the top level.
+
+    `utterance_field` reads `record.get(field)` and `record.items()`, so it
+    sees the top level and nothing under it. A corpus whose utterances sit in
+    a list or a dict therefore reads as holding none -- and so does the
+    `LOOKS_LIKE_SPEECH` refusal that exists to catch a corpus going missing,
+    which is the half that makes this worth measuring rather than noting. Two
+    guards agreeing is not two guards when both are blind the same way.
+
+    This descends, and looks only for the field names already declared in
+    `UTTERANCE_FIELDS`, because a name the project has committed to meaning
+    "an utterance" is not a judgement call at depth either. It returns
+    `{relative path: distinct strings}`, so a test can compare the set of
+    files against `SPEECH_UNDER_A_NESTED_KEY` and see the gap change.
+    """
+    files = speechlab_files() if files is None else files
+    out = {}
+    for path in files:
+        if utterance_field(path) is not None:
+            continue
+        found = set()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            for key, value in _strings(json.loads(line)):
+                if key.split(".")[-1].replace("[]", "") in UTTERANCE_FIELDS:
+                    found.add(value)
+        if found:
+            out[str(path.relative_to(ROOT))] = found
+    return out
+
+
+def speechlab_misdeclared(files=None, declared=None):
+    """Declared not-a-corpus names that are missing, or that do hold speech.
+
+    The mirror of the check above, and it is the half that is easy to leave
+    out. A list that can only be too short turns into somewhere to put a file
+    that has become inconvenient: declare it, and the census stops counting it
+    with no failure anywhere. So a declared name that `utterance_field` can
+    read is a failure, and so is a name that is not on disk -- the second
+    because a rename would otherwise leave the list describing a tree that no
+    longer exists, which is how a list stops being checked at all.
+
+    Returns `(name, why)` pairs, so the message says which of the two it is.
+    """
+    files = speechlab_files() if files is None else files
+    declared = NOT_READ if declared is None else declared
+    walked = {str(path.relative_to(ROOT)): path for path in files}
+    out = []
+    for name in sorted(declared):
+        path = walked.get(name)
+        if path is None:
+            out.append((name, "is declared as holding no utterance, but the "
+                              "walk does not reach it: renamed, deleted, or "
+                              "moved out of the tree"))
+            continue
+        field = utterance_field(path)
+        if field is not None:
+            out.append((name, f"is declared as holding no utterance, but "
+                              f"carries {field!r}: it is a corpus, and the "
+                              f"census is not counting it"))
+    return out
+
+
 def readers():
-    """(path, reader) for every declared source, in reading order."""
+    """(path, reader) for every declared source, in reading order.
+
+    Refuses before it returns anything if the SpeechLab classification is not
+    total. A dropped file changes every figure downstream and prints nothing,
+    so the refusal belongs here rather than in a test: the census, the
+    observation measure and the leak check all come through this function, and
+    a guard held by one suite is a guard the other consumers do not have.
+
+    The cost is that adding a metadata file to SpeechLab stops the census
+    until somebody classifies it. That is the same bargain `speechlab_files`
+    already makes for a sealed path and `utterance_field` for a renamed
+    column, and it is one line to settle.
+    """
+    stray = speechlab_unclassified()
+    if stray:
+        raise ValueError(
+            f"{len(stray)} SpeechLab file(s) hold no field named "
+            f"{' or '.join(UTTERANCE_FIELDS)} and are not in NOT_READ, so "
+            f"they are being dropped from every figure with no record: "
+            f"{', '.join(str(shown(p)) for p in stray)} — read each one and "
+            f"either "
+            f"declare it or add its field to UTTERANCE_FIELDS")
+    wrong = speechlab_misdeclared()
+    if wrong:
+        raise ValueError(
+            "NOT_READ no longer describes the tree: "
+            + "; ".join(f"{name} {why}" for name, why in wrong))
     readers = [(p, tsv_utterances) for p in corpus_paths.readable()]
     readers.append((ROOT / GATING, swift_utterances))
     for path in speechlab_files():
