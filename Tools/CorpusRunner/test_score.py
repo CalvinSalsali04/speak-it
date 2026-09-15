@@ -1284,6 +1284,39 @@ class CorpusPathTests(unittest.TestCase):
         """Deleting a corpus must not pass as quietly as adding one."""
         self.assertEqual(self.paths().missing(), [])
 
+    def test_readable_hands_back_every_readable_file_on_disk(self):
+        """The list being total does not make what is handed out total.
+
+        `unclassified()` and `missing()` both read `READABLE_NAMES` directly,
+        so neither can see `readable()` returning fewer paths than it declares.
+        Slicing one off its return passes every suite in this repository: each
+        consumer derives from that one call, so all of them move together, the
+        census prints one fewer source and 5,482 utterances instead of 5,501,
+        and nothing compares either number to anything.
+
+        That is not hypothetical here. The census read 1,908 utterances until
+        `SpeakItTests` was added, and #68 described two corpora it was not
+        reading. Both were a population short while reporting confidently.
+
+        So this derives the answer a second way -- everything on disk that is
+        not sealed and not a manifest -- rather than restating the constant.
+        It is the exact complement of `unclassified()`: that one says the
+        lists cover the disk, this one says `readable()` returns all of the
+        part it owns.
+        """
+        paths = self.paths()
+        sealed = set(paths.sealed())
+        manifest = {paths.HERE / name for name in paths.MANIFEST_NAMES}
+        on_disk = sorted(path for path in paths.HERE.rglob("*.tsv")
+                         if path not in sealed and path not in manifest)
+        self.assertTrue(on_disk, "no readable corpus found on disk at all, "
+                                 "so this test is measuring nothing")
+        self.assertEqual(
+            paths.readable(), on_disk,
+            "readable() and the directory disagree; every figure derived "
+            "from it moves with it, so neither the count nor the report "
+            "can show this")
+
     def test_the_readable_search_cannot_return_a_sealed_file(self):
         """The search that caused the second exposure, made safe by construction.
 

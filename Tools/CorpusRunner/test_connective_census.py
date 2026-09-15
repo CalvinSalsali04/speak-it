@@ -22,6 +22,16 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 
 
+def corpus_paths_module():
+    """The path declaration, imported the way the scans import it."""
+    sys.path.insert(0, str(HERE))
+    try:
+        import corpus_paths
+    finally:
+        sys.path.pop(0)
+    return corpus_paths
+
+
 def census_module():
     """A freshly executed census, and a freshly executed walk under it.
 
@@ -274,6 +284,63 @@ class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
                            "the collision this guards against is gone; if "
                            "that is deliberate, this test should go too")
         self.assertEqual(len(texts), len(self.census.readers()))
+
+
+class EveryDeclaredSourceReachesTheWalk(CensusCase):
+    """A source can be declared and still not be read.
+
+    `corpus_paths` guards the declaration: `unclassified()` fails on a corpus
+    nobody classified, `missing()` on a declared file that is gone. Neither
+    watches the step after, where `readers()` turns the declaration into the
+    list the walk actually reads. Dropping one development set there -- one
+    line, `[1:]` on the comprehension -- passed the census suite, the
+    observation suite and the scorer suite together.
+
+    It is quiet because the sets are small. The seven development sets are 618
+    of 5,501 utterances, so losing one moves the total by a fraction of a
+    percent, every count derives from the same shortened list and moves with
+    it, and the report prints one fewer source without claiming how many there
+    should be. The population this project may read is the denominator under
+    every figure it publishes, and it was the one number nothing recomputed.
+    """
+
+    def test_every_readable_set_is_one_of_the_readers(self):
+        declared = corpus_paths_module().readable()
+        self.assertTrue(declared, "no development sets declared at all")
+        reading = {path for path, _ in self.census.readers()}
+        for path in declared:
+            self.assertIn(path, reading,
+                          f"{path.name} is declared readable and no reader "
+                          f"picks it up, so every figure over readable "
+                          f"material silently excludes it")
+
+    def test_the_walk_reads_the_gating_corpus_and_the_speechlab_tree(self):
+        """The other two categories, named rather than assumed.
+
+        Dropping either is caught loudly today by tests that compare counts,
+        because between them they are 4,992 of the 5,501. That is a property
+        of their size, not of a check, and it would stop holding the moment
+        someone adds a large development set.
+        """
+        reading = {path for path, _ in self.census.readers()}
+        self.assertIn(self.census.ROOT / self.census.GATING, reading)
+        self.assertTrue(
+            [path for path in reading
+             if str(path).startswith(str(self.census.ROOT / self.census.SPEECHLAB))],
+            "no SpeechLab file reaches the walk")
+
+    def test_the_walk_reads_nothing_that_is_not_declared(self):
+        """The other direction: a reader nobody declared is material from
+        nowhere, and a sealed one would be worse than that."""
+        paths_module = corpus_paths_module()
+        allowed = set(paths_module.readable())
+        allowed.add(self.census.ROOT / self.census.GATING)
+        sealed = {path.resolve() for path in paths_module.sealed()}
+        for path, _ in self.census.readers():
+            if str(path).startswith(str(self.census.ROOT / self.census.SPEECHLAB)):
+                continue
+            self.assertIn(path, allowed, f"{path} is read and not declared")
+            self.assertNotIn(path.resolve(), sealed, f"{path} is sealed")
 
 
 class TheTwoGuardsReadOnePopulation(CensusCase):
