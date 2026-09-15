@@ -204,6 +204,21 @@ class ARenamedFieldIsRefused(CensusCase):
 
 
 class SealedPathsAreRefusedByName(CensusCase):
+    """Both readers' sealed-path arguments, kept in one place.
+
+    `speechlab_files` refuses by name and the refusal is exercised.
+    `swift_utterances` has no refusal at all, and this class holds the whole
+    argument for why it needs none -- both legs of it, because half a pin on
+    a removed refusal is what the removal has to be judged on.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        room = tempfile.TemporaryDirectory()
+        self.addCleanup(room.cleanup)
+        self.dir = pathlib.Path(room.name)
+
     def test_a_file_sealed_by_speechlab_convention_is_refused(self):
         import tempfile, os
         with tempfile.TemporaryDirectory() as root:
@@ -221,6 +236,34 @@ class SealedPathsAreRefusedByName(CensusCase):
         self.assertGreater(len(files), 5)
         for path in files:
             self.assertNotIn("sealed", str(path).lower())
+
+    def test_the_gating_reader_never_opens_a_corpus_file(self):
+        """The second half of the pin, and it was missing.
+
+        `swift_utterances` has no sealed-path refusal because it cannot reach
+        one, and that argument has two legs: everything `sealed()` names is a
+        `.tsv`, and this reader opens only `.swift`. The first was pinned. The
+        second was not -- the nearest test plants a `.py` file, which shows
+        the reader ignores *some* other extension and says nothing about the
+        one that matters. Widening the filter to `(".swift", ".tsv")` passed
+        the whole suite.
+
+        A dead fallback and a dead refusal are not the same risk. A fallback
+        that never fires does nothing; a refusal that never fires reads a
+        sealed path. So removing one is only as good as the pin being total,
+        and mine was half.
+        """
+        (self.dir / "T.swift").write_text('let a = "call the dentist tomorrow"')
+        #: The planted row is QUOTED on purpose. A bare TSV holds no Swift
+        #: string literal, so `swift_literals` returns nothing from it whether
+        #: the reader opened it or not, and a fixture that cannot tell those
+        #: apart is the defect this test was written against, one layer down.
+        #: The first version of this test used an unquoted row and passed on
+        #: a reader widened to `(".swift", ".tsv")`.
+        (self.dir / "set.tsv").write_text(
+            'id\tutterance\nX01\t"the lease ends in March"\n')
+        self.assertEqual(list(self.census.swift_utterances(self.dir)),
+                         ["call the dentist tomorrow"])
 
     def test_the_gating_reader_needs_no_refusal_because_it_cannot_reach_one(self):
         """`swift_utterances` deliberately has no sealed check, and these are
