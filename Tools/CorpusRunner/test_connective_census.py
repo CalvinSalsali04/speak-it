@@ -161,6 +161,12 @@ class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
         `source_texts` calls the one in its own module, so patching the alias
         would leave the real tree read and the test passing for the wrong
         reason.
+
+        Same family as the `words=STEM_WORDS` default #70 fixed one module
+        over: an alias is a second copy of a name meant to have one, and
+        rebinding the copy changes the name and not the behaviour. Both fail
+        by passing while measuring nothing, which is the answer that raises
+        no alarm.
         """
         planted = []
         for number, texts in enumerate(groups):
@@ -207,7 +213,23 @@ class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
         source with the equal ones kept apart, so each of a pair is inside the
         other and neither survives. That is the version that reported nine
         bodies and covered 4683 of 5501.
+
+        The precondition is asserted first because this test borrows a
+        property of the corpus rather than planting one, and the borrowed
+        property can go away: de-duplicate the four equal SpeechLab files and
+        the replaced reduction drops nothing, the guard does not fire, and
+        this fails with a bare "AssertionError not raised" naming nothing.
+        That reads as the guard breaking when it means the fixture stopped
+        reproducing the bug, and the two want different responses.
         """
+        texts = self.census.source_texts()
+        self.assertLess(
+            len(set(texts.values())), len(texts),
+            "no two sources hold the same utterances any more, so there is "
+            "nothing here for a reduction comparing before grouping to "
+            "eliminate; if that de-duplication is deliberate, this test "
+            "should go too")
+
         def compared_before_grouping(texts):
             each = list(texts.values())
             maximal = [body for number, body in enumerate(each)
