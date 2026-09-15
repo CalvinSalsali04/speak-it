@@ -282,10 +282,21 @@ SWIFT_LITERALS = 3702
 #: output rather than a known limitation, and it costs three lines.
 #:
 #: Every figure here is recomputed by a test rather than typed, because the
-#: first version of this block typed three: one was wrong (3,704 for 3702),
-#: one appears nowhere else in the repository, and one was a hedge. A count of
-#: a population the report declines to read is precisely the figure with
+#: first version of this block typed three and none of them held up. A count
+#: of a population the report declines to read is precisely the figure with
 #: nothing holding it to account -- it reads as measured, and no run disagrees.
+#:
+#: The correction to the correction belongs here too. The second of those
+#: three, "a superset of the 1,380 gating captures", was removed on the
+#: stated ground that it "appears nowhere else in the repository". It does:
+#: `everyday/leak-check.py` and `everyday/README.md` both carry it, meaning
+#: `corpusCase` utterances, and the superset claim was true. The grep behind
+#: that removal filtered by extension AND by directory, so it never looked in
+#: `everyday/`, and a scoped check was reported as a general one -- which is
+#: the same defect, one level up, as the figures it was correcting. The
+#: relation is restored below without a count, because 1,380 has since
+#: drifted: three ways of asking give 1,405, 1,358 and 1,312, and a fourth
+#: number is not what this block needs.
 NOT_READ = (
     ("Tools/SpeechLab/**.jsonl",
      "NOT YET CALLED. The walk that reaches these safely, with its "
@@ -295,10 +306,11 @@ NOT_READ = (
      "report and not one this report can check, so it is not repeated here."),
     ("SpeakItTests/*.swift",
      f"{SWIFT_LITERALS} distinct literals of {SWIFT_LITERAL_FLOOR}+ "
-     f"characters containing a space. `swift_literals` lives in "
-     f"`everyday/leak-check.py` and wants a home before a third reader "
-     f"imports it by path -- which is why this states the count rather than "
-     f"becoming that third reader."),
+     f"characters containing a space, a superset of the gating corpus's "
+     f"`corpusCase` utterances -- whose count `everyday/leak-check.py` owns "
+     f"and this does not restate. `swift_literals` lives there too and wants "
+     f"a home before a third reader imports it by path, which is why this "
+     f"states a count rather than becoming that third reader."),
 )
 
 
