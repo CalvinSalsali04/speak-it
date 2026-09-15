@@ -337,10 +337,9 @@ def block(figs=None):
         {100.0 * f['column_sum'] / total:.1f}%, because the
         {word(f['maximal'])} populations are maximal rather than disjoint.**
         A body inside no other body may still overlap one. The excess of
-        {f['column_sum'] - total:,} is the {f['both']} development-set
-        utterances that are also fixtures,
-        plus {f['in_two_sets']} that appear in two development sets. Only the
-        union, {total:,}, is a total."""))
+        {f['column_sum'] - total:,} counts an utterance once for every
+        additional maximal population that contains it. Only the union,
+        {total:,}, is a total."""))
     out.append("")
     out.append("### By kind, and the one place two kinds overlap")
     out.append("")
