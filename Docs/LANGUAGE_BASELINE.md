@@ -552,6 +552,72 @@ caught that regression. The three guards above were written for this change and
 exist to catch it now. That sizing is the part of this worth keeping; the guard
 that shipped is the smaller half of it.
 
+### What review then found, and the two runs it cost
+
+The section above was written after one green run and it was not finished. The
+grade on #90 held it on a boundary the change would have **taken away**, which
+is the opposite direction from the one being measured and is not visible in any
+figure above.
+
+`identifyingNumberContext` declined on a preposition **or** a copula within
+three words to the left. The copula arm is right where the number *is* the
+thing ("my locker is number three"). It is wrong where a statement has simply
+finished and an instruction follows:
+
+| | at `66d338d` | at `707ac32` | at `fc1be70` |
+| --- | --- | --- | --- |
+| the meeting is tomorrow number two call the dentist | cut | **not cut** | cut |
+| my flight is Tuesday number two book the cat sitter | cut | **not cut** | cut |
+
+The old gate cut both, because it asked only whether an instruction followed
+the number. **No row in the gating corpus had that shape**, so the gate was
+green either way — the same asymmetry this change was written to fix, pointing
+the other direction, and found by a reader rather than by an instrument.
+
+The repair splits the lookbehind into `locatingNumberContext` and
+`equatingNumberContext`. Both guard the clause-opener alternative; only the
+locating arm guards a second alternative whose lookahead is the old gate's own
+`actionLeadPattern`. The two rows are pinned.
+
+**Two macOS runs, and the first one failed, which is worth recording rather
+than tidying away:**
+
+- [run 34975096286](https://github.com/CalvinSalsali04/speak-it/actions/runs/34975096286)
+  on `0f4f589` — **failed**, on exactly the two rows just added, on one field
+  of each: `route[0]: expected Memory, got Today`. `count: 2` passed on both,
+  so the boundary was restored and the *label* was wrong. Routing was written
+  from intuition in the same motion as a splitting fix whose Python emulation
+  had been validated against six already-scored rows — and that emulation says
+  nothing about routing. A probe that is right about one dimension is not
+  evidence about the dimension beside it.
+- [run 34976825027](https://github.com/CalvinSalsali04/speak-it/actions/runs/34976825027)
+  on `fc1be70` — **success**, after relabelling to `[.today, .today]`:
+
+```
+rendering=identity  TOTAL 1412 cases, 0 failing, 1412 clean
+CRITICAL 0  BEHAVIORAL 0  METADATA 0  COSMETIC 0
+BLOCKING(crit+beh) = 0
+corpus gate ok: 0 blocking failures
+```
+
+**The repair moved no sealed measure.** Every figure on the green run is
+identical to the run at `707ac32` recorded above — everyday 168/240 · 193/232 ·
+230/244 · 14/22, clean titles **246/255** with `work-school` 48/51, held-out
+233/320 · 254/310 · 271/310 · harm 7, clean sealed 225/310 · 247/301 · 263/301
+· harm 7, adversarial 52/116 · 78/105 · 113/116 · 10/24 · 117/120 · harm 1,
+consequence 51/56 · 34/56. So the `+1` in the ledger is the enumerator change's
+and the repair costs nothing; **no second ledger row is due.**
+
+The label itself was right and the *reason* written beside it was not. "A dated
+event is an upcoming item" is wider than this corpus: `My passport expires in
+March` and `The lease on the apartment ends in November.` are dated events
+routed to Memory, and `Nadia's birthday is October 12.` is Memory as a fact
+about a person. The line the corpus draws is the **named day**, not the date —
+`The parking pass expires Friday` is Today — and the row's note now cites that
+instead. A stated reason wider than its own predicate is the defect this file
+keeps finding in filters; it is no better in a corpus note, which is where
+somebody looks the rule up.
+
 ## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
 
 **The numbers in this heading and in the prose below are the ones the #71 run
