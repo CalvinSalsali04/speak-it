@@ -312,7 +312,145 @@ five — a missing row is a failure and the denominator stays whole. Switching t
 others to that would move published rates, so it needs a run and a note rather
 than a quiet edit.
 
+## 2026-09-15 — the held-out set has its own per-family table, and it reads the opposite of everyday's on the same family
+
+`heldout/score.py` has printed a per-family table on every run and **no figure
+from it has ever been recorded in this file.** Every `run-on` number here is
+the everyday set's. That is a gap in the record rather than in the
+instrument, and closing it changes a reading this file already made.
+
+Read out of the job log of
+[run 34960158656](https://github.com/CalvinSalsali04/speak-it/actions/runs/34960158656)
+(`macos-26`, job `Language metrics`, success), not re-run: the run was paid for
+by another thread and this section spends nothing. Ids and rates only; no
+capture text was read. The head is `707ac32`, which is `66d338d` plus one
+unmerged parser change. The three held-out figures this file already records
+came back identical to their recorded values — destination 233/320, thought
+count strict 254/310, ACTED ON ANYWAY 7 — so the per-family rates below are
+`main`'s to within a change that moved none of them.
+
+### The rows worth having
+
+The scorer prints this table under the heading **PER FAMILY (LEGACY
+denominators) — one tag per capture**, ranked worst destination rate first.
+These eight rows are the ones this file has a reading for; the run prints
+thirty.
+
+| family | n | destination | thought count |
+| --- | ---: | ---: | ---: |
+| ellipsis | 12 | **0/4 (0.0%)** | 4/4 (100.0%) |
+| reported-speech | 12 | 3/10 (30.0%) | 10/10 (100.0%) |
+| hedged | 12 | 3/9 (33.3%) | 9/9 (100.0%) |
+| run-on | 10 | 10/10 (100.0%) | **2/10 (20.0%)** |
+| multi-date | 12 | 10/11 (90.9%) | 4/11 (36.4%) |
+| conditional | 8 | 5/8 (62.5%) | 4/8 (50.0%) |
+| idiom | 12 | 7/10 (70.0%) | 5/10 (50.0%) |
+| multi-person | 12 | 10/12 (83.3%) | 6/12 (50.0%) |
+
+**Read `n` the way the scorer says to read it.** Its own note under this table:
+
+> `n` is captures carrying the tag, not the denominator of either rate: read
+> each denominator from its own column before quoting a row, because a rate
+> over 1 or 2 captures ranks like any other.
+
+So `ellipsis` carries twelve captures and four of them have a scorable
+destination. The other eight are not failures and are not successes; they are
+outside that column, and the row says nothing about them.
+
+**Two families are printed below the ranking, not in it**: `ambiguous` (n 14)
+and `sarcasm` (n 1), both with `—` in both columns. Every capture carrying
+those tags is labelled unpinnable, so there is no destination rate for them to
+be worst or best at, and they are measured by ACTED ON ANYWAY instead. A
+reader who ranks families by this table has to know they were never in the
+ranking.
+
+Two of these rows corroborate readings this file already holds from other sets.
+**`ellipsis` misses on all four of its scorable captures**, which puts it top
+of a ranking ordered by rate — four captures, so the rate is what ranks it and
+not the weight of evidence. What makes it worth reading is that the section on
+the adversarial set calls `ellipsis × date` **0/10** the worst single reading
+in any instrument, and that denominator is not small. **`run-on` is the worst
+thought-count family here at 2/10**, over ten captures, and the everyday set
+reads `run-on` **0/8** on count. Two sealed sets scored independently — though
+both were authored here, so this is corroboration between our own instruments
+and not the external evidence the end goal asks for — naming the same two
+families is a different class of evidence from either alone.
+
+### Correction: `run-on` at 10/10 and at 0/8 are not a disagreement
+
+The held-out table puts `run-on` destination at **10/10**. The everyday table
+puts `run-on` routing at **0/8**. Both are true and they are not the same
+measure:
+
+- `heldout/score.py:191` — `ok = "Today" in got["routes"]`. Membership, once
+  per capture. A capture that produced one merged row still lands somewhere,
+  so **under-segmentation cannot fail this column.**
+- `everyday/score.py:264` — `want = Counter(...)` against
+  `Counter(r["route"] for r in got["rows"])`, compared with `==`. Multiset
+  equality over the rows produced, so a capture that should make two rows and
+  makes one fails routing **for that reason alone.** The everyday routing
+  column contains the thought count by construction.
+
+So the two sets are **consistent**, and each statement has exactly one source:
+
+- **They reach the right place** — held-out `destination` 10/10, and only
+  that, on the ten held-out captures rather than the eight everyday ones.
+  Everyday cannot say this at all; see below.
+- **Eight of the ten are not split** — held-out `thought count` 2/10, so two
+  of them do split correctly.
+- **Everyday `routing` 0/8 is the conjunction of those two**, and it cannot be
+  taken apart.
+
+**A failing conjunction does not name its failing conjunct.** For a two-thought
+capture expected as two Today rows, one row routed Today gives `{Today: 2}`
+against `{Today: 1}`, and one row routed **Memory** gives `{Today: 2}` against
+`{Memory: 1}`. Both fail the `==` identically. So everyday `run-on` 0/8 is
+equally consistent with the destination being right and with it being wrong,
+and the title column at 7/8 does not separate them either. Read on its own it
+would be a routing failure of unknown shape.
+
+The scorer already knows this about its other column. Directly under the
+routing check, `everyday/score.py` reports item type twice — the plain figure
+and `of those segmented right`, conditioned on `produced == expected_rows` —
+with the comment that the plain one "carries every `count` failure inside it
+and reads as a type problem". **Route has no conditioned figure and type
+does.** That is the cheapest thing anyone could do to this instrument, and
+nothing here needs it: the held-out set answers the question from outside.
+
+**This retires a guess made in the adversarial section.** That section reads
+`run-on × self-correction` at 66.7% routing against everyday's `run-on` 0/8 and
+concludes the everyday captures must be "harder along some dimension the
+adversarial pairing does not carry — likely length and thought count, not the
+run-on property itself". The conclusion is right and the reasoning was not
+available to it: the gap is not a property of those captures, it is that the
+two columns are different functions, and a family that never splits scores zero
+on one of them mechanically. **A rate is not comparable to another rate because
+the columns share a name.**
+
+### What this does not establish
+
+Nothing here is a new measurement, a new instrument or a new corpus row. It is
+one table moved out of a job log and into the record, and one inference in this
+file corrected by reading the two scorers. It says nothing about why eight `run-on`
+captures in ten are not split — the clause splitter recognising two connectors of the eight
+people use is the standing explanation and it is not tested by this. It does
+not move any published figure.
+
+The cheapest retest is free: the table is printed by every `language_only`
+dispatch, so the next run reprints it and a reader can compare.
+
 ## 2026-09-15 — twenty sources are ten populations, and two thirds of the evidence base is test fixtures
+
+**The numbers in this heading and in the prose below are the ones the #71 run
+read, and the readable population has grown since.** The generated block in
+this same section is regenerated every run and says what it is today — 25
+sources, 22 distinct bodies, 12 maximal, after Calvin's #86 added the
+trust-closure corpus. The heading is left as the run recorded it, because a
+dated finding that is edited to match today's data stops being a record of
+anything; what it must not do is go on being quoted as current, which is what
+this note is for. The argument the section makes — that a source count is not
+a count of independent bodies — is unchanged and is why the gap between twenty
+and twenty-five matters less than the gap between twenty-five and twelve.
 
 Every sizing in this file quotes a source count. `plus` is "44 rows over 5
 sources"; `wait` is "53 over 15". The census has said since #66 that the source
@@ -1945,6 +2083,16 @@ worse. It did not, and that is evidence the everyday `run-on` captures are
 harder along some dimension the adversarial pairing does not carry — likely
 length and thought count, not the run-on property itself. Two sets, two
 readings; the everyday one is the one to fix against.
+
+**Corrected 2026-09-15 by the held-out per-family table, at the top of this
+file.** The guess above is right and the reason is mechanical rather than a
+property of those captures: everyday `routing` is multiset equality over the
+rows produced, so it contains the thought count, while held-out `destination`
+is membership per capture and cannot fail on under-segmentation. Held-out
+`run-on` reads 10/10 on destination and 2/10 on thought count. Those are the
+two facts everyday's single bit is the conjunction of, and the conjunction
+cannot be read back apart. Do not compare a rate here with a rate there
+because the columns share a name.
 
 Title hygiene is near clean at 117/120: 2 titles are the whole capture, 1
 opens on `that`.
