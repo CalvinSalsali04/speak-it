@@ -1,0 +1,123 @@
+# Reproduction
+
+Run from the repository root. Temporary public-source downloads are not
+committed.
+
+```sh
+curl -L --fail https://storage.googleapis.com/gresearch/presto/presto_v1.zip \
+  -o /private/tmp/presto_v1.zip
+curl -L --fail https://amazon-massive-nlu-dataset.s3.amazonaws.com/amazon-massive-dataset-1.0.tar.gz \
+  -o /private/tmp/amazon-massive-dataset-1.0.tar.gz
+curl -L --fail \
+  https://raw.githubusercontent.com/google-research-datasets/Taskmaster/d92cb6af3005f1dc09c39e75e7daf4a04905e00b/TM-1-2019/sample.json \
+  -o /private/tmp/taskmaster-sample.json
+curl -L --fail \
+  https://raw.githubusercontent.com/pswietojanski/slurp/8eb16545762be97ace75334109d73824217311f1/dataset/slurp/test.jsonl \
+  -o /private/tmp/slurp-test.jsonl
+
+python3 Tools/SpeechLab/phase2/select_public_pilot.py \
+  --presto /private/tmp/presto_v1.zip \
+  --massive /private/tmp/amazon-massive-dataset-1.0.tar.gz \
+  --taskmaster /private/tmp/taskmaster-sample.json \
+  --slurp /private/tmp/slurp-test.jsonl \
+  --output Tools/SpeechLab/phase2/public/source-records.jsonl
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/build_corpus.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/quality.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tools/SpeechLab/tests -v
+git diff --check
+```
+
+Expected source checksums:
+
+```text
+1fc671692cceb31fbda17e351e47f2cc52ee8779042f92dc26674cc0cca2167f  presto_v1.zip
+7df623fd2d300a4d235d6ee5bd396c9a28258d3a0ccb29abdb054506eba153f8  amazon-massive-dataset-1.0.tar.gz
+83fa11504f6e6a8b32fc4f140db82ed624d0e1fdfd0b48f4f40b60c118ac266d  taskmaster-sample.json
+fe3449af69b42fda7163345482556066c35a80f7e552a6d67e212a0e2f0783cc  slurp-test.jsonl
+```
+
+None of these commands invokes the production parser or reads sealed failures.
+
+## Independent adjudication
+
+The committed review submissions can be reapplied without parser access:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/apply_reviews.py \
+  --cases Tools/SpeechLab/phase2/data/cases.jsonl \
+  --reviews Tools/SpeechLab/phase2/adjudication/reviews.jsonl \
+  --output /private/tmp/speechlab-cases-adjudicated.jsonl
+
+cmp /private/tmp/speechlab-cases-adjudicated.jsonl \
+  Tools/SpeechLab/phase2/adjudication/cases-adjudicated.jsonl
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/adjudication_report.py \
+  --original Tools/SpeechLab/phase2/data/cases.jsonl \
+  --adjudicated /private/tmp/speechlab-cases-adjudicated.jsonl \
+  --output /private/tmp/speechlab-adjudication-report.json
+
+cmp /private/tmp/speechlab-adjudication-report.json \
+  Tools/SpeechLab/phase2/adjudication/report.json
+```
+
+`prepare_review_batches.py`, `compile_review_decisions.py`, and
+`run_adjudication.py` fail closed on assignment, identity, completeness,
+duplicate, enum, schema, or digest errors. The batch inputs are intentionally
+not committed because they are deterministic projections of the existing blind
+review pack. Reviewer submissions record source and identity; none is
+represented as human review.
+
+## Repair and trust closure
+
+The deterministic candidates and non-review reports are reproduced with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/reviewer_audit.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/triage_problem_cases.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/repair_corpus.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/prepare_review_batches.py \
+  --cases Tools/SpeechLab/phase2/repair/candidate-1/repair-cases.jsonl \
+  --review-pack Tools/SpeechLab/phase2/repair/candidate-1/repair-review-pack.jsonl \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-1/review-batches \
+  --reviewer codex-repair-reviewer-a-20260914 \
+  --reviewer codex-repair-reviewer-b-20260914 \
+  --reviewer codex-repair-reviewer-c-20260914
+```
+
+Compile the committed round-one decisions:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/run_repair_review.py \
+  --candidate-dir Tools/SpeechLab/phase2/repair/candidate-1 \
+  --decision codex-repair-reviewer-a-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-a-20260914.jsonl \
+  --decision codex-repair-reviewer-b-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-b-20260914.jsonl \
+  --decision codex-repair-reviewer-c-20260914=Tools/SpeechLab/phase2/repair/candidate-1/decisions/codex-repair-reviewer-c-20260914.jsonl \
+  --reviewed-at 2026-09-15T00:00:00-04:00 \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-1/adjudication
+```
+
+Compile round two and rebuild the strict subset:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/repair_corpus_round2.py
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/prepare_review_batches.py \
+  --cases Tools/SpeechLab/phase2/repair/candidate-2/repair-cases.jsonl \
+  --review-pack Tools/SpeechLab/phase2/repair/candidate-2/repair-review-pack.jsonl \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-2/review-batches \
+  --reviewer codex-repair2-reviewer-a-20260915 \
+  --reviewer codex-repair2-reviewer-b-20260915 \
+  --reviewer codex-repair2-reviewer-c-20260915
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/run_repair_review.py \
+  --candidate-dir Tools/SpeechLab/phase2/repair/candidate-2 \
+  --decision codex-repair2-reviewer-a-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-a-20260915.jsonl \
+  --decision codex-repair2-reviewer-b-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-b-20260915.jsonl \
+  --decision codex-repair2-reviewer-c-20260915=Tools/SpeechLab/phase2/repair/candidate-2/decisions/codex-repair2-reviewer-c-20260915.jsonl \
+  --reviewed-at 2026-09-15T00:30:00-04:00 \
+  --output-dir Tools/SpeechLab/phase2/repair/candidate-2/adjudication
+
+PYTHONDONTWRITEBYTECODE=1 python3 Tools/SpeechLab/phase2/trust_closure.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Tools/SpeechLab/tests -v
+git diff --check
+```

@@ -1,5 +1,157 @@
 # Decisions
 
+## 2026-09-15 — The obligation lists stay five, and the disagreement is declared
+
+Five lists in four files say "this is an obligation": the clause splitter's
+`clauseInternalLead`, the router's `obligationLead`, the third-person guard,
+the title layer's `ObligationFrame.link`, and the fragment-gluer's dangling
+auxiliary. They agree on five of the thirty-seven forms between them.
+
+The obvious fix is one list, and it is the wrong one. Three of the differences
+are load-bearing. `ObligationFrame.link` calls its omissions safety by
+omission: a form it does not list can never sit inside the span it deletes, so
+"I had to cancel the appointment" keeps its words. `obligationLead` is tested
+unanchored, so a bare `better` in it would read "the weather is better
+tomorrow" as an errand. `thirdPersonObligation` declines `gotta` and `want to`
+because "Mike gotta call Sarah" is not English and a preference is not an
+errand somebody owes. Merging any pair of these breaks the narrower one.
+
+So the five stay five. What changes is that their differences are now
+**declared and checked** rather than accidental.
+
+The one property that is not a matter of taste is the one that already bit. An
+obligation frame whose last word `clauseInternalLead` does not hold gets cut
+off from what it governs — that is how "I hafta drop the car off on Thursday"
+filed a Memory note titled "I hafta" beside the errand.
+
+The position is the frame's **last** word, because that is the single token
+`ClauseJuxtaposition` reads in front of a candidate verb: `to` in "have to
+call", `better` in "had better call", the whole word in "hafta call".
+`Tools/CorpusRunner/test_parser_vocabulary.py` asserts that the last word of
+every form any obligation list claims is held by the splitter.
+
+The first version of that check filtered on "has no space" and justified it
+with "every multi-word frame ends in `to`". Those are different sets and the
+difference was not empty. Four frames do not end in `to`. Three are the
+`better` family, and they are protected — by `deonticBetterSubject`, which
+reads the word in front of `better` at the same guard, because `better` is also
+an ordinary comparative and cannot live in a set that sees one token. That is a
+real second mechanism, so it is now read and checked alongside the five: it
+must still hold every subject those frames carry.
+
+**The fourth had no mechanism, and it is gone.** `got\s+ta` sat in
+`obligationLead` as a second spelling of `gotta`, in no other vocabulary, no
+test, and none of the seven development sets. It was exposed at `ta`, which the
+splitter does not hold, so "I got ta call Dave" was severed into a Memory row
+titled "I got ta" and an errand — the `I hafta` defect, reached by the one
+spelling the entry existed to serve. Removing it was preferred to adding `ta`
+to `clauseInternalLead`: `ta` is also a noun people say ("email the TA send the
+form"), so holding it would suppress a real boundary to protect a spelling with
+no observed instance. A router entry that cannot survive the splitter is not a
+capability the router has.
+
+Recording the shape rather than the instance: an exception list that grows
+every time the filter is wrong is a marker standing in for the judgement it
+approximates. The filter was changed to read the position the mechanism
+actually reads, and the one remaining exception names the mechanism that covers
+it and is checked against it.
+
+It is a Python check over the Swift source rather than an XCTest because the
+constants are `private` and a test cannot read them, and because it then runs
+on Linux on every pull request instead of waiting for a dispatched Mac — which
+is where a vocabulary edit is introduced. The cost of reading source as text is
+that a reformatted constant stops being found, so every reader raises `Refused`
+rather than returning an empty set: an empty vocabulary passes every subset
+check ever written, which would make the suite report a clean bill for
+something it could not see.
+
+**Not done, and still staged.** Converging the vocabularies changes `count` and
+`route`, and the measurement from the last attempt says why that needs its own
+pass: widening the fragment-gluer alone cost 37 rows over a 233-capture stress
+set, all 37 moving a Today task to a Memory note, while the gating corpus
+showed exactly zero change. The corpus can neither detect that defect nor
+certify its fix.
+
+## 2026-09-11 — "So" can end a thought, but only in front of an obligation
+
+Clause splitting was built for one coordinator. `splittableAndRanges` matched
+`\s+and\s+` and nothing else, and the other path in `splitClauses` does carry
+`so` in `connectorRun` but requires `actionLeadPattern` immediately after,
+which excludes `obligationLead`. So "so book the service" could split and "so I
+need to book the service" never could.
+
+The consequence was visible to anyone speaking rather than typing. "The lease
+ends in March **and** I need to draft the renewal" arrived as a date to know
+and an errand to do; "the lease ends in March **so** I need to draft the
+renewal" arrived as a single row. Same content, same speaker, same two
+thoughts — and *so* is the word people actually reach for, because the
+relationship between a fact and the errand it causes is a resultive one. A
+development set pairing each capture with a clean twin scored that family 3 of
+3 typed and 0 of 3 spoken, and all six rows are explained by which connector
+the twin used.
+
+`so` is not admitted on the same terms as `and`, because most of what follows
+it is not a second thought: a purpose clause ("buy milk *so the kids have
+breakfast*"), a degree phrase ("*so tired*"), a subordinator ("*so that* I
+don't forget"). The shape that is reliably a thought of its own is a
+first-person obligation, since a commitment is not a property of the fact that
+prompted it. The boundary therefore needs an obligation on the right **and** a
+left side that already parses as a thought — the second half is what keeps
+"Okay so I need to call Catherine tomorrow" and "So basically I need to submit
+the report Friday" at one thought each, their left side being a discourse
+marker rather than a clause.
+
+`ClauseScope.coordinatorEndsComplement` gains the matching case: a report
+cannot carry the speaker's own obligation. "The guy said the warranty expires
+in November so I need to book the service" is his news and the speaker's
+errand, and the *so* clause is never part of what he said. This is scoped to
+the resultive coordinator, because "and" genuinely does continue a report —
+"Sarah said the meeting is off and the demo moved" is all Sarah's.
+
+**What it cost, stated because it is not free.** The target family went 0/3 to
+3/3 and the gating corpus stayed at zero failures over 1,401 cases, but
+held-out thought count went 255/310 to 254/310. That set is scored non-verbose
+and its failures are not read to steer parser work, so which capture moved is
+not known. Everyday and adversarial did not move. The full accounting is in
+`Docs/LANGUAGE_BASELINE.md` under 2026-09-11 19:29.
+
+## 2026-09-11 — Speech is framed at both ends, and the second end now has an owner
+
+The everyday held-out set (235 captures, never tuned against) put the worst
+routing families in one place: `run-on` 0/8, `rambling-intro` 1/6,
+`trailing-goodbye` 2/7, `sequencing` 6/17, `multi-thought` 19/40. Merges
+outnumbered splits 23 to 17, and 14 of the 18 title defects were framing
+material still sitting in the shown title. The families that read what a
+sentence *means*, once it has been cut out correctly, scored in the eighties
+and nineties. The problem was the cutting, not the reading.
+
+Two things were missing rather than wrong. Nothing in the app handled a
+farewell — a search for one returned no code at all — so every "bye", "thanks"
+and "that's it" a person ends a voice note with became the last word of a
+title. And nothing treated enumeration as a boundary, although "number one …
+number two …" is a speaker saying out loud where one thought ends.
+`IntentConsolidation` owns the elaborative frame but stands down by design the
+moment two substantive clauses are present, so it collapses rambling with a
+single point and never sees a recording with three.
+
+`DiscourseFrame` in `SpeechRepair.swift` owns the closing frame, and the clause
+splitter gained the enumeration vocabulary it did not have. Both are decided
+structurally rather than by phrase. A sign-off is a discourse move, not an
+argument of a verb: "call Dana and tell her thanks" keeps its message because
+the farewell is governed by `tell`, and a remainder that cannot end an English
+clause blocks the cut so "I'll see you later" is not reduced to "I'll". An
+enumerator is a discourse move rather than a post-nominal modifier: "number
+two" only opens a clause when an instruction follows it, which is what leaves
+"gate number two" and "apartment number three" alone without naming the nouns
+they attach to.
+
+`second`, `third`, `finally` and `one more thing` were already in the splitter
+and are deliberately untouched. The new vocabulary is a separate alternation so
+that widening the gate cannot change what those four do.
+
+This is measured by `Tools/CorpusRunner/devsets/framing.tsv`, written from the
+everyday set's per-family *rates* and from none of its sentences.
+
 ## 2026-09-08 — Keep monthly and annual with ten free captures
 
 Retain $2.99/month and $14.99/year launch pricing against $29.99 standard annual. No weekly product or additional auto-renewing trial for launch. The ten lifetime captures already let users try the whole app without committing to billing. A seven-day trial remains a future experiment, not something category-level correlations can decide. Paywall sale claims now require the configured USD 14.99 StoreKit price as well as the build flag and date; other currencies show localized pricing without an unverified percentage. Remove the unconditional lifetime-rate promise until price preservation is verified in App Store Connect. See `PRICING_DECISION_2026-09-08.html` for evidence, tradeoffs and launch configuration.
@@ -2444,3 +2596,94 @@ The development ambiguity count improved from 4/32 acted on to 3/32; the
 untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
 7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
 improvement is claimed, and no held-out failures were read.
+
+## 2026-09-11 — Measure language in CI, because the parser only runs on macOS
+
+The engine depends on Apple's `NaturalLanguage`, and `NLEmbedding` is
+load-bearing: it decides whether an unknown word is an ordinary noun or a
+person's name. So the parser cannot run on Linux or in a container, and
+stubbing the framework would produce numbers that do not match the shipping
+app. Until now the only language check CI ran was the corpus gate, and the
+development-set and held-out numbers came solely from a hand-run on one Mac.
+Anyone else changing language rules was working blind, and three sessions doing
+so at once is how unverified claims enter the record.
+
+`Tools/CI/language-metrics.sh` now produces every language number this project
+quotes in one run: the gating corpus, all four development sets, and the
+held-out set. The `language` job in `ci.yml` runs it with no simulator, no unit
+suite and no release build, which costs roughly five macOS minutes against the
+allowance's two hundred — about thirty measurements a month where the iOS job
+affords one or two. Dispatching with `language_only` skips the iOS job so the
+question "did this parser change help" never costs a unit-suite run.
+
+Two deliberate choices in it:
+
+The scorers report and do not gate. Only the corpus gate's blocking count sets
+the exit status. Destination accuracy moves either way for defensible reasons,
+and a number that blocks a merge is a number people eventually learn to game.
+
+The script refuses `--verbose` rather than forwarding it. Scoring the held-out
+set is safe; reading its failures during development is what destroys it, per
+`Tools/CorpusRunner/heldout/README.md`. Refusing the flag means running the
+metrics can never be the thing that unseals the set, and reviewing those
+failures at release stays a deliberate act with its own command.
+
+No accuracy claim is attached to this change. It alters no parsing behaviour;
+it only makes the existing measurements reachable by more than one machine.
+The script was verified for argument handling, `shellcheck` and `actionlint` on
+Linux; its macOS path is unrun here by construction and needs a Mac or a
+dispatch.
+
+## 2026-09-11 — A removal names a row by the head of its noun phrase
+
+Two cases were filed together as "delete and remove are not operation verbs".
+They fail for different reasons and only one of them was a defect.
+
+"Delete the reminder to call Dave" failed on **word order**: the rule required
+the container noun to be the final token of the sentence, so it recognised the
+pre-modified phrasing of a request and refused the post-modified phrasing of
+the same request. The fix reads the head of the object noun phrase instead of
+its last word, admitting head-initial phrases only through a complement (`to`,
+`about`, `for`, `regarding`) and head-final phrases only when no preposition
+stands in front of the head. Verb particles are deliberately not prepositions:
+"pick up the parcel reminder" has a head, "drop the kids off at the
+appointment" does not. No other guard on the destructive path moved.
+
+`that` and `which` were in the first version of the complement set and are out.
+They open a relative clause, the peel in `cleaned()` only ever handled the four
+above, and a word admitted as a complement but not peeled is recognised and
+then handed to `CaptureTargetMatcher` with the frame still attached — a match
+that cannot happen, which reads like a feature. The two lists are now the same
+list, which is what the comment above the peel had been claiming.
+
+"Remove the dentist appointment" failed on **reach**, and is left open. It is
+not a word-order problem: `appointment` has never been a container noun. The
+change deliberately does not add one. Reading the shape of a noun phrase and
+widening what a destructive verb may reach are different changes with different
+risks, and the second belongs to whoever owns the product, not to this rule.
+
+The plurals of the six existing container nouns were added, because
+`CaptureTargetMatcher.stopWords` already treated "reminders" and "reminder" as
+the same word; the singular-only spelling was an inflection gap, not a boundary.
+
+The **verbs** did not move: `removalVerb` is exactly what the two patterns it
+replaces admitted. `erase` is the obvious addition and is left out on the same
+grounds as `appointment` — it would make "erase the gym reminder" destroy a row
+that is an ordinary capture today, which is reach. It went in by accident in
+the first version of this change and was caught in review; both the code and
+the tests now say out loud that it is absent on purpose.
+
+One thing is newly admitted beyond the shape: a leading "please". It moves no
+verb and no noun, and `cancelsAnArrangement` has always taken one, so the two
+tiers now agree on this much. Recorded rather than left to be found, because an
+undeclared widening is undeclared however small it is.
+
+**Measured on macOS, after the fact.** The change was written in a Linux
+container; the engine depends on Apple's `NaturalLanguage` and cannot run
+there, so the first evidence was a pattern-level model of the old and new rules
+over 31 utterances — 7 shapes newly recognised, no false positive over 18
+errands and calendar nouns. That model is not the engine, and the real numbers
+came from dispatched macOS runs: the corpus gate green over 1,404 cases with
+`DO02` gone from the routed development set's failures and `DO03` still there,
+and the capture-operation classes green on a simulator. The whole unit suite
+and the release compile check have still not run.

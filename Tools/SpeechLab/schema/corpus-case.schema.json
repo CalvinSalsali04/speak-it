@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/corpus-case.schema.json",
+  "title": "SpeechLab Phase 2 corpus case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "blueprint_id",
+    "rendering_id",
+    "semantic_family_id",
+    "utterance",
+    "context",
+    "proposed_contract",
+    "taxonomy_labels",
+    "lineage",
+    "provenance",
+    "label_state",
+    "reviews",
+    "naturalness",
+    "meaning_preservation",
+    "safety_critical",
+    "required_independent_reviews",
+    "trusted",
+    "split_role",
+    "coverage_contributions"
+  ],
+  "properties": {
+    "case_id": {"type": "string", "pattern": "^case-[a-f0-9]{24}$"},
+    "blueprint_id": {"type": "string", "pattern": "^bp-[a-f0-9]{24}$"},
+    "rendering_id": {"type": "string", "pattern": "^rd-[a-f0-9]{24}$"},
+    "semantic_family_id": {"type": "string", "pattern": "^sf-[a-f0-9]{16}$"},
+    "utterance": {"type": "string", "minLength": 1, "maxLength": 10000},
+    "context": {"type": "object"},
+    "proposed_contract": {"type": "object"},
+    "taxonomy_labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "maxItems": 4},
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_semantic_family", "historical_blueprint_ids", "transformations", "contract_digest", "validation"],
+      "properties": {
+        "base_semantic_family": {"type": "string"},
+        "historical_blueprint_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "transformations": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["phenomenon_id", "category", "order", "discarded_value"],
+            "properties": {
+              "phenomenon_id": {"type": "string"},
+              "category": {"type": "string"},
+              "order": {"type": "integer", "minimum": 1, "maximum": 5},
+              "discarded_value": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "contract_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accepted", "checks", "rejection_reason"],
+          "properties": {
+            "accepted": {"type": "boolean"},
+            "checks": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "rejection_reason": {"type": ["string", "null"]}
+          }
+        },
+        "repairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "original_case_id", "original_rendering_id", "action", "root_causes", "reason"],
+            "properties": {
+              "version": {"type": "string"},
+              "original_case_id": {"type": "string", "pattern": "^case-[a-f0-9]{24}$"},
+              "original_rendering_id": {"type": "string", "pattern": "^rd-[a-f0-9]{24}$"},
+              "action": {"enum": ["repair-rendering", "repair-contract", "repair-taxonomy"]},
+              "root_causes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "minItems": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "provenance": {"type": "object"},
+    "label_state": {"enum": ["draft", "machine-reviewed", "independently-reviewed", "human-reviewed", "disputed", "rejected"]},
+    "reviews": {"type": "array", "items": {"$ref": "review.schema.json"}},
+    "naturalness": {"type": "integer", "minimum": 1, "maximum": 5},
+    "meaning_preservation": {"enum": ["appears_preserved", "meaning_changed", "uncertain"]},
+    "safety_critical": {"type": "boolean"},
+    "required_independent_reviews": {"type": "integer", "minimum": 0, "maximum": 2},
+    "trusted": {"type": "boolean"},
+    "split_role": {"enum": ["development", "regression", "synthetic-stress", "independent-evaluation", "safety", "public-derived", "ambiguity-challenge"]},
+    "coverage_contributions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "minItems": 1}
+  }
+}

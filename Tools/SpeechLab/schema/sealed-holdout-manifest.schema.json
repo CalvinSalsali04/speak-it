@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/sealed-holdout-manifest.schema.json",
+  "title": "SpeechLab sealed holdout manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dataset_id", "version", "content_sha256", "case_count", "blueprint_schema", "rendering_schema", "allowed_disclosure", "custodian"],
+  "properties": {
+    "dataset_id": {"type": "string", "pattern": "^sealed-"},
+    "version": {"type": "string", "minLength": 1},
+    "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "case_count": {"type": "integer", "minimum": 1},
+    "blueprint_schema": {"type": "string"},
+    "rendering_schema": {"type": "string"},
+    "allowed_disclosure": {"type": "array", "items": {"enum": ["case_count", "passed", "failed", "aggregate_metric", "run_hash"]}, "uniqueItems": true},
+    "custodian": {"type": "string", "minLength": 1}
+  }
+}

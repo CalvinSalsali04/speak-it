@@ -1,5 +1,221 @@
 # Known Issues
 
+> **On trusting this document.** Several sessions have been ranking work from
+> it, so how far it has been checked matters. On 2026-09-11 the "Ownership does
+> not read animacy" entry was read against the source and its diagnosis
+> corrected in place: an embedding is already loaded in that file, so the
+> technique it calls a departure is established here. The "Delete and remove"
+> entry was also found to misstate its root cause — the miss is the shape of
+> the object noun phrase, not a missing verb — and is being rewritten alongside
+> the code change that fixes it rather than here. **No other entry has been
+> audited**, and at least one is believed to describe something already fixed.
+> Treat an unmarked entry as a claim to verify before ranking work from it, not
+> as a finding.
+
+## A thought that stops and then keeps going is read as finished
+
+**Measured 2026-09-11, run 34644656689, and traced to source. Six named
+captures below; the rate is `abandoned-midthought` 3 of 9 in
+`devsets/unfinished.tsv`.**
+
+When somebody opens a thought, loses it, and says so out loud — *"Tomorrow I
+need to, um, wait, I forgot"* — Speak It files a confident Today task and dates
+it Tuesday. Not a flagged fragment the person can finish: `state=resolved`, a
+date attached. Four of the six captures in this shape become tasks, one of them
+dated, and the speaker never said what the task was.
+
+**Root cause.** `ThoughtCompletion.unfinished` in `ClauseStructure.swift` reads
+`tokens.last`, its lexical class, the token before it, and — for `to` — how
+many infinitive markers the clause holds. That is its entire reach. It can only
+recognise a thought that **stops** at the moment it breaks off. The three
+captures in this family that pass are exactly the three whose filler strips
+back to a clause ending on `to`.
+
+So the words a speaker uses to say the thought is gone (*I forgot*, *I lost
+it*, *hold on*, *what was it*, a trailing *I mean*) are evidence about what came
+before them, and nothing in the pipeline reads them that way. `SpeechRepair`
+carries a closed class for *"the speaker took it back"* and has no counterpart
+for *"the speaker lost it"* — different destinations, `Abandoned` against
+`Incomplete`, and only one is modelled. The representation for the second
+(`SemanticGap.incompleteThought`) already exists; what is missing is anything
+that reaches it from here.
+
+**Why it is named rather than fixed.** Across 102,420 readable sentences the
+shape occurs six times and all six are rows written for this set. The same set
+contains its own trap — `I think I forgot` is a finished sentence — so a rule
+keyed on the phrase would put the first hole in a `0/96` fallout record to
+recover captures nobody outside this repository has said. A structural version
+(an infinitive or modal frame followed by a finite clause that cannot fill it)
+would reach four of the six and is worth building **against real captures**,
+which is where this is blocked. See `Docs/LANGUAGE_BASELINE.md`, 20:38.
+
+## A choice can be recorded as open, never as resolved
+
+**Verified from source 2026-09-11; the per-row consequence is a prediction, not
+a measurement, and is marked as such below.**
+
+Speak It can represent *"the speaker named alternatives and did not choose"*. It
+has no representation for *"named alternatives and then chose."* Thinking aloud
+and landing on an answer is therefore read as thinking aloud and never landing.
+
+`TemporalCommitment.Unsettled` in `ClauseStructure.swift` is a closed enum of
+four reasons a stated time is not settled, and `competingDays` fires on
+`<day> or <day>` anywhere in the clause. It is terminal: nothing downstream
+looks for a resolution stated afterwards. The assumption is written into the
+comment above it — *"'or Wednesday' names two days precisely because the
+speaker has not picked"* — which is true of "Tuesday or Wednesday" standing
+alone and false the moment a person carries on talking. `ThoughtOrganizer`
+then drops the date and keeps the words.
+
+So of a development capture reading *"maybe cook the salmon Wednesday or
+Thursday, I think Thursday, cook the salmon on Thursday"*, the pattern matches
+`Wednesday or Thursday` and the clause carrying it loses its date, although the
+speaker resolved the choice twice in the following six words. Its clean twin,
+"cook the salmon on Thursday", does not match and keeps everything. **Predicted,
+not observed:** `unsettled` is consulted per row after clause splitting, so
+which row loses the date depends on where the cut falls, and no run has
+confirmed the final rows. The prediction is recorded here so the next
+measurement can falsify it.
+
+The clause-level counterpart is the same shape. `SelfCorrectionResolver`
+repairs by **slot replacement** — a later value overwrites an earlier one in
+the same slot — so it can fix "Tuesday, no, Wednesday" and cannot express
+"drive or take the bus, actually no, take the bus", where the alternatives are
+whole clauses and there is no slot to swap. Resolution is representable for a
+value inside a slot and not representable for a choice between clauses.
+
+**Why this is named rather than patched.** A resolution test bolted onto
+`unsettled` would cover the temporal case and miss the clause case, which is
+most of the family: the shape needs somewhere to put a *choice set with an
+optional resolution*, carried from clause analysis through to the organized
+thought, so that a later mention of one alternative — or a resolution marker
+like "actually no", "I think", "better" — selects it and everything downstream
+reads the winner. That is a representation change, not a rule.
+
+It is not being built yet, and the reason is evidential rather than technical.
+The readable material for this family is five rows in
+`Tools/CorpusRunner/devsets/rambling.tsv`, all written by one author, and four
+of them phrase the resolution as a restatement of the canonical sentence rather
+than as a person actually resolving a choice. Rewritten rows are being written
+by a second author. Building a representation against five self-authored rows
+would measure our idea of how people deliberate, which is the failure this
+whole set exists to escape.
+
+Development-set standing: `decision` scores **1 of 6** on thought count, the
+worst family in any readable set.
+
+## "Don't buy milk" and "remind me not to buy milk" are opposite captures
+
+**Measured 2026-09-11**, from the corpus and the source, not inferred from a
+behaviour report.
+
+Speak It already knows what a prohibition is. The `prohibitions` family is 17
+cases of the gating corpus and passes. `Remind me not to buy milk` becomes a
+Today task titled **Don't buy milk**; so does `Remind me to not buy milk`, and
+the same for the plants, the tickets and Dave
+(`SemanticCorpusDataI.swift:812-824`). `Please don't pay the invoice yet` is
+kept as a Memory note, with the corpus saying why: *"A bare negative imperative
+statement is preserved, not inverted"* (`:841`).
+
+Say it the way people usually say it — `Don't buy milk`, `Don't fix the sink` —
+and it is read instead as a **cancel operation** aimed at an existing reminder,
+extracting no items at all (`SemanticCorpusDataA.swift:148`,
+`SemanticCorpusDataD.swift:394`). So the corpus holds bare prohibitives that
+behave in two opposite ways, and what separates them is not documented anywhere
+and is not the speaker's intent. When no reminder matches, and for a capture
+that is nothing but the prohibitive, the extraction carries no items, so the
+"unmatched cancellation can itself be an errand" fallback is skipped at all
+three of its sites — each guarded on `!extraction.items.isEmpty`
+(`SwiftDataThoughtRepository.swift:92`, `:963`, `:1100`) — and
+`discardCaptureItems` runs.
+
+The person is told *"Couldn't find that — Nothing to cancel matching 'buy
+milk'"* (`CaptureOperationCopy.swift:34`) and the capture does not spend one of
+their ten free ones (`ThoughtRepository.swift:206`). The original transcript is
+still on the `CaptureSession`. So nothing is destroyed and nothing is silent —
+but Today and Memory are both empty, and which of the two outcomes the speaker
+gets turns on a boundary nobody has written down.
+
+**This is deliberate, not an oversight.** `testCancelWithNoMatchInventsNothing`
+asserts it: after an unmatched cancellation, "no fake reminder, and no Memory
+item standing in for the request". That test's case is `Cancel the dentist
+reminder`, which names an item and is a command aimed at the app's own database.
+`Don't buy milk` names an action. The app does not currently separate those two,
+and the development set says it should: `routed.tsv` wants `delete the reminder
+to call Dave` and `remove the dentist appointment` to be operations (both are
+read as Memory today) and `don't call the plumber`, `don't fix the sink`,
+`don't text Dave`, `don't reply to Dave` to be Today. The `prohibitive` family
+scores **1 of 5** on destination, the worst in that set
+([run 34601150638](https://github.com/CalvinSalsali04/speak-it/actions/runs/34601150638)).
+
+**Why this is worth ranking above what looks worse.** It is the one remaining
+family that is common everywhere rather than only in the set written for it. A
+prohibitive opens 20 of the 1,393 gating cases, 5 of 116 in `routed`, and by
+prevalence count alone — no rows read — 10 of 255 everyday captures, 7 of 389
+held-out and 7 of 120 adversarial.
+
+**What is not established:** what a person actually wants when they say it.
+Both readings are defensible and the choice is a product decision, not an
+engineering one. Also unestablished is whether `routed.tsv`'s expectation is
+right or is mis-specified for an instrument that cannot see the repository:
+`Tools/PipelineProbe` runs without a store, so every cancellation is unmatched
+there by construction, and "got nothing" in that report is the extraction's
+answer rather than what the person would see.
+
+Finally, one note in the gating corpus overstates the current behaviour.
+`SemanticCorpusDataD.swift:396` says a prohibitive "is preserved as a note when
+nothing matches" — true only when the capture produced another item as well,
+which is the case the guard above is written for. Nothing tests the claim as
+written, because the gate scores the extraction and this happens in the
+repository.
+
+## Every routing rule rests on one framework answer, and it can be absent
+
+**Verified 2026-09-11**, against the framework rather than inferred from a
+behaviour. `SpeakItTests/NaturalLanguageEnvironmentTests` in
+`RenderingInvarianceTests.swift` asks `NLTagger` and `NLEmbedding` directly.
+
+On a GitHub-hosted `macos-26` runner's simulator, `NLTagger` returns
+`OtherWord` for **every token of every sentence** while
+`NLEmbedding.wordEmbedding(for: .english)` loads normally in the same process
+([run 34597902006](https://github.com/CalvinSalsali04/speak-it/actions/runs/34597902006)).
+The lexical-class model is simply not there.
+
+Almost every routing rule is a structural query over that one answer.
+`Actionability.withoutFrontedAdjunct` cuts "on the 15th" off "pay the rent"
+only because the tagger calls "pay" a verb; "I had better luck last time" is
+knowledge rather than an errand only because "luck" is a noun;
+`ClauseJuxtaposition` refuses a cut in front of an adjunct only because the
+head is verbless. With the tagger silent the app does not crash and does not
+report an error — **every capture quietly reads as though it contained no
+verbs**, errands stop being errands, and boundaries move.
+
+What is confirmed: the unit suite cannot be trusted on that runner image for
+any tagger-dependent assertion, and the author's Mac is the reference
+environment. `Tools/CorpusRunner` is unaffected because it runs on the host.
+
+What is **not** established: whether a real iPhone can reach the same state.
+That needs a device check. What this entry records is the failure mode if one
+ever does — silent degradation rather than an error — which is the part worth
+knowing before anyone designs a fallback.
+
+**And the app has no way to notice.** Nothing in the pipeline asks whether the
+tagger answered at all. Every rule asks its own narrow question — is this token
+a verb, is this head verbless — and an absent model answers each of them
+plausibly and wrongly, so no rule sees anything unusual and there is no place
+where the answers are compared against a case whose answer is known. The check
+that would catch it is one sentence: tag a fixed string once and see whether any
+token comes back as anything but `OtherWord`. `NaturalLanguageEnvironmentTests`
+already does exactly that through `SentenceContext` — the diagnostic exists and
+nothing in the app runs it.
+
+That is worth separating from what the app should then *do*, which is a product
+decision and not an engineering one: carry on and route worse, tell the person
+something is wrong, or fall back to a purely lexical reading. None of the three
+is obviously right, and the detection is worth nothing until one is chosen. The
+detection is also untested against a device that has actually lost the model,
+because no such device has been observed — only the runner image.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
@@ -308,7 +524,19 @@ the cost stays visible.
 `ActionabilityReader.obligationBelongsToAnotherPerson` files "Mike should call
 Sarah" in Memory, correctly, and would file "the car has to go in Tuesday" there
 too, incorrectly. Separating an animate subject from an inanimate one needs
-either a lexicon or an embedding query, and the rule deliberately does neither.
+either a lexicon or an embedding query, and the rule — a regex over a pronoun
+stoplist at `Actionability.swift:766` — does neither.
+
+*Corrected 2026-09-11:* the previous wording said "deliberately does neither",
+which reads as though querying an embedding would be a departure for this
+codebase. It would not. `Actionability.swift:934` already loads
+`NLEmbedding.wordEmbedding(for: .english)` in this same file, and
+`PersonMentionResolver.readsAsOccupation` already decides the adjacent
+role-versus-person question that way, measured over 30 trade nouns and 36
+personal names at 28 of 30 blocked with 0 of 36 names lost. So the cost of
+reading animacy here is a query against a vocabulary that is already loaded,
+not a new dependency. What is deliberate is the *priority*, not the technique —
+see the paragraph below.
 
 It is the safer wrong: the words are kept and nothing is scheduled, where the
 opposite error puts a job the person never accepted on the list they work from.
@@ -316,18 +544,131 @@ No utterance of that shape appears in the 1,069-case corpus, so the cost is
 currently hypothetical and the benefit is measured. If a real capture hits it,
 the fix is a new corpus family, not a widening of the rule.
 
-## Delete and remove are not operation verbs
+## Removal requests: one defect closed, one decision open
 
-"Cancel my plumber reminder" is recognised as an operation. "Delete the reminder
-to call Dave" and "remove the dentist appointment" are not — they fall through
-to a Memory row flagged for review, and nothing is destroyed.
+*The old heading here — "delete and remove are not operation verbs" — was
+wrong.* `delete`, `remove`, `clear`, `kill` and `drop` have been in the
+cancellation patterns all along. The two cases filed under it failed for two
+**different** reasons, and only one of them was a defect.
 
-This is a gap and it fails closed, which is why it is documented rather than
-fixed. Modifying or deleting stored user data needs substantially stronger
-evidence than creating content does, and widening the destructive vocabulary to
-make the family consistent would trade a safe gap for an unsafe one. Both cases
-are in `Tools/CorpusRunner/devsets/routed.tsv`, expected to fail, so the gap
-stays measured.
+**Closed in the working tree (2026-09-11): word order.** The rule required the
+container noun — reminder, task, item, note, alarm, entry — to be the *last
+token of the sentence*. So "delete the call Dave reminder" was recognised and
+"delete the reminder to call Dave" was not: the same request, post-modified
+instead of pre-modified. That is positional and it is a defect.
+`CaptureOperationDetector.removalOfStoredRow` now reads the **head** of the
+object noun phrase and admits the two shapes an English noun phrase has:
+
+- head-initial through a complement — "the reminder *to* call Dave", "the note
+  *about* the picnic". Only a complement counts, so "remove the note *from* the
+  fridge" is still a sticky note on a fridge.
+- head-final when no prepositional phrase stands in front of the head — "the
+  call Dave reminder", "the grocery list note". That test is what keeps "drop
+  the kids *off at* the appointment" an errand.
+
+The container vocabulary did not move, beyond admitting the plurals of the
+nouns already there — which `CaptureTargetMatcher.stopWords` had always
+treated as the same word. The **verb** list did not move either:
+`removalVerb` is exactly `delete|remove|clear|kill|drop|get rid of`, the two
+patterns it replaces. A leading "please" is newly tolerated, which is a
+politeness marker rather than reach and is called out here because it is the
+only other thing the change admits. `StoredRowRemovalTests` pins the shapes on
+both sides.
+
+`erase` is the verb a reader expects to find in that list and it is
+deliberately absent, for the same reason `appointment` is absent from the
+nouns: admitting it would make "erase the gym reminder" destroy a stored row
+where today it is an ordinary capture. `ThoughtExtractor` does read `erase`,
+in a rule that carves words out of a sentence rather than one that deletes a
+row, so its presence there is not a precedent. Adding it is the same kind of
+decision as the one below.
+
+**Open, and a product decision rather than a defect: reach.** "Remove the
+dentist appointment" is still not recognised, and no amount of noun-phrase
+reading changes that: `appointment` has never been a container noun. Behind it
+is a real inconsistency between two tiers of destructive verb:
+
+| tier | target | what keeps it safe |
+|---|---|---|
+| `cancel` | unrestricted | `cancelsAnArrangement` — an arrangement noun or a deadline frame says the sentence is an errand |
+| `delete`, `remove`, `clear`, `kill`, `drop` | must name a container noun | the container noun itself |
+
+So "cancel the dentist appointment" acts on stored data and "remove the dentist
+appointment" does not. Making the second tier read the first tier's evidence
+would close the gap, and it would also widen what can destroy a person's rows.
+That is Calvin's call, not the implementation's. `DO03` in
+`Tools/CorpusRunner/devsets/routed.tsv` stays expected-to-fail until it is
+made; `DO02` no longer is.
+
+**What has been run.** The change was written in a Linux container with no
+Swift toolchain, so every Swift number comes from a macOS runner. The corpus
+gate is green on the change (1,404 cases, no blocking regression), and the
+capture-operation classes were run on a simulator — 49 passed, 0 failed, before
+review added three more tests. The whole unit suite and the release compile
+check have **not** been run. See `Docs/DECISIONS.md`, 2026-09-11.
+
+## A verb with no object is not read as an unfinished thought
+
+**Measured 2026-09-11**, run 34617253884 on `macos-26`, from
+`Tools/CorpusRunner/devsets/unfinished.tsv`.
+
+`ThoughtCompletion` reads the tail of a sentence structurally: a word whose job
+is to introduce something, left with nothing behind it. "Tomorrow I want to"
+ends on the infinitive marker and is caught — `dangling-infinitive` scores
+**18/20**. "Tomorrow I want" ends on the verb itself, and nothing reaches it —
+`incomplete-complement` scores **1/10**.
+
+**What a person sees.** "Tomorrow I want" becomes a Today task, titled with
+those three words, dated tomorrow. Half a sentence arrives looking like a
+decision the person made. That is the severity of this entry rather than a
+second entry: `unfinished.tsv` reports it as `UNSAFE 2` — a fragment given a
+date — and both captures behind that figure are ones this gap missed.
+`ThoughtOrganizer` drops every commitment the moment the thought is recognised
+as unfinished, so **the unsafe count reaches 0 when this gap closes**, with no
+separate guard to build. One defect, one entry, and it retires in one piece.
+
+**Four of the nine misses are not this gap and must not be swept in with it.**
+Each is a decline recorded in `ClauseStructure.swift` with the measurement
+behind it: a stranded preposition ("Meet Mike at" and "remind me an hour
+before" are the same shape and the second is finished), a particle behind a
+verb (the guard that keeps "follow up" and "check in" whole), and a bare
+one-word imperative (`NLTagger` classifies a lone "Add" differently on macOS
+and on iOS). Those stay declined.
+
+**Why it is documented rather than fixed.** The five that remain — "I want",
+"I need", "I have to get", "I should buy", "Tomorrow I want" — need the app to
+know that "buy" takes an object and "ate" does not. That is a vocabulary list,
+and `ClauseStructure` is built on the principle that word lists do not survive
+contact with speech; the three classes tried and removed there cost four
+blocking corpus failures between them. The safe direction is also not obvious:
+`unfinished` fallout is **0/96** today, and "I need" said as a complete
+utterance is exactly the shape a widened detector starts eating.
+
+## Run-on speech with no marker in it is still one row
+
+`DiscourseFrame` and the enumeration vocabulary in `splitClauses` read the
+frame a speaker *states*: a farewell at the end, "number two" in the middle,
+"first of all" at the front. Everyday held-out measurement after that change:
+every farewell is out of every title (`trailing-goodbye` 0/7 → 7/7 clean),
+and `sequencing` gained a capture on both routing and count.
+
+What did not move is the larger half. `run-on` is 0/8 on routing and 0/8 on
+count, and `multi-thought` is 19/40 and 22/40, unchanged. A person who says
+three things in one breath with no marker between them still gets one row.
+Under-segmentation outnumbers over-segmentation 23 to 16 on that set.
+
+Two narrower gaps sit inside the same area:
+
+- A numbered enumerator in front of a **fact** is not read as a boundary.
+  "Number two the garage code is 4821" keeps the marker, because the gate
+  requires an instruction behind the number — which is what keeps "gate number
+  two" and "apartment number three" from being cut. One capture in the everyday
+  set still carries `number two` in its title for this reason.
+- A long capture whose title is the whole capture — 8 of them — was never
+  summarised at all. That is a different stage from framing.
+
+The words are never lost either way: nothing lost held at 210/224 across the
+change, and the verbatim transcript is untouched by design.
 
 ## Intent consolidation reads English discourse markers only
 
@@ -337,30 +678,85 @@ capture in another language, or one that rambles without any of these markers,
 falls through to clause splitting as before. The failure mode is the old one —
 over-splitting — not a new one, and the raw transcript is preserved either way.
 
-## Obligation vocabulary lives in four places and they still disagree
+## Obligation vocabulary lives in five places and they still disagree
 
-Four separate lists state "this is an obligation", and they agree on only 7 of
-the 32 forms between them (22%):
+Five separate lists state "this is an obligation". The four that claim a form
+*is* one agree on five of the thirty-seven forms between them; the splitter is
+a sixth kind of list and is counted separately below.
 
 | list | file | what it gates |
 |---|---|---|
-| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1289` | whether the sentence gets cut here |
-| `ActionabilityReader.obligationLead` | `Actionability.swift:109` | Today versus Memory |
-| `ObligationFrame.link` | `ThoughtOrganizer.swift` | what the row title reads |
-| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1538` | whether a severed piece is glued back on |
+| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1517` | whether the sentence gets cut here |
+| `ActionabilityReader.obligationLead` | `Actionability.swift:137` | Today versus Memory |
+| `ActionabilityReader.thirdPersonObligation` | `Actionability.swift:737` | whether the obligation is the speaker's own |
+| `ObligationFrame.link` | `ThoughtOrganizer.swift:226` | what the row title reads |
+| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1872` | whether a severed piece is glued back on |
 
-Every *multi-word* frame is protected for free, because it ends in `to` and
-`"to"` is the first entry in `clauseInternalLead`. Only single-token forms are
-exposed, and the four that were missing from both of the first two lists —
-`hafta`, `oughta`, `needa`, `better` — were cut in half: "I hafta drop the car
-off on Thursday" filed a Memory note titled **"I hafta"** beside the errand.
-Those four are now closed and pinned by nine `.dictation` corpus cases.
+`clauseInternalLead` is not really an obligation list — it is a "cannot end a
+clause" set holding conjunctions, copulas, pronouns and motion verbs as well —
+so counting it as a claimant would make every conjunction an obligation. It is
+in the table because it is what severs the others.
 
-The structural problem is not closed. The four lists are still four lists, and
-the next form somebody says will find whichever one is short. The fix is to
-derive them from one shared definition. It is deliberately staged: three of the
-four gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity, so
-unifying them needs its own measurement pass and its own release.
+Every *count* in this section is recomputed from the source by
+`Tools/CorpusRunner/test_parser_vocabulary.py`; the ones that were here before
+(four lists, 7 of 32, 22%) were hand-typed. The line numbers in the table are
+not checked and will go stale again — two of the four already had.
+
+The position at risk is mechanical: `ClauseJuxtaposition` decides a cut from
+the single token standing in front of the candidate verb, so what has to be
+protected is each frame's **last** word — `to` in "have to call", `better` in
+"had better call", the whole word in "hafta call". Twenty-three of the
+thirty-seven forms end in `to`, which `clauseInternalLead` has held since it
+was written. Of the rest, four were missing from both of the first two lists —
+`hafta`, `oughta`, `needa`, `better` — and were cut in half: "I hafta drop the
+car off on Thursday" filed a Memory note titled **"I hafta"** beside the
+errand. Those four are now closed and pinned by nine `.dictation` corpus cases.
+
+An earlier draft of this section said multi-word frames were "protected for
+free, because every one of them ends in `to`". That was two different claims
+and only the second is a rule. Four multi-word frames did not end in `to`:
+`had better`, `i/we better` and `'d better`, which are protected by a second
+mechanism described below, and `got\s+ta`, which was protected by nothing. It
+was a second spelling of `gotta` in `obligationLead` alone — in no other
+vocabulary, no test, and none of the seven development sets — and it could not
+have worked where it matched, because clause splitting runs first and does not
+hold `ta`, so "I got ta call Dave" was severed into a Memory row titled **"I
+got ta"** and an errand. It has been removed rather than rescued: adding `ta`
+to `clauseInternalLead` would suppress a real boundary ("email the TA send the
+form") to protect a spelling with no observed instance.
+
+**The structural problem is not closed.** The lists are still five lists.
+`thirdPersonObligation` is the smallest on purpose and declines `gotta` and
+`want to`, which is right — "Mike gotta call Sarah" is not English and "Mike
+wants to call Sarah" is a preference rather than an errand the person owes — so
+the disagreement is not simply one of them being short. Converging them is
+still staged and still waits for its own measurement pass: three of the five
+gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity.
+
+**What is closed is the half that needs no judgement.** The defect that
+actually bit was positional, not a matter of which vocabulary is right: an
+obligation frame whose last word `clauseInternalLead` does not hold gets cut
+off from what it governs. That position is mechanical, which makes it
+checkable. The suite asserts that the last word of every form any obligation
+list claims is held by the splitter, with one declared exception — `better`,
+which is also an ordinary comparative and so cannot live in a set that sees one
+token. `SpeechRepair` reads the word *in front of* `better` instead
+(`deonticBetterSubject`, `SpeechRepair.swift:1511`), at the same guard and to
+the same effect, and that set is now read and checked too: it must still hold
+every subject the four `better` frames carry. A form added to one list without
+a decision about the others now fails on Linux, on the pull request that adds
+it, rather than in somebody's Memory tab.
+
+Graded by mutation, control green either side: the splitter losing `hafta`, a
+new single-token form entering the route list, the splitter gaining the
+declared exception, the title list losing an entry, `deonticBetterSubject`
+losing a subject, and a reader returning an empty set instead of refusing were
+all caught. Restoring `got\s+ta` to `obligationLead` is caught too, and is the
+mutation that separates this check from the one it replaced: the old filter
+dropped every form containing a space, so it passed that mutation. Two
+size-preserving swaps — which the pinned counts cannot see — were caught by the
+invariant alone, which is what establishes it is doing work the census is
+not.
 
 **Measured, and the reason a partial fix is not enough:** widening `isFragment`
 alone — gluing the fragment back on without teaching `obligationLead` to read

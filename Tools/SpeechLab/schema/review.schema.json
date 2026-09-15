@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://speakit.local/speechlab/review.schema.json",
+  "title": "SpeechLab semantic review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "review_id",
+    "reviewer",
+    "reviewed_at",
+    "independence",
+    "naturalness",
+    "intended_meaning",
+    "intended_item_count",
+    "routing",
+    "temporal_meaning",
+    "location_meaning",
+    "cancellation_negation_scope",
+    "ambiguity",
+    "proposed_contract_correct",
+    "meaning_preservation",
+    "notes"
+  ],
+  "properties": {
+    "review_id": {"type": "string", "pattern": "^review-[a-f0-9]{24}$"},
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identity"],
+      "properties": {
+        "kind": {"enum": ["human", "external_ai", "machine"]},
+        "identity": {"type": "string", "minLength": 1}
+      }
+    },
+    "reviewed_at": {"type": "string", "minLength": 1},
+    "independence": {"enum": ["independent", "author_self_review"]},
+    "naturalness": {"type": "integer", "minimum": 1, "maximum": 5},
+    "intended_meaning": {"type": "string", "minLength": 1},
+    "intended_item_count": {"type": "integer", "minimum": 0},
+    "routing": {"type": "array", "items": {"type": "string"}},
+    "temporal_meaning": {"type": ["string", "null"]},
+    "location_meaning": {"type": ["string", "null"]},
+    "cancellation_negation_scope": {"type": ["string", "null"]},
+    "ambiguity": {"enum": ["none", "intentional", "unintended", "uncertain"]},
+    "proposed_contract_correct": {"enum": ["yes", "no", "uncertain"]},
+    "meaning_preservation": {"enum": ["appears_preserved", "meaning_changed", "uncertain"]},
+    "notes": {"type": "string"}
+  }
+}

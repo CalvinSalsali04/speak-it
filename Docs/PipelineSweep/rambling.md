@@ -9,6 +9,31 @@ knowledge+action (F), single coherent thoughts that must not split (G),
 60–105 word captures (H), reminder/person/shopping mixes (J), guard
 confirmations (K).
 
+> **Status, 2026-09-11 — four of the eleven clusters below are fixed and this
+> document does not say so.** It was written on 2026-08-25 against a frozen
+> probe and carries no resolution markers, so every cluster still reads as
+> live. Checked against the working tree today:
+>
+> | cluster | state |
+> |---|---|
+> | C1 segment cleaner eats first letters | **fixed** — `ThoughtExtractor.swift` now has `\b` after the alternation |
+> | C4 hard cap of 12 rows | **fixed** — the comment there records `prefix(12)` as former behaviour |
+> | C5 two divergent verb vocabularies | **fixed** — `actionLeadPattern` now reads `ActionabilityReader.actionVerb`, and `so` and `another thing` are both in the splitter |
+> | C11 fronted subordinate clause | **fixed** — `while` is in `conditionOpener` and `withoutFrontedCondition` returns the errand behind it |
+> | C3 preamble collapse | **partly** — `isSubstantive` now strips leading filler, but the `substantive.count <= 1` plus preamble-marker collapse and the anaphoric-object rejection are unchanged |
+> | C2, C6, C7, C8, C9, C10 | **not checked today** — no claim either way |
+>
+> The unchecked six are unchecked, not confirmed. Verify against the source
+> before spending a cycle on anything here: this document sent one session
+> after C5, which had already been fixed for weeks. A failure analysis that
+> says "CRITICAL" decays in the dangerous direction — it sends people to fix
+> what is already fixed — so re-read it as history, not as a work list.
+>
+> The corpus behind it is also gone: `scratchpad/rambling/` was ignored scratch
+> and was never committed, so none of the rates below can be reproduced.
+> `Tools/CorpusRunner/devsets/rambling.tsv` was written to restore the
+> capability, from scratch rather than from anything quoted here.
+
 > **Provenance note.** `SpeakIt/Repositories/*.swift` was being edited by the
 > main session while this sweep ran (`ThoughtExtractor.swift` grew 1691 → 1793
 > lines mid-session). Every behaviour below is from the **frozen probe**

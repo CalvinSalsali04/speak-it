@@ -1,0 +1,1221 @@
+{
+  "version": "speechlab-1",
+  "phenomena": [
+    {
+      "id": "filler-words",
+      "name": "Filler Words",
+      "definition": "Semantically empty discourse fillers occur.",
+      "examples": [
+        "Um, call Maya."
+      ],
+      "counterexamples": [
+        "Call Uma."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "hesitation",
+      "name": "Hesitation",
+      "definition": "A pause marker interrupts a fluent phrase.",
+      "examples": [
+        "Call, uh, Maya."
+      ],
+      "counterexamples": [
+        "Call Maya now."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "false-start",
+      "name": "False Start",
+      "definition": "A started constituent is replaced before completion.",
+      "examples": [
+        "Call Mar— call Maya."
+      ],
+      "counterexamples": [
+        "Call Maya and Marco."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "restart",
+      "name": "Restart",
+      "definition": "The speaker restarts the whole instruction.",
+      "examples": [
+        "Buy milk— start over, buy bread."
+      ],
+      "counterexamples": [
+        "Buy milk and bread."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "self-correction-person",
+      "name": "Self Correction Person",
+      "definition": "The named person is explicitly corrected.",
+      "examples": [
+        "Call Maya, sorry, Priya."
+      ],
+      "counterexamples": [
+        "Call Maya and Priya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "self-correction-date",
+      "name": "Self Correction Date",
+      "definition": "The date is explicitly corrected.",
+      "examples": [
+        "Friday, no, Saturday."
+      ],
+      "counterexamples": [
+        "Friday and Saturday."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "self-correction-time",
+      "name": "Self Correction Time",
+      "definition": "The time is explicitly corrected.",
+      "examples": [
+        "At three, actually four."
+      ],
+      "counterexamples": [
+        "From three to four."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "self-correction-quantity",
+      "name": "Self Correction Quantity",
+      "definition": "A quantity is explicitly corrected.",
+      "examples": [
+        "Buy two, make that three."
+      ],
+      "counterexamples": [
+        "Buy two or three."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "self-correction-location",
+      "name": "Self Correction Location",
+      "definition": "The location is explicitly corrected.",
+      "examples": [
+        "At home, sorry, at work."
+      ],
+      "counterexamples": [
+        "At home and work."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "repetition",
+      "name": "Repetition",
+      "definition": "Words are repeated without adding meaning.",
+      "examples": [
+        "Call call Maya."
+      ],
+      "counterexamples": [
+        "Call Maya twice."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "rephrasing",
+      "name": "Rephrasing",
+      "definition": "The same intent is restated in different words.",
+      "examples": [
+        "Call Maya, I mean give her a ring."
+      ],
+      "counterexamples": [
+        "Call Maya and message her."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "abandoned-thought",
+      "name": "Abandoned Thought",
+      "definition": "An incomplete thought is abandoned for another.",
+      "examples": [
+        "I should maybe— buy milk."
+      ],
+      "counterexamples": [
+        "I should plan and buy milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "never-mind-withdrawal",
+      "name": "Never Mind Withdrawal",
+      "definition": "The speaker explicitly withdraws an intent.",
+      "examples": [
+        "Buy milk— never mind."
+      ],
+      "counterexamples": [
+        "Never mind the brand; buy milk."
+      ],
+      "preserves_meaning": false,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "high",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "rambling-introduction",
+      "name": "Rambling Introduction",
+      "definition": "Non-actionable preamble precedes the intent.",
+      "examples": [
+        "Long story short, after all that, buy milk."
+      ],
+      "counterexamples": [
+        "Document the long story."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "rambling-ending",
+      "name": "Rambling Ending",
+      "definition": "Non-actionable elaboration follows the intent.",
+      "examples": [
+        "Buy milk, because the week has been chaos."
+      ],
+      "counterexamples": [
+        "Buy milk and document the week."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "sign-off-trailing-noise",
+      "name": "Sign Off Trailing Noise",
+      "definition": "A sign-off or dictation noise trails the intent.",
+      "examples": [
+        "Buy milk, okay thanks, sent from my phone."
+      ],
+      "counterexamples": [
+        "Buy milk and send a thank-you."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "multiple-thoughts",
+      "name": "Multiple Thoughts",
+      "definition": "One capture contains distinct semantic thoughts.",
+      "examples": [
+        "Buy milk. Maya likes tea."
+      ],
+      "counterexamples": [
+        "Buy milk for Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "multiple-tasks",
+      "name": "Multiple Tasks",
+      "definition": "One capture contains multiple independent obligations.",
+      "examples": [
+        "Buy milk and call Maya."
+      ],
+      "counterexamples": [
+        "Call Maya about buying milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "numbered-list",
+      "name": "Numbered List",
+      "definition": "Tasks are presented with spoken numbering.",
+      "examples": [
+        "One, buy milk. Two, call Maya."
+      ],
+      "counterexamples": [
+        "Buy two milks."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "unnumbered-list",
+      "name": "Unnumbered List",
+      "definition": "Tasks are presented as an unnumbered list.",
+      "examples": [
+        "Buy milk, call Maya, book dinner."
+      ],
+      "counterexamples": [
+        "Buy milk for Maya at dinner."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "sequencing",
+      "name": "Sequencing",
+      "definition": "Order relations connect otherwise distinct actions.",
+      "examples": [
+        "First call Maya, then buy milk."
+      ],
+      "counterexamples": [
+        "Call Maya and buy milk sometime."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "conjunction-ambiguity",
+      "name": "Conjunction Ambiguity",
+      "definition": "A conjunction permits multiple plausible scopes.",
+      "examples": [
+        "Call Maya and Priya about dinner."
+      ],
+      "counterexamples": [
+        "Call Maya, then call Priya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": false
+    },
+    {
+      "id": "shared-subject",
+      "name": "Shared Subject",
+      "definition": "One subject governs several predicates.",
+      "examples": [
+        "I need to call Maya and buy milk."
+      ],
+      "counterexamples": [
+        "I need Maya to buy milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "shared-object",
+      "name": "Shared Object",
+      "definition": "One object is shared by multiple actions.",
+      "examples": [
+        "Price and buy the lamp."
+      ],
+      "counterexamples": [
+        "Price the lamp and buy a chair."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "shared-date",
+      "name": "Shared Date",
+      "definition": "One date applies to multiple items.",
+      "examples": [
+        "Friday, call Maya and buy milk."
+      ],
+      "counterexamples": [
+        "Friday call Maya; Saturday buy milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "shared-time",
+      "name": "Shared Time",
+      "definition": "One exact time applies to multiple items.",
+      "examples": [
+        "At four, call Maya and leave."
+      ],
+      "counterexamples": [
+        "Call Maya at four and leave at five."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "shared-location",
+      "name": "Shared Location",
+      "definition": "One location applies to multiple items.",
+      "examples": [
+        "At work, call Maya and print notes."
+      ],
+      "counterexamples": [
+        "At work call Maya; at home print notes."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "temporal-inheritance",
+      "name": "Temporal Inheritance",
+      "definition": "A later clause inherits earlier temporal context.",
+      "examples": [
+        "Tomorrow call Maya and buy milk."
+      ],
+      "counterexamples": [
+        "Tomorrow call Maya; buy milk someday."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "location-inheritance",
+      "name": "Location Inheritance",
+      "definition": "A later clause inherits earlier location context.",
+      "examples": [
+        "At the office call Maya and print notes."
+      ],
+      "counterexamples": [
+        "At the office call Maya; print at home."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "pronoun-resolution",
+      "name": "Pronoun Resolution",
+      "definition": "A pronoun has a clear available antecedent.",
+      "examples": [
+        "Maya called; remind me to answer her."
+      ],
+      "counterexamples": [
+        "Maya called Priya; answer her."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "ambiguous-pronoun",
+      "name": "Ambiguous Pronoun",
+      "definition": "A pronoun has multiple plausible antecedents.",
+      "examples": [
+        "Maya told Priya to call her."
+      ],
+      "counterexamples": [
+        "Maya said, “Call Priya.”"
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": false
+    },
+    {
+      "id": "reported-speech",
+      "name": "Reported Speech",
+      "definition": "Speech is reported as information, not commanded.",
+      "examples": [
+        "Maya said she will buy milk."
+      ],
+      "counterexamples": [
+        "Maya, buy milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "quoted-speech",
+      "name": "Quoted Speech",
+      "definition": "Quoted words must retain their speech boundary.",
+      "examples": [
+        "Maya said, “buy milk.”"
+      ],
+      "counterexamples": [
+        "Buy milk, Maya said."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "negation",
+      "name": "Negation",
+      "definition": "A proposition is explicitly negative.",
+      "examples": [
+        "I did not call Maya."
+      ],
+      "counterexamples": [
+        "I called Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "high",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "prohibition",
+      "name": "Prohibition",
+      "definition": "A future action is forbidden.",
+      "examples": [
+        "Do not call Maya."
+      ],
+      "counterexamples": [
+        "I did not call Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "high",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "cancellation",
+      "name": "Cancellation",
+      "definition": "An existing stored intention is cancelled.",
+      "examples": [
+        "Cancel my call Maya reminder."
+      ],
+      "counterexamples": [
+        "Do not call Maya today."
+      ],
+      "preserves_meaning": false,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "high",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "change-of-intent",
+      "name": "Change Of Intent",
+      "definition": "The final intent supersedes an earlier one.",
+      "examples": [
+        "Buy milk— actually get oat milk."
+      ],
+      "counterexamples": [
+        "Buy milk and oat milk."
+      ],
+      "preserves_meaning": false,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "uncertainty",
+      "name": "Uncertainty",
+      "definition": "The speaker is unsure whether an intent should be acted on.",
+      "examples": [
+        "Maybe I should call Maya?"
+      ],
+      "counterexamples": [
+        "Call Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "conditional-intent",
+      "name": "Conditional Intent",
+      "definition": "An action is contingent on a condition.",
+      "examples": [
+        "If Maya calls, send the file."
+      ],
+      "counterexamples": [
+        "When Maya calls, note the time."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "question-mixed-with-action",
+      "name": "Question Mixed With Action",
+      "definition": "A question and an actionable item coexist.",
+      "examples": [
+        "When is dinner, and call Maya."
+      ],
+      "counterexamples": [
+        "When should I call Maya?"
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "information-mixed-with-action",
+      "name": "Information Mixed With Action",
+      "definition": "A fact and an actionable item coexist.",
+      "examples": [
+        "Maya likes tea, and buy her some."
+      ],
+      "counterexamples": [
+        "Buy tea Maya likes."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "completed-action",
+      "name": "Completed Action",
+      "definition": "An action is explicitly already completed.",
+      "examples": [
+        "I already called Maya."
+      ],
+      "counterexamples": [
+        "I still need to call Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "outstanding-obligation",
+      "name": "Outstanding Obligation",
+      "definition": "An obligation remains uncompleted.",
+      "examples": [
+        "I still need to call Maya."
+      ],
+      "counterexamples": [
+        "I called Maya already."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "past-event",
+      "name": "Past Event",
+      "definition": "A past event is recorded as information.",
+      "examples": [
+        "Met Maya yesterday."
+      ],
+      "counterexamples": [
+        "Meet Maya tomorrow."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "future-intention",
+      "name": "Future Intention",
+      "definition": "A future intention is asserted.",
+      "examples": [
+        "I will call Maya tomorrow."
+      ],
+      "counterexamples": [
+        "I called Maya yesterday."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "exact-time",
+      "name": "Exact Time",
+      "definition": "An exact clock time is semantically relevant.",
+      "examples": [
+        "Call Maya at 4:15."
+      ],
+      "counterexamples": [
+        "Call Maya later."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "relative-date",
+      "name": "Relative Date",
+      "definition": "A date is relative to capture time.",
+      "examples": [
+        "Call Maya tomorrow."
+      ],
+      "counterexamples": [
+        "Call Maya on August 4, 2026."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "relative-duration",
+      "name": "Relative Duration",
+      "definition": "A duration is relative to capture time.",
+      "examples": [
+        "Call Maya in ninety minutes."
+      ],
+      "counterexamples": [
+        "Call Maya for ninety minutes."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "recurrence",
+      "name": "Recurrence",
+      "definition": "An intent repeats according to a schedule.",
+      "examples": [
+        "Call Maya every Tuesday."
+      ],
+      "counterexamples": [
+        "Call Maya next Tuesday."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "uncommon-proper-noun",
+      "name": "Uncommon Proper Noun",
+      "definition": "A rare proper noun must be preserved.",
+      "examples": [
+        "Meet Xochitl."
+      ],
+      "counterexamples": [
+        "Meet someone."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "ordinary-word-name",
+      "name": "Ordinary Word Name",
+      "definition": "A person name is also an ordinary word.",
+      "examples": [
+        "Call Hope."
+      ],
+      "counterexamples": [
+        "I hope to call."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "store-brand-product-name",
+      "name": "Store Brand Product Name",
+      "definition": "A commercial proper name must be preserved.",
+      "examples": [
+        "Buy Oatly at Farm Boy."
+      ],
+      "counterexamples": [
+        "Buy oats at the farm."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "lowercase",
+      "name": "Lowercase",
+      "definition": "All text is lowercased without changing meaning.",
+      "examples": [
+        "call maya tomorrow"
+      ],
+      "counterexamples": [
+        "call maya tomorrow and omit Maya"
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "punctuation-loss",
+      "name": "Punctuation Loss",
+      "definition": "Expected punctuation is absent.",
+      "examples": [
+        "Maya said buy milk"
+      ],
+      "counterexamples": [
+        "Maya said, “buy milk.”"
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "punctuation-corruption",
+      "name": "Punctuation Corruption",
+      "definition": "Punctuation creates implausible boundaries.",
+      "examples": [
+        "Call, Maya tomorrow?"
+      ],
+      "counterexamples": [
+        "Call Maya tomorrow."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "casing-corruption",
+      "name": "Casing Corruption",
+      "definition": "Casing is inconsistent or misleading.",
+      "examples": [
+        "call MAYA Tomorrow"
+      ],
+      "counterexamples": [
+        "Call a different person."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "asr-substitution",
+      "name": "Asr Substitution",
+      "definition": "ASR substitutes a confusable token.",
+      "examples": [
+        "Buy flower for baking."
+      ],
+      "counterexamples": [
+        "Buy flour for baking."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": false
+    },
+    {
+      "id": "asr-deletion",
+      "name": "Asr Deletion",
+      "definition": "ASR omits a spoken token.",
+      "examples": [
+        "Call Maya at four [time token lost]."
+      ],
+      "counterexamples": [
+        "Call Maya at four."
+      ],
+      "preserves_meaning": false,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": false
+    },
+    {
+      "id": "asr-insertion",
+      "name": "Asr Insertion",
+      "definition": "ASR inserts an unintended token.",
+      "examples": [
+        "Call uh Maya tomorrow."
+      ],
+      "counterexamples": [
+        "Call Maya and Uma tomorrow."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "homophone",
+      "name": "Homophone",
+      "definition": "Homophones create lexical ambiguity.",
+      "examples": [
+        "Buy flower for bread."
+      ],
+      "counterexamples": [
+        "Buy flour and flowers."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": false
+    },
+    {
+      "id": "partial-thought",
+      "name": "Partial Thought",
+      "definition": "The capture ends before semantic completion.",
+      "examples": [
+        "Remind me to call…"
+      ],
+      "counterexamples": [
+        "Remind me to call Maya."
+      ],
+      "preserves_meaning": false,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "long-capture",
+      "name": "Long Capture",
+      "definition": "A long capture contains relevant and irrelevant spans.",
+      "examples": [
+        "After a long explanation, call Maya and buy milk tomorrow."
+      ],
+      "counterexamples": [
+        "Call Maya."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "short-fragment",
+      "name": "Short Fragment",
+      "definition": "A terse fragment conveys an item.",
+      "examples": [
+        "Milk tomorrow."
+      ],
+      "counterexamples": [
+        "Milk."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    },
+    {
+      "id": "code-switch-token",
+      "name": "Code Switch Token",
+      "definition": "A defined non-English token appears in an English capture.",
+      "examples": [
+        "Buy leche tomorrow."
+      ],
+      "counterexamples": [
+        "Translate the whole capture."
+      ],
+      "preserves_meaning": true,
+      "metrics": [
+        "semantic_preservation",
+        "routing",
+        "item_count"
+      ],
+      "safety_level": "normal",
+      "blind_mutation_suitable": true
+    }
+  ]
+}

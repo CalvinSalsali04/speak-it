@@ -162,6 +162,45 @@ enum SemanticCorpusF {
         corpusCase(.openers, "Right turn at the lights", count: 1, route: [.memory],
                    note: "A direction. The imperative behind the opener is what proves discourse."),
         corpusCase(.openers, "Now is a bad time", count: 1, route: [.memory]),
+
+        // The closing frame. Speech is framed at both ends, and until
+        // `DiscourseFrame` nothing in the app read the second end: the
+        // everyday held-out set measured 0 of 7 clean titles for captures
+        // that finish the way people finish a voice note.
+        corpusCase(.openers, "Call the dentist tomorrow bye", count: 1, route: [.today],
+                   title: ["Call the dentist tomorrow"],
+                   note: "The farewell used to be the last word of the title."),
+        corpusCase(.openers, "Pick up the dry cleaning thanks", count: 1, route: [.today],
+                   title: ["Pick up the dry cleaning"]),
+        corpusCase(.openers, "Pay the hydro bill ok thanks bye", count: 1, route: [.today],
+                   title: ["Pay the hydro bill"],
+                   note: "A run of closings comes off together."),
+        corpusCase(.openers, "The garage code is 4821 thanks", count: 1, type: [.note],
+                   route: [.memory], title: ["The garage code is 4821"],
+                   note: "A closing must not drag a fact onto Today."),
+
+        // The guard half again: the same farewells, governed by a verb, are
+        // the thing being said rather than the end of the recording.
+        corpusCase(.openers, "Call Dana and tell her thanks", count: 1, route: [.today],
+                   note: "What Dana is told. Cutting it deleted the message."),
+        corpusCase(.openers, "Say goodbye to the neighbours before we move", count: 1,
+                   route: [.today]),
+        corpusCase(.openers, "That's all I need from the store", count: 1, route: [.memory],
+                   note: "A closing only closes when it is trailing."),
+
+        // Enumeration: a speaker saying out loud where one thought ends.
+        corpusCase(.openers, "Number one call the dentist number two pick up the dry cleaning",
+                   count: 2, route: [.today, .today],
+                   title: ["Call the dentist", "Pick up the dry cleaning"],
+                   note: "The marker announced a boundary nothing took, and stayed in the title."),
+        corpusCase(.openers, "First of all email Priya the invoice", count: 1, route: [.today]),
+        corpusCase(.openers, "Pay the hydro bill secondly call the plumber", count: 2,
+                   route: [.today, .today]),
+
+        // And the guard: the same number identifying one thing among many.
+        corpusCase(.openers, "We are in apartment number three", count: 1, route: [.memory]),
+        corpusCase(.openers, "The spare key is under plant pot number two", count: 1,
+                   route: [.memory]),
     ]
 
     // MARK: - Clock forms dictation actually produces

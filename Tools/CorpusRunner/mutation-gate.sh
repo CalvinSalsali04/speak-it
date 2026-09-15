@@ -41,6 +41,25 @@ MUTATIONS=(
   "week-after-weekday|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func namesTheWeekAfter(_ weekdayName: String, in text: String) -> Bool {|return false"
 )
 
+# The control, and it runs first.
+#
+# Every verdict below is "did sabotaging this cause blocking failures?", read
+# from a corpus run. That answer means nothing unless the corpus passes when
+# nothing has been sabotaged: a baseline that is already red reports every
+# subsystem as protected whatever the mutation did. This script used to print
+# "baseline blocking is 0" as a closing line of prose and never check it.
+BASE_OUT="${MUTATE_WORK:-${TMPDIR:-/tmp}/SpeakItMutation}/baseline"
+if ! PROBE_OUT="$BASE_OUT" "$SP/build.sh" >/dev/null 2>&1 || [ ! -x "$BASE_OUT/corpus-run" ]; then
+  echo "mutation gate: the unmutated corpus runner did not build, so no verdict below would mean anything" >&2
+  exit 1
+fi
+BASELINE=$("$BASE_OUT/corpus-run" 2>/dev/null | grep -o 'BLOCKING(crit+beh) = [0-9]*' | grep -o '[0-9]*$')
+if [ "${BASELINE:-x}" != "0" ]; then
+  echo "mutation gate: the unmutated corpus has ${BASELINE:-an unreadable number of} blocking failures." >&2
+  echo "Every subsystem below would read 'protected' whatever its mutation did. Fix the corpus first." >&2
+  exit 1
+fi
+
 printf '%-24s %10s %10s   %s\n' "SUBSYSTEM" "BLOCKING" "FAILING" "VERDICT"
 printf -- '---------------------------------------------------------------------\n'
 status=0
@@ -64,5 +83,5 @@ for entry in "${MUTATIONS[@]}"; do
   printf '%-24s %10s %10s   %s\n' "$name" "$blocking" "$failing" "$verdict"
 done
 printf -- '---------------------------------------------------------------------\n'
-echo "baseline blocking is 0; threshold is $THRESHOLD (set MUTATION_MIN_BLOCKING to change)"
+echo "baseline blocking measured at $BASELINE before any mutation; threshold is $THRESHOLD (set MUTATION_MIN_BLOCKING to change)"
 exit $status

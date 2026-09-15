@@ -1,0 +1,595 @@
+"""Fails if a held-out capture also lives in a corpus that gets tuned against.
+
+The everyday set is only worth keeping if nothing in it has been used to
+develop a rule. That is easy to break by accident — an utterance gets quoted in
+a finding, someone adds it to a dev set, and the benchmark quietly stops
+measuring generalisation. This check makes the boundary mechanical instead of a
+promise, and it is why `Tools/CorpusRunner/everyday/test_score.py` runs it.
+
+It compares against every corpus that development touches: the gating semantic
+corpus, the development sets, and the older held-out set (a capture shared with
+that one is not contaminated, but it is a duplicate measurement, so it is
+reported too).
+"""
+import os
+import re
+import sys
+import textwrap
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+HERE = Path(__file__).resolve().parent
+
+sys.path.insert(0, str(ROOT / "Tools" / "CorpusRunner"))
+import corpus_paths  # noqa: E402  (needs ROOT resolved first)
+THRESHOLD = 0.70
+
+#: Prose is checked for *verbatim* sealed captures, and only for captures at
+#: least this many words long. A short capture -- "call mum", "buy milk" -- can
+#: appear in a sentence somebody wrote about something else, and a check that
+#: cries leak on those gets switched off. So the coverage is stated rather than
+#: implied: **a sealed capture shorter than this is not protected in prose.**
+#: Every capture in all three sealed sets that is shorter than this is counted
+#: and printed on every run, so the size of the gap is visible instead of
+#: inferred.
+PROSE_MIN_WORDS = 6
+
+#: Captures already public in tracked prose when this check was written, each
+#: with where it is and why it is forgiven rather than fixed. **The marker moves
+#: the exit status, never the count**: every one is still reported as a leak on
+#: every run, for the same reason a `KNOWN:` row in `abandonment.tsv` is still
+#: counted as a failure -- a rate a marker can improve is a rate people learn to
+#: write markers for.
+#:
+#: These cannot be un-leaked. The text is in git history, so deleting it from
+#: the document restores nothing; the only real remedy is to retire the captures
+#: from the sealed sets and re-record the generation, which moves published
+#: figures and is therefore Calvin's call rather than this file's. Until that is
+#: decided they are listed here so the check can gate on anything *new* instead
+#: of being switched off for being red on arrival.
+PROSE_DOCUMENTED = {
+    # The everyday set (authored 2026-09-11) reuses sentences from a sweep
+    # written 2026-08-25. These were development material first and sealed
+    # captures second, which is the direction that costs a measurement.
+    ("everyday.tsv", "F02"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F06"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F19"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "F29"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "M04"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "W17"): "PipelineSweep/domains.md",
+    ("everyday.tsv", "W20"): "PipelineSweep/domains.md — negation table",
+    ("everyday.tsv", "W51"): "PipelineSweep/domains.md, LANGUAGE_BASELINE.md, "
+                             "and this set's own README",
+    # The held-out set (2026-08-25) came first and later documentation
+    # reproduced these. C342 is the standard location-reminder example in the
+    # App Store and hand-QA documents, so it has been run by hand repeatedly.
+    ("heldout.tsv", "C236"): "PipelineSweep/routing.md — question table",
+    ("heldout.tsv", "C342"): "five App Store and hand-QA documents",
+    ("heldout.tsv", "C358"): "AMBIGUITY_TAXONOMY.md",
+}
+
+#: Sealed captures whose text was **displayed to an agent** working on the
+#: parser, where no pass or fail was read and no rule changed as a result.
+#:
+#: This is a third population and must not be folded into either of the other
+#: two. `OVERLAP_DOCUMENTED` says a capture is in material the rules were tuned
+#: against; `PROSE_DOCUMENTED` says the text is public in a tracked document and
+#: cannot be recalled. Neither is true here: the text was read once, in one
+#: session, and is not in the repository. Filing it with those would overstate
+#: it -- it would read as a capture the rules were fitted to. Leaving it
+#: unrecorded would understate it just as badly, because "unseen" is a claim
+#: about what has been seen, and this was seen.
+#:
+#: The id and the set are the whole record. The **text is never stored here**,
+#: which is also why nothing can detect these: a scan can find a capture
+#: committed into a document, but it cannot find one that was printed to a
+#: terminal. The entries are written by hand by whoever did it, and
+#: `Tools/CorpusRunner/test_score.py` pins the ones that exist, so removing one
+#: quietly fails the run rather than shrinking the denominator.
+#:
+#: These do not move the exit status. There is nothing to fix -- the reading
+#: already happened -- and a gate that can only ever stay red teaches people to
+#: switch it off. What they change is the reader's denominator.
+#: Keyed by capture, valued by a LIST of events, because those are two
+#: different counts and the second exposure proved it inside two hours. One
+#: capture displayed twice is not two captures compromised, and a record that
+#: cannot say which would overstate the damage; a record keyed only by capture
+#: would have hidden that it happened again at all. Both numbers are printed.
+EXPOSED_WITHOUT_INSPECTION = {
+    ("heldout.tsv", "C283"): [
+        "2026-09-11. Answering a question about how many readable sentences a "
+        "rule could admit, this thread scanned every *.tsv under "
+        "Tools/CorpusRunner/ instead of the development sets, and one held-out "
+        "row printed into the session. No pass or fail was read, no failure "
+        "was inspected and no rule changed. Repaired at the path layer rather "
+        "than in the one scan: see Tools/CorpusRunner/corpus_paths.py, where "
+        "asking for readable() cannot return a sealed file.",
+
+        "2026-09-11, about an hour later. The core language thread, checking "
+        "this constant existed, ran a recursive grep for the id from the "
+        "repository root. The sealed file is the one place an id sits beside "
+        "its text, so the search returned the row. Same conditions: text seen, "
+        "no pass or fail looked up, no part in any analysis. This is the "
+        "mitigation carrying the defect it was written for, so the handling "
+        "rule lives in corpus_paths.searchable() rather than in a sentence "
+        "somebody has to remember: search readable material, never the root.",
+    ],
+}
+
+
+def report_exposure():
+    """Print the exposure record. Always, and never the capture text."""
+    print()
+    print("=== sealed captures exposed without inspection")
+    if not EXPOSED_WITHOUT_INSPECTION:
+        print("none recorded. This section is a hand-kept record, not a scan:")
+        print("empty means nobody wrote an entry, which is not the same as")
+        print("nothing having happened.")
+        return
+    events = sum(len(v) for v in EXPOSED_WITHOUT_INSPECTION.values())
+    print(f"captures displayed        {len(EXPOSED_WITHOUT_INSPECTION)}"
+          "  (id only; the text is deliberately not stored)")
+    print(f"exposure events          {events:>3}"
+          "  (a capture seen twice is one capture, not two)")
+    print()
+    for (set_name, cid), why in sorted(EXPOSED_WITHOUT_INSPECTION.items()):
+        for n, event in enumerate(why, 1):
+            label = f"{cid}" if len(why) == 1 else f"{cid} ({n} of {len(why)})"
+            print(f"  SEEN  {set_name} {label}")
+            for line in textwrap.wrap(event, 68):
+                print(f"        {line}")
+    print()
+    print("  These are not counted as contamination: the rules were not tuned")
+    print("  against them and the text is not in the repository. They are")
+    print("  counted as seen, because that is what the sealed sets claim not")
+    print("  to be.")
+
+
+# Every set that must stay unseen. Each is checked against the tuned corpora
+# and against the other sealed sets: an overlap with another sealed set is not
+# contamination, but it is the same capture measured twice under two names.
+
+
+def norm(text):
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def mine(path):
+    """The sealed set's own captures, keyed by normalised text.
+
+    Reads the utterance column from the header for the same reason `harvest`
+    does: a hard-coded index is correct until a set is laid out differently,
+    and then this compares the wrong field and passes for the wrong reason.
+    The registry test will happily register such a set, so this side has to be
+    layout-independent too.
+    """
+    try:
+        rows = list(corpus_paths.utterances(path))
+    except ValueError as why:
+        raise SystemExit(f"leak check: {Path(path).name}: {why}")
+    #: No `cid or "?"`. `corpus_paths.utterances` refuses a file whose header
+    #: names no id column, so the fallback became a branch nothing could reach
+    #: -- and a placeholder for a name is exactly what the prose check must not
+    #: print, since "a sealed capture is committed somewhere" without the id is
+    #: the report that cannot be acted on.
+    return {norm(utterance): cid for _number, cid, utterance in rows}
+
+
+#: Both of these moved into `corpus_paths`, which already owns which files
+#: exist and is now the one place that knows how to read one. They were right
+#: here and re-derived, differently, by four other readers; the count that came
+#: out of one of those re-derivations was 256 rows for a 255-capture set.
+#:
+#: The names stay bound here so every call site and its tests are unchanged.
+#: `utterance_column` now raises where it used to return None -- a corpus file
+#: with no header is not a file whose utterances live in column two.
+column_of = corpus_paths.column_of
+utterance_column = corpus_paths.utterance_column
+
+
+#: What a Swift string literal is here now lives in `readable_material`,
+#: with the long explanation of why it is not a one-line regex. It moved out
+#: of this file when a third reader wanted it: the hyphen in this filename
+#: means nobody can `import leak_check`, so every consumer reached in by path,
+#: and the comment that used to sit here warning against a third path-importer
+#: had already been overtaken by one.
+#:
+#: Re-exported rather than referenced through the module, so that
+#: `leak_check.swift_literals` keeps working for the callers and tests that
+#: already had it. There is one implementation and this is a name for it.
+from readable_material import swift_literals  # noqa: E402,F401
+
+
+def harvest(path):
+    """Every utterance in one corpus file."""
+    text = path.read_text(errors="ignore")
+    if path.suffix != ".tsv":
+        return swift_literals(text)
+
+    try:
+        return [utterance for _number, _cid, utterance
+                in corpus_paths.utterances(path)]
+    except ValueError:
+        # Translated rather than propagated: this is a command-line tool and a
+        # traceback is not a message. The refusal itself comes from the one
+        # owner, so it cannot be a different rule here than it is in `mine`.
+        raise SystemExit(
+            f"leak check: {path.name} has no column headed 'utterance', so the "
+            f"capture to compare cannot be identified. Add the header rather "
+            f"than letting this file go unchecked.")
+
+
+#: All three, and `heldout.tsv` deliberately among them. The overlap check
+#: below treats the held-out set as one more corpus to compare against, which
+#: is right for *that* question -- a shared capture there is a duplicate
+#: measurement, not contamination. It is wrong for this one. The first sealed
+#: capture ever committed into a tracked document was a held-out row, and a
+#: list that left it out would have watched the other two.
+#: The sealed sets, from the one place that classifies corpus files. Written
+#: out here twice before, once as two sets and once as three, which is how
+#: `heldout.tsv` ended up compared against and never checked -- and how
+#: `verdict` below ended up asking whether a source was one of *two* sealed
+#: sets when the question it means is whether it is sealed at all.
+SEALED_ALL = corpus_paths.sealed()
+
+#: Where prose lives. Not "every tracked file": the corpora themselves are full
+#: of capture text by design, and so is any file this check already reads.
+PROSE_SKIP = {".git", "node_modules", "build", "output", "tmp", "DerivedData"}
+
+
+def prose_files(root=None):
+    """Every Markdown file in the repository, which is where prose goes.
+
+    Deliberately not narrowed to `Docs/`. The leak this was written for landed
+    in `Docs/LANGUAGE_BASELINE.md`, but a README beside a corpus is the more
+    tempting place to quote a capture, and `CLAUDE.md` is read by every agent
+    that touches this repository.
+
+    Walked rather than globbed because `rglob` does not descend into a
+    symlinked directory, and "every Markdown file in the repository" is the
+    claim this function's name makes. The repository has no symlinks today, so
+    this changes nothing about what is read here -- it keeps the sentence true
+    the day somebody adds one. The retired-claim scan in `test_score.py` had
+    the same traversal and it was already reading one directory out of many
+    wherever it was measured.
+    """
+    root = Path(root) if root else ROOT
+    seen = set()
+    for here, folders, files in os.walk(root, followlinks=True):
+        folders[:] = [f for f in folders if f not in PROSE_SKIP
+                      and os.path.realpath(os.path.join(here, f)) not in seen]
+        seen.update(os.path.realpath(os.path.join(here, f)) for f in folders)
+        for name in sorted(files):
+            if name.endswith(".md"):
+                yield Path(here) / name
+
+
+def flatten(text):
+    """Normalised to one line, so a capture wrapped across lines still matches.
+
+    This is the part that is easy to get wrong and impossible to notice: prose
+    wraps, and a capture quoted in a paragraph is routinely split over two
+    lines. Normalising per line would let every wrapped quotation through, and
+    the check would pass on exactly the cases a human reader would call the
+    most obvious leaks.
+    """
+    return " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
+
+
+def check_prose():
+    """Sealed capture text committed into the repository's prose.
+
+    Separate from the overlap check above because it answers a different
+    question. That one asks whether a sealed capture was tuned against; this
+    asks whether it is still sealed at all. A capture pasted into a document is
+    not contaminating a corpus -- it is simply public, in git history, for good.
+
+    Prints ids and files and never the capture text. A leak detector whose
+    output quotes the thing it found would copy the leak into every CI log.
+    """
+    short = 0
+    captures = []
+    for path in SEALED_ALL:
+        if not path.exists():
+            continue
+        for cid, text in harvest_ids(path):
+            words = norm(text).split()
+            if len(words) < PROSE_MIN_WORDS:
+                short += 1
+                continue
+            captures.append((path.name, cid, " " + " ".join(words) + " "))
+
+    hits = []
+    for doc in prose_files():
+        try:
+            body = flatten(doc.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            continue
+        for set_name, cid, needle in captures:
+            if needle in body:
+                hits.append((doc.relative_to(ROOT), set_name, cid,
+                             len(needle.split())))
+
+    print()
+    print("=== sealed capture text in tracked prose")
+    print(f"documents scanned        {len(list(prose_files()))}")
+    print(f"captures long enough     {len(captures)}")
+    print(f"too short to protect     {short}  (under {PROSE_MIN_WORDS} words)")
+    documented = [h for h in hits if (h[1], h[2]) in PROSE_DOCUMENTED]
+    fresh = [h for h in hits if (h[1], h[2]) not in PROSE_DOCUMENTED]
+    print(f"sealed text in prose      {len(hits)}"
+          f"  ({len(documented)} documented, {len(fresh)} new)")
+    if not hits:
+        print("prose check ok: no sealed capture appears verbatim in a "
+              "tracked document.")
+        return True
+
+    print()
+    for doc, set_name, cid, length in sorted(fresh) + sorted(documented):
+        mark = "" if (set_name, cid) in PROSE_DOCUMENTED else "  ← NEW"
+        print(f"  LEAK  {doc}  <-  {set_name} {cid}  ({length} words){mark}")
+
+    if documented:
+        print()
+        print(f"  {len(documented)} of these were already public when this check")
+        print("  was written, and are counted above rather than excused:")
+        for (set_name, cid), where in sorted(PROSE_DOCUMENTED.items()):
+            print(f"    {set_name} {cid}  {where}")
+        print("  They cannot be un-leaked -- the text is in history -- so the")
+        print("  remedy is to retire them from the sealed sets, which moves")
+        print("  published figures and is a decision rather than an edit.")
+
+    if not fresh:
+        print()
+        print("prose check ok: no NEW sealed capture has been committed into a")
+        print("tracked document. The documented ones above still count.")
+        return True
+
+    print()
+    print("prose check FAILED: a sealed capture is committed into a tracked")
+    print("document, which unseals it permanently and in history. Remove the")
+    print("text; the id and the shape carry the argument without it.")
+    return False
+
+
+def harvest_ids(path):
+    """`(id, utterance)` for one sealed set.
+
+    `harvest` returns utterances alone, which is right for the overlap check --
+    it compares text against text. The prose check has to *name* what it found
+    without printing it, so it needs the id travelling beside the capture.
+    """
+    try:
+        return [(cid, utterance)
+                for _number, cid, utterance in corpus_paths.utterances(path)]
+    except ValueError as why:
+        # Same translation as `mine` and `harvest`: a command-line tool owes a
+        # message, not a traceback, and the rule it states comes from the one
+        # owner so it cannot drift from theirs.
+        raise SystemExit(f"leak check: {Path(path).name}: {why}")
+
+
+#: Sealed captures already sitting in tuned material when this was measured,
+#: 2026-09-11. Same contract as `PROSE_DOCUMENTED` and the `KNOWN:` rows in the
+#: development sets: **every one is still counted and still printed**, and the
+#: list moves only the exit status, so the check gates on anything new instead
+#: of being switched off for being red the first time it could see properly.
+#:
+#: These are not forgiven because they are harmless. They are the leak, and
+#: they are listed here because deleting them from the tuned corpora restores
+#: nothing — the rules were already developed against them — while retiring
+#: them from the sealed sets moves published figures and is a decision rather
+#: than an edit.
+OVERLAP_DOCUMENTED = {
+    # Exact, and *where* matters as much as *that*. A capture in the gating
+    # corpus is in the regression net the rules are tuned to pass; a capture
+    # in a development set is in material somebody worked against; a capture
+    # in one hand-written fixture is the mildest of the three. They are
+    # different amounts of damage to the same number, so the location is
+    # written out rather than summarised.
+    ("everyday.tsv", "F02"): "gating corpus (DataG) + SpeechRepairTests",
+    ("everyday.tsv", "W17"): "gating corpus (DataG)",
+    ("everyday.tsv", "F17"): "SpeechRepairTests",
+    ("everyday.tsv", "F29"): "SpeechRepairTests",
+    ("everyday.tsv", "W20"): "SpeechRepairTests",
+    ("heldout.tsv", "C049"): "gating corpus (DataQ) + routed.tsv + coordination.tsv",
+    ("heldout.tsv", "C100"): "ten places: four gating-corpus files, six test files",
+    ("heldout.tsv", "C342"): "LocationReminderTests, eight assertions",
+    # Near, at or above the 0.70 line. Same list because the marker does the
+    # same job either way; the report separates them by the line each prints on.
+    ("everyday.tsv", "M36"): "near the gating corpus",
+    ("adversarial.tsv", "AN08"): "near the gating corpus",
+    ("heldout.tsv", "C005"): "near the gating corpus",
+    ("heldout.tsv", "C236"): "near SwiftDataThoughtRepositoryTests",
+    ("heldout.tsv", "C243"): "near the gating corpus and routed.tsv",
+    ("heldout.tsv", "C331"): "near the gating corpus and DurabilityTests",
+    ("heldout.tsv", "C353"): "near the gating corpus",
+    ("heldout.tsv", "C355"): "near the gating corpus",
+}
+
+
+def others(exclude):
+    """Every corpus development touches, which is more than the named corpora.
+
+    `SemanticCorpusData*.swift` is the gating corpus, but it is not the only
+    tuned material in `SpeakItTests/`. A hand-written test fixture is tuned by
+    definition: somebody iterated on the rules until that exact sentence went
+    green. Held-out C342 is the fixture in eight assertions of
+    `LocationReminderTests.swift`, held-out C100 is one in
+    `ActionabilityTests.swift`, and everyday F02, F17, F29 and W20 are fixtures
+    in `SpeechRepairTests.swift` — six sealed captures inside the tuned side of
+    the boundary, none of them visible while this globbed one filename pattern.
+    """
+    sources = list((ROOT / "SpeakItTests").glob("*.swift"))
+    sources += list((ROOT / "Tools/CorpusRunner/devsets").glob("*.tsv"))
+    #: `exclude` is the set being checked. It used to be applied to `SEALED`
+    #: only, which was correct while `heldout.tsv` was never a set under check
+    #: and always a corpus to compare against. Now that it is checked too, an
+    #: unconditional append would compare it with itself and collide on all 389.
+    sources += [p for p in SEALED_ALL if p != exclude]
+    #: Every source a string appears in, not the first one found. C100 sits in
+    #: four `SemanticCorpusData*.swift` files and six hand-written test files;
+    #: `setdefault` reported one of the ten and made a workhorse fixture look
+    #: like an incidental duplicate. The distinction the reader needs is not
+    #: only *that* a sealed capture is on the tuned side but *how deep*: exact
+    #: in the gating corpus the rules are tuned to pass is a different amount
+    #: of damage from exact in one development set.
+    found = {}
+    for path in sources:
+        if not path.exists():
+            continue
+        for candidate in harvest(path):
+            found.setdefault(norm(candidate), []).append(path.name)
+    return {text: sorted(dict.fromkeys(names)) for text, names in found.items()}
+
+
+def where(names):
+    """`a.swift +2 more`, so a long list cannot push the id off the line."""
+    return names[0] if len(names) == 1 else f"{names[0]} +{len(names) - 1} more"
+
+
+def verdict(sources):
+    """Which failure this is, in the words that send the reader to the right place.
+
+    An overlap with a tuned corpus means the set has stopped measuring
+    generalisation. An overlap between two sealed sets means no such thing —
+    nothing has been tuned against either — it means one measurement is being
+    counted twice. Printing the first message for the second case sends
+    someone hunting a leak that does not exist.
+    """
+    if sources - {q.name for q in SEALED_ALL}:
+        return ("leak check FAILED: a held-out capture overlaps a corpus that "
+                "is developed against, so it no longer measures generalisation.")
+    return ("leak check FAILED: a capture appears in two sealed sets, so one "
+            "measurement is being counted as two. Neither set is "
+            "contaminated; remove the duplicate from one of them.")
+
+
+def main():
+    """Checks every sealed set, so adding one cannot mean forgetting to check it."""
+    failed = 0
+    #: `SEALED_ALL`, not `SEALED`. `heldout.tsv` was on the tuned side of this
+    #: loop only: it was compared against, never checked, so the set carrying
+    #: the published 233/320 was the one set whose overlap with tuned material
+    #: nothing ever looked at. Two of its captures are hand-written test
+    #: fixtures.
+    for path in SEALED_ALL:
+        if not path.exists():
+            raise SystemExit(f"leak check: {path} is listed as sealed but missing")
+        failed |= check(path)
+    #: Runs whatever the overlap check said. The two answer different questions
+    #: and a set can pass one while failing the other -- a capture quoted in a
+    #: document is still absent from every tuned corpus, which is exactly the
+    #: state that let one through.
+    failed |= 0 if check_prose() else 1
+    report_exposure()
+    return failed
+
+
+def similarities(ours, theirs):
+    """One pass over the cross-product, returning what both readers need.
+
+    `ranked` is each capture with the single tuned string it most resembles,
+    highest first — the closest-miss report. `near` is every pair at or above
+    the threshold, which is a different thing and must stay so: one capture can
+    near-duplicate strings in two corpora at once, and `verdict` decides which
+    failure to name from the set of sources. Reducing that to the best match
+    per capture would drop a tuned source behind a higher-scoring sealed one
+    and print "counted twice" for what is actually contamination.
+    """
+    tuned = [(set(other.split()), other, source)
+             for other, source in theirs.items() if len(other.split()) >= 4]
+    ranked, near = [], []
+    for utterance, cid in ours.items():
+        tokens = set(utterance.split())
+        if len(tokens) < 4:
+            continue
+        best = None
+        for other_tokens, other, source in tuned:
+            overlap = len(tokens & other_tokens) / len(tokens | other_tokens)
+            if best is None or overlap > best[0]:
+                best = (overlap, other, source)
+            if overlap >= THRESHOLD and utterance not in theirs:
+                near.append((cid, round(overlap, 2), source, utterance, other))
+        if best is not None:
+            ranked.append((best[0], cid, utterance, best[2], best[1]))
+    return sorted(ranked, reverse=True), near
+
+
+def check(path):
+    ours, theirs = mine(path), others(path)
+    exact = [(cid, utterance, theirs[utterance])
+             for utterance, cid in ours.items() if utterance in theirs]
+    #: Sources are lists now. Flattened wherever a set of names is wanted.
+
+    ranked, near = similarities(ours, theirs)
+
+    print(f"=== {path.parent.name}/{path.name}")
+    print(f"held-out captures        {len(ours)}")
+    print(f"strings from tuned sets  {len(theirs)}")
+    fresh_exact = [r for r in exact if (path.name, r[0]) not in OVERLAP_DOCUMENTED]
+    fresh_near = [r for r in near if (path.name, r[0]) not in OVERLAP_DOCUMENTED]
+    print(f"exact collisions         {len(exact)}"
+          f"  ({len(exact) - len(fresh_exact)} documented, {len(fresh_exact)} new)")
+    print(f"near duplicates (>={THRESHOLD})  {len(near)}"
+          f"  ({len(near) - len(fresh_near)} documented, {len(fresh_near)} new)")
+    #: A documented row prints its id and where it is, and **not its text**.
+    #: This is the steady state: those rows are reported on every green run,
+    #: so printing the capture would put sealed text into every CI log from
+    #: now on -- which is the harm `check_prose` was written to avoid, arriving
+    #: through the other half of the same file. **A new row prints no text
+    #: either**, which this comment claimed the opposite of until the claim was
+    #: checked against a real injected leak: a0d5978 took the text out of every
+    #: printing path and the reasoning above it was left describing the code as
+    #: it had been. A reader judging contamination from a new row gets the id
+    #: and every file it appears in, and opens those files, which they can do
+    #: and CI cannot.
+    for cid, utterance, names in exact:
+        mark = "  (documented)" if (path.name, cid) in OVERLAP_DOCUMENTED else ""
+        print(f"  COLLISION  {cid}  in {len(names)}: {', '.join(names)}{mark}")
+    for cid, overlap, names, utterance, other in sorted(near, key=lambda r: -r[1]):
+        mark = "  (documented)" if (path.name, cid) in OVERLAP_DOCUMENTED else ""
+        print(f"  NEAR  {cid}  j={overlap}  {where(names)}{mark}")
+    if fresh_exact or fresh_near:
+        sources = ({n for _, _, names in fresh_exact for n in names}
+                   | {n for _, _, names, _, _ in fresh_near for n in names})
+        print("\n" + verdict(sources), file=sys.stderr)
+        return 1
+    if exact or near:
+        #: Red on arrival, and not switched off for it. Every row above is
+        #: counted and printed; the list only decides the exit status, so a
+        #: *new* overlap still fails the run while the ones already paid for
+        #: do not block every hand run until somebody decides what to do
+        #: about them. Same contract as `PROSE_DOCUMENTED` and `KNOWN:`.
+        print("\nleak check: every overlap above is documented in "
+              "OVERLAP_DOCUMENTED and still counted. Nothing NEW overlaps a "
+              "tuned corpus.")
+        return 0
+    report_closest(ranked)
+    print("\nleak check ok: nothing held out appears in a tuned corpus.")
+    return 0
+
+
+def report_closest(ranked, show=3):
+    """The nearest misses, printed on a clean run.
+
+    A pass/fail answer cannot show a set drifting. Two sets both reported
+    "clean" are in different states if one tops out at 0.31 and the other at
+    0.68, and only the second is one careless capture away from a leak. So the
+    closest few are printed even when nothing crosses the line.
+
+    Deliberately not a second threshold. There is no warning band and no
+    non-zero exit here, because a number that blocks a merge is a number people
+    learn to game — the same reason the scorers in this repository report
+    rather than gate. This is for the reader, who can see a set getting closer
+    over successive runs and ask why before the check ever fails.
+    """
+    if not ranked:
+        return
+    print(f"closest, no leak         j={ranked[0][0]:.2f} (line is {THRESHOLD})")
+    for overlap, cid, utterance, names, other in ranked[:show]:
+        print(f"  {cid}  j={overlap:.2f}  nearest in {where(names)}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
