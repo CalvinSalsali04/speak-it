@@ -760,9 +760,22 @@ enum ActionabilityReader {
     /// in Tuesday" is read as somebody else's obligation and filed in Memory,
     /// which is wrong. It is the safer wrong: the words are kept and nothing is
     /// scheduled, where the opposite error puts a job the person never accepted
-    /// on the list they work from. No utterance of that shape appears in the
-    /// 1,022-case corpus, so the cost is currently hypothetical and the benefit
-    /// is measured.
+    /// on the list they work from. Every subject of this shape in the gating
+    /// corpus is a person -- Mike twice, My brother, Priya, Dana -- and so is
+    /// every one in the seven development sets, so the cost is currently
+    /// hypothetical and the benefit is measured.
+    ///
+    /// That last sentence used to carry a corpus size, and the size was wrong
+    /// in two places at once: 1,022 here and 1,069 in `Docs/KNOWN_ISSUES.md`,
+    /// for a corpus holding 1,404. A figure typed into a comment stops being
+    /// true the week after it is typed and says nothing when it does. The
+    /// subjects are pinned instead, in
+    /// `Tools/CorpusRunner/test_parser_vocabulary.py`
+    /// (`WhoTheCorpusSaysOwesSomething`), which recomputes them from the
+    /// `corpusCase` slot on every CI run and fails when a new one appears.
+    /// Animacy is the one part of this that cannot be decided mechanically --
+    /// which is the whole point of the paragraph above -- so the check hands
+    /// the subject to a person rather than judging it.
     private static func obligationBelongsToAnotherPerson(_ text: String) -> Bool {
         let pattern = #"(?i)^(?:(?:and|but|so|also|okay|ok|well|yeah)\s+)*"#
             + #"((?!(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody"#

@@ -219,3 +219,63 @@ def exposed_tail(forms):
     position the mechanism actually reads makes the check say what it means.
     """
     return {f.split()[-1] for f in forms}
+
+
+#: Where the gating corpus keeps its utterances. The second positional argument
+#: of `corpusCase(...)` is the capture; everything else in the call is a label,
+#: and the `note:` argument is reviewer prose. Reading the slot rather than the
+#: file is what keeps "the backfill must not invent a time of day" -- an XCTest
+#: failure message -- out of a count of things people said.
+CORPUS_CASES = ROOT / "SpeakItTests"
+
+_CORPUS_CASE = re.compile(r'corpusCase\(\s*\.[A-Za-z0-9_]+\s*,\s*"((?:[^"\\]|\\.)*)"')
+
+
+def corpus_utterances():
+    """The gating corpus's captures, by the slot they sit in.
+
+    `readable_material.swift_literals` harvests every literal in the tree,
+    which is right for a leak check and wrong here: most literals in these
+    files are labels, notes and assertion messages. Position is mechanical
+    where content is not, so the slot does the partitioning.
+    """
+    found = []
+    for path in sorted(CORPUS_CASES.glob("SemanticCorpusData*.swift")):
+        found += _CORPUS_CASE.findall(path.read_text(encoding="utf-8"))
+    if len(found) < 1000:
+        raise Refused(
+            f"only {len(found)} corpus cases found in the utterance slot. The "
+            "corpus has been above a thousand cases since it was split into "
+            "these files, so this is a reader that has stopped reading rather "
+            "than a corpus that has shrunk."
+        )
+    return found
+
+
+def third_person_subjects(utterances=None):
+    """Subjects that `obligationBelongsToAnotherPerson` could read as owners.
+
+    **A screen, not a reimplementation.** The Swift rule adds a first-person
+    check over the head, a stoplist, and `isVerbless` from `NLTagger`, none of
+    which run here. This is deliberately *wider*: it exists to hand a human
+    every utterance of the shape, so that "no inanimate subject appears in the
+    corpus" is checked instead of remembered. Predicting the rule's verdict is
+    not its job and it would be wrong at it.
+    """
+    forms = "|".join(
+        re.escape(f).replace(r"\ ", r"\s+") for f in sorted(third_person_obligation())
+    )
+    pronoun = (r"(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody"
+               r"|nobody|no\s+one|there|it|this|that|these|those|our|us)")
+    shape = re.compile(
+        r"(?i)(?:^|[.!?]\s+)(?:(?:and|but|so|also|okay|ok|well|yeah)\s+)*"
+        r"((?!" + pronoun + r"\b)(?:my|his|her|their)?\s*[\w'’-]+"
+        r"(?:\s+[\w'’-]+)?)\s+(?:" + forms + r")\s+(?!be\b)[\w'’-]+"
+    )
+    speaker = re.compile(r"(?i)\b(?:i|we|i'?m|i'?ve|i'?ll)\b")
+    out = []
+    for text in (corpus_utterances() if utterances is None else utterances):
+        found = shape.search(text)
+        if found and not speaker.search(text[: found.end(1)]):
+            out.append((found.group(1).strip(), text))
+    return out
