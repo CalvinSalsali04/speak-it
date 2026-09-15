@@ -163,43 +163,28 @@ def mine(path):
     The registry test will happily register such a set, so this side has to be
     layout-independent too.
     """
-    lines = Path(path).read_text().splitlines()
-    column = column_of(lines, "utterance")
-    if column is None:
-        raise SystemExit(
-            f"leak check: {Path(path).name} has no column headed 'utterance'")
-    ids = column_of(lines, "id") or 0
-    out = {}
-    for line in lines:
-        parts = line.split("\t")
-        if line.startswith("#") or not line.strip() or len(parts) <= column:
-            continue
-        if parts[column].strip().lower() == "utterance":
-            continue
-        out[norm(parts[column])] = parts[ids] if len(parts) > ids else "?"
-    return out
+    try:
+        rows = list(corpus_paths.utterances(path))
+    except ValueError as why:
+        raise SystemExit(f"leak check: {Path(path).name}: {why}")
+    #: No `cid or "?"`. `corpus_paths.utterances` refuses a file whose header
+    #: names no id column, so the fallback became a branch nothing could reach
+    #: -- and a placeholder for a name is exactly what the prose check must not
+    #: print, since "a sealed capture is committed somewhere" without the id is
+    #: the report that cannot be acted on.
+    return {norm(utterance): cid for _number, cid, utterance in rows}
 
 
-def column_of(lines, name):
-    """Index of a named column, read from whichever line carries the header."""
-    for line in lines:
-        fields = [f.strip().lower() for f in line.lstrip("#").strip().split("\t")]
-        if name in fields:
-            return fields.index(name)
-    return None
-
-
-def utterance_column(lines):
-    """Finds the column a corpus file keeps its utterances in.
-
-    Corpora in this repository do not agree on layout: `heldout.tsv` and the
-    development sets put the utterance second, `everyday.tsv` puts it third,
-    and `heldout.tsv` writes its header inside a comment. Hard-coding a column
-    is how this check silently starts comparing the wrong field and passing for
-    the wrong reason — which is worse than failing, because a leak check that
-    cannot fail reads as proof. So the header is read instead.
-    """
-    return column_of(lines, "utterance")
+#: Both of these moved into `corpus_paths`, which already owns which files
+#: exist and is now the one place that knows how to read one. They were right
+#: here and re-derived, differently, by four other readers; the count that came
+#: out of one of those re-derivations was 256 rows for a 255-capture set.
+#:
+#: The names stay bound here so every call site and its tests are unchanged.
+#: `utterance_column` now raises where it used to return None -- a corpus file
+#: with no header is not a file whose utterances live in column two.
+column_of = corpus_paths.column_of
+utterance_column = corpus_paths.utterance_column
 
 
 #: Swift string literals, and the reason this is not a one-line regex.
@@ -239,22 +224,17 @@ def harvest(path):
     if path.suffix != ".tsv":
         return swift_literals(text)
 
-    lines = text.splitlines()
-    column = utterance_column(lines)
-    if column is None:
+    try:
+        return [utterance for _number, _cid, utterance
+                in corpus_paths.utterances(path)]
+    except ValueError:
+        # Translated rather than propagated: this is a command-line tool and a
+        # traceback is not a message. The refusal itself comes from the one
+        # owner, so it cannot be a different rule here than it is in `mine`.
         raise SystemExit(
             f"leak check: {path.name} has no column headed 'utterance', so the "
             f"capture to compare cannot be identified. Add the header rather "
             f"than letting this file go unchecked.")
-    out = []
-    for line in lines:
-        if line.startswith("#") or not line.strip():
-            continue
-        fields = line.split("\t")
-        if len(fields) <= column or fields[column].strip().lower() == "utterance":
-            continue
-        out.append(fields[column])
-    return out
 
 
 #: All three, and `heldout.tsv` deliberately among them. The overlap check
@@ -397,22 +377,14 @@ def harvest_ids(path):
     it compares text against text. The prose check has to *name* what it found
     without printing it, so it needs the id travelling beside the capture.
     """
-    lines = path.read_text(errors="ignore").splitlines()
-    column = utterance_column(lines)
-    if column is None:
-        raise SystemExit(
-            f"leak check: {path.name} has no column headed 'utterance', so "
-            f"its captures cannot be identified. Add the header rather than "
-            f"letting this file go unchecked.")
-    out = []
-    for line in lines:
-        if line.startswith("#") or not line.strip():
-            continue
-        fields = line.split("\t")
-        if len(fields) <= column or fields[column].strip().lower() == "utterance":
-            continue
-        out.append((fields[0].strip(), fields[column]))
-    return out
+    try:
+        return [(cid, utterance)
+                for _number, cid, utterance in corpus_paths.utterances(path)]
+    except ValueError as why:
+        # Same translation as `mine` and `harvest`: a command-line tool owes a
+        # message, not a traceback, and the rule it states comes from the one
+        # owner so it cannot drift from theirs.
+        raise SystemExit(f"leak check: {Path(path).name}: {why}")
 
 
 #: Sealed captures already sitting in tuned material when this was measured,
