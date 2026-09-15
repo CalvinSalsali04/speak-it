@@ -845,6 +845,49 @@ final class StoredRowRemovalTests: XCTestCase {
         }
     }
 
+    func testEraseIsNotOneOfTheseVerbs() {
+        // The same boundary as `testACalendarNounIsNotYetAContainer`, drawn on
+        // the verb rather than the noun. `erase` was not in either pattern this
+        // rule replaces, so admitting it here would make "erase the gym
+        // reminder" destroy a stored row that today is an ordinary capture —
+        // reach, not shape, and not this change's to take.
+        //
+        // `ThoughtExtractor` does read `erase`, in a rule that carves words out
+        // of a sentence rather than one that deletes a row. That is not a
+        // precedent for this list, and the test says so out loud because the
+        // next person to grep for the word will find it there first.
+        for utterance in [
+            "Erase the gym reminder",
+            "Erase the reminder to call Dave",
+        ] {
+            XCTAssertNil(
+                CaptureOperationDetector.detect(utterance),
+                "\(utterance) would need `erase` admitted deliberately, with its own decision"
+            )
+        }
+    }
+
+    func testARelativeClauseIsNotAComplement() {
+        // "That" and "which" open a relative clause, and the peel in
+        // `cleaned()` has never handled one. Admitting them here recognised
+        // the request and then handed `CaptureTargetMatcher` a target with the
+        // frame still on it, which matches nothing. Declining outright reaches
+        // the same end state — the words stay an ordinary capture — without
+        // the detour.
+        XCTAssertNil(operation("Delete the note that Dave called"))
+        XCTAssertNil(operation("Remove the reminder which I set yesterday"))
+    }
+
+    func testAPolitenessMarkerDoesNotHideTheRequest() {
+        // New, and small enough to be missed if it is not pinned: neither
+        // pattern this rule replaces tolerated a leading "please", so this
+        // sentence used to fall through. `cancelsAnArrangement` has always
+        // taken one.
+        let request = operation("Please delete the gym reminder")
+        XCTAssertEqual(request?.operation, .cancel)
+        XCTAssertEqual(request?.needsReview, false)
+    }
+
     func testCancellingAnArrangementIsStillAnErrand() {
         // Unchanged by this work, and pinned here because it is the nearest
         // neighbour: cancelling a subscription is something the person does in

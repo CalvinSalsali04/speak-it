@@ -2343,12 +2343,36 @@ enum CaptureOperationDetector {
     /// Complements a container noun takes: the words that introduce *what the
     /// row says* rather than a second thing. "The reminder **to** call Dave",
     /// "the note **about** the picnic".
+    ///
+    /// This list and the peel in `cleaned()` have to stay the same list. A word
+    /// admitted here and not peeled there is recognised as a head-with-complement
+    /// and then handed to `CaptureTargetMatcher` with the frame still attached,
+    /// which matches nothing — dead reach that reads like a feature.
+    ///
+    /// `that` and `which` were in the first version of this set and are out for
+    /// that reason. They open a relative clause rather than a complement, the
+    /// peel never handled one, and "delete the note that Dave called" was being
+    /// recognised only to fail to match. Declining it outright keeps the
+    /// person's words as an ordinary capture, which is the same end state by a
+    /// shorter road.
     private static let storedRowComplement: Set<String> = [
-        "to", "about", "for", "regarding", "that", "which",
+        "to", "about", "for", "regarding",
     ]
 
+    /// The verbs this rule reads, and no others. Exactly the two patterns it
+    /// replaces admitted — `delete|remove|clear|kill|drop` and `get rid of` —
+    /// because reading the shape of a noun phrase and admitting a new verb are
+    /// different changes with different blast radii.
+    ///
+    /// `erase` is the obvious addition and is deliberately absent, for the same
+    /// reason `appointment` is absent from `storedRowNoun`: it would make
+    /// "erase the gym reminder" destroy a stored row where today it is an
+    /// ordinary capture, and that is reach rather than shape. See
+    /// `Docs/KNOWN_ISSUES.md`. `ThoughtExtractor` reads `erase` elsewhere, in a
+    /// rule that carves words out of a sentence rather than one that deletes a
+    /// row, so its presence there is not a precedent for this list.
     private static let removalVerb =
-        #"(?:delete|remove|clear|erase|kill|drop|get\s+rid\s+of)"#
+        #"(?:delete|remove|clear|kill|drop|get\s+rid\s+of)"#
 
     /// A request to remove something Speak It is holding.
     ///
@@ -2372,6 +2396,14 @@ enum CaptureOperationDetector {
     ///   front of it opens a prepositional phrase: "dentist appointment",
     ///   "call Dave reminder". The preposition test is what keeps "drop the
     ///   kids off at the appointment" an errand.
+    ///
+    /// A leading "please" is tolerated, which the two patterns this replaces did
+    /// not do: "please delete the gym reminder" was not recognised and now is.
+    /// Called out rather than left to be found, because it is a second thing
+    /// this change admits — a politeness marker is not reach, since it moves no
+    /// verb and no noun, but an undeclared widening is an undeclared widening.
+    /// `cancelsAnArrangement` already tolerated it at `^(?:please\s+)?cancel`,
+    /// so the two tiers now agree on this much.
     ///
     /// Anything else falls through exactly as before, which is the property
     /// that matters: this widens what is *recognised*, and every recognised

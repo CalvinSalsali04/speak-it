@@ -2572,10 +2572,17 @@ the container noun to be the final token of the sentence, so it recognised the
 pre-modified phrasing of a request and refused the post-modified phrasing of
 the same request. The fix reads the head of the object noun phrase instead of
 its last word, admitting head-initial phrases only through a complement (`to`,
-`about`, `for`, `regarding`, `that`, `which`) and head-final phrases only when
-no preposition stands in front of the head. Verb particles are deliberately not
-prepositions: "pick up the parcel reminder" has a head, "drop the kids off at
-the appointment" does not. No other guard on the destructive path moved.
+`about`, `for`, `regarding`) and head-final phrases only when no preposition
+stands in front of the head. Verb particles are deliberately not prepositions:
+"pick up the parcel reminder" has a head, "drop the kids off at the
+appointment" does not. No other guard on the destructive path moved.
+
+`that` and `which` were in the first version of the complement set and are out.
+They open a relative clause, the peel in `cleaned()` only ever handled the four
+above, and a word admitted as a complement but not peeled is recognised and
+then handed to `CaptureTargetMatcher` with the frame still attached — a match
+that cannot happen, which reads like a feature. The two lists are now the same
+list, which is what the comment above the peel had been claiming.
 
 "Remove the dentist appointment" failed on **reach**, and is left open. It is
 not a word-order problem: `appointment` has never been a container noun. The
@@ -2587,9 +2594,24 @@ The plurals of the six existing container nouns were added, because
 `CaptureTargetMatcher.stopWords` already treated "reminders" and "reminder" as
 the same word; the singular-only spelling was an inflection gap, not a boundary.
 
-**Not measured.** The change was written in a Linux container; the engine
-depends on Apple's `NaturalLanguage` and cannot run there. What was run is a
-pattern-level model of the old and new rules over 31 utterances: 7 shapes newly
-recognised, no false positive over 18 errands and calendar nouns. The corpus
-gate, the unit suite and the release compile check all still have to run on a
-Mac before this is claimed to work.
+The **verbs** did not move: `removalVerb` is exactly what the two patterns it
+replaces admitted. `erase` is the obvious addition and is left out on the same
+grounds as `appointment` — it would make "erase the gym reminder" destroy a row
+that is an ordinary capture today, which is reach. It went in by accident in
+the first version of this change and was caught in review; both the code and
+the tests now say out loud that it is absent on purpose.
+
+One thing is newly admitted beyond the shape: a leading "please". It moves no
+verb and no noun, and `cancelsAnArrangement` has always taken one, so the two
+tiers now agree on this much. Recorded rather than left to be found, because an
+undeclared widening is undeclared however small it is.
+
+**Measured on macOS, after the fact.** The change was written in a Linux
+container; the engine depends on Apple's `NaturalLanguage` and cannot run
+there, so the first evidence was a pattern-level model of the old and new rules
+over 31 utterances — 7 shapes newly recognised, no false positive over 18
+errands and calendar nouns. That model is not the engine, and the real numbers
+came from dispatched macOS runs: the corpus gate green over 1,404 cases with
+`DO02` gone from the routed development set's failures and `DO03` still there,
+and the capture-operation classes green on a simulator. The whole unit suite
+and the release compile check have still not run.

@@ -568,8 +568,20 @@ object noun phrase and admits the two shapes an English noun phrase has:
 
 The container vocabulary did not move, beyond admitting the plurals of the
 nouns already there — which `CaptureTargetMatcher.stopWords` had always
-treated as the same word. `StoredRowRemovalTests` pins the shapes on both
-sides.
+treated as the same word. The **verb** list did not move either:
+`removalVerb` is exactly `delete|remove|clear|kill|drop|get rid of`, the two
+patterns it replaces. A leading "please" is newly tolerated, which is a
+politeness marker rather than reach and is called out here because it is the
+only other thing the change admits. `StoredRowRemovalTests` pins the shapes on
+both sides.
+
+`erase` is the verb a reader expects to find in that list and it is
+deliberately absent, for the same reason `appointment` is absent from the
+nouns: admitting it would make "erase the gym reminder" destroy a stored row
+where today it is an ordinary capture. `ThoughtExtractor` does read `erase`,
+in a rule that carves words out of a sentence rather than one that deletes a
+row, so its presence there is not a precedent. Adding it is the same kind of
+decision as the one below.
 
 **Open, and a product decision rather than a defect: reach.** "Remove the
 dentist appointment" is still not recognised, and no amount of noun-phrase
@@ -588,9 +600,12 @@ That is Calvin's call, not the implementation's. `DO03` in
 `Tools/CorpusRunner/devsets/routed.tsv` stays expected-to-fail until it is
 made; `DO02` no longer is.
 
-**Neither the corpus gate nor the unit suite has been run against this
-change.** It was written in a Linux container with no Swift toolchain and no
-Apple `NaturalLanguage` framework. See `Docs/DECISIONS.md`, 2026-09-11.
+**What has been run.** The change was written in a Linux container with no
+Swift toolchain, so every Swift number comes from a macOS runner. The corpus
+gate is green on the change (1,404 cases, no blocking regression), and the
+capture-operation classes were run on a simulator — 49 passed, 0 failed, before
+review added three more tests. The whole unit suite and the release compile
+check have **not** been run. See `Docs/DECISIONS.md`, 2026-09-11.
 
 ## A verb with no object is not read as an unfinished thought
 
