@@ -231,8 +231,8 @@ report this comparison says something untrue.
   distribution.
 - **The executable-operation column is capped by the parser by construction.**
   `InterpretationPolicy.executableOperations` marks an operation executable only
-  when the rules' own operation reading contains the same kind
-  (`rulesRead`), and refuses `.broad` scope before agreement is even considered.
+  when the rules' own operation reading contains the same kind (`rulesRead`),
+  and refuses `.broad` scope before agreement is even considered.
   So the model can never score above the rules on operations it may act on.
   Report that column as an agreement rate, never as accuracy — a column that
   cannot exceed its baseline is not measuring what the model can do. What it

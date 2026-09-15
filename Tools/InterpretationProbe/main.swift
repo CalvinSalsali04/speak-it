@@ -54,7 +54,7 @@ let encoder: JSONEncoder = {
     return encoder
 }()
 
-/// One input line. A bare line is the capture; a line with a tab is
+/// One input line. A bare line is the capture; a line with exactly one tab is
 /// `id<TAB>capture`, which is the form to use for a set whose text must not
 /// appear in a report.
 struct Input {
@@ -67,15 +67,51 @@ func utterances(fromPath path: String) -> [Input] {
         FileHandle.standardError.write(Data("interpret: cannot read \(path)\n".utf8))
         exit(2)
     }
-    return text.split(separator: "\n", omittingEmptySubsequences: false)
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-        .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-        .map { line in
-            guard let tab = line.firstIndex(of: "\t") else { return Input(id: nil, text: line) }
-            let id = String(line[line.startIndex..<tab]).trimmingCharacters(in: .whitespaces)
-            let body = String(line[line.index(after: tab)...]).trimmingCharacters(in: .whitespaces)
-            return body.isEmpty ? Input(id: nil, text: line) : Input(id: id, text: body)
+    var inputs: [Input] = []
+    for (offset, raw) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+        let line = raw.trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+        let fields = line.components(separatedBy: "\t")
+        switch fields.count {
+        case 1:
+            inputs.append(Input(id: nil, text: line))
+        case 2:
+            // `id<TAB>capture`. An empty second field is a malformed id line,
+            // not a capture that happens to contain a tab.
+            let id = fields[0].trimmingCharacters(in: .whitespaces)
+            let body = fields[1].trimmingCharacters(in: .whitespaces)
+            guard !id.isEmpty, !body.isEmpty else {
+                fail(path: path, line: offset + 1, saying: "an id line needs an id and a capture on either side of the tab")
+            }
+            inputs.append(Input(id: id, text: body))
+        default:
+            // The whole reason this refuses instead of taking the rest of
+            // the line: the corpus files here are `id, utterance, family,
+            // expected_destination, expected_thoughts` — five columns, eight in
+            // everyday — so everything after the utterance is the expected
+            // answer. Splitting on the first tab and keeping the remainder
+            // would hand the model `utterance<TAB>family<TAB>destination` as
+            // the capture and record that string as the grounding input: the
+            // answer, in the prompt. It fails eventually, at the scorer, but
+            // only after somebody has paid for the device time and, on a sealed
+            // set, after the labels have already been through a model.
+            fail(
+                path: path,
+                line: offset + 1,
+                saying: "\(fields.count) tab-separated fields; this reader takes a bare capture or `id<TAB>capture`. "
+                    + "A corpus TSV has to be cut down to those two columns first"
+            )
         }
+    }
+    return inputs
+}
+
+/// Refuses a malformed input file by line number, without echoing the line.
+/// The line may be a sealed capture, and a diagnostic is not a place to print
+/// one.
+func fail(path: String, line: Int, saying reason: String) -> Never {
+    FileHandle.standardError.write(Data("interpret: \(path):\(line): \(reason)\n".utf8))
+    exit(2)
 }
 
 func records(fromPath path: String) -> [RunRecord] {
@@ -369,6 +405,25 @@ func selfcheck() {
            "an operation the rules did not see is never executable")
     expect(InterpretationPolicy.executableOperations(reported: agreed, rulesRead: [.cancel]).executable.count == 1,
            "an operation both readings found is executable")
+
+    // The input reader's accepting half. Its refusing half calls `exit(2)` and
+    // so cannot be exercised from inside this process; what is checked here is
+    // that a bare line stays whole and a two-field line splits the way the
+    // README promises, because that is the half a corpus file would trip on.
+    let scratch = NSTemporaryDirectory() + "interpret-selfcheck-input.txt"
+    let sample = "# a comment\nplain capture with no id\nC900\tan identified capture\n"
+    do {
+        try sample.write(toFile: scratch, atomically: true, encoding: .utf8)
+        let read = utterances(fromPath: scratch)
+        expect(read.count == 2, "the comment line is skipped")
+        expect(read.first?.id == nil && read.first?.text == "plain capture with no id",
+               "a bare line is the whole capture and carries no id")
+        expect(read.last?.id == "C900" && read.last?.text == "an identified capture",
+               "a two-field line splits into an id and a capture")
+        try? FileManager.default.removeItem(atPath: scratch)
+    } catch {
+        failures.append("could not write the input-reader fixture to \(scratch)")
+    }
 
     if failures.isEmpty {
         print("interpretation selfcheck ok")

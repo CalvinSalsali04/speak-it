@@ -37,9 +37,30 @@ rule is about where the file goes, not where it sits. Re-scoring a sealed run
 means running `--replay` on the machine that holds it and reporting the scorer's
 counts.
 
-Input lines may be `id<TAB>capture` instead of a bare capture. The id rides
-along on every record, and reports that must not print capture text — `--spread`
-— name captures by it. A sealed set is the case this exists for.
+## The input file
+
+One capture per line. A line with no tab is the whole capture. A line with
+exactly one tab is `id<TAB>capture`: the id rides along on every record, and
+reports that must not print capture text — `--spread` — name captures by it. A
+sealed set is the case this exists for.
+
+**A corpus TSV is not this format and the reader refuses one.** These files are
+`id, utterance, family, expected_destination, expected_thoughts` — five columns
+in `heldout.tsv` and `devsets/routed.tsv`, eight in `everyday.tsv` — and
+everything after the utterance is the expected answer. A reader that split on the
+first tab and kept the remainder would hand the model `utterance<TAB>family<TAB>
+destination<TAB>count` as the capture and record that string as the grounding
+input: the expected answer, in the prompt. The run would fail eventually, at the
+scorer, but only after the device time had been paid for. So a line carrying a
+second tab stops the tool on that line number, and a corpus file is cut to its
+first two columns first, which are already `id<TAB>capture`:
+
+```bash
+grep -v '^#' Tools/CorpusRunner/devsets/routed.tsv | tail -n +2 | cut -f1,2 > /tmp/captures.tsv
+```
+
+The refusal names the line number and never echoes the line, because the line may
+be a sealed capture and a diagnostic is not a place to print one.
 
 ## Scoring it
 
