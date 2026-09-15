@@ -24,6 +24,23 @@ be quoted out of the report that prints it:
     thing shaping it would be a sealed set, which is the one input a parser
     change may not have.
 
+TWO QUESTIONS, IN THIS ORDER. This file answers the first -- is the form
+attested at all -- and deliberately does not answer the second: are N
+instances N observations. A generated corpus answers the first cheaply and the
+second never, because its rows are renderings of a smaller number of meanings.
+`plus` reads as the third-commonest connective here and all 41 of its rows
+come from one file; the SpeechLab adjudication corpus is 818 utterances over
+137 semantic families. Counting the first and reporting it as the second is
+how a family gets named that nobody has ever been observed to say.
+
+AND DO NOT HAND-TYPE WHAT THIS COULD COMPUTE. On 2026-09-15 four figures went
+into `Docs/LANGUAGE_BASELINE.md` from a one-off script rather than from a
+check, and all four were wrong: two counted a looser pattern than the label
+beside them, one was attributed to the wrong file and argued the opposite of
+what it was cited for. They were caught only because the section said out loud
+that they were hand-typed. A figure this file could produce and does not
+should grow this file.
+
 Sealed sets are not read. Sources come from `corpus_paths.readable()` plus a
 declared list of SpeechLab files, and the declared list is checked against
 `corpus_paths.sealed()` at the point of use rather than trusted. SpeechLab
