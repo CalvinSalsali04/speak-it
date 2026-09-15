@@ -302,17 +302,80 @@ def contained_sources():
     is here should see that twelve sources are not twelve populations.
 
     Reads every source a second time rather than reusing the walk, because a
-    guard sharing state with the thing it guards fails with it.
+    guard sharing state with the thing it guards fails with it. It shares that
+    second read with `independent_bodies` below, which is a different thing:
+    two guards reading one independent copy stay independent of the walk.
     """
-    texts = {}
-    for path, read in readers():
-        texts[path] = set(read(path))
+    texts = source_texts()
     out = []
     for a in texts:
         for b in texts:
             if a is not b and texts[a] and texts[a] <= texts[b]:
                 out.append((a, b))
     return out
+
+
+def source_texts():
+    """`{path: frozenset of utterances}`, read fresh, keyed by full path.
+
+    By path and never by name. `renderings.jsonl` exists twice under
+    `Tools/SpeechLab`, so a dictionary keyed on the basename silently merges
+    two sources into one and undercounts every figure derived from it -- the
+    same defect `readable_pairs` had, one module over.
+    """
+    return {path: frozenset(read(path)) for path, read in readers()}
+
+
+def reduce_to_bodies(texts):
+    """`{utterances: [path]}` and the bodies inside no other, from `texts`.
+
+    Separate from the guard that checks it, so the guard can be handed a
+    reduction that is wrong -- which is the only way to know the guard runs.
+    Same shape as `observation.self_check(measure)`, for the same reason.
+    """
+    bodies = {}
+    for path, utterances in texts.items():
+        bodies.setdefault(utterances, []).append(path)
+    maximal = [body for body in bodies
+               if not any(body < other for other in bodies)]
+    return bodies, maximal
+
+
+def independent_bodies(reduce=None):
+    """`(bodies, maximal)` — how many populations the sources amount to.
+
+    `contained_sources` prints the pairs and leaves the reader arithmetic that
+    cannot be done by eye: twenty-eight pairs over twenty sources is not a
+    number anyone reduces while reading. This reduces it, because "the source
+    count is not a count of independent bodies" is worth saying only if the
+    count it is not is available. It is 20 sources, 17 distinct bodies and 10
+    inside no other -- and one of those ten is two thirds of the material and
+    is test fixtures, which is a different sentence from "twenty sources".
+
+    Two steps, and the order is the whole difficulty. Sources holding the same
+    utterances are one body, grouped FIRST; then a body wholly inside another
+    is not a second population, by strict subset.
+
+    Grouping first is not tidiness. Four SpeechLab files hold the same 818
+    utterances, so asking each source "is it inside another" is true for every
+    one of the four, all four drop and none survives -- a set that eliminates
+    itself. That was the first version here, and it reported nine bodies
+    rather than ten with nothing amiss in the output: a plausible number,
+    moving the way a reader expects, naming no source. The only symptom was
+    that the survivors covered 4683 of 5501 utterances. So the coverage is
+    asserted rather than assumed, and `reduce` is an argument so a test can
+    hand the guard the reduction it replaced and watch it raise.
+    """
+    texts = source_texts()
+    bodies, maximal = (reduce or reduce_to_bodies)(texts)
+    covered = frozenset().union(*maximal) if maximal else frozenset()
+    union = frozenset().union(*texts.values()) if texts else frozenset()
+    if covered != union:
+        raise AssertionError(
+            f"the {len(maximal)} maximal bodies cover {len(covered)} of "
+            f"{len(union)} utterances; every source is inside a maximal body "
+            f"by construction, so this means the reduction dropped one")
+    return bodies, maximal
 
 
 def readers():

@@ -122,12 +122,146 @@ class OverlappingSourcesAreCountedOnce(CensusCase):
         self.assertIn("not\n  a count of independent bodies of material",
                       text)
 
+    def test_the_report_gives_the_number_it_says_the_count_is_not(self):
+        """Saying a figure is not a population count leaves the reader with no
+        population count, and twenty-eight pairs cannot be reduced by eye."""
+        _, text = self.run_main()
+        _bodies, maximal = self.census.independent_bodies()
+        _, _, sources = self.census.census()
+        self.assertIn(f"read {len(sources)} sources as {len(maximal)} "
+                      f"populations", text)
+        self.assertLess(len(maximal), len(sources),
+                        "the sources are known to overlap")
+
     def test_containment_is_found_where_it_is_known_to_exist(self):
         """A detector returning nothing would make the report silently clean."""
         pairs = self.census.contained_sources()
         self.assertTrue(pairs)
         names = {(a.name, b.name) for a, b in pairs}
         self.assertIn(("renderings.jsonl", "combined-renderings.jsonl"), names)
+
+
+class TheReductionToPopulationsSurvivesIdenticalSources(CensusCase):
+    """A set of equal sources eliminates itself, and the totals look fine.
+
+    Four SpeechLab files hold the same 818 utterances. Asking each source "is
+    it wholly inside another" is true for every one of the four, so a
+    reduction comparing before grouping drops all four and reports nine
+    populations rather than ten. Nothing in the output looks wrong: the number
+    is plausible, it moves the direction a reader expects, and no source is
+    named. The only symptom is that the survivors stop covering the material
+    -- 4683 of 5501 -- which is why that is asserted rather than assumed, and
+    why these fixtures are the shape that broke it.
+    """
+
+    def reduce(self, groups):
+        """Run the reduction over planted sources: a list of lists of texts.
+
+        Patches the walk's own `readers`, not the census's re-exported name:
+        `source_texts` calls the one in its own module, so patching the alias
+        would leave the real tree read and the test passing for the wrong
+        reason.
+
+        Same family as the `words=STEM_WORDS` default #70 fixed one module
+        over: an alias is a second copy of a name meant to have one, and
+        rebinding the copy changes the name and not the behaviour. Both fail
+        by passing while measuring nothing, which is the answer that raises
+        no alarm.
+        """
+        planted = []
+        for number, texts in enumerate(groups):
+            path = self.census.ROOT / f"planted-{number}.tsv"
+            planted.append((path, lambda _p, t=tuple(texts): iter(t)))
+        self.census.readable_material.readers = lambda: planted
+        return self.census.readable_material.independent_bodies()
+
+    def test_sources_holding_the_same_utterances_are_one_body(self):
+        same = ["the lease is up in March", "call the dentist tomorrow"]
+        bodies, maximal = self.reduce([same, same, same, same])
+        self.assertEqual(len(bodies), 1)
+        self.assertEqual(len(maximal), 1, "four equal sources are one body")
+
+    def test_equal_sources_do_not_eliminate_each_other(self):
+        """The failing shape, stated as the thing that must not happen."""
+        same = ["the lease is up in March", "call the dentist tomorrow"]
+        _bodies, maximal = self.reduce([same, same, ["a separate thought"]])
+        self.assertEqual(len(maximal), 2)
+        self.assertEqual(len(frozenset().union(*maximal)), 3,
+                         "every planted utterance survives")
+
+    def test_a_source_inside_another_is_not_a_second_population(self):
+        whole = ["one thought", "two thought", "three thought"]
+        bodies, maximal = self.reduce([whole, whole[:2]])
+        self.assertEqual(len(bodies), 2, "the two are not equal")
+        self.assertEqual(len(maximal), 1, "the subset is not its own body")
+
+    def test_disjoint_sources_stay_separate(self):
+        """A reduction collapsing everything would pass the tests above."""
+        _bodies, maximal = self.reduce([["one thought"], ["another thought"]])
+        self.assertEqual(len(maximal), 2)
+
+    def test_the_maximal_bodies_cover_the_real_population(self):
+        """The control that caught the grouping bug, on the real sources."""
+        _bodies, maximal = self.census.independent_bodies()
+        _counts, distinct, _sources = self.census.census()
+        self.assertEqual(len(frozenset().union(*maximal)), distinct)
+
+    def test_the_coverage_guard_can_actually_fire(self):
+        """A refusal nothing reaches is worth nothing -- so reach it.
+
+        The shipped guard is handed the reduction it replaced: one entry per
+        source with the equal ones kept apart, so each of a pair is inside the
+        other and neither survives. That is the version that reported nine
+        bodies and covered 4683 of 5501.
+
+        The precondition is asserted first because this test borrows a
+        property of the corpus rather than planting one, and the borrowed
+        property can go away: de-duplicate the four equal SpeechLab files and
+        the replaced reduction drops nothing, the guard does not fire, and
+        this fails with a bare "AssertionError not raised" naming nothing.
+        That reads as the guard breaking when it means the fixture stopped
+        reproducing the bug, and the two want different responses.
+        """
+        texts = self.census.source_texts()
+        self.assertLess(
+            len(set(texts.values())), len(texts),
+            "no two sources hold the same utterances any more, so there is "
+            "nothing here for a reduction comparing before grouping to "
+            "eliminate; if that de-duplication is deliberate, this test "
+            "should go too")
+
+        def compared_before_grouping(texts):
+            each = list(texts.values())
+            maximal = [body for number, body in enumerate(each)
+                       if not any(body <= other
+                                  for count, other in enumerate(each)
+                                  if count != number)]
+            return {body: [] for body in each}, maximal
+
+        with self.assertRaises(AssertionError) as raised:
+            self.census.independent_bodies(compared_before_grouping)
+        self.assertIn("the reduction dropped one", str(raised.exception))
+
+    def test_the_guard_passes_the_reduction_that_is_shipped(self):
+        """Otherwise the test above would pass against a guard that always
+        raises, which is the same defect one layer up."""
+        bodies, maximal = self.census.independent_bodies(
+            self.census.reduce_to_bodies)
+        self.assertTrue(maximal)
+        self.assertLessEqual(len(maximal), len(bodies))
+
+    def test_sources_are_keyed_by_path_and_never_by_name(self):
+        """`renderings.jsonl` exists twice under Tools/SpeechLab.
+
+        Keyed on the basename the two merge, which undercounts sources and so
+        undercounts the arm deciding whether evidence is concentrated.
+        """
+        texts = self.census.source_texts()
+        names = [path.name for path in texts]
+        self.assertGreater(len(names), len(set(names)),
+                           "the collision this guards against is gone; if "
+                           "that is deliberate, this test should go too")
+        self.assertEqual(len(texts), len(self.census.readers()))
 
 
 class AbsenceIsReportedAsAbsenceAndNotAsCoverage(CensusCase):

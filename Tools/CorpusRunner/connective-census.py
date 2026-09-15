@@ -62,8 +62,9 @@ import corpus_paths  # noqa: E402
 import readable_material  # noqa: E402
 from readable_material import (  # noqa: E402
     GATING, LOOKS_LIKE_SPEECH, NOT_SPEECH, ROOT, SPEECHLAB, UTTERANCE_FIELDS,
-    contained_sources, jsonl_utterances, readers, shown, speechlab_files,
-    swift_literals, swift_utterances, tsv_utterances, utterance_field)
+    contained_sources, independent_bodies, jsonl_utterances, readers,
+    reduce_to_bodies, shown, source_texts, speechlab_files, swift_literals,
+    swift_utterances, tsv_utterances, utterance_field)
 
 #: The connectives that join a fact to the errand it creates. The first three
 #: are word-forms the splitter handles today; the rest it does not handle at
@@ -156,10 +157,15 @@ def main():
     contained = contained_sources()
     if contained:
         pairs = sorted({f"{a.name} inside {b.name}" for a, b in contained})
+        bodies, maximal = independent_bodies()
         print(f"  {len(pairs)} source pair(s) where one is wholly contained in")
         print("  the other. Not an error -- SpeechLab keeps several views of")
-        print("  one population -- but it means the source count below is not")
-        print("  a count of independent bodies of material:")
+        print("  one population -- but it means the source count above is not")
+        print("  a count of independent bodies of material. It reduces to")
+        print(f"  {len(bodies)} distinct bodies and {len(maximal)} that sit "
+              f"inside no other,")
+        print(f"  so read {len(sources)} sources as {len(maximal)} "
+              f"populations. Pairs:")
         for pair in pairs[:6]:
             print(f"    {pair}")
         if len(pairs) > 6:
