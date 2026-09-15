@@ -568,17 +568,20 @@ baseline's population section.
 
 Screening every readable utterance for the subject slot the rule reads:
 
-| population | of the shape | inanimate subject |
+| population | of the shape | inanimate subject in an utterance position |
 | --- | --- | --- |
 | gating corpus, `corpusCase` utterance slot | 6 | 0 |
 | the seven development sets | 4 | 0 |
-| everything readable | 89 distinct | 0 attested |
+| everything readable | 89 distinct, on 2026-09-15 | 0 |
 
 The row counts are deliberately not in that table. Between opening this change
 and merging it the readable population went from 10,139 rows to 11,106, twice,
 because other work landed on `main` — which is the argument of this entry
-happening to the entry itself. What is stable is the second column, and what is
-checked is the first row's subjects.
+happening to the entry itself. What is checked is the first row's subjects; the
+third row's 89 is dated for the same reason the denominators are gone, since
+nothing recomputes it either. The qualifier in the last column is load bearing:
+outside an utterance position the readable population is full of inanimate
+subjects, and they are the assertion messages described below.
 
 The gating corpus's six are *Mike* twice, *My brother*, *Priya*, *Dana*, and a
 bare *No* — the last being the screen reaching wider than the rule, off "No need
@@ -586,14 +589,18 @@ to book the table", a row the corpus labels `count: 0, operation: [.cancel]`.
 The development sets add *Mike* three more times and *my brother*, in
 `routed.tsv` and `unfinished.tsv`.
 
-The 89 in the third row look alarming and are not. **Six of them sit in the
-`corpusCase` utterance slot — the same six above — and the rest are XCTest
-assertion messages**: "A reschedule must never complete or remove the item",
-"The reminder must land on a Friday". The readable-material census reads Swift
-by harvesting literals, which is right for a leak check and counts reviewer
-prose as speech here; position is what separates them, so the check added with
-this entry reads the slot instead. Every inanimate subject in the readable
-population is one of those assertion messages.
+The 89 in the third row look alarming and are not. Six of them sit in the
+`corpusCase` utterance slot — the same six above. **Two more are development-set
+rows with human subjects** — "Mike needs to sign it" in `unfinished.tsv` and "my
+brother has to renew his passport" in `routed.tsv`; the other two development-set
+hits are strings that also sit in the gating slot, so they are inside the six
+rather than beside them. **Every one of the rest is an XCTest assertion
+message**: "A reschedule must never complete or remove the item", "The reminder
+must land on a Friday". The readable-material census reads Swift by harvesting
+literals, which is right for a leak check and counts reviewer prose as speech
+here; position is what separates them, so the check added with this entry reads
+the slot instead. Every inanimate subject in the readable population is one of
+those assertion messages.
 
 So the item is an accepted decision rather than an open defect, and it stays one
 until a capture of the shape exists. What changed is that the sentence carrying
