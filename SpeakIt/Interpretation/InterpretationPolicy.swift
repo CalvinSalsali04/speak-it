@@ -23,7 +23,7 @@ enum InterpretationPolicy {
 
     /// Why an interpretation was refused. One case per rule, so a rejection
     /// names the rule that fired rather than a score.
-    enum Rejection: String, Equatable, Sendable, CaseIterable {
+    enum Rejection: String, Error, Equatable, Sendable, CaseIterable {
         /// No segments and no operations: the capture was understood as nothing.
         case empty
         /// More segments than any real capture has. A model that returns fifty

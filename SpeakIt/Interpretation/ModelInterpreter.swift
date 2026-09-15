@@ -51,7 +51,7 @@ enum ModelInterpreter {
     /// model was unavailable" and "the model returned nothing useful" are
     /// different findings, and a harness that prints one number for both hides
     /// the difference between an unmeasurable environment and a bad reading.
-    enum Unavailability: String, Equatable, Sendable {
+    enum Unavailability: String, Error, Equatable, Sendable {
         case frameworkMissing
         case osTooOld
         case deviceNotEligible
@@ -301,8 +301,11 @@ enum OnDeviceInterpreter {
     }
 
     private static func converted(_ value: GeneratedTemporalRole) -> TemporalRole {
+        // `.none` is spelled out on both sides. A bare `.none` in a switch is
+        // the one member name that also belongs to `Optional`, and the reading
+        // that costs nothing to remove is the one worth removing.
         switch value {
-        case .none: .none
+        case GeneratedTemporalRole.none: TemporalRole.none
         case .deadline: .deadline
         case .eventTime: .eventTime
         case .reminderRequest: .reminderRequest
@@ -313,7 +316,7 @@ enum OnDeviceInterpreter {
 
     private static func converted(_ value: GeneratedLocationRole) -> LocationRole {
         switch value {
-        case .none: .none
+        case GeneratedLocationRole.none: LocationRole.none
         case .arrivalTrigger: .arrivalTrigger
         case .departureTrigger: .departureTrigger
         case .whereItHappens: .whereItHappens
