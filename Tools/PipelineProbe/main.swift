@@ -187,7 +187,7 @@ for utterance in utterances {
         calendar: calendar
     )
 
-    print("── \"\(utterance)\"")
+    printCaptureHeader(utterance: utterance)
 
     if showRepairs {
         // The repair chain, stage by stage, exactly as ThoughtExtractor runs it.

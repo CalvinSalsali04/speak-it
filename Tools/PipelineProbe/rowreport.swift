@@ -99,6 +99,18 @@ func rowTitle(_ candidate: ExtractedThought, spokenFallback: String = "") -> Str
     }
     return polished
 }
+
+// The record boundary. `devsets/score.py`, `everyday/score.py` and
+// `heldout/score.py` split a report on `\n(?=── ")`, so this line is what tells
+// them where one capture's rows end and the next capture's begin. It lives here
+// with `printRows` rather than in either `main.swift`, because a probe that
+// prints rows in this format and opens the record some other way is not
+// comparable with the other probe: the scorer would read the two reports as one
+// record, or as none.
+func printCaptureHeader(utterance: String) {
+    print("── \"\(utterance)\"")
+}
+
 /// Prints one capture's rows in the format the scorers parse.
 ///
 /// `annotate` adds lines under a row for a caller that has something the rules

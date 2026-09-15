@@ -209,7 +209,45 @@ reading falls back to the rules, which is what shipping would actually do.
 **`--spread` is a measure in its own right.** A generative path has no single
 score: the same capture can read two ways on two runs. Sampling is pinned to
 greedy and recorded with every run, and an intent that changes between runs is a
-product defect even when both readings are defensible.
+product defect even when both readings are defensible. It reports counts and
+ids, never capture text, so it can be quoted from a run generated on a sealed
+set.
+
+### How a comparison gets reported
+
+These are conventions, not preferences. Each exists because the obvious way to
+report this comparison says something untrue.
+
+- **Three columns, always: model only, model with the rules as fallback, and
+  rejected or unavailable by rule.** One number hides which of three different
+  systems produced it. Collapsing the third column into the second is the
+  specific way a shadow run flatters itself: the rules answering for a reading
+  the policy threw away is a rules score wearing the model's name.
+- **Rejection rate per family and per segment count.** Per family because a
+  policy that refuses one family is a different product from one that refuses
+  evenly. Per segment count because `InterpretationPolicy.segmentLimit` is 12
+  and the grounding rule fires more often on long captures, so a rejection rate
+  averaged over a set is mostly a statement about that set's length
+  distribution.
+- **The executable-operation column is capped by the parser by construction.**
+  `InterpretationPolicy.executableOperations` marks an operation executable only
+  when the rules' own operation reading contains the same kind
+  (`rulesRead`), and refuses `.broad` scope before agreement is even considered.
+  So the model can never score above the rules on operations it may act on.
+  Report that column as an agreement rate, never as accuracy — a column that
+  cannot exceed its baseline is not measuring what the model can do. What it
+  *can* show is the opposite direction: operations the model reported and the
+  rules did not, which arrive refused, and are the interesting number.
+- **`--repair` is a configuration, not a setting.** The run records
+  `repairedFirst` and the instruction fingerprint precisely so two runs under
+  different configurations are never averaged together. Freeze the
+  configuration, write it down, then run the sealed set. A configuration changed
+  mid-run makes the whole run uninterpretable, and there is no way to tell
+  afterwards.
+- **Held-out output is counts only.** The scorer's per-family counts go in a
+  report; the report and the `runs.jsonl` do not. Reading a sealed failure to
+  understand it is the thing the seal exists to prevent, and it cannot be
+  undone.
 
 ## 5. The dangerous families, and what the schema does about each
 

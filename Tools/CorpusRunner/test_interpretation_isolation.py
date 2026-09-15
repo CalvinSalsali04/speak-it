@@ -9,7 +9,10 @@ that undoes it.
 
 1. **Nothing in the interpretation path can reach the network.** Not a URL, not
    a URLSession, not a socket. The only model it may name is Apple's on-device
-   `SystemLanguageModel`.
+   `SystemLanguageModel`. "The path" is every tree that ends up in the binary,
+   the probe included: the probe is the part that actually reads a set off disk,
+   so a check that stopped at the app sources would be watching the half that
+   never holds a capture.
 
 2. **The deterministic half does not import FoundationModels.** The policy, the
    bridge and the schema have to compile and be testable where no model exists,
@@ -25,7 +28,21 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "SpeakIt" / "Interpretation"
+
+#: Every tree that ends up inside the interpretation binary. The app sources are
+#: the obvious half; the probe is the half that actually holds a sealed set's
+#: text in memory, so a rule that stopped at `SpeakIt/Interpretation` would be
+#: checking the side that never sees a capture. `Tools/PipelineProbe` is here
+#: because `Tools/InterpretationProbe/build.sh` compiles two of its files.
+SOURCES = [
+    ROOT / "SpeakIt" / "Interpretation",
+    ROOT / "Tools" / "InterpretationProbe",
+    ROOT / "Tools" / "PipelineProbe",
+]
+
+#: Directory names skipped while walking. `build/` holds generated source slices
+#: and the binary; it is scratch, not something a pull request can change.
+SKIPPED_DIRECTORIES = {"build", ".build"}
 
 #: Anything that could move a transcript off the device. Matched as whole words
 #: so a comment saying "no network" does not fail its own check.
@@ -61,15 +78,29 @@ def code_lines(path):
         yield number, line
 
 
-def main():
-    if not SOURCE.is_dir():
-        print(f"interpretation isolation: {SOURCE} is missing")
-        return 1
+def swift_files(root):
+    """Every Swift file under `root`, at any depth, outside the scratch directories.
 
+    Recursive on purpose: a nested directory is the cheapest way to add a file
+    nobody re-reads, which is the failure this whole check exists to catch.
+    """
+    for path in sorted(root.rglob("*.swift")):
+        if SKIPPED_DIRECTORIES.intersection(path.relative_to(root).parts[:-1]):
+            continue
+        yield path
+
+
+def main():
     failures = []
-    files = sorted(SOURCE.glob("*.swift"))
-    if not files:
-        failures.append(f"{SOURCE} contains no Swift files")
+    files = []
+    for source in SOURCES:
+        if not source.is_dir():
+            print(f"interpretation isolation: {source} is missing")
+            return 1
+        found = list(swift_files(source))
+        if not found:
+            failures.append(f"{source.relative_to(ROOT)} contains no Swift files")
+        files.extend(found)
 
     for path in files:
         relative = path.relative_to(ROOT)
@@ -95,7 +126,8 @@ def main():
             print(f"  {failure}")
         return 1
 
-    print(f"interpretation isolation ok: {len(files)} files, on-device only")
+    trees = ", ".join(str(source.relative_to(ROOT)) for source in SOURCES)
+    print(f"interpretation isolation ok: {len(files)} files across {trees}, on-device only")
     return 0
 
 

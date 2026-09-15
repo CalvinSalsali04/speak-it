@@ -29,6 +29,18 @@ the settings it ran under, and the interpretation — or the reason there was
 none. So a run made once on hardware can be re-scored by anybody, and a change
 to the policy or the bridge is checkable without paying for the model again.
 
+**A `runs.jsonl` generated from a sealed set is itself sealed material.** It
+holds every capture it was given, verbatim, which is exactly what the seal is
+about. Do not commit one, paste one into a thread, attach one to a pull request,
+or upload it as a CI artefact; `.gitignore` covers the obvious paths, but the
+rule is about where the file goes, not where it sits. Re-scoring a sealed run
+means running `--replay` on the machine that holds it and reporting the scorer's
+counts.
+
+Input lines may be `id<TAB>capture` instead of a bare capture. The id rides
+along on every record, and reports that must not print capture text — `--spread`
+— name captures by it. A sealed set is the case this exists for.
+
 ## Scoring it
 
 `--replay` prints the same rows `Tools/PipelineProbe/build/probe` prints (both
@@ -46,6 +58,12 @@ rejected reading falls back to the rules, which is what shipping would do.
 `--annotate` adds the disposition and obligation under each row. The scorers
 never see it; it is for reading failures by hand.
 
+`--spread` answers a different question from the scorers: how often the same
+capture read two ways across runs. It prints counts, a breakdown of how many
+distinct readings the unstable captures had, and ids where the input file
+supplied them. It never prints capture text, so it is safe to quote from a
+sealed run.
+
 ## What it cannot tell you
 
 - **Whether a reading is right.** It reports what the pipeline produced. The
@@ -61,5 +79,6 @@ This tool reads a file of utterances it is handed; it never walks a corpus
 directory itself. Whoever hands it a sealed set is accountable for that, and the
 only model it can reach is the on-device one —
 `Tools/CorpusRunner/test_interpretation_isolation.py` fails the build if that
-ever stops being true. The rule is absolute because a set that has been sent to
+ever stops being true, and it reads this tool's own sources as well as the app's,
+because this is the side that actually holds a set's text in memory. The rule is absolute because a set that has been sent to
 somebody's server cannot be made unseen again.

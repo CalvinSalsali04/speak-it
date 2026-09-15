@@ -33,6 +33,10 @@ usage: interpret --availability
 
 struct RunRecord: Codable {
     var utterance: String
+    /// The capture's id when the input file carried one (`id<TAB>utterance`).
+    /// Reports that must not print capture text name captures by this instead,
+    /// so a sealed set can be measured without being quoted.
+    var id: String?
     var run: Int
     var settings: InterpretationRunSettings
     /// The transcript the model was actually given, which differs from
@@ -50,7 +54,15 @@ let encoder: JSONEncoder = {
     return encoder
 }()
 
-func utterances(fromPath path: String) -> [String] {
+/// One input line. A bare line is the capture; a line with a tab is
+/// `id<TAB>capture`, which is the form to use for a set whose text must not
+/// appear in a report.
+struct Input {
+    var id: String?
+    var text: String
+}
+
+func utterances(fromPath path: String) -> [Input] {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
         FileHandle.standardError.write(Data("interpret: cannot read \(path)\n".utf8))
         exit(2)
@@ -58,6 +70,12 @@ func utterances(fromPath path: String) -> [String] {
     return text.split(separator: "\n", omittingEmptySubsequences: false)
         .map { $0.trimmingCharacters(in: .whitespaces) }
         .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        .map { line in
+            guard let tab = line.firstIndex(of: "\t") else { return Input(id: nil, text: line) }
+            let id = String(line[line.startIndex..<tab]).trimmingCharacters(in: .whitespaces)
+            let body = String(line[line.index(after: tab)...]).trimmingCharacters(in: .whitespaces)
+            return body.isEmpty ? Input(id: nil, text: line) : Input(id: id, text: body)
+        }
 }
 
 func records(fromPath path: String) -> [RunRecord] {
@@ -137,11 +155,13 @@ func repaired(_ text: String) -> String {
 func generate(_ paths: [String]) async {
     let inputs = paths.flatMap(utterances(fromPath:))
     var lines: [String] = []
-    for utterance in inputs {
+    for source in inputs {
+        let utterance = source.text
         let input = repairFirst ? repaired(utterance) : utterance
         for run in 1...max(1, runs) {
             var record = RunRecord(
                 utterance: utterance,
+                id: source.id,
                 run: run,
                 settings: InterpretationRunSettings(
                     repairedFirst: repairFirst,
@@ -181,27 +201,35 @@ func generate(_ paths: [String]) async {
 
 func replay(_ path: String) {
     for record in records(fromPath: path) where record.run == 1 {
-        print("── \"\(record.utterance)\"")
+        printCaptureHeader(utterance: record.utterance)
         let rules = ThoughtExtractionEngine.extractWithRules(
             record.utterance, referenceDate: referenceDate, calendar: calendar
         )
         guard let interpretation = record.interpretation else {
             print("   interpretation: none  reason=\(record.unavailable ?? "unknown")")
-            if fallbackToRules {
-                printRows(utterance: record.utterance, items: rules.items, operations: rules.operations)
-            } else {
-                print("")
-            }
+            // Both arms go through `printRows`, so a capture the model never
+            // read and a capture the rules emptied render the same way. A bare
+            // blank line here would leave the scorer reading "no rows" from a
+            // record shape it has never been shown.
+            printRows(
+                utterance: record.utterance,
+                items: fallbackToRules ? rules.items : [],
+                operations: fallbackToRules ? rules.operations : []
+            )
             continue
         }
         switch InterpretationPolicy.check(interpretation, against: record.input) {
         case let .failure(rejection):
             print("   interpretation: rejected  rule=\(rejection.rawValue)")
-            if fallbackToRules {
-                printRows(utterance: record.utterance, items: rules.items, operations: rules.operations)
-            } else {
-                print("")
-            }
+            // Both arms go through `printRows`, so a capture the model never
+            // read and a capture the rules emptied render the same way. A bare
+            // blank line here would leave the scorer reading "no rows" from a
+            // record shape it has never been shown.
+            printRows(
+                utterance: record.utterance,
+                items: fallbackToRules ? rules.items : [],
+                operations: fallbackToRules ? rules.operations : []
+            )
         case let .success(checked):
             let rows = InterpretationBridge.rows(
                 for: checked, referenceDate: referenceDate, calendar: calendar
@@ -238,7 +266,13 @@ func replay(_ path: String) {
 /// segmentation that is stable while a disposition flips is still a row that
 /// changes under the person.
 func spread(_ path: String) {
+    // Keyed by capture text so two runs of the same capture meet, but nothing
+    // here prints that text. A `runs.jsonl` generated from a sealed set holds
+    // the sealed captures verbatim, so a report that quoted its keys would
+    // carry sealed material into a thread, a log or a pull request. Captures
+    // are named by id when the input file supplied one, and counted otherwise.
     var byUtterance: [String: [String]] = [:]
+    var idForUtterance: [String: String] = [:]
     for record in records(fromPath: path) {
         let fingerprint: String
         if let interpretation = record.interpretation,
@@ -249,6 +283,7 @@ func spread(_ path: String) {
             fingerprint = "unavailable:\(record.unavailable ?? "unknown")"
         }
         byUtterance[record.utterance, default: []].append(fingerprint)
+        if let id = record.id { idForUtterance[record.utterance] = id }
     }
     let repeated = byUtterance.filter { $0.value.count > 1 }
     let unstable = repeated.filter { Set($0.value).count > 1 }
@@ -258,9 +293,27 @@ func spread(_ path: String) {
     print("  read two or more ways               \(unstable.count)")
     if repeated.isEmpty {
         print("  (nothing to report: generate with --runs 2 or more)")
+        return
     }
-    for (utterance, _) in unstable.sorted(by: { $0.key < $1.key }).prefix(20) {
-        print("  unstable: \(utterance)")
+
+    // How far apart the readings were, not which captures they were. Two
+    // readings out of five runs is a different defect from five out of five.
+    var byDistinctReadings: [Int: Int] = [:]
+    for (_, fingerprints) in unstable {
+        byDistinctReadings[Set(fingerprints).count, default: 0] += 1
+    }
+    // `captures`, not `utterances`: the file-scope `utterances(fromPath:)`
+    // is in scope here and a local of the same name shadows it.
+    for (readings, captures) in byDistinctReadings.sorted(by: { $0.key < $1.key }) {
+        print("    of those, read \(readings) ways           \(captures)")
+    }
+
+    let named = unstable.keys.compactMap { idForUtterance[$0] }.sorted()
+    if named.count == unstable.count && !named.isEmpty {
+        print("  unstable ids: \(named.joined(separator: " "))")
+    } else if !unstable.isEmpty {
+        print("  (\(unstable.count - named.count) of these captures have no id, so none is named here;")
+        print("   give the input file `id<TAB>capture` lines to get ids back)")
     }
 }
 
