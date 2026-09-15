@@ -348,6 +348,12 @@ distinct bodies and **10 that sit inside no other**:
 | 46 | 0.8% | `devsets/runon.tsv` |
 | 45 | 0.8% | `devsets/framing.tsv` |
 
+**That column sums to 5,621 and its shares to 102.2%, because the ten
+populations are maximal rather than disjoint.** A body inside no other body
+may still overlap one. The excess of 120 is the 109 development-set
+utterances that are also fixtures, plus 11 that appear in two development
+sets. Only the union, 5,501, is a total.
+
 The four phase 2 files are the same 818 utterances four times:
 `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl` and `review/independent-review-pack.jsonl`. A form
@@ -385,6 +391,11 @@ utterances, of which 509 exist nowhere else.
 | `coordination.tsv` | 12 | 121 (9.9%) |
 | `rambling.tsv` | 0 | 85 |
 | `framing.tsv` | 0 | 45 |
+
+**That column sums to 116 against a heading of 109**, for the same reason one
+level down: 7 of the 109 sit in two development sets each and are counted in
+both rows — three in `coordination` and `routed`, two in `abandonment` and
+`unfinished`, two in `routed` and `unfinished`. 116 − 7 = 109.
 
 Two sets share nothing with the test suite and three share a quarter or more.
 The three that share most — abandonment, run-on, unfinished — are the families
