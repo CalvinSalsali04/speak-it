@@ -538,6 +538,84 @@ def stale_family_rows(text=None, twinned=None):
     return sorted(mismatched), unrowed
 
 
+#: A section records the shape the development set had when it was measured:
+#:
+#:     *Measured over `rambling.tsv` at 57 rows.*
+#:
+#: Visible prose rather than an HTML comment, because a marker only a script
+#: can see is a marker nobody maintains -- and this one has to be written by
+#: hand, once, by whoever reports a measurement.
+MEASURED_OVER = re.compile(
+    r"Measured over\s+`([a-z][a-z0-9_-]*\.tsv)`\s+at\s+(\d+)\s+rows")
+
+
+def devset_rows(paths=None):
+    """`{filename: data rows}` for every readable development set.
+
+    The shape a fingerprint is compared against. Rows rather than families,
+    deliberately: `stale_family_rows` already checks the per-family brackets,
+    and what this adds is the half that check cannot reach -- a count written
+    in prose. The same section that cites `restart (4)` also calls
+    `coherent-long` "those seven rows" where the set now holds eleven, and no
+    amount of parsing table brackets finds that sentence. A whole-set count
+    does not find it either, but it fires on the same cause and says which
+    set moved and by how much, which is what sends somebody back to read the
+    section.
+    """
+    paths = corpus_paths.readable() if paths is None else paths
+    return {path.name: sum(1 for _ in corpus_paths.data_rows(path))
+            for path in sorted(paths)}
+
+
+def fingerprints(text=None):
+    """Every recorded measurement shape, in document order.
+
+    Returns `[(filename, rows)]`. Order is the point: the last fingerprint
+    for a set is the live one, the ones before it are records of runs that
+    happened, and a record is not stale for describing the past correctly.
+    """
+    text = DOC.read_text(encoding="utf-8") if text is None else text
+    return [(found.group(1), int(found.group(2)))
+            for found in MEASURED_OVER.finditer(text)]
+
+
+def stale_fingerprints(text=None, rows=None):
+    """`[(filename, recorded, actual)]` where the live fingerprint has moved.
+
+    **Only the last fingerprint for each set is checked.** An earlier one
+    describes a set state that really was the state when that run happened,
+    and failing it would be asking a dated record to change, which is the
+    thing this file's own corrections argue against.
+
+    This is deliberately not a check on which sections *ought* to carry a
+    fingerprint. Deciding that mechanically means a heuristic for "does this
+    section report a measurement", and the obvious ones misfire badly: a
+    section merely naming `rambling.tsv` in a source table, with an unrelated
+    rate somewhere in it, reads as a measurement of the rambling set. A
+    heuristic standing in for that judgement is the defect this module keeps
+    removing, so the judgement stays with whoever writes the section and what
+    is mechanical is the consequence -- once a fingerprint is written, the
+    day its set changes, the run fails.
+
+    The failure therefore arrives on the next data change rather than at the
+    moment somebody omits a fingerprint. That is weaker than it sounds: the
+    omission costs nothing until the set moves, and when the set moves is
+    exactly when the figures went wrong.
+    """
+    text = DOC.read_text(encoding="utf-8") if text is None else text
+    rows = devset_rows() if rows is None else rows
+    live = {}
+    for name, recorded in fingerprints(text):
+        live[name] = recorded
+    out = []
+    for name, recorded in sorted(live.items()):
+        if name not in rows:
+            out.append((name, recorded, None))
+        elif rows[name] != recorded:
+            out.append((name, recorded, rows[name]))
+    return out
+
+
 def marked_region(text):
     """`(start, end)` of the generated region, or a refusal saying which.
 
