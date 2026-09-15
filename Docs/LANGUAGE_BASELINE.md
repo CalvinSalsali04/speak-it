@@ -391,11 +391,31 @@ measure:
   makes one fails routing **for that reason alone.** The everyday routing
   column contains the thought count by construction.
 
-So the two sets agree exactly: `run-on` captures reach the right place, and
-**eight of the ten are under-segmented** — held-out thought count is 2/10, not
-0/10, so two of them do split correctly. Held-out `destination` sees only the
-first half, everyday `routing` sees both at once, and held-out `thought count`
-isolates the second.
+So the two sets are **consistent**, and each statement has exactly one source:
+
+- **They reach the right place** — held-out `destination` 10/10, and only
+  that, on the ten held-out captures rather than the eight everyday ones.
+  Everyday cannot say this at all; see below.
+- **Eight of the ten are not split** — held-out `thought count` 2/10, so two
+  of them do split correctly.
+- **Everyday `routing` 0/8 is the conjunction of those two**, and it cannot be
+  taken apart.
+
+**A failing conjunction does not name its failing conjunct.** For a two-thought
+capture expected as two Today rows, one row routed Today gives `{Today: 2}`
+against `{Today: 1}`, and one row routed **Memory** gives `{Today: 2}` against
+`{Memory: 1}`. Both fail the `==` identically. So everyday `run-on` 0/8 is
+equally consistent with the destination being right and with it being wrong,
+and the title column at 7/8 does not separate them either. Read on its own it
+would be a routing failure of unknown shape.
+
+The scorer already knows this about its other column. Directly under the
+routing check, `everyday/score.py` reports item type twice — the plain figure
+and `of those segmented right`, conditioned on `produced == expected_rows` —
+with the comment that the plain one "carries every `count` failure inside it
+and reads as a type problem". **Route has no conditioned figure and type
+does.** That is the cheapest thing anyone could do to this instrument, and
+nothing here needs it: the held-out set answers the question from outside.
 
 **This retires a guess made in the adversarial section.** That section reads
 `run-on × self-correction` at 66.7% routing against everyday's `run-on` 0/8 and
@@ -2069,9 +2089,10 @@ file.** The guess above is right and the reason is mechanical rather than a
 property of those captures: everyday `routing` is multiset equality over the
 rows produced, so it contains the thought count, while held-out `destination`
 is membership per capture and cannot fail on under-segmentation. Held-out
-`run-on` reads 10/10 on destination and 2/10 on thought count, which is the
-same fact split in two. Do not compare a rate here with a rate there because
-the columns share a name.
+`run-on` reads 10/10 on destination and 2/10 on thought count. Those are the
+two facts everyday's single bit is the conjunction of, and the conjunction
+cannot be read back apart. Do not compare a rate here with a rate there
+because the columns share a name.
 
 Title hygiene is near clean at 117/120: 2 titles are the whole capture, 1
 opens on `that`.
