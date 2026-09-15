@@ -525,11 +525,11 @@ the cost stays visible.
 Sarah" in Memory, correctly, and would file "the car has to go in Tuesday" there
 too, incorrectly. Separating an animate subject from an inanimate one needs
 either a lexicon or an embedding query, and the rule — a regex over a pronoun
-stoplist at `Actionability.swift:752` — does neither.
+stoplist at `Actionability.swift:766` — does neither.
 
 *Corrected 2026-09-11:* the previous wording said "deliberately does neither",
 which reads as though querying an embedding would be a departure for this
-codebase. It would not. `Actionability.swift:920` already loads
+codebase. It would not. `Actionability.swift:934` already loads
 `NLEmbedding.wordEmbedding(for: .english)` in this same file, and
 `PersonMentionResolver.readsAsOccupation` already decides the adjacent
 role-versus-person question that way, measured over 30 trade nouns and 36
@@ -678,30 +678,85 @@ capture in another language, or one that rambles without any of these markers,
 falls through to clause splitting as before. The failure mode is the old one —
 over-splitting — not a new one, and the raw transcript is preserved either way.
 
-## Obligation vocabulary lives in four places and they still disagree
+## Obligation vocabulary lives in five places and they still disagree
 
-Four separate lists state "this is an obligation", and they agree on only 7 of
-the 32 forms between them (22%):
+Five separate lists state "this is an obligation". The four that claim a form
+*is* one agree on five of the thirty-seven forms between them; the splitter is
+a sixth kind of list and is counted separately below.
 
 | list | file | what it gates |
 |---|---|---|
-| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1289` | whether the sentence gets cut here |
-| `ActionabilityReader.obligationLead` | `Actionability.swift:109` | Today versus Memory |
-| `ObligationFrame.link` | `ThoughtOrganizer.swift` | what the row title reads |
-| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1538` | whether a severed piece is glued back on |
+| `ClauseJuxtaposition.clauseInternalLead` | `SpeechRepair.swift:1517` | whether the sentence gets cut here |
+| `ActionabilityReader.obligationLead` | `Actionability.swift:137` | Today versus Memory |
+| `ActionabilityReader.thirdPersonObligation` | `Actionability.swift:737` | whether the obligation is the speaker's own |
+| `ObligationFrame.link` | `ThoughtOrganizer.swift:226` | what the row title reads |
+| `ThoughtExtractor.isFragment` | `ThoughtExtractor.swift:1872` | whether a severed piece is glued back on |
 
-Every *multi-word* frame is protected for free, because it ends in `to` and
-`"to"` is the first entry in `clauseInternalLead`. Only single-token forms are
-exposed, and the four that were missing from both of the first two lists —
-`hafta`, `oughta`, `needa`, `better` — were cut in half: "I hafta drop the car
-off on Thursday" filed a Memory note titled **"I hafta"** beside the errand.
-Those four are now closed and pinned by nine `.dictation` corpus cases.
+`clauseInternalLead` is not really an obligation list — it is a "cannot end a
+clause" set holding conjunctions, copulas, pronouns and motion verbs as well —
+so counting it as a claimant would make every conjunction an obligation. It is
+in the table because it is what severs the others.
 
-The structural problem is not closed. The four lists are still four lists, and
-the next form somebody says will find whichever one is short. The fix is to
-derive them from one shared definition. It is deliberately staged: three of the
-four gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity, so
-unifying them needs its own measurement pass and its own release.
+Every *count* in this section is recomputed from the source by
+`Tools/CorpusRunner/test_parser_vocabulary.py`; the ones that were here before
+(four lists, 7 of 32, 22%) were hand-typed. The line numbers in the table are
+not checked and will go stale again — two of the four already had.
+
+The position at risk is mechanical: `ClauseJuxtaposition` decides a cut from
+the single token standing in front of the candidate verb, so what has to be
+protected is each frame's **last** word — `to` in "have to call", `better` in
+"had better call", the whole word in "hafta call". Twenty-three of the
+thirty-seven forms end in `to`, which `clauseInternalLead` has held since it
+was written. Of the rest, four were missing from both of the first two lists —
+`hafta`, `oughta`, `needa`, `better` — and were cut in half: "I hafta drop the
+car off on Thursday" filed a Memory note titled **"I hafta"** beside the
+errand. Those four are now closed and pinned by nine `.dictation` corpus cases.
+
+An earlier draft of this section said multi-word frames were "protected for
+free, because every one of them ends in `to`". That was two different claims
+and only the second is a rule. Four multi-word frames did not end in `to`:
+`had better`, `i/we better` and `'d better`, which are protected by a second
+mechanism described below, and `got\s+ta`, which was protected by nothing. It
+was a second spelling of `gotta` in `obligationLead` alone — in no other
+vocabulary, no test, and none of the seven development sets — and it could not
+have worked where it matched, because clause splitting runs first and does not
+hold `ta`, so "I got ta call Dave" was severed into a Memory row titled **"I
+got ta"** and an errand. It has been removed rather than rescued: adding `ta`
+to `clauseInternalLead` would suppress a real boundary ("email the TA send the
+form") to protect a spelling with no observed instance.
+
+**The structural problem is not closed.** The lists are still five lists.
+`thirdPersonObligation` is the smallest on purpose and declines `gotta` and
+`want to`, which is right — "Mike gotta call Sarah" is not English and "Mike
+wants to call Sarah" is a preference rather than an errand the person owes — so
+the disagreement is not simply one of them being short. Converging them is
+still staged and still waits for its own measurement pass: three of the five
+gate `count` or `route`, which are CRITICAL and BEHAVIORAL severity.
+
+**What is closed is the half that needs no judgement.** The defect that
+actually bit was positional, not a matter of which vocabulary is right: an
+obligation frame whose last word `clauseInternalLead` does not hold gets cut
+off from what it governs. That position is mechanical, which makes it
+checkable. The suite asserts that the last word of every form any obligation
+list claims is held by the splitter, with one declared exception — `better`,
+which is also an ordinary comparative and so cannot live in a set that sees one
+token. `SpeechRepair` reads the word *in front of* `better` instead
+(`deonticBetterSubject`, `SpeechRepair.swift:1511`), at the same guard and to
+the same effect, and that set is now read and checked too: it must still hold
+every subject the four `better` frames carry. A form added to one list without
+a decision about the others now fails on Linux, on the pull request that adds
+it, rather than in somebody's Memory tab.
+
+Graded by mutation, control green either side: the splitter losing `hafta`, a
+new single-token form entering the route list, the splitter gaining the
+declared exception, the title list losing an entry, `deonticBetterSubject`
+losing a subject, and a reader returning an empty set instead of refusing were
+all caught. Restoring `got\s+ta` to `obligationLead` is caught too, and is the
+mutation that separates this check from the one it replaced: the old filter
+dropped every form containing a space, so it passed that mutation. Two
+size-preserving swaps — which the pinned counts cannot see — were caught by the
+invariant alone, which is what establishes it is doing work the census is
+not.
 
 **Measured, and the reason a partial fix is not enough:** widening `isFragment`
 alone — gluing the fragment back on without teaching `obligationLead` to read

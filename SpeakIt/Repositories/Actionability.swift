@@ -120,7 +120,21 @@ enum ActionabilityReader {
     /// tested **unanchored** (`isOutstanding`), so a bare entry would read "the
     /// weather is better tomorrow" as an errand. Only the forms carrying their
     /// subject or auxiliary are admitted.
-    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|got\s+ta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
+    ///
+    /// `got\s+ta` was here as a second spelling of `gotta` and has been
+    /// removed. It occurs nowhere else: not in the four other obligation
+    /// vocabularies, not in a test, and not once in the seven development
+    /// sets. Worse, it could not do its job even where it matched, because
+    /// clause splitting runs first and does not hold `ta`, so "I got ta call
+    /// Dave" was cut after `ta` into a Memory row titled "I got ta" and an
+    /// errand — the `I hafta` defect, reached by the one spelling this entry
+    /// existed to serve. Adding `ta` to `clauseInternalLead` was the other way
+    /// out and costs more than it buys: `ta` is also a noun people say ("email
+    /// the TA send the form"), so holding it would suppress a real boundary to
+    /// protect a spelling with no observed instance.
+    /// `Tools/CorpusRunner/test_parser_vocabulary.py` now fails if a form is
+    /// added to any of these lists whose last word the splitter does not hold.
+    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
 
     /// Past-tense verbs that report something already done.
     private static let completedVerb = #"(?:bought|got|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
