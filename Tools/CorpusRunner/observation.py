@@ -72,8 +72,16 @@ TOO_FEW = 4
 WHERE = ("anywhere", "leading", "trailing")
 
 
-def stem(text, words=STEM_WORDS):
+def stem(text, words=None):
     """The first `words` alphabetic words, lowered. Punctuation is dropped.
+
+    `words` defaults to `None` and resolves to `STEM_WORDS` here rather than
+    in the signature. A default argument binds once, when the function is
+    defined, so `words=STEM_WORDS` made the constant a copy: rebinding
+    `observation.STEM_WORDS` changed the name and not the behaviour, and a
+    test that set it to prove the width matters would have proved nothing
+    while passing. The constant is meant to be the one place the width
+    lives, and a def-time default quietly makes it two.
 
     Dropped rather than kept because the templates this exists to find differ
     in their punctuation -- `I was GOING to ask— wait` and `I was going to
@@ -90,6 +98,7 @@ def stem(text, words=STEM_WORDS):
     frame. That is the intended reading and not a defect, but it has to be
     known before a figure from here is quoted.
     """
+    words = STEM_WORDS if words is None else words
     return " ".join(re.findall(r"[a-z']+", text.lower())[:words])
 
 
@@ -130,7 +139,7 @@ Shape = collections.namedtuple(
     "Shape", "rows sources stems largest_stem largest_share concentrated")
 
 
-def shape(pairs):
+def shape(pairs, words=None):
     """`(source, utterance)` pairs in, one `Shape` out.
 
     **`rows` counts distinct utterances and `sources` counts every source
@@ -151,7 +160,7 @@ def shape(pairs):
         texts.setdefault(text, set()).add(source)
     rows = len(texts)
     sources = len({source for carried in texts.values() for source in carried})
-    stems = collections.Counter(stem(text) for text in texts)
+    stems = collections.Counter(stem(text, words) for text in texts)
     largest = stems.most_common(1)[0][1]
     share = largest / rows
     return Shape(rows, sources, len(stems), largest, share,
@@ -242,6 +251,59 @@ CANARY_CROWDED = frame_population(STRADDLE_ROWS, _CROWDED)
 CANARY_SPREAD = frame_population(STRADDLE_ROWS, _CROWDED - 1)
 
 
+#: Twenty distinct single words, used to vary one slot of a fixed sentence.
+#: Single words on purpose: the two populations below place the variation at
+#: an exact word position, so a two-word filler would shift every later word
+#: and the straddle would stop straddling.
+STEM_PROBE = (
+    "dentist", "landlord", "invoice", "passport", "charger", "kettle",
+    "parcel", "recycling", "pharmacy", "printer", "mortgage", "bicycle",
+    "vitamins", "ferry", "gutters", "paperwork", "thermostat", "upholstery",
+    "scanner", "awning",
+)
+
+#: Two populations straddling `STEM_WORDS`, and **written at five words
+#: rather than derived from it**. That is the opposite choice to
+#: `CANARY_CROWDED` above and it is deliberate: a fixture derived from the
+#: constant it is meant to pin moves when the constant moves and therefore
+#: never fails. `CROWDED_STEM` can afford a derived straddle because the
+#: tests hold an un-derived shape beside it; this width has no such second
+#: copy, so the fixture itself is the pin and the sentences are literal.
+#:
+#: `CANARY_NARROW` agrees through word four and differs at word five, so at
+#: five words it is twenty frames and reads spread. Narrow the width to four
+#: and it collapses to one frame at 100%, which is a false CONCENTRATED.
+#:
+#: `CANARY_WIDE` agrees through word five and differs at word six, so at five
+#: words eight of its twenty rows are one frame and it reads concentrated.
+#: Widen the width to six and that frame splits into eight, the share falls
+#: to 5% and the mark disappears -- a real template stops being reported.
+#:
+#: The pair matters because the width was a bare `assertEqual(STEM_WORDS, 5)`
+#: and nothing else in the module could tell five from three or from eight:
+#: `self_check()` passed at every width in that range while `then` and
+#: `meaning` change verdict between four words and five, and `plus` and
+#: `wait` -- the two findings this instrument exists to produce -- change
+#: between six and eight. A constant that moves a verdict is a decision and
+#: has to fail like one.
+WIDE_ON_ONE_STEM = 8
+
+
+def _probe_population(texts, sources=4):
+    """Several sources, for the reason `frame_population` gives above."""
+    return [(f"s{n % sources}", text) for n, text in enumerate(texts)]
+
+
+CANARY_NARROW = _probe_population(
+    [f"remember to ask the {word} before the week is out"
+     for word in STEM_PROBE])
+CANARY_WIDE = _probe_population(
+    [f"I was going to ask {word} about the week"
+     for word in STEM_PROBE[:WIDE_ON_ONE_STEM]]
+    + [f"{opening} thing before the week is out"
+       for opening in VARIED_OPENINGS[:len(STEM_PROBE) - WIDE_ON_ONE_STEM]])
+
+
 def self_check(measure=None):
     """True when `measure` can still tell the two canaries apart.
 
@@ -256,13 +318,20 @@ def self_check(measure=None):
     measure = measure or shape
     templated, varied = measure(CANARY_TEMPLATED), measure(CANARY_VARIED)
     crowded, spread = measure(CANARY_CROWDED), measure(CANARY_SPREAD)
+    narrow, wide = measure(CANARY_NARROW), measure(CANARY_WIDE)
     return (templated.concentrated and not varied.concentrated
             and templated.stems == 1 and varied.stems == len(CANARY_VARIED)
             # The threshold arm, which the two above cannot reach. Both of
             # these carry several sources, so `ONE_SOURCE` is false for both
             # and only `CROWDED_STEM` can separate them.
             and crowded.sources > ONE_SOURCE and spread.sources > ONE_SOURCE
-            and crowded.concentrated and not spread.concentrated)
+            and crowded.concentrated and not spread.concentrated
+            # The width, which none of the four above can reach: every one of
+            # them reads the same at any width from three words to eight.
+            # These two differ at word five and at word six, so exactly one
+            # width satisfies both.
+            and narrow.sources > ONE_SOURCE and wide.sources > ONE_SOURCE
+            and not narrow.concentrated and wide.concentrated)
 
 
 #: What this reads, stated because the alternative is a reader assuming.

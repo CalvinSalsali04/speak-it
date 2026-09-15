@@ -163,6 +163,104 @@ class TheMeasureCanTellTheTwoApart(unittest.TestCase):
         self.assertEqual(observation.stem("one two three four five six"),
                          "one two three four five")
 
+    def test_the_constant_is_the_only_copy_of_the_width(self):
+        """`words=STEM_WORDS` in the signature made the constant a copy.
+
+        A default argument binds once, at definition. So rebinding
+        `observation.STEM_WORDS` renamed a value nothing read, and the
+        obvious test of whether the width matters -- set it, call `stem`,
+        watch the answer move -- would have reported that it does not,
+        while passing. The width has to be resolved when `stem` runs.
+        """
+        was = observation.STEM_WORDS
+        try:
+            observation.STEM_WORDS = 2
+            self.assertEqual(observation.stem("one two three four"),
+                             "one two")
+            self.assertEqual(
+                observation.shape([("s", "one two three four"),
+                                   ("s", "one two nine ten")]).stems, 1,
+                "shape must take the width from the constant too")
+        finally:
+            observation.STEM_WORDS = was
+        self.assertEqual(observation.stem("one two three four"),
+                         "one two three four")
+
+
+class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
+    """`STEM_WORDS` moves verdicts, and only its own value pinned it.
+
+    Mutating it to 3, 4, 6 or 8 failed exactly one test -- the
+    `assertEqual(STEM_WORDS, 5)` above -- and `self_check()` returned True at
+    every one of those widths. A value pin catches an edit and says nothing
+    about what the value buys, so the next reader with a reason to widen it
+    updates the number, gets green, and loses findings silently.
+
+    On readable material the width is not a rounding choice. `then` carries
+    37% on one frame at four words and 5% at five; `meaning` 35% and 18%.
+    `plus` holds 66% through six words and falls to 11% at eight, and `wait`
+    36% to 6% -- so the two forms this instrument was built to find both stop
+    being marked somewhere between six words and eight.
+    """
+
+    def widths(self, population):
+        return {n: observation.shape(population, n).concentrated
+                for n in range(3, 9)}
+
+    def test_the_narrow_canary_differs_at_exactly_word_five(self):
+        """The fixture's shape, pinned so an edit cannot flatten it.
+
+        If these sentences stopped agreeing through word four, or started
+        agreeing at word five, the straddle would keep passing and pin
+        nothing -- which is how a fixture that cannot tell two states apart
+        gets written in the first place.
+        """
+        texts = [text for _, text in observation.CANARY_NARROW]
+        self.assertEqual(len(set(texts)), len(observation.STEM_PROBE))
+        self.assertEqual(len({observation.stem(x, 4) for x in texts}), 1)
+        self.assertEqual(len({observation.stem(x, 5) for x in texts}),
+                         len(texts))
+
+    def test_the_wide_canary_differs_at_exactly_word_six(self):
+        texts = [text for _, text in observation.CANARY_WIDE]
+        shared = [x for x in texts if x.startswith("I was going to ask")]
+        self.assertEqual(len(shared), observation.WIDE_ON_ONE_STEM)
+        self.assertEqual(len({observation.stem(x, 5) for x in shared}), 1)
+        self.assertEqual(len({observation.stem(x, 6) for x in shared}),
+                         len(shared))
+
+    def test_neither_canary_is_decided_by_the_source_arm(self):
+        """`concentrated` is an OR. A single-source fixture measures the
+        width not at all, which is how the threshold went unpinned."""
+        for name in ("CANARY_NARROW", "CANARY_WIDE"):
+            found = observation.shape(getattr(observation, name))
+            self.assertGreater(found.sources, observation.ONE_SOURCE, name)
+
+    def test_narrowing_the_width_invents_a_template(self):
+        marks = self.widths(observation.CANARY_NARROW)
+        self.assertEqual(marks, {3: True, 4: True, 5: False,
+                                 6: False, 7: False, 8: False})
+
+    def test_widening_the_width_loses_a_real_template(self):
+        marks = self.widths(observation.CANARY_WIDE)
+        self.assertEqual(marks, {3: True, 4: True, 5: True,
+                                 6: False, 7: False, 8: False})
+
+    def test_exactly_one_width_satisfies_the_whole_canary_set(self):
+        """The straddle, stated as the single claim it exists to make."""
+        passing = [n for n in range(3, 9)
+                   if observation.self_check(
+                       lambda pairs, n=n: observation.shape(pairs, n))]
+        self.assertEqual(passing, [observation.STEM_WORDS])
+
+    def test_the_probe_words_vary_where_the_measure_can_see(self):
+        """`stem` drops digits, so a numeric probe varies nothing."""
+        import re
+        self.assertEqual(len(set(observation.STEM_PROBE)),
+                         len(observation.STEM_PROBE))
+        for word in observation.STEM_PROBE:
+            self.assertRegex(word, r"^[a-z]+$")
+
 
 class TheCensusReportsPerForm(unittest.TestCase):
 
