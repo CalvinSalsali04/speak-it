@@ -331,6 +331,11 @@ count strict 254/310, ACTED ON ANYWAY 7 — so the per-family rates below are
 
 ### The rows worth having
 
+The scorer prints this table under the heading **PER FAMILY (LEGACY
+denominators) — one tag per capture**, ranked worst destination rate first.
+These eight rows are the ones this file has a reading for; the run prints
+thirty.
+
 | family | n | destination | thought count |
 | --- | ---: | ---: | ---: |
 | ellipsis | 12 | **0/4 (0.0%)** | 4/4 (100.0%) |
@@ -342,13 +347,34 @@ count strict 254/310, ACTED ON ANYWAY 7 — so the per-family rates below are
 | idiom | 12 | 7/10 (70.0%) | 5/10 (50.0%) |
 | multi-person | 12 | 10/12 (83.3%) | 6/12 (50.0%) |
 
-Two of these corroborate readings this file already holds from other sets.
-**`ellipsis` is the worst destination family here at 0/4**, and the section on
-the adversarial set calls `ellipsis × date` at 0/10 the worst single reading in
-any instrument. **`run-on` is the worst thought-count family here at 2/10**,
-and the everyday set reads `run-on` 0/8 on count. Two sealed sets, scored
-independently, naming the same two families is a different class of evidence
-from either alone, and it is the strongest thing measured on 2026-09-15.
+**Read `n` the way the scorer says to read it.** Its own note under this table:
+
+> `n` is captures carrying the tag, not the denominator of either rate: read
+> each denominator from its own column before quoting a row, because a rate
+> over 1 or 2 captures ranks like any other.
+
+So `ellipsis` carries twelve captures and four of them have a scorable
+destination. The other eight are not failures and are not successes; they are
+outside that column, and the row says nothing about them.
+
+**Two families are printed below the ranking, not in it**: `ambiguous` (n 14)
+and `sarcasm` (n 1), both with `—` in both columns. Every capture carrying
+those tags is labelled unpinnable, so there is no destination rate for them to
+be worst or best at, and they are measured by ACTED ON ANYWAY instead. A
+reader who ranks families by this table has to know they were never in the
+ranking.
+
+Two of these rows corroborate readings this file already holds from other sets.
+**`ellipsis` misses on all four of its scorable captures**, which puts it top
+of a ranking ordered by rate — four captures, so the rate is what ranks it and
+not the weight of evidence. What makes it worth reading is that the section on
+the adversarial set calls `ellipsis × date` **0/10** the worst single reading
+in any instrument, and that denominator is not small. **`run-on` is the worst
+thought-count family here at 2/10**, over ten captures, and the everyday set
+reads `run-on` **0/8** on count. Two sealed sets scored independently — though
+both were authored here, so this is corroboration between our own instruments
+and not the external evidence the end goal asks for — naming the same two
+families is a different class of evidence from either alone.
 
 ### Correction: `run-on` at 10/10 and at 0/8 are not a disagreement
 
@@ -365,9 +391,11 @@ measure:
   makes one fails routing **for that reason alone.** The everyday routing
   column contains the thought count by construction.
 
-So the two sets agree exactly: `run-on` captures reach the right place and are
-not split. Held-out `destination` sees only the first half, everyday `routing`
-sees both at once, and held-out `thought count` at 2/10 isolates the second.
+So the two sets agree exactly: `run-on` captures reach the right place, and
+**eight of the ten are under-segmented** — held-out thought count is 2/10, not
+0/10, so two of them do split correctly. Held-out `destination` sees only the
+first half, everyday `routing` sees both at once, and held-out `thought count`
+isolates the second.
 
 **This retires a guess made in the adversarial section.** That section reads
 `run-on × self-correction` at 66.7% routing against everyday's `run-on` 0/8 and
@@ -383,8 +411,8 @@ the columns share a name.**
 
 Nothing here is a new measurement, a new instrument or a new corpus row. It is
 one table moved out of a job log and into the record, and one inference in this
-file corrected by reading the two scorers. It says nothing about why `run-on`
-is not split — the clause splitter recognising two connectors of the eight
+file corrected by reading the two scorers. It says nothing about why eight `run-on`
+captures in ten are not split — the clause splitter recognising two connectors of the eight
 people use is the standing explanation and it is not tested by this. It does
 not move any published figure.
 
