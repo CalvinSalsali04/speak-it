@@ -253,45 +253,104 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
                        lambda pairs, n=n: observation.shape(pairs, n))]
         self.assertEqual(passing, [observation.STEM_WORDS])
 
+    #: The corpus states an `equivalence_class` per rendering. Found by
+    #: walking `readable_material.readers()` rather than by naming a file,
+    #: because the first version of this test hard-coded one path and one
+    #: field name -- the exact pattern `readable_material` was written to end
+    #: -- and read two of the six sources that carry the column.
+    def declaring_sources(self):
+        """Every readable jsonl carrying the column, and whether it groups."""
+        import json, readable_material
+        sealed = {q.resolve() for q in readable_material.corpus_paths.sealed()}
+        found = {}
+        for path, _read in readable_material.readers():
+            if path.suffix != ".jsonl":
+                continue
+            self.assertNotIn(path.resolve(), sealed,
+                             f"{readable_material.shown(path)} is sealed and "
+                             f"this test opens it")
+            rows = [json.loads(line) for line
+                    in path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()]
+            if not rows or not all("equivalence_class" in r for r in rows):
+                continue
+            field = readable_material.utterance_field(path)
+            self.assertIsNotNone(field, f"{readable_material.shown(path)} "
+                                        f"declares a class but no utterance")
+            found[str(readable_material.shown(path))] = [
+                (r[field], r["equivalence_class"],
+                 r["equivalence_class"] == r.get("blueprint_id"))
+                for r in rows]
+        return found
+
+    def test_only_one_source_declares_a_grouping_and_the_rest_are_names(self):
+        """Five of the six carry the column as another spelling of the id.
+
+        `equivalence_class == blueprint_id` on every row means the column
+        groups nothing -- it is a name. Someone will reach for it precisely
+        because of what it is called, so the distinction is measured rather
+        than remembered. A second real grouping appearing here is a reason to
+        re-make the choice below, not to fold it into the same figure.
+        """
+        sources = self.declaring_sources()
+        self.assertGreaterEqual(len(sources), 2, "a file list that shrank "
+                                "would satisfy the assertions below")
+        grouping = {name for name, rows in sources.items()
+                    if not all(degenerate for _, _, degenerate in rows)}
+        self.assertEqual(
+            grouping, {"Tools/SpeechLab/phase2/data/renderings.jsonl"},
+            "exactly one readable source groups renderings by meaning")
+
     def test_the_declared_class_is_not_a_sharper_stem(self):
         """Why the unit is the frame and not the class the corpus declares.
 
-        `Tools/SpeechLab/phase2` states an `equivalence_class` per rendering:
-        818 renderings over 137 declared meanings, which looks like ground
-        truth for "how many independent observations is this" and would
-        retire the five-word heuristic. It is ground truth for a different
-        question. Two renderings are in different classes when they *mean*
-        different things, and the generator varies meaning by refilling the
-        slots of one sentence:
+        Phase 2 states 818 renderings over 137 declared meanings, which reads
+        as ground truth for "how many independent observations is this" and
+        would retire the five-word heuristic. It is ground truth for a
+        different question. Two renderings sit in different classes when they
+        *mean* different things, and the generator varies meaning by refilling
+        the slots of one sentence:
 
             Could you hang onto both of these--<errand>, plus <fact>
 
-        Twenty-nine `plus` rows are that sentence and they carry 26 distinct
-        declared classes. Swapping the unit moves `plus` from 66% on one
-        frame to 5% and `wait` from 36% to 6%, and both stop being marked --
-        the two findings this instrument exists to produce, erased by a
-        change that reads like a strict improvement in precision.
+        **Measured on this one source, so that rows and groups share a
+        denominator.** An earlier version of this figure grouped every
+        readable row, falling back to the frame for rows declaring no class,
+        and reported `plus` as 44 rows over 32 groups and `wait` as 53 over
+        50. Those are two units in one column: only 41 of `plus`'s rows
+        declare a class and only 31 of `wait`'s, so `wait`'s "50" was 31
+        declared classes and 19 frames added together. The conclusion is
+        unchanged and the honest figures are wider apart, which is the usual
+        way round for a mixed denominator. On phase 2 alone:
 
-        So the measure stays the frame. This asserts the fact the argument
-        rests on, because an argument in a comment is worth nothing once the
-        corpus it describes has moved on: if the generator ever stops reusing
-        frames across meanings, this fails and the choice is worth re-making.
+            form   rows   by frame        by declared class
+            plus     41    9 frames 71%   29 classes  5%
+            wait     31    7 frames 61%   31 classes  3%
+
+        So the class erases the concentration this instrument exists to
+        report. It is the right denominator for meaning coverage and the
+        wrong one for form coverage, and a connective is a property of the
+        form.
+
+        There is a second, independent reason, and it is the stronger one:
+        the renderings were generated *from* the classes rather than
+        classified afterwards -- every row carries a `blueprint_id`, a
+        deterministic generator and a `curated phrase-plan` authoring method
+        -- so 137 is a parameter of the generator. Counting it measures the
+        generator, not the material.
+
+        This asserts the fact the argument rests on, because an argument in a
+        comment is worth nothing once the corpus it describes has moved on.
         """
-        import json, collections, readable_material
-        path = (readable_material.ROOT / readable_material.SPEECHLAB
-                / "phase2" / "data" / "renderings.jsonl")
-        sealed = {p.resolve() for p in readable_material.corpus_paths.sealed()}
-        self.assertNotIn(path.resolve(), sealed,
-                         "this test reads the file, so it must not be sealed")
-        rows = [json.loads(line) for line in
-                path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        import collections
+        rows = self.declaring_sources()[
+            "Tools/SpeechLab/phase2/data/renderings.jsonl"]
         self.assertGreater(len(rows), 500, "a file that shrank to nothing "
                            "would satisfy every assertion below")
-
         per_frame = collections.defaultdict(set)
-        for row in rows:
-            per_frame[observation.stem(row["text"])].add(row["equivalence_class"])
-        classes = {row["equivalence_class"] for row in rows}
+        for text, klass, _ in rows:
+            per_frame[observation.stem(text)].add(klass)
+        classes = {klass for _, klass, _ in rows}
         busiest = max(len(seen) for seen in per_frame.values())
 
         self.assertLess(len(classes), len(per_frame),
