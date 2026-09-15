@@ -765,10 +765,11 @@ enum ActionabilityReader {
     /// every one in the seven development sets, so the cost is currently
     /// hypothetical and the benefit is measured.
     ///
-    /// That last sentence used to carry a corpus size, and the size was wrong
-    /// in two places at once: 1,022 here and 1,069 in `Docs/KNOWN_ISSUES.md`,
-    /// for a corpus holding 1,404. A figure typed into a comment stops being
-    /// true the week after it is typed and says nothing when it does. The
+    /// That last sentence used to carry a corpus size, and on 2026-09-15 the
+    /// size was wrong in two places at once: 1,022 here and 1,069 in
+    /// `Docs/KNOWN_ISSUES.md`, for a corpus then holding 1,404. A figure typed
+    /// into a comment stops being true the week after it is typed and says
+    /// nothing when it does -- so no live figure replaces them here. The
     /// subjects are pinned instead, in
     /// `Tools/CorpusRunner/test_parser_vocabulary.py`
     /// (`WhoTheCorpusSaysOwesSomething`), which recomputes them from the

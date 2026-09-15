@@ -562,17 +562,23 @@ rule.
 *Sized 2026-09-15.* The claim under that decision — that nothing of the shape is
 attested — holds, and both figures it was written with were wrong. This entry
 said 1,069 cases and the rule's own docstring said 1,022, for a gating corpus
-holding **1,404**. Neither number recomputed anywhere, which is the same defect
+then holding **1,404**. Neither number recomputed anywhere, which is the same defect
 [#82](https://github.com/CalvinSalsali04/speak-it/pull/82) fixed for the
 baseline's population section.
 
 Screening every readable utterance for the subject slot the rule reads:
 
-| population | rows | of the shape | inanimate subject |
-| --- | --- | --- | --- |
-| gating corpus, `corpusCase` utterance slot | 1,404 | 6 | 0 |
-| the seven development sets | 631 | 4 | 0 |
-| everything readable | 10,139 rows / 5,543 distinct | 89 distinct | 0 attested |
+| population | of the shape | inanimate subject |
+| --- | --- | --- |
+| gating corpus, `corpusCase` utterance slot | 6 | 0 |
+| the seven development sets | 4 | 0 |
+| everything readable | 89 distinct | 0 attested |
+
+The row counts are deliberately not in that table. Between opening this change
+and merging it the readable population went from 10,139 rows to 11,106, twice,
+because other work landed on `main` — which is the argument of this entry
+happening to the entry itself. What is stable is the second column, and what is
+checked is the first row's subjects.
 
 The gating corpus's six are *Mike* twice, *My brother*, *Priya*, *Dana*, and a
 bare *No* — the last being the screen reaching wider than the rule, off "No need
@@ -581,13 +587,13 @@ The development sets add *Mike* three more times and *my brother*, in
 `routed.tsv` and `unfinished.tsv`.
 
 The 89 in the third row look alarming and are not. **Six of them sit in the
-`corpusCase` utterance slot — the same six above — and the other 83 are XCTest
+`corpusCase` utterance slot — the same six above — and the rest are XCTest
 assertion messages**: "A reschedule must never complete or remove the item",
 "The reminder must land on a Friday". The readable-material census reads Swift
 by harvesting literals, which is right for a leak check and counts reviewer
 prose as speech here; position is what separates them, so the check added with
 this entry reads the slot instead. Every inanimate subject in the readable
-population is one of those 83.
+population is one of those assertion messages.
 
 So the item is an accepted decision rather than an open defect, and it stays one
 until a capture of the shape exists. What changed is that the sentence carrying

@@ -294,7 +294,8 @@ class WhatTheListsAgreeOn(unittest.TestCase):
 #: because no inanimate subject is attested. That is a claim about a corpus
 #: that grows every week, written as a sentence that recomputes nowhere -- and
 #: it had already drifted: the docstring said 1,022 cases and
-#: `Docs/KNOWN_ISSUES.md` said 1,069 for the same corpus, which holds 1,404.
+#: `Docs/KNOWN_ISSUES.md` said 1,069 for the same corpus, which held 1,404
+#: that day.
 #:
 #: Animacy cannot be decided mechanically here -- that gap is the thing being
 #: documented -- so the subjects are pinned by hand and the screen below is
@@ -362,12 +363,13 @@ class WhoTheCorpusSaysOwesSomething(unittest.TestCase):
         """Reading these files as a bag of literals counts reviewer prose.
 
         `readable_material.swift_literals` harvests every string in the tree,
-        which is right for a leak check and wrong for a census: 893 of the
-        2,250 distinct literals in these files are `note:` text, assertion
-        messages and label arguments. Rather than name one of them and hope it
-        survives, this runs the bag reader beside the slot reader and asserts
-        the difference is thrown away, so the check holds whatever the notes
-        say next week.
+        which is right for a leak check and wrong for a census: most of the
+        distinct literals in these files are `note:` text, assertion messages
+        and label arguments (893 of 2,250 on 2026-09-15, a ratio that moves
+        every time somebody adds a case). Rather than name one of them and hope
+        it survives, this runs the bag reader beside the slot reader and
+        asserts the difference is thrown away, so the check holds whatever the
+        notes say next week.
         """
         utterances = pv.corpus_utterances()
         self.assertIn("Mike should call Sarah", utterances)
