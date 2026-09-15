@@ -16,16 +16,23 @@ Both failures happened on 2026-09-14, hours apart, on different material:
     as views of one population, and twelve stems carry all 44 rows with one
     frame taking two thirds. Read off the census table, `plus 44 0.8%` is an
     attested form with five sources behind it. It is one blueprint.
-  * `wait` appears in 53 over 14 sources, and a third of them are one frame,
+  * `wait` appears in 53 over 15 sources, and a third of them are one frame,
     `I was going to ask— wait, ...`. A detector keyed on the phrase would
     fire on captures that are one sentence with the nouns changed.
 
 A row count cannot tell those apart from forty people saying a thing, and a
 row count is what every sizing in this repository has used. **Neither can a
 source count**: both of the above pass that test, and the stem share is the
-only column here that catches them. Those figures are over the connective
-census's population; this module reads the development sets until the
-SpeechLab walk is wired, so running it will not reproduce them.
+only column here that catches them.
+
+Both lines reproduce from this module -- `python3 observation.py plus wait` --
+since #70 wired it to the same walk the census uses. They did not while it
+read the development sets alone, and the sentence saying so outlived the
+change by a day: it told a reader not to trust output that had become correct.
+`test_observation.py` now recomputes both lines from the live corpus and
+fails if this paragraph and the corpus disagree, so the next time the
+population moves it is this file that objects rather than a person happening
+to read the prose and the output at once.
 
 WHAT THIS MEASURES, stated plainly because a concentration number is exactly
 the kind of figure that gets read as a verdict:
@@ -401,9 +408,11 @@ def main(argv):
         "I mean": "anywhere", "hold on": "anywhere", "I forgot": "anywhere",
     }
     pairs = list(readable_pairs())
-    #: Distinct, to agree with the `rows` column. The pair count is 631 and
-    #: the utterance count is 618; printing the first beside rows computed
-    #: from the second is how a header and a table come to disagree.
+    #: Distinct, to agree with the `rows` column: printing the pair count
+    #: beside rows computed from the utterance count is how a header and a
+    #: table come to disagree. The two figures are not written here -- they
+    #: moved when #70 widened the population and the stale pair sat in this
+    #: comment for a day. The header below prints the live one.
     print(f"ARE THESE N INSTANCES N OBSERVATIONS? — "
           f"{len({text for _s, text in pairs})} distinct utterances, "
           f"{len({s for s, _ in pairs})} sources")
