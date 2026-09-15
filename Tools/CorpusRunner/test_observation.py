@@ -253,6 +253,57 @@ class TheStemWidthIsADecisionAndIsPinnedLikeOne(unittest.TestCase):
                        lambda pairs, n=n: observation.shape(pairs, n))]
         self.assertEqual(passing, [observation.STEM_WORDS])
 
+    def test_the_declared_class_is_not_a_sharper_stem(self):
+        """Why the unit is the frame and not the class the corpus declares.
+
+        `Tools/SpeechLab/phase2` states an `equivalence_class` per rendering:
+        818 renderings over 137 declared meanings, which looks like ground
+        truth for "how many independent observations is this" and would
+        retire the five-word heuristic. It is ground truth for a different
+        question. Two renderings are in different classes when they *mean*
+        different things, and the generator varies meaning by refilling the
+        slots of one sentence:
+
+            Could you hang onto both of these--<errand>, plus <fact>
+
+        Twenty-nine `plus` rows are that sentence and they carry 26 distinct
+        declared classes. Swapping the unit moves `plus` from 66% on one
+        frame to 5% and `wait` from 36% to 6%, and both stop being marked --
+        the two findings this instrument exists to produce, erased by a
+        change that reads like a strict improvement in precision.
+
+        So the measure stays the frame. This asserts the fact the argument
+        rests on, because an argument in a comment is worth nothing once the
+        corpus it describes has moved on: if the generator ever stops reusing
+        frames across meanings, this fails and the choice is worth re-making.
+        """
+        import json, collections, readable_material
+        path = (readable_material.ROOT / readable_material.SPEECHLAB
+                / "phase2" / "data" / "renderings.jsonl")
+        sealed = {p.resolve() for p in readable_material.corpus_paths.sealed()}
+        self.assertNotIn(path.resolve(), sealed,
+                         "this test reads the file, so it must not be sealed")
+        rows = [json.loads(line) for line in
+                path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertGreater(len(rows), 500, "a file that shrank to nothing "
+                           "would satisfy every assertion below")
+
+        per_frame = collections.defaultdict(set)
+        for row in rows:
+            per_frame[observation.stem(row["text"])].add(row["equivalence_class"])
+        classes = {row["equivalence_class"] for row in rows}
+        busiest = max(len(seen) for seen in per_frame.values())
+
+        self.assertLess(len(classes), len(per_frame),
+                        "fewer declared meanings than frames would make the "
+                        "class the coarser unit, and this argument the wrong "
+                        "way round")
+        self.assertGreaterEqual(
+            busiest, 10,
+            f"one frame carried {busiest} declared meanings, so the class no "
+            f"longer separates what the frame merges and the unit is worth "
+            f"revisiting")
+
     def test_the_probe_words_vary_where_the_measure_can_see(self):
         """`stem` drops digits, so a numeric probe varies nothing."""
         import re
