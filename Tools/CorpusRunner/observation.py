@@ -265,65 +265,50 @@ def self_check(measure=None):
             and crowded.concentrated and not spread.concentrated)
 
 
-#: The rule `swift_literals` is applied under, and the only rule the count
-#: beside it is correct for: at least this many characters, and containing a
-#: space. Typing "multi-word" and meaning "two word tokens" is a 58-literal
-#: difference on this corpus, so the rule is written down beside the number
-#: and `test_observation.py` recomputes both.
-SWIFT_LITERAL_FLOOR = 12
-SWIFT_LITERALS = 3702
-
-#: Populations this report does NOT read yet, printed on every run.
+#: What this reads, stated because the alternative is a reader assuming.
 #:
-#: A tool that reads some of the material and says "readable material" is the
-#: defect this repository has caught in four instruments now, most recently in
-#: a census that omitted the gating corpus -- the material this project reads
-#: most -- while describing itself as covering what may be read. So the gap is
-#: output rather than a known limitation, and it costs three lines.
-#:
-#: Every figure here is recomputed by a test rather than typed, because the
-#: first version of this block typed three and none of them held up. A count
-#: of a population the report declines to read is precisely the figure with
-#: nothing holding it to account -- it reads as measured, and no run disagrees.
-#:
-#: The correction to the correction belongs here too. The second of those
-#: three, "a superset of the 1,380 gating captures", was removed on the
-#: stated ground that it "appears nowhere else in the repository". It does:
-#: `everyday/leak-check.py` and `everyday/README.md` both carry it, meaning
-#: `corpusCase` utterances, and the superset claim was true. The grep behind
-#: that removal filtered by extension AND by directory, so it never looked in
-#: `everyday/`, and a scoped check was reported as a general one -- which is
-#: the same defect, one level up, as the figures it was correcting. The
-#: relation is restored below without a count, because 1,380 has since
-#: drifted: three ways of asking give 1,405, 1,358 and 1,312, and a fourth
-#: number is not what this block needs.
-NOT_READ = (
-    ("Tools/SpeechLab/**.jsonl",
-     "NOT YET CALLED. The walk that reaches these safely, with its "
-     "sealed-by-filename refusal, landed on main with the connective census; "
-     "this report will call it rather than grow a second walk, and does not "
-     "call it yet. How many utterances that is, is the census's figure to "
-     "report and not one this report can check, so it is not repeated here."),
-    ("SpeakItTests/*.swift",
-     f"{SWIFT_LITERALS} distinct literals of {SWIFT_LITERAL_FLOOR}+ "
-     f"characters containing a space, a superset of the gating corpus's "
-     f"`corpusCase` utterances -- whose count `everyday/leak-check.py` owns "
-     f"and this does not restate. `swift_literals` lives there too and wants "
-     f"a home before a third reader imports it by path, which is why this "
-     f"states a count rather than becoming that third reader."),
-)
+#: This block used to list what was NOT read, which was the honest form of the
+#: same statement while two populations were missing. Both are now read, and a
+#: silent claim of total coverage is worse than a list of gaps -- so the claim
+#: is written down and `test_observation.py` checks it against the census,
+#: which owns the answer. Four instruments in this directory have described
+#: themselves as covering readable material while omitting some of it.
+READ_WHAT = (
+    "READ: every source `readable_material.readers()` declares -- the corpus "
+    "files, the gating corpus in SpeakItTests, and the SpeechLab tree with "
+    "its sealed paths refused by name. That is the same population the "
+    "connective census counts, and a test fails if the two ever differ. No "
+    "sealed set is read.")
 
 
 def readable_pairs():
-    """`(source, utterance)` for every readable development set.
+    """`(source, utterance)` for every source this project may read.
 
-    Through `corpus_paths.utterances`, so this is not a fifth reader of the
-    corpus format -- see `EveryCorpusReaderIsDeclared` in `test_score.py`.
+    Through `readable_material.readers()`, which is the one owner of which
+    sources exist and how each kind is read, so this grows no walk of its own
+    and cannot drift from what the census counts. `test_observation.py`
+    asserts the two populations are identical rather than merely similar.
+
+    This used to read the seven development sets and print a block naming the
+    two populations it did not read. That block was honest and it was also
+    the reason every figure this module produced had to be qualified: `plus`
+    reported 0 rows here while the census reported 44, and a reader running
+    the tool to check a figure from it got the wrong answer with no error.
+
+    **The source key is the repository-relative path, not the basename.**
+    Two of the twenty sources are both called `renderings.jsonl`, under
+    different SpeechLab directories, so keying on the name silently merged
+    them: nineteen sources reported for twenty, and any form appearing in
+    only those two would report `sources == 1` and be marked CONCENTRATED by
+    the source arm. A false mark, produced by the half of this measure that
+    exists to notice exactly that -- twelve views of one population are not
+    twelve bodies of material, and neither are two distinct files one.
     """
-    import corpus_paths
-    for path in corpus_paths.readable():
-        for _number, _cid, text in corpus_paths.utterances(path):
-            yield path.name, text
+    import readable_material
+    for path, read in readable_material.readers():
+        name = str(readable_material.shown(path))
+        for text in read(path):
+            yield name, text
 
 
 def main(argv):
@@ -364,11 +349,8 @@ def main(argv):
           "invisible here:")
     print("  `call Ana at 3` and `call Ana at 4` count as one frame.")
     print()
-    print("  NOT READ by this run:")
-    for where, why in NOT_READ:
-        print(f"    {where}")
-        for line in textwrap.wrap(why, 66):
-            print(f"      {line}")
+    for line in textwrap.wrap(READ_WHAT, 72):
+        print(f"  {line}")
     return 0
 
 

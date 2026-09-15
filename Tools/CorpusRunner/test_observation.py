@@ -318,71 +318,97 @@ class AbsenceAndDispersionDoNotPrintTheSame(unittest.TestCase):
         self.assertIn("TOO FEW", observation.mark_for(below))
 
 
-class TheFiguresItPrintsForWhatItDoesNotReadAreRecomputed(unittest.TestCase):
-    """The block naming unread populations typed three figures and got one
-    wrong, which is the defect that block exists to complain about.
+class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
+    """This module used to print a list of populations it did not read.
 
-    A count of a population the report declines to read is the figure with
-    nothing holding it to account: no run recomputes it, and it reads as
-    measured. So the count lives here, where a run does recompute it, and
-    the report prints this module's constant rather than a literal.
+    Honest, and the reason every figure it produced needed qualifying: `plus`
+    reported 0 rows here and 44 in the census, and a reader checking a figure
+    got the wrong answer with no error. Both populations are read now, so the
+    list is gone and the claim it was hedging -- that this reads all readable
+    material -- has to be checked instead, because a silent claim of total
+    coverage is worse than a stated gap. Four instruments in this directory
+    have described themselves as covering readable material while omitting
+    some of it, this one included.
     """
 
-    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    @classmethod
+    def setUpClass(cls):
+        import readable_material
+        cls.rm = readable_material
+        cls.pairs = list(observation.readable_pairs())
 
-    def literals(self):
-        """`swift_literals` as `everyday/leak-check.py` defines it.
+    def test_it_reads_the_same_population_the_census_reports(self):
+        """Against the census's own reported figure, not against the walk.
 
-        Imported by spec because of the hyphen, and by path because that is
-        the honest statement of where it lives -- the report declines to do
-        this, which is the whole reason the count is a constant over there.
+        Comparing `readable_pairs()` to `readers()` would be very nearly a
+        tautology, since the first is built on the second: both would go to
+        zero together and agree perfectly. So this asks the other instrument
+        what it counted and requires the same number.
         """
         import importlib.util
-        source = self.ROOT / "Tools/CorpusRunner/everyday/leak-check.py"
-        spec = importlib.util.spec_from_file_location("leak_check", source)
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)
-        except SystemExit:
-            pass
+        here = pathlib.Path(observation.__file__).resolve().parent
+        spec = importlib.util.spec_from_file_location(
+            "connective_census_for_test", here / "connective-census.py")
+        census = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(census)
+        _counts, distinct, sources = census.census()
+
+        mine = {text for _s, text in self.pairs}
+        self.assertGreater(distinct, 5000, "the census itself read nothing")
+        self.assertEqual(len(mine), distinct)
+        # `census()` returns sources as (path, rows, distinct) triples.
+        self.assertEqual(len({s for s, _t in self.pairs}), len(sources))
+        self.assertTrue(all(rows > 0 for _p, rows, _d in sources),
+                        "a source reading nothing reports every form absent")
+
+    def test_every_declared_source_actually_contributed(self):
+        """A source reading nothing reports every form absent, and absence is
+        the answer that ends a proposal."""
+        carried = {name for name, _t in self.pairs}
+        self.assertEqual(len(carried), len(self.rm.readers()))
+
+    def test_the_source_key_is_a_path_and_not_a_basename(self):
+        """The bug this caught in itself, kept as a regression.
+
+        Two sources are both named `renderings.jsonl`, under different
+        SpeechLab directories. Keyed on the basename they merged: nineteen
+        sources for twenty, and any form appearing in only those two would
+        report `sources == 1` and be marked CONCENTRATED by the source arm --
+        a false mark from the half of the measure that exists to catch
+        exactly this.
+        """
+        names = [p.name for p, _r in self.rm.readers()]
+        self.assertLess(len(set(names)), len(names),
+                        "if basenames stop colliding this proves nothing")
+        keys = {name for name, _t in self.pairs}
+        self.assertEqual(len(keys), len(self.rm.readers()))
+
+    def test_the_two_multi_word_rules_have_not_drifted_apart(self):
+        """`swift_utterances` filters `len(split()) > 1`; the count this
+        module used to publish was measured with `" " in strip()`. They agree
+        on this corpus, exactly and in both directions, which is worth
+        pinning rather than trusting -- "multi-word" was standing in for a
+        rule nobody had written down, and reading it three ways gave 3702,
+        3760 and 3804.
+        """
+        root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
-        for swift in sorted((self.ROOT / "SpeakItTests").glob("*.swift")):
+        for swift in sorted((root / "SpeakItTests").glob("*.swift")):
             text = swift.read_text(encoding="utf-8", errors="replace")
-            for literal in module.swift_literals(
-                    text, minimum=observation.SWIFT_LITERAL_FLOOR):
-                if " " in literal.strip():
-                    found.add(literal)
-        return found
+            found.update(self.rm.swift_literals(text))
+        space = {l for l in found if " " in l.strip()}
+        split = {l for l in found if len(l.split()) > 1}
+        self.assertEqual(space, split)
+        self.assertEqual(len(space), 3702)
 
-    def test_the_swift_literal_count_is_what_the_stated_rule_produces(self):
-        self.assertEqual(len(self.literals()), observation.SWIFT_LITERALS)
+    def test_the_coverage_statement_carries_no_hand_typed_figure(self):
+        """It says what is read, not how much. A count in there is one
+        nothing recomputes, which is how the last three got in."""
+        self.assertNotRegex(re.sub(r"#\d+", "", observation.READ_WHAT), r"\d")
 
-    def test_the_report_prints_the_constant_rather_than_a_second_copy(self):
-        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
-        self.assertIn(str(observation.SWIFT_LITERALS), line)
-        self.assertNotIn("3,704", line)
-
-    def test_multi_word_is_stated_as_the_rule_it_is(self):
-        """`contains a space` and `two word tokens` differ by 58 literals on
-        this corpus. The first version said `multi-word` and meant neither
-        out loud, so the rule is named in the report's own text."""
-        import re as _re
-        floor = {l for l in self.literals()}
-        tokens = {l for l in floor if len(_re.findall(r"[A-Za-z']+", l)) >= 2}
-        self.assertNotEqual(len(floor), len(tokens),
-                            "if these ever agree this test proves nothing")
-        line = dict(observation.NOT_READ)["SpeakItTests/*.swift"]
-        self.assertIn("containing a space", line)
-
-    def test_no_unread_population_carries_a_figure_nothing_here_checks(self):
-        """The SpeechLab line used to carry `about 1,290`, which no run here
-        recomputes and #66 has since moved. A hedge is not a source."""
-        speechlab = dict(observation.NOT_READ)["Tools/SpeechLab/**.jsonl"]
-        # A pull-request reference is a pointer to who owns the figure, which
-        # is the opposite of an unchecked figure, so it is not a count.
-        without_refs = re.sub(r"#\d+", "", speechlab)
-        self.assertNotRegex(without_refs, r"\d",
-                            "counts for that population belong to #66's walk")
+    def test_the_coverage_statement_names_the_owner(self):
+        self.assertIn("readable_material", observation.READ_WHAT)
+        self.assertIn("sealed", observation.READ_WHAT)
 
 
 if __name__ == "__main__":
