@@ -352,6 +352,15 @@ instrument, which is worth leaving visible rather than quietly correcting.
 The five named phrases total **9** on the strict readings, against `wait`'s
 40.
 
+**The `31 of them one frame` figure is contested.** The evaluation thread
+recounts it as 28, stably, under three separate loosenings of the pattern; 31
+reproduces here under those same three. The pattern is therefore not what
+differs, and the row set is — most likely how each reader deduplicates an
+utterance that appears in more than one source. Left at 31 and marked, because
+a figure two readers reach stably and differently is the exact shape of the
+defect family this file catalogues, and resolving it belongs with the
+instrument rather than in a footnote.
+
 `wait` is the marker two of the six failing captures actually turn on — INC49
 `Tomorrow I need to, um, wait, I forgot` and INC50 `Next week I should, wait,
 I lost it` — and it is the only one of the six forms with more than a handful
