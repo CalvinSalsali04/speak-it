@@ -42,7 +42,17 @@ final class ThoughtCompletionTests: XCTestCase {
         }
     }
 
-    func testTheSameSentenceWithItsVerbIsFinished() {
+    /// Abstains where the lexical-class model is absent, because there it
+    /// cannot fail.
+    ///
+    /// Every sentence here ends on a content word, so none reaches the
+    /// infinitive path, and the nil each one asserts is produced by the final
+    /// `switch` on `last.lexicalClass` falling through to its default. With no
+    /// model every token is `OtherWord`, that default is the only arm reachable,
+    /// and no input could produce any other answer. The test would pass over
+    /// a rule deleted entirely.
+    func testTheSameSentenceWithItsVerbIsFinished() throws {
+        try LexicalTagging.skipIfBlind()
         for text in [
             "Tomorrow I want to run",
             "I need to call Sarah",
@@ -95,7 +105,22 @@ final class ThoughtCompletionTests: XCTestCase {
     // a finished thought. They are the reason the preposition, conjunction and
     // adverb classes are not in the detector.
 
-    func testWordClassesThatAlsoEndFinishedSentencesAreNotTreatedAsDangling() {
+    /// Abstains where the lexical-class model is absent, and this one is worth
+    /// a sentence because it is not obvious.
+    ///
+    /// Two of these rows are decided by rules that need no tagger at all: the
+    /// distributive guard catches `That is all` on the word itself, and the
+    /// particle-verb rows would reach the same nil through the verb test in
+    /// front of them. Those rules still run on a blind image — but their answer
+    /// is nil, which is also what the blind default returns, so deleting either
+    /// one would not fail this test there.
+    ///
+    /// **A test is vacuous when its assertion cannot distinguish the outcomes,
+    /// not when every rule it touches is tagger-dependent.** That is the
+    /// distinction worth carrying: the coverage is lost even where the rule
+    /// under test is string work, because nil is the answer to everything.
+    func testWordClassesThatAlsoEndFinishedSentencesAreNotTreatedAsDangling() throws {
+        try LexicalTagging.skipIfBlind()
         for text in [
             "I haven't submitted the report yet",              // yet/Conjunction
             "Call Catherine tomorrow at five and remind me an hour before", // before/Preposition
@@ -117,6 +142,15 @@ final class ThoughtCompletionTests: XCTestCase {
     }
 
     /// Somebody else's trailing sentence is not the user's to finish.
+    ///
+    /// **Deliberately does not abstain**, unlike the three above, and the
+    /// evidence is a run rather than a reading. Each of these ends on `to`, so
+    /// without the reporting guard the infinitive path would answer
+    /// `.danglingInfinitive` — a different outcome was reachable, which is what
+    /// makes the nil worth asserting. It passed on run 35126863033, where every
+    /// token came back `OtherWord`, so the guard in front of it is string work
+    /// and this test measures something there. `testTheDetectorIsNotAlwaysFalse`
+    /// is tagger-independent for the same reason. Neither belongs in a sweep.
     func testAReportedUnfinishedSentenceIsNotTheUsersToFinish() {
         XCTAssertNil(ThoughtCompletion.unfinished(in: "She said she needs to"))
         XCTAssertNil(ThoughtCompletion.unfinished(in: "Sarah said never mind"))
@@ -129,7 +163,12 @@ final class ThoughtCompletionTests: XCTestCase {
     /// rule existed briefly and was removed: `NLTagger` reads a one-word "Add"
     /// as a verb on macOS and not on iOS, so the development tools and the
     /// shipping app disagreed about the same four characters.
-    func testALoneWordIsNotTreatedAsAFragment() {
+    /// Abstains where the lexical-class model is absent. The one-token branch
+    /// reads `last.lexicalClass` and nothing else, so with every token
+    /// `OtherWord` it returns nil for any word at all and the three assertions
+    /// below hold whatever the branch does.
+    func testALoneWordIsNotTreatedAsAFragment() throws {
+        try LexicalTagging.skipIfBlind()
         XCTAssertNil(ThoughtCompletion.unfinished(in: "Milk"), "a lone noun is a capture")
         XCTAssertNil(ThoughtCompletion.unfinished(in: "LCBO"))
         XCTAssertNil(ThoughtCompletion.unfinished(in: "Add"), "known limitation, asserted so it stays known")
