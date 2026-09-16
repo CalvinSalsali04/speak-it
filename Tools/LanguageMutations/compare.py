@@ -15,6 +15,8 @@ The two strengths come from mutate.py:
 
   strict     every field must match
   structure  destination and row count must match; titles may differ
+  divergent  the readings must NOT match — the mutation changed the meaning,
+             so an identical answer is the defect and is what gets reported
 """
 
 from __future__ import annotations
@@ -49,9 +51,20 @@ def read_blocks(path):
 
 
 def disagreement(base, mutated, strength):
-    """What differs between a base reading and its mutation, or None."""
+    """What the pair got wrong, or None.
+
+    For strict and structure families that is a difference between the two
+    readings. For a divergent family it is the absence of one: the mutation
+    changed what the speaker means, so two identical readings say the engine
+    cannot see the change. Which of the two readings is right is deliberately
+    not asserted — that is what lets these run without labels.
+    """
     if base is None or mutated is None:
         return "missing probe output"
+    if strength == "divergent":
+        if _reading(base) == _reading(mutated):
+            return f"unchanged reading: {_describe(base)}"
+        return None
     if base["routes"] != mutated["routes"]:
         return f"destination {'/'.join(base['routes']) or 'nothing'} → {'/'.join(mutated['routes']) or 'nothing'}"
     if base["rows"] != mutated["rows"]:
@@ -67,6 +80,25 @@ def disagreement(base, mutated, strength):
     if base["titles"] != mutated["titles"]:
         return f"title {' | '.join(base['titles'])} → {' | '.join(mutated['titles'])}"
     return None
+
+
+def _reading(block):
+    """Everything an engine can say about a capture, as one comparable value.
+
+    A divergent family must move at least one of these. Title is included on
+    purpose: a negation that only changes the row title has still been noticed,
+    and reporting it as blindness would be a false alarm.
+    """
+    return (
+        block["routes"], block["rows"], block["operation"],
+        block["due"], block["remind"], block["titles"],
+    )
+
+
+def _describe(block):
+    where = "/".join(block["routes"]) or "nothing"
+    titles = " | ".join(block["titles"]) or "no rows"
+    return f"{where}, {block['rows']} row(s), {titles}"
 
 
 def main():

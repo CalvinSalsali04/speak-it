@@ -121,5 +121,51 @@ class Honesty(unittest.TestCase):
         self.assertIn("buy milk bye", out)
 
 
+
+class MeaningChangeIsInverted(unittest.TestCase):
+    """A divergent family reports sameness, not difference."""
+
+    BASE = {
+        "routes": ("today",), "titles": ("Call Sarah",), "rows": 1,
+        "operation": False, "due": (), "remind": (),
+    }
+
+    def test_an_identical_reading_is_the_defect(self):
+        found = compare.disagreement(self.BASE, dict(self.BASE), "divergent")
+        self.assertIsNotNone(found)
+        self.assertIn("unchanged reading", found)
+
+    def test_any_observable_difference_passes(self):
+        for field, value in [
+            ("routes", ("memory",)),
+            ("rows", 0),
+            ("operation", True),
+            ("due", ("2026-09-17",)),
+            ("titles", ("Do not call Sarah",)),
+        ]:
+            mutated = dict(self.BASE)
+            mutated[field] = value
+            self.assertIsNone(
+                compare.disagreement(self.BASE, mutated, "divergent"),
+                f"a changed {field} should count as the engine noticing",
+            )
+
+    def test_a_title_only_change_still_counts_as_noticing(self):
+        """Reporting this as blindness would be a false alarm.
+
+        A negation that reaches the row title has been seen by the engine even
+        if the destination is unchanged, and calling that a defect would make
+        the family report noise instead of findings.
+        """
+        mutated = dict(self.BASE, titles=("Don't call Sarah",))
+        self.assertIsNone(compare.disagreement(self.BASE, mutated, "divergent"))
+
+    def test_missing_output_is_still_reported(self):
+        self.assertEqual(
+            "missing probe output",
+            compare.disagreement(self.BASE, None, "divergent"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

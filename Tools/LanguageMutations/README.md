@@ -35,12 +35,18 @@ authored against the product contract.
 
 ## The families
 
-Each mutation claims one of two strengths, declared in `mutate.py`:
+Each mutation claims one of three strengths, declared in `mutate.py`:
 
 | strength | promise |
 |---|---|
 | `strict` | the structured result must be identical — destination, rows, titles, dates |
 | `structure` | destination and row count must be identical; titles may differ, because the mutation deliberately changed a word |
+| `divergent` | the two readings must **not** be identical — the mutation changed what the speaker means, so one answer cannot serve for both |
+
+`divergent` inverts the test rather than adding a label, and it needs no ground
+truth for the same reason the others do not: it never says which reading is
+right, only that the engine has to tell the two apart. "call Sarah" and "don't
+call Sarah" have several defensible answers between them and no shared one.
 
 | family | strength | what it varies |
 |---|---|---|
@@ -51,6 +57,11 @@ Each mutation claims one of two strengths, declared in `mutate.py`:
 | `preamble` | strict | a rambling opening — "okay so", "right" |
 | `sign-off` | strict | a trailing "bye", "thanks", "that's it" |
 | `contraction` | strict | "want to" → "wanna", "have to" → "hafta" |
+| `modality` | divergent | "call Sarah" → "I might call Sarah" |
+| `negation` | divergent | "call Sarah" → "don't call Sarah" |
+| `completion` | divergent | "buy milk" → "I already bought milk" |
+| `reported` | divergent | "call Mike" → "Sarah said to call Mike" |
+| `reported-obligation` | divergent | "call Mike" → "Sarah said I should call Mike" |
 | `conjunction` | strict | "and then" → "after that" → "then" |
 | `restart` | strict | an abandoned opening before the real one |
 | `proper-noun` | structure | one unknown store or person name for another |
@@ -58,6 +69,17 @@ Each mutation claims one of two strengths, declared in `mutate.py`:
 `restart` is modelled on Disfl-QA's human-written restarts rather than on an
 invented pattern, and it always leaves the original sentence whole at the end,
 so the meaning is exactly the original's. See `Docs/PUBLIC_DATASETS.md`.
+
+Two limits of the divergent families, stated so a clean report is not misread:
+
+- **They only apply to a bare imperative errand.** Prefixing "don't" onto "the
+  garage code is 4821" is not English, so a set of statements yields nothing
+  from them and a zero there means "not applicable", never "passed".
+- **They compare a mutation against its base, never against each other.**
+  `reported` and `reported-obligation` are both required to differ from "call
+  Mike"; whether "Sarah said call Mike" differs from "Sarah said I should call
+  Mike" is a pairwise question this harness does not ask, and it is one of the
+  distinctions Calvin's section 9 asks to survive.
 
 ## The sealed set
 
