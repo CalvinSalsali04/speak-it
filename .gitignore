@@ -61,3 +61,8 @@ __pycache__/
 Tools/InterpretationProbe/*.jsonl
 *.runs.jsonl
 runs.jsonl
+
+# Interpretation probe working files. The runs are covered above; these are
+# the cut input and the recorded availability line, both regenerated per run.
+Tools/InterpretationProbe/captures.tsv
+Tools/InterpretationProbe/availability.txt
