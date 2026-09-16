@@ -251,6 +251,42 @@ is obviously right, and the detection is worth nothing until one is chosen. The
 detection is also untested against a device that has actually lost the model,
 because no such device has been observed — only the runner image.
 
+**Re-verified 2026-09-16**, and the date is kept beside the first rather than
+replacing it, because what matters is that two readings five days apart agree
+about a runner image that can change under us.
+[Run 35126863033](https://github.com/CalvinSalsali04/speak-it/actions/runs/35126863033)
+returned the same readout on `main`: `11 passed, 4 failed`, every token
+`OtherWord`, `NLEmbedding` green in the same process. Read a *pass* here as the
+surprising result; a failure is only the status quo holding.
+
+**What the second reading added: the failures are the smaller half.** A rule
+that reads the tagger's silence as fact does not only return the wrong answer —
+it returns the *same* answer for every input, and for
+`ThoughtCompletion.unfinished` that answer is nil. So on this image every
+assertion expecting nil passes without exercising the rule it names. In
+`ThoughtCompletionTests` the two failing assertions were the only ones in the
+class carrying information about the tagger-dependent rules; three more passed
+as tautologies, as did one written that same day to test something else
+entirely.
+
+That is the distinction worth keeping, because a summary table hides it.
+`NaturalLanguageEnvironmentTests` fails **deliberately** — it is the diagnostic,
+and its failure is the information it exists to deliver. A rule test that fails
+for the diagnostic's reason fails **accidentally**, and reports "this rule is
+broken" when what happened is "I could not ask". `LexicalTagging.skipIfBlind`,
+beside the probe in `RenderingInvarianceTests.swift`, separates them: the
+dependent assertions abstain into the Skipped column and the diagnostic still
+fails loudly. The diagnostic must never abstain — a suite that skips its way to
+green is the same defect as a step that runs no tests, one level up — and a
+test pins that it does not.
+
+This has a deadline. `ci.yml` defaults the test selection to the whole of
+`SpeakItTests` and runs the `iOS app` job only on dispatch or once
+`vars.IOS_RUNNER` names a self-hosted Mac. So the unit suite cannot come back
+green on a hosted runner today, and on the day anyone sets `IOS_RUNNER` — which
+that file describes as the intended direction — every pull request goes red on
+its first run for reasons unrelated to it.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.

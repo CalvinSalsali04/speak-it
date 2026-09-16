@@ -311,6 +311,18 @@ class RecordedLimitTests(unittest.TestCase):
         determiners separately. Sweeping it in would be a label standing in for
         the judgement it approximates. Pinned so that widening the declaration
         has to argue with this rather than happen quietly.
+
+        INC58, "I was thinking about", joined it on 2026-09-16 and is the
+        argument this pin asks for. It ends on a preposition, which the cited
+        comment does cover -- but only for a preposition stranded at the end
+        of a longer clause. This capture is not that: `DisfluencyFilter.stripped`
+        reduces it to the single token "about", and the one-token branch of
+        `ThoughtCompletion.unfinished` accepts `.preposition` exactly where the
+        multi-token switch refuses it. Same word class, different branch, and
+        the branch is the whole reason the row exists -- no other row in the set
+        reaches it. Declaring it would record an accepted limit for a capture
+        the engine is expected to get right, which is the marker-for-judgement
+        substitution this test exists to prevent, one level up.
         """
         rows = self.captures()
         declared = {c for _, _, ids in self.declarations() for c in ids}
@@ -324,8 +336,35 @@ class RecordedLimitTests(unittest.TestCase):
                          "INC45 ends on a determiner, which the cited comment "
                          "does not cover")
         self.assertIn("dangling article", rows["INC45"][4])
+        self.assertNotIn("INC58", declared,
+                         "INC58 is a one-token capture reaching the branch that "
+                         "accepts a lone preposition; the comment covers the "
+                         "multi-token case")
+        self.assertIn("one-token branch", rows["INC58"][4])
+        # Being outside the declaration is not free: an exception has to say
+        # why it is one.
+        #
+        # This and the identity pin below are both load-bearing, and **each
+        # covers what the other one's first stated reason claimed**, which is
+        # why neither is the redundant one. Established by injection on
+        # 2026-09-16, not by reading:
+        #
+        #   INC46 quietly removed from the `# limit:` line -> THIS loop fires,
+        #       because every declared row in the family carries an empty note.
+        #       The pin never sees it. (The commit that added the pin said the
+        #       opposite; that reason was wrong.)
+        #   a new undeclared row WITH a plausible note      -> only the PIN
+        #       fires. This loop waves it through, so a row can be added to the
+        #       family, expected to pass, and argued nowhere.
+        #
+        # So the loop guards the declaration shrinking and the pin guards the
+        # exception set growing. Delete either and one of those goes silent.
+        for cid in sorted(family - declared):
+            self.assertTrue(
+                rows[cid][4].strip(),
+                f"{cid} sits outside the declaration and gives no reason")
         if declared:
-            self.assertEqual(sorted(family - declared), ["INC45"])
+            self.assertEqual(sorted(family - declared), ["INC45", "INC58"])
 
 
 class DevsetScorerTests(unittest.TestCase):

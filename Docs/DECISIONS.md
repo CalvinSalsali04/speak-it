@@ -2882,3 +2882,94 @@ about removing the quoted examples and wrong about the pass as a whole: the new
 sentence "when there is nothing left to quote, emit no further segment"
 plausibly bears on a runaway list too. So if RO02 comes back clean, the honest
 reading is that we do not know which change did it.
+
+## 2026-09-16 — A repair may not delete a marker the layers above it read
+
+`SpeechRepair` stripped a leading "I was thinking" without looking at what
+followed, so `"I was thinking of calling Priya"` reached the rest of the
+pipeline as `"of calling Priya"`. Fixed in #96; recorded here because the
+sentence-level fix is the least interesting part of it.
+
+**The rule. The test for a repair rule is what survives it, not what it
+removes.** A repair stage exists to make text easier for later stages to read,
+so it is judged by whether those stages can still see what they need. Deleting
+a hedge leaves a grammatical sentence and destroys the modality — the errand
+was *contemplated*, not committed to — and modality is exactly what the
+interpretation layer in `Docs/FOUNDATION_MODELS_ARCHITECTURE.md` is being built
+to read. No gating field moved on either affected capture, which is why nothing
+caught it for as long as it shipped.
+
+**Why the two halves of #96 are one decision rather than two.** The same rule
+explains a measurement hazard: a family's rate can be carried by a stage
+*upstream* of the engine being measured. `Tools/LanguageMutations` gained
+meaning-changing mutations, and one of `modality`'s four variants is "I was
+thinking I should" — the exact prefix this repair used to erase. The instrument
+was not wrong; an engine genuinely cannot see a distinction deleted before it
+arrives. But a reader would have attributed the rate to the engine. So: before
+attributing a divergent family's rate to the engine, check that the repair
+chain still delivers the marker the mutation added.
+
+**A repair rule and the rule that reads its residue are a matched pair, and
+both comments now say so.** The lookahead keeps stripping when nothing follows
+"about", because the lone "about" it leaves is what
+`ThoughtCompletion.unfinished` reads as a trailing function word — its
+one-token branch accepts `.preposition` where the multi-token switch accepts
+only `.determiner`. That coupling is now executed by
+`SpeechRepairTests.testTheRepairAndTheFragmentRuleAreOneChain` rather than
+asserted by two people reading it, which is also the guard on the trailing
+`\S`.
+
+**No cost-ledger row is owed, and the reason is worth writing down rather than
+inferred from its absence.** #96 also fixed `Tools/LanguageMutations/compare.py`
+truncating every date to its weekday (`due:\s+(\S+)` against
+`due:        Fri Aug 7 (day only)` kept `Fri`). That had been weakening the
+strict invariant families since before the divergent ones existed, so it is the
+kind of fix that usually restates a published figure. It restates none:
+`Docs/LANGUAGE_BASELINE.md` states twice that `invariance.sh` has never run
+against the real engine, so no recorded number rested on the old behaviour.
+Somebody auditing the ledger for a missing row should find this paragraph
+rather than a silence.
+
+## 2026-09-16 — A test that cannot answer must abstain, not pass
+
+`ThoughtCompletion.unfinished` reads `last.lexicalClass`. On a GitHub-hosted
+`macos-26` runner's simulator `NLTagger` has no lexical-class model, so it
+returns `OtherWord` for every token of every sentence — recorded in
+`Docs/KNOWN_ISSUES.md` on 2026-09-11 and re-verified on 2026-09-16 in run
+35126863033, which printed the tagging as its failure message:
+`pay:OtherWord the:OtherWord rent:OtherWord`.
+
+**The visible half of that is the reds; the expensive half is the greens.**
+With no model the function returns nil for everything it does not decide on the
+word "to", so every assertion expecting nil passes without exercising the rule
+it names. On that image the two failures in `ThoughtCompletionTests` were the
+only assertions in the class carrying information about the tagger-dependent
+rules, and `SpeechRepairTests.testThePreservedHedgeIsNotReadAsUnfinished`
+passed for a reason with nothing to do with the hedge. A guard that cannot fire
+looks exactly like a guard that holds, which is the recurring bug here, and in
+this run the green tick was the more dangerous of the two results.
+
+So the dependent assertions call `LexicalTagging.skipIfBlind` and land in the
+Skipped column that `Tools/CI/xcresult-failures.py` already prints. The
+decision is taken as a pure function of a tagging rather than of the machine,
+so both its answers can be injected rather than trusted. Blindness means *no*
+token carried a usable class: a tagger that classes some words and not others
+can be wrong, and an assertion that can be wrong should run.
+
+**Abstaining does not measure the claim, so the row that measures it goes in
+the development set.** `Tools/PipelineProbe/build.sh` compiles
+`ClauseStructure.swift` and `SpeechRepair.swift` into a *host* binary, and the
+host is not blind — the corpus gate scores 1,434 cases in the same job where
+those four assertions fail. `unfinished-score.sh` already drives that binary
+from `Tools/CI/language-metrics.sh`, and INC45 is the same utterance as
+`testADanglingDeterminerIsUnfinished`. So the determiner rule is measured on CI
+every language run and only the XCTest copy of it is blind; saying it had
+"never been measured on CI" was wider than the evidence and wrong in the
+direction that flatters the finding. What no row reached is the *one-token*
+branch, which is what the #96 claim is about: all nine `abandoned-midthought`
+rows end on "to" or a filler and resolve through the infinitive path. INC58 is
+that row.
+
+**No cost-ledger row is owed.** Nothing here changes an executable line of the
+engine — the skips are test-side, and INC58 is a development row whose answer
+the next language dispatch reports — so no sealed measure can move.

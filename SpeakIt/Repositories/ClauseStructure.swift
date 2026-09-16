@@ -659,9 +659,12 @@ enum ThoughtCompletion {
         let lastWord = last.text.lowercased()
 
         // A one-token utterance. Only a lone function word counts: it is what
-        // clause splitting hands on when the sentence it came from was already
-        // cut short ("I was thinking about" arrives here as "about"). A lone
-        // noun is a perfectly good capture — "Milk", "LCBO".
+        // an earlier stage hands on when the sentence it came from was already
+        // cut short. Two stages produce it and the second is easy to miss:
+        // clause splitting cuts a trailing clause, and
+        // `DisfluencyFilter.stripped` turns "I was thinking about" into
+        // "about" on its own, with no clause splitting involved. A lone noun is
+        // a perfectly good capture — "Milk", "LCBO".
         //
         // A bare imperative verb — "Add", "Buy" — was tried and removed. It
         // cannot be read reliably: `NLTagger` calls a one-word "Add" a verb on
@@ -672,10 +675,18 @@ enum ThoughtCompletion {
             switch last.lexicalClass {
             case .determiner?, .preposition?, .particle?:
                 // A lone function word is the tail of something already cut
-                // short — clause splitting hands on "about" when the sentence
-                // was "I was thinking about". Safe here in a way it is not at
-                // the end of a longer clause, because a one-word capture that
-                // is a bare preposition is not a thought anybody finished.
+                // short. "I was thinking about" arrives as "about" from
+                // `DisfluencyFilter.stripped`, whose lookahead keeps stripping
+                // precisely when nothing follows — the trailing `\S` in that
+                // rule exists to produce this token, and the two rules are a
+                // matched pair rather than two independent readings. Accepting
+                // `.preposition` here and not in the multi-token switch below
+                // is what makes them fit: strip to four tokens instead of one
+                // and an abandoned thought becomes a row.
+                //
+                // Safe here in a way it is not at the end of a longer clause,
+                // because a one-word capture that is a bare preposition is not
+                // a thought anybody finished.
                 return .trailingFunctionWord
             default:
                 return nil

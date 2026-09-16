@@ -794,7 +794,31 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         added its focused production controls. 3904 -> 3912 on 2026-09-16:
         the two `SpeechRepairTests` cases for "I was thinking", whose inputs
         and expectations are nine multi-word literals of which eight are new
-        to this directory. What the test is actually
+        to this directory. 3912 -> 3916 the same day, when the follow-up to
+        that change added two tests running the repair's output straight into
+        `ThoughtCompletion.unfinished`. The utterances were already here, so
+        the four are three assertion messages and — enumerated rather than
+        assumed — one quoted phrase inside a doc comment, `"keeps the words"`.
+        Worth knowing before predicting one of these deltas: a phrase put in
+        quotation marks while explaining a test counts exactly like a fixture.
+        3916 -> 3929 the same day again, adding the abstain-when-blind helper
+        and its two guard tests. Thirteen, enumerated: six assertion messages,
+        one probe sentence, two phrases quoted inside a doc comment (`"not
+        measured here"`, `"measured and correct"` — the hazard the paragraph
+        above had just finished naming), and **four** fragments of a single
+        skip message, because a message built by concatenating string literals
+        across lines counts once per fragment and not once per message.
+        Counting messages would have predicted ten.
+        3929 -> 3928 an hour later, the first *fall* in this log: review found
+        that the chain test put an assertion ahead of its `XCTSkip`, which
+        depends on XCTest recording a failure that precedes a skip, and nothing
+        here establishes that it does. Moving the skip to the first statement
+        dropped the assertion message "the repair must leave the bare marker",
+        whose claim `testThroatClearingStillComesOff` already makes without
+        skipping. One literal, enumerated rather than assumed, and the sign is
+        the interesting part: deleting an assertion moves this count exactly
+        like adding a fixture does. What the test
+        is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -807,7 +831,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3912)
+        self.assertEqual(len(space), 3928)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
@@ -817,6 +841,40 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
     def test_the_coverage_statement_names_the_owner(self):
         self.assertIn("readable_material", observation.READ_WHAT)
         self.assertIn("sealed", observation.READ_WHAT)
+
+
+class TheDiagnosticIsNotAllowedToAbstain(unittest.TestCase):
+    """`LexicalTagging.skipIfBlind` lets a tagger-dependent assertion report
+    "not measured here" instead of a verdict it cannot support. Applied to the
+    diagnostic itself it would be self-concealing: the one test whose failure
+    tells anybody the lexical model is missing would go quiet, and the suite
+    would skip its way to green. That is the same defect as a step that runs no
+    tests, one level up, and it is invisible from a summary table.
+
+    Checked here rather than in Swift because it is a claim about which source
+    calls what, and this is the suite that already reads `SpeakItTests`.
+    """
+
+    def source(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        return (root / "SpeakItTests" / "RenderingInvarianceTests.swift").read_text(
+            encoding="utf-8", errors="replace")
+
+    def test_the_environment_probe_does_not_call_the_skip_helper(self):
+        text = self.source()
+        start = text.index("final class NaturalLanguageEnvironmentTests")
+        body = text[start:start + text[start:].index("\n}\n") + 2]
+        self.assertNotIn(
+            "skipIfBlind", body,
+            "NaturalLanguageEnvironmentTests must still fail loudly on a blind "
+            "image; abstaining there hides the only signal that says why "
+            "everything else is abstaining")
+
+    def test_the_helper_it_must_not_call_still_exists_under_that_name(self):
+        """Without this the assertion above passes by spelling. Rename the
+        helper and `skipIfBlind` appears nowhere, so "the probe does not call
+        it" becomes true of every file in the repository."""
+        self.assertIn("func skipIfBlind", self.source())
 
 
 if __name__ == "__main__":
