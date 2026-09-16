@@ -129,5 +129,110 @@ class Parsing(unittest.TestCase):
         self.assertEqual(["buy milk"], mutate.read_utterances(path))
 
 
+
+class MeaningChange(unittest.TestCase):
+    """The divergent families must change meaning without mangling English.
+
+    A mutation that is not something a person would say measures the generator
+    rather than Speak It, so these check grammaticality and applicability as
+    hard as the strict families check word survival.
+    """
+
+    DIVERGENT = [
+        f for f, (_, strength) in mutate.FAMILIES.items() if strength == "divergent"
+    ]
+    ERRAND = "call Sarah about the lease"
+    NOT_AN_ERRAND = "the garage code is 4821"
+
+    def test_every_divergent_family_can_actually_fire(self):
+        """A family that never applies is a guard that cannot fail.
+
+        Caught twice in this project by looking rather than assuming, so it is
+        asserted here instead.
+        """
+        for family in self.DIVERGENT:
+            produced = [
+                m
+                for seed in range(15)
+                for m in mutate.mutations_for(self.ERRAND, random.Random(seed), [family])
+            ]
+            self.assertTrue(produced, f"{family} produced nothing on a plain errand")
+
+    def test_divergent_families_refuse_a_statement(self):
+        """"don't the garage code is 4821" tests nothing."""
+        for family in self.DIVERGENT:
+            for seed in range(10):
+                produced = mutate.mutations_for(
+                    self.NOT_AN_ERRAND, random.Random(seed), [family]
+                )
+                self.assertEqual(
+                    [], produced,
+                    f"{family} applied to a statement: {produced}",
+                )
+
+    def test_the_errand_survives_inside_the_mutation(self):
+        """The marker is added; the thing being asked for is not rewritten.
+
+        Completion is exempt because conjugating the verb is the whole point
+        of it, and it has its own test below.
+        """
+        for family in self.DIVERGENT:
+            if family == "completion":
+                continue
+            for seed in range(15):
+                for m in mutate.mutations_for(self.ERRAND, random.Random(seed), [family]):
+                    self.assertIn(
+                        "call sarah about the lease", m.mutated.lower(),
+                        f"{family} rewrote the errand: {m.mutated!r}",
+                    )
+
+    def test_completion_conjugates_every_verb_it_fires_on(self):
+        for verb in mutate.IMPERATIVE_VERBS:
+            produced = mutate.mutations_for(
+                f"{verb} the thing", random.Random(0), ["completion"]
+            )
+            self.assertTrue(produced, f"{verb} has a past tense but did not fire")
+            self.assertTrue(
+                produced[0].mutated.startswith(f"I already {mutate.PAST_TENSE[verb]}"),
+                produced[0].mutated,
+            )
+
+    def test_completion_refuses_a_verb_it_cannot_conjugate(self):
+        """Guessing produces "buyed", which is not English and measures nothing.
+
+        The vocabularies agree today, so this injects the disagreement rather
+        than waiting for one: a test whose failing branch cannot be reached is
+        not a guard, and this file is the wrong place to learn that again.
+        """
+        original = mutate.IMPERATIVE_VERBS
+        mutate.IMPERATIVE_VERBS = original | {"squeegee"}
+        try:
+            produced = mutate.mutations_for(
+                "squeegee the windows", random.Random(0), ["completion"]
+            )
+            self.assertEqual([], produced, f"conjugated without a rule: {produced}")
+        finally:
+            mutate.IMPERATIVE_VERBS = original
+
+    def test_the_two_verb_vocabularies_agree(self):
+        """Every imperative is conjugable and every conjugation is reachable."""
+        self.assertEqual(
+            set(), mutate.IMPERATIVE_VERBS - set(mutate.PAST_TENSE),
+            "imperative verbs with no past tense: completion silently skips them",
+        )
+        self.assertEqual(
+            set(), set(mutate.PAST_TENSE) - mutate.IMPERATIVE_VERBS,
+            "past tenses no imperative can reach: dead vocabulary",
+        )
+
+    def test_attribution_never_reuses_a_name_already_said(self):
+        """"Priya said to call Priya" reads as one person, not two."""
+        for family in ("reported", "reported-obligation"):
+            for seed in range(30):
+                for m in mutate.mutations_for("call Priya", random.Random(seed), [family]):
+                    speaker = m.mutated.split()[0]
+                    self.assertNotEqual("Priya", speaker, m.mutated)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

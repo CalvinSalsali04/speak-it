@@ -19,6 +19,16 @@ thing:
              rows, same titles, same dates
   structure  the destination and the row count must be identical; the titles
              may differ because the mutation deliberately changed a word
+  divergent  the result must NOT be identical — the mutation changes what the
+             speaker means, so an engine that answers both the same way is
+             blind to the distinction
+
+The third strength inverts the test rather than adding a label. A divergent
+family still needs no ground truth: it does not say which reading is right,
+only that one reading cannot serve for both. "call Sarah" and "don't call
+Sarah" may be answered in several defensible ways, but never the same way.
+Calvin's section 10 asks for exactly these, and his section 9 pairs are the
+shape they are modelled on.
 
 Families are listed in FAMILIES with the strength they claim.
 """
@@ -160,6 +170,103 @@ def _swap_proper_noun(text: str, rng: random.Random) -> str:
     return text
 
 
+# --- Meaning-changing mutations -------------------------------------------
+#
+# These only apply to a bare imperative errand, because that is the only shape
+# where prefixing a modal, a negation or an attribution produces English a
+# person would actually say. Prefixing "don't" onto "the garage code is 4821"
+# tests the mutation generator, not Speak It.
+
+IMPERATIVE_VERBS = {
+    "call", "text", "email", "message", "buy", "pick", "book", "pay", "send",
+    "order", "renew", "water", "take", "get", "write", "post", "feed", "walk",
+    "cancel", "schedule", "collect", "return", "print", "wash", "charge",
+    "read",
+}
+
+# Past tense for the completion family. Irregulars are listed because guessing
+# them produces "buyed", and a mutation that is not English measures nothing.
+PAST_TENSE = {
+    "buy": "bought", "take": "took", "get": "got", "send": "sent",
+    "write": "wrote", "feed": "fed", "pay": "paid", "read": "read",
+    "call": "called", "text": "texted", "email": "emailed",
+    "message": "messaged", "pick": "picked", "book": "booked",
+    "order": "ordered", "renew": "renewed", "water": "watered",
+    "post": "posted", "walk": "walked", "cancel": "cancelled",
+    "schedule": "scheduled", "collect": "collected", "return": "returned",
+    "print": "printed", "wash": "washed", "charge": "charged",
+}
+
+MODALS = ["I might", "maybe I'll", "I could", "I was thinking I should"]
+SPEECH_FRAMES = ["said to", "told me to", "asked me to"]
+
+
+def _leading_verb(text: str) -> str | None:
+    """The bare imperative this utterance opens with, or None."""
+    words = text.strip().split()
+    if not words:
+        return None
+    first = words[0].strip(".,;:").lower()
+    return first if first in IMPERATIVE_VERBS else None
+
+
+def _add_modality(text: str, rng: random.Random) -> str:
+    """"call Sarah" -> "I might call Sarah". Changes whether it is owed."""
+    if _leading_verb(text) is None:
+        return text
+    return f"{rng.choice(MODALS)} {text[0].lower() + text[1:]}"
+
+
+def _negate(text: str, _rng: random.Random) -> str:
+    """"call Sarah" -> "don't call Sarah". Changes what should happen."""
+    if _leading_verb(text) is None:
+        return text
+    return f"don't {text[0].lower() + text[1:]}"
+
+
+def _mark_completed(text: str, _rng: random.Random) -> str:
+    """"call Sarah" -> "I already called Sarah". Changes whether it is open."""
+    verb = _leading_verb(text)
+    if verb is None or verb not in PAST_TENSE:
+        return text
+    rest = text.strip().split(None, 1)
+    tail = f" {rest[1]}" if len(rest) > 1 else ""
+    return f"I already {PAST_TENSE[verb]}{tail}"
+
+
+def _attribute_to_speaker(text: str, rng: random.Random) -> str:
+    """"call Mike" -> "Sarah said to call Mike". Changes who is speaking.
+
+    The name is chosen to be one the utterance does not already contain, so
+    the mutation does not accidentally read as the same person twice.
+    """
+    if _leading_verb(text) is None:
+        return text
+    lowered = text.lower()
+    free = [n for n in PERSON_NAMES if n.lower() not in lowered]
+    if not free:
+        return text
+    frame = rng.choice(SPEECH_FRAMES)
+    return f"{rng.choice(free)} {frame} {text[0].lower() + text[1:]}"
+
+
+def _attribute_obligation(text: str, rng: random.Random) -> str:
+    """"call Mike" -> "Sarah said I should call Mike".
+
+    Calvin's section 9 lists this beside "Sarah said call Mike" as a separate
+    case, so it is a separate family. Whether the two differ *from each other*
+    is a pairwise question this base-versus-mutation harness does not ask; see
+    the README.
+    """
+    if _leading_verb(text) is None:
+        return text
+    lowered = text.lower()
+    free = [n for n in PERSON_NAMES if n.lower() not in lowered]
+    if not free:
+        return text
+    return f"{rng.choice(free)} said I should {text[0].lower() + text[1:]}"
+
+
 FAMILIES = {
     "filler": (_insert_filler, "strict"),
     "repetition": (_repeat_word, "strict"),
@@ -171,6 +278,11 @@ FAMILIES = {
     "conjunction": (_swap_conjunction, "strict"),
     "restart": (_restart, "strict"),
     "proper-noun": (_swap_proper_noun, "structure"),
+    "modality": (_add_modality, "divergent"),
+    "negation": (_negate, "divergent"),
+    "completion": (_mark_completed, "divergent"),
+    "reported": (_attribute_to_speaker, "divergent"),
+    "reported-obligation": (_attribute_obligation, "divergent"),
 }
 
 

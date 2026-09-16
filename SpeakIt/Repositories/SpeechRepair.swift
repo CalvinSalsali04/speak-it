@@ -109,7 +109,19 @@ enum DisfluencyFilter {
         // "Okay so the thing is I need to renew insurance" -> "I need to renew
         // insurance". Runs after the lead-in strip so it sees the bare phrase.
         value = replace(value, #"^(?:the\s+)?thing\s+is\b[\s,]*"#, "")
-        value = replace(value, #"^i\s+was\s+thinking\b[\s,]*"#, "")
+        // "I was thinking" is throat-clearing in front of a clause the speaker
+        // owes — "I was thinking, buy milk" — and the sentence's own verb in
+        // front of its complement: "I was thinking of calling Priya" means the
+        // errand was contemplated, not committed to. Stripping the second kind
+        // deleted the modality and left a fragment ("of calling Priya"), which
+        // is a hypothetical marker the layers above this one are meant to read.
+        //
+        // The trailing `\S` is load-bearing. "I was thinking about" with
+        // nothing after it must keep stripping: the lone "about" it leaves is
+        // what `ClauseStructure.unfinished` reads as a trailing function word,
+        // and that is how an abandoned thought is recognised rather than
+        // turned into an errand.
+        value = replace(value, #"^i\s+was\s+thinking\b(?!\s+(?:of|about)\s+\S)[\s,]*"#, "")
         // A leading "I mean" is the same throat-clearing as "the thing is".
         // Left in place it cost real rows: "so uh I mean um the car needs the
         // winter tires on and also the plates renewed" collapsed to a single
