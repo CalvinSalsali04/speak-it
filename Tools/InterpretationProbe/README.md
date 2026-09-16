@@ -62,6 +62,33 @@ adds. The counts, recomputed on this head rather than carried forward:
 abandonment 55, coordination 121, framing 45, rambling 85, routed 116, runon
 46, unfinished 163, which is 631.
 
+## Comparing the two paths on a development set
+
+`compare.sh` is the evaluation path: it generates a model reading of one or
+more development sets and scores both paths through `heldout/score.py`, the
+same instrument, so the numbers are comparable rather than merely adjacent.
+
+```bash
+./Tools/InterpretationProbe/compare.sh framing routed
+```
+
+Three columns per set, because a generative path has no single number: the
+parser, the model alone with a refused capture producing nothing, and the model
+with the rules answering the refusals. It prints the refusal tally per rule and
+leaves one `runs.jsonl` per set for anybody to `--replay` later.
+
+It prints the instructions fingerprint **twice, from two processes**. That is
+not decoration: the first version of the fingerprint was Swift's `hashValue`,
+which is seeded randomly per process, and it printed two different values for a
+byte-identical prompt — `cd888336` on the CI runner and `329d9c7d` on the Mac
+that produced the first real run. It is FNV-1a now, and two matching lines are
+that being checked rather than assumed.
+
+**`coordination` is refused by name**, and not because it is sealed. It is
+scored by `devsets/score.py` against `probe --clauses` output, a format this
+probe does not emit, so the two paths cannot be compared on it. Refusing it is
+better than printing an empty report that reads like a bad score.
+
 ## The input file
 
 One capture per line. A line with no tab is the whole capture. A line with

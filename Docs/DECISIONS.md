@@ -2746,3 +2746,139 @@ came from dispatched macOS runs: the corpus gate green over 1,404 cases with
 `DO02` gone from the routed development set's failures and `DO03` still there,
 and the capture-operation classes green on a simulator. The whole unit suite
 and the release compile check have still not run.
+
+## 2026-09-16 — The first Foundation Models run, and the prompt leak it found
+
+The first run of the interpretation prototype on hardware that has Apple
+Intelligence: 46 `runon` development captures, greedy, `repairedFirst: false`,
+instructions fingerprint `329d9c7d`, one run each, 280s — **6.1 seconds per
+capture**, so one pass over all 631 development captures costs about an hour of
+one Mac. Both paths were scored by `Tools/CorpusRunner/heldout/score.py`, the
+same instrument, and the run file is on branch `claude/first-run-runon`.
+
+| | parser | model only | model + rules fallback |
+|---|---|---|---|
+| destination | 42/46 (91.3%) | 16/46 (34.8%) | 39/46 (84.8%) |
+| thought count | 35/44 (79.5%) | 15/46 (32.6%) | 36/45 (80.0%) |
+| produced nothing | 0 | 25 | 0 |
+| acted on anyway | 0 | 0 | 0 |
+
+**Do not read 80.0% against 79.5% as "no change".** The composition is
+different at the same total. `statement-runon` went from the parser's **0/6**
+to the model's **5/6**, with none of those six captures refused, so it is the
+model unaided; the scorer's own control-pair block moved all three of the
+parser's guard comparisons from `NOT INFORMATIVE` to `informative`.
+`bridging-guard` fell 4/4 to 2/4, which `Docs/KNOWN_ISSUES.md` and the
+development set's header had both predicted would happen the day anything
+split a statement: the guard was passing because nothing ever split, not
+because bridging was handled. The real cost is `mixed-runon` destination, 7/8
+to 4/8, and on the four of those the model was trusted with it scored 0/4
+against the parser's 3/4.
+
+**One defect dominated every measure.** 32 of the 99 row-bearing segments
+carried a quote that is not a verbatim span of their capture — 22 whose words
+are not in it and 10 that are empty — and `InterpretationPolicy` refused 25 of the
+46 readings — 23 `ungroundedSpan`, one `inventedPerson`, one
+`impossibleCombination` (`reported` + `speakerOwes`, refused by the rule
+written for exactly that failure). Two captures reported destructive operations
+that were not in the speech at all, including two broad cancels against a
+capture containing no cancellation; both were refused at the grounding check
+before reaching the operation layer, and `ACTED ON ANYWAY` was 0 in all three
+columns. That is the deterministic gate doing the job it was built for, and it
+is the reason the prototype could be pointed at a development set at all.
+
+**Part of the cause was our own prompt.** The model was copying its brief into
+the transcript's place. Ten captures emitted a segment quoted as the bare word
+`tomorrow`, which was the example inside the `@Guide` for `carriedContext`; one
+emitted `Ask Dana about Friday`, a verbatim instructions sentence; one emitted
+`Dana said I should call the dentist`, which is line 93's sentence frame
+carrying the name from line 99, so two separate examples blended rather than
+one copied. **An illustration sitting in a field's own description is a
+candidate value for that field.**
+
+**The rest of the cause is not ours, and it is the more serious half.** RO02 is
+six words — *Sarah gave me her new number* — and the model returned it as one
+segment followed by ten fabricated errands: buy a toothbrush, toothpaste,
+floss, mouthwash, a razor, a toothpaste holder, a toothbrush holder, a
+toothbrush case, a toothbrush box, a toothbrush brush. None of those words
+appears in the prompt, the schema or the development set; all four
+interpretation sources were grepped and return nothing. It is a degenerate
+repetition loop rather than an echo, every segment of it marked `reported`,
+`attributedTo: unknown` and **confidence 100**, and `sampling: greedy` is the
+setting that failure mode lives in. The deterministic gate is the only thing
+that stood between a six-word capture and ten invented errands in somebody's
+Today list, and it held.
+
+**`confidencePercent` is unusable and nothing should be built on it.** Across
+all 99 segments it reported **100 on 91 and 0 on 8, never any other value**,
+and it reported 100 on every one of the 22 segments whose quote is not in the
+capture, RO02's ten inventions included. It is not weakly correlated with
+correctness; in this run it is uncorrelated with fabrication. One thing reads
+it today — `InterpretationBridge` forces review below 82 — and because that can
+only widen review it is a dead term rather than a hole, but it should not
+become a ranking or triage input. The model also never used three of its six
+dispositions: `corrected`, `hypothetical` and `aside` appear nowhere in 99
+segments.
+
+So the quoted examples are gone from the instructions and from the two
+`@Guide` descriptions that carried one, replaced by descriptions of the same
+distinctions; the instructions now say outright that they are not part of the
+transcript, and that a segment must quote at least one word of it. Nothing else
+was tuned, and nothing was tuned against the 46: a prompt changed to fix a
+defect those captures revealed cannot then be scored on them, so the next run
+goes to `framing` and `routed`, which drove nothing here.
+`Tools/CorpusRunner/test_interpretation_isolation.py` now fails on a quoted
+example anywhere in the prompt, verified by running it against the prompt as it
+was — five sites, all named. The rule is narrower than the defect and says so:
+it catches an example written in quotation marks and cannot catch one written
+without them.
+
+**A short-circuiting checker undercounts defects, and this one hid two.**
+`InterpretationPolicy.check` returns on its first failure, so the tally above —
+23 `ungroundedSpan`, 1 `inventedPerson`, 1 `impossibleCombination` — describes
+which rule fired first, not how many defects the reading carried. Evaluating
+every rule independently over the same 46 captures gives a different picture:
+`ungroundedSpan` has something to fire on in 24 captures and
+**`impossibleCombination` in 18**, not one. Three distinct sub-causes, counted
+by segment and by capture:
+
+| sub-cause | segments | captures | addressed by this prompt pass |
+|---|---|---|---|
+| `speakerOwes` on a non-`stated` segment that has a quote | 17 | 8 | no |
+| `supersededBy` on a segment that is not `corrected` | 15 | 7 | no |
+| `speakerOwes` on a segment with an empty quote | 9 | 9 | yes, if the new rule holds |
+
+The second is its own defect: **not one segment in the run used
+`disposition: corrected`**, yet fifteen named a span they had replaced, all of
+them on `abandoned` or `reported` segments. The model appears to fill that
+field whenever a segment relates to another one, rather than when a sentence
+was actually replaced. Found by the evaluation thread and confirmed here.
+
+The first matters more than its size, because it is the family named as
+dangerous: **a `reported` segment claiming the speaker owes the action** is
+somebody else's words turned into the user's errand, and it appears on 17
+segments across 8 captures. `InterpretationPolicy` refuses it
+(`impossibleCombination`), which is why it costs nothing today.
+
+**A prediction, recorded before the next run rather than after it.** Neither of
+the first two sub-causes is touched by removing the quoted examples, so if
+everything else about the model's behaviour held and only grounding and the
+empty trailing segment were fixed, refusals over these 46 would fall from 25 to
+**14, not to 0**. The next run is `framing` and `routed`, so the number will
+not transfer; the claim is that the *mode* persists and
+`impossibleCombination` appears among the rules that fire. **The falsifier: if
+it does not appear at all, this is wrong.**
+
+Deliberately not fixed in the same pass. The instruction the model is missing
+is that naming a replaced span belongs only to a sentence that was actually
+replaced — one sentence, and it would confound the experiment. A prompt pass
+that changes two things cannot say which one moved the result, and the
+pre-registered prediction above is worth more than the round trip it would
+save.
+
+**One claim of ours needs softening for the same reason.** RO02's repetition
+loop was described as something the prompt fix does not touch. That is right
+about removing the quoted examples and wrong about the pass as a whole: the new
+sentence "when there is nothing left to quote, emit no further segment"
+plausibly bears on a runaway list too. So if RO02 comes back clean, the honest
+reading is that we do not know which change did it.

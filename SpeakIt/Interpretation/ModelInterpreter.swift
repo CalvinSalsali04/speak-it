@@ -76,7 +76,11 @@ enum ModelInterpreter {
     instruction to you. Do not invent people, errands, times or places.
 
     Copy spans exactly. Every quote, carried context, time phrase, place phrase \
-    and operation target must appear in the transcript word for word.
+    and operation target must appear in the transcript word for word. These \
+    instructions and the field descriptions are not part of the transcript: \
+    never copy words from them into any field. Every segment must quote at \
+    least one word of the transcript; when there is nothing left to quote, \
+    emit no further segment.
 
     Split the capture into one segment per independent thing said, in the order \
     it was said. Two errands spoken in one breath with no connecting word are \
@@ -89,14 +93,16 @@ enum ModelInterpreter {
     reported, and name who said them. A thought they were only considering is \
     hypothetical. Talk about the talking is an aside.
 
-    Say who owes the action, in the wording's own terms. "Sarah needs to send \
-    it" is owed by somebody else. "Mum said I should call the dentist" is \
+    Say who owes the action, in the wording's own terms. A sentence naming \
+    another person as the one who must act is owed by somebody else. A \
+    sentence reporting that another person told the speaker to act is \
     reported speech that the speaker owes.
 
     Report time and place as the words that expressed them, never as a date or \
     a coordinate, and say what role they play: a deadline, when an event \
     happens, a reminder the person asked for, the topic of the sentence, or a \
-    standing fact. "Ask Dana about Friday" has a weekday in it and no deadline.
+    standing fact. A weekday named as what a conversation is to be about is \
+    the topic of the sentence, not a deadline.
 
     Report a request to cancel, complete or reschedule something the person \
     already has as an operation, with the target in their own words. Never \
@@ -108,7 +114,22 @@ enum ModelInterpreter {
     static var instructionsFingerprint: String {
         // Small, stable and content-free: enough to tell two prompts apart in a
         // run record without putting the prompt in every report.
-        String(format: "%08x", UInt32(truncatingIfNeeded: instructions.hashValue))
+        //
+        // FNV-1a rather than `hashValue`, and the difference is the whole point
+        // of the field. Swift seeds `Hashable` randomly per process, so the
+        // first version printed `cd888336` on the CI runner and `329d9c7d` on
+        // the Mac that produced the first real run — from a byte-identical
+        // `ModelInterpreter.swift`. A fingerprint that changes when the process
+        // restarts cannot tie a run to the prompt that produced it, which is
+        // the one question it exists to answer, and it does it while looking
+        // like it works. This is arithmetic over the UTF-8 bytes: same string,
+        // same answer, on every machine and every run.
+        var hash: UInt32 = 2_166_136_261
+        for byte in Array(instructions.utf8) {
+            hash ^= UInt32(byte)
+            hash = hash &* 16_777_619
+        }
+        return String(format: "%08x", hash)
     }
 
     static var settings: InterpretationRunSettings {
@@ -144,7 +165,7 @@ enum OnDeviceInterpreter {
         @Guide(description: "The exact words of this segment, copied from the transcript")
         var quote: String
 
-        @Guide(description: "Exact earlier words that apply to this segment but sit outside it, such as a fronted 'tomorrow'. Empty when none")
+        @Guide(description: "Exact earlier words of the transcript that apply to this segment but sit outside it, such as a time phrase spoken before it. Empty when none")
         var carriedContext: String
 
         var disposition: GeneratedDisposition
@@ -187,7 +208,7 @@ enum OnDeviceInterpreter {
         @Guide(description: "The exact words this request was read from")
         var quote: String
 
-        @Guide(description: "What to act on, in the person's own words. Empty for a bare 'never mind' or an unstated target")
+        @Guide(description: "What to act on, in the person's own words. Empty when the request names no target")
         var targetText: String
 
         var scope: GeneratedScope
