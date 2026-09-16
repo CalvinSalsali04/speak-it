@@ -338,6 +338,19 @@ class RecordedLimitTests(unittest.TestCase):
         reaches it. Declaring it would record an accepted limit for a capture
         the engine is expected to get right, which is the marker-for-judgement
         substitution this test exists to prevent, one level up.
+
+        INC59, "I need to send the report to", joined on 2026-09-16 and is the
+        argument this pin asks for. It is INC46 with a second infinitive marker
+        and nothing else changed, added to isolate what decides INC46: `:709`
+        returns `.danglingInfinitive` only when `markers.count == 1`, so if the
+        marker count is what carries INC46 then this row is not flagged.
+        Undeclared on purpose, and the reason is not the usual one -- it is not
+        that the cited comment fails to cover it, it is that **the row exists to
+        measure a reading, and declaring it would settle in advance the question
+        it was added to ask.** A declared limit says a gap is known and
+        accepted; this gap is neither, until the run says what it is. If the row
+        comes back flagged, the reading behind it is wrong and the row stays as
+        the record of that.
         """
         rows = self.captures()
         declared = {c for _, _, ids in self.declarations() for c in ids}
@@ -356,6 +369,10 @@ class RecordedLimitTests(unittest.TestCase):
                          "accepts a lone preposition; the comment covers the "
                          "multi-token case")
         self.assertIn("one-token branch", rows["INC58"][4])
+        self.assertNotIn("INC59", declared,
+                         "INC59 exists to measure what decides INC46; "
+                         "declaring it would answer that question by label")
+        self.assertIn("second infinitive marker", rows["INC59"][4])
         # Being outside the declaration is not free: an exception has to say
         # why it is one.
         #
@@ -379,7 +396,8 @@ class RecordedLimitTests(unittest.TestCase):
                 rows[cid][4].strip(),
                 f"{cid} sits outside the declaration and gives no reason")
         if declared:
-            self.assertEqual(sorted(family - declared), ["INC45", "INC58"])
+            self.assertEqual(sorted(family - declared),
+                             ["INC45", "INC58", "INC59"])
 
 
 class DevsetScorerTests(unittest.TestCase):
