@@ -92,8 +92,17 @@ let utterances = lines
     .filter { !$0.isEmpty && !$0.hasPrefix("#") }
 
 if showClausesOnly {
-    // The same repair chain `RuleBasedThoughtExtractor.process` runs before it
-    // segments, so the clauses printed here are the clauses the pipeline sees.
+    // A hand-maintained copy of the repair chain `RuleBasedThoughtExtractor`
+    // runs before it segments (`ThoughtExtractor.swift:386-403`). It is a copy,
+    // so it can drift, and it already has: the pipeline strips disfluency from
+    // `normalize(transcript)` rather than from the raw line, and it runs
+    // `CaptureOperationDetector.resolvingInCaptureCancellations` between that
+    // and the repair nest. Neither happens here. So these are the clauses the
+    // pipeline sees only for an utterance that normalizes to itself and carries
+    // no in-capture cancellation -- which is most of them, and not all.
+    //
+    // `--completion` below does not copy anything: it runs the engine and reads
+    // the string off the row. Prefer that shape for anything new.
     for utterance in utterances {
         let cleaned = DisfluencyFilter.stripped(utterance)
         let corrected = GroceryHomophoneRepair.repaired(
