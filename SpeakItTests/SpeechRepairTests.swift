@@ -167,4 +167,41 @@ final class SpeechRepairTests: XCTestCase {
             XCTAssertEqual(SelfCorrectionResolver.resolved(text), text, "must not be rewritten")
         }
     }
+
+    /// "I was thinking" is two different things and the strip treated them as
+    /// one.
+    ///
+    /// In front of a clause the speaker owes it is throat-clearing and comes
+    /// off. In front of its own complement it is the sentence's verb, and the
+    /// modality lives in it: "I was thinking of calling Priya" says the errand
+    /// was contemplated, not committed to. Removing it left "of calling
+    /// Priya" — a fragment with no sign that anything was hedged, in a set
+    /// where that hedge is the whole label.
+    func testContemplationIsNotThroatClearing() {
+        for text in [
+            "I was thinking of calling Priya",
+            "I was thinking about the wedding",
+            "I was thinking about calling Mike",
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(text), text, "the hedge must survive")
+        }
+    }
+
+    /// The other half, which the fix must not take with it.
+    ///
+    /// The last case is why the rule needs a complement and not just a
+    /// preposition: "I was thinking about" with nothing behind it has to keep
+    /// stripping, because the lone "about" it leaves is what
+    /// `ClauseStructure.unfinished` reads as a trailing function word. That is
+    /// how an abandoned thought is recognised instead of becoming an errand.
+    func testThroatClearingStillComesOff() {
+        for (input, expected) in [
+            ("I was thinking, buy milk", "buy milk"),
+            ("I was thinking it might make sense to add a dark mode",
+             "it might make sense to add a dark mode"),
+            ("I was thinking about", "about"),
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(input), expected)
+        }
+    }
 }
