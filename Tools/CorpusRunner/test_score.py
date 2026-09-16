@@ -343,7 +343,7 @@ class RecordedLimitTests(unittest.TestCase):
         that branch. The claim was pinned by the assertion below, which
         checks the note *contains* "one-token branch" and never that the
         uniqueness it asserted held: a prose pin cannot check a claim about
-        the data. `NoUtteranceIsScoredTwiceUnnoticed` is the check that can.
+        the data. `DuplicateUtterancesAreAllListed` is the check that can.
 
         Declaring it would record an accepted limit for a capture
         the engine is expected to get right, which is the marker-for-judgement
@@ -2223,63 +2223,95 @@ class EverySuiteIsActuallyRun(unittest.TestCase):
         self.assertEqual(unrun, [],
                          "suites that run nowhere but on somebody's laptop")
 
-class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
-    """One utterance, two ids, two families -- scored twice and counted twice.
+class DuplicateUtterancesAreAllListed(unittest.TestCase):
+    """The same utterance under two ids -- listed here, or the test fails.
 
     Found 2026-09-16 from a number that looked wrong and was not: the scorer
     reports `164 of 164 labelled` for `unfinished.tsv` while the census counts
-    163 utterances. Both are right. The set holds 164 rows carrying 163 distinct
-    utterances, because "I was thinking about" is in it as INC34
-    (`incomplete-complement`) and again as INC58 (`trailing-function-word`).
+    163 utterances. Both are right. 164 rows carry 163 distinct utterances,
+    because "I was thinking about" is in it as INC34 (`incomplete-complement`)
+    and again as INC58 (`trailing-function-word`).
 
-    Why it is worth a test rather than a note. Every duplicate found so far
-    carries the SAME expectation under a DIFFERENT family, so the two rows can
-    never disagree and always move together. That makes the two family rates
-    non-independent: a fix aimed at one family moves the other's number with it,
-    and a reader comparing them sees coupled movement that reads as
-    generalisation. The family denominators also sum past the size of the set.
+    TWO DIFFERENT THINGS, KEPT APART ON PURPOSE.
 
-    It is not caught by anything else. `#99` added INC58 with a justification
-    saying no other row in the set reached its branch, three weeks after INC34
-    had been sitting in the set being that row; the test pinning that
-    justification asserted the note's *wording*, which was true, and could not
-    reach the claim. A claim about the data needs a check over the data.
+    `WITHIN_A_SET` is the one that distorts a rate. Both rows are scored by the
+    same scorer into the same denominators, and every pair found so far carries
+    the SAME expectation under a DIFFERENT family -- so one answer decides both,
+    neither row can fail unless the other does, and the second contributes a
+    denominator and no discriminating power. Two family rates then share a case:
+    a fix aimed at one moves the other, and the family denominators sum past the
+    size of the set.
 
-    Duplicates are allowed. Going unnoticed is not -- so the list below is
-    exact in both directions: a new duplicate fails, and one that quietly
-    disappears fails too, because a stale exception list is the thing that
-    started all this.
+    `ACROSS_SETS` is recorded, not judged. Eleven utterances live in more than
+    one readable set. That is not obviously a defect -- the sets measure
+    different properties, and one string belonging to both a routing set and a
+    coordination set is not the same thing as one rate counting it twice. **No
+    claim is made here about whether it should change.** It is asserted only so
+    that it cannot drift unnoticed, which is the failure this whole class exists
+    for: a count nobody rechecks is how the first one survived three weeks.
+
+    An earlier version of this class was called `NoUtteranceIsScoredTwice-
+    Unnoticed` while scanning only within each file, so eleven utterances were
+    scored twice, unnoticed, under a name saying none were. Caught in review. A
+    claim broader than what holds, inside the check written to stop claims
+    broader than what holds.
 
     WHY THIS DOES NOT JUST CALL `corpus-shape.py`, WHICH ALREADY FINDS THEM.
     It does, exactly: run it against `unfinished.tsv` and it prints
-    `unique utterances 163  DUPLICATED AT: INC34, INC58` and exits 1. The
-    duplicates went unnoticed for three weeks anyway, because **nothing
-    invokes that tool** -- no script under `Tools/CI/`, no workflow step. It is
-    a reviewer's hand-run instrument for staying blind to a sealed set, and it
-    reports a problem on two of the seven readable sets right now.
+    `unique utterances 163  DUPLICATED AT: INC34, INC58` and exits 1. They went
+    unnoticed anyway, because **nothing invokes that tool** -- no script under
+    `Tools/CI/`, no workflow step. It is a reviewer's hand-run instrument, and
+    it reports a problem on two of the seven readable sets right now.
 
-    It is also not currently wirable: on `abandonment.tsv`, which is ragged
+    It is also not wirable as it stands: on `abandonment.tsv`, which is ragged
     (37 rows of five columns, 18 of four), it raises `IndexError` at the label
-    -column counter rather than reporting the raggedness it just printed.
-    Fixing that and deciding whether a blind reviewer tool belongs in CI is a
-    change to that tool, with its own argument, and does not belong in a test
-    about a duplicate row.
+    counter rather than reporting the raggedness it just printed. Repairing it,
+    and deciding whether a blind reviewer's tool belongs in CI, is a change to
+    that tool with its own argument. So this is deliberately a second
+    implementation, and the honest reason is that it is the one that runs. Note
+    that it is also within-file only, so it cannot see `ACROSS_SETS` either.
 
-    So this is deliberately a second implementation, and the honest reason is
-    that it is the one that runs. When `corpus-shape.py` is repaired and wired
-    up, this class should shrink to asserting the list, not recomputing it.
+    Removing an id changes a denominator, which is a cost for the ledger rather
+    than a drive-by edit -- and whichever row of a pair goes, the rate gets
+    worse, so nobody is trimming these to flatter a number.
     """
 
-    #: utterance -> why the duplication is tolerated. Removing an id changes a
-    #: denominator, which is a measured cost for the ledger rather than a
-    #: drive-by edit, so these stay until someone decides them deliberately.
-    KNOWN = {
-        "I was thinking about":
-            "INC34 incomplete-complement / INC58 trailing-function-word",
-        "Sarah said the meeting is off":
-            "RC01 reported / DO09 reported-cancellation",
-        "possibly move the meeting to Friday":
-            "HY10 hypothetical / AD19 hedged-day",
+    #: (set, utterance) -> the ids sharing it inside that one file.
+    WITHIN_A_SET = {
+        ("unfinished.tsv", "I was thinking about"): ["INC34", "INC58"],
+        ("routed.tsv", "Sarah said the meeting is off"): ["DO09", "RC01"],
+        ("routed.tsv", "possibly move the meeting to Friday"): ["AD19", "HY10"],
+    }
+
+    #: utterance -> every (set, id) holding it, where more than one set does.
+    #: `Sarah said the meeting is off` is in both lists and neither is wrong:
+    #: it is duplicated inside `routed.tsv` AND present in `coordination.tsv`,
+    #: which is three homes in total. The within-set entry naming two ids was
+    #: read as naming all of them in review, so the two lists are separate.
+    ACROSS_SETS = {
+        "Sarah said call Mike tomorrow": [
+            ("coordination.tsv", "RS04"), ("routed.tsv", "RC02")],
+        "Sarah said never mind": [
+            ("abandonment.tsv", "ABN26"), ("unfinished.tsv", "FP39")],
+        "Sarah said the meeting is off": [
+            ("coordination.tsv", "RS01"), ("routed.tsv", "DO09"),
+            ("routed.tsv", "RC01")],
+        "Sarah told Mike to call me": [
+            ("routed.tsv", "AO09"), ("unfinished.tsv", "FP41")],
+        "Tomorrow I need to, never mind": [
+            ("abandonment.tsv", "ABN03"), ("unfinished.tsv", "ABD01")],
+        "buy milk and text daniel": [
+            ("coordination.tsv", "LC04"), ("unfinished.tsv", "FP78")],
+        "don't call the plumber": [
+            ("coordination.tsv", "NG01"), ("routed.tsv", "DO04")],
+        "remind me not to eat before the blood test": [
+            ("coordination.tsv", "NG02"), ("routed.tsv", "DO08")],
+        "remind me to": [
+            ("routed.tsv", "IR07"), ("unfinished.tsv", "INC26")],
+        "text Mike that the deal is off": [
+            ("coordination.tsv", "CM02"), ("routed.tsv", "DO10")],
+        "the wedding was off and then back on": [
+            ("coordination.tsv", "NG06"), ("routed.tsv", "DO12")],
     }
 
     def paths(self):
@@ -2292,72 +2324,91 @@ class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
             sys.path.pop(0)
         return corpus_paths
 
-    def duplicates(self):
-        """Returns (utterance -> sorted ids, list of sets that were skipped).
+    def homes(self):
+        """utterance -> [(set name, id)], every row of every readable set.
 
         Reads both columns by name through `utterance_column` and `id_column`,
         which raise, rather than through `column_of`, which returns None. A
-        first draft of this used `column_of` behind `except Exception` and
-        believed it was handling a set with an unreadable header. It was not:
-        nothing raised, `None` flowed downstream, and the failure arrived as a
-        `TypeError` several lines later -- a handler that could not fire,
-        guarding against something that could not happen, in a class written to
-        catch exactly that. The accessors that raise are the ones to use, and
-        the skip is recorded rather than swallowed.
+        first draft used `column_of` behind `except Exception` and believed it
+        was handling an unreadable header. It was not: nothing raised, `None`
+        flowed downstream, and the failure arrived as a `TypeError` several
+        lines later -- a handler that could not fire, guarding something that
+        could not happen.
+
+        The scanned-set count is returned rather than trusted. Skipping a set
+        with no known duplicate is otherwise invisible, and those are exactly
+        the sets where a new one would appear.
         """
         corpus_paths = self.paths()
-        found, skipped = {}, []
+        homes, scanned = {}, 0
         for path in corpus_paths.readable():
             lines = path.read_text(encoding="utf-8").splitlines()
             try:
                 utterance_at = corpus_paths.utterance_column(lines)
                 id_at = corpus_paths.id_column(lines)
-            except ValueError as exc:
-                skipped.append(f"{path.name}: {exc}")
+            except ValueError:
+                #: Caught only so `test_every_readable_set_was_scanned` can
+                #: report WHICH set stopped being readable, in one assertion
+                #: naming it. Letting it propagate instead turns one clean
+                #: failure into four stack traces and makes that test a guard
+                #: that cannot fire, since it never reaches its own assert.
                 continue
-            seen = {}
+            scanned += 1
             for _, cells in corpus_paths.data_rows(str(path)):
                 if len(cells) > max(utterance_at, id_at):
-                    seen.setdefault(cells[utterance_at], []).append(cells[id_at])
-            for utterance, ids in seen.items():
-                if len(ids) > 1:
-                    found[utterance] = sorted(ids)
-        return found, skipped
+                    homes.setdefault(cells[utterance_at], []).append(
+                        (path.name, cells[id_at]))
+        return homes, scanned
+
+    def test_every_readable_set_was_scanned(self):
+        """A set dropping out makes both lists below look exact."""
+        corpus_paths = self.paths()
+        _, scanned = self.homes()
+        expected = [path.name for path in corpus_paths.readable()]
+        self.assertEqual(scanned, len(expected),
+                         f"only {scanned} of {len(expected)} readable sets "
+                         f"({', '.join(expected)}) could be scanned, so a "
+                         "duplicate inside the missing one would not be found "
+                         "and the lists below would still pass -- five of the "
+                         "seven hold no listed duplicate, so skipping one is "
+                         "otherwise invisible")
 
     def test_the_scan_reaches_rows_at_all(self):
         """Without this, an empty result reads the same as a clean corpus."""
-        corpus_paths = self.paths()
-        reached = 0
-        for path in corpus_paths.readable():
-            reached += sum(1 for _ in corpus_paths.data_rows(str(path)))
-        self.assertGreater(reached, 500,
-                           "the scan read almost nothing, so the check below "
+        homes, _ = self.homes()
+        self.assertGreater(sum(len(v) for v in homes.values()), 500,
+                           "the scan read almost nothing, so the checks below "
                            "would report a clean corpus either way")
 
-    def test_every_readable_set_was_actually_scanned(self):
-        """A set that drops out of the scan makes the list below look exact."""
-        _, skipped = self.duplicates()
-        self.assertEqual(skipped, [],
-                         "a readable set was skipped, so a duplicate inside it "
-                         "would not be found and the KNOWN list would still "
-                         "pass -- resolve the header rather than the symptom")
+    def test_within_set_duplicates_are_exactly_the_listed_ones(self):
+        """Keyed by (set, utterance): two sets can hold the same duplicate."""
+        homes, _ = self.homes()
+        found = {}
+        for utterance, where in homes.items():
+            per_set = {}
+            for name, cid in where:
+                per_set.setdefault(name, []).append(cid)
+            for name, ids in per_set.items():
+                if len(ids) > 1:
+                    found[(name, utterance)] = sorted(ids)
+        self.assertEqual(found, {k: sorted(v) for k, v in self.WITHIN_A_SET.items()},
+                         "the utterances duplicated inside a single readable "
+                         "set are not the ones listed. A new one means a row "
+                         "was added that already existed under another id in "
+                         "that file, so the family rates it lands in stop "
+                         "being independent. One disappearing means this list "
+                         "is stale.")
 
-    def test_no_duplicate_utterance_appears_unlisted(self):
-        found, _ = self.duplicates()
-        self.assertEqual(
-            sorted(found), sorted(self.KNOWN),
-            "the duplicated utterances in the readable dev sets are not the "
-            "ones listed here. A new one means a row was added that already "
-            "existed under another id -- check before adding, since the family "
-            "rates it lands in stop being independent. One disappearing means "
-            "this list is stale and should lose the entry.")
-
-    def test_each_known_duplicate_really_is_one(self):
-        """The list cannot be satisfied by naming utterances that are not there."""
-        found, _ = self.duplicates()
-        for utterance in self.KNOWN:
-            self.assertIn(utterance, found)
-            self.assertGreater(len(found[utterance]), 1)
+    def test_cross_set_sharing_is_exactly_the_listed_set(self):
+        """Recorded so it cannot drift. Not a claim that it is wrong."""
+        homes, _ = self.homes()
+        found = {u: sorted(set(w)) for u, w in homes.items()
+                 if len({name for name, _ in w}) > 1}
+        self.assertEqual(found, {u: sorted(set(w)) for u, w in self.ACROSS_SETS.items()},
+                         "the utterances appearing in more than one readable "
+                         "set are not the ones listed. Whether that is a defect "
+                         "is undecided; going unnoticed is not allowed either "
+                         "way.")
 
 
 class CorpusShapeTests(unittest.TestCase):
