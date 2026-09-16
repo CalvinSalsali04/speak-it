@@ -81,5 +81,11 @@ row's re-evaluated answer disagrees with its own recorded gap the line is marked
 What it cannot tell you: it re-evaluates a pure function on the same input
 rather than instrumenting the call, so it is the branch for that text, and it
 says nothing about a caller that passes some other text. Its output is
-deliberately not in the `--` record format, because the three scorers split
+deliberately not in the `──` record format, because the three scorers split
 reports on that prefix.
+
+`questions/` holds checked-in inputs for this mode, one file per question, each
+one carrying the question and the prediction above the utterances. Adding a file
+there is how a reading gets a preregistered answer instead of an argument;
+`declared-limits.txt` is run by the `language` job whenever a dispatch asks for
+`devset_failures`.
