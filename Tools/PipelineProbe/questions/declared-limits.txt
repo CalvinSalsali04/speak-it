@@ -1,0 +1,97 @@
+# Which branch answers for the rows `unfinished.tsv:35` declares out of scope.
+#
+# THE QUESTION. Line 35 of `Tools/CorpusRunner/devsets/unfinished.tsv` declares
+# seven ids a design limit, with the reason "out of scope, and honestly so" —
+# fragments ending in a stranded preposition, per the comment in
+# `ClauseStructure.swift` reading "Fragments ending in a stranded preposition
+# are therefore out of scope, and honestly so."
+# Run 35137835752 reported `DECLARED LIMITS NOW
+# PASSING 1 of 7`, naming INC46. A declared row that starts passing has three
+# possible causes, and only the third is a reason to remove the id:
+#
+#   1. the parser changed                     -> the declaration is stale
+#   2. an unrelated branch answers, and the
+#      recorded reason is still true          -> KEEP the id
+#   3. it never belonged to the declaration   -> REMOVE the id, and say why
+#
+# A family total cannot tell these apart and neither can a dev-set row: the
+# scored path repairs and splits the text first, so a row written to vary one
+# thing inside `ThoughtCompletion.unfinished(in:)` changes what reaches it
+# instead. That is what closed PR #102. `--completion` calls the function on the
+# raw string, which is the only thing that separates them.
+#
+# THE PREDICTION, written before the run (2026-09-16, evaluation thread):
+#
+#   INC46 prints `danglingInfinitive`.
+#
+# Reasoning, from source and so far unobserved. In `ClauseStructure.swift`,
+# inside `ThoughtCompletion.unfinished(in:)`:
+#
+#     if lastWord == "to" {
+#         let markers = tokens.filter { $0.text.lowercased() == "to" }
+#         if markers.count == 1 { return .danglingInfinitive }
+#         return nil
+#     }
+#
+# sits textually BEFORE the stranded-preposition class guard, whose own test is:
+#
+#     guard !previous.isVerb else { return nil }
+#
+# INC46 is the only declared row ending on `to` — the seven end on and, about,
+# at, and, to, for, for — so it is answered and returned before the guard the
+# declaration's reason describes is ever reached. If that is right, INC46 is
+# case 3: miscategorised the day the declaration was written, not a limit that
+# closed.
+#
+# CITED BY QUOTATION, NOT BY LINE NUMBER, DELIBERATELY. An earlier draft of this
+# file gave `:709`, `:738` and `:759-764`. Those were correct when written and
+# wrong within the hour: #103 added five lines to the `Unfinished` docstring
+# above all of them, so every one drifted by five in a single commit. As read at
+# `bd1f760` they are `:714`, `:730`, `:744` and `:769`, and the next edit above
+# them will move those too. This file exists to outlive the code around it, so
+# it quotes what it means and pins the sha it was read at; bumping the numbers
+# would be the same mistake a second time.
+#
+# WHAT FALSIFIES IT:
+#
+#   INC46 prints `trailingFunctionWord`  -> the class guard answered after all,
+#                                           the recorded reason is true, INC46
+#                                           is case 2 and the id STAYS.
+#   INC46 prints nil                     -> the run's count is measuring
+#                                           something other than this function
+#                                           and the whole reading is wrong.
+#
+# The control below is the point. If `danglingInfinitive` is reached because
+# exactly one token is `to`, then the same fragment with a second `to` must come
+# back nil. If it comes back flagged, `markers.count == 1` is not what decides
+# and both threads' reading of that branch is wrong.
+#
+# THE SAME SENTENCE WAS WITHDRAWN ONCE, AND THAT IS NOT A CONTRADICTION.
+# `I need to send the report to` was proposed as a dev-set row in PR #102 and
+# refused: as a row it goes through repair and clause splitting before the
+# function sees it, and `i`, `need` and `to` are all in
+# `SpeechRepair.clauseInternalLead`, so it changed what reached the function
+# rather than the marker count. Here it never goes near that machinery —
+# `--completion` calls `ThoughtCompletion.unfinished(in:)` on the raw string.
+# Same sentence, different instrument, and only the instrument decided.
+#
+# Nothing here is edited on the strength of this file. It records the question
+# and the prediction; the trim commit waits for the printed answer.
+
+# --- the seven declared rows (INC41-44, 46-48) ---
+Pick up milk and
+Call Sarah about
+Meet Mike at
+Buy eggs bread and
+Send the report to
+Take the car in for
+Book the table for
+
+# --- two trailing-function-word rows NOT declared, for contrast ---
+# INC45 also passes and is also absent from the declaration.
+I need to talk to Sarah about the
+# INC58, noted in the set as the only row reaching the one-token branch.
+I was thinking about
+
+# --- the control: INC46 with a second `to` ---
+I need to send the report to
