@@ -46,6 +46,58 @@ enum InterpretationBridge {
         }
     }
 
+    /// Rows for a split-point reading, where the model supplied boundaries and
+    /// almost nothing else.
+    ///
+    /// It deliberately does NOT run `narrowed`. That function withdraws
+    /// capability on the strength of model-supplied role and obligation
+    /// evidence, and the Phase B contract carries none: `temporalRole` and
+    /// `locationRole` are always `.none` and `obligation` is always
+    /// `.unclear`, because the model is no longer asked. Run unchanged, its
+    /// defaults are not neutral — `.none` makes `placeIsNotATrigger` true, so
+    /// every location trigger is dropped, and `.unclear` makes
+    /// `unsettledActor` true, so every row is forced to need clarification.
+    /// Both would be the bridge inventing a restriction nobody expressed, and
+    /// the experiment would measure these defaults rather than the
+    /// segmentation.
+    ///
+    /// So a reconstructed segment is read exactly as the rules path reads a
+    /// clause it split itself: `ThoughtOrganizer.organize` on the segment's own
+    /// words, and its answer kept. The only model-driven behaviour in this path
+    /// is where the boundaries fall, and the exclusion of a segment the model
+    /// marked superseded — which `rowBearingSegments` already does by reading
+    /// `.corrected`. Polarity and attribution are carried into the record for
+    /// measurement and are not acted on, which is what they already were.
+    static func rows(
+        forBoundaryReading interpretation: CaptureInterpretation,
+        referenceDate: Date = .now,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [Row] {
+        interpretation.rowBearingSegments.map { segment in
+            let organization = ThoughtOrganizer.organize(
+                segment.analysisText,
+                referenceDate: referenceDate,
+                calendar: calendar
+            )
+            let thought = ExtractedThought(
+                sourceQuote: segment.quote,
+                rawQuote: segment.quote,
+                wasRepaired: false,
+                analysisText: segment.analysisText,
+                suggestedTitle: nil,
+                organization: organization,
+                confidence: 1,
+                needsReview: organization.needsClarification
+            )
+            return Row(
+                thought: thought,
+                disposition: segment.disposition,
+                obligation: segment.obligation,
+                demoted: false
+            )
+        }
+    }
+
     static func row(
         for segment: InterpretedSegment,
         referenceDate: Date = .now,

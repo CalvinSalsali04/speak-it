@@ -44,6 +44,7 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   SpeakIt/Models/ReminderTrigger.swift \
   "$OUT/ReminderCopySlice.swift" \
   SpeakIt/Interpretation/CaptureInterpretation.swift \
+  SpeakIt/Interpretation/SourceAtoms.swift \
   SpeakIt/Interpretation/InterpretationPolicy.swift \
   SpeakIt/Interpretation/InterpretationBridge.swift \
   SpeakIt/Interpretation/ModelInterpreter.swift \

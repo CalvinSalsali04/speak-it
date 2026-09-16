@@ -46,6 +46,15 @@ struct RunRecord: Codable {
     /// Set when no interpretation could be produced, naming why. An empty
     /// reading and an unavailable model must never score the same.
     var unavailable: String?
+    /// Set when the model answered and the whole reading was REFUSED as
+    /// malformed, naming which rule refused it. Separate from `unavailable`
+    /// on purpose: a fallback because no model could be reached and a fallback
+    /// because the model returned an impossible structure are different
+    /// numbers, and Calvin asked for both.
+    var refusal: String?
+    /// The split points the model returned, before any validation, so a
+    /// refusal can be read rather than only counted.
+    var splitAfterAtoms: [Int]?
 }
 
 let encoder: JSONEncoder = {
@@ -146,6 +155,8 @@ func value(_ flag: String) -> String? {
 
 let wantsAvailability = take("--availability")
 let wantsSelfcheck = take("--selfcheck")
+let useBoundaries = take("--boundaries")
+let wantsBoundarySelfcheck = take("--boundary-selfcheck")
 let repairFirst = take("--repair")
 let fallbackToRules = take("--fallback")
 let annotate = take("--annotate")
@@ -174,6 +185,86 @@ func reportAvailability() {
 #endif
     print("sampling:          greedy")
     print("instructions:      \(ModelInterpreter.instructionsFingerprint)")
+    print("boundary-prompt:   \(ModelInterpreter.boundaryInstructionsFingerprint)")
+}
+
+// MARK: - The split-point contract, checked without a model
+//
+// Two halves, both cheap and both runnable on a machine with no Apple
+// Intelligence. The decoder half runs anywhere Swift does. The schema half
+// needs the framework but NOT the model, which is what makes a hosted runner
+// able to answer "does this schema construct for a real capture's bounds"
+// before anybody spends device time on the run.
+
+func boundarySelfcheck() {
+    var failures = 0
+    func expect(_ condition: Bool, _ what: String) {
+        if condition { print("  ok    \(what)") } else { print("  FAIL  \(what)"); failures += 1 }
+    }
+
+    let transcript = "call the dentist tomorrow and pick up the prescription"
+    let atoms = SourceAtoms.atomize(transcript)
+    expect(atoms.count == 9, "nine atoms")
+    expect(SourceAtoms.segmentCap(atomCount: 9) == 5, "segment cap 5")
+    expect(SourceAtoms.splitCap(atomCount: 9) == 4, "split cap 4")
+    expect(SourceAtoms.slice(transcript, atoms, from: 5, to: 8) == "pick up the prescription",
+           "a slice is a substring of the original")
+
+    func decode(_ splits: [Int], _ count: Int) -> BoundaryDecode {
+        BoundaryReading.decode(
+            transcript: transcript,
+            splitAfterAtoms: splits,
+            metadata: Array(repeating: BoundarySegmentMetadata(), count: count))
+    }
+    func refusal(_ decoded: BoundaryDecode) -> BoundaryRefusal? {
+        if case .refused(let why) = decoded { return why }
+        return nil
+    }
+
+    // Valid, and every atom lands in exactly one segment.
+    if case .reading(let reading) = decode([3], 2) {
+        expect(reading.segments.count == 2, "one split gives two segments")
+        expect(reading.segments.map(\.quote).joined(separator: " ") == transcript,
+               "the segments rejoin to the transcript")
+    } else {
+        expect(false, "a valid reading decodes")
+    }
+    // Each refusal, by its own rule. A decoder that cannot refuse is not a
+    // gate, so every case is driven rather than assumed.
+    expect(refusal(decode([9], 2)) == .splitOutOfBounds, "out of bounds refuses")
+    expect(refusal(decode([8], 2)) == .splitAfterFinalAtom, "a split after the last atom refuses")
+    expect(refusal(decode([3, 3], 3)) == .duplicateSplit, "a duplicate refuses")
+    expect(refusal(decode([5, 3], 3)) == .splitsNotStrictlyIncreasing, "unsorted refuses")
+    expect(refusal(decode([0, 1, 2, 3, 4], 6)) == .tooManySplits, "more than the cap refuses")
+    expect(refusal(decode([3], 3)) == .metadataCardinality, "a metadata mismatch refuses")
+    var outside = BoundarySegmentMetadata(); outside.attributedToStartAtom = 7; outside.attributedToEndAtom = 7
+    expect(refusal(BoundaryReading.decode(transcript: transcript, splitAfterAtoms: [3],
+                                          metadata: [outside, BoundarySegmentMetadata()]))
+           == .attributionOutsideItsSegment, "attribution outside its segment refuses")
+    var backwards = BoundarySegmentMetadata(); backwards.supersededBySegment = 0
+    expect(refusal(BoundaryReading.decode(transcript: transcript, splitAfterAtoms: [3],
+                                          metadata: [BoundarySegmentMetadata(), backwards]))
+           == .impossibleSupersession, "a backwards supersession refuses")
+
+#if canImport(FoundationModels)
+    if #available(iOS 26.0, macOS 26.0, *) {
+        // Construction only. No model is reached, so this answers on any
+        // runner whose toolchain has the framework.
+        for count in [2, 3, 9, 25, 40] {
+            do {
+                _ = try OnDeviceInterpreter.boundarySchema(atomCount: count)
+                print("  ok    schema constructs for \(count) atoms "
+                      + "(cap \(SourceAtoms.segmentCap(atomCount: count)), "
+                      + "splits \(SourceAtoms.splitCap(atomCount: count)))")
+            } catch {
+                print("  FAIL  schema for \(count) atoms threw \(error)")
+                failures += 1
+            }
+        }
+    }
+#endif
+    print(failures == 0 ? "boundary selfcheck ok" : "boundary selfcheck FAILED (\(failures))")
+    if failures > 0 { exit(1) }
 }
 
 // MARK: - Generating
@@ -206,7 +297,9 @@ func generate(_ paths: [String]) async {
                 run: run,
                 settings: InterpretationRunSettings(
                     repairedFirst: repairFirst,
-                    instructionsFingerprint: ModelInterpreter.instructionsFingerprint
+                    instructionsFingerprint: useBoundaries
+                        ? ModelInterpreter.boundaryInstructionsFingerprint
+                        : ModelInterpreter.instructionsFingerprint
                 ),
                 input: input,
                 interpretation: nil,
@@ -214,9 +307,23 @@ func generate(_ paths: [String]) async {
             )
 #if canImport(FoundationModels)
             if #available(iOS 26.0, macOS 26.0, *) {
-                switch await OnDeviceInterpreter.interpret(input) {
-                case let .success(interpretation): record.interpretation = interpretation
-                case let .failure(reason): record.unavailable = reason.rawValue
+                if useBoundaries {
+                    // A refusal is recorded as a refusal, never as an absent
+                    // model: the fallback rate and the malformed-reading rate
+                    // are two different numbers.
+                    switch await OnDeviceInterpreter.boundaryReading(input) {
+                    case let .success(.reading(interpretation)):
+                        record.interpretation = interpretation
+                    case let .success(.refused(why)):
+                        record.refusal = why.rawValue
+                    case let .failure(reason):
+                        record.unavailable = reason.rawValue
+                    }
+                } else {
+                    switch await OnDeviceInterpreter.interpret(input) {
+                    case let .success(interpretation): record.interpretation = interpretation
+                    case let .failure(reason): record.unavailable = reason.rawValue
+                    }
                 }
             } else {
                 record.unavailable = ModelInterpreter.Unavailability.osTooOld.rawValue
@@ -272,9 +379,16 @@ func replay(_ path: String) {
                 operations: fallbackToRules ? rules.operations : []
             )
         case let .success(checked):
-            let rows = InterpretationBridge.rows(
-                for: checked, referenceDate: referenceDate, calendar: calendar
-            )
+            // The split-point reading goes through the bridge entry point that
+            // does not narrow: with no role or obligation evidence in the
+            // contract, `narrowed` would withdraw every location trigger and
+            // force every row to need clarification from its own defaults, and
+            // the run would measure those rather than the segmentation.
+            let rows = useBoundaries
+                ? InterpretationBridge.rows(
+                    forBoundaryReading: checked, referenceDate: referenceDate, calendar: calendar)
+                : InterpretationBridge.rows(
+                    for: checked, referenceDate: referenceDate, calendar: calendar)
             let operations = InterpretationBridge.operations(
                 for: checked, rulesRead: rules.operations.map(\.operation)
             )
@@ -444,6 +558,8 @@ if wantsAvailability {
     reportAvailability()
 } else if wantsSelfcheck {
     selfcheck()
+} else if wantsBoundarySelfcheck {
+    boundarySelfcheck()
 } else if let interpretPath {
     let semaphore = DispatchSemaphore(value: 0)
     Task {
