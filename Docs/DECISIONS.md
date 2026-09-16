@@ -2882,3 +2882,50 @@ about removing the quoted examples and wrong about the pass as a whole: the new
 sentence "when there is nothing left to quote, emit no further segment"
 plausibly bears on a runaway list too. So if RO02 comes back clean, the honest
 reading is that we do not know which change did it.
+
+## 2026-09-16 — A repair may not delete a marker the layers above it read
+
+`SpeechRepair` stripped a leading "I was thinking" without looking at what
+followed, so `"I was thinking of calling Priya"` reached the rest of the
+pipeline as `"of calling Priya"`. Fixed in #96; recorded here because the
+sentence-level fix is the least interesting part of it.
+
+**The rule. The test for a repair rule is what survives it, not what it
+removes.** A repair stage exists to make text easier for later stages to read,
+so it is judged by whether those stages can still see what they need. Deleting
+a hedge leaves a grammatical sentence and destroys the modality — the errand
+was *contemplated*, not committed to — and modality is exactly what the
+interpretation layer in `Docs/FOUNDATION_MODELS_ARCHITECTURE.md` is being built
+to read. No gating field moved on either affected capture, which is why nothing
+caught it for as long as it shipped.
+
+**Why the two halves of #96 are one decision rather than two.** The same rule
+explains a measurement hazard: a family's rate can be carried by a stage
+*upstream* of the engine being measured. `Tools/LanguageMutations` gained
+meaning-changing mutations, and one of `modality`'s four variants is "I was
+thinking I should" — the exact prefix this repair used to erase. The instrument
+was not wrong; an engine genuinely cannot see a distinction deleted before it
+arrives. But a reader would have attributed the rate to the engine. So: before
+attributing a divergent family's rate to the engine, check that the repair
+chain still delivers the marker the mutation added.
+
+**A repair rule and the rule that reads its residue are a matched pair, and
+both comments now say so.** The lookahead keeps stripping when nothing follows
+"about", because the lone "about" it leaves is what
+`ThoughtCompletion.unfinished` reads as a trailing function word — its
+one-token branch accepts `.preposition` where the multi-token switch accepts
+only `.determiner`. That coupling is now executed by
+`SpeechRepairTests.testTheRepairAndTheFragmentRuleAreOneChain` rather than
+asserted by two people reading it, which is also the guard on the trailing
+`\S`.
+
+**No cost-ledger row is owed, and the reason is worth writing down rather than
+inferred from its absence.** #96 also fixed `Tools/LanguageMutations/compare.py`
+truncating every date to its weekday (`due:\s+(\S+)` against
+`due:        Fri Aug 7 (day only)` kept `Fri`). That had been weakening the
+strict invariant families since before the divergent ones existed, so it is the
+kind of fix that usually restates a published figure. It restates none:
+`Docs/LANGUAGE_BASELINE.md` states twice that `invariance.sh` has never run
+against the real engine, so no recorded number rested on the old behaviour.
+Somebody auditing the ledger for a missing row should find this paragraph
+rather than a silence.

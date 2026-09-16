@@ -204,4 +204,42 @@ final class SpeechRepairTests: XCTestCase {
             XCTAssertEqual(DisfluencyFilter.stripped(input), expected)
         }
     }
+
+    /// The two rules as one chain, executed rather than read.
+    ///
+    /// `testThroatClearingStillComesOff` asserts what the repair produces and
+    /// the comment above it asserts what the next stage does with it. Nobody
+    /// had run the second half: the claim that the lone "about" is read as a
+    /// trailing function word was a reading of `ClauseStructure`, twice, by
+    /// two people. Two readings agreeing is not a measurement.
+    ///
+    /// This is also the guard on the trailing `\S` in the repair rule, from
+    /// the far side. Remove it and "I was thinking about" stops stripping,
+    /// arrives here as four tokens, falls to the multi-token path — which
+    /// accepts `.determiner` and not `.preposition` — and returns nil. Both
+    /// assertions below fail, and an abandoned thought would have become an
+    /// errand.
+    func testTheRepairAndTheFragmentRuleAreOneChain() {
+        let abandoned = DisfluencyFilter.stripped("I was thinking about")
+        XCTAssertEqual(abandoned, "about", "the repair must leave the bare marker")
+        XCTAssertEqual(
+            ThoughtCompletion.unfinished(in: abandoned),
+            .trailingFunctionWord,
+            "the token the repair produces must be the one this branch reads"
+        )
+    }
+
+    /// And the contemplation the fix preserves is not a fragment either.
+    ///
+    /// The hedge survives the repair, so what reaches the next stage is a whole
+    /// sentence. Asserted because "keeps the words" and "is still read as
+    /// finished" are two different claims and only the first was tested.
+    func testThePreservedHedgeIsNotReadAsUnfinished() {
+        let kept = DisfluencyFilter.stripped("I was thinking of calling Priya")
+        XCTAssertEqual(kept, "I was thinking of calling Priya")
+        XCTAssertNil(
+            ThoughtCompletion.unfinished(in: kept),
+            "a preserved hedge is a finished sentence, not a trailing fragment"
+        )
+    }
 }

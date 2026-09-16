@@ -794,7 +794,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         added its focused production controls. 3904 -> 3912 on 2026-09-16:
         the two `SpeechRepairTests` cases for "I was thinking", whose inputs
         and expectations are nine multi-word literals of which eight are new
-        to this directory. What the test is actually
+        to this directory. 3912 -> 3916 the same day, when the follow-up to
+        that change added two tests running the repair's output straight into
+        `ThoughtCompletion.unfinished`. The utterances were already here, so
+        the four are three assertion messages and — enumerated rather than
+        assumed — one quoted phrase inside a doc comment, `"keeps the words"`.
+        Worth knowing before predicting one of these deltas: a phrase put in
+        quotation marks while explaining a test counts exactly like a fixture. What the test
+        is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -807,7 +814,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3912)
+        self.assertEqual(len(space), 3916)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
