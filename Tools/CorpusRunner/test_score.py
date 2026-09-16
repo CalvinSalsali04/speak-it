@@ -2276,6 +2276,11 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
     worse, so nobody is trimming these to flatter a number.
     """
 
+    #: The refusal text and the duplicate lists are both longer than the
+    #: default cutoff, and a truncated one is a failure message that names no
+    #: file, no line and no id -- which is the whole job of these assertions.
+    maxDiff = None
+
     #: (set, utterance) -> the ids sharing it inside that one file.
     WITHIN_A_SET = {
         ("unfinished.tsv", "I was thinking about"): ["INC34", "INC58"],
@@ -2325,64 +2330,93 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
         return corpus_paths
 
     def homes(self):
-        """utterance -> [(set name, id)], every row of every readable set.
+        """(utterance -> [(set name, id)], set name -> why it was refused).
 
-        Reads both columns by name through `utterance_column` and `id_column`,
-        which raise, rather than through `column_of`, which returns None. A
-        first draft used `column_of` behind `except Exception` and believed it
-        was handling an unreadable header. It was not: nothing raised, `None`
-        flowed downstream, and the failure arrived as a `TypeError` several
-        lines later -- a handler that could not fire, guarding something that
-        could not happen.
+        Every row comes from `corpus_paths.utterances`, which is the reader the
+        scorers use. Three drafts of this method got here:
 
-        The scanned-set count is returned rather than trusted. Skipping a set
-        with no known duplicate is otherwise invisible, and those are exactly
-        the sets where a new one would appear.
+        1. `column_of` behind `except Exception`, believing it was handling an
+           unreadable header. `column_of` returns None rather than raising, so
+           nothing was handled, `None` flowed downstream, and the failure
+           arrived as a `TypeError` several lines later.
+        2. `utterance_column` and `id_column`, which do raise, over a
+           hand-rolled row loop guarded by `if len(cells) > max(...)`. That
+           guard **skipped** a short row. `utterances()` **refuses** one, and
+           its own comment is the argument: "A dropped row is a denominator one
+           smaller and no message." Appending one tab-free line to a set left
+           this scan reading 164 of 165 rows with all four tests green -- a
+           duplicate detector losing a row in silence, which is the defect this
+           class exists to catch, a layer below where it was looking.
+        3. This one, which owns no parsing at all.
+
+        A set is scanned whole or not at all: rows are collected per file and
+        merged only if the file is read to the end, so `refused` means exactly
+        "contributed nothing" rather than "contributed an unknown prefix". The
+        refusal text is kept because it names the file and line, which is what
+        anyone fixing it needs and what a bare "this set dropped out" withholds.
         """
         corpus_paths = self.paths()
-        homes, scanned = {}, 0
+        homes, refused = {}, {}
         for path in corpus_paths.readable():
-            lines = path.read_text(encoding="utf-8").splitlines()
+            found = []
             try:
-                utterance_at = corpus_paths.utterance_column(lines)
-                id_at = corpus_paths.id_column(lines)
-            except ValueError:
-                #: Caught only so `test_every_readable_set_was_scanned` can
-                #: report WHICH set stopped being readable, in one assertion
-                #: naming it. Letting it propagate instead turns one clean
-                #: failure into four stack traces and makes that test a guard
-                #: that cannot fire, since it never reaches its own assert.
+                for _, cid, utterance in corpus_paths.utterances(str(path)):
+                    found.append((utterance, (path.name, cid)))
+            except ValueError as refusal:
+                #: Caught, not propagated, so that the failure is one assertion
+                #: naming the set and the line rather than four stack traces --
+                #: and so that `test_every_readable_set_was_scanned` reaches its
+                #: own assert instead of erroring first, which would make it a
+                #: guard that cannot fire.
+                refused[path.name] = str(refusal)
                 continue
-            scanned += 1
-            for _, cells in corpus_paths.data_rows(str(path)):
-                if len(cells) > max(utterance_at, id_at):
-                    homes.setdefault(cells[utterance_at], []).append(
-                        (path.name, cells[id_at]))
-        return homes, scanned
+            for utterance, home in found:
+                homes.setdefault(utterance, []).append(home)
+        return homes, refused
+
+    def scanned_homes(self):
+        """`homes()`, with the precondition the lists depend on asserted first.
+
+        A refused set makes every list below wrong in the same uninteresting
+        way: the entries in that file simply vanish. Asserting the refusal
+        here means each of those failures reads as the refusal, naming the
+        file and line, instead of leading with a thousand-character diff of
+        utterances that are missing for a reason nobody has been told yet.
+
+        It does NOT stop them failing -- `test_every_readable_set_was_scanned`
+        would then be the only thing standing between a half-read corpus and a
+        green suite, and one assertion carrying a guarantee alone is how this
+        PR started.
+        """
+        homes, refused = self.homes()
+        self.assertEqual(
+            refused, {},
+            "this list cannot be exact while a readable set goes unread, so "
+            "the failure is the refusal above and not a duplicate.")
+        return homes
 
     def test_every_readable_set_was_scanned(self):
         """A set dropping out makes both lists below look exact."""
-        corpus_paths = self.paths()
-        _, scanned = self.homes()
-        expected = [path.name for path in corpus_paths.readable()]
-        self.assertEqual(scanned, len(expected),
-                         f"only {scanned} of {len(expected)} readable sets "
-                         f"({', '.join(expected)}) could be scanned, so a "
-                         "duplicate inside the missing one would not be found "
-                         "and the lists below would still pass -- five of the "
-                         "seven hold no listed duplicate, so skipping one is "
-                         "otherwise invisible")
+        _, refused = self.homes()
+        self.assertEqual(
+            refused, {},
+            "a readable set could not be read to the end, so it contributed "
+            "no rows and a duplicate inside it would not be found -- both "
+            "lists below would still pass. Three of the seven sets appear in "
+            "neither list, which is exactly where a new duplicate would show "
+            "up, so a set dropping out is otherwise invisible. The refusal "
+            "above names the file and the line.")
 
     def test_the_scan_reaches_rows_at_all(self):
         """Without this, an empty result reads the same as a clean corpus."""
-        homes, _ = self.homes()
+        homes = self.scanned_homes()
         self.assertGreater(sum(len(v) for v in homes.values()), 500,
                            "the scan read almost nothing, so the checks below "
                            "would report a clean corpus either way")
 
     def test_within_set_duplicates_are_exactly_the_listed_ones(self):
         """Keyed by (set, utterance): two sets can hold the same duplicate."""
-        homes, _ = self.homes()
+        homes = self.scanned_homes()
         found = {}
         for utterance, where in homes.items():
             per_set = {}
@@ -2401,7 +2435,7 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
 
     def test_cross_set_sharing_is_exactly_the_listed_set(self):
         """Recorded so it cannot drift. Not a claim that it is wrong."""
-        homes, _ = self.homes()
+        homes = self.scanned_homes()
         found = {u: sorted(set(w)) for u, w in homes.items()
                  if len({name for name, _ in w}) > 1}
         self.assertEqual(found, {u: sorted(set(w)) for u, w in self.ACROSS_SETS.items()},
