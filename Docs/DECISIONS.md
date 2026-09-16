@@ -2775,8 +2775,9 @@ because bridging was handled. The real cost is `mixed-runon` destination, 7/8
 to 4/8, and on the four of those the model was trusted with it scored 0/4
 against the parser's 3/4.
 
-**One defect dominated every measure.** 32 of the row-bearing segments were not
-verbatim spans of their capture, and `InterpretationPolicy` refused 25 of the
+**One defect dominated every measure.** 32 of the 99 row-bearing segments
+carried a quote that is not a verbatim span of their capture — 22 whose words
+are not in it and 10 that are empty — and `InterpretationPolicy` refused 25 of the
 46 readings — 23 `ungroundedSpan`, one `inventedPerson`, one
 `impossibleCombination` (`reported` + `speakerOwes`, refused by the rule
 written for exactly that failure). Two captures reported destructive operations
@@ -2786,13 +2787,38 @@ before reaching the operation layer, and `ACTED ON ANYWAY` was 0 in all three
 columns. That is the deterministic gate doing the job it was built for, and it
 is the reason the prototype could be pointed at a development set at all.
 
-**The cause was our own prompt.** The model was copying its brief into the
-transcript's place. Eleven captures emitted a segment quoted as the bare word
+**Part of the cause was our own prompt.** The model was copying its brief into
+the transcript's place. Ten captures emitted a segment quoted as the bare word
 `tomorrow`, which was the example inside the `@Guide` for `carriedContext`; one
 emitted `Ask Dana about Friday`, a verbatim instructions sentence; one emitted
-`Dana said I should call the dentist`, which is the instructions'
-`Mum said I should call the dentist` with the name swapped. **An illustration
-sitting in a field's own description is a candidate value for that field.**
+`Dana said I should call the dentist`, which is line 93's sentence frame
+carrying the name from line 99, so two separate examples blended rather than
+one copied. **An illustration sitting in a field's own description is a
+candidate value for that field.**
+
+**The rest of the cause is not ours, and it is the more serious half.** RO02 is
+six words — *Sarah gave me her new number* — and the model returned it as one
+segment followed by ten fabricated errands: buy a toothbrush, toothpaste,
+floss, mouthwash, a razor, a toothpaste holder, a toothbrush holder, a
+toothbrush case, a toothbrush box, a toothbrush brush. None of those words
+appears in the prompt, the schema or the development set; all four
+interpretation sources were grepped and return nothing. It is a degenerate
+repetition loop rather than an echo, every segment of it marked `reported`,
+`attributedTo: unknown` and **confidence 100**, and `sampling: greedy` is the
+setting that failure mode lives in. The deterministic gate is the only thing
+that stood between a six-word capture and ten invented errands in somebody's
+Today list, and it held.
+
+**`confidencePercent` is unusable and nothing should be built on it.** Across
+all 99 segments it reported **100 on 91 and 0 on 8, never any other value**,
+and it reported 100 on every one of the 22 segments whose quote is not in the
+capture, RO02's ten inventions included. It is not weakly correlated with
+correctness; in this run it is uncorrelated with fabrication. One thing reads
+it today — `InterpretationBridge` forces review below 82 — and because that can
+only widen review it is a dead term rather than a hole, but it should not
+become a ranking or triage input. The model also never used three of its six
+dispositions: `corrected`, `hypothetical` and `aside` appear nowhere in 99
+segments.
 
 So the quoted examples are gone from the instructions and from the two
 `@Guide` descriptions that carried one, replaced by descriptions of the same

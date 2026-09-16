@@ -21,7 +21,7 @@ that undoes it.
 
 3. **The prompt carries no quoted example text.** The first run on a device
    (46 `runon` captures, 2026-09-16) found the model copying its own brief into
-   the transcript's place: eleven captures emitted a segment quoted as the bare
+   the transcript's place: ten captures emitted a segment quoted as the bare
    word `tomorrow`, which was the example inside the `@Guide` for
    `carriedContext`, and two more emitted sentences lifted from the
    instructions. An illustration sitting in a field's own description is a
