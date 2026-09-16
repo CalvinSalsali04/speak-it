@@ -129,12 +129,24 @@ if showClausesOnly {
 if showCompletion {
     // `ThoughtOrganizer.organize` is called on `segment.analysisText`
     // (`ThoughtExtractor.swift:504`) and its first act is to trim
-    // (`ThoughtOrganizer.swift:794`), so a trimmed `analysisText` is the very
-    // string the scored guard at `ThoughtOrganizer.swift:966` tests. This
-    // re-evaluates a pure function of that identical input; it does not
-    // reconstruct the input, and it is not an inference from the outcome.
+    // (`ThoughtOrganizer.swift:794`). So for a row whose organization was
+    // derived from its OWN analysis text, a trimmed `analysisText` is the very
+    // string the scored guard at `ThoughtOrganizer.swift:966` tested, and this
+    // re-evaluates a pure function of that identical input rather than
+    // reconstructing it or inferring it from the outcome.
     //
-    // Deliberately NOT the `-- "..."` record header: `devsets/score.py`,
+    // That is not every row. The spoken-list splitter at
+    // `ThoughtExtractor.swift:684-699` builds one row per product with
+    // `analysisText` synthesised from the entry and `organization:
+    // item.organization` INHERITED from the parent, so the guard never saw that
+    // string. Rather than leave the exception to this comment -- a comment is
+    // what failed last time -- the loop below reports it: on the rules path
+    // `.incompleteThought` is set only by that guard
+    // (`ThoughtOrganizer.swift:979`), so a row whose re-evaluated answer
+    // disagrees with its own recorded gap did not get its organization from
+    // this text, and the line says so.
+    //
+    // Deliberately NOT the `── "..."` record header: `devsets/score.py`,
     // `everyday/score.py` and `heldout/score.py` split reports on that prefix,
     // and a mode whose output could be read as records is exactly the hazard
     // `printRows` warns about in `rowreport.swift`.
@@ -159,6 +171,10 @@ if showCompletion {
             // the utterance was never about the string the guard saw.
             let drift = analysis == trimmed ? "" : "   <- differs from the utterance"
             print("   item \(index + 1):     \(scored?.rawValue ?? "nil")   analysis=\"\(analysis)\"\(drift)")
+            if (scored != nil) != (item.organization.state.gap == .incompleteThought) {
+                print("      NOT THIS ROW'S INPUT: the recorded gap disagrees, so this")
+                print("      row's organization came from some other text -- see :684")
+            }
         }
     }
     exit(0)
