@@ -2902,9 +2902,14 @@ DECLARED LIMITS NOW PASSING   1 of 7
 ```
 
 and the same run's dev-set failure list names INC41 INC42 INC43 INC44 INC47
-INC48 and not INC46 — two independent readings of one run agreeing. That also
-settles the open term: INC45 is passing, so the three are INC45, INC46 and
-INC58. **This was the first time that line had ever printed against the real
+INC48 and not INC46 — two independent readings of one run agreeing.
+
+**All three passing rows are named by the instrument, none deduced.** INC45 and
+INC58 are absent from that failure list as well, so the three are INC45, INC46
+and INC58 by direct report. An earlier draft of this paragraph recovered INC45
+by subtraction from the family total instead, which works and should still not
+be written down: reconstructing a row's identity from `9 cases, 3 OK` is the
+exact reasoning this section exists to stop, and the list makes it unnecessary. **This was the first time that line had ever printed against the real
 `unfinished.tsv`;** every earlier piece of evidence for it was synthetic, from
 the scorer's own self-tests with fabricated probe output.
 
