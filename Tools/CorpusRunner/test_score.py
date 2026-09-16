@@ -334,8 +334,18 @@ class RecordedLimitTests(unittest.TestCase):
         reduces it to the single token "about", and the one-token branch of
         `ThoughtCompletion.unfinished` accepts `.preposition` exactly where the
         multi-token switch refuses it. Same word class, different branch, and
-        the branch is the whole reason the row exists -- no other row in the set
-        reaches it. Declaring it would record an accepted limit for a capture
+        the branch is the whole reason the row exists.
+
+        That sentence used to end "-- no other row in the set reaches it",
+        and it was false when written. INC34 is the identical utterance
+        under `incomplete-complement` and had been in the set since
+        2026-08-26, three weeks before #99 added INC58, so both rows reach
+        that branch. The claim was pinned by the assertion below, which
+        checks the note *contains* "one-token branch" and never that the
+        uniqueness it asserted held: a prose pin cannot check a claim about
+        the data. `NoUtteranceIsScoredTwiceUnnoticed` is the check that can.
+
+        Declaring it would record an accepted limit for a capture
         the engine is expected to get right, which is the marker-for-judgement
         substitution this test exists to prevent, one level up.
         """
@@ -2212,6 +2222,103 @@ class EverySuiteIsActuallyRun(unittest.TestCase):
                  if str(path.relative_to(root)) not in workflow]
         self.assertEqual(unrun, [],
                          "suites that run nowhere but on somebody's laptop")
+
+class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
+    """One utterance, two ids, two families -- scored twice and counted twice.
+
+    Found 2026-09-16 from a number that looked wrong and was not: the scorer
+    reports `164 of 164 labelled` for `unfinished.tsv` while the census counts
+    163 utterances. Both are right. The set holds 164 rows carrying 163 distinct
+    utterances, because "I was thinking about" is in it as INC34
+    (`incomplete-complement`) and again as INC58 (`trailing-function-word`).
+
+    Why it is worth a test rather than a note. Every duplicate found so far
+    carries the SAME expectation under a DIFFERENT family, so the two rows can
+    never disagree and always move together. That makes the two family rates
+    non-independent: a fix aimed at one family moves the other's number with it,
+    and a reader comparing them sees coupled movement that reads as
+    generalisation. The family denominators also sum past the size of the set.
+
+    It is not caught by anything else. `#99` added INC58 with a justification
+    saying no other row in the set reached its branch, three weeks after INC34
+    had been sitting in the set being that row; the test pinning that
+    justification asserted the note's *wording*, which was true, and could not
+    reach the claim. A claim about the data needs a check over the data.
+
+    Duplicates are allowed. Going unnoticed is not -- so the list below is
+    exact in both directions: a new duplicate fails, and one that quietly
+    disappears fails too, because a stale exception list is the thing that
+    started all this.
+    """
+
+    #: utterance -> why the duplication is tolerated. Removing an id changes a
+    #: denominator, which is a measured cost for the ledger rather than a
+    #: drive-by edit, so these stay until someone decides them deliberately.
+    KNOWN = {
+        "I was thinking about":
+            "INC34 incomplete-complement / INC58 trailing-function-word",
+        "Sarah said the meeting is off":
+            "RC01 reported / DO09 reported-cancellation",
+        "possibly move the meeting to Friday":
+            "HY10 hypothetical / AD19 hedged-day",
+    }
+
+    def paths(self):
+        #: Same accessor idiom as `CorpusPathTests`: import it the way the
+        #: scorers do rather than adding a module-level import to this file.
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def duplicates(self):
+        """utterance -> sorted ids, for every readable set, keyed per set."""
+        corpus_paths = self.paths()
+        found = {}
+        for path in corpus_paths.readable():
+            lines = path.read_text(encoding="utf-8").splitlines()
+            try:
+                column = corpus_paths.column_of(lines, "utterance")
+            except Exception:  # a set without a named utterance column
+                continue
+            seen = {}
+            for _, cells in corpus_paths.data_rows(str(path)):
+                if len(cells) > max(column, 0):
+                    seen.setdefault(cells[column], []).append(cells[0])
+            for utterance, ids in seen.items():
+                if len(ids) > 1:
+                    found[utterance] = sorted(ids)
+        return found
+
+    def test_the_scan_reaches_rows_at_all(self):
+        """Without this, an empty result reads the same as a clean corpus."""
+        corpus_paths = self.paths()
+        reached = 0
+        for path in corpus_paths.readable():
+            reached += sum(1 for _ in corpus_paths.data_rows(str(path)))
+        self.assertGreater(reached, 500,
+                           "the scan read almost nothing, so the check below "
+                           "would report a clean corpus either way")
+
+    def test_no_duplicate_utterance_appears_unlisted(self):
+        found = self.duplicates()
+        self.assertEqual(
+            sorted(found), sorted(self.KNOWN),
+            "the duplicated utterances in the readable dev sets are not the "
+            "ones listed here. A new one means a row was added that already "
+            "existed under another id -- check before adding, since the family "
+            "rates it lands in stop being independent. One disappearing means "
+            "this list is stale and should lose the entry.")
+
+    def test_each_known_duplicate_really_is_one(self):
+        """The list cannot be satisfied by naming utterances that are not there."""
+        found = self.duplicates()
+        for utterance in self.KNOWN:
+            self.assertIn(utterance, found)
+            self.assertGreater(len(found[utterance]), 1)
+
 
 class CorpusShapeTests(unittest.TestCase):
     """The reviewer's tool for a sealed set, which must never print a capture.
