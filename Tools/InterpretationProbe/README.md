@@ -45,15 +45,22 @@ has Apple Intelligence and should not have to think about cuts and flags:
 ```bash
 ./Tools/InterpretationProbe/first-run.sh              # runon, 1 run
 ./Tools/InterpretationProbe/first-run.sh runon 3      # three runs, for --spread
-./Tools/InterpretationProbe/first-run.sh all 1        # all 632 development captures
+./Tools/InterpretationProbe/first-run.sh all 1        # all 631 development captures
 ```
 
 It builds the probe, prints and records `--availability` (stopping there, with
 the reason, if the model is not reachable), cuts the development set to
 `id<TAB>capture`, generates, times the run, and says which file to send back.
-**Development sets only: it refuses `heldout`, `everyday`, `adversarial` and
-`consequence` by name**, so pointing the generating half at a sealed set is
-never a thing that happens by accident here.
+**Development sets only: the set named has to be one of the `.tsv` files in
+`Tools/CorpusRunner/devsets/`, or `all`**, so pointing the generating half at a
+sealed set is not something that happens by accident here. It is an allowlist
+read from the directory rather than a list of sealed names, for two reasons: a
+name is not what reaches the file (`$SET` is interpolated into a path, and
+`../heldout/heldout` resolves to the sealed set while matching none of those
+names), and a list of what is forbidden permits the next sealed set anybody
+adds. The counts, recomputed on this head rather than carried forward:
+abandonment 55, coordination 121, framing 45, rambling 85, routed 116, runon
+46, unfinished 163, which is 631.
 
 ## The input file
 

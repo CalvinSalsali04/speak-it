@@ -11,8 +11,8 @@
 #   ./Tools/InterpretationProbe/first-run.sh all 1        # every development set
 #
 # Development sets only, on purpose. The held-out, everyday and adversarial sets
-# are sealed; a run made from one is itself sealed material, and this script
-# refuses to point at them so that choice is never made by accident here.
+# are sealed; a run made from one is itself sealed material, and the only sets
+# this script can be pointed at are the ones it finds on disk under `devsets/`.
 set -euo pipefail
 
 SP="$(cd "$(dirname "$0")" && pwd)"
@@ -22,21 +22,36 @@ cd "$ROOT"
 SET="${1:-runon}"
 RUNS="${2:-1}"
 
-case "$SET" in
-  heldout|everyday|adversarial|consequence)
-    # Named from the glob rather than from a list written here, so a development
-    # set added later is offered without anybody remembering to edit this line.
-    names=""
-    for f in "$ROOT"/Tools/CorpusRunner/devsets/*.tsv; do
-      [ -e "$f" ] || continue
-      names="${names:+$names }$(basename "$f" .tsv)"
-    done
-    echo "first-run.sh: '$SET' is a sealed set." >&2
-    echo "  A run made from one holds every capture verbatim and is sealed material." >&2
-    echo "  Development sets only from here: $names" >&2
-    exit 2
-    ;;
-esac
+# An allowlist computed from the directory, not a list of sealed names written
+# here. The earlier shape was the list of names and it was wrong in two ways.
+# `$SET` is interpolated into a path, so `../heldout/heldout` never met any of
+# those names and resolved to the sealed file; and a list of what is forbidden
+# permits by default, so the next sealed set anybody adds would be reachable
+# with nothing to say so. Naming what is allowed cannot go stale and makes a
+# path un-expressible: `../heldout/heldout` is not the name of a file in
+# `devsets/`, so it is refused without the refusal having to know about it.
+VALID=()
+for f in "$ROOT"/Tools/CorpusRunner/devsets/*.tsv; do
+  [ -e "$f" ] || continue
+  VALID+=("$(basename "$f" .tsv)")
+done
+if [ ${#VALID[@]} -eq 0 ]; then
+  echo "first-run.sh: no development sets under Tools/CorpusRunner/devsets" >&2
+  exit 2
+fi
+
+SET_OK=0
+for name in "${VALID[@]}"; do
+  if [ "$SET" = "$name" ]; then SET_OK=1; fi
+done
+if [ "$SET" = "all" ]; then SET_OK=1; fi
+if [ "$SET_OK" -eq 0 ]; then
+  echo "first-run.sh: '$SET' is not a development set." >&2
+  echo "  A run made from a sealed set holds every capture verbatim and is itself" >&2
+  echo "  sealed material, so this script only reads the sets below." >&2
+  echo "  Choose one of: ${VALID[*]} all" >&2
+  exit 2
+fi
 
 INPUT="$SP/captures.tsv"
 OUTPUT="$SP/runs.jsonl"
@@ -53,14 +68,13 @@ OUTPUT="$SP/runs.jsonl"
 # skip would take the header on six files and a capture on the seventh, with
 # nothing to notice it by.
 : > "$INPUT"
+# No existence check here: the allowlist above was built from these files, so
+# by this line `$SET` is either `all` or the basename of one of them. A second
+# check would look like the guard without being one.
 if [ "$SET" = "all" ]; then
   FILES=("$ROOT"/Tools/CorpusRunner/devsets/*.tsv)
 else
   FILES=("$ROOT/Tools/CorpusRunner/devsets/$SET.tsv")
-  if [ ! -f "${FILES[0]}" ]; then
-    echo "first-run.sh: no development set named '$SET'" >&2
-    exit 2
-  fi
 fi
 for file in "${FILES[@]}"; do
   grep -v '^#' "$file" | awk -F'\t' '$1 != "id" && NF>=2 {print $1 "\t" $2}' >> "$INPUT"
