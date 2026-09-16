@@ -791,7 +791,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         whose fixtures are hand-written captures. 3788 -> 3797 in review of
         that change, which made the two role fields load-bearing and added
         four cases for them. 3797 -> 3904 when the cancellation-scope fixture
-        added its focused production controls. What the test is actually
+        added its focused production controls. 3904 -> 3912 on 2026-09-16:
+        the two `SpeechRepairTests` cases for "I was thinking", whose inputs
+        and expectations are nine multi-word literals of which eight are new
+        to this directory. What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -804,7 +807,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3904)
+        self.assertEqual(len(space), 3912)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
