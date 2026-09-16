@@ -2892,10 +2892,28 @@ Which of the seven is passing is not answerable from a family total — that is
 the same reconstruction that failed above, and the totals only ever bound it.
 On the current set (`599fb7d`, run 35132499870, 9 rows, 3 OK, INC58 measured
 passing) the declared seven contribute `3 − 1 − (INC45 passing ? 1 : 0)`, which
-is one or two. **Retest, so this sentence cannot outlive its measurement:** any
-dispatch carrying `devset_failures: true` lists every dev-set miss by id, so a
-declared id absent from that list is the passing one. Since `599fb7d` every
-scoring run also prints `DECLARED LIMITS NOW PASSING` with the ids directly.
+bounded it at one or two.
+
+**Measured, so it no longer rests on that bound.** Run 35137835752 printed:
+
+```
+DECLARED LIMITS NOW PASSING   1 of 7
+  INC46
+```
+
+and the same run's dev-set failure list names INC41 INC42 INC43 INC44 INC47
+INC48 and not INC46 — two independent readings of one run agreeing. That also
+settles the open term: INC45 is passing, so the three are INC45, INC46 and
+INC58. **This was the first time that line had ever printed against the real
+`unfinished.tsv`;** every earlier piece of evidence for it was synthetic, from
+the scorer's own self-tests with fabricated probe output.
+
+**INC46 passing is not by itself grounds to remove it from the declaration.**
+The reason the declaration cites may still be exactly true while an unrelated
+branch answers for that row, in which case the record is worth keeping. Trace
+which branch answers before trimming; the declaration changes in its own
+pull request, graded by somebody who did not write the instrument that
+reported it.
 
 ## What this baseline does not cover
 

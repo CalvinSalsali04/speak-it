@@ -228,18 +228,25 @@ holds the first two outright; the third is split, and the split is the point:
    ```
 
    printed at zero too, because a line that appears only when something is
-   wrong reads exactly like nobody having looked. **A declared limit that
-   passes means the gap closed and the declaration did not** — re-read the
-   cited source and remove the ids that no longer belong, or this set goes on
-   understating the parser. That is not wired to the exit status yet, on
-   purpose: reddening the shared language job is how you announce a stale
-   comment by blocking everyone else's work.
+   wrong reads exactly like nobody having looked. That is not wired to the exit
+   status yet, on purpose: reddening the shared language job is how you announce
+   a stale comment by blocking everyone else's work.
+
+   **A passing limit is a prompt to re-read the cited reason, not a licence to
+   delete the id.** The declaration records a *decision* — for the
+   `trailing-function-word` ids, that preposition, conjunction and adverb were
+   each tried as a trailing class and each removed. A row can start passing by
+   a path that has nothing to do with that decision, and then the cited reason
+   is still exactly true and the record is still worth keeping. So trace which
+   branch actually answers for the row before touching the declaration. Delete
+   an id on the strength of the count alone and you destroy a true record of a
+   decision, which is the inverse of the staleness this line exists to catch.
 
    **The trigger, so "enforce later" is not itself a claim nobody recomputes.**
    The next dispatch carrying `devset_failures: true` names the passing ids —
-   any declared id absent from the miss list is one. Trim the declaration to
-   match, and the enforcement goes in on the run after that with nothing left
-   to announce. Until then the line above prints the ids on every run, so the
+   any declared id absent from the miss list is one. Trace each of those, trim
+   the ids whose stated reason no longer holds, and the enforcement goes in on
+   the run after that with nothing left to announce. Until then the line above prints the ids on every run, so the
    gap is visible rather than waiting on somebody's memory.
 
 `INC45` is deliberately outside the declaration and a test pins that. "I need

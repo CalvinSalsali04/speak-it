@@ -47,9 +47,25 @@ names it. Report first, enforce once the declaration is correct.
 
 **"Enforce later" is itself a claim nobody recomputes**, which is this entry's
 own defect one level up, so it carries its trigger: the next dispatch with
-`devset_failures: true` names the passing ids, the declaration is trimmed to
-match, and the enforcement goes in on the run after that with nothing left to
-announce. Review caught that; it was going to be a sentence with no retest.
+`devset_failures: true` names the passing ids, each is traced, the ids whose
+stated reason no longer holds are trimmed, and the enforcement goes in on the
+run after that with nothing left to announce. Review caught that; it was going
+to be a sentence with no retest.
+
+**A passing limit is a prompt to re-read the cited reason, not a licence to
+delete the id**, and the first draft of the report said the opposite — that a
+passing limit *means* the gap closed. It does not. The declaration records a
+decision: for the `trailing-function-word` ids, that preposition, conjunction
+and adverb were each tried as a trailing class and each removed. A row can
+start passing by a branch that has nothing to do with that decision, leaving
+the cited reason exactly true and the record worth keeping. Deleting an id on
+the strength of the count alone destroys a true record of a decision, which is
+the inverse of the staleness this line exists to catch. Review ruled on that
+when asked whether the newly named id could come out in this change, and the
+answer was no: trace first, in its own pull request, graded by somebody who did
+not write the instrument. **The instrument and the first finding it produces
+should not land in the same commit** — otherwise the response is graded by
+whoever built the thing that reported it.
 
 **Dated records were not refreshed, and two nearly were.**
 `trailing-function-word` reads `3/9` as of `599fb7d`, and the `2/8` under the

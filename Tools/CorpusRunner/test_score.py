@@ -480,7 +480,7 @@ class DevsetScorerTests(unittest.TestCase):
         #: would pass without anything having been named.
         named = [l.strip() for l in report.splitlines() if l.strip() == "A"]
         self.assertEqual(named, ["A"], "the passing limit must be named")
-        self.assertIn("the declaration is stale", report)
+        self.assertIn("re-read the reason each of these cites", report)
 
     def test_the_passing_count_prints_even_when_it_is_zero(self):
         """Absence of the line would read exactly like nobody having looked.
@@ -493,7 +493,7 @@ class DevsetScorerTests(unittest.TestCase):
         _, report = self.declared_both(first_flagged=False)
         self.assertIn("recall   unfinished flagged   0/2", report)
         self.assertIn("DECLARED LIMITS NOW PASSING   0 of 2", report)
-        self.assertNotIn("the declaration is stale", report)
+        self.assertNotIn("re-read the reason each of these cites", report)
 
     def test_the_block_is_absent_when_nothing_is_declared(self):
         """A set with no declaration must not grow a limits section."""
