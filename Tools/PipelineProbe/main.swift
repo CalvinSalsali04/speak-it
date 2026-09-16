@@ -28,6 +28,23 @@ if let index = arguments.firstIndex(of: "--clauses") {
     arguments.remove(at: index)
 }
 
+// Completion mode. Prints which `ThoughtCompletion.Unfinished` case answers,
+// for the raw utterance and for the exact string the scored call sees.
+//
+// The enum is `String`-raw-valued and `CaseIterable` because, in its own words,
+// "the behaviour has to be explainable" -- and nothing in the repository ever
+// printed it. `state.gap` cannot stand in: both cases carry
+// `.incompleteThought`, so the field that looks like the answer is the one
+// place the two branches are collapsed into one value. Without this, which
+// branch fired could only be inferred from whether a row was flagged, and
+// every such inference also moves the repair chain, so it cannot separate
+// "a different branch answered" from "a different string arrived".
+var showCompletion = false
+if let index = arguments.firstIndex(of: "--completion") {
+    showCompletion = true
+    arguments.remove(at: index)
+}
+
 // Drift mode. For every utterance, checks that the words a person is shown —
 // the row title and the quote — can all be found in what they actually said,
 // unless the row records that a repair happened inside its span.
@@ -96,6 +113,44 @@ if showClausesOnly {
         )
         let clauses = RuleBasedThoughtExtractor.splitClauses(corrected)
         print("\(utterance)\t\(clauses.joined(separator: " | "))")
+    }
+    exit(0)
+}
+
+if showCompletion {
+    // `ThoughtOrganizer.organize` is called on `segment.analysisText`
+    // (`ThoughtExtractor.swift:504`) and its first act is to trim
+    // (`ThoughtOrganizer.swift:794`), so a trimmed `analysisText` is the very
+    // string the scored guard at `ThoughtOrganizer.swift:966` tests. This
+    // re-evaluates a pure function of that identical input; it does not
+    // reconstruct the input, and it is not an inference from the outcome.
+    //
+    // Deliberately NOT the `-- "..."` record header: `devsets/score.py`,
+    // `everyday/score.py` and `heldout/score.py` split reports on that prefix,
+    // and a mode whose output could be read as records is exactly the hazard
+    // `printRows` warns about in `rowreport.swift`.
+    for utterance in utterances {
+        let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = ThoughtCompletion.unfinished(in: trimmed)
+        print("COMPLETION  \(utterance)")
+        print("   utterance:  \(raw?.rawValue ?? "nil")")
+        let result = ThoughtExtractionEngine.extractWithRules(
+            utterance,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        if result.items.isEmpty {
+            print("   items:      NONE  <- capture produced nothing")
+        }
+        for (index, item) in result.items.enumerated() {
+            let analysis = item.analysisText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let scored = ThoughtCompletion.unfinished(in: analysis)
+            // The whole point of printing the analysis text beside the case:
+            // when it differs from the utterance, a behavioural argument about
+            // the utterance was never about the string the guard saw.
+            let drift = analysis == trimmed ? "" : "   <- differs from the utterance"
+            print("   item \(index + 1):     \(scored?.rawValue ?? "nil")   analysis=\"\(analysis)\"\(drift)")
+        }
     }
     exit(0)
 }
