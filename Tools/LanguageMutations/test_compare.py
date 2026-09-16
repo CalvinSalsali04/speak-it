@@ -270,5 +270,133 @@ class FieldsAreReadWhole(unittest.TestCase):
         self.assertIn("due", found)
 
 
+class KeysComeFromTheReader(unittest.TestCase):
+    """Every field the comparison reads must be one `read_blocks` produces.
+
+    This was checked by hand twice, once by the author and once by the
+    reviewer, and both of us said the same thing about it: that is exactly the
+    shape which passes twice and then fails silently the day somebody adds a
+    sixth field. A hand-written fixture cannot catch it either, because the
+    fixture gets written by the same person adding the field.
+
+    So the keys are not listed here. They are collected by watching the
+    functions run against a block that remembers what it was asked for, and
+    compared against what the reader actually emits. Adding a field to
+    `_consequence` without adding it to `read_blocks` fails the first test;
+    adding it to `read_blocks` and reading it nowhere fails the second.
+    """
+
+    PROBE = (
+        '── "base"\n'
+        "   row title:  Call Sarah\n"
+        "   route:      Today   type: task   category: none   priority: normal\n"
+        "   due:        Fri Aug 7 (day only)\n"
+        "   remind:     nil   delivery: silent\n"
+        '── "retitled"\n'
+        "   row title:  Don't call Sarah\n"
+        "   route:      Today   type: task   category: none   priority: normal\n"
+        "   due:        Fri Aug 7 (day only)\n"
+        "   remind:     nil   delivery: silent\n"
+    )
+
+    class Recorder(dict):
+        """A block that remembers which fields were asked of it."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.seen = set()
+
+        def __getitem__(self, key):
+            self.seen.add(key)
+            if key not in self:
+                # Record the read and keep going. Raising here would kill the
+                # test on a KeyError and report a traceback instead of the
+                # name of the field that is missing, which is the one thing
+                # the person who just added it needs to be told.
+                return ()
+            return super().__getitem__(key)
+
+    def blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "probe.txt"
+            path.write_text(self.PROBE)
+            return compare.read_blocks(str(path))
+
+    def fields_read(self):
+        """Drive every comparison path and return the union of fields touched.
+
+        `disagreement` is driven with two equal blocks under `strict` on
+        purpose: equality is what makes it fall past every early return and
+        reach the last comparison, so one call covers all of them.
+        """
+        blocks = self.blocks()
+        seen = set()
+        for base_name, mutated_name, strength, call in [
+            ("base", "base", "strict", compare.disagreement),
+            ("base", "retitled", "divergent", compare.disagreement),
+            ("base", "retitled", "divergent", compare.weakness),
+        ]:
+            base = self.Recorder(blocks[base_name])
+            mutated = self.Recorder(blocks[mutated_name])
+            call(base, mutated, strength)
+            seen |= base.seen | mutated.seen
+        for single in (compare._consequence, compare._reading, compare._describe):
+            block = self.Recorder(blocks["base"])
+            single(block)
+            seen |= block.seen
+        return seen
+
+    def test_every_field_the_comparison_reads_is_produced(self):
+        produced = set(self.blocks()["base"])
+        missing = self.fields_read() - produced
+        self.assertEqual(
+            set(), missing,
+            f"read but never parsed out of the probe: {sorted(missing)} — "
+            "these raise KeyError on a real run",
+        )
+
+    def test_every_field_produced_is_read_somewhere(self):
+        """A parsed field nobody compares is a promise the report does not keep."""
+        unused = set(self.blocks()["base"]) - self.fields_read()
+        self.assertEqual(
+            set(), unused,
+            f"parsed and then ignored: {sorted(unused)} — either compare it "
+            "or stop reading it",
+        )
+
+    def test_the_recorder_reports_reads_exactly(self):
+        """Both of the recorder's answers have to be right, so both are injected.
+
+        A recorder that reported every key it held would make the first test
+        vacuous; one that stayed silent about a key it was asked for but did
+        not hold would make it silently pass on exactly the defect it exists
+        for. Neither direction is safe to assume, and
+        `test_completion_refuses_a_verb_it_cannot_conjugate` in
+        `test_mutate.py` is here because this project has assumed one before.
+        """
+        held_but_never_asked_for = self.Recorder(
+            dict(self.blocks()["base"], spare=())
+        )
+        compare._consequence(held_but_never_asked_for)
+        self.assertNotIn(
+            "spare", held_but_never_asked_for.seen,
+            "reported a field nothing asked for: the second test would fail "
+            "on a field that is genuinely used",
+        )
+        self.assertIn(
+            "routes", held_but_never_asked_for.seen,
+            "reported nothing at all: the first test can never fail",
+        )
+
+        asked_for_but_not_held = self.Recorder(self.blocks()["base"])
+        del asked_for_but_not_held["due"]
+        compare._consequence(asked_for_but_not_held)  # must not raise
+        self.assertIn(
+            "due", asked_for_but_not_held.seen,
+            "a field read but not parsed must still be reported, or the "
+            "missing-field test passes on the case it was written for",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
