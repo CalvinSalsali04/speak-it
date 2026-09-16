@@ -21,8 +21,15 @@ emit yet: they are read from a `--spans` JSONL whose shape is documented in
 Phase B prototype; the metric is frozen here so it cannot be chosen afterwards.
 """
 import json
+import pathlib
 import re
 import sys
+
+# The corpus reader every scan in this repository is required to go through;
+# `test_score.EveryCorpusReaderIsDeclared` refuses a file that slices a corpus
+# its own way.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import corpus_paths as paths
 
 BLOCK = re.compile(r'\n(?=── ")')
 HEAD = re.compile(r'── "(.*?)"')
@@ -69,16 +76,26 @@ def parse_report(path):
     return seen
 
 
+#: The label columns this set carries, beyond the id and the utterance that
+#: `corpus_paths` knows about for every corpus.
+COLUMNS = ("id", "utterance", "family", "expected_destination", "expected_thoughts")
+
+
 def read_set(path):
-    rows = []
-    for line in open(path):
-        if line.startswith("#") or not line.strip():
-            continue
-        rows.append(line.rstrip("\n").split("\t"))
-    header, data = rows[0], rows[1:]
-    index = {name: header.index(name) for name in header}
+    """Pairs and unpaired rows, read through the shared corpus reader.
+
+    This used to open the file and split on tabs itself, taking the first
+    non-comment line as the header. That passes on `rambling.tsv` by luck --
+    its header really is the first uncommented line, at line 98 -- and it is
+    the reader the gate in `test_score.py` exists to refuse, because the same
+    two assumptions have been wrong elsewhere in this directory. `data_rows`
+    finds the header by the cells it names, and `column_of` finds a column by
+    its name rather than by counting.
+    """
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    index = {name: paths.column_of(lines, name) for name in COLUMNS}
     pairs, unpaired = {}, []
-    for row in data:
+    for _, row in paths.data_rows(path):
         match = re.match(r"^(RB\d+)([CR])$", row[index["id"]])
         if match:
             pairs.setdefault(match.group(1), {})[match.group(2)] = row
