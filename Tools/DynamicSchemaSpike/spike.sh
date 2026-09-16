@@ -2,20 +2,22 @@
 # A narrow capability check: does FoundationModels let us bound a span schema at
 # runtime from THIS capture's atom count, and bound the segment count too?
 #
-# Five small programs, each compiled on its own. That is the whole design: a
+# Six small programs, each compiled on its own. That is the whole design: a
 # wrong guess about one API shape costs one answer instead of all of them, and
 # the report says which shapes compiled rather than "the build failed". Nothing
 # here touches the app, the corpus, or any sealed set.
 #
-#   ./Tools/DynamicSchemaSpike/spike.sh
+#   ./Tools/DynamicSchemaSpike/spike.sh                 -- all of them
+#   ./Tools/DynamicSchemaSpike/spike.sh a1-int-range     -- named ones only
 #
 # A1  runtime .range guide on Int            -- the preferred span bound
 # A2  anyOf enumeration of this capture's ids -- the fallback if A1 is absent
 # B   runtime min/max on an array            -- the segment-count bound
 # C   generate under those bounds, print raw -- bounds honoured, not just accepted
 # D   decode, validate and slice the original transcript
+# E   the same captures with no start atom: boundaries instead of spans
 #
-# A1/A2/B need no model. C and D need an Apple Intelligence device and print
+# A1/A2/B need no model. C, D and E need an Apple Intelligence device and print
 # SKIPPED elsewhere.
 set -uo pipefail
 SP="$(cd "$(dirname "$0")" && pwd)"
@@ -23,7 +25,16 @@ OUT="${SPIKE_OUT:-$SP/build}"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 mkdir -p "$OUT"
 
-VARIANTS=(a1-int-range a2-anyof-ids b-array-bounds c-generate-raw d-decode-and-slice)
+ALL=(a1-int-range a2-anyof-ids b-array-bounds c-generate-raw d-decode-and-slice e-boundaries)
+# Named variants run alone, so rechecking one answer costs one compile.
+if [ "$#" -gt 0 ]; then
+  VARIANTS=("$@")
+  for variant in "${VARIANTS[@]}"; do
+    [ -f "$SP/variant-$variant.swift" ] || { echo "no such variant: $variant (have: ${ALL[*]})" >&2; exit 2; }
+  done
+else
+  VARIANTS=("${ALL[@]}")
+fi
 declare -a BUILT=()
 
 echo "== compiling =="

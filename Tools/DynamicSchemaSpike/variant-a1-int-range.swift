@@ -16,7 +16,7 @@ func buildA1() {
     let atoms = atomize(transcript)
     guard let idRange = atomIDRange(atoms) else { print("A1 SKIPPED empty transcript"); return }
     do {
-        let atomID = DynamicGenerationSchema(type: Int.self, guides: [.range(0...lastAtom)])
+        let atomID = DynamicGenerationSchema(type: Int.self, guides: [.range(idRange)])
         let root = DynamicGenerationSchema(
             name: "Span",
             description: "One span of the transcript, by atom id",
