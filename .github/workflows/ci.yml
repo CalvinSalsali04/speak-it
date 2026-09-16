@@ -393,7 +393,9 @@ jobs:
       - name: Which branch answers the declared limits
         if: always() && inputs.devset_failures == true
         run: |
-          [ -x Tools/PipelineProbe/build/probe ] || ./Tools/PipelineProbe/build.sh >/dev/null || exit 0
+          [ -x Tools/PipelineProbe/build/probe ] \
+            || ./Tools/PipelineProbe/build.sh >/dev/null \
+            || { echo "COMPLETION: probe build failed, nothing was asked"; exit 0; }
           ./Tools/PipelineProbe/build/probe --completion \
             Tools/PipelineProbe/questions/declared-limits.txt || true
 

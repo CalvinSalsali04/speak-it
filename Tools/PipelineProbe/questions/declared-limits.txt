@@ -2,8 +2,10 @@
 #
 # THE QUESTION. Line 35 of `Tools/CorpusRunner/devsets/unfinished.tsv` declares
 # seven ids a design limit, with the reason "out of scope, and honestly so" —
-# fragments ending in a stranded preposition, per the comment at
-# `ClauseStructure.swift:759-764`. Run 35137835752 reported `DECLARED LIMITS NOW
+# fragments ending in a stranded preposition, per the comment in
+# `ClauseStructure.swift` reading "Fragments ending in a stranded preposition
+# are therefore out of scope, and honestly so."
+# Run 35137835752 reported `DECLARED LIMITS NOW
 # PASSING 1 of 7`, naming INC46. A declared row that starts passing has three
 # possible causes, and only the third is a reason to remove the id:
 #
@@ -22,13 +24,33 @@
 #
 #   INC46 prints `danglingInfinitive`.
 #
-# Reasoning, from source and so far unobserved: `ClauseStructure.swift:709`
-# answers `to` — returning `.danglingInfinitive` when exactly one token is `to`
-# — and it sits textually BEFORE the stranded-preposition class guard at `:738`.
-# INC46 is the only declared row ending on `to`. If that is right, the
-# stranded-preposition reason line 35 cites was never consulted for INC46, and
-# INC46 is case 3: miscategorised the day the declaration was written, not a
-# limit that closed.
+# Reasoning, from source and so far unobserved. In `ClauseStructure.swift`,
+# inside `ThoughtCompletion.unfinished(in:)`:
+#
+#     if lastWord == "to" {
+#         let markers = tokens.filter { $0.text.lowercased() == "to" }
+#         if markers.count == 1 { return .danglingInfinitive }
+#         return nil
+#     }
+#
+# sits textually BEFORE the stranded-preposition class guard, whose own test is:
+#
+#     guard !previous.isVerb else { return nil }
+#
+# INC46 is the only declared row ending on `to` — the seven end on and, about,
+# at, and, to, for, for — so it is answered and returned before the guard the
+# declaration's reason describes is ever reached. If that is right, INC46 is
+# case 3: miscategorised the day the declaration was written, not a limit that
+# closed.
+#
+# CITED BY QUOTATION, NOT BY LINE NUMBER, DELIBERATELY. An earlier draft of this
+# file gave `:709`, `:738` and `:759-764`. Those were correct when written and
+# wrong within the hour: #103 added five lines to the `Unfinished` docstring
+# above all of them, so every one drifted by five in a single commit. As read at
+# `bd1f760` they are `:714`, `:730`, `:744` and `:769`, and the next edit above
+# them will move those too. This file exists to outlive the code around it, so
+# it quotes what it means and pins the sha it was read at; bumping the numbers
+# would be the same mistake a second time.
 #
 # WHAT FALSIFIES IT:
 #
@@ -42,7 +64,16 @@
 # The control below is the point. If `danglingInfinitive` is reached because
 # exactly one token is `to`, then the same fragment with a second `to` must come
 # back nil. If it comes back flagged, `markers.count == 1` is not what decides
-# and both threads' reading of `:709` is wrong.
+# and both threads' reading of that branch is wrong.
+#
+# THE SAME SENTENCE WAS WITHDRAWN ONCE, AND THAT IS NOT A CONTRADICTION.
+# `I need to send the report to` was proposed as a dev-set row in PR #102 and
+# refused: as a row it goes through repair and clause splitting before the
+# function sees it, and `i`, `need` and `to` are all in
+# `SpeechRepair.clauseInternalLead`, so it changed what reached the function
+# rather than the marker count. Here it never goes near that machinery —
+# `--completion` calls `ThoughtCompletion.unfinished(in:)` on the raw string.
+# Same sentence, different instrument, and only the instrument decided.
 #
 # Nothing here is edited on the strength of this file. It records the question
 # and the prediction; the trim commit waits for the printed answer.
