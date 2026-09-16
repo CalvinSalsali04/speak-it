@@ -24,9 +24,16 @@ RUNS="${2:-1}"
 
 case "$SET" in
   heldout|everyday|adversarial|consequence)
+    # Named from the glob rather than from a list written here, so a development
+    # set added later is offered without anybody remembering to edit this line.
+    names=""
+    for f in "$ROOT"/Tools/CorpusRunner/devsets/*.tsv; do
+      [ -e "$f" ] || continue
+      names="${names:+$names }$(basename "$f" .tsv)"
+    done
     echo "first-run.sh: '$SET' is a sealed set." >&2
     echo "  A run made from one holds every capture verbatim and is sealed material." >&2
-    echo "  Development sets only from here: $(ls "$ROOT"/Tools/CorpusRunner/devsets/*.tsv | xargs -n1 basename | sed 's/\.tsv//' | tr '\n' ' ')" >&2
+    echo "  Development sets only from here: $names" >&2
     exit 2
     ;;
 esac
