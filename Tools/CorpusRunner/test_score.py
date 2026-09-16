@@ -481,6 +481,13 @@ class DevsetScorerTests(unittest.TestCase):
         named = [l.strip() for l in report.splitlines() if l.strip() == "A"]
         self.assertEqual(named, ["A"], "the passing limit must be named")
         self.assertIn("re-read the reason each of these cites", report)
+        #: The line above anchors one line of a seven-line block, so the
+        #: operative sentence underneath it could be reverted to "remove the
+        #: ids that no longer belong" while this test stayed green. Review found
+        #: that by injection. Both halves are pinned because the first says
+        #: *re-read* and only the second says what may then be removed, and it
+        #: is the second that a reader acts on.
+        self.assertIn("trim only the ids whose", report)
 
     def test_the_passing_count_prints_even_when_it_is_zero(self):
         """Absence of the line would read exactly like nobody having looked.
