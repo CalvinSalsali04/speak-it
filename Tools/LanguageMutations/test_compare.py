@@ -210,5 +210,65 @@ class MeaningChangeIsInverted(unittest.TestCase):
         )
 
 
+class FieldsAreReadWhole(unittest.TestCase):
+    """A date is four tokens and the reader used to keep one of them.
+
+    `due:        Fri Aug 7 (day only)` matched against `(\\S+)` gave `Fri`, so
+    every time of day was invisible and any two dates sharing a weekday
+    compared equal. Harmless while `due` only had to differ from `nil`, and
+    not harmless once `_consequence` reads it: a divergent pair whose date
+    really moved would land in `title-only`, the column that means the engine
+    did nothing.
+    """
+
+    PROBE = (
+        '── "base"\n'
+        "   row title:  Call Sarah\n"
+        "   route:      Today   type: task   category: none   priority: normal\n"
+        "   due:        Fri Aug 7 (day only)\n"
+        "   remind:     nil   delivery: silent\n"
+        '── "mutated"\n'
+        "   row title:  Call Sarah\n"
+        "   route:      Today   type: task   category: none   priority: normal\n"
+        "   due:        Fri Aug 14 (day only)\n"
+        "   remind:     Fri Aug 14 09:00   delivery: alert\n"
+    )
+
+    def blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "probe.txt"
+            path.write_text(self.PROBE)
+            return compare.read_blocks(str(path))
+
+    def test_a_date_keeps_every_token(self):
+        blocks = self.blocks()
+        self.assertEqual(("Fri Aug 7 (day only)",), blocks["base"]["due"])
+        self.assertEqual(("Fri Aug 14 (day only)",), blocks["mutated"]["due"])
+
+    def test_two_dates_on_the_same_weekday_are_not_equal(self):
+        blocks = self.blocks()
+        self.assertNotEqual(blocks["base"]["due"], blocks["mutated"]["due"])
+
+    def test_a_value_stops_at_the_next_field_on_its_line(self):
+        """`remind:` is followed by `delivery:`, which is not part of the time."""
+        blocks = self.blocks()
+        self.assertEqual(("nil",), blocks["base"]["remind"])
+        self.assertEqual(("Fri Aug 14 09:00",), blocks["mutated"]["remind"])
+        self.assertEqual(("Today",), blocks["base"]["routes"])
+
+    def test_a_moved_date_under_one_title_is_not_filed_as_title_only(self):
+        """The misfiling the truncation would have caused, pinned."""
+        base, mutated = self.blocks()["base"], self.blocks()["mutated"]
+        self.assertEqual(base["titles"], mutated["titles"])
+        self.assertIsNone(compare.disagreement(base, mutated, "divergent"))
+        self.assertIsNone(compare.weakness(base, mutated, "divergent"))
+
+    def test_a_moved_date_is_a_strict_disagreement(self):
+        base, mutated = self.blocks()["base"], self.blocks()["mutated"]
+        found = compare.disagreement(base, mutated, "strict")
+        self.assertIsNotNone(found, "strict promises every field matches")
+        self.assertIn("due", found)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

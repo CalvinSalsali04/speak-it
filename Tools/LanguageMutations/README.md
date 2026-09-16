@@ -87,8 +87,8 @@ words survived and the consequence did not.
 invented pattern, and it always leaves the original sentence whole at the end,
 so the meaning is exactly the original's. See `Docs/PUBLIC_DATASETS.md`.
 
-Two further limits of the divergent families, stated so a clean report is not
-misread:
+Three further limits of the divergent families, stated so a clean report is
+not misread:
 
 - **They only apply to a bare imperative errand.** Prefixing "don't" onto "the
   garage code is 4821" is not English, so a set of statements yields nothing
@@ -98,6 +98,15 @@ misread:
   Mike"; whether "Sarah said call Mike" differs from "Sarah said I should call
   Mike" is a pairwise question this harness does not ask, and it is one of the
   distinctions Calvin's section 9 asks to survive.
+- **A family's rate can be carried by a stage upstream of the engine.**
+  `MODALS` contains `"I was thinking I should"`, and `SpeechRepair` used to
+  delete exactly that prefix, so one of the four modality variants arrived at
+  the engine with its marker already gone. The instrument was not wrong — an
+  engine genuinely cannot see a distinction that was erased before it — but a
+  reader would have read the `modality` rate as a fact about the engine. That
+  rule is fixed, and the hazard is general: **before attributing a divergent
+  family's rate to the engine, check that the repair chain still delivers the
+  marker the mutation added.**
 
 ## The sealed set
 

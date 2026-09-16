@@ -11,7 +11,7 @@ only that the engine treats the pair alike: a capture it gets wrong identically
 under every mutation is counted clean here. Nothing this prints may be quoted
 as accuracy, and a run with no disagreements is not evidence the product works.
 
-The two strengths come from mutate.py:
+The three strengths come from mutate.py:
 
   strict     every field must match
   structure  destination and row count must match; titles may differ
@@ -53,10 +53,31 @@ def read_blocks(path):
             "titles": tuple(re.findall(r"row title:\s*(.*)", block)),
             "rows": len(re.findall(r"row title:", block)),
             "operation": bool(re.search(r"operation:", block)),
-            "due": tuple(re.findall(r"due:\s+(\S+)", block)),
-            "remind": tuple(re.findall(r"remind:\s+(\S+)", block)),
+            "due": _field(block, "due"),
+            "remind": _field(block, "remind"),
         }
     return blocks
+
+
+def _field(block, name):
+    """Every value a field carries, not just its first token.
+
+    `due:        Fri Aug 7 (day only)` is four tokens, and matching `(\S+)`
+    kept `Fri`. Two dates a week apart then compared equal and every time of
+    day was invisible — which quietly weakened the strict families, and would
+    have been worse for `divergent`: a pair whose date really moved would have
+    landed in `title-only`, the column that is supposed to mean the engine did
+    nothing.
+
+    Some lines carry a second field behind the first — `remind:` is followed
+    by `delivery:` — so a value ends at the next field marker or at the end of
+    its line, whichever comes first.
+    """
+    values = []
+    for line in re.findall(rf"{name}:[ \t]+(.*)", block):
+        cut = re.search(r"\s\s+[a-z]+:", line)
+        values.append((line[: cut.start()] if cut else line).strip())
+    return tuple(values)
 
 
 def disagreement(base, mutated, strength):
