@@ -826,7 +826,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         after the entry two paragraphs above learned that a quoted phrase in a
         doc comment counts exactly like a fixture. **An unchanged count that
         nobody recomputed is indistinguishable from one nobody checked**, which
-        is why it is written down rather than left out. What the test
+        is why it is written down rather than left out. 3928 -> 3928 again on
+        that follow-up's review, which narrowed a stated reason in a doc
+        comment and closed a blind spot in one of those guards: prose and a
+        Python guard, no Swift literal either way, and the backtick rule held
+        for the rewritten paragraph. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -911,8 +915,24 @@ class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
 
     HELPER = "LexicalTagging.skipIfBlind("
 
+    #: What may precede the call on its own line. `try` is the call itself;
+    #: anything else there is a statement that ran first.
+    PREFIX_OK = ("", "try")
+
     def call_sites(self):
-        """Every (file, test name, lines between the signature and the call)."""
+        """Every (file, test, lines before the call, text before it on its line).
+
+        The fourth element exists because the third cannot cover it. Slicing
+        `lines[back + 1:index]` stops at the call's own line, so a statement
+        sharing that line was invisible:
+
+            XCTAssertNil(ThoughtCompletion.unfinished(in: `Milk`)); try skip()
+
+        Injected exactly that and this class reported OK. Odd Swift style, so
+        it was never likely — but a guard with a blind spot on the one line it
+        is most about is the shape of defect this suite exists to catch, and it
+        was found by review reading the slice rather than by the guard.
+        """
         root = pathlib.Path(__file__).resolve().parents[2]
         signature = re.compile(r"^\s*func\s+(test[A-Za-z0-9_]*)\s*\(")
         sites = []
@@ -921,11 +941,12 @@ class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
             for index, line in enumerate(lines):
                 if self.HELPER not in line:
                     continue
+                head = line[:line.index(self.HELPER)].strip()
                 for back in range(index - 1, -1, -1):
                     found = signature.match(lines[back])
                     if found:
                         sites.append((swift.name, found.group(1),
-                                      lines[back + 1:index]))
+                                      lines[back + 1:index], head))
                         break
                 else:
                     self.fail(f"{swift.name}:{index + 1} calls the helper "
@@ -933,7 +954,12 @@ class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
         return sites
 
     def test_nothing_runs_before_the_abstention(self):
-        for name, test, between in self.call_sites():
+        for name, test, between, head in self.call_sites():
+            self.assertIn(
+                head, self.PREFIX_OK,
+                f"{name}: {test} runs `{head}` on the same line, before it "
+                "abstains. Same defect as a statement on the line above, and "
+                "the line-range check cannot see this one.")
             for line in between:
                 stripped = line.strip()
                 self.assertTrue(

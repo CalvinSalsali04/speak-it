@@ -143,14 +143,26 @@ final class ThoughtCompletionTests: XCTestCase {
 
     /// Somebody else's trailing sentence is not the user's to finish.
     ///
-    /// **Deliberately does not abstain**, unlike the three above, and the
-    /// evidence is a run rather than a reading. Each of these ends on `to`, so
-    /// without the reporting guard the infinitive path would answer
-    /// `.danglingInfinitive` — a different outcome was reachable, which is what
-    /// makes the nil worth asserting. It passed on run 35126863033, where every
-    /// token came back `OtherWord`, so the guard in front of it is string work
-    /// and this test measures something there. `testTheDetectorIsNotAlwaysFalse`
-    /// is tagger-independent for the same reason. Neither belongs in a sweep.
+    /// **Deliberately does not abstain**, unlike the three above — and **one
+    /// row carries that**, not all three. `She said she needs to` ends on `to`,
+    /// and the reporting guard at `ClauseStructure.swift:702` sits ahead of the
+    /// infinitive branch at `:709`, so without the guard that row answers
+    /// `.danglingInfinitive`. A different outcome is reachable, which is what
+    /// makes its nil worth asserting.
+    ///
+    /// The other two end on `mind` and `forgot`. They never reach the `to`
+    /// branch and fall through `previous.isVerb` to the final class switch,
+    /// whose only reachable arm on a blind image is `default`. **They are
+    /// vacuous there and ride along.** So do not edit or delete the first row
+    /// without moving this test into the abstaining set: the reason to keep it
+    /// live goes with it.
+    ///
+    /// Run 35126863033 confirms the first row from the other side rather than
+    /// by reading: every token came back `OtherWord` and this test still
+    /// passed, which it could only do if the reporting guard fired — otherwise
+    /// that row returns `.danglingInfinitive` and the assertion fails.
+    /// `testTheDetectorIsNotAlwaysFalse` is tagger-independent for its own
+    /// reason. Neither belongs in a sweep.
     func testAReportedUnfinishedSentenceIsNotTheUsersToFinish() {
         XCTAssertNil(ThoughtCompletion.unfinished(in: "She said she needs to"))
         XCTAssertNil(ThoughtCompletion.unfinished(in: "Sarah said never mind"))
