@@ -2929,3 +2929,47 @@ kind of fix that usually restates a published figure. It restates none:
 against the real engine, so no recorded number rested on the old behaviour.
 Somebody auditing the ledger for a missing row should find this paragraph
 rather than a silence.
+
+## 2026-09-16 — A test that cannot answer must abstain, not pass
+
+`ThoughtCompletion.unfinished` reads `last.lexicalClass`. On a GitHub-hosted
+`macos-26` runner's simulator `NLTagger` has no lexical-class model, so it
+returns `OtherWord` for every token of every sentence — recorded in
+`Docs/KNOWN_ISSUES.md` on 2026-09-11 and re-verified on 2026-09-16 in run
+35126863033, which printed the tagging as its failure message:
+`pay:OtherWord the:OtherWord rent:OtherWord`.
+
+**The visible half of that is the reds; the expensive half is the greens.**
+With no model the function returns nil for everything it does not decide on the
+word "to", so every assertion expecting nil passes without exercising the rule
+it names. On that image the two failures in `ThoughtCompletionTests` were the
+only assertions in the class carrying information about the tagger-dependent
+rules, and `SpeechRepairTests.testThePreservedHedgeIsNotReadAsUnfinished`
+passed for a reason with nothing to do with the hedge. A guard that cannot fire
+looks exactly like a guard that holds, which is the recurring bug here, and in
+this run the green tick was the more dangerous of the two results.
+
+So the dependent assertions call `LexicalTagging.skipIfBlind` and land in the
+Skipped column that `Tools/CI/xcresult-failures.py` already prints. The
+decision is taken as a pure function of a tagging rather than of the machine,
+so both its answers can be injected rather than trusted. Blindness means *no*
+token carried a usable class: a tagger that classes some words and not others
+can be wrong, and an assertion that can be wrong should run.
+
+**Abstaining does not measure the claim, so the row that measures it goes in
+the development set.** `Tools/PipelineProbe/build.sh` compiles
+`ClauseStructure.swift` and `SpeechRepair.swift` into a *host* binary, and the
+host is not blind — the corpus gate scores 1,434 cases in the same job where
+those four assertions fail. `unfinished-score.sh` already drives that binary
+from `Tools/CI/language-metrics.sh`, and INC45 is the same utterance as
+`testADanglingDeterminerIsUnfinished`. So the determiner rule is measured on CI
+every language run and only the XCTest copy of it is blind; saying it had
+"never been measured on CI" was wider than the evidence and wrong in the
+direction that flatters the finding. What no row reached is the *one-token*
+branch, which is what the #96 claim is about: all nine `abandoned-midthought`
+rows end on "to" or a filler and resolve through the infinitive path. INC58 is
+that row.
+
+**No cost-ledger row is owed.** Nothing here changes an executable line of the
+engine — the skips are test-side, and INC58 is a development row whose answer
+the next language dispatch reports — so no sealed measure can move.

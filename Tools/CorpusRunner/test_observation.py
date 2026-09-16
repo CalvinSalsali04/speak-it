@@ -800,7 +800,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the four are three assertion messages and — enumerated rather than
         assumed — one quoted phrase inside a doc comment, `"keeps the words"`.
         Worth knowing before predicting one of these deltas: a phrase put in
-        quotation marks while explaining a test counts exactly like a fixture. What the test
+        quotation marks while explaining a test counts exactly like a fixture.
+        3916 -> 3929 the same day again, adding the abstain-when-blind helper
+        and its two guard tests. Thirteen, enumerated: six assertion messages,
+        one probe sentence, two phrases quoted inside a doc comment (`"not
+        measured here"`, `"measured and correct"` — the hazard the paragraph
+        above had just finished naming), and **four** fragments of a single
+        skip message, because a message built by concatenating string literals
+        across lines counts once per fragment and not once per message.
+        Counting messages would have predicted ten. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -814,7 +822,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3916)
+        self.assertEqual(len(space), 3929)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -219,9 +219,15 @@ final class SpeechRepairTests: XCTestCase {
     /// accepts `.determiner` and not `.preposition` — and returns nil. Both
     /// assertions below fail, and an abandoned thought would have become an
     /// errand.
-    func testTheRepairAndTheFragmentRuleAreOneChain() {
+    /// The skip sits *between* the two assertions on purpose. The first is
+    /// string work and answers on any machine; the second reads
+    /// `last.lexicalClass`, so where the model is absent it cannot answer. Put
+    /// the abstention at the top and the half that does carry information stops
+    /// reporting too.
+    func testTheRepairAndTheFragmentRuleAreOneChain() throws {
         let abandoned = DisfluencyFilter.stripped("I was thinking about")
         XCTAssertEqual(abandoned, "about", "the repair must leave the bare marker")
+        try LexicalTagging.skipIfBlind()
         XCTAssertEqual(
             ThoughtCompletion.unfinished(in: abandoned),
             .trailingFunctionWord,
@@ -234,9 +240,18 @@ final class SpeechRepairTests: XCTestCase {
     /// The hedge survives the repair, so what reaches the next stage is a whole
     /// sentence. Asserted because "keeps the words" and "is still read as
     /// finished" are two different claims and only the first was tested.
-    func testThePreservedHedgeIsNotReadAsUnfinished() {
+    /// The nil assertion abstains where the tagger is blind, and this one is
+    /// the reason the helper exists rather than a convenience. It **passed** on
+    /// run 35124466497, and it passed for a reason that has nothing to do with
+    /// the hedge: with no lexical model `unfinished` returns nil for every
+    /// sentence it does not decide on the word "to", so the assertion could not
+    /// have failed there whatever the repair produced. A guard that cannot fire
+    /// looks exactly like a guard that holds, and a green tick here was the
+    /// more dangerous of the two results that run produced.
+    func testThePreservedHedgeIsNotReadAsUnfinished() throws {
         let kept = DisfluencyFilter.stripped("I was thinking of calling Priya")
         XCTAssertEqual(kept, "I was thinking of calling Priya")
+        try LexicalTagging.skipIfBlind()
         XCTAssertNil(
             ThoughtCompletion.unfinished(in: kept),
             "a preserved hedge is a finished sentence, not a trailing fragment"
