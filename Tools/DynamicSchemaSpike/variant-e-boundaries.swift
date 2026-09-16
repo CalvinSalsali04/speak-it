@@ -3,77 +3,96 @@ import Foundation
 import FoundationModels
 #endif
 
-// E: the same three captures as D, with the start atom taken away.
+// E: the same three captures as D, with the spans taken away entirely.
 //
 // D returned overlapping spans -- "call the / the dentist / dentist tomorrow"
-// -- and left "up the prescription" in no segment at all. Under this shape the
-// model gives only where each thought ENDS; a segment begins where the previous
-// one ended. Overlap, nesting, duplication and uncovered atoms stop being
-// things to check for and become things that cannot be written down.
+// -- and left "up the prescription" in no segment at all. Here the model
+// returns only the atoms it SPLITS AFTER. The end of the transcript is
+// structural rather than something the model says, so overlap, nesting,
+// duplication and uncovered atoms cannot be written down, and neither can a
+// final segment that stops short of the end.
 //
-// No new capability is needed: an end atom is bounded exactly as D's atom ids
-// are, and the segment list exactly as D's is. This is D minus one property.
-// What is open is not whether it constructs but what the model does inside it.
+// The first version asked for one END atom per segment and repaired malformed
+// output. Calvin's rule killed that: do not silently transform a bad semantic
+// proposal into a different one and treat it as the model's answer. Splits
+// remove the commonest repair by construction -- there is no last end to force
+// -- and everything still malformed is REJECTED rather than fixed, which is the
+// refuse-do-not-drop rule both device runs already argued for.
+//
+// No new capability is needed: a split atom is bounded exactly as D's ids are,
+// and the list exactly as D's is.
 
 let eInstructions = """
 You mark up one private voice capture. The transcript is given to you as \
 numbered atoms. You never write out the person's words: you return atom ids \
 only, and Speak It slices the original transcript itself.
 
-The person may have said several separate things. For each one, in order, \
-return the id of its LAST atom. The next thing begins at the following atom, \
-so you do not say where anything starts. The last id you return must be the \
-last atom of the transcript.
+The person may have said several separate things. Return the id of each atom \
+that the LAST thing ends on, in order -- the atoms you would split after. You \
+do not say where anything starts or where the last thing ends; both are \
+implied. If the person said only one thing, return nothing.
 """
 
 func eNumbered(_ transcript: String, _ atoms: [SourceAtom]) -> String {
     atoms.map { "\($0.id): \(transcript[$0.range])" }.joined(separator: "\n")
 }
 
-// Every step here is a total function: drop out-of-range ids, sort, drop
-// duplicates, keep at most `cap`, then force the last thought to run to the end
-// of the transcript. There is no model output that reaches the parser as a
-// structurally invalid reading -- which is the whole claim. Compare D, where
-// "call the / the dentist" has no principled repair at all.
-//
-// The last end is REPLACED rather than appended. Appending was the first
-// version and it is wrong: a two-atom capture has cap 1, so a returned end of 0
-// would have produced two segments and quietly broken the bound the cap exists
-// to hold. Brute-forcing every model output for one to nine atoms is what found
-// it -- 39,729 of them now complete to a valid partition.
-func eComplete(endAtoms: [Int], atomCount: Int, cap: Int) -> [(start: Int, end: Int)] {
-    // Array(...) at every step: prefix gives an ArraySlice, and a slice cannot
-    // take the [Int] assigned below it.
-    var ends = Array(Array(Set(endAtoms.filter { $0 >= 0 && $0 < atomCount })).sorted().prefix(cap))
-    if ends.isEmpty { ends = [atomCount - 1] }
-    ends[ends.count - 1] = atomCount - 1
-    let bounds = Array(Set(ends)).sorted()
+// NOT a repair. Splits that are out of range, out of order or repeated mean
+// the reading is refused whole and the capture falls back to the parser, which
+// is what both device runs already concluded: a junk segment refuses the
+// reading rather than being dropped from it. Sorting them would hand the parser
+// a segmentation the model never proposed.
+enum EReading {
+    case segments([(start: Int, end: Int)])
+    case refused(String)
+}
+
+func eRead(splitAfter: [Int], atomCount: Int, cap: Int) -> EReading {
+    guard splitAfter.count <= cap - 1 else {
+        return .refused("\(splitAfter.count) splits is more than the cap of \(cap) segments allows")
+    }
+    var previous = -1
+    for split in splitAfter {
+        guard split >= 0, split < atomCount - 1 else {
+            return .refused("split after atom \(split) is outside 0...\(atomCount - 2)")
+        }
+        guard split > previous else {
+            return .refused("splits are not strictly increasing: \(splitAfter)")
+        }
+        previous = split
+    }
     var segments: [(start: Int, end: Int)] = []
     var start = 0
-    for end in bounds {
-        segments.append((start: start, end: end))
-        start = end + 1
+    for split in splitAfter {
+        segments.append((start: start, end: split))
+        start = split + 1
     }
-    return segments
+    segments.append((start: start, end: atomCount - 1))
+    return .segments(segments)
 }
 
 #if canImport(FoundationModels)
+// `splitAfter` is bounded 0...(atomCount - 2): splitting after the last atom
+// says nothing, so it is unrepresentable rather than refused. A one-atom
+// capture has no valid split at all and never reaches the model.
 @available(macOS 26.0, iOS 26.0, *)
-func eSchema(idRange: ClosedRange<Int>, cap: Int) throws -> GenerationSchema {
-    let atomID = DynamicGenerationSchema(type: Int.self, guides: [.range(idRange)])
-    let segment = DynamicGenerationSchema(
-        name: "Segment",
-        description: "One independent thing the person said",
+func eSchema(atomCount: Int, cap: Int) throws -> GenerationSchema {
+    let splitID = DynamicGenerationSchema(type: Int.self, guides: [.range(0...(atomCount - 2))])
+    let split = DynamicGenerationSchema(
+        name: "Split",
+        description: "One place where a thing the person said ends",
         properties: [
-            DynamicGenerationSchema.Property(name: "endAtom", description: "Last atom id of this thing", schema: atomID)
+            DynamicGenerationSchema.Property(name: "splitAfterAtom", description: "Split after this atom id", schema: splitID)
         ]
     )
-    let segments = DynamicGenerationSchema(arrayOf: segment, minimumElements: 1, maximumElements: cap)
+    // minimumElements 0, because one thought is an empty list and must not be
+    // something the model has to fake an entry for.
+    let splits = DynamicGenerationSchema(arrayOf: split, minimumElements: 0, maximumElements: max(1, cap - 1))
     let root = DynamicGenerationSchema(
         name: "Reading",
-        description: "A reading of one capture",
+        description: "Where the things the person said end",
         properties: [
-            DynamicGenerationSchema.Property(name: "segments", description: "The segments, in order", schema: segments)
+            DynamicGenerationSchema.Property(name: "splits", description: "The split points, in order", schema: splits)
         ]
     )
     return try GenerationSchema(root: root, dependencies: [])
@@ -84,28 +103,32 @@ func eRun(_ transcript: String, label: String) async {
     let atoms = atomize(transcript)
     let cap = segmentCap(atomCount: atoms.count)
     print("--- \(label): atoms=\(atoms.count) cap=\(cap)")
-    guard let idRange = atomIDRange(atoms) else { print("SKIPPED empty transcript"); return }
+    guard atoms.count >= 2 else { print("E one atom or fewer; no split is possible"); return }
     do {
         let session = LanguageModelSession(model: SystemLanguageModel.default, instructions: eInstructions)
         let response = try await session.respond(
             to: "Atoms:\n\(eNumbered(transcript, atoms))",
-            schema: try eSchema(idRange: idRange, cap: cap),
+            schema: try eSchema(atomCount: atoms.count, cap: cap),
             options: GenerationOptions(sampling: .greedy)
         )
-        let produced = try response.content.value([GeneratedContent].self, forProperty: "segments")
-        var raw: [Int] = []
-        for item in produced { raw.append(try item.value(Int.self, forProperty: "endAtom")) }
-        print("E returned=\(raw) capRespected=\(produced.count <= cap)")
-        let segments = eComplete(endAtoms: raw, atomCount: atoms.count, cap: cap)
-        for (position, s) in segments.enumerated() {
-            let text = slice(transcript, atoms, from: s.start, to: s.end) ?? "<OUT OF RANGE>"
-            print("E  [\(position)] \(s.start)...\(s.end) -> \"\(text)\"")
+        let produced = try response.content.value([GeneratedContent].self, forProperty: "splits")
+        var splitAfter: [Int] = []
+        for item in produced { splitAfter.append(try item.value(Int.self, forProperty: "splitAfterAtom")) }
+        print("E splitAfter=\(splitAfter)")
+        switch eRead(splitAfter: splitAfter, atomCount: atoms.count, cap: cap) {
+        case .refused(let why):
+            print("E REFUSED \(why) -- the capture falls back to the parser")
+        case .segments(let segments):
+            for (position, seg) in segments.enumerated() {
+                let text = slice(transcript, atoms, from: seg.start, to: seg.end) ?? "<OUT OF RANGE>"
+                print("E  [\(position)] \(seg.start)...\(seg.end) -> \"\(text)\"")
+            }
+            // The guarantees the shape is supposed to make free. If either of
+            // these ever prints false the argument for boundaries is wrong.
+            let covered = segments.flatMap { Array($0.start...$0.end) }
+            print("E  everyAtomOnce=\(covered == Array(0..<atoms.count)) "
+                  + "atomsInTwoSegments=\(covered.count - Set(covered).count)")
         }
-        // The two invariants the shape is supposed to make free. If either of
-        // these ever prints false, the argument for boundaries is wrong.
-        let covered = segments.flatMap { Array($0.start...$0.end) }
-        print("E  everyAtomOnce=\(covered == Array(0..<atoms.count)) "
-              + "atomsInTwoSegments=\(covered.count - Set(covered).count)")
     } catch {
         print("E THREW \(error)")
     }

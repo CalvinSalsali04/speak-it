@@ -147,6 +147,63 @@ def span_findings(record, atom_count):
     }
 
 
+# ---------------------------------------------------------------------------
+# The report-only semantic-boundary diagnostic (Calvin's item 3, 2026-09-16).
+#
+# The boundary representation makes overlap, nesting and uncovered atoms
+# impossible, so criteria 5, 6 and 7 become structurally satisfied and stop
+# measuring anything. What it does NOT make impossible is a boundary in a
+# semantically wrong place, and the spike produced one with the right thought
+# count:
+#
+#     I was thinking I should call | Mike but actually email him instead
+#
+# Two segments, every atom once, and the cut falls between a verb and its
+# object. Nothing frozen catches that, because the row count is right.
+#
+# This is a COUNT, never a pass. It is a deterministic proxy over closed word
+# lists, not a parser: it UNDER-reports, because it cannot see an open-class
+# verb it does not list. Read it as "at least this many boundaries are
+# suspect", and read the named rows by eye.
+
+# Words that cannot be the last word of a finished thought because they require
+# something after them. Closed classes, plus the handful of transitive verbs
+# this corpus actually uses.
+NEEDS_A_COMPLEMENT = {
+    # determiners and possessives
+    "the", "a", "an", "my", "our", "your", "his", "her", "their", "its",
+    # prepositions and the infinitival marker
+    "to", "of", "for", "with", "at", "in", "on", "from", "about", "into",
+    # conjunctions and auxiliaries
+    "and", "or", "but", "so", "because", "that", "is", "are", "was", "were",
+    "am", "be", "been", "will", "would", "should", "could", "can", "must",
+    "need", "needs", "have", "has", "had", "do", "does", "did", "going",
+    # the transitive verbs this corpus is made of
+    "call", "email", "text", "message", "buy", "get", "grab", "pick", "send",
+    "tell", "ask", "remind", "book", "order", "collect", "cancel", "check",
+    "bring", "take", "pay", "return", "renew", "confirm", "schedule",
+}
+
+
+def boundary_diagnostic(segment_texts):
+    """Suspect boundaries in one reading. Counts and reasons, never a verdict."""
+    findings = []
+    for position, text in enumerate(segment_texts):
+        words = re.findall(r"[a-z']+", text.lower())
+        if not words:
+            findings.append((position, "segment has no word in it"))
+            continue
+        if not [w for w in words if w not in STOPWORDS]:
+            findings.append((position, "segment is entirely function words"))
+        # The last segment ending on a complement-taking word is the sentence
+        # trailing off, which is abandonment rather than a bad cut.
+        if position < len(segment_texts) - 1 and words[-1] in NEEDS_A_COMPLEMENT:
+            findings.append((position, f"ends on {words[-1]!r}, which needs what follows it"))
+        if len(words) == 1 and position < len(segment_texts) - 1:
+            findings.append((position, f"single-word segment {words[0]!r}"))
+    return findings
+
+
 def report(name, index, pairs, produced):
     tally, missing = {}, 0
     for stem, twins in sorted(pairs.items()):
@@ -220,7 +277,21 @@ def selftest():
     assert nested["7 no nested or overlapping span"] is False
     wide = span_findings({"segments": [{"startAtom": 0, "endAtom": 5}]}, 6)
     assert wide["widest span (atoms)"] == 6
-    print("selftest: every criterion passes on a good pair and fails on a broken one")
+
+
+    # The boundary diagnostic: silent on a clean cut, and it must actually fire
+    # on the spike's case, which has the RIGHT thought count and a wrong cut.
+    assert boundary_diagnostic(["call the dentist tomorrow", "pick up the prescription"]) == []
+    spike = boundary_diagnostic(["I was thinking I should call", "Mike but actually email him instead"])
+    assert any("needs what follows it" in reason for _, reason in spike), spike
+    # A trailing complement-taking word in the LAST segment is the sentence
+    # trailing off, not a bad boundary, so it must not be reported.
+    assert boundary_diagnostic(["buy milk", "and then I need to"]) == []
+    assert any("entirely function words" in r for _, r in boundary_diagnostic(["and then", "buy milk"]))
+    assert any("single-word" in r for _, r in boundary_diagnostic(["tomorrow", "buy milk"]))
+
+    # Last, so a green line cannot print while a later assertion is still to run.
+    print("selftest: every criterion passes on a good pair and fails on a broken one,\n          and the boundary diagnostic is silent on a clean cut and fires on a bad one")
 
 
 def main():
