@@ -2352,8 +2352,11 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
         A set is scanned whole or not at all: rows are collected per file and
         merged only if the file is read to the end, so `refused` means exactly
         "contributed nothing" rather than "contributed an unknown prefix". The
-        refusal text is kept because it names the file and line, which is what
-        anyone fixing it needs and what a bare "this set dropped out" withholds.
+        refusal text is kept because it names the file, and the line when there
+        is one -- a short row and an empty id cell carry a line number, a
+        missing header carries the column it could not find. That is what
+        anyone fixing it needs and what a bare "this set dropped out"
+        withholds.
         """
         corpus_paths = self.paths()
         homes, refused = {}, {}
@@ -2407,7 +2410,7 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
             "lists below would still pass. Three of the seven sets appear in "
             "neither list, which is exactly where a new duplicate would show "
             "up, so a set dropping out is otherwise invisible. The refusal "
-            "above names the file and the line.")
+            "above names the file, and the line when there is one.")
 
     def test_the_scan_reaches_rows_at_all(self):
         """Without this, an empty result reads the same as a clean corpus."""
