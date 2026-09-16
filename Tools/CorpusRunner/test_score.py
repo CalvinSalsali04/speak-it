@@ -236,7 +236,22 @@ class RecordedLimitTests(unittest.TestCase):
                               f"limit it records may have been implemented")
 
     def test_every_declared_capture_exists_and_is_an_unfinished_one(self):
-        """A declaration must not quietly cover a row that is not a miss."""
+        """The half of rule 3 that can be checked without a probe run.
+
+        This used to say "a declaration must not quietly cover a row that is
+        not a miss", and it does not check that. `Incomplete` is the row's
+        *label* — what it is supposed to be — not whether the probe currently
+        gets it wrong. Whether a declared capture still misses is a fact about
+        a run, and this suite has no run: it is Linux-only and the parser is
+        macOS-only.
+
+        So the name is accurate and the old docstring was not, which is the
+        expensive direction — a reader checking whether rule 3 was enforced
+        would have found this test, read the first line, and stopped.
+
+        The miss half is checked where the evidence exists: `unfinished-score.py`
+        prints DECLARED LIMITS NOW PASSING with the ids on every scoring run.
+        """
         #: Skipped rather than left to loop over nothing: a test that reports
         #: green having asserted nothing is the vacuous half of the same
         #: defect as one that reports red on the good outcome.
@@ -417,6 +432,83 @@ class DevsetScorerTests(unittest.TestCase):
             [self.unfinished_block("one", gap=True),
              self.unfinished_block("two")])
         self.assertIn("recall   unfinished flagged   1/2", report)
+
+    #: Both rows declared, so whatever the report says about limits has to
+    #: hold for a passing one and a failing one at the same time.
+    DECLARED_AB = "# limit: some/File.swift | a stated reason | A B\n"
+
+    def declared_both(self, first_flagged, second_flagged=False):
+        return self.unfinished(
+            [self.DECLARED_AB,
+             "A\tone\tf\tIncomplete\t\n", "B\ttwo\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=first_flagged),
+             self.unfinished_block("two", gap=second_flagged)])
+
+    def test_a_declared_limit_is_counted_never_subtracted(self):
+        """The arithmetic, and the sentence that used to contradict it.
+
+        The limit check and the correctness check are two independent `if`s,
+        so a declared capture the probe flags is counted in both. That is
+        deliberate -- a limit changes what the reader concludes from the rate,
+        not the rate -- but the report used to print "They are counted as
+        misses above and stay that way" directly beneath a recall figure that
+        had just counted one of them as a pass.
+
+        Both rows here are declared and one is flagged. A report claiming
+        every limit is a miss cannot also say 1/2, and this pins that it no
+        longer tries to.
+        """
+        _, report = self.declared_both(first_flagged=True)
+        self.assertIn("recall   unfinished flagged   1/2", report)
+        self.assertIn("2 of the 2 unfinished captures are recorded", report)
+        self.assertNotIn("counted as misses", report)
+        self.assertIn("counted, never subtracted", report)
+
+    def test_a_declared_limit_that_passes_is_named_in_the_report(self):
+        """The assertion is on the printing, not on the arithmetic.
+
+        A count the scorer computes and does not print is a figure nobody
+        recomputes, so this asserts the line appears *and* that it carries the
+        id. Naming the row is the point: a family total cannot say which
+        capture is which, and reconstructing one from `8 cases, 7 declared,
+        2 OK` is exactly the reasoning this report already made fail.
+        """
+        _, report = self.declared_both(first_flagged=True)
+        self.assertIn("DECLARED LIMITS NOW PASSING   1 of 2", report)
+        #: Matched as a whole line rather than with `assertIn`, because "A"
+        #: occurs inside half the prose in this report and a substring test
+        #: would pass without anything having been named.
+        named = [l.strip() for l in report.splitlines() if l.strip() == "A"]
+        self.assertEqual(named, ["A"], "the passing limit must be named")
+        self.assertIn("re-read the reason each of these cites", report)
+        #: The line above anchors one line of a seven-line block, so the
+        #: operative sentence underneath it could be reverted to "remove the
+        #: ids that no longer belong" while this test stayed green. Review found
+        #: that by injection. Both halves are pinned because the first says
+        #: *re-read* and only the second says what may then be removed, and it
+        #: is the second that a reader acts on.
+        self.assertIn("trim only the ids whose", report)
+
+    def test_the_passing_count_prints_even_when_it_is_zero(self):
+        """Absence of the line would read exactly like nobody having looked.
+
+        Without this, printing the block only when something passes would
+        still satisfy the test above, and the healthy state would be silent --
+        the shape where a green tick and an unasked question are
+        indistinguishable.
+        """
+        _, report = self.declared_both(first_flagged=False)
+        self.assertIn("recall   unfinished flagged   0/2", report)
+        self.assertIn("DECLARED LIMITS NOW PASSING   0 of 2", report)
+        self.assertNotIn("re-read the reason each of these cites", report)
+
+    def test_the_block_is_absent_when_nothing_is_declared(self):
+        """A set with no declaration must not grow a limits section."""
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertNotIn("DECLARED LIMITS NOW PASSING", report)
+        self.assertNotIn("recorded design limits", report)
 
     def test_fallout_counts_a_finished_capture_that_was_flagged(self):
         """The number the scorer itself calls the shipping decision."""

@@ -1,5 +1,86 @@
 # Decisions
 
+## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
+
+Three places in this repository said a declared design limit is **counted as a
+miss**. The code has always done something else, deliberately, and says so at
+`unfinished-score.py:112`: *counted, never subtracted.* The limit check and the
+correctness check are two independent `if`s, so a declared capture the parser
+now handles is counted as a **pass**, like any other row.
+
+Both readings are defensible. What is not defensible is the repository
+asserting one and doing the other, and it cost exactly what that costs: a
+reviewer read `trailing-function-word` at 8 cases, 7 declared, 2 OK, subtracted
+7 from 8, expected 1, saw 2, and concluded a rule was broken. The deduction was
+correct and the premise was not. Careful reading made it worse rather than
+better, which is the expensive direction of this failure.
+
+**The decision: keep the behaviour, fix the three statements.** Subtracting
+stays rejected for the reason already recorded — a ceiling is a denominator in
+waiting, and "the reachable total is 50 of 57" puts 68% in a reader's head that
+nobody earned. `Docs/LANGUAGE_BASELINE.md`, `devsets/README.md` rule 3 and the
+scorer's own report now all say *counted, never subtracted*.
+
+**The finding underneath is worth more than the wording.** Rule 3 claimed a
+declared capture "must exist and be a miss", and nothing checked the second
+half. It cannot be checked where it was claimed to be:
+`test_score.py` is Linux-only, the parser is macOS-only, and `Incomplete` in
+the label column is what a row is *supposed* to be, not what the probe did with
+it. The test's own name was honest about this; its docstring was not.
+
+So a declared limit whose gap had quietly closed was indistinguishable from one
+still failing, and a stale declaration could **understate** the parser
+indefinitely. That is a marker standing in for the judgement it approximates,
+which is the error this project keeps paying for.
+
+Every scoring run now prints `DECLARED LIMITS NOW PASSING` with **the ids**,
+and prints it at zero too — a line that appears only when something is wrong
+reads exactly like nobody having looked. The ids matter more than the count:
+naming the row is what stops the next reader reconstructing which capture is
+which from a family total, which is the reasoning that already failed once.
+
+**Not wired to the exit status, on purpose.** Making a passing limit fail the
+scorer would be true enforcement, and would also turn the shared language job
+red right now to announce a stale comment — blocking two other threads over a
+documentation defect, with the offending id unknown until a macOS dispatch
+names it. Report first, enforce once the declaration is correct.
+
+**"Enforce later" is itself a claim nobody recomputes**, which is this entry's
+own defect one level up, so it carries its trigger: the next dispatch with
+`devset_failures: true` names the passing ids, each is traced, the ids whose
+stated reason no longer holds are trimmed, and the enforcement goes in on the
+run after that with nothing left to announce. Review caught that; it was going
+to be a sentence with no retest.
+
+**A passing limit is a prompt to re-read the cited reason, not a licence to
+delete the id**, and the first draft of the report said the opposite — that a
+passing limit *means* the gap closed. It does not. The declaration records a
+decision: for the `trailing-function-word` ids, that preposition, conjunction
+and adverb were each tried as a trailing class and each removed. A row can
+start passing by a branch that has nothing to do with that decision, leaving
+the cited reason exactly true and the record worth keeping. Deleting an id on
+the strength of the count alone destroys a true record of a decision, which is
+the inverse of the staleness this line exists to catch. Review ruled on that
+when asked whether the newly named id could come out in this change, and the
+answer was no: trace first, in its own pull request, graded by somebody who did
+not write the instrument. **The instrument and the first finding it produces
+should not land in the same commit** — otherwise the response is graded by
+whoever built the thing that reported it.
+
+**Dated records were not refreshed, and two nearly were.**
+`trailing-function-word` reads `3/9` as of `599fb7d`, and the `2/8` under the
+2026-09-11 09:56 and 09:38 headings in `LANGUAGE_BASELINE.md` stays `2/8`: that
+is what those runs produced, one of them on a different branch, and INC58 did
+not exist for either. The first draft of this change rewrote both to the later
+figure while arguing elsewhere in the same diff that doing so falsifies a
+record. The distinction to keep: **a figure measured on a date is fixed; a
+claim about how the scorer works was wrong on every date**, so correcting
+"counted as a miss" in place is right and updating `2/8` in place is not.
+
+The `3/9` is `#99`'s INC58 being scored, **not** the parser improving — a score
+that moves because a row was added is a census change. No cost-ledger row is
+owed: no executable line of the engine changed, so no sealed measure can move.
+
 ## 2026-09-15 — Interpretation moves to the model, resolution and execution stay put
 
 A prototype, not a switch. `ThoughtExtractionEngine` calls none of it, and the
