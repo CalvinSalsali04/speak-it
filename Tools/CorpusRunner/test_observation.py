@@ -817,7 +817,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         whose claim `testThroatClearingStillComesOff` already makes without
         skipping. One literal, enumerated rather than assumed, and the sign is
         the interesting part: deleting an assertion moves this count exactly
-        like adding a fixture does. What the test
+        like adding a fixture does. 3928 -> 3928 later the same day, and a
+        zero is worth a line here for the same reason a fall was: the follow-up
+        gave three `ThoughtCompletionTests` tests an abstention and added two
+        guards over the helper's call sites, and moved this count by nothing,
+        because a `throws` and a call add no literal and every phrase in the
+        new comments is in backticks rather than quotation marks. Deliberate,
+        after the entry two paragraphs above learned that a quoted phrase in a
+        doc comment counts exactly like a fixture. **An unchanged count that
+        nobody recomputed is indistinguishable from one nobody checked**, which
+        is why it is written down rather than left out. 3928 -> 3928 again on
+        that follow-up's review, which narrowed a stated reason in a doc
+        comment and closed a blind spot in one of those guards: prose and a
+        Python guard, no Swift literal either way, and the backtick rule held
+        for the rewritten paragraph. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -875,6 +888,103 @@ class TheDiagnosticIsNotAllowedToAbstain(unittest.TestCase):
         helper and `skipIfBlind` appears nowhere, so "the probe does not call
         it" becomes true of every file in the repository."""
         self.assertIn("func skipIfBlind", self.source())
+
+
+class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
+    """`LexicalTagging.skipIfBlind` must be the first statement of every test
+    that calls it.
+
+    #99 shipped it that way on review's objection, and the reason is that the
+    alternative rests on something nobody here has established: whether XCTest
+    records a failure that happened *before* a test throws `XCTSkip`. If it does
+    not, an assertion placed ahead of the skip is reported as a skip on a blind
+    image, and a genuine regression in the half that could still be measured
+    disappears into the Skipped column. That is the failure the helper exists to
+    prevent, wearing the helper's own clothes.
+
+    The ordering was argued at length in a docstring and checked by nothing:
+    moving the skip back below a statement left `test_score` and this suite
+    green. A decision that only prose defends is one the next person undoes
+    without knowing there was a decision.
+
+    Checked here rather than in Swift for the same reason as
+    `TheDiagnosticIsNotAllowedToAbstain`: it is a claim about the shape of a
+    source file, and this is the suite that already reads `SpeakItTests` and
+    runs on Linux on every pull request.
+    """
+
+    HELPER = "LexicalTagging.skipIfBlind("
+
+    #: What may precede the call on its own line. `try` is the call itself;
+    #: anything else there is a statement that ran first.
+    PREFIX_OK = ("", "try")
+
+    def call_sites(self):
+        """Every (file, test, lines before the call, text before it on its line).
+
+        The fourth element exists because the third cannot cover it. Slicing
+        `lines[back + 1:index]` stops at the call's own line, so a statement
+        sharing that line was invisible:
+
+            XCTAssertNil(ThoughtCompletion.unfinished(in: `Milk`)); try skip()
+
+        Injected exactly that and this class reported OK. Odd Swift style, so
+        it was never likely — but a guard with a blind spot on the one line it
+        is most about is the shape of defect this suite exists to catch, and it
+        was found by review reading the slice rather than by the guard.
+        """
+        root = pathlib.Path(__file__).resolve().parents[2]
+        signature = re.compile(r"^\s*func\s+(test[A-Za-z0-9_]*)\s*\(")
+        sites = []
+        for swift in sorted((root / "SpeakItTests").glob("*.swift")):
+            lines = swift.read_text(encoding="utf-8", errors="replace").splitlines()
+            for index, line in enumerate(lines):
+                if self.HELPER not in line:
+                    continue
+                head = line[:line.index(self.HELPER)].strip()
+                #: A doc comment that *names* the helper is not a call site.
+                #: Without this, `/// Abstains via LexicalTagging.skipIfBlind()`
+                #: reddens the suite -- and names the wrong test, because the
+                #: comment sits above its own `func` so the walk back finds the
+                #: previous one. Reproduced against the guard as first shipped,
+                #: so it is not new here, and found by review rather than by the
+                #: guard. Documenting the helper should not be what breaks it.
+                if head.startswith("//"):
+                    continue
+                for back in range(index - 1, -1, -1):
+                    found = signature.match(lines[back])
+                    if found:
+                        sites.append((swift.name, found.group(1),
+                                      lines[back + 1:index], head))
+                        break
+                else:
+                    self.fail(f"{swift.name}:{index + 1} calls the helper "
+                              "outside any test function")
+        return sites
+
+    def test_nothing_runs_before_the_abstention(self):
+        for name, test, between, head in self.call_sites():
+            self.assertIn(
+                head, self.PREFIX_OK,
+                f"{name}: {test} runs `{head}` on the same line, before it "
+                "abstains. Same defect as a statement on the line above, and "
+                "the line-range check cannot see this one.")
+            for line in between:
+                stripped = line.strip()
+                self.assertTrue(
+                    not stripped or stripped.startswith("//"),
+                    f"{name}: {test} runs `{stripped}` before it abstains. "
+                    "An assertion ahead of the skip is only reported if XCTest "
+                    "keeps a failure that precedes a thrown XCTSkip, which is "
+                    "not established here; put the claim in a test that never "
+                    "abstains instead.")
+
+    def test_there_is_something_to_check(self):
+        """Without this the assertion above passes by having nothing to say.
+        Rename the helper, or drop its last caller, and `every call site is
+        first` becomes true of the empty set -- the same shape as a test
+        selection that matches nothing, and as the guard that cannot fire."""
+        self.assertGreaterEqual(len(self.call_sites()), 1)
 
 
 if __name__ == "__main__":
