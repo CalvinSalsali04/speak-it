@@ -201,18 +201,39 @@ would not meet the ambiguity that `Noun Conjunction` creates. A recorded limit
 is a decision taken with the signals to hand; calling it a ceiling promotes it
 to a property of the language.
 
-Three rules stop this becoming a machine for excusing failures, and
-`../test_score.py` holds all three:
+Three rules stop this becoming a machine for excusing failures. `../test_score.py`
+holds the first two outright; the third is split, and the split is the point:
 
-1. **A limit never changes a rate.** Those seven are still misses in the 34 of
-   57. Declaring one makes a number more visible rather than better, so there
-   is nothing to gain by declaring one falsely.
+1. **A limit never changes a rate.** A limit is *counted, never subtracted* — a
+   label on a row, not an exclusion from it. So a declared capture that still
+   misses is counted as a miss, and one that now passes is counted as a pass.
+   Declaring one makes a number more visible rather than better, so there is
+   nothing to gain by declaring one falsely.
 2. **The citation is verified, not stated.** The phrase must still appear in
    the named source, so a limit cannot outlive the decision that made it:
    implement the thing and delete the comment, and the declaration fails until
    somebody removes it.
-3. **A declared capture must exist and be a miss**, so a declaration cannot
-   quietly cover a row that was passing anyway.
+3. **A declared capture must exist, be an unfinished capture, and still miss.**
+   The first two are checked by `test_score.py`. **The third cannot be**, and
+   saying it was is a claim this file made for months: whether a row still
+   misses is a fact about a *run*, and that suite is Linux-only while the parser
+   is macOS-only. `Incomplete` in the label column is what the row is supposed
+   to be, not what the probe did with it.
+
+   It is checked where the evidence exists instead. Every scoring run prints:
+
+   ```
+   DECLARED LIMITS NOW PASSING   1 of 7
+     INC4x
+   ```
+
+   printed at zero too, because a line that appears only when something is
+   wrong reads exactly like nobody having looked. **A declared limit that
+   passes means the gap closed and the declaration did not** — re-read the
+   cited source and remove the ids that no longer belong, or this set goes on
+   understating the parser. That is not wired to the exit status yet, on
+   purpose: reddening the shared language job is how you announce a stale
+   comment by blocking everyone else's work.
 
 `INC45` is deliberately outside the declaration and a test pins that. "I need
 to talk to Sarah about the" ends on a determiner, which the cited comment does

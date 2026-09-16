@@ -1,5 +1,55 @@
 # Decisions
 
+## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
+
+Three places in this repository said a declared design limit is **counted as a
+miss**. The code has always done something else, deliberately, and says so at
+`unfinished-score.py:112`: *counted, never subtracted.* The limit check and the
+correctness check are two independent `if`s, so a declared capture the parser
+now handles is counted as a **pass**, like any other row.
+
+Both readings are defensible. What is not defensible is the repository
+asserting one and doing the other, and it cost exactly what that costs: a
+reviewer read `trailing-function-word` at 8 cases, 7 declared, 2 OK, subtracted
+7 from 8, expected 1, saw 2, and concluded a rule was broken. The deduction was
+correct and the premise was not. Careful reading made it worse rather than
+better, which is the expensive direction of this failure.
+
+**The decision: keep the behaviour, fix the three statements.** Subtracting
+stays rejected for the reason already recorded — a ceiling is a denominator in
+waiting, and "the reachable total is 50 of 57" puts 68% in a reader's head that
+nobody earned. `Docs/LANGUAGE_BASELINE.md`, `devsets/README.md` rule 3 and the
+scorer's own report now all say *counted, never subtracted*.
+
+**The finding underneath is worth more than the wording.** Rule 3 claimed a
+declared capture "must exist and be a miss", and nothing checked the second
+half. It cannot be checked where it was claimed to be:
+`test_score.py` is Linux-only, the parser is macOS-only, and `Incomplete` in
+the label column is what a row is *supposed* to be, not what the probe did with
+it. The test's own name was honest about this; its docstring was not.
+
+So a declared limit whose gap had quietly closed was indistinguishable from one
+still failing, and a stale declaration could **understate** the parser
+indefinitely. That is a marker standing in for the judgement it approximates,
+which is the error this project keeps paying for.
+
+Every scoring run now prints `DECLARED LIMITS NOW PASSING` with **the ids**,
+and prints it at zero too — a line that appears only when something is wrong
+reads exactly like nobody having looked. The ids matter more than the count:
+naming the row is what stops the next reader reconstructing which capture is
+which from a family total, which is the reasoning that already failed once.
+
+**Not wired to the exit status, on purpose.** Making a passing limit fail the
+scorer would be true enforcement, and would also turn the shared language job
+red right now to announce a stale comment — blocking two other threads over a
+documentation defect, with the offending id unknown until a macOS dispatch
+names it. Report first, enforce once the declaration is correct.
+
+No cost-ledger row is owed: no executable line of the engine changed, so no
+sealed measure can move. The `2/8` → `3/9` in `LANGUAGE_BASELINE.md` is `#99`'s
+INC58 being scored, **not** the parser improving — a score that moves because a
+row was added is a census change.
+
 ## 2026-09-15 — Interpretation moves to the model, resolution and execution stay put
 
 A prototype, not a switch. `ThoughtExtractionEngine` calls none of it, and the

@@ -2684,12 +2684,16 @@ Coordination failures, all six: `occupations` 3 (all over-splits), `brands` 1
 (over-split), `multiple-people` 1 (over-split), `three-or-more` 1 (under-split).
 
 Weakest unfinished families: `incomplete-complement` 1/10,
-`trailing-function-word` 2/8 ‡, `abandoned-midthought` 3/9.
+`trailing-function-word` 3/9 ‡, `abandoned-midthought` 3/9.
 
-‡ Seven of those eight captures are recorded design limits as of `1ca210b`,
+‡ Seven of those nine captures are recorded design limits as of `1ca210b`,
 declared against `ClauseStructure.swift`'s own "out of scope, and honestly so".
-The rate is unchanged and correct; what it means is not. See "What a recorded
-limit does to a weakest-family list" below.
+The rate is correct; what it means is not. See "What a recorded limit does to a
+weakest-family list" below.
+
+Was `2/8` until `599fb7d`, measured again on run 35132499870: INC58 added one
+case and one pass. **That movement is a new row being scored, not the parser
+improving** — no executable line of the engine changed between the two runs.
 
 ### 5. Synthetic stress — still none
 
@@ -2821,7 +2825,7 @@ the scorer talking: see "Correction — 2026-09-11" above.
 | family | set | score |
 |---|---|---|
 | `incomplete-complement` | unfinished | **1/10** |
-| `trailing-function-word` | unfinished | **2/8** ‡ |
+| `trailing-function-word` | unfinished | **3/9** ‡ |
 | `abandoned-midthought` | unfinished | **3/9** |
 | `occupations` | coordination | **1/4**, all three failures over-splits |
 | `dangling-infinitive` | unfinished | 18/20 |
@@ -2835,16 +2839,21 @@ is worth treating as one question rather than six.
 
 ### ‡ What a recorded limit does to a weakest-family list
 
-**`trailing-function-word` 2/8 is not the available win it looks like.** Seven
-of its eight captures — INC41, INC42, INC43, INC44, INC46, INC47, INC48 — are
+**`trailing-function-word` 3/9 is not the available win it looks like.** Seven
+of its nine captures — INC41, INC42, INC43, INC44, INC46, INC47, INC48 — are
 declared design limits as of `1ca210b`, citing `ClauseStructure.swift`'s own
 record that preposition, conjunction and adverb were each tried as a trailing
 class and each removed. "Pick up milk and" and "we're almost out" are the same
 tag shape and only one of them is unfinished, so what separates them is *which*
 preposition: a word list, which is the thing that file exists not to keep.
 
-The rate stays 2/8 on purpose. A limit is counted as a miss and never
-subtracted, because a ceiling is a denominator in waiting — publish "so the
+The declared captures stay in the denominator on purpose. **A limit is
+counted, never subtracted** — it is a label on a row, not an exclusion from the
+rate, so a declared capture that still misses is counted as a miss and one that
+now passes is counted as a pass. (This used to read "counted as a miss and
+never subtracted", which is self-contradictory and was wrong in the case that
+matters; see the warning below.) The reason not to subtract is that a ceiling
+is a denominator in waiting — publish "so the
 reachable total is 50 of 57" once and 34/50 is in the reader's head, and 68% is
 a nicer number than 59.6% that nobody earned. It would also be false: what the
 source records is a decision about three *tagger classes*, not a property of
@@ -2862,6 +2871,25 @@ approximates, which is the error this project keeps paying for.
 The declaration cannot outlive the decision: `test_score.py` checks the cited
 phrase is still in the source, so implementing the thing and deleting the
 comment fails the suite until the declaration goes too.
+
+**Warning: do not subtract the declared count from the family total.** It is
+the arithmetic the row invites and it gives the wrong answer. Seven declared
+out of nine does not leave two rows able to pass, because a limit is a label
+and not an exclusion — a declared capture the parser now handles is counted as
+a pass like any other. `3/9` with seven declared is therefore not a
+contradiction, and at least one of those seven is currently passing.
+
+This is not hypothetical. Reading `2/8` as "seven declared, so only INC45 can
+pass, so the answer should be 1" is a correct deduction from a false premise,
+and it cost a reviewer real confidence in a rule that was behaving. The premise
+came from three places that all said it, and all three were wrong: this
+document, `devsets/README.md` rule 3, and the scorer's own report. All three
+now say *counted, never subtracted*.
+
+Which of the seven is passing is not answerable from a family total — that is
+the same reconstruction that failed above. Every scoring run now prints
+`DECLARED LIMITS NOW PASSING` with the ids, and `ci.yml`'s `devset_failures`
+input lists every dev-set miss by id, so a row absent from it is a pass.
 
 ## What this baseline does not cover
 
