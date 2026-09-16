@@ -2363,11 +2363,13 @@ class DuplicateUtterancesAreAllListed(unittest.TestCase):
                 for _, cid, utterance in corpus_paths.utterances(str(path)):
                     found.append((utterance, (path.name, cid)))
             except ValueError as refusal:
-                #: Caught, not propagated, so that the failure is one assertion
-                #: naming the set and the line rather than four stack traces --
-                #: and so that `test_every_readable_set_was_scanned` reaches its
-                #: own assert instead of erroring first, which would make it a
-                #: guard that cannot fire.
+                #: Caught, not propagated, so that the failure is one
+                #: assertion naming the set and quoting its refusal, rather
+                #: than four stack traces -- and so that
+                #: `test_every_readable_set_was_scanned` reaches its own assert
+                #: instead of erroring first, which would make it a guard that
+                #: cannot fire. "And the line" would be too strong: a row
+                #: refusal carries a line number, a missing header does not.
                 refused[path.name] = str(refusal)
                 continue
             for utterance, home in found:
