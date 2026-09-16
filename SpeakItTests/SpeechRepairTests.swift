@@ -16,6 +16,35 @@ import XCTest
 /// Both are asserted here, where the contract is exactly string in, string out.
 final class SpeechRepairTests: XCTestCase {
 
+    /// The leading "I was thinking" strip used to be unconditional, so
+    /// "I was thinking of calling Priya" became "of calling Priya": the hedge
+    /// deleted and a fragment left in its place. No gating field moved — the
+    /// route was Memory either way — so the corpus could not report it, which
+    /// is exactly the first kind of defect this file exists for.
+    func testLeadingThinkingIsStrippedOnlyWhenItIsNotTheMatrixVerb() {
+        // A real complement. "Thinking" is the verb, not throat-clearing, and
+        // the words that say the errand was only contemplated have to survive.
+        for unchanged in [
+            "I was thinking of calling Priya",
+            "I was thinking about the wedding",
+            "I was thinking about calling Mike",
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(unchanged), unchanged)
+        }
+
+        // Throat-clearing in front of a request. Still stripped: without this
+        // the filler reaches the row title.
+        XCTAssertEqual(DisfluencyFilter.stripped("I was thinking, buy milk"), "buy milk")
+        XCTAssertFalse(
+            DisfluencyFilter.stripped("I was thinking it might make sense to add a dark mode")
+                .lowercased().hasPrefix("i was thinking"))
+
+        // The matched pair. With no complement behind it the strip still runs,
+        // and `ClauseStructure.unfinished` reads the lone "about" as a thought
+        // cut short — the capture is correct today and must stay correct.
+        XCTAssertEqual(DisfluencyFilter.stripped("I was thinking about"), "about")
+    }
+
     func testHesitationDoesNotBreakCommandComplements() {
         for (input, expected) in [
             ("set alarm, um, for one hour from now", "set alarm for one hour from now"),

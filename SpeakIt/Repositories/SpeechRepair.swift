@@ -109,7 +109,23 @@ enum DisfluencyFilter {
         // "Okay so the thing is I need to renew insurance" -> "I need to renew
         // insurance". Runs after the lead-in strip so it sees the bare phrase.
         value = replace(value, #"^(?:the\s+)?thing\s+is\b[\s,]*"#, "")
-        value = replace(value, #"^i\s+was\s+thinking\b[\s,]*"#, "")
+        // "I was thinking" is throat-clearing in front of a request — "Like, I
+        // was thinking, buy milk" — and the matrix verb of a real complement in
+        // front of one. "I was thinking of calling Priya" is a hedge, and
+        // deleting it files a contemplated errand as a settled one and leaves
+        // the fragment "of calling Priya" behind. The two readings differ only
+        // in what follows the word, so the strip is gated on the complement —
+        // the same shape as the two strips below it, where the aside is gated
+        // on the instruction behind it and "I mean" on there being anything
+        // left at all.
+        //
+        // The trailing `\S` is load-bearing, and keeps a matched pair intact:
+        // "I was thinking about" with nothing after it still strips to "about",
+        // which `ClauseStructure.unfinished` reads as a lone function word and
+        // reports as a thought cut short. That branch names this sentence as
+        // the case it exists for, so a wider refusal here would break a capture
+        // that is correct today.
+        value = replace(value, #"^i\s+was\s+thinking\b(?!\s+(?:of|about)\s+\S)[\s,]*"#, "")
         // A leading "I mean" is the same throat-clearing as "the thing is".
         // Left in place it cost real rows: "so uh I mean um the car needs the
         // winter tires on and also the plates renewed" collapsed to a single
