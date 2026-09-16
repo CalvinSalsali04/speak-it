@@ -2746,3 +2746,63 @@ came from dispatched macOS runs: the corpus gate green over 1,404 cases with
 `DO02` gone from the routed development set's failures and `DO03` still there,
 and the capture-operation classes green on a simulator. The whole unit suite
 and the release compile check have still not run.
+
+## 2026-09-16 — The first Foundation Models run, and the prompt leak it found
+
+The first run of the interpretation prototype on hardware that has Apple
+Intelligence: 46 `runon` development captures, greedy, `repairedFirst: false`,
+instructions fingerprint `329d9c7d`, one run each, 280s — **6.1 seconds per
+capture**, so one pass over all 631 development captures costs about an hour of
+one Mac. Both paths were scored by `Tools/CorpusRunner/heldout/score.py`, the
+same instrument, and the run file is on branch `claude/first-run-runon`.
+
+| | parser | model only | model + rules fallback |
+|---|---|---|---|
+| destination | 42/46 (91.3%) | 16/46 (34.8%) | 39/46 (84.8%) |
+| thought count | 35/44 (79.5%) | 15/46 (32.6%) | 36/45 (80.0%) |
+| produced nothing | 0 | 25 | 0 |
+| acted on anyway | 0 | 0 | 0 |
+
+**Do not read 80.0% against 79.5% as "no change".** The composition is
+different at the same total. `statement-runon` went from the parser's **0/6**
+to the model's **5/6**, with none of those six captures refused, so it is the
+model unaided; the scorer's own control-pair block moved all three of the
+parser's guard comparisons from `NOT INFORMATIVE` to `informative`.
+`bridging-guard` fell 4/4 to 2/4, which `Docs/KNOWN_ISSUES.md` and the
+development set's header had both predicted would happen the day anything
+split a statement: the guard was passing because nothing ever split, not
+because bridging was handled. The real cost is `mixed-runon` destination, 7/8
+to 4/8, and on the four of those the model was trusted with it scored 0/4
+against the parser's 3/4.
+
+**One defect dominated every measure.** 32 of the row-bearing segments were not
+verbatim spans of their capture, and `InterpretationPolicy` refused 25 of the
+46 readings — 23 `ungroundedSpan`, one `inventedPerson`, one
+`impossibleCombination` (`reported` + `speakerOwes`, refused by the rule
+written for exactly that failure). Two captures reported destructive operations
+that were not in the speech at all, including two broad cancels against a
+capture containing no cancellation; both were refused at the grounding check
+before reaching the operation layer, and `ACTED ON ANYWAY` was 0 in all three
+columns. That is the deterministic gate doing the job it was built for, and it
+is the reason the prototype could be pointed at a development set at all.
+
+**The cause was our own prompt.** The model was copying its brief into the
+transcript's place. Eleven captures emitted a segment quoted as the bare word
+`tomorrow`, which was the example inside the `@Guide` for `carriedContext`; one
+emitted `Ask Dana about Friday`, a verbatim instructions sentence; one emitted
+`Dana said I should call the dentist`, which is the instructions'
+`Mum said I should call the dentist` with the name swapped. **An illustration
+sitting in a field's own description is a candidate value for that field.**
+
+So the quoted examples are gone from the instructions and from the two
+`@Guide` descriptions that carried one, replaced by descriptions of the same
+distinctions; the instructions now say outright that they are not part of the
+transcript, and that a segment must quote at least one word of it. Nothing else
+was tuned, and nothing was tuned against the 46: a prompt changed to fix a
+defect those captures revealed cannot then be scored on them, so the next run
+goes to `framing` and `routed`, which drove nothing here.
+`Tools/CorpusRunner/test_interpretation_isolation.py` now fails on a quoted
+example anywhere in the prompt, verified by running it against the prompt as it
+was — five sites, all named. The rule is narrower than the defect and says so:
+it catches an example written in quotation marks and cannot catch one written
+without them.
