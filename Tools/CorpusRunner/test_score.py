@@ -2249,6 +2249,25 @@ class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
     exact in both directions: a new duplicate fails, and one that quietly
     disappears fails too, because a stale exception list is the thing that
     started all this.
+
+    WHY THIS DOES NOT JUST CALL `corpus-shape.py`, WHICH ALREADY FINDS THEM.
+    It does, exactly: run it against `unfinished.tsv` and it prints
+    `unique utterances 163  DUPLICATED AT: INC34, INC58` and exits 1. The
+    duplicates went unnoticed for three weeks anyway, because **nothing
+    invokes that tool** -- no script under `Tools/CI/`, no workflow step. It is
+    a reviewer's hand-run instrument for staying blind to a sealed set, and it
+    reports a problem on two of the seven readable sets right now.
+
+    It is also not currently wirable: on `abandonment.tsv`, which is ragged
+    (37 rows of five columns, 18 of four), it raises `IndexError` at the label
+    -column counter rather than reporting the raggedness it just printed.
+    Fixing that and deciding whether a blind reviewer tool belongs in CI is a
+    change to that tool, with its own argument, and does not belong in a test
+    about a duplicate row.
+
+    So this is deliberately a second implementation, and the honest reason is
+    that it is the one that runs. When `corpus-shape.py` is repaired and wired
+    up, this class should shrink to asserting the list, not recomputing it.
     """
 
     #: utterance -> why the duplication is tolerated. Removing an id changes a
@@ -2274,23 +2293,36 @@ class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
         return corpus_paths
 
     def duplicates(self):
-        """utterance -> sorted ids, for every readable set, keyed per set."""
+        """Returns (utterance -> sorted ids, list of sets that were skipped).
+
+        Reads both columns by name through `utterance_column` and `id_column`,
+        which raise, rather than through `column_of`, which returns None. A
+        first draft of this used `column_of` behind `except Exception` and
+        believed it was handling a set with an unreadable header. It was not:
+        nothing raised, `None` flowed downstream, and the failure arrived as a
+        `TypeError` several lines later -- a handler that could not fire,
+        guarding against something that could not happen, in a class written to
+        catch exactly that. The accessors that raise are the ones to use, and
+        the skip is recorded rather than swallowed.
+        """
         corpus_paths = self.paths()
-        found = {}
+        found, skipped = {}, []
         for path in corpus_paths.readable():
             lines = path.read_text(encoding="utf-8").splitlines()
             try:
-                column = corpus_paths.column_of(lines, "utterance")
-            except Exception:  # a set without a named utterance column
+                utterance_at = corpus_paths.utterance_column(lines)
+                id_at = corpus_paths.id_column(lines)
+            except ValueError as exc:
+                skipped.append(f"{path.name}: {exc}")
                 continue
             seen = {}
             for _, cells in corpus_paths.data_rows(str(path)):
-                if len(cells) > max(column, 0):
-                    seen.setdefault(cells[column], []).append(cells[0])
+                if len(cells) > max(utterance_at, id_at):
+                    seen.setdefault(cells[utterance_at], []).append(cells[id_at])
             for utterance, ids in seen.items():
                 if len(ids) > 1:
                     found[utterance] = sorted(ids)
-        return found
+        return found, skipped
 
     def test_the_scan_reaches_rows_at_all(self):
         """Without this, an empty result reads the same as a clean corpus."""
@@ -2302,8 +2334,16 @@ class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
                            "the scan read almost nothing, so the check below "
                            "would report a clean corpus either way")
 
+    def test_every_readable_set_was_actually_scanned(self):
+        """A set that drops out of the scan makes the list below look exact."""
+        _, skipped = self.duplicates()
+        self.assertEqual(skipped, [],
+                         "a readable set was skipped, so a duplicate inside it "
+                         "would not be found and the KNOWN list would still "
+                         "pass -- resolve the header rather than the symptom")
+
     def test_no_duplicate_utterance_appears_unlisted(self):
-        found = self.duplicates()
+        found, _ = self.duplicates()
         self.assertEqual(
             sorted(found), sorted(self.KNOWN),
             "the duplicated utterances in the readable dev sets are not the "
@@ -2314,7 +2354,7 @@ class NoUtteranceIsScoredTwiceUnnoticed(unittest.TestCase):
 
     def test_each_known_duplicate_really_is_one(self):
         """The list cannot be satisfied by naming utterances that are not there."""
-        found = self.duplicates()
+        found, _ = self.duplicates()
         for utterance in self.KNOWN:
             self.assertIn(utterance, found)
             self.assertGreater(len(found[utterance]), 1)
