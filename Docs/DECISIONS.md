@@ -2832,3 +2832,53 @@ example anywhere in the prompt, verified by running it against the prompt as it
 was — five sites, all named. The rule is narrower than the defect and says so:
 it catches an example written in quotation marks and cannot catch one written
 without them.
+
+**A short-circuiting checker undercounts defects, and this one hid two.**
+`InterpretationPolicy.check` returns on its first failure, so the tally above —
+23 `ungroundedSpan`, 1 `inventedPerson`, 1 `impossibleCombination` — describes
+which rule fired first, not how many defects the reading carried. Evaluating
+every rule independently over the same 46 captures gives a different picture:
+`ungroundedSpan` has something to fire on in 24 captures and
+**`impossibleCombination` in 18**, not one. Three distinct sub-causes, counted
+by segment and by capture:
+
+| sub-cause | segments | captures | addressed by this prompt pass |
+|---|---|---|---|
+| `speakerOwes` on a non-`stated` segment that has a quote | 17 | 8 | no |
+| `supersededBy` on a segment that is not `corrected` | 15 | 7 | no |
+| `speakerOwes` on a segment with an empty quote | 9 | 9 | yes, if the new rule holds |
+
+The second is its own defect: **not one segment in the run used
+`disposition: corrected`**, yet fifteen named a span they had replaced, all of
+them on `abandoned` or `reported` segments. The model appears to fill that
+field whenever a segment relates to another one, rather than when a sentence
+was actually replaced. Found by the evaluation thread and confirmed here.
+
+The first matters more than its size, because it is the family named as
+dangerous: **a `reported` segment claiming the speaker owes the action** is
+somebody else's words turned into the user's errand, and it appears on 17
+segments across 8 captures. `InterpretationPolicy` refuses it
+(`impossibleCombination`), which is why it costs nothing today.
+
+**A prediction, recorded before the next run rather than after it.** Neither of
+the first two sub-causes is touched by removing the quoted examples, so if
+everything else about the model's behaviour held and only grounding and the
+empty trailing segment were fixed, refusals over these 46 would fall from 25 to
+**14, not to 0**. The next run is `framing` and `routed`, so the number will
+not transfer; the claim is that the *mode* persists and
+`impossibleCombination` appears among the rules that fire. **The falsifier: if
+it does not appear at all, this is wrong.**
+
+Deliberately not fixed in the same pass. The instruction the model is missing
+is that naming a replaced span belongs only to a sentence that was actually
+replaced — one sentence, and it would confound the experiment. A prompt pass
+that changes two things cannot say which one moved the result, and the
+pre-registered prediction above is worth more than the round trip it would
+save.
+
+**One claim of ours needs softening for the same reason.** RO02's repetition
+loop was described as something the prompt fix does not touch. That is right
+about removing the quoted examples and wrong about the pass as a whole: the new
+sentence "when there is nothing left to quote, emit no further segment"
+plausibly bears on a runaway list too. So if RO02 comes back clean, the honest
+reading is that we do not know which change did it.
