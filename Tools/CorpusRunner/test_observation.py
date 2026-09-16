@@ -834,5 +834,39 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         self.assertIn("sealed", observation.READ_WHAT)
 
 
+class TheDiagnosticIsNotAllowedToAbstain(unittest.TestCase):
+    """`LexicalTagging.skipIfBlind` lets a tagger-dependent assertion report
+    "not measured here" instead of a verdict it cannot support. Applied to the
+    diagnostic itself it would be self-concealing: the one test whose failure
+    tells anybody the lexical model is missing would go quiet, and the suite
+    would skip its way to green. That is the same defect as a step that runs no
+    tests, one level up, and it is invisible from a summary table.
+
+    Checked here rather than in Swift because it is a claim about which source
+    calls what, and this is the suite that already reads `SpeakItTests`.
+    """
+
+    def source(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        return (root / "SpeakItTests" / "RenderingInvarianceTests.swift").read_text(
+            encoding="utf-8", errors="replace")
+
+    def test_the_environment_probe_does_not_call_the_skip_helper(self):
+        text = self.source()
+        start = text.index("final class NaturalLanguageEnvironmentTests")
+        body = text[start:start + text[start:].index("\n}\n") + 2]
+        self.assertNotIn(
+            "skipIfBlind", body,
+            "NaturalLanguageEnvironmentTests must still fail loudly on a blind "
+            "image; abstaining there hides the only signal that says why "
+            "everything else is abstaining")
+
+    def test_the_helper_it_must_not_call_still_exists_under_that_name(self):
+        """Without this the assertion above passes by spelling. Rename the
+        helper and `skipIfBlind` appears nowhere, so "the probe does not call
+        it" becomes true of every file in the repository."""
+        self.assertIn("func skipIfBlind", self.source())
+
+
 if __name__ == "__main__":
     unittest.main()
