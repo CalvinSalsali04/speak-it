@@ -219,15 +219,24 @@ final class SpeechRepairTests: XCTestCase {
     /// accepts `.determiner` and not `.preposition` — and returns nil. Both
     /// assertions below fail, and an abandoned thought would have become an
     /// errand.
-    /// The skip sits *between* the two assertions on purpose. The first is
-    /// string work and answers on any machine; the second reads
-    /// `last.lexicalClass`, so where the model is absent it cannot answer. Put
-    /// the abstention at the top and the half that does carry information stops
-    /// reporting too.
+    /// The abstention is the **first** statement here, and an earlier draft had
+    /// it between the two assertions so that the string half would still report
+    /// on a blind image. That design rested on XCTest recording a failure which
+    /// happened before a test throws `XCTSkip`, and nothing in this project
+    /// establishes that it does — the suite's only other skips,
+    /// `TemporalFullPathTests.swift:157` and `:1055`, are both the first line
+    /// of their test. Asserting a framework's ordering from memory is how a
+    /// regression in `DisfluencyFilter.stripped` would get reported as a skip,
+    /// which is this file's own failure mode turned on itself.
+    ///
+    /// Nothing is lost by not depending on it. The string claim is asserted by
+    /// `testThroatClearingStillComesOff`, which has no skip in it, so removing
+    /// the trailing `\S` still fails a test that always runs. This one owns
+    /// the second link only, and is still a chain: the repair's output is what
+    /// it feeds to the reader.
     func testTheRepairAndTheFragmentRuleAreOneChain() throws {
-        let abandoned = DisfluencyFilter.stripped("I was thinking about")
-        XCTAssertEqual(abandoned, "about", "the repair must leave the bare marker")
         try LexicalTagging.skipIfBlind()
+        let abandoned = DisfluencyFilter.stripped("I was thinking about")
         XCTAssertEqual(
             ThoughtCompletion.unfinished(in: abandoned),
             .trailingFunctionWord,
@@ -248,10 +257,12 @@ final class SpeechRepairTests: XCTestCase {
     /// have failed there whatever the repair produced. A guard that cannot fire
     /// looks exactly like a guard that holds, and a green tick here was the
     /// more dangerous of the two results that run produced.
+    /// Skip first, for the reason given above. `testContemplationIsNotThroatClearing`
+    /// asserts that the hedge survives the repair and never abstains, so this
+    /// test owns only the reading of what survived.
     func testThePreservedHedgeIsNotReadAsUnfinished() throws {
-        let kept = DisfluencyFilter.stripped("I was thinking of calling Priya")
-        XCTAssertEqual(kept, "I was thinking of calling Priya")
         try LexicalTagging.skipIfBlind()
+        let kept = DisfluencyFilter.stripped("I was thinking of calling Priya")
         XCTAssertNil(
             ThoughtCompletion.unfinished(in: kept),
             "a preserved hedge is a finished sentence, not a trailing fragment"

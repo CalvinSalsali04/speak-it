@@ -808,7 +808,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         above had just finished naming), and **four** fragments of a single
         skip message, because a message built by concatenating string literals
         across lines counts once per fragment and not once per message.
-        Counting messages would have predicted ten. What the test
+        Counting messages would have predicted ten.
+        3929 -> 3928 an hour later, the first *fall* in this log: review found
+        that the chain test put an assertion ahead of its `XCTSkip`, which
+        depends on XCTest recording a failure that precedes a skip, and nothing
+        here establishes that it does. Moving the skip to the first statement
+        dropped the assertion message "the repair must leave the bare marker",
+        whose claim `testThroatClearingStillComesOff` already makes without
+        skipping. One literal, enumerated rather than assumed, and the sign is
+        the interesting part: deleting an assertion moves this count exactly
+        like adding a fixture does. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -822,7 +831,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3929)
+        self.assertEqual(len(space), 3928)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
