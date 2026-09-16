@@ -28,6 +28,23 @@ if let index = arguments.firstIndex(of: "--clauses") {
     arguments.remove(at: index)
 }
 
+// Completion mode. Prints which `ThoughtCompletion.Unfinished` case answers,
+// for the raw utterance and for the exact string the scored call sees.
+//
+// The enum is `String`-raw-valued and `CaseIterable` because, in its own words,
+// "the behaviour has to be explainable" -- and nothing in the repository ever
+// printed it. `state.gap` cannot stand in: both cases carry
+// `.incompleteThought`, so the field that looks like the answer is the one
+// place the two branches are collapsed into one value. Without this, which
+// branch fired could only be inferred from whether a row was flagged, and
+// every such inference also moves the repair chain, so it cannot separate
+// "a different branch answered" from "a different string arrived".
+var showCompletion = false
+if let index = arguments.firstIndex(of: "--completion") {
+    showCompletion = true
+    arguments.remove(at: index)
+}
+
 // Drift mode. For every utterance, checks that the words a person is shown —
 // the row title and the quote — can all be found in what they actually said,
 // unless the row records that a repair happened inside its span.
@@ -75,8 +92,17 @@ let utterances = lines
     .filter { !$0.isEmpty && !$0.hasPrefix("#") }
 
 if showClausesOnly {
-    // The same repair chain `RuleBasedThoughtExtractor.process` runs before it
-    // segments, so the clauses printed here are the clauses the pipeline sees.
+    // A hand-maintained copy of the repair chain `RuleBasedThoughtExtractor`
+    // runs before it segments (`ThoughtExtractor.swift:386-403`). It is a copy,
+    // so it can drift, and it already has: the pipeline strips disfluency from
+    // `normalize(transcript)` rather than from the raw line, and it runs
+    // `CaptureOperationDetector.resolvingInCaptureCancellations` between that
+    // and the repair nest. Neither happens here. So these are the clauses the
+    // pipeline sees only for an utterance that normalizes to itself and carries
+    // no in-capture cancellation -- which is most of them, and not all.
+    //
+    // `--completion` below does not copy anything: it runs the engine and reads
+    // the string off the row. Prefer that shape for anything new.
     for utterance in utterances {
         let cleaned = DisfluencyFilter.stripped(utterance)
         let corrected = GroceryHomophoneRepair.repaired(
@@ -96,6 +122,60 @@ if showClausesOnly {
         )
         let clauses = RuleBasedThoughtExtractor.splitClauses(corrected)
         print("\(utterance)\t\(clauses.joined(separator: " | "))")
+    }
+    exit(0)
+}
+
+if showCompletion {
+    // `ThoughtOrganizer.organize` is called on `segment.analysisText`
+    // (`ThoughtExtractor.swift:504`) and its first act is to trim
+    // (`ThoughtOrganizer.swift:794`). So for a row whose organization was
+    // derived from its OWN analysis text, a trimmed `analysisText` is the very
+    // string the scored guard at `ThoughtOrganizer.swift:966` tested, and this
+    // re-evaluates a pure function of that identical input rather than
+    // reconstructing it or inferring it from the outcome.
+    //
+    // That is not every row. The spoken-list splitter at
+    // `ThoughtExtractor.swift:684-699` builds one row per product with
+    // `analysisText` synthesised from the entry and `organization:
+    // item.organization` INHERITED from the parent, so the guard never saw that
+    // string. Rather than leave the exception to this comment -- a comment is
+    // what failed last time -- the loop below reports it: on the rules path
+    // `.incompleteThought` is set only by that guard
+    // (`ThoughtOrganizer.swift:979`), so a row whose re-evaluated answer
+    // disagrees with its own recorded gap did not get its organization from
+    // this text, and the line says so.
+    //
+    // Deliberately NOT the `── "..."` record header: `devsets/score.py`,
+    // `everyday/score.py` and `heldout/score.py` split reports on that prefix,
+    // and a mode whose output could be read as records is exactly the hazard
+    // `printRows` warns about in `rowreport.swift`.
+    for utterance in utterances {
+        let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = ThoughtCompletion.unfinished(in: trimmed)
+        print("COMPLETION  \(utterance)")
+        print("   utterance:  \(raw?.rawValue ?? "nil")")
+        let result = ThoughtExtractionEngine.extractWithRules(
+            utterance,
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        if result.items.isEmpty {
+            print("   items:      NONE  <- capture produced nothing")
+        }
+        for (index, item) in result.items.enumerated() {
+            let analysis = item.analysisText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let scored = ThoughtCompletion.unfinished(in: analysis)
+            // The whole point of printing the analysis text beside the case:
+            // when it differs from the utterance, a behavioural argument about
+            // the utterance was never about the string the guard saw.
+            let drift = analysis == trimmed ? "" : "   <- differs from the utterance"
+            print("   item \(index + 1):     \(scored?.rawValue ?? "nil")   analysis=\"\(analysis)\"\(drift)")
+            if (scored != nil) != (item.organization.state.gap == .incompleteThought) {
+                print("      NOT THIS ROW'S INPUT: the recorded gap disagrees, so this")
+                print("      row's organization came from some other text -- see :684")
+            }
+        }
     }
     exit(0)
 }

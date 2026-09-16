@@ -638,8 +638,13 @@ enum ThoughtCompletion {
         /// something that never arrived.
         case trailingFunctionWord
 
-        /// All three are the same gap seen from three angles: a frame was
-        /// opened and its content never came.
+        /// Every case is the same gap seen from a different angle: a frame
+        /// was opened and its content never came.
+        ///
+        /// Said "all three ... from three angles" while there were two, so a
+        /// removed case left a sentence nothing recomputes. Counting the cases
+        /// in a test would only have forced the number to be bumped by hand;
+        /// prose that holds for any number of cases cannot go stale at all.
         var gap: SemanticGap { .incompleteThought }
     }
 
