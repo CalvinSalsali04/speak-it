@@ -235,6 +235,13 @@ holds the first two outright; the third is split, and the split is the point:
    purpose: reddening the shared language job is how you announce a stale
    comment by blocking everyone else's work.
 
+   **The trigger, so "enforce later" is not itself a claim nobody recomputes.**
+   The next dispatch carrying `devset_failures: true` names the passing ids —
+   any declared id absent from the miss list is one. Trim the declaration to
+   match, and the enforcement goes in on the run after that with nothing left
+   to announce. Until then the line above prints the ids on every run, so the
+   gap is visible rather than waiting on somebody's memory.
+
 `INC45` is deliberately outside the declaration and a test pins that. "I need
 to talk to Sarah about the" ends on a determiner, which the cited comment does
 not cover and the code below it handles separately; sweeping it in would be a

@@ -45,10 +45,25 @@ red right now to announce a stale comment — blocking two other threads over a
 documentation defect, with the offending id unknown until a macOS dispatch
 names it. Report first, enforce once the declaration is correct.
 
-No cost-ledger row is owed: no executable line of the engine changed, so no
-sealed measure can move. The `2/8` → `3/9` in `LANGUAGE_BASELINE.md` is `#99`'s
-INC58 being scored, **not** the parser improving — a score that moves because a
-row was added is a census change.
+**"Enforce later" is itself a claim nobody recomputes**, which is this entry's
+own defect one level up, so it carries its trigger: the next dispatch with
+`devset_failures: true` names the passing ids, the declaration is trimmed to
+match, and the enforcement goes in on the run after that with nothing left to
+announce. Review caught that; it was going to be a sentence with no retest.
+
+**Dated records were not refreshed, and two nearly were.**
+`trailing-function-word` reads `3/9` as of `599fb7d`, and the `2/8` under the
+2026-09-11 09:56 and 09:38 headings in `LANGUAGE_BASELINE.md` stays `2/8`: that
+is what those runs produced, one of them on a different branch, and INC58 did
+not exist for either. The first draft of this change rewrote both to the later
+figure while arguing elsewhere in the same diff that doing so falsifies a
+record. The distinction to keep: **a figure measured on a date is fixed; a
+claim about how the scorer works was wrong on every date**, so correcting
+"counted as a miss" in place is right and updating `2/8` in place is not.
+
+The `3/9` is `#99`'s INC58 being scored, **not** the parser improving — a score
+that moves because a row was added is a census change. No cost-ledger row is
+owed: no executable line of the engine changed, so no sealed measure can move.
 
 ## 2026-09-15 — Interpretation moves to the model, resolution and execution stay put
 
