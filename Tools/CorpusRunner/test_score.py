@@ -341,6 +341,19 @@ class RecordedLimitTests(unittest.TestCase):
                          "accepts a lone preposition; the comment covers the "
                          "multi-token case")
         self.assertIn("one-token branch", rows["INC58"][4])
+        # The property the id list is a tripwire for, asserted so the list is
+        # not the only thing here: being outside the declaration is not free,
+        # an exception has to say why it is one. Reviewed 2026-09-16 against
+        # the objection that pinning identities is itself a label standing in
+        # for a judgement. It is not quite: `devsets/README.md` uses that
+        # phrase for declaring a determiner under a comment about prepositions,
+        # which classifies a capture, where this only trips an alarm. But an
+        # alarm with no stated property is one a reader takes on trust, so the
+        # property goes here and the alarm stays below.
+        for cid in sorted(family - declared):
+            self.assertTrue(
+                rows[cid][4].strip(),
+                f"{cid} sits outside the declaration and gives no reason")
         if declared:
             self.assertEqual(sorted(family - declared), ["INC45", "INC58"])
 
