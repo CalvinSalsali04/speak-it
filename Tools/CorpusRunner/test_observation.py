@@ -942,6 +942,15 @@ class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
                 if self.HELPER not in line:
                     continue
                 head = line[:line.index(self.HELPER)].strip()
+                #: A doc comment that *names* the helper is not a call site.
+                #: Without this, `/// Abstains via LexicalTagging.skipIfBlind()`
+                #: reddens the suite -- and names the wrong test, because the
+                #: comment sits above its own `func` so the walk back finds the
+                #: previous one. Reproduced against the guard as first shipped,
+                #: so it is not new here, and found by review rather than by the
+                #: guard. Documenting the helper should not be what breaks it.
+                if head.startswith("//"):
+                    continue
                 for back in range(index - 1, -1, -1):
                     found = signature.match(lines[back])
                     if found:
