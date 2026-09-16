@@ -136,3 +136,10 @@ property the whole instrument rests on — that a strict mutation keeps every
 content word — because a mutation that is not meaning-preserving turns every
 disagreement downstream into noise. `test_compare.py` drives the reporter from
 a synthetic probe transcript, since the probe itself cannot run on Linux.
+
+One class in `test_compare.py` lists nothing by hand on purpose.
+`KeysComeFromTheReader` collects the fields the comparison asks for by
+watching it run, and checks that set against what `read_blocks` emits, in both
+directions: a field compared but never parsed, and a field parsed but never
+compared. The fields had been agreed by two readings of the code, one each,
+which is the arrangement that holds until someone adds a sixth one.
