@@ -37,6 +37,31 @@ rule is about where the file goes, not where it sits. Re-scoring a sealed run
 means running `--replay` on the machine that holds it and reporting the scorer's
 counts.
 
+## The first run on a device
+
+`first-run.sh` is the whole generating half in one command, for somebody who
+has Apple Intelligence and should not have to think about cuts and flags:
+
+```bash
+./Tools/InterpretationProbe/first-run.sh              # runon, 1 run
+./Tools/InterpretationProbe/first-run.sh runon 3      # three runs, for --spread
+./Tools/InterpretationProbe/first-run.sh all 1        # all 631 development captures
+```
+
+It builds the probe, prints and records `--availability` (stopping there, with
+the reason, if the model is not reachable), cuts the development set to
+`id<TAB>capture`, generates, times the run, and says which file to send back.
+**Development sets only: the set named has to be one of the `.tsv` files in
+`Tools/CorpusRunner/devsets/`, or `all`**, so pointing the generating half at a
+sealed set is not something that happens by accident here. It is an allowlist
+read from the directory rather than a list of sealed names, for two reasons: a
+name is not what reaches the file (`$SET` is interpolated into a path, and
+`../heldout/heldout` resolves to the sealed set while matching none of those
+names), and a list of what is forbidden permits the next sealed set anybody
+adds. The counts, recomputed on this head rather than carried forward:
+abandonment 55, coordination 121, framing 45, rambling 85, routed 116, runon
+46, unfinished 163, which is 631.
+
 ## The input file
 
 One capture per line. A line with no tab is the whole capture. A line with
