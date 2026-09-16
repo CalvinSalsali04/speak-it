@@ -17,6 +17,15 @@ The two strengths come from mutate.py:
   structure  destination and row count must match; titles may differ
   divergent  the readings must NOT match — the mutation changed the meaning,
              so an identical answer is the defect and is what gets reported
+
+A divergent family has three outcomes, not two, and the third is the one worth
+reading. Every divergent family works by **adding words**, and a row title is
+built from the person's words, so the title differs almost by construction. If
+a title difference counted as the engine noticing, the test would be satisfied
+by string propagation: "don't call Sarah" could still put an open errand on
+Today, with "Don't" copied into the title, and this tool would say nothing. So
+a pair whose title moved and whose consequence did not is reported in its own
+column — `weakness` below — rather than folded into either verdict.
 """
 
 from __future__ import annotations
@@ -58,6 +67,10 @@ def disagreement(base, mutated, strength):
     changed what the speaker means, so two identical readings say the engine
     cannot see the change. Which of the two readings is right is deliberately
     not asserted — that is what lets these run without labels.
+
+    A divergent pair that moved only its row title is **not** reported here and
+    is not a clean pass either; `weakness` has it. The two are mutually
+    exclusive by construction, which `test_compare.py` asserts.
     """
     if base is None or mutated is None:
         return "missing probe output"
@@ -82,12 +95,50 @@ def disagreement(base, mutated, strength):
     return None
 
 
+def weakness(base, mutated, strength):
+    """A divergent pair that moved its row title and nothing the person acts on.
+
+    Not a defect and not a pass. The added word reached the title, so it
+    survived transcription and repair; but the destination, the row count, the
+    operation and the dates are what the person actually acts on, and none of
+    them moved. Speak It answering *don't call Sarah* with an open Today errand
+    titled "Don't call Sarah" lands here, and that is the failure these families
+    exist to catch — it must not read as the engine having noticed.
+
+    Given its own column rather than merged into either verdict, because
+    merging it would decide, silently and for every family at once, a question
+    only the row in front of you can answer. Naming the bucket is what keeps
+    the instrument from collapsing into one number.
+    """
+    if strength != "divergent" or base is None or mutated is None:
+        return None
+    if _consequence(base) != _consequence(mutated):
+        return None
+    if base["titles"] == mutated["titles"]:
+        # Nothing moved at all. That is blindness, and `disagreement` reports
+        # it; returning it here too would count one pair twice.
+        return None
+    return f"title-only divergence: {_describe(base)}"
+
+
+def _consequence(block):
+    """Everything the person acts on. Deliberately not the title.
+
+    A title is what the capture is called; this is what it does.
+    """
+    return (
+        block["routes"], block["rows"], block["operation"],
+        block["due"], block["remind"],
+    )
+
+
 def _reading(block):
     """Everything an engine can say about a capture, as one comparable value.
 
-    A divergent family must move at least one of these. Title is included on
-    purpose: a negation that only changes the row title has still been noticed,
-    and reporting it as blindness would be a false alarm.
+    Title is included on purpose, and it is why `disagreement` alone would be
+    too quiet: a pair matching on every one of these has produced *literally*
+    the same answer, which is the strongest claim this tool can make. A pair
+    that matches on all but the title is the weaker finding `weakness` reports.
     """
     return (
         block["routes"], block["rows"], block["operation"],
@@ -109,7 +160,9 @@ def main():
     verbose = "--verbose" in sys.argv
 
     blocks = read_blocks(probe_path)
-    per_family = defaultdict(lambda: {"pairs": 0, "disagree": 0, "examples": []})
+    per_family = defaultdict(
+        lambda: {"pairs": 0, "disagree": 0, "weak": 0, "examples": [], "weak_examples": []}
+    )
 
     with open(pairs_path) as handle:
         lines = handle.readlines()
@@ -120,34 +173,48 @@ def main():
         base_text, mutated_text, family, strength = parts[:4]
         stat = per_family[family]
         stat["pairs"] += 1
-        found = disagreement(blocks.get(base_text), blocks.get(mutated_text), strength)
+        base_block, mutated_block = blocks.get(base_text), blocks.get(mutated_text)
+        found = disagreement(base_block, mutated_block, strength)
         if found:
             stat["disagree"] += 1
             stat["examples"].append((base_text, mutated_text, found))
+        thin = weakness(base_block, mutated_block, strength)
+        if thin:
+            stat["weak"] += 1
+            stat["weak_examples"].append((base_text, mutated_text, thin))
 
     total_pairs = sum(s["pairs"] for s in per_family.values())
     total_bad = sum(s["disagree"] for s in per_family.values())
+    total_weak = sum(s["weak"] for s in per_family.values())
 
     print()
     print("MUTATION INVARIANCE — consistency, not accuracy")
     print("=" * 72)
-    print(f"{'family':<16}{'pairs':>8}{'disagreed':>12}{'rate':>10}")
+    print(f"{'family':<16}{'pairs':>8}{'disagreed':>12}{'rate':>10}{'title-only':>13}")
     print("-" * 72)
     for family in sorted(per_family, key=lambda f: -per_family[f]["disagree"]):
         stat = per_family[family]
         rate = 100 * stat["disagree"] / max(stat["pairs"], 1)
-        print(f"{family:<16}{stat['pairs']:>8}{stat['disagree']:>12}{rate:>9.1f}%")
+        print(f"{family:<16}{stat['pairs']:>8}{stat['disagree']:>12}"
+              f"{rate:>9.1f}%{stat['weak']:>13}")
     print("-" * 72)
     print(f"{'TOTAL':<16}{total_pairs:>8}{total_bad:>12}"
-          f"{100 * total_bad / max(total_pairs, 1):>9.1f}%")
+          f"{100 * total_bad / max(total_pairs, 1):>9.1f}%{total_weak:>13}")
     print("=" * 72)
     print("  Each disagreement means one of the two answers is wrong. Which one")
     print("  is a question for a person; that this pair cannot both be right is")
     print("  not. Agreement is not evidence of correctness.")
+    if total_weak:
+        print()
+        print("  title-only: a meaning-changing mutation that moved the row title")
+        print("  and nothing the person acts on — same destination, same rows,")
+        print("  same operation, same dates. The words reached the title; read")
+        print("  these before treating the family's zero as understanding.")
 
     if verbose:
         for family in sorted(per_family):
-            for base_text, mutated_text, found in per_family[family]["examples"]:
+            stat = per_family[family]
+            for base_text, mutated_text, found in stat["examples"] + stat["weak_examples"]:
                 print(f"\n[{family}] {found}")
                 print(f"  base    {base_text}")
                 print(f"  mutated {mutated_text}")

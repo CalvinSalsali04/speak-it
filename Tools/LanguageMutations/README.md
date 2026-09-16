@@ -48,6 +48,23 @@ truth for the same reason the others do not: it never says which reading is
 right, only that the engine has to tell the two apart. "call Sarah" and "don't
 call Sarah" have several defensible answers between them and no shared one.
 
+**A divergent family has three outcomes, and the report has a column for each.**
+Every divergent family works by adding words, and a row title is built from the
+person's words, so the title differs almost by construction. If that counted as
+the engine noticing, the test would be satisfiable by string propagation: Speak
+It could answer "don't call Sarah" with an open Today errand titled "Don't call
+Sarah" and the run would be clean. So:
+
+| column | what it means |
+|---|---|
+| `disagreed` | literally the same answer on both sides — the engine is blind to the distinction |
+| `title-only` | the row title moved and nothing the person acts on did — same destination, rows, operation and dates |
+| neither | the destination, row count, operation or dates moved: the engine acted differently |
+
+**Read the `title-only` column before treating a family's zero as
+understanding.** It is not a pass and not a defect; it is the finding that the
+words survived and the consequence did not.
+
 | family | strength | what it varies |
 |---|---|---|
 | `filler` | strict | "um", "uh", "like", "you know" between words |
@@ -70,7 +87,8 @@ call Sarah" have several defensible answers between them and no shared one.
 invented pattern, and it always leaves the original sentence whole at the end,
 so the meaning is exactly the original's. See `Docs/PUBLIC_DATASETS.md`.
 
-Two limits of the divergent families, stated so a clean report is not misread:
+Two further limits of the divergent families, stated so a clean report is not
+misread:
 
 - **They only apply to a bare imperative errand.** Prefixing "don't" onto "the
   garage code is 4821" is not English, so a set of statements yields nothing

@@ -135,13 +135,13 @@ class MeaningChangeIsInverted(unittest.TestCase):
         self.assertIsNotNone(found)
         self.assertIn("unchanged reading", found)
 
-    def test_any_observable_difference_passes(self):
+    def test_a_changed_consequence_passes(self):
+        """These are the differences that mean the engine acted differently."""
         for field, value in [
             ("routes", ("memory",)),
             ("rows", 0),
             ("operation", True),
             ("due", ("2026-09-17",)),
-            ("titles", ("Do not call Sarah",)),
         ]:
             mutated = dict(self.BASE)
             mutated[field] = value
@@ -149,16 +149,59 @@ class MeaningChangeIsInverted(unittest.TestCase):
                 compare.disagreement(self.BASE, mutated, "divergent"),
                 f"a changed {field} should count as the engine noticing",
             )
+            self.assertIsNone(
+                compare.weakness(self.BASE, mutated, "divergent"),
+                f"a changed {field} is not merely a title move",
+            )
 
-    def test_a_title_only_change_still_counts_as_noticing(self):
-        """Reporting this as blindness would be a false alarm.
+    def test_a_title_only_change_is_neither_verdict(self):
+        """The case the single bucket got wrong, in the direction that matters.
 
-        A negation that reaches the row title has been seen by the engine even
-        if the destination is unchanged, and calling that a defect would make
-        the family report noise instead of findings.
+        Every divergent family works by adding words and a title is built from
+        the person's words, so a title difference is nearly free. Counting it
+        as noticing made the test satisfiable by string propagation: Speak It
+        could answer "don't call Sarah" with an open Today errand titled "Don't
+        call Sarah" and this tool would report nothing. It is now its own
+        column — not clean, not blind.
         """
         mutated = dict(self.BASE, titles=("Don't call Sarah",))
         self.assertIsNone(compare.disagreement(self.BASE, mutated, "divergent"))
+        found = compare.weakness(self.BASE, mutated, "divergent")
+        self.assertIsNotNone(found, "a title-only divergence must not be silent")
+        self.assertIn("title-only", found)
+
+    def test_the_two_buckets_never_hold_the_same_pair(self):
+        """A pair counted twice would inflate a rate nobody could reconcile."""
+        cases = [
+            dict(self.BASE),
+            dict(self.BASE, titles=("Don't call Sarah",)),
+            dict(self.BASE, routes=("memory",)),
+            dict(self.BASE, rows=2, titles=("Call Sarah", "Ask Dana")),
+            None,
+        ]
+        for mutated in cases:
+            both = (
+                compare.disagreement(self.BASE, mutated, "divergent") is not None
+                and compare.weakness(self.BASE, mutated, "divergent") is not None
+            )
+            self.assertFalse(both, f"counted twice: {mutated}")
+
+    def test_the_weak_bucket_is_only_for_divergent_families(self):
+        mutated = dict(self.BASE, titles=("Um call Sarah",))
+        for strength in ("strict", "structure"):
+            self.assertIsNone(compare.weakness(self.BASE, mutated, strength))
+
+    def test_a_title_only_divergence_reaches_the_report(self):
+        """The bucket is worthless if it stops at the function."""
+        out = run(
+            [("call Sarah", "don't call Sarah", "negation", "divergent")],
+            [("call Sarah", "Today", ["Call Sarah"]),
+             ("don't call Sarah", "Today", ["Don't call Sarah"])],
+            verbose=True,
+        )
+        self.assertIn("title-only", out)
+        self.assertRegex(out, r"negation\s+1\s+0\s+0\.0%\s+1")
+        self.assertIn("before treating the family's zero as understanding", out)
 
     def test_missing_output_is_still_reported(self):
         self.assertEqual(
