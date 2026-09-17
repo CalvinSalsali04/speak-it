@@ -710,3 +710,59 @@ selfcheck assertions above have been written and not executed. They need
 `./Tools/InterpretationProbe/build.sh && build/interpret --selfcheck` on a Mac,
 or a `ci.yml` dispatch. No fingerprint value is quoted in this section for the
 same reason: the engine that computes it cannot run here.
+
+## 18. The squash moved the manifests to a new commit, and main went red
+
+Recorded because it cost a red `main` and the cause is not obvious from the
+failure.
+
+#106 merged as a **squash**, `fc36db5`. A squash writes a new commit rather
+than carrying the branch's, so Candidate47's three freeze manifests arrived on
+`main` under a sha that no `.gitleaksignore` entry named. The entries were
+pinned to `15bde21`, which the squash dropped from `main`'s history.
+
+```
+$ git merge-base --is-ancestor 15bde21 origin/main
+NO
+```
+
+The scan on `main` (run 35231863437, `push` on `fc36db5`) then reported the
+same three findings it had been passing on the branch, at the same files and
+the same lines, under new fingerprints:
+
+```
+190 commits scanned.  leaks found: 3
+  Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
+  Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
+  Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
+```
+
+Nothing about the content changed. Section 11's argument still holds: these
+are SHA-256 manifest lines whose key happens to contain "auth", the value was
+recomputed and matches, and the manifests' bytes are the identity
+`verify_frozen.py` checks, so editing them is not available.
+
+**The fix is three more finding-level fingerprints, at `fc36db5`.** The
+`15bde21` three stay: that commit is still reachable from
+`origin/codex/candidate47-closeout`, so an entry removed there would stop
+covering a scan of that branch. Six entries, no broadened rule, no allowlisted
+file, no ignored commit — the prohibitions in section 11 are intact.
+
+**The general lesson, which is not about gitleaks.** A finding-level
+fingerprint is content plus *location*, and a squash, rebase or amend changes
+the location while leaving the content identical. So an exception that was
+verified to be narrow can stop applying without anything it was protecting
+against having changed. That is the same family as the rest of this
+document's instrument lessons: **the exception is an instrument, and it can
+fail silently in the direction of noise as easily as in the direction of
+blindness.** Here it failed loudly, which is the good direction, and only
+because the scan runs on pushes to `main`.
+
+**Before deleting any of the six**, check both:
+
+```
+git merge-base --is-ancestor <sha> origin/main
+git branch -r --contains <sha>
+```
+
+An ignore entry that matches nothing is invisible, not loud.
