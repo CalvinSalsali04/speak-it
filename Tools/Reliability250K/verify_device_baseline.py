@@ -12,9 +12,18 @@ The second question is the one prose cannot hold. "Two intentional deviations"
 is true the day it is written and silently stops being true the first time
 somebody lands a third. Here a third deviation fails the check by name.
 
-This is deliberately NOT wired into CI. It pins a tree, so it must fail the
-moment `main` legitimately moves -- that is what a baseline is. Run it against
-a fresh checkout of the baseline commit, which is the only tree it describes.
+Only question 1 reads the working tree. It pins a tree, so it must fail the
+moment `main` legitimately moves -- that is what a baseline is -- and it is
+therefore not wired into CI. Run it against a fresh checkout of the baseline
+commit, which is the only tree it describes.
+
+Question 2 compares the baseline manifest with Candidate47's, and the receipt
+with both. Those are three frozen files; no working tree is read, so they cannot
+redden when `main` legitimately moves. `--receipt-only` runs exactly those, and
+that is what CI runs. It catches the realistic mistake -- somebody regenerates
+the manifest after landing a change and leaves the receipt claiming two -- and
+it is honest about the rest: a receipt-only PASS says the three documents agree
+with each other, and says NOTHING about whether any checkout matches them.
 """
 import argparse
 import hashlib
@@ -37,22 +46,27 @@ def sha(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--quiet', action='store_true', help='print nothing on success')
+    parser.add_argument('--receipt-only', action='store_true',
+                        help='check only that the receipt and the two manifests agree; '
+                             'read no working tree, so safe to run in CI')
     args = parser.parse_args()
 
     manifest = json.loads((BASELINE / 'device-baseline-source.json').read_text())
     receipt = json.loads((BASELINE / 'RECEIPT.json').read_text())
     failures = []
 
-    # 1. Inventory and contents against the baseline manifest.
-    actual = {str(p.relative_to(ROOT)) for p in (ROOT / 'SpeakIt').rglob('*.swift')}
-    if actual != set(manifest):
-        failures.append(f'Swift inventory differs: {sorted(actual ^ set(manifest))}')
-    for rel, expected in sorted(manifest.items()):
-        path = ROOT / rel
-        if not path.is_file():
-            failures.append(f'missing: {rel}')
-        elif sha(path) != expected:
-            failures.append(f'content differs: {rel}')
+    # 1. Inventory and contents against the baseline manifest. The ONLY check that
+    #    reads the working tree, and therefore the only one that cannot run in CI.
+    if not args.receipt_only:
+        actual = {str(p.relative_to(ROOT)) for p in (ROOT / 'SpeakIt').rglob('*.swift')}
+        if actual != set(manifest):
+            failures.append(f'Swift inventory differs: {sorted(actual ^ set(manifest))}')
+        for rel, expected in sorted(manifest.items()):
+            path = ROOT / rel
+            if not path.is_file():
+                failures.append(f'missing: {rel}')
+            elif sha(path) != expected:
+                failures.append(f'content differs: {rel}')
 
     # 2. The deviation set against Candidate47 must be exactly what the receipt claims.
     #    Candidate47's manifest is read, never written.
@@ -79,17 +93,29 @@ def main():
     if failures:
         raise SystemExit('Device baseline identity FAILED:\n  ' + '\n  '.join(failures))
 
-    if not args.quiet:
-        same = len(manifest) - len(measured)
-        print(f'Device baseline identity PASS: {len(manifest)} Swift files, '
-              f'{same} byte-identical to Candidate47, '
-              f'{len(measured)} declared deviation(s). No production execution.')
+    if args.quiet:
+        return
+
+    if args.receipt_only:
+        print(f'Device baseline receipt PASS: the receipt and both manifests agree on '
+              f'{len(measured)} deviation(s) across {len(manifest)} Swift files.')
         for entry in receipt['deviations_from_candidate47']['files']:
             kind = 'provenance only' if entry.get('provenance_only') else 'behavioural'
             print(f"  {entry['path']} ({kind})")
-        established = receipt['commit']['swift_tree_established_by']
-        print(f'  Swift tree established by {established}')
-        print('  a PASS describes THIS checkout, whichever commit it stands on')
+        print('  NO working tree was read: this says nothing about whether any')
+        print('  checkout matches the manifest. Run without --receipt-only for that.')
+        return
+
+    same = len(manifest) - len(measured)
+    print(f'Device baseline identity PASS: {len(manifest)} Swift files, '
+          f'{same} byte-identical to Candidate47, '
+          f'{len(measured)} declared deviation(s). No production execution.')
+    for entry in receipt['deviations_from_candidate47']['files']:
+        kind = 'provenance only' if entry.get('provenance_only') else 'behavioural'
+        print(f"  {entry['path']} ({kind})")
+    established = receipt['commit']['swift_tree_established_by']
+    print(f'  Swift tree established by {established}')
+    print('  a PASS describes THIS checkout, whichever commit it stands on')
 
 
 if __name__ == '__main__':

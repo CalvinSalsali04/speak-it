@@ -81,10 +81,49 @@ in full — the corpus gate, the unit suite, the release build, the `--selfcheck
 assertions, and every device-only behaviour. That list is the point of the
 device phase, and it should shrink by measurement, not by editing.
 
-## Why the verifier is not in CI
+## What runs in CI, and what does not
 
-It pins a tree, so it **must** fail the moment `main` legitimately moves. Wiring
-it into CI would either block all future Swift work or, worse, invite someone to
+The verifier does two separable things, and only one of them pins a tree.
+
+**The full run is not in CI.** Its first check walks `SpeakIt/` and hashes every
+file, so it **must** fail the moment `main` legitimately moves. Wiring that into
+CI would either block all future Swift work or, worse, invite someone to
 regenerate the manifest to get green — which is how a baseline stops being one.
 `verify_frozen.py` is out of CI for the same reason. Run it against a checkout
 of the baseline, which is the only tree it describes.
+
+**`--receipt-only` is in CI**, in the Linux language-tooling job, on every pull
+request. It compares the baseline manifest with Candidate47's and the receipt
+with both. Those are three frozen files; it reads no working tree, so it cannot
+redden when `main` moves. It exists for the one mistake that is otherwise
+silent: somebody lands a third deviation, regenerates the manifest so the
+content check passes, and leaves the receipt claiming two.
+
+The earlier blanket claim here — that the verifier pins a tree and so cannot be
+in CI — was true of the first check and false of the other two. The defects
+thread caught it while grading #109 and the correction is theirs.
+
+**What a receipt-only PASS does not say.** It says the three documents agree
+with each other. It says nothing about whether any checkout matches them, so a
+third Swift deviation landed *without* regenerating the manifest leaves it
+green. Only the full run answers that, and only against the baseline checkout.
+The step is named `The device-baseline receipt agrees with its manifests` so the
+green cannot be read as more than it is.
+
+Both the reachability and the two failure directions were run rather than
+argued:
+
+```
+planted a Swift edit          full run red, --receipt-only green   (no false red)
+deleted a Swift file          full run red, --receipt-only green   (reads no tree)
+third deviation + regenerated
+  manifest, receipt at two    --receipt-only red: UNDECLARED deviation
+stale hash in the receipt     --receipt-only red: quotes a stale baseline hash
+receipt declares a deviation
+  that is not one             --receipt-only red: declared deviation is absent
+```
+
+A manifest edited on its own matches neither the `ios` nor the old `prose` path
+filter, so the check would not have run on exactly the pull request it exists
+for. `Docs/Understanding/DeviceBaseline/**` and `Tools/Reliability250K/**` are
+now in the `prose` filter, which gates the Linux job only and bills no Mac.
