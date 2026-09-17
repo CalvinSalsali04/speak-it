@@ -557,3 +557,90 @@ whether to carry that fix is the FM/device phase's call.
 
 Both Foundation Models runs also report `availability: deviceNotEligible`, so
 the hosted runner still says nothing about an iPhone.
+
+## 16. The exact merge resolution, after Astra's review
+
+Astra's independent review returned **NOT SAFE TO MERGE** for one concrete
+reason, and it was right: the reviewed head was not the resolved merge result
+against main. What had been reviewed and what would land were two different
+trees, and merging would have imported `e555f2a`'s Foundation Models semantics
+without anyone deciding to.
+
+| | |
+|---|---|
+| previous reviewed head | `cc0c4bb74138463fc1c42a60c3de236244abf830` |
+| base merged in | `origin/main` at `4b0262ace137919e1ae1c7958f3f25f014833039` |
+| **new merge-resolution head** | **this commit** — a merge commit whose parents are exactly `cc0c4bb` and `4b0262a`. Its sha cannot be written inside itself; `git rev-list --parents -n1 HEAD` on the pushed branch shows both parents, and PR #106 names the sha. |
+
+### The four conflicts, and which side each took
+
+| file | resolution |
+|---|---|
+| `SpeechRepair.swift` | **this branch.** Candidate47's rewritten file carrying main's lookahead line. Main's side is the fork-base file plus that line, so taking it would have discarded Candidate47's 559-line rewrite. |
+| `ThoughtCompletionTests.swift` | **this branch**, which is the three-way merge from `ed4b8f2`: Candidate47's added test *and* main's four abstentions. |
+| `test_observation.py` | **this branch**, the combined file from `9e0f106`: main's two abstention classes *and* the recomputed census. |
+| `LANGUAGE_BASELINE.md` | **this branch**: main's population-overlap prose *and* this tree's regenerated figures. |
+
+The last two already contained main's side. Git conflicted anyway, because
+both lines edited the same regions relative to `faeab4e` — content alone
+cannot clear a conflict, which is what section 13 predicted.
+
+### The three files the merge took from main silently
+
+None of these conflicted, which is exactly why they needed naming: a merge
+keeps the other side's version of a file this branch never touched.
+
+| file | restored to Candidate47 because |
+|---|---|
+| `SpeakIt/Interpretation/ModelInterpreter.swift` | it carries `e555f2a`'s grounding instruction, quoted-example rewrite and fingerprint change. **FM semantics stay held.** |
+| `Tools/CorpusRunner/test_interpretation_isolation.py` | it is the guard `e555f2a` was written to satisfy, and cannot be carried without its production half. |
+| `SpeakIt/Repositories/ClauseStructure.swift` | main's comment-only edits do not apply to Candidate47's rewritten file, and would have widened the frozen diff past the intended change. |
+
+### Proof rather than assertion
+
+**Production Swift differs from frozen Candidate47 on `SpeechRepair.swift`
+alone.** `verify_frozen.py` on the resolved tree names that one file, and the
+deviation is one production line plus the comment explaining why its trailing
+`\S` is load-bearing:
+
+```
+-  value = replace(value, #"^i\s+was\s+thinking\b[\s,]*"#, "")
++  value = replace(value, #"^i\s+was\s+thinking\b(?!\s+(?:of|about)\s+\S)[\s,]*"#, "")
+```
+
+**Foundation Models work is verifiably held.** `ModelInterpreter.swift` is
+byte-identical to the reviewed head, so none of `e555f2a`'s grounding, prompt
+or quoted-example semantics entered this tree.
+
+**Every `.swift` file in the tree is byte-identical to `cc0c4bb`, and no new
+Swift file arrives.** So the Mac evidence already gathered describes this tree
+unchanged — run 35227011885's corpus gate, and Calvin's local
+`SpeechRepairTests` and `ThoughtCompletionTests` at `db341d9`. There is no new
+Swift to compile, which is why no further Mac time was spent.
+
+### Validation run for this head
+
+```
+Candidate47 identity        deviates on SpeechRepair.swift alone
+language tooling            14 of 14 pass
+  corpus scorer             143 tests      observation shape   60 tests
+  held-out scorer           161 tests      connective census   82 tests
+  baseline population        53 tests      choice balance      26 tests
+gitleaks 8.30.1             196 commits scanned, no leaks found, exit 0
+git diff --check            clean; no conflict marker anywhere in the tree
+corpus qualification        unchanged: the Swift is unchanged
+```
+
+Preserved, checked individually: `ThoughtCompletionTests` 16 methods carrying
+both sides' work, `test_observation.py` 11 classes and 60 tests pinned at
+4047, `test_score.py` 143 tests, the three `.gitleaksignore` fingerprints, and
+this document.
+
+The 250K campaign was not re-run, and nothing here asks for it.
+
+### Booked, not done here
+
+Once #106 merges, a **separate provenance-only** change replaces
+`instructions.hashValue` with deterministic FNV-1a over the unchanged
+instruction bytes (sections 14 and 15 record why). It carries no prompt,
+grounding or quoted-example semantics, and must not be combined with them.

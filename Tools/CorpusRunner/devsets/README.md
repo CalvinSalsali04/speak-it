@@ -207,18 +207,53 @@ would not meet the ambiguity that `Noun Conjunction` creates. A recorded limit
 is a decision taken with the signals to hand; calling it a ceiling promotes it
 to a property of the language.
 
-Three rules stop this becoming a machine for excusing failures, and
-`../test_score.py` holds all three:
+Three rules stop this becoming a machine for excusing failures. `../test_score.py`
+holds the first two outright; the third is split, and the split is the point:
 
-1. **A limit never changes a rate.** Those seven are still misses in the 34 of
-   57. Declaring one makes a number more visible rather than better, so there
-   is nothing to gain by declaring one falsely.
+1. **A limit never changes a rate.** A limit is *counted, never subtracted* — a
+   label on a row, not an exclusion from it. So a declared capture that still
+   misses is counted as a miss, and one that now passes is counted as a pass.
+   Declaring one makes a number more visible rather than better, so there is
+   nothing to gain by declaring one falsely.
 2. **The citation is verified, not stated.** The phrase must still appear in
    the named source, so a limit cannot outlive the decision that made it:
    implement the thing and delete the comment, and the declaration fails until
    somebody removes it.
-3. **A declared capture must exist and be a miss**, so a declaration cannot
-   quietly cover a row that was passing anyway.
+3. **A declared capture must exist, be an unfinished capture, and still miss.**
+   The first two are checked by `test_score.py`. **The third cannot be**, and
+   saying it was is a claim this file made for months: whether a row still
+   misses is a fact about a *run*, and that suite is Linux-only while the parser
+   is macOS-only. `Incomplete` in the label column is what the row is supposed
+   to be, not what the probe did with it.
+
+   It is checked where the evidence exists instead. Every scoring run prints:
+
+   ```
+   DECLARED LIMITS NOW PASSING   1 of 7
+     INC4x
+   ```
+
+   printed at zero too, because a line that appears only when something is
+   wrong reads exactly like nobody having looked. That is not wired to the exit
+   status yet, on purpose: reddening the shared language job is how you announce
+   a stale comment by blocking everyone else's work.
+
+   **A passing limit is a prompt to re-read the cited reason, not a licence to
+   delete the id.** The declaration records a *decision* — for the
+   `trailing-function-word` ids, that preposition, conjunction and adverb were
+   each tried as a trailing class and each removed. A row can start passing by
+   a path that has nothing to do with that decision, and then the cited reason
+   is still exactly true and the record is still worth keeping. So trace which
+   branch actually answers for the row before touching the declaration. Delete
+   an id on the strength of the count alone and you destroy a true record of a
+   decision, which is the inverse of the staleness this line exists to catch.
+
+   **The trigger, so "enforce later" is not itself a claim nobody recomputes.**
+   The next dispatch carrying `devset_failures: true` names the passing ids —
+   any declared id absent from the miss list is one. Trace each of those, trim
+   the ids whose stated reason no longer holds, and the enforcement goes in on
+   the run after that with nothing left to announce. Until then the line above prints the ids on every run, so the
+   gap is visible rather than waiting on somebody's memory.
 
 `INC45` is deliberately outside the declaration and a test pins that. "I need
 to talk to Sarah about the" ends on a determiner, which the cited comment does
