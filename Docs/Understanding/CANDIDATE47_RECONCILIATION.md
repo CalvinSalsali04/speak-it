@@ -742,11 +742,30 @@ are SHA-256 manifest lines whose key happens to contain "auth", the value was
 recomputed and matches, and the manifests' bytes are the identity
 `verify_frozen.py` checks, so editing them is not available.
 
-**The fix is three more finding-level fingerprints, at `fc36db5`.** The
-`15bde21` three stay: that commit is still reachable from
+**The fix is three more finding-level fingerprints, at `fc36db5`**, keeping the
+`15bde21` three: that commit is still reachable from
 `origin/codex/candidate47-closeout`, so an entry removed there would stop
 covering a scan of that branch. Six entries, no broadened rule, no allowlisted
 file, no ignored commit — the prohibitions in section 11 are intact.
+
+**That fix is #108, not this branch.** Another thread reached the same
+diagnosis and had it up within minutes, with verification this container could
+not produce: `ci.yml`'s own invocation at the pinned gitleaks 8.30.1, before
+and after, plus a planted `stripe-access-token` on line 173 of
+`baseline/freeze.json` — beside an excused line, inside an excused file — still
+reported. No gitleaks binary exists here, so the duplicate this branch briefly
+carried was reverted in favour of the one that was actually run. Two fixes to
+one file would only have collided at its tail.
+
+**One thing from #108 worth keeping, because it nearly invalidated a probe.**
+Its first plant used `AKIAIOSFODNN7EXAMPLE` and went undetected — that value is
+in gitleaks' own default allowlist. **A plant the scanner cannot see reads
+exactly like a scan that works.** Section 11's probe is not affected, and the
+reason is worth naming rather than assumed: it ran a control (allowlist absent,
+same plants, both detected) and its falsifier reported `aws-access-token` and
+`stripe-access-token` as two leaks with exit 1. A canonical example key would
+have been silent in both. The control is what made that legible, which is the
+argument for running one every time.
 
 **The general lesson, which is not about gitleaks.** A finding-level
 fingerprint is content plus *location*, and a squash, rebase or amend changes

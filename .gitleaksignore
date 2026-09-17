@@ -23,30 +23,6 @@
 # any other finding in these same files -- including a real key on a
 # neighbouring line -- is still reported. Measured both ways before this was
 # committed; see Docs/Understanding/CANDIDATE47_RECONCILIATION.md section 10.
-#
-# SIX LINES, NOT THREE, BECAUSE THE FINGERPRINT PINS THE COMMIT.
-#
-# The same three findings are reachable at two different commits, and gitleaks
-# scans history, so each needs its own line:
-#
-#   15bde21  Candidate47's own commit, reachable from
-#            origin/codex/candidate47-closeout.
-#   fc36db5  the squash of #106. A squash merge writes a NEW commit, so the
-#            identical bytes arrived on main under a sha no entry named, and
-#            main went red the moment it landed -- run 35231863437.
-#
-# Neither line is redundant while both commits are reachable. Before deleting
-# either, check: `git merge-base --is-ancestor <sha> origin/main` and
-# `git branch -r --contains <sha>`. An entry matching nothing is invisible,
-# not loud, which is the whole hazard here.
-#
-# The general rule this cost us: any future squash, rebase or amend that moves
-# these manifests to a new commit needs its fingerprint added the same way.
-# The falsifier is cheap -- the secret scan on main goes red and names the
-# exact fingerprint to paste.
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
-fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
-fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
-fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
