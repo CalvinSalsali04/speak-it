@@ -3155,6 +3155,15 @@ print(json.dumps(sorted(seen)))
         tiny and deterministic: no working tree is walked, so the read set is
         the documents alone. The full run additionally hashes 68 Swift files,
         which `SpeakIt/**` covers already and which would say nothing new here.
+
+        Falsifying this test means planting a COMPUTED read of an uncovered
+        file, so that the static scan above cannot see it. Build the path from
+        parts that are real files in no checkout: `('.gitleaks' + 'ignore')`
+        works, `('.git' + 'leaksignore')` does not. `.git` is a directory in a
+        normal clone and a regular FILE in a `git worktree` checkout, so that
+        second spelling fails the static scan too, in some working copies and
+        not others -- which reads as this test being redundant. Found by the
+        grading thread on #112, whose worktree disagreed with CI.
         """
         patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
         for module in self.checks_that_declare_their_inputs():
