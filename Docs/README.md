@@ -39,6 +39,9 @@ The synthetic campaign is closed at **Candidate47**. Read the
 [canonical final reliability report](Understanding/FINAL_RELIABILITY_REPORT.md),
 [Claude/device handoff](Understanding/CLAUDE_DEVICE_HANDOFF.md), and
 [permanent regression lessons](Understanding/REAL_USER_REGRESSION_LESSONS.md).
+The [reconciliation record](Understanding/CANDIDATE47_RECONCILIATION.md) says
+what was carried across from the ten commits `main` landed while Candidate47
+was being finished, and what was deliberately left.
 Older campaign plans and candidate entries are historical, not instructions to
 restart optimization.
 
