@@ -236,5 +236,57 @@ hashes are excused, and all three plants are still caught — including a
 64-character hex value placed under the key `"api_key"`, which the
 value-shape-only version would have excused.
 
-It is narrower than what was tried on value shape and broader on file scope,
-so it is not what was authorised, and nothing is committed.
+It is narrower than what was tried on value shape and broader on file scope.
+It was **not** taken either: any rule keyed on shape excuses every future line
+of that shape, wherever it appears. What shipped instead is in section 11.
+
+## 11. What was committed: three fingerprints, and nothing else
+
+`.gitleaksignore` carries three lines. Each names one finding by the exact
+fingerprint gitleaks 8.30.1 emits -- commit, file, rule and line number:
+
+```
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
+```
+
+All three are the same manifest line in three copies:
+
+```
+"FounderDashboard/app/chatgpt-auth.ts": "4265a2e7...e42cc"
+```
+
+**Why each is a false positive.** The freeze manifests map every file of the
+frozen tree to its SHA-256, and `verify_frozen.py` checks the tree against
+them. The flagged value is that file's hash, recomputed here rather than
+assumed: `sha256` of `FounderDashboard/app/chatgpt-auth.ts` is
+`4265a2e7c2dcb3a6f4b7026f762bf5b6e4caec76cc13c0a45987ee9a9f2e42cc`, which is
+the flagged value in all three files. `generic-api-key` fires on these three
+of the manifests' several hundred identically shaped lines only because the
+key beside the hash is a path containing "auth". Editing the manifests is not
+available: their bytes are the identity the verifier checks.
+
+**Nothing else is excused.** Not a file, not a commit, not the
+`generic-api-key` rule, not 64-character hex values, not manifest-shaped
+lines. A fingerprint pins the line number and the commit, so a real key on a
+neighbouring line of the same file is still reported -- which is exactly what
+the falsifier below shows.
+
+**Measured, in the mode `ci.yml` actually uses.** All four runs are
+`gitleaks 8.30.1 git --redact --verbose --exit-code 1 --config .gitleaks.toml`,
+the invocation from `.github/workflows/ci.yml`:
+
+| | scan | result |
+|---|---|---|
+| before | no ignore file | 3 leaks, the three fingerprints above, exit 1 |
+| after | the three fingerprints | **190 commits scanned, no leaks found, exit 0** |
+| falsifier | plus an AWS key and a Stripe key committed on lines 174 and 175 of `iteration-2/freeze.json` | **2 leaks, `aws-access-token` and `stripe-access-token`, exit 1** |
+| after removing the plants | the three fingerprints | 190 commits scanned, no leaks found, exit 0 |
+
+The falsifier ran in `git` mode rather than `dir` mode, which meant committing
+the plants; that was done on a local scratch branch, `ac7ce70`, never pushed
+and deleted immediately after. Its plant commit carried a different SHA from
+`15bde21`, so no ignore entry could have matched the plants even by accident,
+and lines 174 and 175 sit either side of the ignored line 173 in the same
+file. `.gitleaks.toml` is unchanged.

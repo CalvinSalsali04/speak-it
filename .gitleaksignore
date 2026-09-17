@@ -1,0 +1,28 @@
+# Finding-level exceptions for the CI secret scan (.github/workflows/ci.yml).
+# One line per confirmed false positive, identified by the exact fingerprint
+# gitleaks 8.30.1 emits. Nothing here excuses a file, a commit, a rule, or a
+# value shape -- only these three individual findings.
+#
+# All three are the same line in three copies of a Candidate47 freeze manifest:
+#
+#     "FounderDashboard/app/chatgpt-auth.ts": "4265a2e7...e42cc"
+#
+# The manifests are SHA-256 content hashes, one per file of the tree that was
+# frozen, and Tools/Reliability250K/verify_frozen.py checks the tree against
+# them. The value is the hash of that file, recomputed rather than assumed:
+# sha256 of FounderDashboard/app/chatgpt-auth.ts is
+# 4265a2e7c2dcb3a6f4b7026f762bf5b6e4caec76cc13c0a45987ee9a9f2e42cc, which is
+# exactly the flagged value. generic-api-key fires on these three of the
+# manifests' several hundred identically shaped lines because the key beside
+# the hash is a path containing "auth".
+#
+# Editing the manifests is not an option: their bytes are the identity the
+# verifier checks.
+#
+# A fingerprint pins the commit, the file, the rule and the line number, so
+# any other finding in these same files -- including a real key on a
+# neighbouring line -- is still reported. Measured both ways before this was
+# committed; see Docs/Understanding/CANDIDATE47_RECONCILIATION.md section 10.
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
+15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
