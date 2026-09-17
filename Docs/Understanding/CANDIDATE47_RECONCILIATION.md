@@ -644,3 +644,69 @@ Once #106 merges, a **separate provenance-only** change replaces
 `instructions.hashValue` with deterministic FNV-1a over the unchanged
 instruction bytes (sections 14 and 15 record why). It carries no prompt,
 grounding or quoted-example semantics, and must not be combined with them.
+
+## 17. The provenance follow-up: a second deviation, on purpose
+
+`Docs/Understanding/CANDIDATE47_RECONCILIATION.md` closes with #106. This
+section records the one change that follows it, because it makes the identity
+check say something new and a reader who is not expecting that will read it as
+a regression.
+
+**After this follow-up, `verify_frozen.py` names two files, not one:**
+
+```
+Candidate47 identity FAILED:
+  SpeakIt/Interpretation/ModelInterpreter.swift   <- this follow-up
+  SpeakIt/Repositories/SpeechRepair.swift         <- the reconciliation, #96
+```
+
+That is the intended state, not a drift. Both deviations are deliberate and
+each has its own review.
+
+### What changed, and what did not
+
+`ModelInterpreter.instructionsFingerprint` was
+`UInt32(truncatingIfNeeded: instructions.hashValue)`. Swift seeds `Hashable`
+per process on purpose, so that value identified the process that wrote a run
+record rather than the prompt that produced it. Section 15 has the measurement:
+two CI runs over a byte-identical `ModelInterpreter.swift` printed `654b75ea`
+and `10df9b6f`. A field that changes when nothing changed is not provenance,
+and it is worse than an absent field because it reads like one.
+
+It is now FNV-1a over the UTF-8 bytes of the same string.
+
+**The instruction bytes are unchanged.** The `instructions` literal is
+byte-identical to `main`: 36 lines, 1916 bytes, on both sides. None of
+`e555f2a`'s grounding instruction, quoted-example rewrite or prompt semantics
+entered with this — those remain held for the FM/device phase, exactly as
+section 14 records. This change is the fingerprint and nothing else.
+
+### Why it is pinned against published vectors
+
+The self-check asserts the published FNV-1a 32-bit vectors — `""` to
+`811c9dc5`, `"a"` to `e40c292c`, `"foobar"` to `bf9cf968` — rather than a
+literal computed from our own prompt. A literal computed from the prompt would
+have to be rewritten every time the prompt legitimately changed, and a check
+that gets rewritten to match the code has stopped checking anything.
+
+Those three vectors alone would still pass against a function that ignored its
+argument, so two more assertions sit beside them: that the recorded fingerprint
+is that function over `instructions`, and that appending one byte to the
+instructions changes it. That is the falsifier for "the guard never fires".
+
+### Where it runs
+
+The check went into `Tools/InterpretationProbe/main.swift`'s `--selfcheck`
+rather than into `SpeakItTests/`, for one reason worth recording: **the unit
+suite is unreachable in CI on any Candidate47-based tree.** `corpus-gate.sh`
+exits 1 against its hardcoded zero baseline, the `Unit tests` step carries no
+`if:` and so inherits `success()`, and it is skipped. The selfcheck step
+carries `if: always()`, so it is the only place a Swift assertion on this line
+actually executes in CI. See the open item in section 15.
+
+**Not run here, and not claimable from this container:** no Swift compiles in
+this environment (`download.swift.org` is refused by the proxy), so the
+selfcheck assertions above have been written and not executed. They need
+`./Tools/InterpretationProbe/build.sh && build/interpret --selfcheck` on a Mac,
+or a `ci.yml` dispatch. No fingerprint value is quoted in this section for the
+same reason: the engine that computes it cannot run here.

@@ -105,10 +105,34 @@ enum ModelInterpreter {
     Return at most twelve segments.
     """
 
+    /// FNV-1a over the UTF-8 bytes, so the same text fingerprints the same way
+    /// in every process.
+    ///
+    /// This was `hashValue`, which Swift seeds per process precisely so that
+    /// hashes cannot be relied on across runs. Two CI runs on a byte-identical
+    /// `ModelInterpreter.swift` printed `654b75ea` and `10df9b6f`, which means
+    /// the field recorded which process wrote a run rather than which prompt
+    /// produced it. A value that differs when nothing differs is not provenance,
+    /// and worse, it reads like one.
+    ///
+    /// FNV-1a is chosen for being fully specified by two constants and a loop:
+    /// no library, no platform behaviour to drift, and published vectors the
+    /// self-check pins it against. It is a fingerprint, not a digest -- it is
+    /// here to tell two prompts apart in a run record, and carries no claim
+    /// against a prompt chosen to collide with another.
+    static func fingerprint(of text: String) -> String {
+        var hash: UInt32 = 2166136261
+        for byte in text.utf8 {
+            hash ^= UInt32(byte)
+            hash &*= 16777619
+        }
+        return String(format: "%08x", hash)
+    }
+
     static var instructionsFingerprint: String {
         // Small, stable and content-free: enough to tell two prompts apart in a
         // run record without putting the prompt in every report.
-        String(format: "%08x", UInt32(truncatingIfNeeded: instructions.hashValue))
+        fingerprint(of: instructions)
     }
 
     static var settings: InterpretationRunSettings {
