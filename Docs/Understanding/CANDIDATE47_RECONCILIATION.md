@@ -675,11 +675,23 @@ and it is worse than an absent field because it reads like one.
 
 It is now FNV-1a over the UTF-8 bytes of the same string.
 
-**The instruction bytes are unchanged.** The `instructions` literal is
-byte-identical to `main`: 36 lines, 1916 bytes, on both sides. None of
-`e555f2a`'s grounding instruction, quoted-example rewrite or prompt semantics
-entered with this — those remain held for the FM/device phase, exactly as
-section 14 records. This change is the fingerprint and nothing else.
+**The instruction bytes are unchanged, and the strongest proof needs no
+measurement at all:** the literal is not in the diff. `ModelInterpreter.swift`
+has exactly one hunk, `@@ -105,10 +105,34 @@`, and line 105 is the literal's
+closing `"""` arriving as *context*. No line of the prompt is added or removed,
+so there is nothing to extract and no convention to agree on.
+
+The byte figures corroborate it and are the weaker form, because they depend on
+where you cut: **36 lines / 1916 bytes including the two `"""` delimiter
+lines**, 34 / 1874 for the inner span alone. Both sides agree under either, and
+the difference is exactly the delimiters. The convention is pinned here because
+this figure was independently derived twice and produced two numbers, which is
+how a figure starts drifting even when nobody is wrong.
+
+None of `e555f2a`'s grounding instruction, quoted-example rewrite or prompt
+semantics entered with this — those remain held for the FM/device phase,
+exactly as section 14 records. This change is the fingerprint and nothing
+else.
 
 ### Why it is pinned against published vectors
 
@@ -705,8 +717,9 @@ section 15.
 
 **The selfcheck's coverage, stated exactly, because an earlier draft of this
 section overstated it.** The probe steps carry `if: always()` (`ci.yml:424`,
-`:428`, `:432`), but they live in the `language` job, which is
-`if: github.event_name == 'workflow_dispatch'` (`ci.yml:338`). A step-level
+`:428`, `:432`), but they live in the `language` job, whose
+`if: github.event_name == 'workflow_dispatch'` is `ci.yml:348` (the job key is
+`:338`). A step-level
 `always()` protects against an *earlier step in the same job* failing; it does
 nothing when the job never starts. On a push or a pull request the `language`
 job is skipped outright — observable in any recent run's job list — so **these
