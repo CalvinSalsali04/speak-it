@@ -33,8 +33,28 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = ROOT / 'Docs/Understanding/DeviceBaseline'
-CANDIDATE47 = ROOT / 'Docs/Understanding/Candidate47'
+
+#: Every file this check reads, relative to the repository root. Declared
+#: because a check nobody can invoke is indistinguishable from one that holds:
+#: editing any of these changes the verdict, so editing any of them has to
+#: start the CI job that runs the check. `test_score.py` reads this name and
+#: fails when one of them matches no path filter that starts `language-tools`.
+#:
+#: It is a declaration, so it can drift from what the code opens. Two things
+#: stop that: the module resolves its own paths through it, below, so a read
+#: that is not listed has to bypass the constant deliberately; and
+#: `test_score.py` also checks that no other repository path literal appears
+#: in this file. Both were falsified when this was written.
+INPUTS = (
+    'Docs/Understanding/DeviceBaseline/device-baseline-source.json',
+    'Docs/Understanding/DeviceBaseline/RECEIPT.json',
+    'Docs/Understanding/Candidate47/development/candidate47-source.json',
+    'Docs/Understanding/Candidate47/evidence-integrity.json',
+    'Docs/Understanding/Candidate47/FROZEN_CANDIDATE.json',
+)
+
+MANIFEST_PATH, RECEIPT_PATH, REFERENCE_PATH, EVIDENCE_PATH, FROZEN_PATH = (
+    ROOT / rel for rel in INPUTS)
 
 
 def sha(path):
@@ -53,8 +73,8 @@ def main():
                              'read no working tree, so safe to run in CI')
     args = parser.parse_args()
 
-    manifest = json.loads((BASELINE / 'device-baseline-source.json').read_text())
-    receipt = json.loads((BASELINE / 'RECEIPT.json').read_text())
+    manifest = json.loads(MANIFEST_PATH.read_text())
+    receipt = json.loads(RECEIPT_PATH.read_text())
     failures = []
 
     # 1. Inventory and contents against the baseline manifest. The ONLY check that
@@ -83,13 +103,13 @@ def main():
     #    Both recorded copies are used rather than one copied into the receipt:
     #    a fourth copy would be a fourth thing to drift. Requiring the two to
     #    agree means a single edit anywhere in the set fails by name.
-    reference = CANDIDATE47 / 'development/candidate47-source.json'
+    reference = REFERENCE_PATH
     recorded = {
-        'evidence-integrity.json':
-            json.loads((CANDIDATE47 / 'evidence-integrity.json').read_text())
+        EVIDENCE_PATH.name:
+            json.loads(EVIDENCE_PATH.read_text())
             ['artifacts_sha256'].get('development/candidate47-source.json'),
-        'FROZEN_CANDIDATE.json':
-            json.loads((CANDIDATE47 / 'FROZEN_CANDIDATE.json').read_text())
+        FROZEN_PATH.name:
+            json.loads(FROZEN_PATH.read_text())
             ['artifacts_sha256'].get('candidate47-source.json'),
     }
     measured_reference = sha(reference)

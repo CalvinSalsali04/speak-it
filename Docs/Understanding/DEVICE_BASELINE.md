@@ -200,6 +200,13 @@ All of these sit in `prose`, which gates the Linux job only and bills no Mac.
 
 The guard that should have caught this could not: `test_score.py`'s
 `test_every_markdown_file_the_check_reads_starts_the_job` considers Markdown
-only, and these checks read JSON. A version asking whether every file *any*
-gated check reads matches some glob would have failed on the first pass here.
-That is its own change, not this one.
+only, and these checks read JSON.
+
+**That guard now exists**, as
+`test_every_file_a_gated_check_reads_starts_the_job`. `verify_device_baseline.py`
+declares its five inputs in `INPUTS` and resolves its own paths through it, and
+the test discovers any module under `Tools/` exposing that name rather than
+working from a list — a list would go stale the next time a check learns to
+read another file, which is exactly what happened here inside twenty minutes.
+Removing `Docs/Understanding/Candidate47/**` from the filter now fails the
+suite, naming all three files and the module that reads them.

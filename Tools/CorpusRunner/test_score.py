@@ -2957,6 +2957,100 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
             f"match no path filter that starts language-tools, so changing "
             f"only them runs no sealed-set check at all")
 
+    #: Checks whose inputs are declared rather than walked. A module lands here
+    #: by exposing `INPUTS`, a tuple of repository-relative paths it reads.
+    def checks_that_declare_their_inputs(self):
+        """Every module under Tools/ exposing an `INPUTS` tuple, discovered.
+
+        Discovered rather than listed, because a hand-written list is the same
+        defect one level up: it goes stale the next time a check learns to read
+        another file, and nothing fails when it does.
+        """
+        found = {}
+        for path in sorted(self.ROOT.glob("Tools/**/*.py")):
+            source = path.read_text(encoding="utf-8", errors="replace")
+            if "INPUTS" not in source:
+                continue
+            for node in ast.parse(source).body:
+                if not isinstance(node, ast.Assign):
+                    continue
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                if "INPUTS" not in names:
+                    continue
+                # literal_eval, never exec: this walks every Python file under
+                # Tools/, and a discovery step that runs them would be a far
+                # larger thing than the guard it serves.
+                found[str(path.relative_to(self.ROOT))] = tuple(
+                    ast.literal_eval(node.value))
+        return found
+
+    def test_the_declared_input_scan_finds_something(self):
+        """Zero declaring modules makes the coverage test below vacuous, and a
+        vacuous guard reads exactly like one that holds."""
+        self.assertTrue(self.checks_that_declare_their_inputs(),
+                        "no module under Tools/ declares INPUTS, so the "
+                        "coverage test below asserts nothing")
+
+    def test_every_file_a_gated_check_reads_starts_the_job(self):
+        """The generalisation of the Markdown test above, and the reason it
+        exists: that one considers `.md` only, so a check reading JSON was
+        invisible to it.
+
+        On 2026-09-17 `verify_device_baseline.py` shipped reading three files
+        under `Docs/Understanding/Candidate47/` that matched no glob gating
+        this job. A pull request editing only them started nothing, so the
+        check that detects tampering with them never ran on the commit that
+        did it. It was missed twice in twenty minutes: once when the check was
+        written, once when it learned to read two more files.
+        """
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        uncovered = []
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            for rel in inputs:
+                if not any(p.match(rel) for p in patterns):
+                    uncovered.append(f"{rel} (read by {module})")
+        self.assertEqual(
+            uncovered, [],
+            f"{len(uncovered)} file(s) are read by a check this job runs and "
+            f"match no path filter that starts it, so a pull request editing "
+            f"only them runs that check not at all")
+
+    def test_a_declared_input_that_is_not_a_file_is_caught(self):
+        """INPUTS is prose until something resolves it. A path that does not
+        exist is a typo, and a typo is covered by no glob for the wrong
+        reason -- or worse, covered by one and silently checking nothing."""
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            for rel in inputs:
+                self.assertTrue(
+                    (self.ROOT / rel).is_file(),
+                    f"{module} declares INPUTS entry {rel!r}, which is not a "
+                    f"file in this repository")
+
+    def test_a_declaring_check_reads_nothing_it_did_not_declare(self):
+        """The declaration can drift from the code. A path literal naming a
+        real file in this repository, outside INPUTS, is a read that the
+        coverage test above cannot see.
+
+        Resolved against the root rather than matched by shape, so a JSON key
+        that happens to look like a path -- `development/candidate47-source.json`
+        is one, inside `artifacts_sha256` -- is not mistaken for a read.
+        """
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            source = (self.ROOT / module).read_text(encoding="utf-8")
+            declared = set(inputs)
+            for node in ast.walk(ast.parse(source)):
+                if not isinstance(node, ast.Constant):
+                    continue
+                if not isinstance(node.value, str) or "/" not in node.value:
+                    continue
+                if node.value in declared:
+                    continue
+                self.assertFalse(
+                    (self.ROOT / node.value).is_file(),
+                    f"{module}:{node.lineno} names {node.value!r}, a real "
+                    f"file, but INPUTS does not list it -- so nothing checks "
+                    f"that editing it starts this job")
+
 
 
 class EveryMutationInThisFileApplies(unittest.TestCase):
