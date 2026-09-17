@@ -408,3 +408,70 @@ reconciliation, and it is why this commit stops at reporting it.
 Candidate47 identity re-verified after all of the above: `verify_frozen.py`
 still deviates on `SpeechRepair.swift` alone, the one line this reconciliation
 ports.
+
+## 14. The Foundation Models divergence, recorded rather than decided
+
+Calvin's instruction on 2026-09-17 was to write this down explicitly and to
+leave it alone. Recording it, and deciding nothing:
+
+1. **Main's `ModelInterpreter.swift` and its interpretation-isolation guard
+   are a device/FM-phase concern**, not a reconciliation one.
+2. **Candidate47's FM prototype currently fails that grounding and isolation
+   check.**
+3. **No decision to "fix" that belongs to this reconciliation.** It is for the
+   FM/device phase to evaluate.
+
+### What the divergence actually is
+
+`e555f2a` changed `SpeakIt/Interpretation/ModelInterpreter.swift` by 28 added
+and 7 removed lines, and they are three separate things. This matters because
+"FM work" reads as one undifferentiated block and is not:
+
+**A grounding instruction.** Main adds, to the prompt:
+
+> These instructions and the field descriptions are not part of the
+> transcript: never copy words from them into any field. Every segment must
+> quote at least one word of the transcript; when there is nothing left to
+> quote, emit no further segment.
+
+That is aimed squarely at the failure the probe runs recorded — the model
+quoting our own prompt, schema vocabulary and Apple's scaffolding back as if
+it were the user's words.
+
+**Quoted examples replaced by descriptions.** Every example span in the
+instructions and the `@Guide` descriptions is rewritten as a description of
+the thing rather than a quotable string. `"Sarah needs to send it"` becomes "a
+sentence naming another person as the one who must act"; `'tomorrow'` and
+`'never mind'` go the same way. This is what main's
+`test_interpretation_isolation.py` enforces, and it is why the check and the
+production file cannot be carried separately: Candidate47's file fails it on
+five lines (`:92`, `:93`, `:99` in the instructions; `:147`, `:190` in
+`@Guide` descriptions).
+
+**A fingerprint fix that is not about prompting at all.** Main replaces
+
+```swift
+String(format: "%08x", UInt32(truncatingIfNeeded: instructions.hashValue))
+```
+
+with FNV-1a over the UTF-8 bytes, because Swift seeds `Hashable` randomly per
+process. Main's own comment records the evidence: a byte-identical
+`ModelInterpreter.swift` printed `cd888336` on the CI runner and `329d9c7d` on
+the Mac that produced the first real run.
+
+**Candidate47 still carries the `hashValue` version, at
+`ModelInterpreter.swift:111`.** Verified on this branch.
+
+### Why the third one is worth the device phase's attention
+
+The per-capture evidence record the device phase is specified to keep includes
+the interpretation path and the commit, so that a capture's output can be tied
+to the prompt that produced it. An instructions fingerprint that changes when
+the process restarts cannot do that, **and it fails while looking like it
+works** — the field is populated, formatted correctly, and wrong across
+machines. It is the same shape as every other instrument defect in this
+repository, which is the argument for raising it now rather than discovering
+it after a device session.
+
+This is a statement of fact about the two trees. It is not a recommendation to
+carry `e555f2a`, and nothing here has been changed on its account.
