@@ -849,7 +849,43 @@ python3 -c "import old_guard,pathlib; print(len(old_guard.prompt_examples(
 On a branch that adds lines above them the `@Guide` numbers shift; on #107's
 head they are 171 and 214. The count does not move.
 
+### All five have device evidence behind them, not one
+
+The prototype thread ran `a5e4d2a`'s guard against an archive of `origin/main`
+independently and reached the same five, which is the confirmation this
+section's count needed. It also supplied the part that changes what the five
+mean.
+
+The 46-capture `runon` device run produced **two** leak shapes, and both have
+their cause present on main:
+
+| observed on device | site |
+|---|---|
+| ten captures emitting a segment quoted as the bare word `tomorrow` | `:147`, the `carriedContext` `@Guide` that word sits in |
+| captures emitting sentences lifted out of the instructions | `:92`, `:93`, `:99` |
+
+So this is not one site with evidence and four without. Restoring rule 3 is a
+five-site change, and the sites are not interchangeable with each other.
+
+### Rejected: stripping the quotation marks
+
+Recorded because it is attractive, it was proposed in good faith, and it is
+the exact failure this repository keeps paying for.
+
+The idea: rewrite the three instruction examples without quotation marks, and
+the rule goes green at no cost to the prose. It fails on its own terms — the
+rule's instruction branch tests `'"' in text`, so removing the quotes **turns
+the check green while leaving the example sitting in the prompt**, which the
+device run shows the model copies. That is a marker standing in for the
+judgement it approximates, and it would leave us with a guard that passes
+because the signal was removed rather than the problem.
+
+Do not propose it again. If rule 3 comes back, the examples have to stop being
+examples.
+
 **Not a recommendation to restore it here.** Whether rule 3 and the grounding
 sentence come back is the FM/device-phase decision Calvin parked, and section
-14 holds the reasons. This section supplies the price tag he would be deciding
-against: five sites, three of them in the instructions.
+14 holds the reasons. They are one change and the FM phase is where they land
+together. This section supplies the price tag he would be deciding against:
+five sites, three of them in the instructions, both observed leak shapes
+covered.
