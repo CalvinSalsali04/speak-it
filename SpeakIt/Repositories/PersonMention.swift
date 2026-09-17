@@ -69,6 +69,8 @@ enum FollowUpTarget: Equatable, Sendable {
     case person(PersonMention)
     /// Not a name, but specific enough to act on: "the dentist", "my sister".
     case described(String)
+    /// The linguistic name tag conflicts with the person-address frame.
+    case ambiguous(String)
     /// Nothing to act on: "Call them tomorrow", "Follow up about the invoice".
     case missing
 }
@@ -207,6 +209,16 @@ enum PersonMentionResolver {
         for index in list.indices {
             guard let objectIndex = objectIndex(after: index, in: list, allowLowercase: lowercaseOnly) else { continue }
             if let described = describedTarget(list, from: objectIndex) {
+                let evidence = neutralNameEvidence(list[objectIndex])
+                if objectIndex < list.count,
+                   isNameToken(list[objectIndex], allowLowercase: lowercaseOnly),
+                   !hasNonPersonHead(list, at: objectIndex, limit: nil),
+                   !kinship.contains(list[objectIndex].lower),
+                   (evidence.personal && evidence.organization
+                    || (!evidence.organization && !evidence.personal
+                        && (list[objectIndex].isOrganizationName || isUnresolvedIdentifier(list[objectIndex], in: list)))) {
+                    return .ambiguous(described)
+                }
                 return .described(described)
             }
         }
@@ -263,6 +275,20 @@ enum PersonMentionResolver {
     /// `index` is not one.
     private static func objectIndex(after index: Int, in list: [Word], allowLowercase: Bool = false) -> Int? {
         let verb = list[index].lower
+        // A communication word inside an acquired noun phrase is not an
+        // address predicate: a phone case and contact solution name things.
+        // Bare words after purpose "for" likewise fill a nominal slot; an
+        // infinitive purpose aimed at a person uses "to contact Alex".
+        let afterSequenceReference = index >= 2
+            && ["that", "this"].contains(list[index - 1].lower)
+            && ["before", "after"].contains(list[index - 2].lower)
+        if directAddressVerbs.contains(verb), index > 0,
+           (determiners.contains(list[index - 1].lower) && !afterSequenceReference)
+            || ["buy", "get", "grab", "order", "need", "want", "for"].contains(list[index - 1].lower)
+            || (index >= 2 && ((list[index - 2].lower == "pick" && list[index - 1].lower == "up")
+                || (list[index - 2].lower == "drop" && list[index - 1].lower == "off"))) {
+            return nil
+        }
         // "Give Mom's recipe to Catherine", "send Alex's invoice to Priya",
         // "return the book to Sam". A transfer verb reaches its person
         // through "to", with the thing transferred in between, and the
@@ -595,7 +621,13 @@ enum PersonMentionResolver {
             )
         }
 
-        guard isNameToken(first, allowLowercase: allowLowercase) else { return nil }
+        guard isNameToken(first, allowLowercase: allowLowercase),
+              !isNonPersonPhrase(list, at: index, limit: limit) else { return nil }
+        // An acronym or mixed-case identifier without personal evidence is
+        // unresolved. Ordinary unfamiliar names retain the existing fallback:
+        // absence from the OS name vocabulary is not evidence against them.
+        if isUnresolvedIdentifier(first, in: list), !first.isPersonalName,
+           !neutralNameEvidence(first).personal { return nil }
 
         // "Send the W9 to Northwind accounting": a name followed by a
         // department or a company suffix is an organisation, not somebody.
@@ -652,6 +684,64 @@ enum PersonMentionResolver {
             end: end
         )
     }
+
+    /// Resolve the nominal phrase before shortening it into a personal name.
+    /// An institution head or a department belongs to the target, whereas
+    /// "at <company>" is a separate adjunct and must not erase its person.
+    private static func isNonPersonPhrase(_ list: [Word], at index: Int, limit: Int?) -> Bool {
+        if kinship.contains(list[index].lower) { return false }
+        let evidence = neutralNameEvidence(list[index])
+        if evidence.organization { return true }
+        if list[index].isOrganizationName,
+           !evidence.personal { return true }
+        return hasNonPersonHead(list, at: index, limit: limit)
+    }
+
+    private static func isUnresolvedIdentifier(_ word: Word, in list: [Word]) -> Bool {
+        let value = word.core
+        let acronym = value.count >= 3 && value == value.uppercased()
+            && list.contains { $0.core != $0.core.uppercased() }
+        let mixed = value.dropFirst().contains(where: \.isUppercase)
+            && value.contains(where: \.isLowercase)
+        return acronym || mixed
+    }
+
+    /// Native name tags vary with the surrounding command. A second neutral
+    /// frame corroborates identity; a single organization tag cannot erase a
+    /// person simply because dictation wrote a different lead-in.
+    private static func neutralNameEvidence(_ word: Word) -> (personal: Bool, organization: Bool) {
+        let context = SentenceContextCache.context(for: "I spoke with " + display(word.core))
+        let nameTokens = context.tokens.dropFirst(3)
+        let subject = SentenceContextCache.context(for: display(word.core) + " said hello").tokens.first
+        return (nameTokens.contains(where: \.isPersonalName) || subject?.isPersonalName == true,
+                nameTokens.contains(where: \.isOrganizationName) || subject?.isOrganizationName == true)
+    }
+
+    private static func hasNonPersonHead(_ list: [Word], at index: Int, limit: Int?) -> Bool {
+        for cursor in index..<min(list.count, limit ?? list.count, index + 6) {
+            let word = list[cursor].lower
+            if cursor > index,
+               ["at", "from", "to", "for", "with", "about", "on", "in", "and", "or"].contains(word)
+                || (boundaryWords.contains(word) && word != "of") { break }
+            if institutionHeads.contains(word) || organisationSuffixes.contains(word)
+                || topicHeads.contains(word) { return true }
+            if cursor > index, list[cursor].isVerb { break }
+        }
+        return false
+    }
+
+    // Semantic heads, never organization names or complete failed phrases.
+    private static let institutionHeads: Set<String> = [
+        "bank", "university", "college", "school", "hospital", "clinic", "medical",
+        "laboratory", "lab", "labs", "dental", "company", "corporation", "agency", "department",
+        "ministry", "council", "airline", "airlines", "airways", "telecom",
+        "insurance", "restaurant", "pharmacy", "library", "branch", "office",
+        "services", "service", "centre", "center", "association", "foundation",
+    ]
+    private static let topicHeads: Set<String> = [
+        "applications", "claims", "invoices", "assignments", "notes", "documents",
+        "forms", "results", "receipts", "expenses", "letters", "reports", "tickets",
+    ]
 
     private static func properName(_ word: Word, allowLowercase: Bool) -> String? {
         guard !word.core.isEmpty,
@@ -864,6 +954,7 @@ enum PersonMentionResolver {
         /// sentence. Corroboration only — it fires on capitals — and it is
         /// consulted by exactly one frame, the transport verbs.
         var isPersonalName = false
+        var isOrganizationName = false
         /// Whether `NLTagger` read this word as an adjective in the whole
         /// sentence. Consulted only when a lowercase word is about to be
         /// joined onto a name: "wish grandma happy birthday" flattened by a
@@ -885,6 +976,7 @@ enum PersonMentionResolver {
         let names = tokens
             .filter(\.isPersonalName)
             .map { NSRange($0.range, in: base) }
+        let organizations = tokens.filter(\.isOrganizationName).map { NSRange($0.range, in: base) }
         let adjectives = tokens
             .filter { $0.lexicalClass == .adjective }
             .map { NSRange($0.range, in: base) }
@@ -905,6 +997,7 @@ enum PersonMentionResolver {
             var entry = word(from: body[index..<end], range: index..<end)
             let span = NSRange(index..<end, in: base)
             entry.isPersonalName = names.contains { NSIntersectionRange($0, span).length > 0 }
+            entry.isOrganizationName = organizations.contains { NSIntersectionRange($0, span).length > 0 }
             entry.isAdjective = adjectives.contains { NSIntersectionRange($0, span).length > 0 }
             entry.isVerb = verbs.contains { NSIntersectionRange($0, span).length > 0 }
             result.append(entry)

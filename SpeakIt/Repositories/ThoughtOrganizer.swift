@@ -391,6 +391,7 @@ enum ObligationFrame {
         gate: nil,
         patterns: compile([
             hedgeLead,
+            #"^(?:note|memo)\s+to\s+self\b[\s,:;\-–—]*"#,
             #"^(?:please\s+)?(?:save\s+this(?:\s+note)?(?:\s+that)?\s+"#
                 + #"|(?:\#(ActionabilityReader.recordingFrame))?"#
                 + #"\#(ActionabilityReader.recordingVerb)\s+(?:that\s+|about\s+)?)"#
@@ -786,19 +787,63 @@ enum ThoughtOrganizer {
         return refused && !ShoppingGroupParser.namesOnlyProducts(object)
     }
 
+    static func hasUnresolvedTimingConstraint(_ text: String) -> Bool {
+        TemporalIntentParser.carriesUnresolvedConstraint(in: ClauseScope.instructionText(text))
+    }
+
+    /// A fronted event must not disappear when its consequences are split.
+    /// Resolve only the condition: a clock inside one consequence cannot make
+    /// an unknown event observable for the rest of the capture.
+    static func hasUnresolvedCondition(
+        _ condition: String, referenceDate: Date, calendar: Calendar
+    ) -> Bool {
+        guard !ConditionalIntentScope.isDiscourseIdiom(condition),
+              LocationIntentParser.parse(condition) == nil else { return false }
+        guard ConditionalIntentScope.isTemporalAdjunct(condition) else { return true }
+        let timing = TemporalIntentParser.parse(
+            condition, itemType: .task, referenceDate: referenceDate, calendar: calendar
+        )
+        return timing.intent.kind == .none || timing.needsClarification
+    }
+
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        contentScopeIsMemory: Bool = false
     ) -> OrganizedThought {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()
-        let actionText = ActionabilityReader.actionBody(lowercase)
+        let instructionText = ClauseScope.instructionText(lowercase)
+        let conditionalDependency = ConditionalIntentScope.dependency(in: lowercase)
+        let semanticActionText = conditionalDependency?.consequence ?? lowercase
+        let actionText = ActionabilityReader.actionBody(semanticActionText)
+        if contentScopeIsMemory || CaptureContentScope.explicitlyMemory(normalized) {
+            return OrganizedThought(
+                itemType: readsLikeIdeaProposal(lowercase) ? .idea : .note,
+                category: readsLikeIdeaProposal(lowercase) ? .ideas : .general, priority: .normal,
+                personName: PersonMentionResolver.primary(in: normalized)?.label,
+                dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: false,
+                temporalIntent: .none, locationIntent: nil, state: .resolved
+            )
+        }
         // Two independent readings of the same sentence: what kind of thing it
         // is, and whether the person still owes something. Deriving the second
         // from the first is what let a `note` verdict throw away a correctly
         // parsed date, so they are read apart and reconciled below.
-        let actionability = ActionabilityReader.read(lowercase)
+        let actionability = ActionabilityReader.read(semanticActionText)
+        if actionability != .knowledge,
+           TemporalIntentParser.carriesUnresolvedConstraint(in: instructionText) {
+            return OrganizedThought(
+                itemType: .task, category: .general, priority: .normal,
+                personName: PersonMentionResolver.primary(in: normalized)?.label,
+                dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: true,
+                temporalIntent: .none, locationIntent: nil,
+                state: .underspecified(.ambiguousTemporalScope)
+            )
+        }
         // Knowledge repeats nothing on Today: "the nursery closes at 6 on
         // weekdays" is a standing fact, and its recurrence was becoming a
         // 6 AM series on a note.
@@ -807,8 +852,13 @@ enum ThoughtOrganizer {
         // none and instructs, however the recording verb reads on its own.
         let describesASchedule = actionability == .knowledge
             && ActionabilityReader.isDescriptiveSchedule(lowercase)
-        let recurrenceRule = describesASchedule ? nil : RecurrenceIntentParser.parse(lowercase)
-        let inferred = inferredType(from: actionText, originalText: lowercase, sourceText: normalized, actionability: actionability)
+        let recurrenceRule = actionability == .knowledge ? nil : RecurrenceIntentParser.parse(instructionText)
+        let inferred = inferredType(
+            from: actionText,
+            originalText: semanticActionText,
+            sourceText: conditionalDependency?.consequence ?? normalized,
+            actionability: actionability
+        )
         // A repeat makes a note a task — unless the sentence is knowledge:
         // "the nursery closes at 6 on weekdays" is a standing fact, and
         // promoting it made a recurring 6 AM task out of a closing hour.
@@ -842,7 +892,8 @@ enum ThoughtOrganizer {
         // wrapped it. Without this, wording the type rules could not read
         // ("give me a reminder about the dentist at four") stayed a note, and a
         // note is a Memory item that Today never shows and never schedules.
-        if !type.isActionable, timing.delivery != .none || timing.reminderDate != nil {
+        if actionability != .knowledge, !type.isActionable,
+           timing.delivery != .none || timing.reminderDate != nil {
             type = .task
             timing = CapturePerformanceSignposts.measureTemporalResolution {
                 TemporalIntentParser.parse(
@@ -859,8 +910,8 @@ enum ThoughtOrganizer {
         // to both fields, which silently drags the deadline onto the reminder —
         // the deadline is then simply gone. Each clause is parsed on its own so
         // neither can overwrite the other.
-        if recurrenceRule == nil,
-           let separated = DueAndReminderClauses.split(lowercase) {
+        if actionability != .knowledge, recurrenceRule == nil,
+           let separated = DueAndReminderClauses.split(instructionText) {
             let duePass = TemporalIntentParser.parse(
                 separated.due,
                 itemType: type,
@@ -890,6 +941,14 @@ enum ThoughtOrganizer {
             }
         }
 
+        if actionability == .knowledge {
+            timing = ParsedTiming(
+                dueDate: nil, reminderDate: nil, delivery: .none,
+                needsClarification: false, intent: timing.intent,
+                locationIntent: nil, wantsReminder: false
+            )
+        }
+
         let recurringDate = recurrenceRule.flatMap {
             RecurrenceIntentParser.initialDate(
                 for: $0,
@@ -916,6 +975,7 @@ enum ThoughtOrganizer {
         // whether a sentence names somebody. See `PersonMention.swift`.
         let personName: String?
         var missingFollowUpTarget = false
+        var ambiguousFollowUpTarget = false
         if type == .personFollowUp {
             switch PersonMentionResolver.followUpTarget(in: normalized) {
             case let .person(mention):
@@ -923,6 +983,9 @@ enum ThoughtOrganizer {
             case .described:
                 // "Call the dentist tomorrow" names no person and needs none.
                 personName = nil
+            case .ambiguous:
+                personName = nil
+                ambiguousFollowUpTarget = true
             case .missing:
                 // "Call them tomorrow" is a follow-up with nobody on the other
                 // end. Keeping it as a healthy task hands the person a reminder
@@ -1002,6 +1065,41 @@ enum ThoughtOrganizer {
             )
         }
 
+        let resolvedIntent = finalIntent(
+            timing: timing,
+            recurrenceRule: recurrenceRule,
+            resolvedDate: dueDate,
+            sourceText: lowercase,
+            calendar: calendar
+        )
+
+        if resolvedIntent.unsupportedTrigger == .condition {
+            return OrganizedThought(
+                itemType: type,
+                category: category,
+                priority: inferredPriority(from: lowercase, dueDate: nil, referenceDate: referenceDate),
+                personName: personName,
+                dueDate: nil,
+                reminderDate: nil,
+                reminderDelivery: .none,
+                recurrenceRule: nil,
+                needsClarification: true,
+                temporalIntent: resolvedIntent,
+                locationIntent: nil,
+                state: .unsupported(.unsupportedCondition)
+            )
+        }
+
+        if ambiguousFollowUpTarget {
+            return OrganizedThought(
+                itemType: type, category: category, priority: .normal,
+                personName: nil, dueDate: nil, reminderDate: nil,
+                reminderDelivery: .none, recurrenceRule: nil,
+                needsClarification: true, temporalIntent: resolvedIntent,
+                locationIntent: nil, state: .underspecified(.ambiguousPerson)
+            )
+        }
+
         return OrganizedThought(
             itemType: type,
             category: category,
@@ -1017,13 +1115,7 @@ enum ThoughtOrganizer {
                     in: lowercase,
                     recurrence: recurrenceRule
                 ),
-            temporalIntent: finalIntent(
-                timing: timing,
-                recurrenceRule: recurrenceRule,
-                resolvedDate: dueDate,
-                sourceText: lowercase,
-                calendar: calendar
-            ),
+            temporalIntent: resolvedIntent,
             locationIntent: timing.locationIntent
         )
     }
@@ -1563,7 +1655,7 @@ enum DaypartHint {
     }
 }
 
-private enum RecurrenceIntentParser {
+enum RecurrenceIntentParser {
     private static let weekdays: [(String, Int)] = [
         ("sunday", 1), ("monday", 2), ("tuesday", 3), ("wednesday", 4),
         ("thursday", 5), ("friday", 6), ("saturday", 7)
@@ -2030,6 +2122,7 @@ private enum TemporalIntentParser {
     /// "am london", because the group has no way to know where the place name
     /// starts. Longest names are tried first so "new york" wins over "york".
     private static func namedTimeZone(in text: String) -> TimeZone? {
+        guard text.range(of: #"\btime\b"#, options: [.regularExpression, .caseInsensitive]) != nil else { return nil }
         let candidates = namedTimeZones
             .flatMap { entry in entry.names.map { (name: $0, identifier: entry.identifier) } }
             .sorted { $0.name.count > $1.name.count }
@@ -2042,7 +2135,53 @@ private enum TemporalIntentParser {
                 return TimeZone(identifier: candidate.identifier)
             }
         }
+        // IANA supplies city identities and daylight-saving rules. A unique
+        // city spelling can extend the supported vocabulary without hand
+        // maintaining a list of cities encountered in evaluation captures.
+        let words = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        for index in words.indices where words[index].trimmingCharacters(in: .punctuationCharacters) == "time" && index > 0 {
+            for length in stride(from: min(index, 4), through: 1, by: -1) {
+                let city = words[(index - length)..<index].joined(separator: " ")
+                if let identifiers = ianaCities[city], identifiers.count == 1 {
+                    return TimeZone(identifier: identifiers[0])
+                }
+            }
+        }
         return nil
+    }
+
+    private static let ianaCities: [String: [String]] = {
+        Dictionary(grouping: TimeZone.knownTimeZoneIdentifiers.filter { $0.contains("/") }) {
+            $0.split(separator: "/").last!.replacingOccurrences(of: "_", with: " ").lowercased()
+        }
+    }()
+
+    /// Constraints that the stored timing model cannot faithfully represent.
+    /// Preserve them before segmentation can detach them from their action.
+    static func carriesUnresolvedConstraint(in text: String) -> Bool {
+        let value = text.lowercased()
+        let repeating = RecurrenceIntentParser.parse(value) != nil
+        if repeating, firstMatch(in: value,
+            pattern: #"\b(?:until|through|ending|ends\s+on|starting|beginning|effective|as\s+of)\b|\bfor\s+(?:the\s+next\s+)?\#(spokenNumberPattern)\s+(?:days?|weeks?|months?|times?)\b"#) != nil {
+            return true
+        }
+        if firstMatch(in: value,
+            pattern: #"\b(?:first|last|\d+(?:st|nd|rd|th))\s+(?:business\s+day|weekday)\b"#) != nil {
+            return true
+        }
+        let rangeIsReportedContent: Bool = if let that = value.range(of: #"\bthat\b"#, options: .regularExpression) {
+            time(in: String(value[..<that.lowerBound]), allowsBareClock: false) != nil
+        } else { false }
+        if ReminderPhrasing.requestsReminder(value), !rangeIsReportedContent, firstMatch(in: value,
+            pattern: #"\bbetween\s+\#(clockHourPattern)(?::\d{2})?\s*(?:[ap]\.?m\.?\s*)?and\s+\#(clockHourPattern)\b"#) != nil {
+            return true
+        }
+        let eventOffset = firstMatch(in: value,
+            pattern: #"\b\#(spokenNumberPattern)\s+(?:minutes?|hours?)\s+before\s+(?:my|our|the|his|her|their)\s+\p{L}"#) != nil
+        if eventOffset, time(in: value, allowsBareClock: true) == nil { return true }
+        let namesClockZone = firstMatch(in: value,
+            pattern: #"\b(?:\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?|noon|midnight)\s+(?!(?:local|my)\s+time\b)(?:[\p{L}-]+\s+){1,3}time\b"#) != nil
+        return namesClockZone && namedTimeZone(in: value) == nil
     }
 
     /// True when the wording names a place rather than a time.
@@ -2102,9 +2241,16 @@ private enum TemporalIntentParser {
             options: .regularExpression
         ) != nil
 
-        let wantsAlarm = !reportedSpeech && !negatedReminder && containsAny(semanticText, [
-            "set an alarm", "alarm for", "alarm at", "wake me", "set a timer", "start a timer", "timer for"
-        ])
+        let firstAlarm = ["set an alarm", "alarm for", "alarm at", "wake me", "set a timer", "start a timer", "timer for"]
+            .compactMap { semanticText.range(of: $0, options: .caseInsensitive)?.lowerBound }.min()
+        let firstReminder = semanticText.range(
+            of: ReminderPhrasing.command + "|" + ReminderPhrasing.delegatedCommand,
+            options: [.regularExpression, .caseInsensitive]
+        )?.lowerBound
+        let outerReminder: Bool = if let firstAlarm, let firstReminder {
+            firstReminder < firstAlarm
+        } else { false }
+        let wantsAlarm = !reportedSpeech && !negatedReminder && !outerReminder && firstAlarm != nil
         let schedulesCommunication = itemType == .personFollowUp && containsAny(semanticText, [
             "schedule a message", "schedule message", "schedule a text", "schedule text"
         ])
@@ -2118,7 +2264,7 @@ private enum TemporalIntentParser {
         let delivery: ReminderDelivery = wantsAlarm ? .alarm : (wantsReminder ? .notification : .none)
 
         let relative = relativeResolution(in: semanticText, referenceDate: referenceDate)
-        let absolute = relative.date == nil
+        var absolute = relative.date == nil
             ? resolveAbsolute(
                 in: semanticText,
                 referenceDate: referenceDate,
@@ -2126,6 +2272,18 @@ private enum TemporalIntentParser {
                 allowsBareClock: itemType.isActionable || wantsReminder
             )
             : TimingResolution.unresolved
+        // A day-only deadline on an implicit delegated communication can
+        // govern the speaking errand. It does not license an embedded clock,
+        // recurrence, location trigger or app operation.
+        if relative.date == nil, absolute.date == nil,
+           ClauseScope.hasImplicitDelegatedMessage(text),
+           RecurrenceIntentParser.parse(text) == nil,
+           LocationIntentParser.parse(text) == nil,
+           ConditionalIntentScope.dependency(in: text) == nil {
+            let fallback = resolveAbsolute(in: text, referenceDate: referenceDate,
+                                           calendar: calendar, allowsBareClock: false)
+            if fallback.intent.kind == .dateOnly { absolute = fallback }
+        }
         let resolution = relative.date == nil ? absolute : relative
         let parsedDate = resolution.date
 
@@ -2172,17 +2330,33 @@ private enum TemporalIntentParser {
         let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
             ? parsedLocation
             : nil
+        let conditionalDependency = ConditionalIntentScope.dependency(in: semanticText)
+        let conditionResolution = conditionalDependency.map {
+            timingResolution(
+                in: $0.condition,
+                referenceDate: referenceDate,
+                calendar: calendar,
+                allowsBareClock: true
+            )
+        }
+        let resolvedTemporalAdjunct = conditionalDependency.map {
+            ConditionalIntentScope.isTemporalAdjunct($0.condition)
+                && conditionResolution?.intent.kind != TemporalKind.none
+        } ?? false
+        // Named places cannot be geofenced, but an explicit time beside one is
+        // an existing supported fallback: the time wins. `locationIntent` is
+        // nil in that branch, so retain the parsed place as its evidence.
+        let namedPlaceWithExplicitTime: Bool = if case .named? = parsedLocation?.place {
+            resolution.intent.kind != .none
+        } else {
+            false
+        }
         let unsupportedCondition = locationIntent == nil
-            && resolution.intent.kind == .none
+            && !resolvedTemporalAdjunct
+            && !namedPlaceWithExplicitTime
+            && !(conditionalDependency.map { ConditionalIntentScope.isDiscourseIdiom($0.condition) } ?? false)
             && (itemType.isActionable || wantsReminder)
-            && firstMatch(
-                in: semanticText,
-                // "After I get paid" and "before I leave" are conditions on
-                // the speaker exactly as "when I get paid" is; "before I
-                // forget" is a discourse idiom and conditions nothing.
-                pattern: #"\b(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b"#
-                    + #"|\b(?:after|before|until|till|while)\s+(?:i|we)\b(?!\s+forget\b)"#
-            ) != nil
+            && conditionalDependency != nil
 
         // Saying "tonight" at 11pm resolves to an evening that already ended.
         // iOS silently drops a notification dated in the past, so the person
@@ -2241,7 +2415,9 @@ private enum TemporalIntentParser {
         // Note this replaces whatever the day resolved to. A date-only day
         // resolves to its own start, and 00:00 is not an alert time anyone
         // asked for — it is just where the day begins.
-        if intent.kind == .dateOnly,
+        // A date-only deadline must not replace a separately stated alert
+        // clock with the default morning/evening notification hour.
+        if (splitTiming?.reminderIntent.kind ?? intent.kind) == .dateOnly,
            wantsReminder,
            let reminderDay = splitTiming?.reminderDate ?? dueDate {
             // 9 AM first; when the capture itself arrives later than that on
@@ -2358,7 +2534,7 @@ private enum TemporalIntentParser {
         in text: String,
         referenceDate: Date,
         calendar: Calendar
-    ) -> (dueDate: Date, reminderDate: Date, dueIntent: TemporalIntent)? {
+    ) -> (dueDate: Date, reminderDate: Date, dueIntent: TemporalIntent, reminderIntent: TemporalIntent)? {
         let action: String
         let command: String
 
@@ -2368,6 +2544,17 @@ private enum TemporalIntentParser {
             options: [.regularExpression, .caseInsensitive]
         ) {
             action = String(text[..<reminderLead.lowerBound])
+            // A fronted calendar adjunct is the reminder's own day, not a
+            // separately dated action: "Tuesday, remind me at five".
+            if let day = RuleBasedThoughtExtractor.leadingTemporalContext(in: action),
+               action.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(day) == .orderedSame {
+                return nil
+            }
+            if firstMatch(in: action.trimmingCharacters(in: .whitespacesAndNewlines),
+                          pattern: #"^in\s+(\#(spokenNumberPattern))\s+(?:of\s+)?(?:days?|weeks?)$"#) != nil {
+                return nil
+            }
             command = String(text[reminderLead.upperBound...])
         } else if let aboutLead = text.range(
             of: #"(?i)\s+about\s+(?=(?:the\s+)?\S+\s+(?:deadline|due\s+date|cutoff))"#,
@@ -2390,24 +2577,67 @@ private enum TemporalIntentParser {
             return nil
         }
 
+        // A clock-only action shares the reminder's stated day. A separate
+        // calendar day or elapsed duration remains an independent deadline.
+        let actionDay = namedDay(in: action, referenceDate: referenceDate, calendar: calendar)
+            ?? weekday(in: action, referenceDate: referenceDate, calendar: calendar)
+            ?? monthAndDay(in: action, referenceDate: referenceDate, calendar: calendar)
+            ?? deadlineWindow(in: action, referenceDate: referenceDate, calendar: calendar)
+        let numericActionDay: Bool
+        if case .resolved = ThoughtOrganizer.numericDate(in: action) {
+            numericActionDay = true
+        } else { numericActionDay = false }
+        let borrowsReminderDay = time(in: action, allowsBareClock: true) != nil
+            && actionDay == nil && !numericActionDay
+            && calendarDayOffset(in: action) == nil && relativeSeconds(in: action) == nil
+
         let reminderResolution = timingResolution(
             in: command,
             referenceDate: referenceDate,
             calendar: calendar,
             allowsBareClock: true
         )
-        let actionResolution = timingResolution(
+        // "Remind me tomorrow to buy milk at six" states one timestamp;
+        // splitting it invents a today deadline and a default morning alert.
+        if borrowsReminderDay,
+           time(in: command, allowsBareClock: true) == nil,
+           reminderResolution.intent.kind == .dateOnly
+                || calendarDayOffset(in: command) != nil || dayPartTime(in: command) != nil {
+            return nil
+        }
+        // Two spoken clocks stay distinct. Resolve the action's wall clock on
+        // the reminder's calendar day, without changing bare-hour conventions
+        // by moving the capture instant to midnight.
+        var actionResolution = timingResolution(
             in: action,
             referenceDate: referenceDate,
             calendar: calendar,
             allowsBareClock: true
         )
+        if borrowsReminderDay, let reminderDate = reminderResolution.date,
+           let parsedClock = time(in: action, allowsBareClock: true) {
+            var actionCalendar = calendar
+            if let zone = namedTimeZone(in: action) { actionCalendar.timeZone = zone }
+            let day = reminderResolution.intent.day ?? CalendarDay(from: reminderDate, calendar: calendar)
+            let clock = defaultedBareHourOnNamedDay(parsedClock, in: action)
+            if let day, let start = day.startOfDay(in: actionCalendar),
+               let combined = actionCalendar.date(bySettingHour: clock.hour, minute: clock.minute,
+                    second: 0, of: start, matchingPolicy: .nextTime,
+                    repeatedTimePolicy: .first, direction: .forward),
+               wallClock(of: combined, matches: clock, calendar: actionCalendar),
+               actionCalendar.isDate(combined, inSameDayAs: start) {
+                var intent = actionResolution.intent
+                intent.day = day
+                intent.time = WallClockTime(hour: clock.hour, minute: clock.minute)
+                actionResolution = .resolved(combined, intent)
+            }
+        }
         guard let reminderDate = reminderResolution.date,
               let actionDate = actionResolution.date,
               actionDate != reminderDate else {
             return nil
         }
-        return (actionDate, reminderDate, actionResolution.intent)
+        return (actionDate, reminderDate, actionResolution.intent, reminderResolution.intent)
     }
 
     private static func timingResolution(
@@ -2428,7 +2658,7 @@ private enum TemporalIntentParser {
     }
 
     private static func semanticTimingText(_ original: String) -> String {
-        var text = original
+        var text = ClauseScope.instructionText(original)
         text = text.replacingOccurrences(
             of: #"\babout\s+(?:this\s+|next\s+)?(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"#,
             with: "",
@@ -2500,6 +2730,13 @@ private enum TemporalIntentParser {
         in text: String,
         referenceDate: Date
     ) -> TimingResolution {
+        // A stated wall clock makes "in two days" a calendar offset. Elapsed
+        // seconds would discard that clock (and mishandle a DST boundary).
+        if calendarDayOffset(in: text) != nil,
+           time(in: text, allowsBareClock: true) != nil
+                || conventionalAnchorTime(in: text) != nil || dayPartTime(in: text) != nil {
+            return .unresolved
+        }
         guard let seconds = relativeSeconds(in: text) else { return .unresolved }
         return .resolved(
             referenceDate.addingTimeInterval(seconds),
@@ -2509,6 +2746,20 @@ private enum TemporalIntentParser {
                 sourceText: text
             )
         )
+    }
+
+    private static func calendarDayOffset(in text: String) -> Int? {
+        let patterns = [
+            #"\bin\s+(\#(spokenNumberPattern))\s+(?:of\s+)?(days?|weeks?)\b"#,
+            #"\b(\#(spokenNumberPattern))\s+(days?|weeks?)\s+from\s+now\b"#,
+        ]
+        for pattern in patterns {
+            if let match = firstMatch(in: text, pattern: pattern), match.count >= 3,
+               let count = number(from: match[1]), count > 0 {
+                return count * (match[2].hasPrefix("week") ? 7 : 1)
+            }
+        }
+        return nil
     }
 
     private static func absoluteDate(
@@ -2565,6 +2816,10 @@ private enum TemporalIntentParser {
             ?? captureWallClock(in: text, referenceDate: referenceDate, calendar: calendar)
             ?? conventionalAnchorTime(in: text)
         var day = namedDay(in: text, referenceDate: referenceDate, calendar: calendar)
+        if day == nil, parsedTime != nil || dayPartTime(in: text) != nil,
+           let offset = calendarDayOffset(in: text) {
+            day = calendar.date(byAdding: .day, value: offset, to: referenceDate)
+        }
         if day == nil {
             day = weekday(in: text, referenceDate: referenceDate, calendar: calendar)
         }
@@ -2628,7 +2883,11 @@ private enum TemporalIntentParser {
             // already passed 20 hours ago, so midnight opts out of the
             // same-day rule that "today" and "tonight" otherwise impose.
             let namesMidnight = containsWord(text, "midnight")
-            let explicitlyToday = (containsWord(text, "today") || containsWord(text, "tonight"))
+            // "This morning" still names today after the morning has passed;
+            // it must not take the annual roll-forward of a month/day date.
+            let thisDaypart = firstMatch(in: text,
+                pattern: #"\bthis\s+(?:morning|afternoon|evening|night)\b"#) != nil
+            let explicitlyToday = (containsWord(text, "today") || containsWord(text, "tonight") || thisDaypart)
                 && !namesMidnight
             if combined <= referenceDate, !explicitlyToday {
                 let containsWeekday = weekdays.contains { containsWord(text, $0.name) }

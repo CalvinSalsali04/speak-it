@@ -145,10 +145,13 @@ final class ThoughtCompletionTests: XCTestCase {
     ///
     /// **Deliberately does not abstain**, unlike the three above — and **one
     /// row carries that**, not all three. `She said she needs to` ends on `to`,
-    /// and the reporting guard at `ClauseStructure.swift:702` sits ahead of the
-    /// infinitive branch at `:709`, so without the guard that row answers
-    /// `.danglingInfinitive`. A different outcome is reachable, which is what
-    /// makes its nil worth asserting.
+    /// and `ClauseStructure.unfinished`'s reporting guard —
+    /// `if ClauseScope.read(trimmed).act == .reporting { return nil }` — sits
+    /// ahead of the `if lastWord == "to"` branch, so without the guard that row
+    /// answers `.danglingInfinitive`. A different outcome is reachable, which is
+    /// what makes its nil worth asserting. (Quoted rather than cited by line:
+    /// this file was carried onto the Candidate47 tree, where the same two
+    /// predicates sit several hundred lines lower than they did on main.)
     ///
     /// The other two end on `mind` and `forgot`. They never reach the `to`
     /// branch and fall through `previous.isVerb` to the final class switch,
@@ -218,6 +221,18 @@ final class ThoughtCompletionTests: XCTestCase {
     func testEveryReasonReportsTheSameGap() {
         for reason in ThoughtCompletion.Unfinished.allCases {
             XCTAssertEqual(reason.gap, .incompleteThought)
+        }
+    }
+
+    func testRequestFramesNeedTheirObjectsAndCoordinatorsNeedAContinuation() {
+        for text in ["I need to go to", "This morning I need to buy", "I should probably call",
+                     "I need to text Layla about", "I need to get soap from",
+                     "Go to the storage unit and", "Friday at 12:30, and then"] {
+            XCTAssertNotNil(ThoughtCompletion.unfinished(in: text), text)
+        }
+        for text in ["I need to buy soap", "Tomorrow I want to run", "I should probably call Mira",
+                     "I need to follow up", "Don't forget to check in"] {
+            XCTAssertNil(ThoughtCompletion.unfinished(in: text), text)
         }
     }
 }

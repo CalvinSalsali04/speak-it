@@ -284,17 +284,20 @@ enum RuleBasedThoughtExtractor {
         let analysisText: String
         let suggestedTitle: String?
         let forcesReview: Bool
+        let conditionalDependency: ConditionalIntentScope.Dependency?
 
         init(
             quote: String,
             analysisText: String,
             suggestedTitle: String?,
-            forcesReview: Bool = false
+            forcesReview: Bool = false,
+            conditionalDependency: ConditionalIntentScope.Dependency? = nil
         ) {
             self.quote = quote
             self.analysisText = analysisText
             self.suggestedTitle = suggestedTitle
             self.forcesReview = forcesReview
+            self.conditionalDependency = conditionalDependency
         }
     }
 
@@ -384,13 +387,25 @@ enum RuleBasedThoughtExtractor {
         // resolver otherwise treats "actually skip Costco" as replacement
         // words for the preceding object and creates "buy skip Costco".
         let cleaned = DisfluencyFilter.stripped(normalized)
-        let localCancellation = permitsOperations
+        if let scopes = CaptureContentScope.independentParts(cleaned) {
+            let readings = scopes.map {
+                process($0, referenceDate: referenceDate, calendar: calendar, permitsOperations: permitsOperations)
+            }
+            return (readings.flatMap(\.items), readings.flatMap(\.operations))
+        }
+        let memoryScope = CaptureContentScope.explicitlyMemory(cleaned)
+        let uncertainNegativeRepair = !memoryScope && SelfCorrectionResolver.hasUnresolvedNegativeRepair(cleaned)
+        let localCancellation = permitsOperations && !memoryScope && !uncertainNegativeRepair
             ? CaptureOperationDetector.resolvingInCaptureCancellations(cleaned)
             : (operations: [], remainder: cleaned)
 
+        if localCancellation.remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ([], localCancellation.operations)
+        }
+
         // Repair before the rest of understanding. See `SpeechRepair.swift` for
         // why the order matters.
-        let corrected = GroceryHomophoneRepair.repaired(
+        let corrected = uncertainNegativeRepair ? cleaned : GroceryHomophoneRepair.repaired(
             DictationHomophoneRepair.repaired(
                 DictationPunctuationRepair.repaired(
                     SpokenShorthandRepair.twentyFourHourClock(
@@ -406,6 +421,28 @@ enum RuleBasedThoughtExtractor {
             )
         )
 
+        // A repair can preserve a non-instruction preface before a newly
+        // stated calendar command. Keep that preface as its own thought so it
+        // cannot occupy the first slot used for shared temporal inheritance.
+        if !memoryScope, !uncertainNegativeRepair, corrected != cleaned,
+           let boundary = corrected.range(of: #"[.;]\s+"#, options: .regularExpression),
+           !ClauseScope.isInsideQuotation(boundary.lowerBound, in: corrected) {
+            let left = String(corrected[..<boundary.lowerBound])
+            let right = String(corrected[boundary.upperBound...])
+            let act = ClauseScope.read(left).act
+            if !ActionabilityReader.read(left).belongsOnToday,
+               ConditionalIntentScope.standalone(in: left) == nil,
+               act != .reporting, act != .communicating,
+               leadingTemporalContext(in: right) != nil {
+                let first = process(left, referenceDate: referenceDate, calendar: calendar,
+                                    permitsOperations: permitsOperations)
+                let second = process(right, referenceDate: referenceDate, calendar: calendar,
+                                     permitsOperations: permitsOperations)
+                return (first.items + second.items,
+                        localCancellation.operations + first.operations + second.operations)
+            }
+        }
+
         // Separate what the person wants *managed* from what they want
         // *created*. A capture can do both in one breath, and reading only the
         // first half used to throw the second half away.
@@ -415,7 +452,7 @@ enum RuleBasedThoughtExtractor {
         // something to create instead of falling through to nothing. See
         // `SwiftDataThoughtRepository.applyCaptureOperation`.
         let partition: (operations: [CaptureOperationRequest], remainder: String?)
-        if permitsOperations {
+        if permitsOperations && !memoryScope && !uncertainNegativeRepair {
             let repairedPartition = CaptureOperationDetector.partition(corrected)
             partition = (
                 localCancellation.operations + repairedPartition.operations,
@@ -440,11 +477,47 @@ enum RuleBasedThoughtExtractor {
 
         let consolidation = IntentConsolidator.consolidate(creating, clauses: splitClauses(creating))
 
+        let scopeBody = withoutLeadingTemporalContext(IntentConsolidator.stripFraming(creating))
+        let frontedScope = ConditionalIntentScope.leading(in: scopeBody)
+        let unresolvedSharedScope = frontedScope.map {
+            ThoughtOrganizer.hasUnresolvedCondition(
+                $0.condition, referenceDate: referenceDate, calendar: calendar
+            )
+        } ?? false
+
+        if unresolvedSharedScope,
+           let boundary = creating.range(
+               of: #"(?i)(?:,?\s+and\s+|[.;]\s+)(?:separately|independently)\s+"#,
+               options: .regularExpression
+           ) {
+            // An explicitly independent request closes inherited scope.
+            // Resolve each side in its own frame rather than holding a known
+            // reminder behind an unrelated event we cannot observe.
+            let parts = [String(creating[..<boundary.lowerBound]),
+                         String(creating[boundary.upperBound...])]
+            let readings = parts.map {
+                process($0, referenceDate: referenceDate, calendar: calendar,
+                        permitsOperations: permitsOperations)
+            }
+            return (readings.flatMap(\.items), partition.operations + readings.flatMap(\.operations))
+        }
+
         let segments: [Segment]
-        if let alarmSegments = pluralAlarmSegments(in: creating) {
+        if memoryScope {
+            segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
+        } else if unresolvedSharedScope {
+            // Preserve every restored clause and its governing event together
+            // until that event can be bound. A fresh split cannot imply that
+            // the remaining actions have become unconditional.
+            segments = [Segment(quote: creating, analysisText: creating,
+                                suggestedTitle: nil, conditionalDependency: frontedScope)]
+        } else if ThoughtOrganizer.hasUnresolvedTimingConstraint(creating) {
+            segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
+        } else if let alarmSegments = pluralAlarmSegments(in: creating) {
             segments = alarmSegments
         } else if shouldKeepAsOneSafetyItem(creating) {
-            segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
+            segments = [Segment(quote: creating, analysisText: creating,
+                                suggestedTitle: uncertainNegativeRepair ? creating : nil)]
         } else if let consolidation {
             // The quote stays the whole capture. The person said all of it, and
             // the row has to be able to show them that they did.
@@ -470,7 +543,8 @@ enum RuleBasedThoughtExtractor {
                 quote: segment.quote,
                 analysisText: canonicalizedListCommand(segment.analysisText),
                 suggestedTitle: segment.suggestedTitle,
-                forcesReview: segment.forcesReview
+                forcesReview: segment.forcesReview,
+                conditionalDependency: segment.conditionalDependency
             )
         }
 
@@ -504,10 +578,24 @@ enum RuleBasedThoughtExtractor {
             var organization = ThoughtOrganizer.organize(
                 segment.analysisText,
                 referenceDate: referenceDate,
-                calendar: calendar
+                calendar: calendar,
+                contentScopeIsMemory: memoryScope
             )
 
-            let safetyAmbiguity = shouldKeepAsOneSafetyItem(segment.analysisText)
+            if unresolvedSharedScope && !memoryScope {
+                var intent = TemporalIntent.none
+                intent.unsupportedTrigger = .condition
+                organization = OrganizedThought(
+                    itemType: organization.itemType.isActionable ? organization.itemType : .task,
+                    category: organization.category, priority: organization.priority,
+                    personName: organization.personName, dueDate: nil, reminderDate: nil,
+                    reminderDelivery: .none, recurrenceRule: nil,
+                    needsClarification: true, temporalIntent: intent,
+                    state: .unsupported(.unsupportedCondition)
+                )
+            }
+            let safetyAmbiguity = !memoryScope && !unresolvedSharedScope
+                && shouldKeepAsOneSafetyItem(segment.analysisText)
             let cannotIdentifyPoint = segment.forcesReview
             if safetyAmbiguity || cannotIdentifyPoint {
                 organization = OrganizedThought(
@@ -534,12 +622,24 @@ enum RuleBasedThoughtExtractor {
                 return (record.rawSpan(for: range), record.wasRepaired(in: range))
             } ?? (raw: segment.quote, repaired: false)
 
+            let conditionalTitle: String? = if case .unsupported(.unsupportedCondition) = organization.state,
+                                               let dependency = segment.conditionalDependency {
+                ConditionalIntentScope.leading(in: segment.analysisText) == nil
+                    ? normalize(ReminderCopy.action(from: segment.analysisText))
+                    : normalize("\(dependency.condition), \(ReminderCopy.action(from: dependency.consequence))")
+            } else {
+                nil
+            }
+
+            let messageTitle = !uncertainNegativeRepair
+                && ClauseScope.instructionText(segment.analysisText) != segment.analysisText
+                ? ActionabilityReader.actionBody(segment.analysisText) : nil
             return ExtractedThought(
                 sourceQuote: segment.quote,
                 rawQuote: span.raw.isEmpty ? segment.quote : span.raw,
                 wasRepaired: span.repaired,
                 analysisText: segment.analysisText,
-                suggestedTitle: segment.suggestedTitle,
+                suggestedTitle: messageTitle ?? segment.suggestedTitle ?? conditionalTitle,
                 organization: organization,
                 confidence: needsReview ? 0.58 : (bounded.count > 1 ? 0.88 : 1),
                 needsReview: needsReview
@@ -940,7 +1040,8 @@ enum RuleBasedThoughtExtractor {
                     recurrenceRule: organization.recurrenceRule,
                     needsClarification: organization.needsClarification,
                     temporalIntent: organization.temporalIntent,
-                    locationIntent: organization.locationIntent
+                    locationIntent: organization.locationIntent,
+                    state: organization.state
                 ),
                 confidence: item.confidence,
                 needsReview: item.needsReview
@@ -949,6 +1050,40 @@ enum RuleBasedThoughtExtractor {
     }
 
     private static func segmentedThoughts(in transcript: String) -> [Segment] {
+        // Conditional scope never crosses a sentence boundary. Keep the
+        // boundary explicit before clause splitting discards its punctuation.
+        let sentences = sentenceSegments(in: transcript)
+        if sentences.count > 1,
+           sentences.contains(where: {
+               ConditionalIntentScope.dependency(in: $0) != nil
+                   || splitClauses($0).contains(where: { ConditionalIntentScope.standalone(in: $0) != nil })
+           }) {
+            return sentences.flatMap { segmentedThoughts(in: $0) }
+        }
+
+        // A fronted condition and its one consequence are already one
+        // dependency. Keep that relation before a bare reminder frame can
+        // split a clock-bearing event from the action it governs.
+        if let dependency = ConditionalIntentScope.leading(in: transcript),
+           dependency.consequence.range(of: #"(?i)\b(?:and|then|also|but)\b|[,;]"#,
+                                        options: .regularExpression) == nil {
+            return [Segment(quote: transcript, analysisText: transcript,
+                            suggestedTitle: ConditionalIntentScope.isDiscourseIdiom(dependency.condition)
+                                ? ReminderCopy.action(from: dependency.consequence) : nil,
+                            conditionalDependency: dependency)]
+        }
+
+        // A single action with a trailing condition is one dependency even
+        // when lexical splitting mistakes its date or compound object for a
+        // second instruction. Real coordinated siblings retain normal scope.
+        if let dependency = ConditionalIntentScope.trailing(in: transcript),
+           ConditionalIntentScope.leading(in: dependency.condition) == nil,
+           dependency.consequence.range(of: #"(?i)\b(?:and|then|also|but)\b|[,;]"#,
+                                        options: .regularExpression) == nil {
+            return [Segment(quote: transcript, analysisText: transcript,
+                            suggestedTitle: nil, conditionalDependency: dependency)]
+        }
+
         if let command = sharedCommand(in: transcript) {
             let bodyParts = splitClauses(command.body)
             if bodyParts.count > 1 {
@@ -994,33 +1129,72 @@ enum RuleBasedThoughtExtractor {
 
         let parts = mergeVisitPurpose(mergeDependentCommunication(splitClauses(transcript)), in: transcript)
         guard parts.count > 1 else {
-            return [Segment(quote: transcript, analysisText: transcript, suggestedTitle: nil)]
+            return [Segment(
+                quote: transcript,
+                analysisText: transcript,
+                suggestedTitle: nil,
+                conditionalDependency: ConditionalIntentScope.dependency(in: transcript)
+            )]
         }
 
-        let inheritedContext = leadingTemporalContext(in: parts[0])
-            ?? leadingConditionalContext(in: parts[0])
+        var activeCondition: String?
+        var scopedParts: [(text: String, dependency: ConditionalIntentScope.Dependency?)] = []
+        for part in parts {
+            if let condition = ConditionalIntentScope.standalone(in: part) {
+                activeCondition = condition
+                continue
+            }
+            if let dependency = ConditionalIntentScope.dependency(in: part) {
+                scopedParts.append((part, dependency))
+                activeCondition = nil
+                continue
+            }
+            let isConsequence = ReminderPhrasing.requestsReminder(part)
+                || ActionabilityReader.read(part).belongsOnToday
+            if let condition = activeCondition, isConsequence {
+                let dependency = ConditionalIntentScope.Dependency(
+                    condition: condition,
+                    consequence: part
+                )
+                let separator = ConditionalIntentScope.isDiscourseIdiom(condition) ? ", " : " "
+                scopedParts.append((normalize("\(condition)\(separator)\(part)"), dependency))
+            } else {
+                activeCondition = nil
+                scopedParts.append((part, nil))
+            }
+        }
+        guard !scopedParts.isEmpty else { return [] }
+
+        let scopedTexts = scopedParts.map(\.text)
+        let inheritedContext = leadingTemporalContext(in: scopedTexts[0])
         // A comma after a leading date/time is grammatical context, not a
         // standalone thought. Keep it attached to the following action so a
         // capture such as “Tomorrow at 9, call Sarah” does not leak a phantom
         // “Tomorrow at 9” note into Memory.
-        let contentParts: [String]
-        if let inheritedContext,
-           normalize(parts[0]).caseInsensitiveCompare(inheritedContext) == .orderedSame {
-            contentParts = Array(parts.dropFirst())
+        let contentEntries: [(text: String, dependency: ConditionalIntentScope.Dependency?)]
+        let detachedCalendarPrefix = inheritedContext.map {
+            normalize(scopedTexts[0]).caseInsensitiveCompare($0) == .orderedSame
+        } ?? false
+        if detachedCalendarPrefix {
+            contentEntries = Array(scopedParts.dropFirst())
         } else {
-            contentParts = parts
+            contentEntries = scopedParts
         }
+        let contentParts = contentEntries.map(\.text)
 
         let sharedVerb = leadingActionVerb(in: contentParts[0])
 
-        return contentParts.map { part in
+        return contentEntries.map { entry in
+            let part = entry.text
             var analysisText: String
             if let inheritedContext,
                part != contentParts[0],
                shouldInherit(inheritedContext, by: part) {
                 analysisText = normalize("\(inheritedContext) \(part)")
             } else if let inheritedContext,
-                      contentParts.count < parts.count {
+                      detachedCalendarPrefix,
+                      part == contentParts[0],
+                      ThoughtOrganizer.organize(part).itemType.isActionable {
                 analysisText = normalize("\(inheritedContext) \(part)")
             } else {
                 analysisText = part
@@ -1033,6 +1207,10 @@ enum RuleBasedThoughtExtractor {
             // the analysis carry the verb, and inherited day context stays
             // out of the title as it does everywhere else.
             var suggestedTitle: String?
+            if let dependency = entry.dependency,
+               ConditionalIntentScope.isDiscourseIdiom(dependency.condition) {
+                suggestedTitle = ReminderCopy.action(from: dependency.consequence)
+            }
             if let sharedVerb, part != contentParts[0], sharesVerb(part) {
                 analysisText = normalize("\(sharedVerb) \(analysisText)")
                 suggestedTitle = normalize("\(sharedVerb) \(part)")
@@ -1066,7 +1244,12 @@ enum RuleBasedThoughtExtractor {
                let command = reminderLead(in: contentParts[0]) {
                 analysisText = normalize("\(command) \(analysisText)")
             }
-            return Segment(quote: part, analysisText: analysisText, suggestedTitle: suggestedTitle)
+            return Segment(
+                quote: part,
+                analysisText: analysisText,
+                suggestedTitle: suggestedTitle,
+                conditionalDependency: entry.dependency
+            )
         }
     }
 
@@ -1076,10 +1259,18 @@ enum RuleBasedThoughtExtractor {
     /// vocabulary that already decides Today from Memory also decides what a
     /// shared reminder prefix is allowed to attach itself to.
     private static func isBareFact(_ part: String) -> Bool {
+        // "Remember Alex prefers mornings" stores a fact. The leading
+        // storage verb must not hide the subject/predicate from this gate.
+        if let frame = part.range(of: #"(?i)^(?:please\s+)?remember\s+(?:that\s+)?(?!to\b)"#,
+                                  options: .regularExpression),
+           !String(part[frame.upperBound...]).isEmpty,
+           ThoughtOrganizer.organize(part).itemType == .note {
+            return true
+        }
         // Its own subject followed by its own verb — "Catherine needs a copy" —
         // and nothing asking the speaker to act. An imperative has no subject
         // in front of its verb, which is exactly what tells the two apart.
-        hasSubjectPredicate(part) && !ActionabilityReader.read(part).belongsOnToday
+        return hasSubjectPredicate(part) && !ActionabilityReader.read(part).belongsOnToday
     }
 
     /// The verb the first clause opened with, when later clauses are sharing it.
@@ -1229,7 +1420,7 @@ enum RuleBasedThoughtExtractor {
     /// left the "and" stranded on the end of the previous row: a task titled
     /// "Call the dentist at 9 AM and". Consuming the whole run fixes the
     /// stranded connector and the leading one on the next row at once.
-    private static let connectorRun = #"(?:so|and|also|then|plus)(?:\s+(?:and|also|then|plus))*"#
+    private static let connectorRun = #"(?:so|and|also|then|plus)(?:[\s,]+(?:so|and|also|then|plus))*"#
     // The optional comma after the run matters because `DisfluencyFilter`
     // leaves one behind when it lifts a filler out from between two commas:
     // "and then also, you know, pick up the dry cleaning" becomes "and then
@@ -1348,9 +1539,27 @@ enum RuleBasedThoughtExtractor {
             // need to book the dentist" split at the idiom once "go" joined the
             // action vocabulary, leaving a note reading "It's been touch".
             let idioms = idiomRanges(in: sentence)
+            let speechScope = ClauseScope.read(sentence)
+            // Ordinals inside a fronted date are not discourse enumerators:
+            // "October twenty second call Mira" retains its whole date.
+            let temporalLead = leadingTemporalContext(in: sentence)
+            let temporalEnd = temporalLead.flatMap {
+                sentence.range(of: $0, options: [.anchored, .caseInsensitive])?.upperBound
+            }
             var lowerBound = sentence.startIndex
             for match in regex.matches(in: sentence, range: nsRange) {
                 guard let range = Range(match.range, in: sentence) else { continue }
+                if let temporalEnd, range.lowerBound < temporalEnd { continue }
+                if ClauseScope.isInsideQuotation(range.lowerBound, in: sentence)
+                    || ClauseScope.continuesAttributedAction(
+                        left: String(sentence[lowerBound..<range.lowerBound]),
+                        right: String(sentence[range.upperBound...])
+                    )
+                    || ClauseScope.isReportedMessageBoundary(range, in: sentence, reading: speechScope) {
+                    // An instruction quoted inside a message stays in that
+                    // message, even when its verb could start a new errand.
+                    continue
+                }
                 guard !idioms.contains(where: {
                     $0.lowerBound < range.lowerBound && $0.upperBound > range.upperBound
                 }) else { continue }
@@ -1542,6 +1751,11 @@ enum RuleBasedThoughtExtractor {
         in context: SentenceContext
     ) -> Bool {
         let trimmed = normalize(String(context.text[rightRange]))
+        if trimmed.range(of: ReminderPhrasing.sentenceLead,
+                         options: [.regularExpression, .caseInsensitive]) != nil,
+           ClauseScope.read(String(context.text[leftRange])).act == .communicating {
+            return true
+        }
         let left = normalize(String(context.text[leftRange]))
         guard !trimmed.isEmpty, !left.isEmpty else { return false }
         let leftCanStandAlone = context.hasSubjectPredicate(in: leftRange)
@@ -2049,8 +2263,12 @@ enum RuleBasedThoughtExtractor {
         let tokenizer = NLTokenizer(unit: .sentence)
         tokenizer.string = text
         var segments: [String] = []
+        var sentenceStart = text.startIndex
         tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
-            let value = normalize(String(text[range]))
+            if range.upperBound < text.endIndex,
+               ClauseScope.isInsideQuotation(range.upperBound, in: text) { return true }
+            let value = normalize(String(text[sentenceStart..<range.upperBound]))
+            sentenceStart = range.upperBound
             // Dictation may lowercase the next instruction. NLTokenizer can
             // then keep it inside the preceding memory sentence. Respect an
             // explicit stop before an action, without cutting abbreviations.
@@ -2058,7 +2276,8 @@ enum RuleBasedThoughtExtractor {
             let regex = NSRegularExpression.speakItCached(boundary, options: [.caseInsensitive])
             var start = value.startIndex
             for match in regex?.matches(in: value, range: NSRange(value.startIndex..., in: value)) ?? [] {
-                guard let stop = Range(match.range, in: value) else { continue }
+                guard let stop = Range(match.range, in: value),
+                      !ClauseScope.isInsideQuotation(stop.lowerBound, in: value) else { continue }
                 let prefix = String(value[..<stop.lowerBound])
                 if value[stop.lowerBound] == ".",
                    prefix.range(of: #"(?i)(?:\b(?:dr|mr|mrs|ms|prof|st|sr|jr|vs|etc|inc|ltd)|\b\p{L}|(?:\b\p{L}\.)+\p{L})$"#, options: .regularExpression) != nil {
@@ -2123,8 +2342,11 @@ enum RuleBasedThoughtExtractor {
                 if bare.range(of: #"(?i)^(?:go|head|drive|walk)\s+to\s+(?:[\p{L}\p{N}'’.-]+\s*){1,5}$"#, options: .regularExpression) != nil,
                    part.range(of: #"(?i)^(?:buy|get|grab|pick\s+up)\s+\S"#, options: .regularExpression) != nil,
                    !containsExplicitTiming(part),
-                   ThoughtOrganizer.organize(part).itemType != .shopping,
-                   transcript.range(of: adjacency, options: [.regularExpression, .caseInsensitive]) != nil {
+                   (ThoughtOrganizer.organize(part).itemType != .shopping
+                       || (ShoppingGroupParser.storeName(in: previous) == nil
+                           && part.range(of: #"(?i)(?:,|\band\b)"#, options: .regularExpression) == nil)),
+                   transcript.range(of: adjacency, options: [.regularExpression, .caseInsensitive]) != nil,
+                   ActionabilityReader.read(normalize("\(previous) and \(part)")).belongsOnToday {
                     result[result.count - 1] = normalize("\(previous) and \(part)")
                     continue
                 }
@@ -2180,7 +2402,8 @@ enum RuleBasedThoughtExtractor {
             // The broader second form is only legal when the prelude is a
             // real place trigger. This keeps reported speech containing
             // "remind me to" from inheriting an invented command.
-            if pattern == patterns[1], LocationIntentParser.parse(text) == nil {
+            if pattern == patterns[1],
+               !LocationIntentParser.hasLeadingTrigger(withoutLeadingTemporalContext(text)) {
                 continue
             }
             guard let regex = NSRegularExpression.speakItCached(pattern),
@@ -2326,12 +2549,32 @@ enum RuleBasedThoughtExtractor {
         return remainder.isEmpty ? text : remainder
     }
 
-    private static func leadingTemporalContext(in text: String) -> String? {
+    static func leadingTemporalContext(in text: String) -> String? {
+        // Discourse before a calendar adjunct does not narrow that adjunct
+        // to the first sibling. Keep the complete prefix for inheritance and
+        // let the existing idiom reader remove it only from display copy.
+        if let idiom = text.range(of: #"(?i)^before\s+(?:i|we)\s+forget\b[\s,]*"#,
+                                  options: .regularExpression) {
+            let remainder = String(text[idiom.upperBound...])
+            if let calendarLead = leadingTemporalContext(in: remainder) {
+                return normalize(String(text[idiom]) + calendarLead)
+            }
+        }
+        // A concrete relative day/week frame governs every sibling just as
+        // a named calendar date does, including after a date-slot correction.
+        let relativePreface = #"(?i)^(?:(?:the\s+)?day\s+after\s+tomorrow|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)\s+from\s+now)(?:\s+(?:(?:in\s+the\s+)?(?:morning|afternoon|evening|night)|after\s+(?:breakfast|lunch|dinner|work)))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
+        if let range = text.range(of: relativePreface, options: .regularExpression) {
+            return normalize(String(text[range]))
+        }
+        let relativeCalendar = #"(?i)^in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)(?:\s+(?:(?:in\s+the\s+)?(?:morning|afternoon|evening|night)|after\s+(?:breakfast|lunch|dinner|work)))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
+        if let range = text.range(of: relativeCalendar, options: .regularExpression) {
+            return normalize(String(text[range]))
+        }
         // A fronted recurrence — "Every other Friday at five, remind me to…" —
         // is the schedule for everything that follows it. Without this it was
         // read as a thought of its own, so the sentence produced a phantom
         // item and the series never reached the actions it governed.
-        let recurrencePattern = #"(?i)^(?:every|each)\s+(?:other\s+|second\s+|\d+\s+)?(?:day|week|month|year|weekday|morning|afternoon|evening|night|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+at\s+\#(clockExpression))?\b"#
+        let recurrencePattern = #"(?i)^(?:every|each)\s+(?:other\s+|second\s+|\d+\s+)?(?:day|week|month|year|weekday|morning|afternoon|evening|night|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|night))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
         if let range = text.range(of: recurrencePattern, options: .regularExpression) {
             return normalize(String(text[range]))
         }
@@ -2342,12 +2585,16 @@ enum RuleBasedThoughtExtractor {
         // it. The same sentence with "Tomorrow" in front had always worked,
         // which is what gives the omission away as an oversight rather than a
         // rule.
+        let calendarBoundary = #"(?i)^(?:(?:on|by|before)\s+)?(?:the\s+)?(?:start|beginning|end)\s+of\s+(?:(?:the|this|next)\s+)?(?:week|month|quarter|year)(?:\s+(?:morning|afternoon|evening|night))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
+        if let range = text.range(of: calendarBoundary, options: .regularExpression) {
+            return normalize(String(text[range]))
+        }
         let datePattern = #"(?i)^(?:on\s+)?(?:the\s+)?"#
             + #"(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)"#
-            + #"\s+\d{1,2}(?:st|nd|rd|th)?"#
-            + #"|\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?"#
+            + #"\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))"#
+            + #"|(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))\s+(?:of\s+)?"#
             + #"(?:january|february|march|april|may|june|july|august|september|october|november|december))"#
-            + #"(?:\s+at\s+\#(clockExpression))?\b"#
+            + #"(?:\s+(?:morning|afternoon|evening|night))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
         if let range = text.range(of: datePattern, options: .regularExpression) {
             return normalize(String(text[range]))
         }
@@ -2355,7 +2602,7 @@ enum RuleBasedThoughtExtractor {
         // invoice" front a day the same way. A bare ordinal is only a date
         // here because the whole fronted part has to *be* this phrase for it
         // to be inherited; "the first, ..." in a longer clause never reaches it.
-        let pattern = #"(?i)^(today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+|before\s+)?the\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord)))(?:\s+at\s+\#(clockExpression))?\b"#
+        let pattern = #"(?i)^((?:today|tomorrow)(?:\s+(?:morning|afternoon|evening|night))?|tonight|this\s+(?:morning|afternoon|evening|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(?:on\s+|by\s+|before\s+)?the\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord))(?:\s+(?:of\s+)?(?:this|next)\s+month)?)(?:\s+(?:morning|afternoon|evening|night))?(?:\s*,?\s+(?:at|around)\s+\#(clockExpression))?\b"#
         guard let range = text.range(of: pattern, options: .regularExpression) else { return nil }
         return normalize(String(text[range]))
     }
@@ -2386,7 +2633,7 @@ enum RuleBasedThoughtExtractor {
 
     private static let spokenHourWords = #"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"#
     private static let spokenMinuteWords = #"(?:o'?\s?clock|oh\s+(?:one|two|three|four|five|six|seven|eight|nine)|(?:twenty|thirty|forty|fifty)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine))?|five|ten|fifteen)"#
-    private static let clockExpression = #"(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|\#(spokenHourWords)(?:\s+\#(spokenMinuteWords))?(?:\s+(?:a\.?m\.?|p\.?m\.?))?)"#
+    static let clockExpression = #"(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|noon|midnight|\#(spokenHourWords)(?:\s+\#(spokenMinuteWords))?(?:\s+(?:a\.?m\.?|p\.?m\.?))?)"#
 
     private static func shouldInherit(_ context: String, by segment: String) -> Bool {
         let lowercase = segment.lowercased()
@@ -2421,6 +2668,9 @@ enum RuleBasedThoughtExtractor {
     private static func namesOwnDay(_ text: String) -> Bool {
         text.range(
             of: #"(?i)\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|in\s+(?:\d+|[a-z-]+)\s+(?:days?|weeks?))\b"#,
+            options: .regularExpression
+        ) != nil || text.range(
+            of: #"(?i)\b(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))|(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)|the\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord))\s+(?:of\s+)?(?:this|next)\s+month)\b"#,
             options: .regularExpression
         ) != nil
     }
@@ -2569,6 +2819,10 @@ enum RuleBasedThoughtExtractor {
 
     private static func shouldKeepAsOneSafetyItem(_ text: String) -> Bool {
         let lowercase = text.lowercased()
+        if CaptureContentScope.explicitlyMemory(text) { return false }
+        if SelfCorrectionResolver.hasUnresolvedOrdinalReference(text)
+            || SelfCorrectionResolver.hasUnresolvedNegativeRepair(text)
+            || CaptureOperationDetector.hasAmbiguousLocalCancellation(text) { return true }
         let isDestructiveCommand = lowercase.range(
             of: #"^(?:please\s+)?(?:delete|remove|erase|cancel)\b"#,
             options: .regularExpression
@@ -2615,11 +2869,18 @@ enum RuleBasedThoughtExtractor {
         // speaker never chose. `['’]?s` keeps "whose" out, because the word
         // boundary after the s falls inside it.
         let isQuestion = lowercase.range(
-            of: #"^(?:what|when|where|who|which|how)"#
+            of: #"^(?:what|when|where|who|which|how|why)"#
                 + #"(?:['’]?s\b|\s+(?:is|are|was|were|do|does|did|can|could|will|would|should)\b)"#,
             options: .regularExpression
         ) != nil
-        return isDestructiveCommand || isNegated || isReportedSpeech || isQuestion
+        // Interrogative determiners can own a noun phrase before the finite
+        // verb: "which version had the error" is still a question, even when
+        // dictation supplies a period rather than a question mark.
+        let isNominalQuestion = lowercase.range(
+            of: #"^(?:what|which)\s+(?:[\p{L}'’-]+\s+){1,5}(?:is|are|was|were|has|have|had|do|does|did|can|could|will|would|should)\b"#,
+            options: .regularExpression
+        ) != nil
+        return isDestructiveCommand || isNegated || isReportedSpeech || isQuestion || isNominalQuestion
     }
 
     private static func normalize(_ value: String) -> String {

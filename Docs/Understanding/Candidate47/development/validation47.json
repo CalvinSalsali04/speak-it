@@ -1,0 +1,482 @@
+{
+  "state": "validated",
+  "steps": [
+    {
+      "step": "controls47-run",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/scope-controls-actual47.jsonl"
+    },
+    {
+      "step": "controls47-check",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/controls47-check.log"
+    },
+    {
+      "step": "followup-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/controls47.jsonl"
+    },
+    {
+      "step": "followup-temporal-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/temporal-controls47.jsonl"
+    },
+    {
+      "step": "followup-unfinished-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/unfinished-controls47.jsonl"
+    },
+    {
+      "step": "followup-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup-check47.log"
+    },
+    {
+      "step": "restored-scope47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/restored-scope-controls47.jsonl"
+    },
+    {
+      "step": "message-condition47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-condition-controls47.jsonl"
+    },
+    {
+      "step": "message-timing47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-timing-controls47.jsonl"
+    },
+    {
+      "step": "message-implicit47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-implicit-controls47.jsonl"
+    },
+    {
+      "step": "message-operation47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-operation-controls47.jsonl"
+    },
+    {
+      "step": "quote-boundary-negative47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/quote-boundary-negative-controls47.jsonl"
+    },
+    {
+      "step": "reported-operation47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/reported-operation-controls47.jsonl"
+    },
+    {
+      "step": "message-recipient-regression47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-recipient-regression-controls47.jsonl"
+    },
+    {
+      "step": "reminder-attachment47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/reminder-attachment-controls47.jsonl"
+    },
+    {
+      "step": "event-time-binding47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/event-time-binding-controls47.jsonl"
+    },
+    {
+      "step": "restored-scope-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/restored-scope-check47.log"
+    },
+    {
+      "step": "message-scope-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-scope-check47.log"
+    },
+    {
+      "step": "event-time-binding-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/event-time-binding-check47.log"
+    },
+    {
+      "step": "reminder-attachment-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/reminder-attachment-check47.log"
+    },
+    {
+      "step": "attributed-action-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/attributed-action-check47.log"
+    },
+    {
+      "step": "message-recipient-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-recipient-check47.log"
+    },
+    {
+      "step": "quote-boundary-negative-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/quote-boundary-negative-check47.log"
+    },
+    {
+      "step": "message-operation-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/message-operation-check47.log"
+    },
+    {
+      "step": "implicit-message-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/implicit-message-check47.log"
+    },
+    {
+      "step": "sequence47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/sequence-controls47.jsonl"
+    },
+    {
+      "step": "sequence-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/sequence-check47.log"
+    },
+    {
+      "step": "reference47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/reference-controls47.jsonl"
+    },
+    {
+      "step": "reference-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/reference-check47.log"
+    },
+    {
+      "step": "date-and-repair47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/followup/date-and-repair-controls47.jsonl"
+    },
+    {
+      "step": "date-and-repair-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/date-and-repair-check47.log"
+    },
+    {
+      "step": "memory-nominal47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/memory-and-nominal-controls47.jsonl"
+    },
+    {
+      "step": "memory-nominal-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/memory-nominal-check47.log"
+    },
+    {
+      "step": "factual-list47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/factual-list-controls47.jsonl"
+    },
+    {
+      "step": "factual-list-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/factual-list-check47.log"
+    },
+    {
+      "step": "dated-event-binding47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/dated-event-binding-controls47.jsonl"
+    },
+    {
+      "step": "dated-event-binding-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/dated-event-binding-check47.log"
+    },
+    {
+      "step": "fronted-reminder-day47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/fronted-reminder-day-controls47.jsonl"
+    },
+    {
+      "step": "relative-day-clock47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/relative-day-clock-controls47.jsonl"
+    },
+    {
+      "step": "fronted-reminder-day-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/fronted-reminder-day-check47.log"
+    },
+    {
+      "step": "deictic-sequence47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/deictic-sequence-controls47.jsonl"
+    },
+    {
+      "step": "deictic-sequence-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/deictic-sequence-check47.log"
+    },
+    {
+      "step": "inherited-calendar-routing47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/inherited-calendar-routing-controls47.jsonl"
+    },
+    {
+      "step": "inherited-calendar-routing-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/inherited-calendar-routing-check47.log"
+    },
+    {
+      "step": "independent-message-command47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/independent-message-command-controls47.jsonl"
+    },
+    {
+      "step": "local-cancel-binding47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/local-cancel-binding-controls47.jsonl"
+    },
+    {
+      "step": "local-cancellation-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/local-cancellation-check47.log"
+    },
+    {
+      "step": "calendar-slots47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/calendar-slot-study-controls47.jsonl"
+    },
+    {
+      "step": "calendar-slots-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/calendar-slots-check47.log"
+    },
+    {
+      "step": "combined-calendar-clock47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/calendar-combined-clock-controls47.jsonl"
+    },
+    {
+      "step": "combined-calendar-clock-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/combined-calendar-clock-check47.log"
+    },
+    {
+      "step": "department-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/department-controls47.jsonl"
+    },
+    {
+      "step": "department-controls-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/department-controls-check47.log"
+    },
+    {
+      "step": "department-predicate-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/department-predicate-negative-controls47.jsonl"
+    },
+    {
+      "step": "department-predicate-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/department-predicate-check47.log"
+    },
+    {
+      "step": "fronted-trailing-clock-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/fronted-trailing-clock-controls47.jsonl"
+    },
+    {
+      "step": "clock-correction-date-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/clock-correction-date-controls47.jsonl"
+    },
+    {
+      "step": "memory-inheritance-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/memory-inheritance-controls47.jsonl"
+    },
+    {
+      "step": "final-timing-memory-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/final-timing-memory-check47.log"
+    },
+    {
+      "step": "unresolved-negative47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/unresolved-negative-repair-controls47.jsonl"
+    },
+    {
+      "step": "unresolved-negative-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/unresolved-negative-check47.log"
+    },
+    {
+      "step": "protected47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/protected47.log"
+    },
+    {
+      "step": "cancellation-scope47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/cancellation-scope47.log"
+    },
+    {
+      "step": "conditional-intent47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/conditional-intent47.log"
+    },
+    {
+      "step": "corpus47-build",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/corpus47-build.log"
+    },
+    {
+      "step": "corpus47-results",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/corpus47-results.log"
+    },
+    {
+      "step": "preface-daypart47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/preface-daypart-controls47.jsonl"
+    },
+    {
+      "step": "preface-clock-retention47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/preface-clock-retention47.jsonl"
+    },
+    {
+      "step": "preface-clock-retention-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/preface-clock-retention-check47.log"
+    },
+    {
+      "step": "preface-daypart-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/preface-daypart-check47.log"
+    },
+    {
+      "step": "relative-discourse47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/relative-discourse-controls47.jsonl"
+    },
+    {
+      "step": "relative-discourse-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/relative-discourse-check47.log"
+    },
+    {
+      "step": "final-clock-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/final-clock-controls47.jsonl"
+    },
+    {
+      "step": "around-clock-retention-controls47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/around-clock-retention47.jsonl"
+    },
+    {
+      "step": "final-clock-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/final-clock-check47.log"
+    },
+    {
+      "step": "inherited-event47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/inherited-event-controls47.jsonl"
+    },
+    {
+      "step": "inherited-event-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/inherited-event-check47.log"
+    },
+    {
+      "step": "unique-union47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/unique-union47.log"
+    },
+    {
+      "step": "affected-compare47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/affected-compare47.log"
+    },
+    {
+      "step": "release47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/release47.log"
+    },
+    {
+      "step": "diff-check47",
+      "exit_code": 0,
+      "log": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/diff-check47.log"
+    }
+  ],
+  "source_files": {
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/App/AnalyticsService.swift": "9d64ef355d7ad62036c8aa3469a803918757c44266b767162e16a0e81f4d9433",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/App/CapturePerformance.swift": "aa01c0d97c0a60be25908fa4dce62d7f9c974e92311c145448c8abd77589c1f7",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/App/PersistenceController.swift": "55560c4bd21fb0723a6bdd28e28cc168c62526f0eccdf63c2e1e0aea9953c9a0",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/App/RootView.swift": "6781995313d6d897f1bafc0a1d617d83b0681db0189b0fec01248ae5737f4183",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/App/SpeakItApp.swift": "3e227231d4fefe2cfd078092bcbae595543f3bafd47b1990de0a067adddfb026",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Components/CapturedItemRow.swift": "e09da4d4676b17524271e36d3e82ee0f309823829453ede1f5cc4dc6af0fac6d",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Components/ListeningOrb.swift": "e4d8900af442bb5e29d26cb5ccaacbf5331cf6819b162f867ec929558f3e80ac",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Components/SpeakItTheme.swift": "8841d101f1da0204c4041e284c4f3adf55ec8305cfbfb95dcea740d61d7bf399",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Components/View+ErrorAlert.swift": "19df1da16fcb5fd7eade4e3fe9f77b83db9d1e930e530fb2172832f5bdf31c8b",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Components/WeekRowView.swift": "a2939fede215836750871113263d111a2c3d6d8812828d77cb6746ae8c4137b4",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Demo/DemoVideoView.swift": "7c3bd6e75c63df4f7abe85b55ef20a88c1564050af69e8c1a8e91548c3acc332",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Demo/SampleDataLibrary.swift": "eecf6446d262d4f9d928890ee1c6f0b74b120e2f1358b05c7fcc72ba2b422c56",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Capture/CaptureDraftStore.swift": "e684034d60bda7d6a97d3531ec6f499b569115c56e2335fb09d813fcc1acf14c",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Capture/CaptureView.swift": "c060f47d6ceb9be1fc88988ef92fef4359762908a7a9d9f0bb0c0e5135e62387",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Capture/SpeechRecognitionBackend.swift": "f3fec50209108e17da6170f8baf989b2a75b454385876beb935affbc036027d5",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Capture/SpeechTranscriber.swift": "b9928104dae3927bbeef840a1200c2d2cdb91f4099600f39076db9eedaa16f6b",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/ItemEditor/CaptureSessionReviewView.swift": "739c179915586b5afb68f4e38d03625aa045a13e224c55ae9c5a9e5e781ec510",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/ItemEditor/ItemEditorView.swift": "1f1cf05e1fcb039ebf1a6d0bd8f4822d8ea840bc0884766b8b531ac27563983c",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Library/LibraryView.swift": "b4baf131797e347fd79a510d14929c1736966b38f4570e6dbcac98be19e1abcf",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Places/CurrentLocationProvider.swift": "b6def3d634259231690ac0bd915849cbb266d242454a4c0ef7b01549bb200975",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Places/PlaceSetupView.swift": "6863a2cfcf94b59beb7790679cea9782c21d39dd610c5ccd0f0d99ab611e94fb",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/AccountSettingsView.swift": "3320c81e5b4a4c94b47124ffd078421a360d3c616955d8320d20054c6515d38e",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/CaptureAnywhereSetupView.swift": "3e38f8f05ed4f8a57fbe226acb0c3cb5f2d5018f30ceecb6f55aa885bebf2740",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/ReferralService.swift": "113590b04096467230a30555846e880c70029ec64e3883aefedac1e49bd5cee0",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/SpeakItProView.swift": "322a0ea191a0bac1363752b483da1b9b06caeca944eba18d154239ca6c89a486",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/SpeechVocabulary.swift": "f0cdaa3ced7258f4793934be366896fa5644e9f1ce1978938a34047ade61c19e",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/SubscriptionStore.swift": "d5f00162ca919a21b469e2d3101e48a8d7f7f8f0713b0554394a9d24401410e9",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Setup/WelcomeView.swift": "7adc7dacf500c8a7731dcaca49d28bc2564ee49a7f98d38a2a05f7c76a8150e0",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Shopping/ShoppingGroups.swift": "13e6affd0069c8b6d4e4d1a3cb0f7ce290f8d2ac407f56ba33181aea6a535dce",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Shopping/ShoppingListView.swift": "e78e246fac81f2069d9ef1b94814a0b86faa85e792137fcae35b2574e261e3c8",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Features/Today/TodayView.swift": "004be89af4faa8c30d01edf46846e30055983ae09a3349ef4b38003090cb2a8f",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Intents/SaveThoughtIntent.swift": "9cb73badb44182d8a9907fbdb087e02add5cca92181ab8254cde28374fd184d3",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Interpretation/CaptureInterpretation.swift": "c3e601f7f45164a2a5182c8d95ef53d4ad1a9d281e26c59b3bd2a5a7187ddf86",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Interpretation/InterpretationBridge.swift": "99a9c327ebf7a4807a1349e1669e070482ea7b95efa5440190665fd067a992d2",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Interpretation/InterpretationPolicy.swift": "bf95a020a0fcd5240128ea411e5d0d06a73497229a10c914647a0cc003004482",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Interpretation/ModelInterpreter.swift": "92568b04c189e2bc5d55bce00b36fb6e057a6e10275fceda751c53f47ba4f377",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/LiveActivity/CaptureActivityAttributes.swift": "4d58cdfdff03f7edf5410abe30df932f791afcf19b1b10c8023c0a5bc50be754",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/LiveActivity/CaptureActivityManager.swift": "0af9849f6c2f5e3ddb8ea8d99b087f0a59393ec5348517bfa8edc8d38ab4aadc",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/CaptureOperation.swift": "e2862f5fe149fc9e3c0aed86a81658d0ef0e6ccfc9f147ca96b52d93915d13e7",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/CaptureSession.swift": "2137ca1a0484883a9e4d1fc85bff8fec873da87ca64e6aa07f24ca0dcc1076dc",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/CapturedItem.swift": "5d2e8e566befbccf293e4c0a23c7a96c88ba34b5b57e8a7ddbdc23a65920880d",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/DomainEnums.swift": "a3003d5632e71500fed1cc65db091560ad3bb0696b29ba490f0c35442d3b4cee",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/ItemPresentation.swift": "b50be9762b8864316a6c5eb08f5ce9aee0f2bd74c8ae17f09ccc601b3c93c75f",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/LocationIntent.swift": "bdeea49e06b054c4f93cc0c03419e0b160d7050c8afa4dda91b65c4961e4d8ac",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/ReminderTrigger.swift": "1137b449d193df8bb91d3b29dc8fce47abf6594a2a17f8c4d60c3d349cfd3125",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/SchemaV1.swift": "4e42deb5a2dd3ce6c1e3240eb5a1d3e6659b5e48a1a6f280a156e39a774abf05",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/TemporalIntent.swift": "4d06849bc131ed62b0582eff222f24c1f65a6ff1256ff54642c6414641585dcc",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Models/UserPreferences.swift": "13966f5a68c48081f6f590e5acd551276d190476a036e4082a20df402a10da2f",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Preview Content/PreviewData.swift": "be672e6427305227cf9ef319e5b05b029ea4d04a2743c3b59bd4f3a86ba9fd33",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/Actionability.swift": "09e531dbe582d3696ea8bfbe4a1e3a33f7e7594cb7af095ab93cecd5f9876be0",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ActivityLedger.swift": "d10d151e6cd4bf1d85560c9abb7a2fc676e2cefa7b58eb9d4750d43b2d5bb13d",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/CaptureOperationCopy.swift": "d26b423504f750b04e62f9f7813439bfe0383023e6ea81a386476d8d253c90b7",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/CaptureTargetMatcher.swift": "c4b10ac305d6738f2a7414e1cea152b3d79020fab5c87d6d720617cce4084832",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ClauseStructure.swift": "dd016c991395a18cebea87298887069c6fd005a72b224d901df89366d40b68ec",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/HabitNotificationScheduler.swift": "c202b74e8a1373dc614b249544ae0127010de4fa2d2995dd143bcfe0f1266711",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ICloudSyncService.swift": "6d445589ce4c1a7660514a573e56bde1093d818b5d8a99ccc2e3b579e800d9de",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/IntentConsolidation.swift": "8476c937a5e7fee2d701d2c201a782a59ad937f1889a184b0cd22ad5d27b032e",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/LocationIntentParser.swift": "694a18033ce3d11084fc89cab0d779d0cdbd5e5446c259e29bdf122a69cbdc40",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/LocationReminderMonitor.swift": "d4322b0e6832fb78f4de5e7d6f914e7d016cb28fda8541d7b96ee4b973586ae6",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/PersonMention.swift": "d3d65cf050b4a8a45e04c84163b2f00069bc8ec05b04af18338da979522373e6",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ReminderScheduler.swift": "b8565e78a29aede8c39529fc3bff86b9fb868fd8032896cd4c01ef3001ee4c32",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/SavedPlaceStore.swift": "f187cd4dbe2c6a8151ab97c764e87d4eb60c5d92ed286eef17ae66dfa9d18200",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/SpeechRepair.swift": "3dbec80b8d41e6b16e106e59bce4ec33b1a0cabd8e57cbf6172331382f4bd413",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/SwiftDataThoughtRepository.swift": "e97a1ced2971a8ed77527d8d15604775fb61687c21ab6c59ad7840623816ba40",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ThoughtExtractor.swift": "052cf1806b2000f28d308f032a7d08ef1428a013481b0191ee3fea8e7fcb0f6d",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ThoughtOrganizer.swift": "e2994cc3c95803ddc981d071feb95d2b255822db1928aa9572561e4796f3f099",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/ThoughtRepository.swift": "945326219ee6544512b4cc68dc5d05c7971ba5387ca0f7a2ba8a149efd24e1ad",
+    "/private/tmp/speak-it-conditional-intent/SpeakIt/Repositories/TranscriptProvenance.swift": "b1ef8306cd176b6d7e82950c505d80ebf3ed926126ecb382177b8e0397e3144c"
+  },
+  "probe_sha256": "5f287cd7c1eaba27de58e671e6b3ccc1e0c05a5c6eafe0bdba0862bc18e1cc44",
+  "corpus_qualification": "Zero critical/metadata differences. One intentional behavioral contract correction: unobservable office-closing event with only a date is held for review without notification. Two qualified cosmetics: before-dinner punctuation and visible unresolved essay condition. Corpus fixture unchanged; see dated-event-binding controls."
+}

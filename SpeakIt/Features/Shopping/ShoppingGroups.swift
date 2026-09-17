@@ -871,10 +871,21 @@ enum ShoppingGroupParser {
     /// read as a noun phrase outright — the coordination rescue that admits a
     /// lone verb-tagged word is not available here, since a stutter ("call, uh,
     /// call Mom") is a comma list of exactly that shape.
+    /// The spoken clause is the authority. Prepending an inferred "buy" can
+    /// retag a person's factual predicate as part of a product name.
+    private static func hasSpokenPredicate(_ products: [String], in body: String) -> Bool {
+        let context = SentenceContextCache.context(for: body)
+        return products.contains { product in
+            guard !namesOnlyProducts(product),
+                  let range = body.range(of: product, options: .caseInsensitive) else { return false }
+            return context.hasSubjectPredicate(in: range)
+        }
+    }
+
     static func readsAsProductList(_ body: String) -> Bool {
         let scope = body.trimmingCharacters(in: .whitespacesAndNewlines)
         let pieces = listPieces(in: scope)
-        guard pieces.count > 1 else { return false }
+        guard pieces.count > 1, !hasSpokenPredicate(pieces, in: scope) else { return false }
         let sentence = "buy \(scope)"
         let tokens = lexicalTokens(of: sentence)
         var slices: [ArraySlice<LexicalToken>] = []
@@ -890,7 +901,7 @@ enum ShoppingGroupParser {
     /// Whether every group of an already-split list reads as a product, with
     /// the whole spoken list as the tagger's context.
     static func allReadAsProducts(_ products: [String], in body: String) -> Bool {
-        guard products.count > 1 else { return false }
+        guard products.count > 1, !hasSpokenPredicate(products, in: body) else { return false }
         let sentence = "buy \(body)"
         let tokens = lexicalTokens(of: sentence)
         var slices: [ArraySlice<LexicalToken>] = []

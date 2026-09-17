@@ -1,0 +1,13 @@
+{
+  "probe_sha256": "603465b0decd3f58784d5281049da215ed773054b83c23a0263c8eac3d22b442",
+  "started": 1789583028.732555,
+  "workers": 4,
+  "reference_instant": "2026-08-03T10:00:00-04:00",
+  "runtime": "Verified conditional-intent production rules worktree; output-only enriched native metadata; no Foundation Models or persistence",
+  "resume_started": 1789583028.732555,
+  "runner_sha256": "1973373e542d670680859e8b7b6b139326426be15fd288272b6aae37731afff8",
+  "recovery": "Completed shards reused; valid interrupted prefixes retained. Only outputs not durably recorded are rerun. Interrupted in-flight/buffered executions cannot be counted exactly.",
+  "completed": 250000,
+  "elapsed_seconds": 15695.666480064392,
+  "actual_sha256": "8ed59a50676fdb9537805fdce1209ba2fd64bb5a4eefe3af928422d06c991052"
+}

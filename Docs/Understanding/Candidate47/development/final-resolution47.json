@@ -1,0 +1,21 @@
+{
+  "candidate": 47,
+  "state": "closed_for_synthetic_campaign",
+  "late_candidate35_memory_scope_defects": {
+    "count": 16,
+    "resolved_on_final47": true,
+    "evidence": "final-safety47/actual.jsonl"
+  },
+  "quote_corruption": {
+    "count": 4,
+    "resolved_on_final47": true
+  },
+  "prohibition_controls": "10/10 agree",
+  "closure_cases": 287,
+  "improved_cases": 20,
+  "new_discrepancy_cases": 1,
+  "new_discrepancy_qualification": "GAP50K-48553: complete-context review item; no executable fields or operation",
+  "historical_audits": "Preserved unchanged. This record supersedes pending repair status for the16 late35 memory/scope defects.",
+  "remaining_known_P1": "SB100K-023393 pickup date detached; reproduced in remaining-wrapper-P1-47.jsonl",
+  "readiness_report": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/READINESS.md"
+}

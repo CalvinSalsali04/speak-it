@@ -171,6 +171,17 @@ enum LocationIntentParser {
         return nil
     }
 
+    /// A trigger elsewhere in a capture cannot turn earlier independent
+    /// actions into the prelude of its reminder command.
+    static func hasLeadingTrigger(_ text: String) -> Bool {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard parse(value) != nil else { return false }
+        return leads.contains { lead in
+            value.range(of: lead.pattern, options: [.regularExpression, .caseInsensitive])?
+                .lowerBound == value.startIndex
+        }
+    }
+
     /// True when the wording names a place trigger at all. Preserves the older
     /// question so callers that only need the yes/no answer keep working.
     static func requestsLocationTrigger(_ text: String) -> Bool {
@@ -276,6 +287,19 @@ enum LocationIntentParser {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?"))
         guard !place.isEmpty else { return nil }
+
+        // A return-time adjunct modifies the visit, not the referent. A
+        // deictic reference cannot become a searchable business name merely
+        // because "again" or "next time" follows it.
+        let referent = place.replacingOccurrences(
+            of: #"(?:\s+(?:again|(?:the\s+)?next\s+time))+$"#,
+            with: "", options: .regularExpression
+        )
+        if referent != place,
+           homeWords.contains(referent) || workWords.contains(referent)
+               || hereWords.contains(referent) || nonPlaceWords.contains(referent) {
+            return classify(referent)
+        }
 
         if homeWords.contains(place) { return .home }
         if workWords.contains(place) { return .work }

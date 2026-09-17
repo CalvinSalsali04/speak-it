@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (54, 18, 27, 35)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -830,7 +830,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         that follow-up's review, which narrowed a stated reason in a doc
         comment and closed a blind spot in one of those guards: prose and a
         Python guard, no Swift literal either way, and the backtick rule held
-        for the rewritten paragraph. What the test
+        for the rewritten paragraph. 3928 -> 4047 on 2026-09-17, where this log
+        stops describing a single line: the Candidate47 reconciliation
+        branch carries Candidate47's fixtures and main's together.
+        Candidate47 added 36 `ActionabilityTests` methods and one
+        `ThoughtCompletionTests` method without recounting here, so its
+        recorded 3904 measures 4023 on its own tree; the reconciliation
+        then carries main's `SpeechRepairTests` and
+        `ThoughtCompletionTests` fixtures on top, which is the rest of
+        the way to 4047. Neither recorded figure describes this tree, so
+        it is recomputed rather than taken from a side, and main's
+        entries above are kept because they are the only record of how
+        main reached 3928. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -844,7 +855,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3928)
+        self.assertEqual(len(space), 4047)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
