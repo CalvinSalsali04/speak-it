@@ -42,6 +42,10 @@ The synthetic campaign is closed at **Candidate47**. Read the
 The [reconciliation record](Understanding/CANDIDATE47_RECONCILIATION.md) says
 what was carried across from the ten commits `main` landed while Candidate47
 was being finished, and what was deliberately left.
+The [canonical device baseline](Understanding/DEVICE_BASELINE.md) is the exact
+tree all real-device evidence is gathered from: Candidate47 plus two declared
+deviations, with a verifier that fails by name if a third appears. Take a fresh
+checkout of it before capturing anything on a phone.
 Older campaign plans and candidate entries are historical, not instructions to
 restart optimization.
 
