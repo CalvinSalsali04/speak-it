@@ -51,3 +51,41 @@ If a build fails after those files are restructured, the section markers
 `probe --json utterances.txt` emits one JSON object per capture, including items,
 source wording, dates as Unix seconds, and detected operations. This is the
 input to `Tools/UnderstandingLab/lab.py`; its other modes remain unchanged.
+
+## Which completion branch answered
+
+`probe --completion utterances.txt` prints, for each capture, the
+`ThoughtCompletion.Unfinished` case for the raw utterance and for each row's
+`analysisText`, or `nil` where the text reads as finished.
+
+It exists because the enum was declared `String`-raw-valued and `CaseIterable`
+so that "the behaviour has to be explainable", and nothing printed it. The row
+report cannot: it prints `state.gap`, and both cases carry `.incompleteThought`,
+so the field that looks like the answer is the one place the branches are
+collapsed.
+
+The second column is the point. `ThoughtOrganizer.organize` is called on
+`segment.analysisText` and trims it first, so for a row whose organization was
+derived from its own analysis text, that string — not the utterance — is what
+the guard tested. When the two differ, any argument about the utterance was
+never about the string the guard saw, and a row that changed its verdict may
+have changed its input rather than its branch.
+
+Not every row qualifies. The spoken-list splitter builds one row per product
+with a synthesised `analysisText` and the parent's `organization`, so the guard
+never saw that row's text. The mode does not leave that to this paragraph: on
+the rules path only the completion guard sets `.incompleteThought`, so when a
+row's re-evaluated answer disagrees with its own recorded gap the line is marked
+`NOT THIS ROW'S INPUT`.
+
+What it cannot tell you: it re-evaluates a pure function on the same input
+rather than instrumenting the call, so it is the branch for that text, and it
+says nothing about a caller that passes some other text. Its output is
+deliberately not in the `──` record format, because the three scorers split
+reports on that prefix.
+
+`questions/` holds checked-in inputs for this mode, one file per question, each
+one carrying the question and the prediction above the utterances. Adding a file
+there is how a reading gets a preregistered answer instead of an argument;
+`declared-limits.txt` is run by the `language` job whenever a dispatch asks for
+`devset_failures`.

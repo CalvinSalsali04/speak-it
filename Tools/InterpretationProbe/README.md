@@ -37,6 +37,58 @@ rule is about where the file goes, not where it sits. Re-scoring a sealed run
 means running `--replay` on the machine that holds it and reporting the scorer's
 counts.
 
+## The first run on a device
+
+`first-run.sh` is the whole generating half in one command, for somebody who
+has Apple Intelligence and should not have to think about cuts and flags:
+
+```bash
+./Tools/InterpretationProbe/first-run.sh              # runon, 1 run
+./Tools/InterpretationProbe/first-run.sh runon 3      # three runs, for --spread
+./Tools/InterpretationProbe/first-run.sh all 1        # all 631 development captures
+```
+
+It builds the probe, prints and records `--availability` (stopping there, with
+the reason, if the model is not reachable), cuts the development set to
+`id<TAB>capture`, generates, times the run, and says which file to send back.
+**Development sets only: the set named has to be one of the `.tsv` files in
+`Tools/CorpusRunner/devsets/`, or `all`**, so pointing the generating half at a
+sealed set is not something that happens by accident here. It is an allowlist
+read from the directory rather than a list of sealed names, for two reasons: a
+name is not what reaches the file (`$SET` is interpolated into a path, and
+`../heldout/heldout` resolves to the sealed set while matching none of those
+names), and a list of what is forbidden permits the next sealed set anybody
+adds. The counts, recomputed on this head rather than carried forward:
+abandonment 55, coordination 121, framing 45, rambling 85, routed 116, runon
+46, unfinished 163, which is 631.
+
+## Comparing the two paths on a development set
+
+`compare.sh` is the evaluation path: it generates a model reading of one or
+more development sets and scores both paths through `heldout/score.py`, the
+same instrument, so the numbers are comparable rather than merely adjacent.
+
+```bash
+./Tools/InterpretationProbe/compare.sh framing routed
+```
+
+Three columns per set, because a generative path has no single number: the
+parser, the model alone with a refused capture producing nothing, and the model
+with the rules answering the refusals. It prints the refusal tally per rule and
+leaves one `runs.jsonl` per set for anybody to `--replay` later.
+
+It prints the instructions fingerprint **twice, from two processes**. That is
+not decoration: the first version of the fingerprint was Swift's `hashValue`,
+which is seeded randomly per process, and it printed two different values for a
+byte-identical prompt — `cd888336` on the CI runner and `329d9c7d` on the Mac
+that produced the first real run. It is FNV-1a now, and two matching lines are
+that being checked rather than assumed.
+
+**`coordination` is refused by name**, and not because it is sealed. It is
+scored by `devsets/score.py` against `probe --clauses` output, a format this
+probe does not emit, so the two paths cannot be compared on it. Refusing it is
+better than printing an empty report that reads like a bad score.
+
 ## The input file
 
 One capture per line. A line with no tab is the whole capture. A line with

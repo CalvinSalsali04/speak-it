@@ -93,6 +93,11 @@ def limits(path):
 stats = Counter()
 byfam = defaultdict(Counter)
 misses = []
+#: Declared limits the probe now flags correctly, by id. Named rather than
+#: counted, because "1 of 7" sends the reader back to reconstructing which row
+#: is which from a family total, which is the reasoning this report already
+#: made fail once.
+limits_passing = []
 
 
 def scored_line(stats, labelled):
@@ -141,6 +146,14 @@ for cid, utt, fam, exp in rows:
         if cid in limited:
             stats["limited"] += 1
             byfam[fam]["limited"] += 1
+            #: A declared limit the probe *does* flag. Collected because the
+            #: two checks around it are independent -- being declared never
+            #: changes the rate -- so a limit whose gap has quietly closed is
+            #: counted as a pass and looks exactly like one still failing.
+            #: Nothing re-read the declaration against the measurement, so a
+            #: stale declaration could understate the parser indefinitely.
+            if flagged:
+                limits_passing.append(cid)
         if flagged:
             stats["inc_ok"] += 1
             byfam[fam]["ok"] += 1
@@ -239,9 +252,33 @@ if stats["limited"]:
         print(f"    {source}")
         print(f"      \"{phrase}\"")
         print(f"      {' '.join(covered)}")
-    print("  They are counted as misses above and stay that way. A limit says")
-    print("  the gap is known and declined with the signals we have, not that")
-    print("  it is closed and not that it is unreachable.")
+    #: What this used to say was "They are counted as misses above and stay
+    #: that way", and it was false in exactly the case that matters. A limit is
+    #: labelled, never subtracted, so one that passes is counted as a pass --
+    #: `trailing-function-word` read 8 cases, 7 declared, 2 OK, and a careful
+    #: reader subtracted 7 from 8, expected 1, and concluded a rule was broken.
+    #: The code was right and the sentence next to it was wrong, which is the
+    #: expensive direction: careful reading made it worse.
+    print("  A limit is counted, never subtracted: it changes what the reader")
+    print("  concludes from the rate, not the rate. One still missing is")
+    print("  counted as a miss; one that now passes is counted as a pass. A")
+    print("  limit says the gap is known and declined with the signals we")
+    print("  have, not that it is closed and not that it is unreachable.")
+    print()
+    #: Printed at zero too. A figure that appears only when it is interesting
+    #: is a figure nobody recomputes, and its absence reads identically to
+    #: nobody having looked.
+    print(f"  DECLARED LIMITS NOW PASSING   {len(limits_passing)} of "
+          f"{stats['limited']}")
+    if limits_passing:
+        print(f"    {' '.join(sorted(limits_passing))}")
+        print("  ← re-read the reason each of these cites before trimming.")
+        print("    A row can start passing by a path that has nothing to do")
+        print("    with the decision recorded, and then the reason is still")
+        print("    true and the record is still worth keeping. Trace which")
+        print("    branch answers for the row and trim only the ids whose")
+        print("    stated reason no longer holds, or this set goes on")
+        print("    understating what the parser does.")
 print()
 print(f"{'FAMILY':32}{'CASES':>7}{'OK':>7}")
 print("-" * 48)

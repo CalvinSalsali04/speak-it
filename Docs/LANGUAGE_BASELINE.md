@@ -2691,6 +2691,12 @@ declared against `ClauseStructure.swift`'s own "out of scope, and honestly so".
 The rate is unchanged and correct; what it means is not. See "What a recorded
 limit does to a weakest-family list" below.
 
+> **Later, not here.** `trailing-function-word` reads **3/9** as of `599fb7d`,
+> measured on run 35132499870: INC58 added one case and one pass. The `2/8`
+> above is what *this* run produced and stays that way. **The movement is a new
+> row being scored, not the parser improving** — no executable line of the
+> engine changed between the two runs.
+
 ### 5. Synthetic stress — still none
 
 `Tools/LanguageMutations/invariance.sh` has never run against the real engine.
@@ -2843,8 +2849,13 @@ class and each removed. "Pick up milk and" and "we're almost out" are the same
 tag shape and only one of them is unfinished, so what separates them is *which*
 preposition: a word list, which is the thing that file exists not to keep.
 
-The rate stays 2/8 on purpose. A limit is counted as a miss and never
-subtracted, because a ceiling is a denominator in waiting — publish "so the
+The declared captures stay in the denominator on purpose. **A limit is
+counted, never subtracted** — it is a label on a row, not an exclusion from the
+rate, so a declared capture that still misses is counted as a miss and one that
+now passes is counted as a pass. (This used to read "counted as a miss and
+never subtracted", which is self-contradictory and was wrong in the case that
+matters; see the warning below.) The reason not to subtract is that a ceiling
+is a denominator in waiting — publish "so the
 reachable total is 50 of 57" once and 34/50 is in the reader's head, and 68% is
 a nicer number than 59.6% that nobody earned. It would also be false: what the
 source records is a decision about three *tagger classes*, not a property of
@@ -2862,6 +2873,52 @@ approximates, which is the error this project keeps paying for.
 The declaration cannot outlive the decision: `test_score.py` checks the cited
 phrase is still in the source, so implementing the thing and deleting the
 comment fails the suite until the declaration goes too.
+
+**Warning: do not subtract the declared count from the family total.** It is
+the arithmetic the row invites and it gives the wrong answer. Seven declared
+out of eight does not leave one row able to pass, because a limit is a label
+and not an exclusion — a declared capture the parser now handles is counted as
+a pass like any other. So `2/8` with seven declared is not a contradiction, and
+**at least one of the declared seven was passing even here**.
+
+This is not hypothetical. Reading `2/8` as "seven declared, so only INC45 can
+pass, so the answer should be 1" is a correct deduction from a false premise,
+and it cost a reviewer real confidence in a rule that was behaving. The premise
+came from three places that all said it, and all three were wrong: this
+document, `devsets/README.md` rule 3, and the scorer's own report. All three
+now say *counted, never subtracted*.
+
+Which of the seven is passing is not answerable from a family total — that is
+the same reconstruction that failed above, and the totals only ever bound it.
+On the current set (`599fb7d`, run 35132499870, 9 rows, 3 OK, INC58 measured
+passing) the declared seven contribute `3 − 1 − (INC45 passing ? 1 : 0)`, which
+bounded it at one or two.
+
+**Measured, so it no longer rests on that bound.** Run 35137835752 printed:
+
+```
+DECLARED LIMITS NOW PASSING   1 of 7
+  INC46
+```
+
+and the same run's dev-set failure list names INC41 INC42 INC43 INC44 INC47
+INC48 and not INC46 — two independent readings of one run agreeing.
+
+**All three passing rows are named by the instrument, none deduced.** INC45 and
+INC58 are absent from that failure list as well, so the three are INC45, INC46
+and INC58 by direct report. An earlier draft of this paragraph recovered INC45
+by subtraction from the family total instead, which works and should still not
+be written down: reconstructing a row's identity from `9 cases, 3 OK` is the
+exact reasoning this section exists to stop, and the list makes it unnecessary. **This was the first time that line had ever printed against the real
+`unfinished.tsv`;** every earlier piece of evidence for it was synthetic, from
+the scorer's own self-tests with fabricated probe output.
+
+**INC46 passing is not by itself grounds to remove it from the declaration.**
+The reason the declaration cites may still be exactly true while an unrelated
+branch answers for that row, in which case the record is worth keeping. Trace
+which branch answers before trimming; the declaration changes in its own
+pull request, graded by somebody who did not write the instrument that
+reported it.
 
 ## What this baseline does not cover
 

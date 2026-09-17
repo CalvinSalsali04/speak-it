@@ -791,14 +791,58 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         whose fixtures are hand-written captures. 3788 -> 3797 in review of
         that change, which made the two role fields load-bearing and added
         four cases for them. 3797 -> 3904 when the cancellation-scope fixture
-        added its focused production controls. 3904 -> 4047 on 2026-09-17 on
-        the Candidate47 reconciliation branch, from two sets of fixtures at
-        once: Candidate47's own 36 added `ActionabilityTests` methods and one
-        `ThoughtCompletionTests` method, which the closure deliberately did not
-        recount here, and the `SpeechRepairTests` and `ThoughtCompletionTests`
-        methods carried over from newer main. Neither side's recorded figure
-        describes this tree: Candidate47 says 3904 and measures 4023, main says
-        3928. What the test is actually
+        added its focused production controls. 3904 -> 3912 on 2026-09-16:
+        the two `SpeechRepairTests` cases for "I was thinking", whose inputs
+        and expectations are nine multi-word literals of which eight are new
+        to this directory. 3912 -> 3916 the same day, when the follow-up to
+        that change added two tests running the repair's output straight into
+        `ThoughtCompletion.unfinished`. The utterances were already here, so
+        the four are three assertion messages and — enumerated rather than
+        assumed — one quoted phrase inside a doc comment, `"keeps the words"`.
+        Worth knowing before predicting one of these deltas: a phrase put in
+        quotation marks while explaining a test counts exactly like a fixture.
+        3916 -> 3929 the same day again, adding the abstain-when-blind helper
+        and its two guard tests. Thirteen, enumerated: six assertion messages,
+        one probe sentence, two phrases quoted inside a doc comment (`"not
+        measured here"`, `"measured and correct"` — the hazard the paragraph
+        above had just finished naming), and **four** fragments of a single
+        skip message, because a message built by concatenating string literals
+        across lines counts once per fragment and not once per message.
+        Counting messages would have predicted ten.
+        3929 -> 3928 an hour later, the first *fall* in this log: review found
+        that the chain test put an assertion ahead of its `XCTSkip`, which
+        depends on XCTest recording a failure that precedes a skip, and nothing
+        here establishes that it does. Moving the skip to the first statement
+        dropped the assertion message "the repair must leave the bare marker",
+        whose claim `testThroatClearingStillComesOff` already makes without
+        skipping. One literal, enumerated rather than assumed, and the sign is
+        the interesting part: deleting an assertion moves this count exactly
+        like adding a fixture does. 3928 -> 3928 later the same day, and a
+        zero is worth a line here for the same reason a fall was: the follow-up
+        gave three `ThoughtCompletionTests` tests an abstention and added two
+        guards over the helper's call sites, and moved this count by nothing,
+        because a `throws` and a call add no literal and every phrase in the
+        new comments is in backticks rather than quotation marks. Deliberate,
+        after the entry two paragraphs above learned that a quoted phrase in a
+        doc comment counts exactly like a fixture. **An unchanged count that
+        nobody recomputed is indistinguishable from one nobody checked**, which
+        is why it is written down rather than left out. 3928 -> 3928 again on
+        that follow-up's review, which narrowed a stated reason in a doc
+        comment and closed a blind spot in one of those guards: prose and a
+        Python guard, no Swift literal either way, and the backtick rule held
+        for the rewritten paragraph. 3928 -> 4047 on 2026-09-17, where this log
+        stops describing a single line: the Candidate47 reconciliation
+        branch carries Candidate47's fixtures and main's together.
+        Candidate47 added 36 `ActionabilityTests` methods and one
+        `ThoughtCompletionTests` method without recounting here, so its
+        recorded 3904 measures 4023 on its own tree; the reconciliation
+        then carries main's `SpeechRepairTests` and
+        `ThoughtCompletionTests` fixtures on top, which is the rest of
+        the way to 4047. Neither recorded figure describes this tree, so
+        it is recomputed rather than taken from a side, and main's
+        entries above are kept because they are the only record of how
+        main reached 3928. What the test
+        is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -821,6 +865,137 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
     def test_the_coverage_statement_names_the_owner(self):
         self.assertIn("readable_material", observation.READ_WHAT)
         self.assertIn("sealed", observation.READ_WHAT)
+
+
+class TheDiagnosticIsNotAllowedToAbstain(unittest.TestCase):
+    """`LexicalTagging.skipIfBlind` lets a tagger-dependent assertion report
+    "not measured here" instead of a verdict it cannot support. Applied to the
+    diagnostic itself it would be self-concealing: the one test whose failure
+    tells anybody the lexical model is missing would go quiet, and the suite
+    would skip its way to green. That is the same defect as a step that runs no
+    tests, one level up, and it is invisible from a summary table.
+
+    Checked here rather than in Swift because it is a claim about which source
+    calls what, and this is the suite that already reads `SpeakItTests`.
+    """
+
+    def source(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        return (root / "SpeakItTests" / "RenderingInvarianceTests.swift").read_text(
+            encoding="utf-8", errors="replace")
+
+    def test_the_environment_probe_does_not_call_the_skip_helper(self):
+        text = self.source()
+        start = text.index("final class NaturalLanguageEnvironmentTests")
+        body = text[start:start + text[start:].index("\n}\n") + 2]
+        self.assertNotIn(
+            "skipIfBlind", body,
+            "NaturalLanguageEnvironmentTests must still fail loudly on a blind "
+            "image; abstaining there hides the only signal that says why "
+            "everything else is abstaining")
+
+    def test_the_helper_it_must_not_call_still_exists_under_that_name(self):
+        """Without this the assertion above passes by spelling. Rename the
+        helper and `skipIfBlind` appears nowhere, so "the probe does not call
+        it" becomes true of every file in the repository."""
+        self.assertIn("func skipIfBlind", self.source())
+
+
+class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
+    """`LexicalTagging.skipIfBlind` must be the first statement of every test
+    that calls it.
+
+    #99 shipped it that way on review's objection, and the reason is that the
+    alternative rests on something nobody here has established: whether XCTest
+    records a failure that happened *before* a test throws `XCTSkip`. If it does
+    not, an assertion placed ahead of the skip is reported as a skip on a blind
+    image, and a genuine regression in the half that could still be measured
+    disappears into the Skipped column. That is the failure the helper exists to
+    prevent, wearing the helper's own clothes.
+
+    The ordering was argued at length in a docstring and checked by nothing:
+    moving the skip back below a statement left `test_score` and this suite
+    green. A decision that only prose defends is one the next person undoes
+    without knowing there was a decision.
+
+    Checked here rather than in Swift for the same reason as
+    `TheDiagnosticIsNotAllowedToAbstain`: it is a claim about the shape of a
+    source file, and this is the suite that already reads `SpeakItTests` and
+    runs on Linux on every pull request.
+    """
+
+    HELPER = "LexicalTagging.skipIfBlind("
+
+    #: What may precede the call on its own line. `try` is the call itself;
+    #: anything else there is a statement that ran first.
+    PREFIX_OK = ("", "try")
+
+    def call_sites(self):
+        """Every (file, test, lines before the call, text before it on its line).
+
+        The fourth element exists because the third cannot cover it. Slicing
+        `lines[back + 1:index]` stops at the call's own line, so a statement
+        sharing that line was invisible:
+
+            XCTAssertNil(ThoughtCompletion.unfinished(in: `Milk`)); try skip()
+
+        Injected exactly that and this class reported OK. Odd Swift style, so
+        it was never likely — but a guard with a blind spot on the one line it
+        is most about is the shape of defect this suite exists to catch, and it
+        was found by review reading the slice rather than by the guard.
+        """
+        root = pathlib.Path(__file__).resolve().parents[2]
+        signature = re.compile(r"^\s*func\s+(test[A-Za-z0-9_]*)\s*\(")
+        sites = []
+        for swift in sorted((root / "SpeakItTests").glob("*.swift")):
+            lines = swift.read_text(encoding="utf-8", errors="replace").splitlines()
+            for index, line in enumerate(lines):
+                if self.HELPER not in line:
+                    continue
+                head = line[:line.index(self.HELPER)].strip()
+                #: A doc comment that *names* the helper is not a call site.
+                #: Without this, `/// Abstains via LexicalTagging.skipIfBlind()`
+                #: reddens the suite -- and names the wrong test, because the
+                #: comment sits above its own `func` so the walk back finds the
+                #: previous one. Reproduced against the guard as first shipped,
+                #: so it is not new here, and found by review rather than by the
+                #: guard. Documenting the helper should not be what breaks it.
+                if head.startswith("//"):
+                    continue
+                for back in range(index - 1, -1, -1):
+                    found = signature.match(lines[back])
+                    if found:
+                        sites.append((swift.name, found.group(1),
+                                      lines[back + 1:index], head))
+                        break
+                else:
+                    self.fail(f"{swift.name}:{index + 1} calls the helper "
+                              "outside any test function")
+        return sites
+
+    def test_nothing_runs_before_the_abstention(self):
+        for name, test, between, head in self.call_sites():
+            self.assertIn(
+                head, self.PREFIX_OK,
+                f"{name}: {test} runs `{head}` on the same line, before it "
+                "abstains. Same defect as a statement on the line above, and "
+                "the line-range check cannot see this one.")
+            for line in between:
+                stripped = line.strip()
+                self.assertTrue(
+                    not stripped or stripped.startswith("//"),
+                    f"{name}: {test} runs `{stripped}` before it abstains. "
+                    "An assertion ahead of the skip is only reported if XCTest "
+                    "keeps a failure that precedes a thrown XCTSkip, which is "
+                    "not established here; put the claim in a test that never "
+                    "abstains instead.")
+
+    def test_there_is_something_to_check(self):
+        """Without this the assertion above passes by having nothing to say.
+        Rename the helper, or drop its last caller, and `every call site is
+        first` becomes true of the empty set -- the same shape as a test
+        selection that matches nothing, and as the guard that cannot fire."""
+        self.assertGreaterEqual(len(self.call_sites()), 1)
 
 
 if __name__ == "__main__":

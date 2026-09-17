@@ -378,6 +378,27 @@ jobs:
         if: always() && inputs.devset_failures == true
         run: Tools/CI/devset-failures.sh || true
 
+      # Which branch answers for the rows `unfinished.tsv:35` declares out of
+      # scope. The count in the step above says how many declared rows now pass
+      # and names them; it cannot say WHY, and the three reasons a declared row
+      # can pass call for opposite edits — one means the id should go, one means
+      # it should stay. Only a direct call on the raw string separates them, and
+      # `--completion` is that call.
+      #
+      # Riding on `devset_failures` rather than a switch of its own: the run
+      # that wants to know why a declared row passes is the run that asked for
+      # the rows. The binary is already built by the gate and by the step above,
+      # so this adds no build. `|| true` for the same reason that step has it —
+      # a question about a count must never decide whether the run went green.
+      - name: Which branch answers the declared limits
+        if: always() && inputs.devset_failures == true
+        run: |
+          [ -x Tools/PipelineProbe/build/probe ] \
+            || ./Tools/PipelineProbe/build.sh >/dev/null \
+            || { echo "COMPLETION: probe build failed, nothing was asked"; exit 0; }
+          ./Tools/PipelineProbe/build/probe --completion \
+            Tools/PipelineProbe/questions/declared-limits.txt || true
+
       - name: Upload the metrics report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

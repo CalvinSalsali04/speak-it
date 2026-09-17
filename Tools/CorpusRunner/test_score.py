@@ -236,7 +236,22 @@ class RecordedLimitTests(unittest.TestCase):
                               f"limit it records may have been implemented")
 
     def test_every_declared_capture_exists_and_is_an_unfinished_one(self):
-        """A declaration must not quietly cover a row that is not a miss."""
+        """The half of rule 3 that can be checked without a probe run.
+
+        This used to say "a declaration must not quietly cover a row that is
+        not a miss", and it does not check that. `Incomplete` is the row's
+        *label* — what it is supposed to be — not whether the probe currently
+        gets it wrong. Whether a declared capture still misses is a fact about
+        a run, and this suite has no run: it is Linux-only and the parser is
+        macOS-only.
+
+        So the name is accurate and the old docstring was not, which is the
+        expensive direction — a reader checking whether rule 3 was enforced
+        would have found this test, read the first line, and stopped.
+
+        The miss half is checked where the evidence exists: `unfinished-score.py`
+        prints DECLARED LIMITS NOW PASSING with the ids on every scoring run.
+        """
         #: Skipped rather than left to loop over nothing: a test that reports
         #: green having asserted nothing is the vacuous half of the same
         #: defect as one that reports red on the good outcome.
@@ -311,6 +326,28 @@ class RecordedLimitTests(unittest.TestCase):
         determiners separately. Sweeping it in would be a label standing in for
         the judgement it approximates. Pinned so that widening the declaration
         has to argue with this rather than happen quietly.
+
+        INC58, "I was thinking about", joined it on 2026-09-16 and is the
+        argument this pin asks for. It ends on a preposition, which the cited
+        comment does cover -- but only for a preposition stranded at the end
+        of a longer clause. This capture is not that: `DisfluencyFilter.stripped`
+        reduces it to the single token "about", and the one-token branch of
+        `ThoughtCompletion.unfinished` accepts `.preposition` exactly where the
+        multi-token switch refuses it. Same word class, different branch, and
+        the branch is the whole reason the row exists.
+
+        That sentence used to end "-- no other row in the set reaches it",
+        and it was false when written. INC34 is the identical utterance
+        under `incomplete-complement` and had been in the set since
+        2026-08-26, three weeks before #99 added INC58, so both rows reach
+        that branch. The claim was pinned by the assertion below, which
+        checks the note *contains* "one-token branch" and never that the
+        uniqueness it asserted held: a prose pin cannot check a claim about
+        the data. `DuplicateUtterancesAreAllListed` is the check that can.
+
+        Declaring it would record an accepted limit for a capture
+        the engine is expected to get right, which is the marker-for-judgement
+        substitution this test exists to prevent, one level up.
         """
         rows = self.captures()
         declared = {c for _, _, ids in self.declarations() for c in ids}
@@ -324,8 +361,35 @@ class RecordedLimitTests(unittest.TestCase):
                          "INC45 ends on a determiner, which the cited comment "
                          "does not cover")
         self.assertIn("dangling article", rows["INC45"][4])
+        self.assertNotIn("INC58", declared,
+                         "INC58 is a one-token capture reaching the branch that "
+                         "accepts a lone preposition; the comment covers the "
+                         "multi-token case")
+        self.assertIn("one-token branch", rows["INC58"][4])
+        # Being outside the declaration is not free: an exception has to say
+        # why it is one.
+        #
+        # This and the identity pin below are both load-bearing, and **each
+        # covers what the other one's first stated reason claimed**, which is
+        # why neither is the redundant one. Established by injection on
+        # 2026-09-16, not by reading:
+        #
+        #   INC46 quietly removed from the `# limit:` line -> THIS loop fires,
+        #       because every declared row in the family carries an empty note.
+        #       The pin never sees it. (The commit that added the pin said the
+        #       opposite; that reason was wrong.)
+        #   a new undeclared row WITH a plausible note      -> only the PIN
+        #       fires. This loop waves it through, so a row can be added to the
+        #       family, expected to pass, and argued nowhere.
+        #
+        # So the loop guards the declaration shrinking and the pin guards the
+        # exception set growing. Delete either and one of those goes silent.
+        for cid in sorted(family - declared):
+            self.assertTrue(
+                rows[cid][4].strip(),
+                f"{cid} sits outside the declaration and gives no reason")
         if declared:
-            self.assertEqual(sorted(family - declared), ["INC45"])
+            self.assertEqual(sorted(family - declared), ["INC45", "INC58"])
 
 
 class DevsetScorerTests(unittest.TestCase):
@@ -378,6 +442,83 @@ class DevsetScorerTests(unittest.TestCase):
             [self.unfinished_block("one", gap=True),
              self.unfinished_block("two")])
         self.assertIn("recall   unfinished flagged   1/2", report)
+
+    #: Both rows declared, so whatever the report says about limits has to
+    #: hold for a passing one and a failing one at the same time.
+    DECLARED_AB = "# limit: some/File.swift | a stated reason | A B\n"
+
+    def declared_both(self, first_flagged, second_flagged=False):
+        return self.unfinished(
+            [self.DECLARED_AB,
+             "A\tone\tf\tIncomplete\t\n", "B\ttwo\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=first_flagged),
+             self.unfinished_block("two", gap=second_flagged)])
+
+    def test_a_declared_limit_is_counted_never_subtracted(self):
+        """The arithmetic, and the sentence that used to contradict it.
+
+        The limit check and the correctness check are two independent `if`s,
+        so a declared capture the probe flags is counted in both. That is
+        deliberate -- a limit changes what the reader concludes from the rate,
+        not the rate -- but the report used to print "They are counted as
+        misses above and stay that way" directly beneath a recall figure that
+        had just counted one of them as a pass.
+
+        Both rows here are declared and one is flagged. A report claiming
+        every limit is a miss cannot also say 1/2, and this pins that it no
+        longer tries to.
+        """
+        _, report = self.declared_both(first_flagged=True)
+        self.assertIn("recall   unfinished flagged   1/2", report)
+        self.assertIn("2 of the 2 unfinished captures are recorded", report)
+        self.assertNotIn("counted as misses", report)
+        self.assertIn("counted, never subtracted", report)
+
+    def test_a_declared_limit_that_passes_is_named_in_the_report(self):
+        """The assertion is on the printing, not on the arithmetic.
+
+        A count the scorer computes and does not print is a figure nobody
+        recomputes, so this asserts the line appears *and* that it carries the
+        id. Naming the row is the point: a family total cannot say which
+        capture is which, and reconstructing one from `8 cases, 7 declared,
+        2 OK` is exactly the reasoning this report already made fail.
+        """
+        _, report = self.declared_both(first_flagged=True)
+        self.assertIn("DECLARED LIMITS NOW PASSING   1 of 2", report)
+        #: Matched as a whole line rather than with `assertIn`, because "A"
+        #: occurs inside half the prose in this report and a substring test
+        #: would pass without anything having been named.
+        named = [l.strip() for l in report.splitlines() if l.strip() == "A"]
+        self.assertEqual(named, ["A"], "the passing limit must be named")
+        self.assertIn("re-read the reason each of these cites", report)
+        #: The line above anchors one line of a seven-line block, so the
+        #: operative sentence underneath it could be reverted to "remove the
+        #: ids that no longer belong" while this test stayed green. Review found
+        #: that by injection. Both halves are pinned because the first says
+        #: *re-read* and only the second says what may then be removed, and it
+        #: is the second that a reader acts on.
+        self.assertIn("trim only the ids whose", report)
+
+    def test_the_passing_count_prints_even_when_it_is_zero(self):
+        """Absence of the line would read exactly like nobody having looked.
+
+        Without this, printing the block only when something passes would
+        still satisfy the test above, and the healthy state would be silent --
+        the shape where a green tick and an unasked question are
+        indistinguishable.
+        """
+        _, report = self.declared_both(first_flagged=False)
+        self.assertIn("recall   unfinished flagged   0/2", report)
+        self.assertIn("DECLARED LIMITS NOW PASSING   0 of 2", report)
+        self.assertNotIn("re-read the reason each of these cites", report)
+
+    def test_the_block_is_absent_when_nothing_is_declared(self):
+        """A set with no declaration must not grow a limits section."""
+        _, report = self.unfinished(
+            ["A\tone\tf\tIncomplete\t\n"],
+            [self.unfinished_block("one", gap=True)])
+        self.assertNotIn("DECLARED LIMITS NOW PASSING", report)
+        self.assertNotIn("recorded design limits", report)
 
     def test_fallout_counts_a_finished_capture_that_was_flagged(self):
         """The number the scorer itself calls the shipping decision."""
@@ -2081,6 +2222,233 @@ class EverySuiteIsActuallyRun(unittest.TestCase):
                  if str(path.relative_to(root)) not in workflow]
         self.assertEqual(unrun, [],
                          "suites that run nowhere but on somebody's laptop")
+
+class DuplicateUtterancesAreAllListed(unittest.TestCase):
+    """The same utterance under two ids -- listed here, or the test fails.
+
+    Found 2026-09-16 from a number that looked wrong and was not: the scorer
+    reports `164 of 164 labelled` for `unfinished.tsv` while the census counts
+    163 utterances. Both are right. 164 rows carry 163 distinct utterances,
+    because "I was thinking about" is in it as INC34 (`incomplete-complement`)
+    and again as INC58 (`trailing-function-word`).
+
+    TWO DIFFERENT THINGS, KEPT APART ON PURPOSE.
+
+    `WITHIN_A_SET` is the one that distorts a rate. Both rows are scored by the
+    same scorer into the same denominators, and every pair found so far carries
+    the SAME expectation under a DIFFERENT family -- so one answer decides both,
+    neither row can fail unless the other does, and the second contributes a
+    denominator and no discriminating power. Two family rates then share a case:
+    a fix aimed at one moves the other, and the family denominators sum past the
+    size of the set.
+
+    `ACROSS_SETS` is recorded, not judged. Eleven utterances live in more than
+    one readable set. That is not obviously a defect -- the sets measure
+    different properties, and one string belonging to both a routing set and a
+    coordination set is not the same thing as one rate counting it twice. **No
+    claim is made here about whether it should change.** It is asserted only so
+    that it cannot drift unnoticed, which is the failure this whole class exists
+    for: a count nobody rechecks is how the first one survived three weeks.
+
+    An earlier version of this class was called `NoUtteranceIsScoredTwice-
+    Unnoticed` while scanning only within each file, so eleven utterances were
+    scored twice, unnoticed, under a name saying none were. Caught in review. A
+    claim broader than what holds, inside the check written to stop claims
+    broader than what holds.
+
+    WHY THIS DOES NOT JUST CALL `corpus-shape.py`, WHICH ALREADY FINDS THEM.
+    It does, exactly: run it against `unfinished.tsv` and it prints
+    `unique utterances 163  DUPLICATED AT: INC34, INC58` and exits 1. They went
+    unnoticed anyway, because **nothing invokes that tool** -- no script under
+    `Tools/CI/`, no workflow step. It is a reviewer's hand-run instrument, and
+    it reports a problem on two of the seven readable sets right now.
+
+    It is also not wirable as it stands: on `abandonment.tsv`, which is ragged
+    (37 rows of five columns, 18 of four), it raises `IndexError` at the label
+    counter rather than reporting the raggedness it just printed. Repairing it,
+    and deciding whether a blind reviewer's tool belongs in CI, is a change to
+    that tool with its own argument. So this is deliberately a second
+    implementation, and the honest reason is that it is the one that runs. Note
+    that it is also within-file only, so it cannot see `ACROSS_SETS` either.
+
+    Removing an id changes a denominator, which is a cost for the ledger rather
+    than a drive-by edit -- and whichever row of a pair goes, the rate gets
+    worse, so nobody is trimming these to flatter a number.
+    """
+
+    #: The refusal text and the duplicate lists are both longer than the
+    #: default cutoff, and a truncated one is a failure message that names no
+    #: file, no line and no id -- which is the whole job of these assertions.
+    maxDiff = None
+
+    #: (set, utterance) -> the ids sharing it inside that one file.
+    WITHIN_A_SET = {
+        ("unfinished.tsv", "I was thinking about"): ["INC34", "INC58"],
+        ("routed.tsv", "Sarah said the meeting is off"): ["DO09", "RC01"],
+        ("routed.tsv", "possibly move the meeting to Friday"): ["AD19", "HY10"],
+    }
+
+    #: utterance -> every (set, id) holding it, where more than one set does.
+    #: `Sarah said the meeting is off` is in both lists and neither is wrong:
+    #: it is duplicated inside `routed.tsv` AND present in `coordination.tsv`,
+    #: which is three homes in total. The within-set entry naming two ids was
+    #: read as naming all of them in review, so the two lists are separate.
+    ACROSS_SETS = {
+        "Sarah said call Mike tomorrow": [
+            ("coordination.tsv", "RS04"), ("routed.tsv", "RC02")],
+        "Sarah said never mind": [
+            ("abandonment.tsv", "ABN26"), ("unfinished.tsv", "FP39")],
+        "Sarah said the meeting is off": [
+            ("coordination.tsv", "RS01"), ("routed.tsv", "DO09"),
+            ("routed.tsv", "RC01")],
+        "Sarah told Mike to call me": [
+            ("routed.tsv", "AO09"), ("unfinished.tsv", "FP41")],
+        "Tomorrow I need to, never mind": [
+            ("abandonment.tsv", "ABN03"), ("unfinished.tsv", "ABD01")],
+        "buy milk and text daniel": [
+            ("coordination.tsv", "LC04"), ("unfinished.tsv", "FP78")],
+        "don't call the plumber": [
+            ("coordination.tsv", "NG01"), ("routed.tsv", "DO04")],
+        "remind me not to eat before the blood test": [
+            ("coordination.tsv", "NG02"), ("routed.tsv", "DO08")],
+        "remind me to": [
+            ("routed.tsv", "IR07"), ("unfinished.tsv", "INC26")],
+        "text Mike that the deal is off": [
+            ("coordination.tsv", "CM02"), ("routed.tsv", "DO10")],
+        "the wedding was off and then back on": [
+            ("coordination.tsv", "NG06"), ("routed.tsv", "DO12")],
+    }
+
+    def paths(self):
+        #: Same accessor idiom as `CorpusPathTests`: import it the way the
+        #: scorers do rather than adding a module-level import to this file.
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        try:
+            import corpus_paths
+        finally:
+            sys.path.pop(0)
+        return corpus_paths
+
+    def homes(self):
+        """(utterance -> [(set name, id)], set name -> why it was refused).
+
+        Every row comes from `corpus_paths.utterances`, which is the reader the
+        scorers use. Three drafts of this method got here:
+
+        1. `column_of` behind `except Exception`, believing it was handling an
+           unreadable header. `column_of` returns None rather than raising, so
+           nothing was handled, `None` flowed downstream, and the failure
+           arrived as a `TypeError` several lines later.
+        2. `utterance_column` and `id_column`, which do raise, over a
+           hand-rolled row loop guarded by `if len(cells) > max(...)`. That
+           guard **skipped** a short row. `utterances()` **refuses** one, and
+           its own comment is the argument: "A dropped row is a denominator one
+           smaller and no message." Appending one tab-free line to a set left
+           this scan reading 164 of 165 rows with all four tests green -- a
+           duplicate detector losing a row in silence, which is the defect this
+           class exists to catch, a layer below where it was looking.
+        3. This one, which owns no parsing at all.
+
+        A set is scanned whole or not at all: rows are collected per file and
+        merged only if the file is read to the end, so `refused` means exactly
+        "contributed nothing" rather than "contributed an unknown prefix". The
+        refusal text is kept because it names the file, and the line when there
+        is one -- a short row and an empty id cell carry a line number, a
+        missing header carries the column it could not find. That is what
+        anyone fixing it needs and what a bare "this set dropped out"
+        withholds.
+        """
+        corpus_paths = self.paths()
+        homes, refused = {}, {}
+        for path in corpus_paths.readable():
+            found = []
+            try:
+                for _, cid, utterance in corpus_paths.utterances(str(path)):
+                    found.append((utterance, (path.name, cid)))
+            except ValueError as refusal:
+                #: Caught, not propagated, so that the failure is one
+                #: assertion naming the set and quoting its refusal, rather
+                #: than four stack traces -- and so that
+                #: `test_every_readable_set_was_scanned` reaches its own assert
+                #: instead of erroring first, which would make it a guard that
+                #: cannot fire. "And the line" would be too strong: a row
+                #: refusal carries a line number, a missing header does not.
+                refused[path.name] = str(refusal)
+                continue
+            for utterance, home in found:
+                homes.setdefault(utterance, []).append(home)
+        return homes, refused
+
+    def scanned_homes(self):
+        """`homes()`, with the precondition the lists depend on asserted first.
+
+        A refused set makes every list below wrong in the same uninteresting
+        way: the entries in that file simply vanish. Asserting the refusal
+        here means each of those failures reads as the refusal, naming the
+        file and line, instead of leading with a thousand-character diff of
+        utterances that are missing for a reason nobody has been told yet.
+
+        It does NOT stop them failing -- `test_every_readable_set_was_scanned`
+        would then be the only thing standing between a half-read corpus and a
+        green suite, and one assertion carrying a guarantee alone is how this
+        PR started.
+        """
+        homes, refused = self.homes()
+        self.assertEqual(
+            refused, {},
+            "this list cannot be exact while a readable set goes unread, so "
+            "the failure is the refusal above and not a duplicate.")
+        return homes
+
+    def test_every_readable_set_was_scanned(self):
+        """A set dropping out makes both lists below look exact."""
+        _, refused = self.homes()
+        self.assertEqual(
+            refused, {},
+            "a readable set could not be read to the end, so it contributed "
+            "no rows and a duplicate inside it would not be found -- both "
+            "lists below would still pass. Three of the seven sets appear in "
+            "neither list, which is exactly where a new duplicate would show "
+            "up, so a set dropping out is otherwise invisible. The refusal "
+            "above names the file, and the line when there is one.")
+
+    def test_the_scan_reaches_rows_at_all(self):
+        """Without this, an empty result reads the same as a clean corpus."""
+        homes = self.scanned_homes()
+        self.assertGreater(sum(len(v) for v in homes.values()), 500,
+                           "the scan read almost nothing, so the checks below "
+                           "would report a clean corpus either way")
+
+    def test_within_set_duplicates_are_exactly_the_listed_ones(self):
+        """Keyed by (set, utterance): two sets can hold the same duplicate."""
+        homes = self.scanned_homes()
+        found = {}
+        for utterance, where in homes.items():
+            per_set = {}
+            for name, cid in where:
+                per_set.setdefault(name, []).append(cid)
+            for name, ids in per_set.items():
+                if len(ids) > 1:
+                    found[(name, utterance)] = sorted(ids)
+        self.assertEqual(found, {k: sorted(v) for k, v in self.WITHIN_A_SET.items()},
+                         "the utterances duplicated inside a single readable "
+                         "set are not the ones listed. A new one means a row "
+                         "was added that already existed under another id in "
+                         "that file, so the family rates it lands in stop "
+                         "being independent. One disappearing means this list "
+                         "is stale.")
+
+    def test_cross_set_sharing_is_exactly_the_listed_set(self):
+        """Recorded so it cannot drift. Not a claim that it is wrong."""
+        homes = self.scanned_homes()
+        found = {u: sorted(set(w)) for u, w in homes.items()
+                 if len({name for name, _ in w}) > 1}
+        self.assertEqual(found, {u: sorted(set(w)) for u, w in self.ACROSS_SETS.items()},
+                         "the utterances appearing in more than one readable "
+                         "set are not the ones listed. Whether that is a defect "
+                         "is undecided; going unnoticed is not allowed either "
+                         "way.")
+
 
 class CorpusShapeTests(unittest.TestCase):
     """The reviewer's tool for a sealed set, which must never print a capture.

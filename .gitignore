@@ -61,3 +61,13 @@ __pycache__/
 Tools/InterpretationProbe/*.jsonl
 *.runs.jsonl
 runs.jsonl
+
+# Interpretation probe working files. The runs are covered above; these are
+# the cut input and the recorded availability line, both regenerated per run.
+Tools/InterpretationProbe/captures.tsv
+Tools/InterpretationProbe/availability.txt
+# `compare.sh` writes a run file, a cut and an availability line per set
+# here. Ignored by default for the same reason as the files above: a run
+# made from a sealed set is sealed material, and the safe default is that
+# it takes a deliberate `git add -f` to put any of it in history.
+Tools/InterpretationProbe/runs/
