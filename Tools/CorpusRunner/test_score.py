@@ -4,6 +4,7 @@ import collections
 import contextlib
 import csv
 import io
+import json
 import os
 import pathlib
 import re
@@ -3050,6 +3051,75 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
                     f"{module}:{node.lineno} names {node.value!r}, a real "
                     f"file, but INPUTS does not list it -- so nothing checks "
                     f"that editing it starts this job")
+
+    #: Observes a check's reads instead of reading its declaration. Kept as a
+    #: string because it runs in a subprocess: an audit hook cannot be removed
+    #: once installed, and this suite should not carry one for its remaining
+    #: tests.
+    OBSERVER = """
+import importlib.util, json, pathlib, sys
+ROOT = pathlib.Path(sys.argv[1]).resolve()
+MODULE = ROOT / sys.argv[2]
+opened = []
+sys.addaudithook(lambda event, args: opened.append(args[0])
+                 if event == "open" and args else None)
+spec = importlib.util.spec_from_file_location("observed", MODULE)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.argv = [str(MODULE), *sys.argv[3:]]
+try:
+    mod.main()
+except SystemExit:
+    pass
+seen = set()
+for entry in opened:
+    if not isinstance(entry, (str, bytes)):
+        continue
+    text = entry if isinstance(entry, str) else entry.decode("utf-8", "replace")
+    try:
+        rel = pathlib.Path(text).resolve().relative_to(ROOT)
+    except (ValueError, OSError):
+        continue
+    if "__pycache__" not in rel.parts:
+        seen.add(str(rel))
+print(json.dumps(sorted(seen)))
+"""
+
+    def observed_reads(self, module, *args):
+        """Every repository file `module` actually opens, by audit hook.
+
+        The declaration tests above are static: they see path literals, and a
+        path assembled from parts is invisible to them. This one sees what the
+        process opens, however the path was built -- and is blind to the other
+        half, branches this invocation does not take. Neither subsumes the
+        other, which is why both are here.
+        """
+        done = subprocess.run(
+            [sys.executable, "-c", self.OBSERVER, str(self.ROOT), module, *args],
+            capture_output=True, text=True, timeout=300)
+        self.assertEqual(done.returncode, 0,
+                         f"observing {module} failed: {done.stderr[-2000:]}")
+        return json.loads(done.stdout)
+
+    def test_every_file_a_gated_check_actually_opens_starts_the_job(self):
+        """The measured counterpart of the declared-coverage test above.
+
+        `--receipt-only` is the invocation observed because its branch set is
+        tiny and deterministic: no working tree is walked, so the read set is
+        the documents alone. The full run additionally hashes 68 Swift files,
+        which `SpeakIt/**` covers already and which would say nothing new here.
+        """
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        for module in self.checks_that_declare_their_inputs():
+            reads = self.observed_reads(module, "--receipt-only", "--quiet")
+            self.assertTrue(reads, f"observing {module} recorded no reads at "
+                                   f"all, so this test asserts nothing")
+            uncovered = [r for r in reads
+                         if not any(p.match(r) for p in patterns)]
+            self.assertEqual(
+                uncovered, [],
+                f"{module} opens {len(uncovered)} file(s) matched by no path "
+                f"filter that starts this job: {uncovered[:5]}")
 
 
 
