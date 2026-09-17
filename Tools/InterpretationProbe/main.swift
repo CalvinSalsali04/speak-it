@@ -411,6 +411,36 @@ func selfcheck() {
     expect(InterpretationPolicy.executableOperations(reported: agreed, rulesRead: [.cancel]).executable.count == 1,
            "an operation both readings found is executable")
 
+    // The run record's fingerprint has to mean the same thing in a later
+    // process, which is the one thing `hashValue` could not promise: two CI
+    // runs on a byte-identical file printed different values.
+    //
+    // Note what runs this: the `language` job is dispatch-only (`ci.yml:338`),
+    // so these assertions do NOT execute on a push or a pull request. The
+    // `if: always()` on the step below guards against an earlier step in this
+    // job failing, not against the job being skipped. Treat this as dispatch
+    // coverage, not per-PR coverage.
+    //
+    // Pinned against
+    // the published FNV-1a 32-bit vectors rather than against a literal
+    // computed from our own prompt, because a literal like that has to be
+    // rewritten every time the prompt legitimately changes, and a check you
+    // rewrite to match the code has stopped checking anything.
+    expect(ModelInterpreter.fingerprint(of: "") == "811c9dc5",
+           "the empty string fingerprints to the FNV-1a offset basis")
+    expect(ModelInterpreter.fingerprint(of: "a") == "e40c292c",
+           "one byte fingerprints to the published vector")
+    expect(ModelInterpreter.fingerprint(of: "foobar") == "bf9cf968",
+           "a multi-byte string fingerprints to the published vector")
+    expect(ModelInterpreter.instructionsFingerprint
+               == ModelInterpreter.fingerprint(of: ModelInterpreter.instructions),
+           "the recorded fingerprint is that function over the instructions")
+    // Without this the three vectors above would still pass against a function
+    // that ignored its argument.
+    expect(ModelInterpreter.instructionsFingerprint
+               != ModelInterpreter.fingerprint(of: ModelInterpreter.instructions + " "),
+           "a changed prompt changes the fingerprint")
+
     // The input reader's accepting half. Its refusing half calls `exit(2)` and
     // so cannot be exercised from inside this process; what is checked here is
     // that a bare line stays whole and a two-field line splits the way the

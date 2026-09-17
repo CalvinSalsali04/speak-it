@@ -644,3 +644,278 @@ Once #106 merges, a **separate provenance-only** change replaces
 `instructions.hashValue` with deterministic FNV-1a over the unchanged
 instruction bytes (sections 14 and 15 record why). It carries no prompt,
 grounding or quoted-example semantics, and must not be combined with them.
+
+## 17. The provenance follow-up: a second deviation, on purpose
+
+`Docs/Understanding/CANDIDATE47_RECONCILIATION.md` closes with #106. This
+section records the one change that follows it, because it makes the identity
+check say something new and a reader who is not expecting that will read it as
+a regression.
+
+**After this follow-up, `verify_frozen.py` names two files, not one:**
+
+```
+Candidate47 identity FAILED:
+  SpeakIt/Interpretation/ModelInterpreter.swift   <- this follow-up
+  SpeakIt/Repositories/SpeechRepair.swift         <- the reconciliation, #96
+```
+
+That is the intended state, not a drift. Both deviations are deliberate and
+each has its own review.
+
+### What changed, and what did not
+
+`ModelInterpreter.instructionsFingerprint` was
+`UInt32(truncatingIfNeeded: instructions.hashValue)`. Swift seeds `Hashable`
+per process on purpose, so that value identified the process that wrote a run
+record rather than the prompt that produced it. Section 15 has the measurement:
+two CI runs over a byte-identical `ModelInterpreter.swift` printed `654b75ea`
+and `10df9b6f`. A field that changes when nothing changed is not provenance,
+and it is worse than an absent field because it reads like one.
+
+It is now FNV-1a over the UTF-8 bytes of the same string.
+
+**The instruction bytes are unchanged, and the strongest proof needs no
+measurement at all:** the literal is not in the diff. `ModelInterpreter.swift`
+has exactly one hunk, `@@ -105,10 +105,34 @@`, and line 105 is the literal's
+closing `"""` arriving as *context*. No line of the prompt is added or removed,
+so there is nothing to extract and no convention to agree on.
+
+The byte figures corroborate it and are the weaker form, because they depend on
+where you cut: **36 lines / 1916 bytes including the two `"""` delimiter
+lines**, 34 / 1874 for the inner span alone. Both sides agree under either, and
+the difference is exactly the delimiters. The convention is pinned here because
+this figure was independently derived twice and produced two numbers, which is
+how a figure starts drifting even when nobody is wrong.
+
+None of `e555f2a`'s grounding instruction, quoted-example rewrite or prompt
+semantics entered with this — those remain held for the FM/device phase,
+exactly as section 14 records. This change is the fingerprint and nothing
+else.
+
+### Why it is pinned against published vectors
+
+The self-check asserts the published FNV-1a 32-bit vectors — `""` to
+`811c9dc5`, `"a"` to `e40c292c`, `"foobar"` to `bf9cf968` — rather than a
+literal computed from our own prompt. A literal computed from the prompt would
+have to be rewritten every time the prompt legitimately changed, and a check
+that gets rewritten to match the code has stopped checking anything.
+
+Those three vectors alone would still pass against a function that ignored its
+argument, so two more assertions sit beside them: that the recorded fingerprint
+is that function over `instructions`, and that appending one byte to the
+instructions changes it. That is the falsifier for "the guard never fires".
+
+### Where it runs
+
+The check went into `Tools/InterpretationProbe/main.swift`'s `--selfcheck`
+rather than into `SpeakItTests/`, for one reason worth recording: **the unit
+suite is unreachable in CI on any Candidate47-based tree.** `corpus-gate.sh`
+exits 1 against its hardcoded zero baseline, the `Unit tests` step carries no
+`if:` and so inherits `success()`, and it is skipped. See the open item in
+section 15.
+
+**The selfcheck's coverage, stated exactly, because an earlier draft of this
+section overstated it.** The probe steps carry `if: always()` (`ci.yml:424`,
+`:428`, `:432`), but they live in the `language` job, whose
+`if: github.event_name == 'workflow_dispatch'` is `ci.yml:348` (the job key is
+`:338`). A step-level
+`always()` protects against an *earlier step in the same job* failing; it does
+nothing when the job never starts. On a push or a pull request the `language`
+job is skipped outright — observable in any recent run's job list — so **these
+assertions do not execute per pull request at all.**
+
+What is true is narrower: **on a dispatch**, the `ios` job does run, the corpus
+gate still reddens, `Unit tests` is still skipped behind it, and the selfcheck
+is then the only place a Swift assertion on this line executes. That is the
+claim. Read without the qualifier it sounds like per-PR coverage, which would
+be a claim nothing recomputes, in its most ordinary form: true of one event
+type, quoted as true generally. Caught in review rather than by a check, which
+is the point — no instrument here distinguishes "skipped job" from "passing
+job" at a glance.
+
+**Not run here, and not claimable from this container:** no Swift compiles in
+this environment (`download.swift.org` is refused by the proxy), so the
+selfcheck assertions above have been written and not executed. They need
+`./Tools/InterpretationProbe/build.sh && build/interpret --selfcheck` on a Mac,
+or a `ci.yml` dispatch. No fingerprint value is quoted in this section for the
+same reason: the engine that computes it cannot run here.
+
+## 18. The squash moved the manifests to a new commit, and main went red
+
+Recorded because it cost a red `main` and the cause is not obvious from the
+failure.
+
+#106 merged as a **squash**, `fc36db5`. A squash writes a new commit rather
+than carrying the branch's, so Candidate47's three freeze manifests arrived on
+`main` under a sha that no `.gitleaksignore` entry named. The entries were
+pinned to `15bde21`, which the squash dropped from `main`'s history.
+
+```
+$ git merge-base --is-ancestor 15bde21 origin/main
+NO
+```
+
+The scan on `main` (run 35231863437, `push` on `fc36db5`) then reported the
+same three findings it had been passing on the branch, at the same files and
+the same lines, under new fingerprints:
+
+```
+190 commits scanned.  leaks found: 3
+  Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
+  Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
+  Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
+```
+
+Nothing about the content changed. Section 11's argument still holds: these
+are SHA-256 manifest lines whose key happens to contain "auth", the value was
+recomputed and matches, and the manifests' bytes are the identity
+`verify_frozen.py` checks, so editing them is not available.
+
+**The fix is three more finding-level fingerprints, at `fc36db5`**, keeping the
+`15bde21` three: that commit is still reachable from
+`origin/codex/candidate47-closeout`, so an entry removed there would stop
+covering a scan of that branch. Six entries, no broadened rule, no allowlisted
+file, no ignored commit — the prohibitions in section 11 are intact.
+
+**That fix is #108, not this branch** — merged as `2ef3d021`, after which
+`main`'s own CI went green again. Another thread reached the same diagnosis and
+had it up within minutes, with verification this container could not produce: `ci.yml`'s own invocation at the pinned gitleaks 8.30.1, before
+and after, plus a planted `stripe-access-token` on line 173 of
+`baseline/freeze.json` — beside an excused line, inside an excused file — still
+reported. No gitleaks binary exists here, so the duplicate this branch briefly
+carried was reverted in favour of the one that was actually run. Two fixes to
+one file would only have collided at its tail.
+
+**One thing from #108 worth keeping, because it nearly invalidated a probe.**
+Its first plant used `AKIAIOSFODNN7EXAMPLE` and went undetected — that value is
+in gitleaks' own default allowlist. **A plant the scanner cannot see reads
+exactly like a scan that works.** Section 11's probe is not affected, and the
+reason is worth naming rather than assumed: it ran a control (allowlist absent,
+same plants, both detected) and its falsifier reported `aws-access-token` and
+`stripe-access-token` as two leaks with exit 1. A canonical example key would
+have been silent in both. The control is what made that legible, which is the
+argument for running one every time.
+
+**The general lesson, which is not about gitleaks.** A finding-level
+fingerprint is content plus *location*, and a squash, rebase or amend changes
+the location while leaving the content identical. So an exception that was
+verified to be narrow can stop applying without anything it was protecting
+against having changed. That is the same family as the rest of this
+document's instrument lessons: **the exception is an instrument, and it can
+fail silently in the direction of noise as easily as in the direction of
+blindness.** Here it failed loudly, which is the good direction, and only
+because the scan runs on pushes to `main`.
+
+**Before deleting any of the six**, check both:
+
+```
+git merge-base --is-ancestor <sha> origin/main
+git branch -r --contains <sha>
+```
+
+An ignore entry that matches nothing is invisible, not loud.
+
+## 19. "The isolation guard passes" — which guard, and what the deleted rule would cost
+
+Section 17 and #107 both report `test_interpretation_isolation.py` passing.
+That is true and it is weaker than it sounds, so the qualification belongs
+next to the claim rather than in somebody's memory.
+
+**Which guard passes.** The reconciliation retained Candidate47's
+`test_interpretation_isolation.py`, which has **two** rules: nothing in the
+interpretation path may reach the network, and the deterministic half may not
+import FoundationModels. Against `4b0262a` it is 135 lines where main's was
+206 — 71 fewer — and `PROMPT_FILE` and `QUOTED_EXAMPLE` are gone with them.
+
+Main's third rule, the grounding one, is **absent, not failing**. So is
+`e555f2a`'s grounding sentence in the prompt. That is Calvin's instruction
+working exactly as written — `ModelInterpreter.swift` and its isolation
+behaviour were to be retained, and `e555f2a`'s semantics held for the FM/device
+phase. What needs to be legible is the cost, because **an absent check on a
+green tree is the state this document's own instrument lessons call hardest to
+notice later.** A reader six weeks from now must not take main's green as
+evidence that grounding protection holds. It is not enforced at all.
+
+**What restoring rule 3 would cost: five sites, not two.** Measured by
+extracting the deleted `prompt_examples` from `4b0262a` and running it against
+`origin/main`'s `ModelInterpreter.swift`:
+
+```
+hits: 5
+  :92   the instructions      "Sarah ... it" is owed by somebody else
+  :93   the instructions      "Mum said I should call the dentist"
+  :99   the instructions      "Ask Dana about Friday"
+  :147  a @Guide description  'tomorrow'
+  :190  a @Guide description  'never mind'
+```
+
+**Two is the wrong answer, and the way to get it is instructive.** Running only
+the `QUOTED_EXAMPLE` regex gives the two `@Guide` hits, because that pattern
+matches single-quoted spans. The three instruction lines use double quotes,
+which inside a Swift multi-line string need no escape — and the rule's own code
+carries a *second* branch for exactly that case:
+
+```python
+if where == "the instructions" and '"' in text:
+```
+
+Its comment says why: *"Two of the four leaking sites were this shape; a rule
+that caught the other two and stopped would have read as protection."* So the
+author anticipated this undercount and wrote the branch against it. Reading the
+comment as a statement that the rule cannot see double-quoted examples, and
+stopping at two, reproduces the very failure it warns about — which is worth
+recording because two sessions did it independently today before the rule was
+run.
+
+**The falsifier, one command:**
+
+```
+git show 4b0262a:Tools/CorpusRunner/test_interpretation_isolation.py > old_guard.py
+python3 -c "import old_guard,pathlib; print(len(old_guard.prompt_examples(
+    pathlib.Path('SpeakIt/Interpretation/ModelInterpreter.swift'),'x')))"
+```
+
+On a branch that adds lines above them the `@Guide` numbers shift; on #107's
+head they are 171 and 214. The count does not move.
+
+### All five have device evidence behind them, not one
+
+The prototype thread ran `a5e4d2a`'s guard against an archive of `origin/main`
+independently and reached the same five, which is the confirmation this
+section's count needed. It also supplied the part that changes what the five
+mean.
+
+The 46-capture `runon` device run produced **two** leak shapes, and both have
+their cause present on main:
+
+| observed on device | site |
+|---|---|
+| ten captures emitting a segment quoted as the bare word `tomorrow` | `:147`, the `carriedContext` `@Guide` that word sits in |
+| captures emitting sentences lifted out of the instructions | `:92`, `:93`, `:99` |
+
+So this is not one site with evidence and four without. Restoring rule 3 is a
+five-site change, and the sites are not interchangeable with each other.
+
+### Rejected: stripping the quotation marks
+
+Recorded because it is attractive, it was proposed in good faith, and it is
+the exact failure this repository keeps paying for.
+
+The idea: rewrite the three instruction examples without quotation marks, and
+the rule goes green at no cost to the prose. It fails on its own terms — the
+rule's instruction branch tests `'"' in text`, so removing the quotes **turns
+the check green while leaving the example sitting in the prompt**, which the
+device run shows the model copies. That is a marker standing in for the
+judgement it approximates, and it would leave us with a guard that passes
+because the signal was removed rather than the problem.
+
+Do not propose it again. If rule 3 comes back, the examples have to stop being
+examples.
+
+**Not a recommendation to restore it here.** Whether rule 3 and the grounding
+sentence come back is the FM/device-phase decision Calvin parked, and section
+14 holds the reasons. They are one change and the FM phase is where they land
+together. This section supplies the price tag he would be deciding against:
+five sites, three of them in the instructions, both observed leak shapes
+covered.
