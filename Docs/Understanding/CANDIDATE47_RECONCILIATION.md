@@ -316,3 +316,95 @@ class was selected". The script prints the count:
 
 Recording the exit code as reported, and the count as not yet in this
 document. Anyone re-running it can settle the difference in one line.
+
+## 13. The merge, and the work the first pass dropped
+
+Opening PR #106 produced **no CI run at all**. Not a failing one: none. The
+branch's only run is the earlier `workflow_dispatch` at `21808b2`.
+
+The cause is the conflict. GitHub builds `refs/pull/<n>/merge` to run a
+`pull_request` workflow against the merged result, and it cannot build one for
+a PR it cannot merge. `git ls-remote` shows `refs/pull/106/head` and no
+`refs/pull/106/merge`, and `mergeable_state` is `dirty`. So **the conflict is
+not a separate problem from the missing CI; it is the reason for it**, and no
+amount of waiting produces a run.
+
+### What probing the merge found
+
+Merging `origin/main` into the branch and resolving the four conflicts the
+obvious way -- take the reconciliation branch's side -- gives this:
+
+```
+14 of 14 Linux language checks pass, 0 failed
+Tools/CorpusRunner/test_observation.py:  Ran 56 tests  OK
+main's same file:                        Ran 60 tests  OK
+```
+
+Two whole classes, `TheDiagnosticIsNotAllowedToAbstain` and
+`TheAbstentionRunsBeforeAnythingItCouldSwallow`, vanish and **every check
+stays green**, because removing tests makes a suite greener rather than
+redder. That is the trap a reviewer resolving this by hand would have walked
+into, and it is the same shape as every instrument defect in this repository:
+the absence of a measurement is indistinguishable from a passing one.
+
+### Reconciled by combining, not choosing
+
+The two files Calvin named are now genuinely three-way merged.
+
+| file | resolution |
+|---|---|
+| `test_observation.py` | main's two classes restored. The census log keeps main's `3904 -> 3912 -> 3916 -> 3929 -> 3928` entries, which are the only record of how main reached 3928, and continues `3928 -> 4047` for this tree. The pin stays **4047**: the walk reads `SpeakItTests/*.swift`, so Python additions cannot move it. 56 -> 60 tests. |
+| `LANGUAGE_BASELINE.md` | main's population-overlap section, its "later, not here" note and its do-not-subtract warning come in; the generated block keeps this tree's figures. Running `baseline_figures.py --write` afterwards changed nothing, so the merged prose and the generated figures agree. |
+
+### Eighteen more files, and why they mattered
+
+An audit of every file main changed since the fork base found eighteen where
+main's change was simply absent from the branch, plus three files missing
+entirely. **As a pull request into main those are harmless** -- a merge keeps
+main's side of a file the branch never touched. **As the canonical baseline
+tree, they are lost work**, and the canonical baseline is what this branch is
+for. Those are two different deliverables and the first pass conflated them.
+
+They are carried now, so the branch tree and the tree that would land are the
+same tree and the measurements describe it. Two were coupled:
+
+- `test_score.py`: 135 -> 143 tests. Carrying the INC58 dev-set row without
+  it failed, naming INC58. The row and its scorer are one change.
+- `unfinished.tsv`: +1 row, and the union does **not** move, because INC58
+  duplicates INC34's utterance and the census counts distinct utterances.
+  #105's finding, confirmed independently here.
+
+### One coupling that stays held, and what it says about Candidate47
+
+`Tools/CorpusRunner/test_interpretation_isolation.py` on main is the guard
+that `e555f2a`'s `ModelInterpreter.swift` was written to satisfy: it refuses
+quotable example spans in the model's instructions and `@Guide` descriptions
+-- the precise fabrication hazard the Foundation Models probe runs recorded.
+Carrying the check without its production half fails on five lines:
+
+```
+ModelInterpreter.swift:92, :93, :99   quoted example in the instructions
+ModelInterpreter.swift:147, :190      quoted example in a @Guide description
+```
+
+Both stay back, because FM merges are held. The consequence is worth stating
+plainly rather than leaving in a diff: **Candidate47's own FM prototype does
+not satisfy main's grounding check.** That is a device-phase decision, not
+something to fix inside a reconciliation.
+
+### The tension the reviewer has to settle
+
+The four conflicts survive this commit, and they cannot be removed by content
+alone -- git still sees both sides editing the same regions, even where this
+branch's side now contains main's text. Removing them needs either a merge
+commit on the branch or a resolution at merge time. **Either one brings
+`ModelInterpreter.swift` in**, because it is a main-side-only change and a
+merge keeps main's side of it.
+
+So "FM work stays held" and "this branch merges into main" cannot both hold.
+That is a decision for Calvin and the reviewer, not one to take inside a
+reconciliation, and it is why this commit stops at reporting it.
+
+Candidate47 identity re-verified after all of the above: `verify_frozen.py`
+still deviates on `SpeechRepair.swift` alone, the one line this reconciliation
+ports.
