@@ -107,15 +107,24 @@ jobs:
             # what the check actually reads; test_score.py fails when a file
             # the check reads is matched by none of these globs.
             #
-            # The device-baseline receipt and its verifier are here rather than
-            # under `ios` for the same reason: `ios` bills a Mac, and a PR that
-            # edits two JSON files must not. Without these two globs the
-            # receipt check could not fire on the case it exists for -- a
-            # manifest regenerated on its own matches no glob above, and a
-            # check nothing invokes is indistinguishable from a missing one.
+            # The device-baseline receipt check and everything it reads are
+            # here rather than under `ios` for the same reason: `ios` bills a
+            # Mac, and a pull request editing a few JSON files must not.
+            #
+            # All THREE inputs need a glob, which is the part that was missed
+            # twice. The check reads the device-baseline manifest and receipt,
+            # and Candidate47's frozen manifest plus the two records pinning
+            # its hash. An edit to any of them changes the verdict, so an edit
+            # to any of them has to start the job -- otherwise the check that
+            # detects the tampering never runs on the commit that does it.
+            # Candidate47/ is taken whole rather than file by file: everything
+            # under it is frozen, so a glob deliberately wider than what the
+            # check reads costs one cheap Linux job and removes the next
+            # version of this question.
             prose:
               - '**/*.md'
               - 'Docs/Understanding/DeviceBaseline/**'
+              - 'Docs/Understanding/Candidate47/**'
               - 'Tools/Reliability250K/**'
               - '.github/workflows/ci.yml'
             dashboard:
