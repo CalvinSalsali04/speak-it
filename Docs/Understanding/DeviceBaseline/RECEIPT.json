@@ -1,0 +1,85 @@
+{
+  "what_this_is": "Canonical device baseline for Speak It. The exact tree from which all real-device evidence is to be gathered. It is NOT Candidate47, and it does not replace or modify Candidate47's frozen manifest, which stays authoritative for what Candidate47 was.",
+  "authorised_by": "Calvin, 2026-09-17: merge #107, then create a separate canonical device-baseline receipt from the exact merged main commit.",
+  "commit": {
+    "swift_tree_established_by": "413a68fbab86262a9f3a195803e9578ed366ef9d",
+    "what_that_is": "the squash merge of PR #107 into main",
+    "note": "Any later commit whose Swift tree still passes the verifier is an equally valid baseline checkout."
+  },
+  "tree": "e7bd7ee22de173420be245d65247f1779cf4c706",
+  "committed_at": "2026-09-17T14:44:31+00:00",
+  "branch": "main",
+  "swift_file_count": 68,
+  "manifest": "Docs/Understanding/DeviceBaseline/device-baseline-source.json",
+  "verifier": "Tools/Reliability250K/verify_device_baseline.py",
+  "derivation": {
+    "candidate47_production_commit": "15bde2157036000fa8b070c3ff731fed21b1a5ce",
+    "fork_base": "faeab4e90bee4f67d60e33daa248f48b333ca445",
+    "reconciliation_pr": 106,
+    "reconciliation_merge": "fc36db5a3259b6753e6bff493ba265af159a7728",
+    "provenance_pr": 107,
+    "provenance_merge": "413a68fbab86262a9f3a195803e9578ed366ef9d",
+    "note": "Candidate47's own commit 15bde21 is NOT an ancestor of main: #106 landed as a squash. Identity therefore rests on the per-file hashes below, never on ancestry."
+  },
+  "deviations_from_candidate47": {
+    "count": 2,
+    "inventory_identical": true,
+    "files_identical_to_candidate47": 66,
+    "files": [
+      {
+        "path": "SpeakIt/Repositories/SpeechRepair.swift",
+        "why": "Reconciliation of main's #96 contemplation-hedge fix onto Candidate47's rewritten DisfluencyFilter.",
+        "change": "^i\\s+was\\s+thinking\\b[\\s,]* gains the lookahead (?!\\s+(?:of|about)\\s+\\S)",
+        "behavioural": true,
+        "authority": "PR #106, independently reviewed by Astra at head d02e30c",
+        "candidate47_sha256": "3dbec80b8d41e6b16e106e59bce4ec33b1a0cabd8e57cbf6172331382f4bd413",
+        "device_baseline_sha256": "26ec6236d05b5a7e3f570a041db5e2a7449677ba636b147ab8a3cdbb9d1c285a"
+      },
+      {
+        "path": "SpeakIt/Interpretation/ModelInterpreter.swift",
+        "why": "Deterministic FNV-1a fingerprinting of the interpretation prompt, replacing Swift's per-process-seeded hashValue.",
+        "change": "instructionsFingerprint computes FNV-1a over the UTF-8 bytes of an unchanged instructions literal",
+        "behavioural": false,
+        "provenance_only": true,
+        "prompt_bytes_unchanged": true,
+        "prompt_unchanged_proof": "The instructions literal is absent from #107's diff: one hunk, @@ -105,10 +105,34 @@, whose line 105 is the literal's closing delimiter arriving as context.",
+        "authority": "PR #107, independently graded; accepted by Calvin 2026-09-17 as intentional and provenance-only",
+        "candidate47_sha256": "92568b04c189e2bc5d55bce00b36fb6e057a6e10275fceda751c53f47ba4f377",
+        "device_baseline_sha256": "e0348d6cf816328f79cae600700dadcf48befe2f1a5fbcc6bd0dd56c61ebec68"
+      }
+    ]
+  },
+  "held_out_deliberately": {
+    "foundation_models_semantics": "e555f2a's grounding instruction, quoted-example rewrite and the isolation guard's third rule are NOT in this baseline. The prompt text is Candidate47's.",
+    "isolation_guard_shape": "Tools/CorpusRunner/test_interpretation_isolation.py carries TWO rules here (no network in the interpretation path; no FoundationModels import in the deterministic half). The grounding rule is ABSENT, not failing. Its green says nothing about grounding protection.",
+    "cost_to_restore_grounding_rule": {
+      "sites": 5,
+      "in_instructions": [
+        "ModelInterpreter.swift:92",
+        "ModelInterpreter.swift:93",
+        "ModelInterpreter.swift:99"
+      ],
+      "in_guide_descriptions": [
+        "ModelInterpreter.swift:147",
+        "ModelInterpreter.swift:190"
+      ],
+      "measured_by": "extracting prompt_examples from 4b0262a and running it against this tree",
+      "confirmed_independently": true
+    }
+  },
+  "verified_at_this_commit": {
+    "language_tooling": "14 of 14 checks, CI run 35235126943 on 233657c, all 16 steps including the interpretation isolation guard",
+    "secret_scan": "gitleaks 8.30.1, full history, no leaks, both linters ran",
+    "candidate47_identity": "deviates on exactly the two files above; 66 of 68 byte-identical; inventory identical"
+  },
+  "NOT_verified_at_this_commit": [
+    "The Swift has never been compiled from this exact tree. No Swift toolchain exists in the authoring container.",
+    "corpus-gate.sh has not been run at this commit. It exits 1 on any Candidate47-based tree against its hardcoded zero baseline; that is Candidate47's documented qualification, not a regression.",
+    "The unit suite has not been run at this commit, and cannot run in CI here: the Unit tests step sits behind the corpus gate with no if:.",
+    "release-build.sh has not been run at this commit.",
+    "The --selfcheck FNV-1a assertions are written and have never executed anywhere.",
+    "Microphone, ASR, Foundation Models on device, persistence, real notification and geofence delivery, and end-to-end behaviour are all unvalidated. That is what the device phase exists to establish."
+  ],
+  "how_to_use": "Take a FRESH checkout of this commit, run verify_device_baseline.py, and gather device evidence only from a build of that tree. Evidence from any other tree is not evidence about this baseline. Record the commit beside every capture.",
+  "which_commit_to_check_out": "Not necessarily the commit named in `commit` below. That is where the Swift tree was ESTABLISHED (the merge of #107); this receipt and its verifier are necessarily added by a LATER commit, so a checkout of 413a68f would not contain them. Check out the commit on main that carries this file, and run the verifier: it hashes the Swift tree directly, so a PASS proves that checkout's Swift is the baseline regardless of which commit you are standing on. The receipt cannot name its own sha without being wrong the moment it is amended, so it states a property the verifier recomputes instead."
+}
