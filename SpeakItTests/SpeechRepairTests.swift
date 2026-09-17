@@ -167,4 +167,105 @@ final class SpeechRepairTests: XCTestCase {
             XCTAssertEqual(SelfCorrectionResolver.resolved(text), text, "must not be rewritten")
         }
     }
+
+    /// "I was thinking" is two different things and the strip treated them as
+    /// one.
+    ///
+    /// In front of a clause the speaker owes it is throat-clearing and comes
+    /// off. In front of its own complement it is the sentence's verb, and the
+    /// modality lives in it: "I was thinking of calling Priya" says the errand
+    /// was contemplated, not committed to. Removing it left "of calling
+    /// Priya" — a fragment with no sign that anything was hedged, in a set
+    /// where that hedge is the whole label.
+    func testContemplationIsNotThroatClearing() {
+        for text in [
+            "I was thinking of calling Priya",
+            "I was thinking about the wedding",
+            "I was thinking about calling Mike",
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(text), text, "the hedge must survive")
+        }
+    }
+
+    /// The other half, which the fix must not take with it.
+    ///
+    /// The last case is why the rule needs a complement and not just a
+    /// preposition: "I was thinking about" with nothing behind it has to keep
+    /// stripping, because the lone "about" it leaves is what
+    /// `ClauseStructure.unfinished` reads as a trailing function word. That is
+    /// how an abandoned thought is recognised instead of becoming an errand.
+    func testThroatClearingStillComesOff() {
+        for (input, expected) in [
+            ("I was thinking, buy milk", "buy milk"),
+            ("I was thinking it might make sense to add a dark mode",
+             "it might make sense to add a dark mode"),
+            ("I was thinking about", "about"),
+        ] {
+            XCTAssertEqual(DisfluencyFilter.stripped(input), expected)
+        }
+    }
+
+    /// The two rules as one chain, executed rather than read.
+    ///
+    /// `testThroatClearingStillComesOff` asserts what the repair produces and
+    /// the comment above it asserts what the next stage does with it. Nobody
+    /// had run the second half: the claim that the lone "about" is read as a
+    /// trailing function word was a reading of `ClauseStructure`, twice, by
+    /// two people. Two readings agreeing is not a measurement.
+    ///
+    /// This is also the guard on the trailing `\S` in the repair rule, from
+    /// the far side. Remove it and "I was thinking about" stops stripping,
+    /// arrives here as four tokens, falls to the multi-token path — which
+    /// accepts `.determiner` and not `.preposition` — and returns nil. Both
+    /// assertions below fail, and an abandoned thought would have become an
+    /// errand.
+    /// The abstention is the **first** statement here, and an earlier draft had
+    /// it between the two assertions so that the string half would still report
+    /// on a blind image. That design rested on XCTest recording a failure which
+    /// happened before a test throws `XCTSkip`, and nothing in this project
+    /// establishes that it does — the suite's only other skips,
+    /// `TemporalFullPathTests.swift:157` and `:1055`, are both the first line
+    /// of their test. Asserting a framework's ordering from memory is how a
+    /// regression in `DisfluencyFilter.stripped` would get reported as a skip,
+    /// which is this file's own failure mode turned on itself.
+    ///
+    /// Nothing is lost by not depending on it. The string claim is asserted by
+    /// `testThroatClearingStillComesOff`, which has no skip in it, so removing
+    /// the trailing `\S` still fails a test that always runs. This one owns
+    /// the second link only, and is still a chain: the repair's output is what
+    /// it feeds to the reader.
+    func testTheRepairAndTheFragmentRuleAreOneChain() throws {
+        try LexicalTagging.skipIfBlind()
+        let abandoned = DisfluencyFilter.stripped("I was thinking about")
+        XCTAssertEqual(
+            ThoughtCompletion.unfinished(in: abandoned),
+            .trailingFunctionWord,
+            "the token the repair produces must be the one this branch reads"
+        )
+    }
+
+    /// And the contemplation the fix preserves is not a fragment either.
+    ///
+    /// The hedge survives the repair, so what reaches the next stage is a whole
+    /// sentence. Asserted because "keeps the words" and "is still read as
+    /// finished" are two different claims and only the first was tested.
+    /// The nil assertion abstains where the tagger is blind, and this one is
+    /// the reason the helper exists rather than a convenience. It **passed** on
+    /// run 35124466497, and it passed for a reason that has nothing to do with
+    /// the hedge: with no lexical model `unfinished` returns nil for every
+    /// sentence it does not decide on the word "to", so the assertion could not
+    /// have failed there whatever the repair produced. A guard that cannot fire
+    /// looks exactly like a guard that holds, and a green tick here was the
+    /// more dangerous of the two results that run produced.
+    /// Skip first, for the reason given above. `testContemplationIsNotThroatClearing`
+    /// asserts that the hedge survives the repair and never abstains, so this
+    /// test owns only the reading of what survived.
+    func testThePreservedHedgeIsNotReadAsUnfinished() throws {
+        try LexicalTagging.skipIfBlind()
+        let kept = DisfluencyFilter.stripped("I was thinking of calling Priya")
+        XCTAssertNil(
+            ThoughtCompletion.unfinished(in: kept),
+            "a preserved hedge is a finished sentence, not a trailing fragment"
+        )
+    }
 }

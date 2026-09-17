@@ -278,3 +278,119 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
         XCTAssertEqual(tag("call", in: action), .verb, tagging(action))
     }
 }
+
+// MARK: - Whether the lexical tagger answered at all
+
+/// Whether `NLTagger`'s lexical-class model is present in this process, and a
+/// way for an assertion that depends on it to abstain rather than lie.
+///
+/// `Docs/KNOWN_ISSUES.md` records, verified 2026-09-11 against the framework,
+/// that a GitHub-hosted `macos-26` runner's simulator returns `OtherWord` for
+/// every token of every sentence while `NLEmbedding` loads normally in the same
+/// process. `NaturalLanguageEnvironmentTests` above is the diagnostic that
+/// established it.
+///
+/// **The reason this is a test helper and not a note.** An absent model does
+/// not only turn assertions red. `ThoughtCompletion.unfinished` returns nil for
+/// everything it does not decide lexically, so on that image every assertion
+/// expecting nil passes *without exercising the rule it names*. A blind tagger
+/// turns a negative assertion into a tautology, and a tautology is
+/// indistinguishable from a rule that holds. Run 35124466497 is the worked
+/// example: two failures, twenty-one passes, and the two failures were the only
+/// answers in the class that carried information about the tagger-dependent
+/// rules at all.
+///
+/// So the dependent assertions abstain. A skip says "not measured here", which
+/// is true and visible in the Skipped column that `Tools/CI/xcresult-failures.py`
+/// already prints. A pass would say "measured and correct", which is not.
+enum LexicalTagging {
+
+    /// The decision, taken as a function of a tagging rather than of the
+    /// machine, so that both of its answers can be injected. Reading the
+    /// environment is one line; deciding what the reading *means* is the part
+    /// that can be wrong, and it is the part worth testing.
+    ///
+    /// Blind means no token carried a usable class. A partial answer is not
+    /// blindness: a tagger that classes some words and not others is a tagger
+    /// that can be wrong, and an assertion that can be wrong should run.
+    static func isBlind(_ classes: [NLTag?]) -> Bool {
+        !classes.contains { $0 != nil && $0 != .otherWord }
+    }
+
+    /// A verb, a determiner and a noun. Any one of the three coming back
+    /// classed is enough, because the question is whether the model answered at
+    /// all and not whether it answered well.
+    static let probe = "pay the rent on friday"
+
+    /// Read once. The model does not arrive halfway through a run.
+    static let isBlindHere: Bool = isBlind(SentenceContext(probe).tokens.map(\.lexicalClass))
+
+    /// The tagging itself, so a skipped test says what was seen rather than
+    /// only that something was skipped.
+    static var reading: String {
+        SentenceContext(probe).tokens
+            .map { "\($0.text):\($0.lexicalClass?.rawValue ?? "none")" }
+            .joined(separator: " ")
+    }
+
+    /// Abstain when the model is absent.
+    static func skipIfBlind(file: StaticString = #filePath, line: UInt = #line) throws {
+        try XCTSkipIf(
+            isBlindHere,
+            "NLTagger's lexical-class model is absent in this process, so this "
+                + "assertion cannot answer either way. Tagging of the probe: "
+                + "\(reading). See Docs/KNOWN_ISSUES.md — the reference "
+                + "environment is the author's Mac.",
+            file: file,
+            line: line
+        )
+    }
+}
+
+/// The helper is itself a guard, so both of its answers are injected.
+///
+/// A skip helper that never skips is invisible behind a healthy tagger; one
+/// that always skips is invisible behind a green suite. Neither can be caught
+/// by running it on one machine.
+final class LexicalTaggingHealthTests: XCTestCase {
+
+    func testTheDecisionReadsATaggingBothWays() {
+        let everyTokenUnclassed: [NLTag?] = [.otherWord, .otherWord, .otherWord]
+        let noTagAtAll: [NLTag?] = [nil, nil]
+        let nothingToRead: [NLTag?] = []
+        let oneVerbAmongThem: [NLTag?] = [.otherWord, .verb, .otherWord]
+        let theClassTheRulesRead: [NLTag?] = [.determiner]
+
+        XCTAssertTrue(
+            LexicalTagging.isBlind(everyTokenUnclassed),
+            "every token OtherWord is the documented blind state"
+        )
+        XCTAssertTrue(
+            LexicalTagging.isBlind(noTagAtAll),
+            "no class at all is not an answer either"
+        )
+        XCTAssertTrue(
+            LexicalTagging.isBlind(nothingToRead),
+            "nothing to read is not a reading"
+        )
+        XCTAssertFalse(
+            LexicalTagging.isBlind(oneVerbAmongThem),
+            "one classed token means the model answered, and a wrong answer must stay measurable"
+        )
+        XCTAssertFalse(
+            LexicalTagging.isBlind(theClassTheRulesRead),
+            "the class the dependent rules actually read"
+        )
+    }
+
+    /// An empty or one-word probe would report blindness on every machine and
+    /// retire every dependent assertion for good, silently and permanently.
+    /// That is the failure this helper exists to prevent, so it is asserted
+    /// about the helper too.
+    func testTheProbeIsLongEnoughToCarryAnAnswer() {
+        XCTAssertGreaterThanOrEqual(
+            SentenceContext(LexicalTagging.probe).tokens.count, 4,
+            "the probe must be a sentence: \(LexicalTagging.probe)"
+        )
+    }
+}
