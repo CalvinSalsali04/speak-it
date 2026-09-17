@@ -3038,19 +3038,66 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
         """
         for module, inputs in self.checks_that_declare_their_inputs().items():
             source = (self.ROOT / module).read_text(encoding="utf-8")
-            declared = set(inputs)
-            for node in ast.walk(ast.parse(source)):
-                if not isinstance(node, ast.Constant):
-                    continue
-                if not isinstance(node.value, str) or "/" not in node.value:
-                    continue
-                if node.value in declared:
-                    continue
-                self.assertFalse(
-                    (self.ROOT / node.value).is_file(),
-                    f"{module}:{node.lineno} names {node.value!r}, a real "
-                    f"file, but INPUTS does not list it -- so nothing checks "
-                    f"that editing it starts this job")
+            for value, line in self.undeclared_real_files(source, inputs):
+                self.fail(
+                    f"{module}:{line} names {value!r}, a real file, but "
+                    f"INPUTS does not list it -- so nothing checks that "
+                    f"editing it starts this job")
+
+    def undeclared_real_files(self, source, declared):
+        """Every string literal in `source` naming a real file not in `declared`.
+
+        A literal is tested by resolving it against the root, NOT by looking
+        for a path separator in it. An earlier version skipped anything
+        without a "/", which silently exempted the whole repository root --
+        `ROOT / '.gitleaksignore'` is the natural way to write that read, and
+        six of the ten tracked root files match no glob that starts any job,
+        so the literals this scan could not see overlapped the files the
+        coverage test most needs to be told about.
+
+        That condition was load-bearing for a second reason, which is why it
+        is replaced rather than deleted: `is_file()` raises ENAMETOOLONG on
+        any literal with a component over 255 bytes, which every long
+        slash-free docstring in a checked module is. Catching the error keeps
+        that protection without a length cutoff, which would skip a real file
+        at a long-but-legal path (measured: 266 characters, every component
+        under 40, `is_file()` answers it fine).
+        """
+        declared = set(declared)
+        found = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Constant):
+                continue
+            if not isinstance(node.value, str) or node.value in declared:
+                continue
+            try:
+                real = (self.ROOT / node.value).is_file()
+            except (OSError, ValueError):
+                continue
+            if real:
+                found.append((node.value, node.lineno))
+        return found
+
+    def test_the_undeclared_scan_sees_a_file_at_the_repository_root(self):
+        """The falsifier for the condition above, kept rather than described.
+
+        Both halves matter. A root-level literal has no separator in it and
+        must still be reported; a long slash-free literal must not raise. The
+        first is the hole this replaced, found by the grading thread on #112;
+        the second is what the replaced condition was accidentally doing.
+        """
+        source = (
+            "ROOT = 1\n"
+            "STRAY = ROOT / '.gitleaksignore'\n"
+            "DOC = '" + "x" * 300 + "'\n"
+            "OK = 'CLAUDE.md'\n")
+        found = self.undeclared_real_files(source, ("CLAUDE.md",))
+        self.assertEqual(
+            [value for value, _ in found], [".gitleaksignore"],
+            "a real file named by a literal at the repository root must be "
+            "reported, a declared one must not be, and a 300-character "
+            "slash-free literal must neither raise nor be reported")
+        self.assertEqual([line for _, line in found], [2])
 
     #: Observes a check's reads instead of reading its declaration. Kept as a
     #: string because it runs in a subprocess: an audit hook cannot be removed
