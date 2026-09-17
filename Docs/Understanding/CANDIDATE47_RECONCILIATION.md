@@ -700,9 +700,26 @@ The check went into `Tools/InterpretationProbe/main.swift`'s `--selfcheck`
 rather than into `SpeakItTests/`, for one reason worth recording: **the unit
 suite is unreachable in CI on any Candidate47-based tree.** `corpus-gate.sh`
 exits 1 against its hardcoded zero baseline, the `Unit tests` step carries no
-`if:` and so inherits `success()`, and it is skipped. The selfcheck step
-carries `if: always()`, so it is the only place a Swift assertion on this line
-actually executes in CI. See the open item in section 15.
+`if:` and so inherits `success()`, and it is skipped. See the open item in
+section 15.
+
+**The selfcheck's coverage, stated exactly, because an earlier draft of this
+section overstated it.** The probe steps carry `if: always()` (`ci.yml:424`,
+`:428`, `:432`), but they live in the `language` job, which is
+`if: github.event_name == 'workflow_dispatch'` (`ci.yml:338`). A step-level
+`always()` protects against an *earlier step in the same job* failing; it does
+nothing when the job never starts. On a push or a pull request the `language`
+job is skipped outright — observable in any recent run's job list — so **these
+assertions do not execute per pull request at all.**
+
+What is true is narrower: **on a dispatch**, the `ios` job does run, the corpus
+gate still reddens, `Unit tests` is still skipped behind it, and the selfcheck
+is then the only place a Swift assertion on this line executes. That is the
+claim. Read without the qualifier it sounds like per-PR coverage, which would
+be a claim nothing recomputes, in its most ordinary form: true of one event
+type, quoted as true generally. Caught in review rather than by a check, which
+is the point — no instrument here distinguishes "skipped job" from "passing
+job" at a glance.
 
 **Not run here, and not claimable from this container:** no Swift compiles in
 this environment (`download.swift.org` is refused by the proxy), so the

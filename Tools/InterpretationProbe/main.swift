@@ -413,7 +413,15 @@ func selfcheck() {
 
     // The run record's fingerprint has to mean the same thing in a later
     // process, which is the one thing `hashValue` could not promise: two CI
-    // runs on a byte-identical file printed different values. Pinned against
+    // runs on a byte-identical file printed different values.
+    //
+    // Note what runs this: the `language` job is dispatch-only (`ci.yml:338`),
+    // so these assertions do NOT execute on a push or a pull request. The
+    // `if: always()` on the step below guards against an earlier step in this
+    // job failing, not against the job being skipped. Treat this as dispatch
+    // coverage, not per-PR coverage.
+    //
+    // Pinned against
     // the published FNV-1a 32-bit vectors rather than against a literal
     // computed from our own prompt, because a literal like that has to be
     // rewritten every time the prompt legitimately changes, and a check you
