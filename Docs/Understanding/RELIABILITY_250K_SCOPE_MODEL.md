@@ -1,5 +1,9 @@
 # 250K reliability: capture frames and entity phrases
 
+**Historical development record.** The campaign is closed at Candidate47;
+[the final report](FINAL_RELIABILITY_REPORT.md) supersedes pending gates and
+promotion instructions below. Rejected candidates remain evidence only.
+
 The immutable baseline is stored separately under the original workspace's
 `output/reliability-250k/baseline`. Its source snapshot includes the existing
 conditional-intent patch. Neither the bank nor that baseline is modified.

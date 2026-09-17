@@ -17,7 +17,7 @@ evidence justifies a repair.
 | Non-actionable thought vs task | Explicit thoughts, facts and memory frames own their imperative/date content. An independently stated task closes that scope. Past modal reflection does not create a current commitment. |
 
 Regression anchors are ActionabilityTests and ThoughtCompletionTests, the
-conditional-intent devset, the immutable187 cancellation /72 conditional slices,
+conditional-intent devset, the immutable 187 cancellation /72 conditional slices,
 and saved Candidate47 affected-family/287-case safety closure outputs. Consult
 the source manifest and evidence integrity record before future comparison.
 The remaining grouping/date/contact metadata issues are real limitations,

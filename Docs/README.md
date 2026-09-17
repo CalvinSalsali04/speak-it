@@ -35,6 +35,13 @@ Latest continuation review: [September 9 findings and verification](CONTINUATION
 
 ## The understanding pipeline
 
+The synthetic campaign is closed at **Candidate47**. Read the
+[canonical final reliability report](Understanding/FINAL_RELIABILITY_REPORT.md),
+[Claude/device handoff](Understanding/CLAUDE_DEVICE_HANDOFF.md), and
+[permanent regression lessons](Understanding/REAL_USER_REGRESSION_LESSONS.md).
+Older campaign plans and candidate entries are historical, not instructions to
+restart optimization.
+
 | Document | What it is |
 | --- | --- |
 | [AMBIGUITY_TAXONOMY.md](AMBIGUITY_TAXONOMY.md) | The semantic architecture specification: each family of ambiguity English forces |

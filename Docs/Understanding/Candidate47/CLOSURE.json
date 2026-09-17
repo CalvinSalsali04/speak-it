@@ -1,0 +1,46 @@
+{
+  "candidate": 47,
+  "campaign_state": "closed",
+  "production_commit": "15bde2157036000fa8b070c3ff731fed21b1a5ce",
+  "production_tree": "93a2533949d5254b73a733474448a73102173310",
+  "base_commit": "faeab4e90bee4f67d60e33daa248f48b333ca445",
+  "branch": "codex/candidate47-closeout",
+  "worktree": "/private/tmp/speak-it-candidate47-closeout",
+  "source_manifest": "development/candidate47-source.json",
+  "verified_production_files": 68,
+  "production_changed_files": [
+    "SpeakIt/Features/Shopping/ShoppingGroups.swift",
+    "SpeakIt/Repositories/Actionability.swift",
+    "SpeakIt/Repositories/ClauseStructure.swift",
+    "SpeakIt/Repositories/LocationIntentParser.swift",
+    "SpeakIt/Repositories/PersonMention.swift",
+    "SpeakIt/Repositories/SpeechRepair.swift",
+    "SpeakIt/Repositories/ThoughtExtractor.swift",
+    "SpeakIt/Repositories/ThoughtOrganizer.swift"
+  ],
+  "tests_changed": [
+    "SpeakItTests/ActionabilityTests.swift",
+    "SpeakItTests/ThoughtCompletionTests.swift"
+  ],
+  "canonical_report": "Docs/Understanding/FINAL_RELIABILITY_REPORT.md",
+  "handoff": "Docs/Understanding/CLAUDE_DEVICE_HANDOFF.md",
+  "bank_sha256": "eec6aabf7b23920ba0798e549a92613990077387431afdcddfacbbf0cdcb1311",
+  "evaluator_sha256": "669bf4d04c67bca624162d1fed7c7e04c5e82b70ecdfe72091b77f367a33e93a",
+  "checks": [
+    "68/68 source and exact Swift inventory",
+    "108 source/evaluator/evidence hashes",
+    "baseline/16/35 archived source members match saved manifests",
+    "git diff --check passed"
+  ],
+  "validation_reused": "Candidate47 source equals frozen validation47. No tests/build/full-bank rerun during closure.",
+  "original_dirty_work_preserved": true,
+  "uncommitted_closure_work_after_receipt_commit": false,
+  "remote_prs_for_closure_branch": [],
+  "remote_pr_check": "gh pr list --repo CalvinSalsali04/speak-it --head codex/candidate47-closeout --state all returned []",
+  "pushed": false,
+  "merged": false,
+  "requires_approval_for_completed_closure": false,
+  "future_push_requires_authorization": true,
+  "next_phase": "Separately authorized real-device/audio/TestFlight validation; not started",
+  "documentation_successor": "This receipt is committed in a docs-only successor. Resolve its exact commit via git log -1 --format=%H -- Docs/Understanding/Candidate47/CLOSURE.json."
+}

@@ -12,7 +12,7 @@ parser research without new real-user evidence justifying that work.
 The original campaign worktree is `/private/tmp/speak-it-conditional-intent`,
 branch `codex/conditional-intent-safety`, base
 `faeab4e90bee4f67d60e33daa248f48b333ca445`. All **68/68** production Swift files
-match the frozen Candidate47 manifest and the source hashes in validation47.
+match the frozen Candidate47 manifest and the source hashes in validation 47.
 No production bytes have changed since that validated identity. The manifest's
 SHA-256 is `f46a0a6ec9f3edf536a0d94c3b482901ec125ff52cc306b214487f4f37a3c42b`.
 
@@ -24,8 +24,8 @@ it is **not** the Candidate47 baseline. Neither existing dirty worktree was
 rewritten. The closure tree was reconciled by copying only hash-verified source
 from the saved production worktree onto its original base.
 
-The exact local production commit is recorded in `Candidate47/CLOSURE.json`
-after committing; the source identity is independently recoverable from
+The exact local production commit is `15bde2157036000fa8b070c3ff731fed21b1a5ce`
+(`Finalize language reliability after 250K campaign`); the source identity is independently recoverable from
 [the per-file manifest](Candidate47/development/candidate47-source.json).
 The frozen archive remains in the original evidence directory with SHA-256
 `0d1721978e6fe962d0a9beaec91ad9dd526d1c37ab41f728171b4066579a798d`.
@@ -89,7 +89,7 @@ relative to Candidate16 and 38,162 cases / 15.2648 points relative to baseline.
 P0 flags fell another 275. Source-tree hash:
 `082ab5ac5d3cb260a785d73c51003a6b23dead04fe79bb2025a8526d6a765874`.
 
-Successors through35 repaired message-owned timing/operations, quotation and
+Successors through 35 repaired message-owned timing/operations, quotation and
 reported actors, restored shared event scope, explicit memory under discourse,
 prohibitions with verb-shaped noun objects, calendar inheritance, and selective
 cancellation ownership. Its 2,424 P0 flags were adjudicated into 1,198 reported
@@ -97,16 +97,16 @@ obligation ambiguities, 1,157 cancellation representations, 52 memory/event
 ambiguities, 16 confirmed mixed-memory/scope defects, and one ambiguous implicit
 shopping intent. The cancellation cohort showed scoped operations and no broad
 operation/timed-alert leak; this does not certify stored-item matching.
-The 16 confirmed defects and four quote indicators were resolved on47.
+The 16 confirmed defects and four quote indicators were resolved on 47.
 
 ## Candidate47 validation and safety closure
 
-Candidate47 did **not** run the entire250K. Its own affected-family comparison
-covers 15,058 cases against saved35 output: 1,355 improvements and 68 newly
+Candidate47 did **not** run the entire 250K. Its own affected-family comparison
+covers 15,058 cases against saved Candidate35 output: 1,355 improvements and 68 newly
 flagged rows, all adjudicated. Three cancellation flags retain identical scoped
-operations and survivor titles. The direct45 comparison's three new date flags
+operations and survivor titles. The direct Candidate45 comparison's three new date flags
 are safe review of unresolved event dependencies with execution fields absent.
-Earlier successor cohorts were 39,956 on41, 28,083 on44 and 3,378 on45; these
+Earlier successor cohorts were 39,956 on 41, 28,083 on 44 and 3,378 on 45; these
 overlap and must not be summed or credited as Candidate47 full-bank coverage.
 
 Protected gates and final closure:
@@ -118,13 +118,13 @@ Protected gates and final closure:
   unknown; no notification is scheduled. Cosmetics concern before-dinner
   punctuation and visible unresolved essay context. The corpus was not edited.
 - Release build, semantic contrast controls and saved diff checks passed.
-- Final closure: 287 cases (267 residuals +16 late memory/scope failures +4 quote
-  cases). All16 failures and all4 quote indicators resolved; prohibitions10/10.
+- Final closure: 287 cases (267 residuals + 16 late memory/scope failures + 4 quote
+  cases). All 16 failures and all 4 quote indicators resolved; prohibitions 10/10.
   Twenty cases improved. The one newly flagged row-count case, GAP50K-48553,
   retains the full withdrawn-target utterance for review without executable
   date, reminder, geofence or operation.
 
-See [validation47](Candidate47/development/validation47.json),
+See [validation 47](Candidate47/development/validation47.json),
 [adjudication](Candidate47/development/candidate47-adjudication.json), and
 [final resolution](Candidate47/development/final-resolution47.json).
 No confirmed broad P0 family remains in reviewed evidence: quoted/reported
@@ -136,7 +136,7 @@ and person/topic/entity handling have been improved at their grammatical scope.
 Another full run was not justified after two full successor/baseline comparisons,
 affected-family replays and safety closure. Remaining questions are dominated
 by qualifications and actual recognition/device integration. This decision
-neither claims full47 coverage nor dismisses the remaining P1 debt.
+neither claims full Candidate47 coverage nor dismisses the remaining P1 debt.
 
 ## Remaining limitations
 
@@ -147,7 +147,7 @@ neither claims full47 coverage nor dismisses the remaining P1 debt.
   ambiguous. Entity ontology and contact matching are not fully measured.
 - Host rules measurement excludes Foundation Models, SwiftData persistence,
   stored target matching, notification delivery and physical geofence resolution.
-  The fixed frame is2026-08-03 10:00 America/Toronto; actual timezone/DST behavior
+  The fixed frame is 2026-08-03 10:00 America/Toronto; actual timezone/DST behavior
   and device integration still need validation.
 - Simulator NaturalLanguage returned OtherWord for all tokens during earlier
   work. Host tagging passed health checks; no production workaround was made.
@@ -184,7 +184,7 @@ in Docs/LANGUAGE_BASELINE.md and Tools/CorpusRunner/test_observation.py.
 Their bytes and dirty states were preserved, not silently committed.
 
 Closure ran `git diff --check` and the read-only identity verifier. Source
-identity matches validation47 exactly, so no expensive build, test suite or250K
+identity matches validation 47 exactly, so no expensive build, test suite or 250K
 execution was repeated. The exact evaluator hash remains
 `669bf4d04c67bca624162d1fed7c7e04c5e82b70ecdfe72091b77f367a33e93a`;
 report hash `51fc8c1db2a6958a2a4310fe2649e1e8c541ef3e3a558a9f733edcd0a5c5c63f`;

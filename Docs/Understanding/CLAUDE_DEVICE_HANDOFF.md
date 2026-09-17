@@ -1,16 +1,16 @@
 # Claude / device handoff
 
 **Candidate47 is the frozen deterministic language baseline.** The synthetic
-campaign is complete. Start from the production commit recorded in
-[Candidate47/CLOSURE.json](Candidate47/CLOSURE.json), or its documentation-only
+campaign is complete. Start from production commit `15bde2157036000fa8b070c3ff731fed21b1a5ce`
+([closure receipt](Candidate47/CLOSURE.json)), or its documentation-only
 successor on `codex/candidate47-closeout` in
 `/private/tmp/speak-it-candidate47-closeout`. Run
 `python3 Tools/Reliability250K/verify_frozen.py` before beginning a comparison.
-All68 production Swift files must match. Original-main is not this baseline.
+All 68 production Swift files must match. Original-main is not this baseline.
 
 Do NOT restart broad parser optimization from an old branch. Do NOT overwrite
 Candidate47 with older Claude/parser work. Rejected candidates and partial runs
-are historical evidence only. No new bank or250K run is requested. Later parser
+are historical evidence only. No new bank or 250K run is requested. Later parser
 work must be justified by a new confirmed general failure from real-user evidence.
 
 The next separately authorized phase should evaluate:
@@ -40,9 +40,9 @@ notification/geofence delivery and timezone/DST behavior. Carry forward the
 known SB100K-023393 pickup-date attachment defect and grouping/contact metadata
 limitations. Preserve the [real-user regression families](REAL_USER_REGRESSION_LESSONS.md).
 
-Evidence: cancellation187/187, conditional72/72, qualified CorpusRunner and
-Release passed;16 late memory/scope failures and4 quote indicators resolved.
-Candidate35 is the last full250K; Candidate47 has15,058 affected cases and287
+Evidence: cancellation 187/187, conditional 72/72, qualified CorpusRunner and
+Release passed; 16 late memory/scope failures and 4 quote indicators resolved.
+Candidate35 is the last full 250K; Candidate47 has 15,058 affected cases and 287
 closure cases. Read [the final report](FINAL_RELIABILITY_REPORT.md) for exact
 qualifications. This handoff does not claim microphone, FM or device validation
 has occurred, and does not initiate that work.
