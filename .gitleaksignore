@@ -26,3 +26,23 @@
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
 15bde2157036000fa8b070c3ff731fed21b1a5ce:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
+
+# The same three findings again, under the commit that put those files on
+# main. A fingerprint pins the commit, and #106 landed as a SQUASH, so the
+# lines gitleaks had seen at 15bde21 arrived on main inside fc36db5 and the
+# three entries above stopped matching anything in main's history. That is
+# what turned main red at fc36db5 (run 35231863437: "leaks found: 3", after
+# which the workflow and shell linters in the same job were skipped), and
+# every branch cut from main inherited it -- PR #107's hygiene job failed the
+# same way at 2b8c30d.
+#
+# The entries above are kept rather than replaced: 15bde21 is still reachable
+# from codex/candidate47-closeout, which the same scan reads on its own pushes.
+#
+# Re-pinning is needed whenever a commit that INTRODUCES one of these lines is
+# rewritten -- a squash, a rebase, a cherry-pick of the freeze manifests.
+# Editing them is still not an option; their bytes are the identity
+# verify_frozen.py checks.
+fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/baseline/freeze.json:generic-api-key:172
+fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/iteration-2/freeze.json:generic-api-key:173
+fc36db5a3259b6753e6bff493ba265af159a7728:Docs/Understanding/Candidate47/iteration-4/freeze.json:generic-api-key:173
