@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (54, 18, 27, 35)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -791,7 +791,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         whose fixtures are hand-written captures. 3788 -> 3797 in review of
         that change, which made the two role fields load-bearing and added
         four cases for them. 3797 -> 3904 when the cancellation-scope fixture
-        added its focused production controls. What the test is actually
+        added its focused production controls. 3904 -> 4047 on 2026-09-17 on
+        the Candidate47 reconciliation branch, from two sets of fixtures at
+        once: Candidate47's own 36 added `ActionabilityTests` methods and one
+        `ThoughtCompletionTests` method, which the closure deliberately did not
+        recount here, and the `SpeechRepairTests` and `ThoughtCompletionTests`
+        methods carried over from newer main. Neither side's recorded figure
+        describes this tree: Candidate47 says 3904 and measures 4023, main says
+        3928. What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -804,7 +811,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 3904)
+        self.assertEqual(len(space), 4047)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
