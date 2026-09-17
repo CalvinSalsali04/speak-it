@@ -280,6 +280,14 @@ enum ActionabilityReader {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return .ambiguous }
 
+        if CaptureContentScope.explicitlyMemory(value) || isPastModalReflection(value) {
+            return .knowledge
+        }
+        // The outer message request owns actionability. A past or negative
+        // proposition inside its body cannot turn sending it into a note.
+        if ClauseScope.read(value).act == .communicating { return .actionable }
+
+
         // A denial that is not the emphatic "don't forget" is a cancellation or
         // a constraint, and `CaptureOperationDetector` owns it. Never promote
         // one to Today from here.
@@ -325,6 +333,11 @@ enum ActionabilityReader {
         // indirect object is what makes it the user's errand, and it has to be
         // read here, ahead of the rule that files every report as knowledge.
         if reportedActionBelongsToUser(value) { return .actionable }
+
+        // An imperative to record something repeatedly is an ongoing task,
+        // unlike storing a fact whose content merely mentions a schedule.
+        if matches(value, #"^(?:log|record)\s+(?!that\b)"#),
+           RecurrenceIntentParser.parse(value) != nil { return .actionable }
 
         if isCompletedHistory(value) || isReportedSpeech(value) || isRecordedFact(value) {
             return .knowledge
@@ -401,6 +414,17 @@ enum ActionabilityReader {
     }
 
     // MARK: Families
+
+    /// Modal perfect and unreal past describe alternatives to history, not
+    /// present commitments. Explicit requests still have their own outer frame.
+    private static func isPastModalReflection(_ text: String) -> Bool {
+        matches(text, #"^(?:i|we)\s+(?:should|could|would|might)\s+have\b"#)
+            || matches(text, #"^(?:i|we)\s+(?:almost|nearly)\b"#)
+            || matches(text, #"^(?:i|we)\s+wish\s+(?:i|we)\s+had\b"#)
+            || (matches(text, #"^(?:i|we)\s+was\s+(?:going|about)\s+to\b"#)
+                && matches(text, #"\b(?:changed\s+my\s+mind|decided\s+(?:not|against))\b"#))
+            || matches(text, #"^if\s+(?:i|we)\s+(?:were|had)\b.*\b(?:would|could|i['’]d|we['’]d)\b"#)
+    }
 
     /// "I forgot to X", "I was supposed to X", "I still haven't X".
     ///
@@ -1154,7 +1178,33 @@ enum ActionabilityReader {
         // Before the day list as well as after it: the list strips a bare
         // "tomorrow" and leaves "morning email the landlord" behind, which no
         // longer opens on anything the structural reading recognises.
+        // Retain a structural peel that already exposes a trusted verb, then
+        // use the splitter's complete calendar adjunct as the fallback. A
+        // partial tagger cut must not hide a long prefix or a deictic sequel.
+        // A clock directly before an imperative is an adjunct even when the
+        // tagger calls the imperative a noun ("at three call Noor"). Require
+        // the complete clock and trusted verb; a timed report keeps its subject.
+        value = replace(value,
+            #"^(?:at|around)\s+\#(RuleBasedThoughtExtractor.clockExpression)\s*,?\s+(?=\#(actionVerb)\b)"#,
+            "")
+        let structuralBody = withoutFrontedAdjunct(value)
+        if matches(structuralBody, #"^\#(actionVerb)\b"#) {
+            value = structuralBody
+        } else if let calendarLead = RuleBasedThoughtExtractor.leadingTemporalContext(in: value),
+                  let range = value.range(of: calendarLead, options: [.anchored, .caseInsensitive]) {
+            let remainder = String(value[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",")))
+            if !remainder.isEmpty { value = remainder }
+        } else {
+            value = structuralBody
+        }
         value = withoutFrontedAdjunct(value)
+        // A month-relative ordinal is a bounded date adjunct, even without
+        // "on". Require an instruction behind it so ordinary noun subjects
+        // beginning with "the first" remain subjects.
+        value = replace(value,
+            #"^(?:on\s+)?the\s+(?:\#(ordinalWord)|\d{1,2}(?:st|nd|rd|th)?)\s+(?:of\s+)?(?:this|next)\s+month\s*,?\s+(?=\#(actionVerb)\b)"#,
+            "")
         // A fronted day is context for the action, not the action.
         value = replace(
             value,
@@ -1211,7 +1261,9 @@ enum ActionabilityReader {
         // auxiliary behind it makes it a subject: "Before and after photos are
         // in the folder" is a fact about photos, not an adjunct on "are".
         let isAdjunct = { (span: ArraySlice<SentenceContext.Token>) -> Bool in
-            !hasSubject(span) && !span.contains(where: \.isConjunction)
+            !hasSubject(span) && !span.enumerated().contains { index, token in
+                token.isConjunction && !(index == 1 && demonstrative.contains(token.text.lowercased()))
+            }
         }
         // The adjunct has to end on its complement — a noun, a number, a
         // demonstrative, or the adjective the tagger makes of "10th" — for a

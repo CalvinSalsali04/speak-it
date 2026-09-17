@@ -1,0 +1,691 @@
+{
+  "decision": "promoted_for_controlled_real_audio_TestFlight_validation",
+  "new_confirmed_broad_safety_family": false,
+  "new_safety_flags": 3,
+  "qualified_safety_flags": 3,
+  "direct45_new_flags": {
+    "count": 3,
+    "reason": "Required unknown-event review now suppresses executable due dates; not loss of context."
+  },
+  "counts": {
+    "retained_intro_note": 11,
+    "wrapper_trip_grouping_P1": 1,
+    "safe_vague_date_review": 1,
+    "restored_errand_segmentation_P1": 4,
+    "cancellation_representation_only": 3,
+    "resolved_inherited_condition_review": 1,
+    "operation_or_context_item_representation": 6,
+    "trip_purchase_grouping": 5,
+    "tentative_intent_as_note": 12,
+    "safe_corrected_date_or_event_review": 19,
+    "full_context_safe_review": 5
+  },
+  "rows": [
+    {
+      "id": "SB100K-030770",
+      "family": "messy.wrapper.return",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Let-me-think preface retained as non-executing note beside dated return action."
+    },
+    {
+      "id": "SB100K-030972",
+      "family": "messy.wrapper.pick_up",
+      "added": [
+        "destination_content",
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "wrapper_trip_grouping_P1",
+      "reason": "Explicit relative reminder restored; destination title and trip/purchase grouping remain imperfect."
+    },
+    {
+      "id": "SB100K-034630",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_vague_date_review",
+      "reason": "Obsolete two-weeks timestamp removed; next-week remains visible for review."
+    },
+    {
+      "id": "SB100K-047175",
+      "family": "multi.6.pattern_2",
+      "added": [
+        "destination_content",
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "restored_errand_segmentation_P1",
+      "reason": "False Before-I-forget condition removed; separate actions keep shared relative date. Destination/trip grouping differences remain P1."
+    },
+    {
+      "id": "SB100K-047351",
+      "family": "multi.2.pattern_6",
+      "added": [
+        "cancellation_scope_leak_candidate"
+      ],
+      "classification": "cancellation_representation_only",
+      "reason": "Identical scoped cancellation operation, identical survivor titles, removed target absent. Survivor note promoted to task changes evaluator item accounting; no actual scope leak found."
+    },
+    {
+      "id": "SB100K-051111",
+      "family": "multi.2.pattern_6",
+      "added": [
+        "cancellation_scope_leak_candidate"
+      ],
+      "classification": "cancellation_representation_only",
+      "reason": "Identical scoped cancellation operation, identical survivor titles, removed target absent. Survivor note promoted to task changes evaluator item accounting; no actual scope leak found."
+    },
+    {
+      "id": "SB100K-051426",
+      "family": "multi.2.pattern_5",
+      "added": [
+        "destination_content",
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "restored_errand_segmentation_P1",
+      "reason": "False Before-I-forget condition removed; separate actions keep shared relative date. Destination/trip grouping differences remain P1."
+    },
+    {
+      "id": "SB100K-054151",
+      "family": "multi.2.pattern_6",
+      "added": [
+        "cancellation_scope_leak_candidate"
+      ],
+      "classification": "cancellation_representation_only",
+      "reason": "Identical scoped cancellation operation, identical survivor titles, removed target absent. Survivor note promoted to task changes evaluator item accounting; no actual scope leak found."
+    },
+    {
+      "id": "SB100K-055893",
+      "family": "multi.4.pattern_2",
+      "added": [
+        "destination_content",
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "restored_errand_segmentation_P1",
+      "reason": "False Before-I-forget condition removed; separate actions keep shared relative date. Destination/trip grouping differences remain P1."
+    },
+    {
+      "id": "SB100K-055989",
+      "family": "multi.5.pattern_5",
+      "added": [
+        "destination_content"
+      ],
+      "classification": "restored_errand_segmentation_P1",
+      "reason": "False Before-I-forget condition removed; separate actions keep shared relative date. Destination/trip grouping differences remain P1."
+    },
+    {
+      "id": "SB100K-081833",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "resolved_inherited_condition_review",
+      "reason": "Final47 holds the complete in-two-days/before-class call for review with no due/reminder/geofence, while retaining the separate reschedule operation."
+    },
+    {
+      "id": "SB100K-082820",
+      "family": "temporal.shared_date",
+      "added": [
+        "actionability",
+        "date"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-082962",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-084119",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-084201",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-084569",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-084921",
+      "family": "temporal.shared_date",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "operation_or_context_item_representation",
+      "reason": "Management operation retained; phantom standalone date/daypart removed or demoted. Relative-clock controls/46 review repair provide separate semantic checks."
+    },
+    {
+      "id": "SB100K-091094",
+      "family": "long.4.pattern_9",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "trip_purchase_grouping",
+      "reason": "All trip/purchase/alternative text retained; fewer split rows. Destination choice remains qualified."
+    },
+    {
+      "id": "SB100K-091148",
+      "family": "long.6.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-091151",
+      "family": "long.5.pattern_9",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "trip_purchase_grouping",
+      "reason": "All trip/purchase/alternative text retained; fewer split rows. Destination choice remains qualified."
+    },
+    {
+      "id": "SB100K-091313",
+      "family": "long.3.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-092212",
+      "family": "long.6.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-092433",
+      "family": "long.3.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-092496",
+      "family": "long.6.pattern_9",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "trip_purchase_grouping",
+      "reason": "All trip/purchase/alternative text retained; fewer split rows. Destination choice remains qualified."
+    },
+    {
+      "id": "SB100K-092604",
+      "family": "long.6.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-092771",
+      "family": "long.5.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-093442",
+      "family": "long.4.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-093499",
+      "family": "long.5.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-094115",
+      "family": "long.5.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-095065",
+      "family": "long.3.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-095121",
+      "family": "long.3.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-095404",
+      "family": "long.6.pattern_8",
+      "added": [
+        "actionability"
+      ],
+      "classification": "tentative_intent_as_note",
+      "reason": "Maybe/if-I-have-time proposal remains in Memory with its condition and no execution, rather than a scheduled commitment."
+    },
+    {
+      "id": "SB100K-096526",
+      "family": "long.4.pattern_9",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "trip_purchase_grouping",
+      "reason": "All trip/purchase/alternative text retained; fewer split rows. Destination choice remains qualified."
+    },
+    {
+      "id": "SB100K-096917",
+      "family": "long.3.pattern_9",
+      "added": [
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "trip_purchase_grouping",
+      "reason": "All trip/purchase/alternative text retained; fewer split rows. Destination choice remains qualified."
+    },
+    {
+      "id": "SB100K-033474",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-034142",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-036422",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-040352",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-040926",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-042233",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "SB100K-042443",
+      "family": "correction.date",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "CB100K-010268",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-010421",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-010943",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-012572",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-012592",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-012668",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-013402",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-013598",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-013945",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-014461",
+      "family": "entity.organization.messy",
+      "added": [
+        "extra_item",
+        "over_splitting"
+      ],
+      "classification": "retained_intro_note",
+      "reason": "Non-executing introductory note retained beside context-preserving action/review; row-count representation."
+    },
+    {
+      "id": "CB100K-095674",
+      "family": "messy.entity.long",
+      "added": [
+        "action_content",
+        "lost_item",
+        "temporal_phrase_lost",
+        "under_splitting"
+      ],
+      "classification": "full_context_safe_review",
+      "reason": "Unresolved event scope retained on combined review content, alongside harmless intro note; no actual instructions discarded."
+    },
+    {
+      "id": "CB100K-096397",
+      "family": "messy.entity.long",
+      "added": [
+        "action_content",
+        "actionability",
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "full_context_safe_review",
+      "reason": "Unresolved event scope retained on combined review content, alongside harmless intro note; no actual instructions discarded."
+    },
+    {
+      "id": "CB100K-098732",
+      "family": "messy.entity.long",
+      "added": [
+        "action_content",
+        "actionability",
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "full_context_safe_review",
+      "reason": "Unresolved event scope retained on combined review content, alongside harmless intro note; no actual instructions discarded."
+    },
+    {
+      "id": "CB100K-099375",
+      "family": "messy.entity.long",
+      "added": [
+        "action_content",
+        "actionability",
+        "object_content",
+        "temporal_phrase_lost"
+      ],
+      "classification": "full_context_safe_review",
+      "reason": "Unresolved event scope retained on combined review content, alongside harmless intro note; no actual instructions discarded."
+    },
+    {
+      "id": "CB100K-099503",
+      "family": "messy.entity.long",
+      "added": [
+        "action_content",
+        "lost_item",
+        "under_splitting"
+      ],
+      "classification": "full_context_safe_review",
+      "reason": "Unresolved event scope retained on combined review content, alongside harmless intro note; no actual instructions discarded."
+    },
+    {
+      "id": "GAP50K-26610",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-28273",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-28283",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-28806",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-29269",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-30637",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-30799",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-30913",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-31051",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-31078",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-31722",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    },
+    {
+      "id": "GAP50K-31971",
+      "family": "time.corrected_deadline",
+      "added": [
+        "date"
+      ],
+      "classification": "safe_corrected_date_or_event_review",
+      "reason": "The obsolete timestamp is removed; corrected vague date/unobservable event context is preserved in review."
+    }
+  ],
+  "remaining_P1": "Occasional wrapper/trip grouping and destination/contact metadata; SB100K023393 still has a detached pickup date in the previously validated44 cohort. Preserve as real-audio follow-up; do not claim zero defects.",
+  "final_safety_closure": {
+    "cases": 287,
+    "late35_memory_scope_failures_resolved": 16,
+    "prohibitions_passed": 10,
+    "invented_quote_indicators_after": 0,
+    "new_difference_cases": 1,
+    "qualification": "Full original withdrawn-target quote retained as one non-executing review item. Remaining52 non-actionable flags are prior ambiguous memory/event51 plus implicit out-of1."
+  }
+}

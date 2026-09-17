@@ -1,0 +1,3133 @@
+{
+  "version": "coverage250k-0.2",
+  "total": 250000,
+  "agreement_on_measured_checks": 111929,
+  "disagreement_on_measured_checks": 138071,
+  "severity_candidates": {
+    "P1": 135372,
+    "no_candidate": 111929,
+    "P0": 2699
+  },
+  "bank_marked_ambiguity": 4957,
+  "questionable_bank_contract_count": null,
+  "local_llm_agreement": null,
+  "dimensions": {
+    "date": 39824,
+    "destination_content": 38335,
+    "extra_item": 51862,
+    "over_splitting": 51862,
+    "time": 17841,
+    "action_content": 18659,
+    "lost_item": 14007,
+    "under_splitting": 14007,
+    "temporal_phrase_lost": 2510,
+    "actionability": 10826,
+    "object_content": 28815,
+    "task_object_as_person": 8242,
+    "recurrence": 167,
+    "ambiguity_review_absent": 3441,
+    "person_identity": 5302,
+    "target_identity_text": 4207,
+    "quote_invented_tokens": 4,
+    "cancellation_scope_leak_candidate": 1244,
+    "negative_polarity": 10,
+    "nonperson_as_person": 8432,
+    "non_actionable_confident_action": 1455,
+    "reported_speech_action_leak": 1198,
+    "location_place": 2978,
+    "location_event": 1325,
+    "fixed_time_zone": 42,
+    "time_zone": 42,
+    "exact_value_display": 11
+  },
+  "unmeasured": {
+    "advanced_time_semantics": 37101,
+    "operation_store_effects": 6109,
+    "cancellation_duplicate_object_attribution": 7,
+    "date_semantics:this Friday": 1480,
+    "date_semantics:next Sunday": 1442,
+    "date_semantics:after work": 1449,
+    "date_semantics:before class": 1419,
+    "date_semantics:the day after tomorrow": 1491,
+    "date_semantics:in a week": 1400,
+    "date_semantics:next Thursday": 1444,
+    "date_semantics:this Monday": 1442,
+    "date_semantics:next Tuesday": 9276,
+    "date_semantics:later today": 1412,
+    "date_semantics:next Saturday": 1430,
+    "date_semantics:this morning": 1450,
+    "date_semantics:two weeks from now": 1478,
+    "date_semantics:after class": 1497,
+    "date_semantics:next weekend": 1465,
+    "date_semantics:next Wednesday": 1432,
+    "date_semantics:the day after": 686,
+    "advanced_recurrence_semantics": 1004,
+    "full_target_type_ontology": 100101,
+    "context_not_supplied_by_host_runner": 6000,
+    "unsupported_location_trigger": 1507,
+    "deadline_range_DST_semantics": 6000
+  },
+  "per_category": {
+    "clean_everyday": {
+      "total": 10500,
+      "agreement_on_measured_checks": 6833,
+      "fully_measured": 7377,
+      "P1": 3667,
+      "no_candidate": 6833
+    },
+    "wrappers_fillers": {
+      "total": 1500,
+      "agreement_on_measured_checks": 210,
+      "fully_measured": 1500,
+      "P1": 1290,
+      "no_candidate": 210
+    },
+    "correction_abandonment": {
+      "total": 1600,
+      "agreement_on_measured_checks": 656,
+      "fully_measured": 1446,
+      "P1": 944,
+      "no_candidate": 656
+    },
+    "multi_item_shared_context": {
+      "total": 15800,
+      "agreement_on_measured_checks": 2106,
+      "fully_measured": 9583,
+      "P1": 12867,
+      "no_candidate": 2106,
+      "P0": 827
+    },
+    "temporal_recurrence": {
+      "total": 8100,
+      "agreement_on_measured_checks": 4186,
+      "fully_measured": 3298,
+      "no_candidate": 4186,
+      "P1": 3914
+    },
+    "negation_cancellation_safety": {
+      "total": 10000,
+      "agreement_on_measured_checks": 4869,
+      "fully_measured": 5480,
+      "no_candidate": 4869,
+      "P1": 5131
+    },
+    "references_locations_ambiguity": {
+      "total": 5700,
+      "agreement_on_measured_checks": 633,
+      "fully_measured": 5375,
+      "P1": 5067,
+      "no_candidate": 633
+    },
+    "long_messy_multi_phenomenon": {
+      "total": 6500,
+      "agreement_on_measured_checks": 285,
+      "fully_measured": 3798,
+      "P1": 5798,
+      "no_candidate": 285,
+      "P0": 417
+    },
+    "asr_text_noise": {
+      "total": 3300,
+      "agreement_on_measured_checks": 1240,
+      "fully_measured": 2291,
+      "no_candidate": 1240,
+      "P1": 2060
+    },
+    "messy_wrappers_fillers": {
+      "total": 14000,
+      "agreement_on_measured_checks": 3704,
+      "fully_measured": 8449,
+      "no_candidate": 3704,
+      "P1": 10296
+    },
+    "corrections_restarts": {
+      "total": 14000,
+      "agreement_on_measured_checks": 5898,
+      "fully_measured": 10743,
+      "P1": 8102,
+      "no_candidate": 5898
+    },
+    "unfinished_abandoned": {
+      "total": 9000,
+      "agreement_on_measured_checks": 122,
+      "fully_measured": 8878,
+      "P1": 8878,
+      "no_candidate": 122
+    },
+    "organization_vs_person": {
+      "total": 15000,
+      "agreement_on_measured_checks": 8670,
+      "fully_measured": 0,
+      "no_candidate": 8670,
+      "P1": 6330
+    },
+    "task_object_vs_person": {
+      "total": 15000,
+      "agreement_on_measured_checks": 7702,
+      "fully_measured": 8865,
+      "no_candidate": 7702,
+      "P1": 7298
+    },
+    "person_at_organization": {
+      "total": 10000,
+      "agreement_on_measured_checks": 8222,
+      "fully_measured": 0,
+      "no_candidate": 8222,
+      "P1": 1778
+    },
+    "departments_and_services": {
+      "total": 10000,
+      "agreement_on_measured_checks": 7262,
+      "fully_measured": 0,
+      "no_candidate": 7262,
+      "P1": 2738
+    },
+    "roles_and_relationships": {
+      "total": 10000,
+      "agreement_on_measured_checks": 8414,
+      "fully_measured": 0,
+      "no_candidate": 8414,
+      "P1": 1586
+    },
+    "business_location_vs_organization": {
+      "total": 10000,
+      "agreement_on_measured_checks": 8211,
+      "fully_measured": 0,
+      "no_candidate": 8211,
+      "P1": 1789
+    },
+    "ambiguous_name_entity_type": {
+      "total": 10000,
+      "agreement_on_measured_checks": 5840,
+      "fully_measured": 0,
+      "P1": 4160,
+      "no_candidate": 5840
+    },
+    "mixed_entity_task_topic": {
+      "total": 10000,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 10000
+    },
+    "domain_entity_coverage": {
+      "total": 5000,
+      "agreement_on_measured_checks": 3046,
+      "fully_measured": 0,
+      "no_candidate": 3046,
+      "P1": 1954
+    },
+    "messy_entity_ontology": {
+      "total": 5000,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 5000
+    },
+    "thought_memory_question": {
+      "total": 8000,
+      "agreement_on_measured_checks": 6531,
+      "fully_measured": 8000,
+      "no_candidate": 6531,
+      "P1": 1318,
+      "P0": 151
+    },
+    "reported_quoted_speech": {
+      "total": 6000,
+      "agreement_on_measured_checks": 1550,
+      "fully_measured": 4258,
+      "P1": 3252,
+      "no_candidate": 1550,
+      "P0": 1198
+    },
+    "contextual_entity_resolution": {
+      "total": 6000,
+      "agreement_on_measured_checks": 2555,
+      "fully_measured": 0,
+      "P1": 3445,
+      "no_candidate": 2555
+    },
+    "location_trigger": {
+      "total": 6000,
+      "agreement_on_measured_checks": 2565,
+      "fully_measured": 4493,
+      "P1": 3435,
+      "no_candidate": 2565
+    },
+    "advanced_temporal": {
+      "total": 6000,
+      "agreement_on_measured_checks": 3263,
+      "fully_measured": 0,
+      "P1": 2737,
+      "no_candidate": 3263
+    },
+    "exact_numeric_verbatim": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2942,
+      "fully_measured": 5000,
+      "no_candidate": 2942,
+      "P1": 2057,
+      "P0": 1
+    },
+    "hypothetical_indirect_uncertain": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2058,
+      "fully_measured": 5000,
+      "no_candidate": 2058,
+      "P1": 2941,
+      "P0": 1
+    },
+    "codeswitch_proper_noun": {
+      "total": 4000,
+      "agreement_on_measured_checks": 2284,
+      "fully_measured": 876,
+      "no_candidate": 2284,
+      "P1": 1716
+    },
+    "long_cross_category": {
+      "total": 4000,
+      "agreement_on_measured_checks": 72,
+      "fully_measured": 723,
+      "P1": 3824,
+      "P0": 104,
+      "no_candidate": 72
+    }
+  },
+  "per_family": {
+    "clean.errand.buy": {
+      "total": 1198,
+      "agreement_on_measured_checks": 688,
+      "fully_measured": 898,
+      "P1": 510,
+      "no_candidate": 688
+    },
+    "clean.errand.grab": {
+      "total": 194,
+      "agreement_on_measured_checks": 107,
+      "fully_measured": 191,
+      "no_candidate": 107,
+      "P1": 87
+    },
+    "clean.errand.get": {
+      "total": 1218,
+      "agreement_on_measured_checks": 784,
+      "fully_measured": 934,
+      "P1": 434,
+      "no_candidate": 784
+    },
+    "clean.contact.call": {
+      "total": 670,
+      "agreement_on_measured_checks": 637,
+      "fully_measured": 520,
+      "no_candidate": 637,
+      "P1": 33
+    },
+    "clean.contact.email": {
+      "total": 672,
+      "agreement_on_measured_checks": 656,
+      "fully_measured": 516,
+      "no_candidate": 656,
+      "P1": 16
+    },
+    "clean.contact.text": {
+      "total": 666,
+      "agreement_on_measured_checks": 646,
+      "fully_measured": 524,
+      "no_candidate": 646,
+      "P1": 20
+    },
+    "clean.admin.send": {
+      "total": 53,
+      "agreement_on_measured_checks": 51,
+      "fully_measured": 32,
+      "no_candidate": 51,
+      "P1": 2
+    },
+    "clean.appointment": {
+      "total": 1811,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 935,
+      "P1": 1811
+    },
+    "clean.errand.pick_up": {
+      "total": 1176,
+      "agreement_on_measured_checks": 744,
+      "fully_measured": 886,
+      "no_candidate": 744,
+      "P1": 432
+    },
+    "clean.admin.apply_for": {
+      "total": 26,
+      "agreement_on_measured_checks": 25,
+      "fully_measured": 16,
+      "no_candidate": 25,
+      "P1": 1
+    },
+    "clean.admin.sign": {
+      "total": 49,
+      "agreement_on_measured_checks": 46,
+      "fully_measured": 37,
+      "no_candidate": 46,
+      "P1": 3
+    },
+    "clean.admin.download": {
+      "total": 29,
+      "agreement_on_measured_checks": 28,
+      "fully_measured": 17,
+      "no_candidate": 28,
+      "P1": 1
+    },
+    "clean.admin.reschedule": {
+      "total": 31,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 31
+    },
+    "clean.admin.upload": {
+      "total": 52,
+      "agreement_on_measured_checks": 50,
+      "fully_measured": 31,
+      "no_candidate": 50,
+      "P1": 2
+    },
+    "clean.admin.finish": {
+      "total": 29,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 21,
+      "no_candidate": 27,
+      "P1": 2
+    },
+    "clean.admin.register_for": {
+      "total": 27,
+      "agreement_on_measured_checks": 25,
+      "fully_measured": 19,
+      "no_candidate": 25,
+      "P1": 2
+    },
+    "clean.admin.check": {
+      "total": 53,
+      "agreement_on_measured_checks": 50,
+      "fully_measured": 34,
+      "no_candidate": 50,
+      "P1": 3
+    },
+    "clean.admin.confirm": {
+      "total": 47,
+      "agreement_on_measured_checks": 43,
+      "fully_measured": 32,
+      "no_candidate": 43,
+      "P1": 4
+    },
+    "clean.admin.book": {
+      "total": 28,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 19,
+      "no_candidate": 27,
+      "P1": 1
+    },
+    "clean.admin.file": {
+      "total": 27,
+      "agreement_on_measured_checks": 26,
+      "fully_measured": 18,
+      "no_candidate": 26,
+      "P1": 1
+    },
+    "clean.admin.print": {
+      "total": 27,
+      "agreement_on_measured_checks": 25,
+      "fully_measured": 16,
+      "no_candidate": 25,
+      "P1": 2
+    },
+    "clean.admin.update": {
+      "total": 22,
+      "agreement_on_measured_checks": 20,
+      "fully_measured": 16,
+      "no_candidate": 20,
+      "P1": 2
+    },
+    "clean.admin.renew": {
+      "total": 51,
+      "agreement_on_measured_checks": 49,
+      "fully_measured": 30,
+      "no_candidate": 49,
+      "P1": 2
+    },
+    "clean.admin.submit": {
+      "total": 51,
+      "agreement_on_measured_checks": 47,
+      "fully_measured": 30,
+      "no_candidate": 47,
+      "P1": 4
+    },
+    "clean.admin.cancel": {
+      "total": 50,
+      "agreement_on_measured_checks": 26,
+      "fully_measured": 15,
+      "P1": 24,
+      "no_candidate": 26
+    },
+    "clean.admin.scan": {
+      "total": 29,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 18,
+      "no_candidate": 27,
+      "P1": 2
+    },
+    "clean.admin.review": {
+      "total": 57,
+      "agreement_on_measured_checks": 54,
+      "fully_measured": 40,
+      "no_candidate": 54,
+      "P1": 3
+    },
+    "clean.admin.pay": {
+      "total": 53,
+      "agreement_on_measured_checks": 49,
+      "fully_measured": 33,
+      "no_candidate": 49,
+      "P1": 4
+    },
+    "wrapper.errand.get": {
+      "total": 388,
+      "agreement_on_measured_checks": 66,
+      "fully_measured": 388,
+      "P1": 322,
+      "no_candidate": 66
+    },
+    "wrapper.errand.pick_up": {
+      "total": 334,
+      "agreement_on_measured_checks": 42,
+      "fully_measured": 334,
+      "no_candidate": 42,
+      "P1": 292
+    },
+    "wrapper.errand.grab": {
+      "total": 383,
+      "agreement_on_measured_checks": 55,
+      "fully_measured": 383,
+      "P1": 328,
+      "no_candidate": 55
+    },
+    "wrapper.errand.buy": {
+      "total": 395,
+      "agreement_on_measured_checks": 47,
+      "fully_measured": 395,
+      "P1": 348,
+      "no_candidate": 47
+    },
+    "correction.date": {
+      "total": 1298,
+      "agreement_on_measured_checks": 34,
+      "fully_measured": 827,
+      "P1": 1264,
+      "no_candidate": 34
+    },
+    "correction.object": {
+      "total": 1270,
+      "agreement_on_measured_checks": 1151,
+      "fully_measured": 1270,
+      "P1": 119,
+      "no_candidate": 1151
+    },
+    "correction.destination": {
+      "total": 1275,
+      "agreement_on_measured_checks": 49,
+      "fully_measured": 1275,
+      "P1": 1226,
+      "no_candidate": 49
+    },
+    "correction.action": {
+      "total": 106,
+      "agreement_on_measured_checks": 36,
+      "fully_measured": 106,
+      "P1": 70,
+      "no_candidate": 36
+    },
+    "correction.quantity": {
+      "total": 50,
+      "agreement_on_measured_checks": 50,
+      "fully_measured": 50,
+      "no_candidate": 50
+    },
+    "correction.time": {
+      "total": 1274,
+      "agreement_on_measured_checks": 953,
+      "fully_measured": 671,
+      "no_candidate": 953,
+      "P1": 321
+    },
+    "correction.incomplete_restart": {
+      "total": 1213,
+      "agreement_on_measured_checks": 1010,
+      "fully_measured": 1213,
+      "no_candidate": 1010,
+      "P1": 203
+    },
+    "correction.abandoned_action": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 106,
+      "P1": 106
+    },
+    "correction.date_preface": {
+      "total": 1296,
+      "agreement_on_measured_checks": 498,
+      "fully_measured": 839,
+      "P1": 798,
+      "no_candidate": 498
+    },
+    "correction.shared_object": {
+      "total": 106,
+      "agreement_on_measured_checks": 63,
+      "fully_measured": 106,
+      "no_candidate": 63,
+      "P1": 43
+    },
+    "correction.full_abandonment": {
+      "total": 1204,
+      "agreement_on_measured_checks": 1204,
+      "fully_measured": 0,
+      "no_candidate": 1204
+    },
+    "correction.partial_cancel": {
+      "total": 1188,
+      "agreement_on_measured_checks": 53,
+      "fully_measured": 1188,
+      "no_candidate": 53,
+      "P1": 1135
+    },
+    "correction.resolved_alternative": {
+      "total": 1273,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1273,
+      "P1": 1273
+    },
+    "correction.unfinished_abandoned": {
+      "total": 5,
+      "agreement_on_measured_checks": 5,
+      "fully_measured": 0,
+      "no_candidate": 5
+    },
+    "correction.scope_replacement": {
+      "total": 88,
+      "agreement_on_measured_checks": 88,
+      "fully_measured": 88,
+      "no_candidate": 88
+    },
+    "correction.negated_old_date": {
+      "total": 144,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 144,
+      "P1": 144
+    },
+    "multi.2.pattern_0": {
+      "total": 208,
+      "agreement_on_measured_checks": 51,
+      "fully_measured": 142,
+      "P1": 157,
+      "no_candidate": 51
+    },
+    "multi.3.pattern_0": {
+      "total": 208,
+      "agreement_on_measured_checks": 60,
+      "fully_measured": 153,
+      "P1": 148,
+      "no_candidate": 60
+    },
+    "multi.4.pattern_0": {
+      "total": 208,
+      "agreement_on_measured_checks": 45,
+      "fully_measured": 134,
+      "P1": 163,
+      "no_candidate": 45
+    },
+    "multi.5.pattern_0": {
+      "total": 208,
+      "agreement_on_measured_checks": 34,
+      "fully_measured": 143,
+      "P1": 174,
+      "no_candidate": 34
+    },
+    "multi.2.pattern_1": {
+      "total": 208,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 129,
+      "P1": 208
+    },
+    "multi.3.pattern_1": {
+      "total": 208,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 126,
+      "P1": 208
+    },
+    "multi.4.pattern_1": {
+      "total": 208,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 136,
+      "P1": 208
+    },
+    "multi.5.pattern_1": {
+      "total": 208,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 148,
+      "P1": 208
+    },
+    "multi.2.pattern_2": {
+      "total": 207,
+      "agreement_on_measured_checks": 46,
+      "fully_measured": 136,
+      "P1": 161,
+      "no_candidate": 46
+    },
+    "multi.3.pattern_2": {
+      "total": 207,
+      "agreement_on_measured_checks": 39,
+      "fully_measured": 140,
+      "P1": 168,
+      "no_candidate": 39
+    },
+    "multi.4.pattern_2": {
+      "total": 207,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 135,
+      "P1": 163,
+      "no_candidate": 44
+    },
+    "multi.5.pattern_2": {
+      "total": 207,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 139,
+      "P1": 167,
+      "no_candidate": 40
+    },
+    "multi.2.pattern_3": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 136,
+      "P1": 207
+    },
+    "multi.3.pattern_3": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 127,
+      "P1": 207
+    },
+    "multi.4.pattern_3": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 138,
+      "P1": 207
+    },
+    "multi.5.pattern_3": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 148,
+      "P1": 207
+    },
+    "multi.2.pattern_4": {
+      "total": 207,
+      "agreement_on_measured_checks": 99,
+      "fully_measured": 137,
+      "P1": 108,
+      "no_candidate": 99
+    },
+    "multi.3.pattern_4": {
+      "total": 207,
+      "agreement_on_measured_checks": 110,
+      "fully_measured": 135,
+      "P1": 97,
+      "no_candidate": 110
+    },
+    "multi.4.pattern_4": {
+      "total": 207,
+      "agreement_on_measured_checks": 94,
+      "fully_measured": 133,
+      "P1": 113,
+      "no_candidate": 94
+    },
+    "multi.5.pattern_4": {
+      "total": 207,
+      "agreement_on_measured_checks": 84,
+      "fully_measured": 142,
+      "P1": 123,
+      "no_candidate": 84
+    },
+    "multi.2.pattern_5": {
+      "total": 207,
+      "agreement_on_measured_checks": 55,
+      "fully_measured": 134,
+      "P1": 152,
+      "no_candidate": 55
+    },
+    "multi.3.pattern_5": {
+      "total": 207,
+      "agreement_on_measured_checks": 54,
+      "fully_measured": 130,
+      "P1": 153,
+      "no_candidate": 54
+    },
+    "multi.4.pattern_5": {
+      "total": 207,
+      "agreement_on_measured_checks": 47,
+      "fully_measured": 138,
+      "no_candidate": 47,
+      "P1": 160
+    },
+    "multi.5.pattern_5": {
+      "total": 207,
+      "agreement_on_measured_checks": 52,
+      "fully_measured": 147,
+      "no_candidate": 52,
+      "P1": 155
+    },
+    "multi.2.pattern_6": {
+      "total": 207,
+      "agreement_on_measured_checks": 13,
+      "fully_measured": 32,
+      "P1": 52,
+      "no_candidate": 13,
+      "P0": 142
+    },
+    "multi.3.pattern_6": {
+      "total": 207,
+      "agreement_on_measured_checks": 7,
+      "fully_measured": 32,
+      "no_candidate": 7,
+      "P1": 29,
+      "P0": 171
+    },
+    "multi.4.pattern_6": {
+      "total": 207,
+      "agreement_on_measured_checks": 4,
+      "fully_measured": 32,
+      "P1": 32,
+      "no_candidate": 4,
+      "P0": 171
+    },
+    "multi.5.pattern_6": {
+      "total": 207,
+      "agreement_on_measured_checks": 7,
+      "fully_measured": 32,
+      "no_candidate": 7,
+      "P1": 27,
+      "P0": 173
+    },
+    "multi.2.pattern_7": {
+      "total": 207,
+      "agreement_on_measured_checks": 10,
+      "fully_measured": 138,
+      "P1": 197,
+      "no_candidate": 10
+    },
+    "multi.3.pattern_7": {
+      "total": 207,
+      "agreement_on_measured_checks": 4,
+      "fully_measured": 138,
+      "P1": 203,
+      "no_candidate": 4
+    },
+    "multi.4.pattern_7": {
+      "total": 207,
+      "agreement_on_measured_checks": 8,
+      "fully_measured": 138,
+      "P1": 199,
+      "no_candidate": 8
+    },
+    "multi.5.pattern_7": {
+      "total": 207,
+      "agreement_on_measured_checks": 3,
+      "fully_measured": 131,
+      "P1": 204,
+      "no_candidate": 3
+    },
+    "multi.2.pattern_8": {
+      "total": 207,
+      "agreement_on_measured_checks": 99,
+      "fully_measured": 115,
+      "P1": 108,
+      "no_candidate": 99
+    },
+    "multi.3.pattern_8": {
+      "total": 207,
+      "agreement_on_measured_checks": 110,
+      "fully_measured": 107,
+      "P1": 97,
+      "no_candidate": 110
+    },
+    "multi.4.pattern_8": {
+      "total": 207,
+      "agreement_on_measured_checks": 80,
+      "fully_measured": 104,
+      "P1": 127,
+      "no_candidate": 80
+    },
+    "multi.5.pattern_8": {
+      "total": 207,
+      "agreement_on_measured_checks": 75,
+      "fully_measured": 114,
+      "P1": 132,
+      "no_candidate": 75
+    },
+    "multi.2.pattern_9": {
+      "total": 207,
+      "agreement_on_measured_checks": 24,
+      "fully_measured": 129,
+      "P1": 183,
+      "no_candidate": 24
+    },
+    "multi.3.pattern_9": {
+      "total": 207,
+      "agreement_on_measured_checks": 13,
+      "fully_measured": 130,
+      "P1": 194,
+      "no_candidate": 13
+    },
+    "multi.4.pattern_9": {
+      "total": 207,
+      "agreement_on_measured_checks": 15,
+      "fully_measured": 144,
+      "P1": 192,
+      "no_candidate": 15
+    },
+    "multi.5.pattern_9": {
+      "total": 207,
+      "agreement_on_measured_checks": 14,
+      "fully_measured": 127,
+      "P1": 193,
+      "no_candidate": 14
+    },
+    "multi.2.pattern_10": {
+      "total": 207,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 130,
+      "no_candidate": 27,
+      "P1": 180
+    },
+    "multi.3.pattern_10": {
+      "total": 207,
+      "agreement_on_measured_checks": 17,
+      "fully_measured": 137,
+      "P1": 190,
+      "no_candidate": 17
+    },
+    "multi.4.pattern_10": {
+      "total": 207,
+      "agreement_on_measured_checks": 12,
+      "fully_measured": 148,
+      "P1": 195,
+      "no_candidate": 12
+    },
+    "multi.5.pattern_10": {
+      "total": 207,
+      "agreement_on_measured_checks": 12,
+      "fully_measured": 144,
+      "no_candidate": 12,
+      "P1": 195
+    },
+    "multi.2.pattern_11": {
+      "total": 207,
+      "agreement_on_measured_checks": 37,
+      "fully_measured": 136,
+      "P1": 170,
+      "no_candidate": 37
+    },
+    "multi.3.pattern_11": {
+      "total": 207,
+      "agreement_on_measured_checks": 46,
+      "fully_measured": 147,
+      "P1": 161,
+      "no_candidate": 46
+    },
+    "multi.4.pattern_11": {
+      "total": 207,
+      "agreement_on_measured_checks": 24,
+      "fully_measured": 139,
+      "P1": 183,
+      "no_candidate": 24
+    },
+    "multi.5.pattern_11": {
+      "total": 207,
+      "agreement_on_measured_checks": 29,
+      "fully_measured": 134,
+      "P1": 178,
+      "no_candidate": 29
+    },
+    "multi.2.pattern_12": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 128,
+      "P1": 207
+    },
+    "multi.3.pattern_12": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 129,
+      "P1": 207
+    },
+    "multi.4.pattern_12": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 148,
+      "P1": 207
+    },
+    "multi.5.pattern_12": {
+      "total": 207,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 136,
+      "P1": 207
+    },
+    "multi.2.pattern_13": {
+      "total": 207,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 142,
+      "P1": 167,
+      "no_candidate": 40
+    },
+    "multi.3.pattern_13": {
+      "total": 207,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 135,
+      "P1": 167,
+      "no_candidate": 40
+    },
+    "multi.4.pattern_13": {
+      "total": 207,
+      "agreement_on_measured_checks": 28,
+      "fully_measured": 139,
+      "P1": 179,
+      "no_candidate": 28
+    },
+    "multi.5.pattern_13": {
+      "total": 207,
+      "agreement_on_measured_checks": 32,
+      "fully_measured": 138,
+      "P1": 175,
+      "no_candidate": 32
+    },
+    "temporal.date_time": {
+      "total": 787,
+      "agreement_on_measured_checks": 678,
+      "fully_measured": 396,
+      "no_candidate": 678,
+      "P1": 109
+    },
+    "temporal.recurrence": {
+      "total": 383,
+      "agreement_on_measured_checks": 350,
+      "fully_measured": 191,
+      "no_candidate": 350,
+      "P1": 33
+    },
+    "temporal.date_correction": {
+      "total": 789,
+      "agreement_on_measured_checks": 428,
+      "fully_measured": 481,
+      "no_candidate": 428,
+      "P1": 361
+    },
+    "temporal.time_correction": {
+      "total": 795,
+      "agreement_on_measured_checks": 550,
+      "fully_measured": 384,
+      "P1": 245,
+      "no_candidate": 550
+    },
+    "temporal.fuzzy_time": {
+      "total": 96,
+      "agreement_on_measured_checks": 4,
+      "fully_measured": 0,
+      "P1": 92,
+      "no_candidate": 4
+    },
+    "temporal.recurring_reminder": {
+      "total": 428,
+      "agreement_on_measured_checks": 234,
+      "fully_measured": 253,
+      "no_candidate": 234,
+      "P1": 194
+    },
+    "temporal.shared_date_split_time": {
+      "total": 102,
+      "agreement_on_measured_checks": 60,
+      "fully_measured": 73,
+      "P1": 42,
+      "no_candidate": 60
+    },
+    "temporal.relative_duration": {
+      "total": 20,
+      "agreement_on_measured_checks": 18,
+      "fully_measured": 18,
+      "no_candidate": 18,
+      "P1": 2
+    },
+    "temporal.calendar_recurrence": {
+      "total": 32,
+      "agreement_on_measured_checks": 29,
+      "fully_measured": 29,
+      "no_candidate": 29,
+      "P1": 3
+    },
+    "temporal.duration_recurrence": {
+      "total": 31,
+      "agreement_on_measured_checks": 28,
+      "fully_measured": 28,
+      "no_candidate": 28,
+      "P1": 3
+    },
+    "temporal.negated_date_correction": {
+      "total": 93,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 93,
+      "P1": 93
+    },
+    "temporal.wrapper": {
+      "total": 795,
+      "agreement_on_measured_checks": 244,
+      "fully_measured": 389,
+      "P1": 551,
+      "no_candidate": 244
+    },
+    "temporal.relative_to_time": {
+      "total": 99,
+      "agreement_on_measured_checks": 78,
+      "fully_measured": 65,
+      "no_candidate": 78,
+      "P1": 21
+    },
+    "temporal.date_plus_recurrence": {
+      "total": 101,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 101,
+      "P1": 101
+    },
+    "safety.prohibitive_reminder": {
+      "total": 73,
+      "agreement_on_measured_checks": 69,
+      "fully_measured": 73,
+      "no_candidate": 69,
+      "P1": 4
+    },
+    "safety.dont_create_reminder": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 0,
+      "no_candidate": 44
+    },
+    "safety.cancel_existing": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 5,
+      "P1": 121
+    },
+    "safety.partial_cancel_object": {
+      "total": 73,
+      "agreement_on_measured_checks": 33,
+      "fully_measured": 73,
+      "P1": 40,
+      "no_candidate": 33
+    },
+    "safety.selective_cancel": {
+      "total": 152,
+      "agreement_on_measured_checks": 152,
+      "fully_measured": 0,
+      "no_candidate": 152
+    },
+    "safety.prohibit_then_replace": {
+      "total": 56,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 56,
+      "P1": 56
+    },
+    "safety.full_abandonment": {
+      "total": 51,
+      "agreement_on_measured_checks": 51,
+      "fully_measured": 0,
+      "no_candidate": 51
+    },
+    "safety.negation_with_time": {
+      "total": 72,
+      "agreement_on_measured_checks": 65,
+      "fully_measured": 72,
+      "P1": 7,
+      "no_candidate": 65
+    },
+    "safety.negated_location": {
+      "total": 73,
+      "agreement_on_measured_checks": 4,
+      "fully_measured": 64,
+      "P1": 69,
+      "no_candidate": 4
+    },
+    "safety.dont_forget": {
+      "total": 872,
+      "agreement_on_measured_checks": 813,
+      "fully_measured": 551,
+      "no_candidate": 813,
+      "P1": 59
+    },
+    "safety.replace_action": {
+      "total": 73,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 73,
+      "P1": 73
+    },
+    "safety.cancel_intent": {
+      "total": 154,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 154
+    },
+    "safety.unresolved_alternative": {
+      "total": 71,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 71,
+      "P1": 71
+    },
+    "safety.conditional_intent": {
+      "total": 72,
+      "agreement_on_measured_checks": 72,
+      "fully_measured": 72,
+      "no_candidate": 72
+    },
+    "safety.unless_condition": {
+      "total": 73,
+      "agreement_on_measured_checks": 57,
+      "fully_measured": 73,
+      "P1": 16,
+      "no_candidate": 57
+    },
+    "safety.scope_cancel_location": {
+      "total": 61,
+      "agreement_on_measured_checks": 46,
+      "fully_measured": 61,
+      "no_candidate": 46,
+      "P1": 15
+    },
+    "reference.pronoun_person": {
+      "total": 42,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 42,
+      "P1": 42
+    },
+    "reference.shared_object": {
+      "total": 477,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 477,
+      "P1": 477
+    },
+    "reference.pronoun_object": {
+      "total": 46,
+      "agreement_on_measured_checks": 46,
+      "fully_measured": 46,
+      "no_candidate": 46
+    },
+    "reference.conditional_fallback": {
+      "total": 47,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 47,
+      "P1": 47
+    },
+    "reference.two_person": {
+      "total": 484,
+      "agreement_on_measured_checks": 484,
+      "fully_measured": 484,
+      "no_candidate": 484
+    },
+    "reference.object_chain": {
+      "total": 474,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 474,
+      "P1": 474
+    },
+    "reference.same_thing": {
+      "total": 144,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 144,
+      "P1": 144
+    },
+    "reference.person_alternative": {
+      "total": 57,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 57,
+      "P1": 57
+    },
+    "reference.location_staff": {
+      "total": 497,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 339,
+      "P1": 497
+    },
+    "reference.object_handoff": {
+      "total": 47,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 47,
+      "P1": 47
+    },
+    "reference.anaphoric_time": {
+      "total": 463,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 296,
+      "P1": 463
+    },
+    "reference.deictic_location": {
+      "total": 44,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 44,
+      "P1": 44
+    },
+    "reference.cross_item_object": {
+      "total": 57,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 57,
+      "P1": 57
+    },
+    "reference.discourse_person": {
+      "total": 57,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 57,
+      "P1": 57
+    },
+    "long.3.pattern_0": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 79,
+      "P1": 122
+    },
+    "long.4.pattern_0": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 76,
+      "P1": 122
+    },
+    "long.5.pattern_0": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 76,
+      "P1": 122
+    },
+    "long.3.pattern_1": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 82,
+      "P1": 122
+    },
+    "long.4.pattern_1": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 81,
+      "P1": 122
+    },
+    "long.5.pattern_1": {
+      "total": 122,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 75,
+      "P1": 122
+    },
+    "long.3.pattern_2": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 15,
+      "P0": 106
+    },
+    "long.4.pattern_2": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 20,
+      "P0": 101
+    },
+    "long.5.pattern_2": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 15,
+      "P0": 106
+    },
+    "long.3.pattern_3": {
+      "total": 121,
+      "agreement_on_measured_checks": 6,
+      "fully_measured": 75,
+      "P1": 115,
+      "no_candidate": 6
+    },
+    "long.4.pattern_3": {
+      "total": 121,
+      "agreement_on_measured_checks": 8,
+      "fully_measured": 85,
+      "P1": 113,
+      "no_candidate": 8
+    },
+    "long.5.pattern_3": {
+      "total": 121,
+      "agreement_on_measured_checks": 4,
+      "fully_measured": 78,
+      "P1": 117,
+      "no_candidate": 4
+    },
+    "long.3.pattern_4": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 85,
+      "P1": 121
+    },
+    "long.4.pattern_4": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 84,
+      "P1": 121
+    },
+    "long.5.pattern_4": {
+      "total": 121,
+      "agreement_on_measured_checks": 2,
+      "fully_measured": 76,
+      "P1": 119,
+      "no_candidate": 2
+    },
+    "long.3.pattern_5": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 76,
+      "P1": 121
+    },
+    "long.4.pattern_5": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 85,
+      "P1": 121
+    },
+    "long.5.pattern_5": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 80,
+      "P1": 121
+    },
+    "long.3.pattern_6": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 76,
+      "P1": 121
+    },
+    "long.4.pattern_6": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 73,
+      "P1": 121
+    },
+    "long.5.pattern_6": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 81,
+      "P1": 121
+    },
+    "long.3.pattern_7": {
+      "total": 121,
+      "agreement_on_measured_checks": 11,
+      "fully_measured": 76,
+      "P1": 110,
+      "no_candidate": 11
+    },
+    "long.4.pattern_7": {
+      "total": 121,
+      "agreement_on_measured_checks": 9,
+      "fully_measured": 68,
+      "no_candidate": 9,
+      "P1": 112
+    },
+    "long.5.pattern_7": {
+      "total": 121,
+      "agreement_on_measured_checks": 12,
+      "fully_measured": 74,
+      "P1": 109,
+      "no_candidate": 12
+    },
+    "long.3.pattern_8": {
+      "total": 121,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 71,
+      "P1": 81,
+      "no_candidate": 40
+    },
+    "long.4.pattern_8": {
+      "total": 121,
+      "agreement_on_measured_checks": 33,
+      "fully_measured": 79,
+      "P1": 88,
+      "no_candidate": 33
+    },
+    "long.5.pattern_8": {
+      "total": 121,
+      "agreement_on_measured_checks": 24,
+      "fully_measured": 85,
+      "no_candidate": 24,
+      "P1": 97
+    },
+    "long.3.pattern_9": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 78,
+      "P1": 121
+    },
+    "long.4.pattern_9": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 83,
+      "P1": 121
+    },
+    "long.5.pattern_9": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 66,
+      "P1": 121
+    },
+    "long.3.pattern_10": {
+      "total": 121,
+      "agreement_on_measured_checks": 1,
+      "fully_measured": 76,
+      "P1": 120,
+      "no_candidate": 1
+    },
+    "long.4.pattern_10": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 71,
+      "P1": 121
+    },
+    "long.5.pattern_10": {
+      "total": 120,
+      "agreement_on_measured_checks": 1,
+      "fully_measured": 82,
+      "P1": 119,
+      "no_candidate": 1
+    },
+    "long.3.pattern_11": {
+      "total": 120,
+      "agreement_on_measured_checks": 29,
+      "fully_measured": 79,
+      "P1": 91,
+      "no_candidate": 29
+    },
+    "long.4.pattern_11": {
+      "total": 120,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 79,
+      "P1": 93,
+      "no_candidate": 27
+    },
+    "long.5.pattern_11": {
+      "total": 120,
+      "agreement_on_measured_checks": 19,
+      "fully_measured": 72,
+      "P1": 101,
+      "no_candidate": 19
+    },
+    "asr.multi_action": {
+      "total": 101,
+      "agreement_on_measured_checks": 50,
+      "fully_measured": 101,
+      "no_candidate": 50,
+      "P1": 51
+    },
+    "asr.temporal": {
+      "total": 865,
+      "agreement_on_measured_checks": 15,
+      "fully_measured": 440,
+      "P1": 850,
+      "no_candidate": 15
+    },
+    "asr.negation": {
+      "total": 804,
+      "agreement_on_measured_checks": 755,
+      "fully_measured": 519,
+      "no_candidate": 755,
+      "P1": 49
+    },
+    "clean.errand.return": {
+      "total": 1007,
+      "agreement_on_measured_checks": 886,
+      "fully_measured": 714,
+      "no_candidate": 886,
+      "P1": 121
+    },
+    "clean.errand.drop_off": {
+      "total": 1028,
+      "agreement_on_measured_checks": 925,
+      "fully_measured": 743,
+      "no_candidate": 925,
+      "P1": 103
+    },
+    "clean.admin.complete": {
+      "total": 22,
+      "agreement_on_measured_checks": 20,
+      "fully_measured": 14,
+      "no_candidate": 20,
+      "P1": 2
+    },
+    "clean.admin.fill_out": {
+      "total": 26,
+      "agreement_on_measured_checks": 24,
+      "fully_measured": 15,
+      "no_candidate": 24,
+      "P1": 2
+    },
+    "clean.admin.reply_to": {
+      "total": 21,
+      "agreement_on_measured_checks": 21,
+      "fully_measured": 13,
+      "no_candidate": 21
+    },
+    "messy.wrapper.return": {
+      "total": 3526,
+      "agreement_on_measured_checks": 1529,
+      "fully_measured": 2100,
+      "no_candidate": 1529,
+      "P1": 1997
+    },
+    "messy.wrapper.pick_up": {
+      "total": 3489,
+      "agreement_on_measured_checks": 755,
+      "fully_measured": 2087,
+      "no_candidate": 755,
+      "P1": 2734
+    },
+    "messy.wrapper.buy": {
+      "total": 3416,
+      "agreement_on_measured_checks": 649,
+      "fully_measured": 2056,
+      "P1": 2767,
+      "no_candidate": 649
+    },
+    "messy.wrapper.get": {
+      "total": 3569,
+      "agreement_on_measured_checks": 771,
+      "fully_measured": 2206,
+      "P1": 2798,
+      "no_candidate": 771
+    },
+    "correction.chain": {
+      "total": 1148,
+      "agreement_on_measured_checks": 222,
+      "fully_measured": 689,
+      "P1": 926,
+      "no_candidate": 222
+    },
+    "correction.time_chain": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 106
+    },
+    "correction.shared_location": {
+      "total": 1152,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1152,
+      "P1": 1152
+    },
+    "correction.repeated_frame": {
+      "total": 106,
+      "agreement_on_measured_checks": 106,
+      "fully_measured": 106,
+      "no_candidate": 106
+    },
+    "correction.travel_restart": {
+      "total": 1086,
+      "agreement_on_measured_checks": 1032,
+      "fully_measured": 1086,
+      "no_candidate": 1032,
+      "P1": 54
+    },
+    "correction.negated_replacement": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 106
+    },
+    "multi.6.pattern_0": {
+      "total": 175,
+      "agreement_on_measured_checks": 30,
+      "fully_measured": 105,
+      "P1": 145,
+      "no_candidate": 30
+    },
+    "multi.6.pattern_1": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 103,
+      "P1": 175
+    },
+    "multi.6.pattern_2": {
+      "total": 175,
+      "agreement_on_measured_checks": 30,
+      "fully_measured": 126,
+      "P1": 145,
+      "no_candidate": 30
+    },
+    "multi.6.pattern_3": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 96,
+      "P1": 175
+    },
+    "multi.6.pattern_4": {
+      "total": 175,
+      "agreement_on_measured_checks": 76,
+      "fully_measured": 107,
+      "P1": 99,
+      "no_candidate": 76
+    },
+    "multi.6.pattern_5": {
+      "total": 175,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 107,
+      "P1": 135,
+      "no_candidate": 40
+    },
+    "multi.6.pattern_6": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P0": 170,
+      "P1": 5
+    },
+    "multi.6.pattern_7": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 91,
+      "P1": 175
+    },
+    "multi.6.pattern_8": {
+      "total": 175,
+      "agreement_on_measured_checks": 74,
+      "fully_measured": 105,
+      "P1": 101,
+      "no_candidate": 74
+    },
+    "multi.6.pattern_9": {
+      "total": 175,
+      "agreement_on_measured_checks": 13,
+      "fully_measured": 110,
+      "no_candidate": 13,
+      "P1": 162
+    },
+    "multi.6.pattern_10": {
+      "total": 175,
+      "agreement_on_measured_checks": 6,
+      "fully_measured": 97,
+      "P1": 169,
+      "no_candidate": 6
+    },
+    "multi.6.pattern_11": {
+      "total": 175,
+      "agreement_on_measured_checks": 26,
+      "fully_measured": 108,
+      "P1": 149,
+      "no_candidate": 26
+    },
+    "multi.6.pattern_12": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 97,
+      "P1": 175
+    },
+    "multi.6.pattern_13": {
+      "total": 175,
+      "agreement_on_measured_checks": 27,
+      "fully_measured": 107,
+      "P1": 148,
+      "no_candidate": 27
+    },
+    "multi.2.pattern_14": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 104,
+      "P1": 175
+    },
+    "multi.3.pattern_14": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 105,
+      "P1": 175
+    },
+    "multi.4.pattern_14": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 104,
+      "P1": 175
+    },
+    "multi.5.pattern_14": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 104,
+      "P1": 175
+    },
+    "multi.6.pattern_14": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 110,
+      "P1": 175
+    },
+    "multi.2.pattern_15": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 99,
+      "P1": 175
+    },
+    "multi.3.pattern_15": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 118,
+      "P1": 175
+    },
+    "multi.4.pattern_15": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 116,
+      "P1": 175
+    },
+    "multi.5.pattern_15": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 108,
+      "P1": 175
+    },
+    "multi.6.pattern_15": {
+      "total": 175,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 97,
+      "P1": 175
+    },
+    "unfinished.travel_to": {
+      "total": 1,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1,
+      "P1": 1
+    },
+    "unfinished.remind_to": {
+      "total": 1,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1,
+      "P1": 1
+    },
+    "unfinished.call": {
+      "total": 1,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1,
+      "P1": 1
+    },
+    "unfinished.buy": {
+      "total": 40,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 40,
+      "P1": 40
+    },
+    "unfinished.text_about": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 106,
+      "P1": 106
+    },
+    "unfinished.and": {
+      "total": 83,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 83,
+      "P1": 83
+    },
+    "unfinished.was_going_to": {
+      "total": 1,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1,
+      "P1": 1
+    },
+    "unfinished.dont_forget": {
+      "total": 1,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1,
+      "P1": 1
+    },
+    "unfinished.cancel_the": {
+      "total": 1,
+      "agreement_on_measured_checks": 1,
+      "fully_measured": 0,
+      "no_candidate": 1
+    },
+    "unfinished.get_from": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 121,
+      "P1": 121
+    },
+    "unfinished.after_clause": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 106,
+      "P1": 106
+    },
+    "unfinished.if_clause": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 106,
+      "P1": 106
+    },
+    "unfinished.temporal": {
+      "total": 1439,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1439,
+      "P1": 1439
+    },
+    "unfinished.recovered_restart": {
+      "total": 6872,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 6872,
+      "P1": 6872
+    },
+    "unfinished.explicit_abandonment": {
+      "total": 121,
+      "agreement_on_measured_checks": 121,
+      "fully_measured": 0,
+      "no_candidate": 121
+    },
+    "safety.prohibit": {
+      "total": 775,
+      "agreement_on_measured_checks": 726,
+      "fully_measured": 455,
+      "no_candidate": 726,
+      "P1": 49
+    },
+    "safety.dont_create": {
+      "total": 121,
+      "agreement_on_measured_checks": 121,
+      "fully_measured": 0,
+      "no_candidate": 121
+    },
+    "safety.partial_cancel": {
+      "total": 855,
+      "agreement_on_measured_checks": 196,
+      "fully_measured": 532,
+      "P1": 659,
+      "no_candidate": 196
+    },
+    "safety.prohibit_replace": {
+      "total": 817,
+      "agreement_on_measured_checks": 817,
+      "fully_measured": 0,
+      "no_candidate": 817
+    },
+    "safety.temporal_negation": {
+      "total": 759,
+      "agreement_on_measured_checks": 724,
+      "fully_measured": 432,
+      "no_candidate": 724,
+      "P1": 35
+    },
+    "safety.location_negation": {
+      "total": 855,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 524,
+      "P1": 855
+    },
+    "safety.replace": {
+      "total": 823,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 823,
+      "P1": 823
+    },
+    "safety.unresolved": {
+      "total": 851,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 496,
+      "P1": 851
+    },
+    "safety.conditional": {
+      "total": 824,
+      "agreement_on_measured_checks": 824,
+      "fully_measured": 824,
+      "no_candidate": 824
+    },
+    "safety.negated_cancel": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 121
+    },
+    "safety.scoped_cancel": {
+      "total": 826,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 29,
+      "P1": 826
+    },
+    "safety.no_reminder_yet": {
+      "total": 106,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 106
+    },
+    "safety.selective_remove": {
+      "total": 121,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 121,
+      "P1": 121
+    },
+    "safety.abandonment": {
+      "total": 55,
+      "agreement_on_measured_checks": 55,
+      "fully_measured": 0,
+      "no_candidate": 55
+    },
+    "temporal.fuzzy": {
+      "total": 545,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 0,
+      "no_candidate": 44,
+      "P1": 501
+    },
+    "temporal.shared_date": {
+      "total": 693,
+      "agreement_on_measured_checks": 474,
+      "fully_measured": 288,
+      "no_candidate": 474,
+      "P1": 219
+    },
+    "temporal.relative": {
+      "total": 13,
+      "agreement_on_measured_checks": 13,
+      "fully_measured": 13,
+      "no_candidate": 13
+    },
+    "temporal.negated_date": {
+      "total": 496,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 496,
+      "P1": 496
+    },
+    "temporal.underspecified": {
+      "total": 541,
+      "agreement_on_measured_checks": 445,
+      "fully_measured": 0,
+      "no_candidate": 445,
+      "P1": 96
+    },
+    "temporal.relative_correction": {
+      "total": 686,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 686
+    },
+    "temporal.recurrence_exception": {
+      "total": 33,
+      "agreement_on_measured_checks": 30,
+      "fully_measured": 0,
+      "no_candidate": 30,
+      "P1": 3
+    },
+    "temporal.event_relative": {
+      "total": 542,
+      "agreement_on_measured_checks": 479,
+      "fully_measured": 0,
+      "no_candidate": 479,
+      "P1": 63
+    },
+    "reference.pronoun": {
+      "total": 63,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 63,
+      "P1": 63
+    },
+    "reference.tell_them": {
+      "total": 103,
+      "agreement_on_measured_checks": 103,
+      "fully_measured": 103,
+      "no_candidate": 103
+    },
+    "reference.fallback": {
+      "total": 431,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 431,
+      "P1": 431
+    },
+    "reference.person_alt": {
+      "total": 435,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 435,
+      "P1": 435
+    },
+    "reference.handoff": {
+      "total": 429,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 429,
+      "P1": 429
+    },
+    "reference.deictic": {
+      "total": 424,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 424,
+      "P1": 424
+    },
+    "reference.same_message": {
+      "total": 439,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 439,
+      "P1": 439
+    },
+    "reference.handoff_chain": {
+      "total": 440,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 440,
+      "P1": 440
+    },
+    "long.6.pattern_0": {
+      "total": 108,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 63,
+      "P1": 108
+    },
+    "long.6.pattern_1": {
+      "total": 108,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 72,
+      "P1": 108
+    },
+    "long.6.pattern_2": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P0": 104,
+      "P1": 3
+    },
+    "long.6.pattern_3": {
+      "total": 107,
+      "agreement_on_measured_checks": 3,
+      "fully_measured": 69,
+      "P1": 104,
+      "no_candidate": 3
+    },
+    "long.6.pattern_4": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 64,
+      "P1": 107
+    },
+    "long.6.pattern_5": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 64,
+      "P1": 107
+    },
+    "long.6.pattern_6": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 74,
+      "P1": 107
+    },
+    "long.6.pattern_7": {
+      "total": 107,
+      "agreement_on_measured_checks": 12,
+      "fully_measured": 56,
+      "P1": 95,
+      "no_candidate": 12
+    },
+    "long.6.pattern_8": {
+      "total": 107,
+      "agreement_on_measured_checks": 21,
+      "fully_measured": 65,
+      "P1": 86,
+      "no_candidate": 21
+    },
+    "long.6.pattern_9": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 65,
+      "P1": 107
+    },
+    "long.6.pattern_10": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 72,
+      "P1": 107
+    },
+    "long.6.pattern_11": {
+      "total": 107,
+      "agreement_on_measured_checks": 23,
+      "fully_measured": 73,
+      "P1": 84,
+      "no_candidate": 23
+    },
+    "long.3.pattern_12": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 57,
+      "P1": 107
+    },
+    "long.4.pattern_12": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 60,
+      "P1": 107
+    },
+    "long.5.pattern_12": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 64,
+      "P1": 107
+    },
+    "long.6.pattern_12": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 61,
+      "P1": 107
+    },
+    "long.3.pattern_13": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 64,
+      "P1": 107
+    },
+    "long.4.pattern_13": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 65,
+      "P1": 107
+    },
+    "long.5.pattern_13": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 66,
+      "P1": 107
+    },
+    "long.6.pattern_13": {
+      "total": 107,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 62,
+      "P1": 107
+    },
+    "asr.multi": {
+      "total": 770,
+      "agreement_on_measured_checks": 413,
+      "fully_measured": 471,
+      "no_candidate": 413,
+      "P1": 357
+    },
+    "asr.restart": {
+      "total": 760,
+      "agreement_on_measured_checks": 7,
+      "fully_measured": 760,
+      "P1": 753,
+      "no_candidate": 7
+    },
+    "entity.organization.university": {
+      "total": 251,
+      "agreement_on_measured_checks": 212,
+      "fully_measured": 0,
+      "no_candidate": 212,
+      "P1": 39
+    },
+    "entity.organization.delivery": {
+      "total": 159,
+      "agreement_on_measured_checks": 132,
+      "fully_measured": 0,
+      "no_candidate": 132,
+      "P1": 27
+    },
+    "entity.organization.courier": {
+      "total": 269,
+      "agreement_on_measured_checks": 226,
+      "fully_measured": 0,
+      "no_candidate": 226,
+      "P1": 43
+    },
+    "entity.organization.gym": {
+      "total": 157,
+      "agreement_on_measured_checks": 125,
+      "fully_measured": 0,
+      "P1": 32,
+      "no_candidate": 125
+    },
+    "entity.organization.airline": {
+      "total": 346,
+      "agreement_on_measured_checks": 211,
+      "fully_measured": 0,
+      "P1": 135,
+      "no_candidate": 211
+    },
+    "entity.organization.subscription": {
+      "total": 161,
+      "agreement_on_measured_checks": 76,
+      "fully_measured": 0,
+      "no_candidate": 76,
+      "P1": 85
+    },
+    "entity.organization.government": {
+      "total": 430,
+      "agreement_on_measured_checks": 292,
+      "fully_measured": 0,
+      "no_candidate": 292,
+      "P1": 138
+    },
+    "entity.organization.retailer": {
+      "total": 611,
+      "agreement_on_measured_checks": 364,
+      "fully_measured": 0,
+      "no_candidate": 364,
+      "P1": 247
+    },
+    "entity.organization.bank": {
+      "total": 689,
+      "agreement_on_measured_checks": 439,
+      "fully_measured": 0,
+      "no_candidate": 439,
+      "P1": 250
+    },
+    "entity.organization.postal": {
+      "total": 100,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 100
+    },
+    "entity.organization.telecom": {
+      "total": 355,
+      "agreement_on_measured_checks": 79,
+      "fully_measured": 0,
+      "no_candidate": 79,
+      "P1": 276
+    },
+    "entity.organization.restaurant": {
+      "total": 246,
+      "agreement_on_measured_checks": 73,
+      "fully_measured": 0,
+      "no_candidate": 73,
+      "P1": 173
+    },
+    "entity.organization.technology": {
+      "total": 243,
+      "agreement_on_measured_checks": 215,
+      "fully_measured": 0,
+      "no_candidate": 215,
+      "P1": 28
+    },
+    "entity.organization.company": {
+      "total": 80,
+      "agreement_on_measured_checks": 70,
+      "fully_measured": 0,
+      "no_candidate": 70,
+      "P1": 10
+    },
+    "entity.organization.support": {
+      "total": 158,
+      "agreement_on_measured_checks": 140,
+      "fully_measured": 0,
+      "no_candidate": 140,
+      "P1": 18
+    },
+    "entity.organization.lab": {
+      "total": 156,
+      "agreement_on_measured_checks": 63,
+      "fully_measured": 0,
+      "no_candidate": 63,
+      "P1": 93
+    },
+    "entity.organization.utility": {
+      "total": 180,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 180
+    },
+    "entity.organization.transport": {
+      "total": 187,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 187
+    },
+    "entity.organization.financial": {
+      "total": 73,
+      "agreement_on_measured_checks": 65,
+      "fully_measured": 0,
+      "no_candidate": 65,
+      "P1": 8
+    },
+    "entity.organization.clinic": {
+      "total": 149,
+      "agreement_on_measured_checks": 126,
+      "fully_measured": 0,
+      "no_candidate": 126,
+      "P1": 23
+    },
+    "entity.organization.reminder.bank": {
+      "total": 725,
+      "agreement_on_measured_checks": 271,
+      "fully_measured": 0,
+      "P1": 454,
+      "no_candidate": 271
+    },
+    "entity.organization.reminder.subscription": {
+      "total": 154,
+      "agreement_on_measured_checks": 41,
+      "fully_measured": 0,
+      "P1": 113,
+      "no_candidate": 41
+    },
+    "entity.organization.reminder.gym": {
+      "total": 141,
+      "agreement_on_measured_checks": 60,
+      "fully_measured": 0,
+      "P1": 81,
+      "no_candidate": 60
+    },
+    "entity.organization.reminder.airline": {
+      "total": 348,
+      "agreement_on_measured_checks": 115,
+      "fully_measured": 0,
+      "P1": 233,
+      "no_candidate": 115
+    },
+    "entity.organization.reminder.telecom": {
+      "total": 347,
+      "agreement_on_measured_checks": 47,
+      "fully_measured": 0,
+      "P1": 300,
+      "no_candidate": 47
+    },
+    "entity.organization.reminder.utility": {
+      "total": 177,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 177
+    },
+    "entity.organization.reminder.university": {
+      "total": 252,
+      "agreement_on_measured_checks": 112,
+      "fully_measured": 0,
+      "no_candidate": 112,
+      "P1": 140
+    },
+    "entity.organization.reminder.government": {
+      "total": 410,
+      "agreement_on_measured_checks": 144,
+      "fully_measured": 0,
+      "no_candidate": 144,
+      "P1": 266
+    },
+    "entity.organization.reminder.retailer": {
+      "total": 589,
+      "agreement_on_measured_checks": 194,
+      "fully_measured": 0,
+      "no_candidate": 194,
+      "P1": 395
+    },
+    "entity.organization.reminder.clinic": {
+      "total": 183,
+      "agreement_on_measured_checks": 84,
+      "fully_measured": 0,
+      "P1": 99,
+      "no_candidate": 84
+    },
+    "entity.organization.reminder.courier": {
+      "total": 291,
+      "agreement_on_measured_checks": 140,
+      "fully_measured": 0,
+      "no_candidate": 140,
+      "P1": 151
+    },
+    "entity.organization.reminder.restaurant": {
+      "total": 265,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 0,
+      "P1": 225,
+      "no_candidate": 40
+    },
+    "entity.organization.reminder.support": {
+      "total": 151,
+      "agreement_on_measured_checks": 84,
+      "fully_measured": 0,
+      "no_candidate": 84,
+      "P1": 67
+    },
+    "entity.organization.reminder.technology": {
+      "total": 250,
+      "agreement_on_measured_checks": 121,
+      "fully_measured": 0,
+      "P1": 129,
+      "no_candidate": 121
+    },
+    "entity.organization.reminder.lab": {
+      "total": 158,
+      "agreement_on_measured_checks": 40,
+      "fully_measured": 0,
+      "P1": 118,
+      "no_candidate": 40
+    },
+    "entity.organization.reminder.delivery": {
+      "total": 150,
+      "agreement_on_measured_checks": 64,
+      "fully_measured": 0,
+      "P1": 86,
+      "no_candidate": 64
+    },
+    "entity.organization.reminder.transport": {
+      "total": 162,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 162
+    },
+    "entity.organization.reminder.postal": {
+      "total": 86,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 86
+    },
+    "entity.organization.reminder.financial": {
+      "total": 77,
+      "agreement_on_measured_checks": 42,
+      "fully_measured": 0,
+      "no_candidate": 42,
+      "P1": 35
+    },
+    "entity.organization.reminder.company": {
+      "total": 84,
+      "agreement_on_measured_checks": 28,
+      "fully_measured": 0,
+      "P1": 56,
+      "no_candidate": 28
+    },
+    "entity.organization.messy": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4135,
+      "fully_measured": 0,
+      "no_candidate": 4135,
+      "P1": 865
+    },
+    "entity.task_topic": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2664,
+      "fully_measured": 2949,
+      "no_candidate": 2664,
+      "P1": 2336
+    },
+    "entity.task_topic.email_for": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2663,
+      "fully_measured": 2958,
+      "no_candidate": 2663,
+      "P1": 2337
+    },
+    "entity.task_topic.messy": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2375,
+      "fully_measured": 2958,
+      "no_candidate": 2375,
+      "P1": 2625
+    },
+    "entity.person_at_org": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4177,
+      "fully_measured": 0,
+      "no_candidate": 4177,
+      "P1": 823
+    },
+    "entity.person_at_org.correction": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4045,
+      "fully_measured": 0,
+      "P1": 955,
+      "no_candidate": 4045
+    },
+    "entity.department": {
+      "total": 5000,
+      "agreement_on_measured_checks": 3668,
+      "fully_measured": 0,
+      "no_candidate": 3668,
+      "P1": 1332
+    },
+    "entity.department.messy": {
+      "total": 5000,
+      "agreement_on_measured_checks": 3594,
+      "fully_measured": 0,
+      "no_candidate": 3594,
+      "P1": 1406
+    },
+    "entity.role": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4227,
+      "fully_measured": 0,
+      "no_candidate": 4227,
+      "P1": 773
+    },
+    "entity.role.messy": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4187,
+      "fully_measured": 0,
+      "no_candidate": 4187,
+      "P1": 813
+    },
+    "entity.business_location": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4190,
+      "fully_measured": 0,
+      "no_candidate": 4190,
+      "P1": 810
+    },
+    "entity.organization_branch": {
+      "total": 5000,
+      "agreement_on_measured_checks": 4021,
+      "fully_measured": 0,
+      "no_candidate": 4021,
+      "P1": 979
+    },
+    "entity.ambiguous_name.organization": {
+      "total": 5000,
+      "agreement_on_measured_checks": 3130,
+      "fully_measured": 0,
+      "P1": 1870,
+      "no_candidate": 3130
+    },
+    "entity.ambiguous_name.person": {
+      "total": 5000,
+      "agreement_on_measured_checks": 2710,
+      "fully_measured": 0,
+      "P1": 2290,
+      "no_candidate": 2710
+    },
+    "entity.mixed.task_org": {
+      "total": 5000,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 5000
+    },
+    "entity.mixed.task_person": {
+      "total": 5000,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 5000
+    },
+    "domain.entity": {
+      "total": 5000,
+      "agreement_on_measured_checks": 3046,
+      "fully_measured": 0,
+      "no_candidate": 3046,
+      "P1": 1954
+    },
+    "messy.entity.long": {
+      "total": 5000,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 5000
+    },
+    "thought.explicit_note": {
+      "total": 651,
+      "agreement_on_measured_checks": 651,
+      "fully_measured": 651,
+      "no_candidate": 651
+    },
+    "thought.idea": {
+      "total": 647,
+      "agreement_on_measured_checks": 647,
+      "fully_measured": 647,
+      "no_candidate": 647
+    },
+    "thought.reflection": {
+      "total": 626,
+      "agreement_on_measured_checks": 626,
+      "fully_measured": 626,
+      "no_candidate": 626
+    },
+    "thought.memory.messy": {
+      "total": 1102,
+      "agreement_on_measured_checks": 911,
+      "fully_measured": 1102,
+      "no_candidate": 911,
+      "P1": 118,
+      "P0": 73
+    },
+    "thought.memory.fact": {
+      "total": 419,
+      "agreement_on_measured_checks": 364,
+      "fully_measured": 419,
+      "P1": 55,
+      "no_candidate": 364
+    },
+    "thought.question": {
+      "total": 660,
+      "agreement_on_measured_checks": 660,
+      "fully_measured": 660,
+      "no_candidate": 660
+    },
+    "thought.attributed_memory": {
+      "total": 1132,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 1132,
+      "P1": 1132
+    },
+    "thought.observation": {
+      "total": 553,
+      "agreement_on_measured_checks": 553,
+      "fully_measured": 553,
+      "no_candidate": 553
+    },
+    "thought.idea_nonactionable": {
+      "total": 1155,
+      "agreement_on_measured_checks": 1077,
+      "fully_measured": 1155,
+      "no_candidate": 1077,
+      "P0": 78
+    },
+    "thought.question_messy": {
+      "total": 1055,
+      "agreement_on_measured_checks": 1042,
+      "fully_measured": 1055,
+      "no_candidate": 1042,
+      "P1": 13
+    },
+    "reported.request_as_memory": {
+      "total": 647,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 647,
+      "P1": 647
+    },
+    "reported.quote": {
+      "total": 649,
+      "agreement_on_measured_checks": 186,
+      "fully_measured": 649,
+      "no_candidate": 186,
+      "P1": 463
+    },
+    "reported.completed_statement": {
+      "total": 592,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 592,
+      "P1": 592
+    },
+    "reported.quoted_reminder": {
+      "total": 44,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 44,
+      "P1": 44
+    },
+    "reported.deadline": {
+      "total": 426,
+      "agreement_on_measured_checks": 413,
+      "fully_measured": 426,
+      "no_candidate": 413,
+      "P1": 13
+    },
+    "reported.message_ops": {
+      "total": 615,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 615
+    },
+    "reported.org_instruction": {
+      "total": 644,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 644,
+      "P0": 603,
+      "P1": 41
+    },
+    "reported.person_instruction": {
+      "total": 637,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 637,
+      "P0": 595,
+      "P1": 42
+    },
+    "reported.negated_content": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 44,
+      "no_candidate": 44
+    },
+    "reported.email_content": {
+      "total": 537,
+      "agreement_on_measured_checks": 522,
+      "fully_measured": 0,
+      "no_candidate": 522,
+      "P1": 15
+    },
+    "reported.message_cancel": {
+      "total": 590,
+      "agreement_on_measured_checks": 385,
+      "fully_measured": 0,
+      "no_candidate": 385,
+      "P1": 205
+    },
+    "reported.statement": {
+      "total": 575,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 575,
+      "P1": 575
+    },
+    "context.entity": {
+      "total": 6000,
+      "agreement_on_measured_checks": 2555,
+      "fully_measured": 0,
+      "P1": 3445,
+      "no_candidate": 2555
+    },
+    "location.trigger": {
+      "total": 6000,
+      "agreement_on_measured_checks": 2565,
+      "fully_measured": 4493,
+      "P1": 3435,
+      "no_candidate": 2565
+    },
+    "time.before": {
+      "total": 528,
+      "agreement_on_measured_checks": 384,
+      "fully_measured": 0,
+      "P1": 144,
+      "no_candidate": 384
+    },
+    "time.until": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 0,
+      "no_candidate": 44
+    },
+    "time.business_day": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 0,
+      "no_candidate": 44
+    },
+    "time.range": {
+      "total": 507,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 507
+    },
+    "time.timezone_date": {
+      "total": 844,
+      "agreement_on_measured_checks": 719,
+      "fully_measured": 0,
+      "no_candidate": 719,
+      "P1": 125
+    },
+    "time.corrected_deadline": {
+      "total": 1029,
+      "agreement_on_measured_checks": 2,
+      "fully_measured": 0,
+      "P1": 1027,
+      "no_candidate": 2
+    },
+    "time.deadline": {
+      "total": 484,
+      "agreement_on_measured_checks": 416,
+      "fully_measured": 0,
+      "no_candidate": 416,
+      "P1": 68
+    },
+    "time.event_offset": {
+      "total": 489,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 489
+    },
+    "time.start": {
+      "total": 508,
+      "agreement_on_measured_checks": 508,
+      "fully_measured": 0,
+      "no_candidate": 508
+    },
+    "time.timezone": {
+      "total": 958,
+      "agreement_on_measured_checks": 958,
+      "fully_measured": 0,
+      "no_candidate": 958
+    },
+    "time.calendar_rule": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 0,
+      "no_candidate": 44
+    },
+    "time.dst": {
+      "total": 521,
+      "agreement_on_measured_checks": 144,
+      "fully_measured": 0,
+      "P1": 377,
+      "no_candidate": 144
+    },
+    "exact.code": {
+      "total": 515,
+      "agreement_on_measured_checks": 515,
+      "fully_measured": 515,
+      "no_candidate": 515
+    },
+    "exact.phone": {
+      "total": 542,
+      "agreement_on_measured_checks": 542,
+      "fully_measured": 542,
+      "no_candidate": 542
+    },
+    "exact.code_format": {
+      "total": 498,
+      "agreement_on_measured_checks": 498,
+      "fully_measured": 498,
+      "no_candidate": 498
+    },
+    "exact.money": {
+      "total": 508,
+      "agreement_on_measured_checks": 15,
+      "fully_measured": 508,
+      "P1": 493,
+      "no_candidate": 15
+    },
+    "exact.quantity": {
+      "total": 534,
+      "agreement_on_measured_checks": 534,
+      "fully_measured": 534,
+      "no_candidate": 534
+    },
+    "exact.url": {
+      "total": 488,
+      "agreement_on_measured_checks": 22,
+      "fully_measured": 488,
+      "P1": 466,
+      "no_candidate": 22
+    },
+    "exact.percent": {
+      "total": 449,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 449,
+      "P1": 449
+    },
+    "exact.email": {
+      "total": 474,
+      "agreement_on_measured_checks": 474,
+      "fully_measured": 474,
+      "no_candidate": 474
+    },
+    "exact.money_emphasis": {
+      "total": 495,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 495,
+      "P1": 495
+    },
+    "exact.phone_messy": {
+      "total": 497,
+      "agreement_on_measured_checks": 342,
+      "fully_measured": 497,
+      "no_candidate": 342,
+      "P1": 154,
+      "P0": 1
+    },
+    "hyp.changed_mind": {
+      "total": 546,
+      "agreement_on_measured_checks": 546,
+      "fully_measured": 546,
+      "no_candidate": 546
+    },
+    "hyp.almost": {
+      "total": 576,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 576,
+      "P1": 576
+    },
+    "indirect.thought": {
+      "total": 554,
+      "agreement_on_measured_checks": 554,
+      "fully_measured": 554,
+      "no_candidate": 554
+    },
+    "indirect.maybe": {
+      "total": 388,
+      "agreement_on_measured_checks": 380,
+      "fully_measured": 388,
+      "no_candidate": 380,
+      "P1": 8
+    },
+    "indirect.soft": {
+      "total": 566,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 566,
+      "P1": 566
+    },
+    "indirect.no_reminder": {
+      "total": 624,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 624,
+      "P1": 624
+    },
+    "indirect.out_of": {
+      "total": 44,
+      "agreement_on_measured_checks": 43,
+      "fully_measured": 44,
+      "no_candidate": 43,
+      "P0": 1
+    },
+    "hyp.counterfactual": {
+      "total": 570,
+      "agreement_on_measured_checks": 535,
+      "fully_measured": 570,
+      "no_candidate": 535,
+      "P1": 35
+    },
+    "hyp.should_have": {
+      "total": 560,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 560,
+      "P1": 560
+    },
+    "hyp.wish": {
+      "total": 572,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 572,
+      "P1": 572
+    },
+    "code.mama": {
+      "total": 380,
+      "agreement_on_measured_checks": 331,
+      "fully_measured": 0,
+      "no_candidate": 331,
+      "P1": 49
+    },
+    "code.food": {
+      "total": 433,
+      "agreement_on_measured_checks": 376,
+      "fully_measured": 433,
+      "no_candidate": 376,
+      "P1": 57
+    },
+    "code.shinkansen": {
+      "total": 399,
+      "agreement_on_measured_checks": 351,
+      "fully_measured": 399,
+      "no_candidate": 351,
+      "P1": 48
+    },
+    "name.spoken_acronym": {
+      "total": 410,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 410
+    },
+    "name.spelled_acronym": {
+      "total": 388,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 388
+    },
+    "name.uncommon": {
+      "total": 404,
+      "agreement_on_measured_checks": 345,
+      "fully_measured": 0,
+      "no_candidate": 345,
+      "P1": 59
+    },
+    "code.message": {
+      "total": 558,
+      "agreement_on_measured_checks": 0,
+      "fully_measured": 0,
+      "P1": 558
+    },
+    "name.repeated": {
+      "total": 592,
+      "agreement_on_measured_checks": 491,
+      "fully_measured": 0,
+      "no_candidate": 491,
+      "P1": 101
+    },
+    "name.diacritic": {
+      "total": 392,
+      "agreement_on_measured_checks": 346,
+      "fully_measured": 0,
+      "no_candidate": 346,
+      "P1": 46
+    },
+    "code.hongbao": {
+      "total": 44,
+      "agreement_on_measured_checks": 44,
+      "fully_measured": 44,
+      "no_candidate": 44
+    },
+    "cross.long": {
+      "total": 4000,
+      "agreement_on_measured_checks": 72,
+      "fully_measured": 723,
+      "P1": 3824,
+      "P0": 104,
+      "no_candidate": 72
+    }
+  },
+  "field_checks": {
+    "actionability": {
+      "evaluated": 326809,
+      "passed": 315981
+    },
+    "action_content": {
+      "evaluated": 292471,
+      "passed": 273756
+    },
+    "object_content": {
+      "evaluated": 315809,
+      "passed": 286852
+    },
+    "destination_content": {
+      "evaluated": 134827,
+      "passed": 88090
+    },
+    "date": {
+      "evaluated": 201728,
+      "passed": 146623
+    },
+    "time": {
+      "evaluated": 76741,
+      "passed": 58274
+    },
+    "target_identity_text": {
+      "evaluated": 111936,
+      "passed": 107729
+    },
+    "person_identity": {
+      "evaluated": 43113,
+      "passed": 37811
+    },
+    "task_object_as_person": {
+      "evaluated": 8242,
+      "passed": 0
+    },
+    "recurrence": {
+      "evaluated": 601,
+      "passed": 434
+    },
+    "negative_polarity": {
+      "evaluated": 2483,
+      "passed": 2473
+    },
+    "conditional_dependency": {
+      "evaluated": 969,
+      "passed": 969
+    },
+    "nonperson_as_person": {
+      "evaluated": 9634,
+      "passed": 1202
+    },
+    "location_event": {
+      "evaluated": 5492,
+      "passed": 4167
+    },
+    "location_place": {
+      "evaluated": 5492,
+      "passed": 2514
+    },
+    "location_review": {
+      "evaluated": 1507,
+      "passed": 1507
+    },
+    "time_zone": {
+      "evaluated": 1198,
+      "passed": 1156
+    },
+    "fixed_time_zone": {
+      "evaluated": 1198,
+      "passed": 1156
+    },
+    "exact_value_display": {
+      "evaluated": 6005,
+      "passed": 5994
+    },
+    "exact_value_raw_quote": {
+      "evaluated": 6005,
+      "passed": 5994
+    }
+  },
+  "evaluator_sha256": "669bf4d04c67bca624162d1fed7c7e04c5e82b70ecdfe72091b77f367a33e93a",
+  "legacy_helpers_sha256": "a22b99a9b791954138a0cb692e0c574f8e9718078f2ba29b9601ade33501b2c4",
+  "warning": "Severity and clusters are deterministic candidates, not confirmed root causes. Missing ontology, context, advanced semantics, and semantic-equivalence adjudication preclude an accuracy claim."
+}

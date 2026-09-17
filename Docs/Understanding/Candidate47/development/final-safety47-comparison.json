@@ -1,0 +1,84 @@
+{
+  "cases": 287,
+  "dimensions_before": {
+    "actionability": 68,
+    "non_actionable_confident_action": 68,
+    "task_object_as_person": 42,
+    "object_content": 12,
+    "date": 11,
+    "temporal_phrase_lost": 3,
+    "destination_content": 4,
+    "extra_item": 5,
+    "over_splitting": 5,
+    "quote_invented_tokens": 4,
+    "time": 4,
+    "nonperson_as_person": 5
+  },
+  "dimensions_after": {
+    "actionability": 52,
+    "non_actionable_confident_action": 52,
+    "task_object_as_person": 42,
+    "object_content": 12,
+    "date": 7,
+    "temporal_phrase_lost": 3,
+    "destination_content": 4,
+    "extra_item": 4,
+    "over_splitting": 4,
+    "nonperson_as_person": 5,
+    "lost_item": 1,
+    "under_splitting": 1
+  },
+  "per_family": {
+    "thought.memory.messy": {
+      "total": 73,
+      "before_P0": 51,
+      "before_agreement": 17,
+      "after_P0": 51,
+      "after_agreement": 17
+    },
+    "thought.idea_nonactionable": {
+      "total": 78,
+      "before_P0": 0,
+      "before_agreement": 78,
+      "after_P0": 0,
+      "after_agreement": 78
+    },
+    "exact.phone_messy": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "indirect.out_of": {
+      "total": 1,
+      "before_P0": 1,
+      "before_agreement": 0,
+      "after_P0": 1,
+      "after_agreement": 0
+    },
+    "cross.long": {
+      "total": 120,
+      "before_P0": 16,
+      "before_agreement": 66,
+      "after_P0": 0,
+      "after_agreement": 66
+    },
+    "safety.prohibit": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 10,
+      "after_P0": 0,
+      "after_agreement": 10
+    },
+    "asr.temporal": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    }
+  },
+  "new_difference_cases": 1,
+  "improved_cases": 20
+}

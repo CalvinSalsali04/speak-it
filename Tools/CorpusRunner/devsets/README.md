@@ -1,5 +1,11 @@
 # Development sets
 
+The immutable conditional-intent safety slice is
+`conditional-intent-10k.jsonl`. Recreate it only from a saved 10K result with
+`extract-conditional-intent.py`, and score it with
+`conditional-intent-score.sh`; the scorer requires one visible unsupported
+conditional item and rejects every executable timing or recurrence field.
+
 Where rules are worked out. **Not a gate, and not held out.**
 
 ```bash

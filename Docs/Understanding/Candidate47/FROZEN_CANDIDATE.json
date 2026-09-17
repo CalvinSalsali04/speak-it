@@ -1,0 +1,67 @@
+{
+  "candidate": 47,
+  "status": "frozen_for_controlled_real_audio_TestFlight_validation",
+  "created_at": 1789642811.206945,
+  "production_worktree": "/private/tmp/speak-it-conditional-intent",
+  "branch": "codex/conditional-intent-safety",
+  "base_commit": "faeab4e90bee4f67d60e33daa248f48b333ca445",
+  "source_is_uncommitted_archived_patch": true,
+  "swift_files": 68,
+  "bank_sha256": "eec6aabf7b23920ba0798e549a92613990077387431afdcddfacbbf0cdcb1311",
+  "evaluator_identity": {
+    "/Users/calvinwak/Documents/Speak It/Tools/Reliability250K/evaluate.py": "669bf4d04c67bca624162d1fed7c7e04c5e82b70ecdfe72091b77f367a33e93a",
+    "/Users/calvinwak/Documents/Speak It/Tools/Reliability250K/report.py": "51fc8c1db2a6958a2a4310fe2649e1e8c541ef3e3a558a9f733edcd0a5c5c63f",
+    "/Users/calvinwak/Documents/Speak It/Tools/SpeechLabStressBank/run.py": "a22b99a9b791954138a0cb692e0c574f8e9718078f2ba29b9601ade33501b2c4"
+  },
+  "source_manifest": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/candidate47-source.json",
+  "source_archive": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/candidate47-source.tar.gz",
+  "production_patch": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/candidate47-production.patch",
+  "probe": "/Users/calvinwak/Documents/Speak It/output/reliability-250k/development/build47/probe",
+  "artifacts_sha256": {
+    "candidate47-source.json": "f46a0a6ec9f3edf536a0d94c3b482901ec125ff52cc306b214487f4f37a3c42b",
+    "candidate47-source.tar.gz": "0d1721978e6fe962d0a9beaec91ad9dd526d1c37ab41f728171b4066579a798d",
+    "candidate47-production.patch": "780c8a15e4e55dfa219670d07022e967efd14b6afe1826cc377da158ea8da79c",
+    "build47/probe": "5f287cd7c1eaba27de58e671e6b3ccc1e0c05a5c6eafe0bdba0862bc18e1cc44",
+    "validation47.json": "fd4b397e88de4307c320a13411b4bc639574226f9c8b8322c07aa25ab9e35d93",
+    "candidate35-to47-affected-comparison.json": "268aa046a39ccef30f71e82949d3cb56b4358753d0f730721bbcaea3d91491af",
+    "candidate45-to47-common-comparison.json": "d6e3e0be3261741537e86eb72e742659b5ab4b10e6aa92227b717586bfb9239c",
+    "candidate47-adjudication.json": "5ae1e90c99539eeebe306a658c16c0f79dd018d329174034c566f28b9204d547",
+    "final-safety47-provenance.json": "558bf8f65c3d47741748c5f0969de4177d4d5165cddfde7e12910e7220e6fb50",
+    "final-safety47-comparison.json": "e8bf0da36cc1af40bbbcdeff6a60557bea1748a6dba9420629c65f11617d70ed",
+    "final-safety47/actual.jsonl": "640c8c9f5a586cd6772aa6ad474203f51cc2ecc5a8bcb015e0baab4356db2d07",
+    "union47/actual.jsonl": "78e6c8e7c11ee36cb7056c0068a47f70854870d7ebf6a08e0216c3c9d1c1cdf4"
+  },
+  "validation": {
+    "cancellation": "187/187",
+    "conditional": "72/72",
+    "corpus": {
+      "cases": 1434,
+      "critical": 0,
+      "behavioral": 1,
+      "metadata": 0,
+      "cosmetic": 2,
+      "qualification": "Zero critical/metadata differences. One intentional behavioral contract correction: unobservable office-closing event with only a date is held for review without notification. Two qualified cosmetics: before-dinner punctuation and visible unresolved essay condition. Corpus fixture unchanged; see dated-event-binding controls."
+    },
+    "release": "passed",
+    "diff_check": "passed",
+    "affected47_cases": 15058,
+    "safety_closure47_cases": 287
+  },
+  "coverage_limit": "Last complete250000 execution is candidate35. Candidate47 has staged ancestor full-family evidence plus its own affected and safety closure runs; no claim of a full47 run.",
+  "decision": "No confirmed broad P0 family remains in reviewed evidence. Major P1 reduced; remaining grouping/metadata and ambiguity cases do not justify another synthetic full-bank run before controlled real-audio/device validation.",
+  "known_P1": "Capture-wrapper/trip grouping and destination/contact metadata. SB100K023393 pickup date remains detached; reproduced with47.",
+  "device_validation_pending": [
+    "real microphone/ASR",
+    "on-device FoundationModels",
+    "persisted cancellation/matching",
+    "contacts",
+    "notification/geofence delivery",
+    "timezone/DST integration"
+  ],
+  "final_records_sha256": {
+    "READINESS.md": "edb989346379d940804728e814c33b0562b5fd5b4f250464a2308eda676740fc",
+    "CURRENT_STATE.json": "2409e42d5807cd9bdad93f7153631e17cc614af50265848a924fbf269372c8a6",
+    "continuation-state.md": "25fba5292822b6f6287be14a8cfaa440668b8258acfd4a43f85ae6391bc5bba1",
+    "development/final-resolution47.json": "6a9a42479c8a53e8e25b796b1b699f5994a62648d784935cec4ca7451b149c92"
+  }
+}

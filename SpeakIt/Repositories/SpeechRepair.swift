@@ -65,7 +65,7 @@ enum DisfluencyFilter {
     /// turn at the lights" opens with a direction, and "I mean to call her" is
     /// an intention rather than a repair. The comma is the whole difference —
     /// without it these would eat the first word of real sentences.
-    private static let punctuatedLeadIns = #"right|i\s+mean|now|see|look"#
+    private static let punctuatedLeadIns = #"right|i\s+mean|now|see|look|actually|quick\s+thing|for\s+later"#
 
     /// Openers that carry no instruction of their own, and the spoken
     /// contractions that stand in for a dropped subject.
@@ -83,6 +83,17 @@ enum DisfluencyFilter {
     /// discourse; "right turn at the lights" and "now is a bad time" are not.
     private static var imperativeLead: String {
         #"(?:\#(ActionabilityReader.actionVerb)|remind\s+me|set\s+(?:an?\s+)?(?:alarm|timer|reminder)|wake\s+me|let'?s|go|start|stop|put|move|write|read|study|walk|feed|apply|need\s+to|i\s+need\s+to|i\s+have\s+to|i\s+should|can\s+you|could\s+you|please)"#
+    }
+
+    /// Prefix-only normalization for the speech-act reader. This must not call
+    /// the full repair pass, which itself consults CaptureContentScope.
+    static func scopePrefix(_ text: String) -> String {
+        var value = text
+        for _ in 0..<2 {
+            value = replace(value, #"^(?:(?:\#(pureFillers)|\#(leadIns))\b[\s,]*)+"#, "")
+            value = replace(value, #"^(?:(?:\#(punctuatedLeadIns))\s*,\s*)+"#, "")
+        }
+        return value
     }
 
     static func stripped(_ text: String) -> String {
@@ -152,7 +163,9 @@ enum DisfluencyFilter {
         // The colon is how dictation writes the pause after the lead, and it
         // was left behind: "Note to self: the garage code is 4821" became a
         // row titled ": The garage code is 4821".
-        value = replace(value, #"^(?:note|reminder|memo)\s+to\s+self\b[\s,:;\-–—]*"#, "")
+        if !CaptureContentScope.explicitlyMemory(value) {
+            value = replace(value, #"^(?:note|reminder|memo)\s+to\s+self\b[\s,:;\-–—]*"#, "")
+        }
         // "Actually no wait, Maya's swim lesson moved to Thursday": a
         // retraction at the very start has nothing behind it to retract, so
         // it is the person clearing their throat. Mid-sentence "no wait"
@@ -329,7 +342,7 @@ enum DiscourseFrame {
 
     /// The throat-clearing people put in front of a farewell.
     private static let closingLeadIn =
-        #"(?:ok|okay|alright|right|well|and|so|anyway|anyways|um|uh|yeah)"#
+        #"(?:ok|okay|alright|right|well|and|then|so|anyway|anyways|um|uh|yeah)"#
 
     /// Words an English clause cannot end on. A farewell behind one of these
     /// was part of the sentence rather than the end of the recording.
@@ -863,7 +876,7 @@ enum DictationHomophoneRepair {
 
         // "Remind me two call Mom" — the connector is the only reading when a
         // verb follows, and losing it costs the action and the person.
-        replace(#"\b(remind(?:s|ed)?\s+(?:me|us))\s+(?:two|too)\s+(?=\#(connectorVerbs)\b)"#, "$1 to ")
+        replace(#"\b(remind(?:s|ed)?\s+(?:me|us)(?:\s+not)?)\s+(?:two|too)\s+(?=\#(connectorVerbs)\b)"#, "$1 to ")
         // "In an our", "half an our": "an our" is not English; "an hour" is a
         // reminder. The article is the gate.
         replace(#"\ban\s+our\b"#, "an hour")
@@ -966,6 +979,21 @@ enum SelfCorrectionResolver {
     /// slot of its own, "remind me in an hour, no make it two hours" fell
     /// through to the object repair and became "in an two hours", which
     /// resolves to no reminder at all.
+    // Calendar corrections name complete days/periods, not noun objects.
+    // Keep this grammar local to slot repair; general date readers retain
+    // their existing context-sensitive treatment of bare numbers.
+    private static let repairDatePattern = #"(?:"#
+        + #"(?:the\s+)?(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord))\s+(?:of\s+)?(?:this|next)\s+month"#
+        + #"|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)\s+from\s+now"#
+        + #"|this\s+(?:morning|afternoon|evening|night)"#
+        + #"|(?:next|this|last)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|week|month|year)"#
+        + #"|in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)"#
+        + #"|(?:the\s+)?day\s+after\s+tomorrow"#
+        + #"|(?:the\s+)?(?:start|beginning|end)\s+of\s+(?:(?:the|this|next)\s+)?(?:week|month|quarter|year)"#
+        + #"|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))"#
+        + #"|(?:the\s+)?(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord))\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)"#
+        + #"|\#(datePattern))"#
+
     static let durationPattern = #"(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half\s+an?|a\s+couple\s+of|a\s+few)\s+(?:seconds?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)"#
 
     /// Marker words that announce a repair. At least one must be present.
@@ -1024,7 +1052,69 @@ enum SelfCorrectionResolver {
         return #"(?i)(?:\#(punctuated)|\#(unpunctuated))(?=\S)"#
     }
 
+    /// An ordinal item reference addresses a prior clause, not a calendar day.
+    /// Until that reference can be bound, preserve the complete capture.
+    static func hasUnresolvedOrdinalReference(_ text: String) -> Bool {
+        text.range(
+            of: #"(?i)\b(?:actually|rather|i\s+mean|sorry|wait)[\s,]+for\s+the\s+(?:\#(ActionabilityReader.ordinalWord)|\d+(?:st|nd|rd|th))\s+(?:one|item|task|errand)\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    /// A negative repair that survives rewriting has not been bound to a
+    /// target. Preserve the whole capture for review instead of arming an old
+    /// recipient or copying its trigger onto the proposed replacement.
+    static func hasUnresolvedNegativeRepair(_ text: String) -> Bool {
+        let scope = ClauseScope.read(text)
+        guard scope.act != .reporting,
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)\b(?:actually|rather|i\s+mean|sorry|wait)[\s,]+not\s+(?:[\p{L}][\p{L}'’-]*\s*){1,6}(?:[,;]\s*|\s+)\#(ActionabilityReader.actionVerb)\b"#
+              ) else { return false }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).contains { match in
+            guard let span = Range(match.range, in: text),
+                  !ClauseScope.isInsideQuotation(span.lowerBound, in: text) else { return false }
+            if scope.act == .communicating, let body = scope.complementRange,
+               body.contains(span.lowerBound),
+               SentenceContextCache.context(for: text).hasSubjectPredicate(in: body.lowerBound..<span.lowerBound)
+                || ClauseScope.continuesAttributedAction(left: String(text[..<span.lowerBound]),
+                                                        right: String(text[span.upperBound...])) {
+                return false
+            }
+            return true
+        }
+    }
+
     static func resolved(_ text: String) -> String {
+        if hasUnresolvedOrdinalReference(text)
+            || CaptureOperationDetector.hasAmbiguousLocalCancellation(text) { return text }
+        var value = text
+        // Naming the original calendar value again and saying it is correct
+        // rejects the intervening proposal. Preserve the original instruction,
+        // but only when the repeated value exactly matches its leading date.
+        if let final = text.range(of: #"(?i)[\s,]+(?:wait|hold\s+on)[\s,]+(?:no[\s,]+)?\#(repairDatePattern)\s+is\s+(?:right|correct)[.!?]*$"#, options: .regularExpression),
+           !ClauseScope.isInsideQuotation(final.lowerBound, in: text),
+           ClauseScope.read(text).act != .reporting,
+           let firstDay = text.range(of: #"(?i)^\#(repairDatePattern)\b"#, options: .regularExpression),
+           let repeated = String(text[final]).range(of: #"(?i)\b\#(repairDatePattern)(?=\s+is\s+(?:right|correct))"#, options: .regularExpression),
+           String(text[firstDay]).caseInsensitiveCompare(String(String(text[final])[repeated])) == .orderedSame,
+           let marker = text.range(of: correctionPattern, options: .regularExpression),
+           marker.lowerBound > firstDay.upperBound,
+           !ClauseScope.isInsideQuotation(marker.lowerBound, in: text) {
+            return normalize(String(text[..<marker.lowerBound]))
+        }
+        // A repair can end by reaffirming the original wording. Its final
+        // "no" then rejects the proposed repair, not the task's object.
+        if let reaffirmation = value.range(
+            of: #"(?i)[\s,]+(?:actually[\s,]+)?(?:wait|hold\s+on)[\s,]+(?:(?:no|yes)[\s,]+)?(?:that|it)(?:['’]s|\s+is)\s+(?:right|correct)\s*[.!?]*$"#,
+            options: .regularExpression
+        ) {
+            let prefix = String(value[..<reaffirmation.lowerBound])
+            let quoteCount = prefix.filter { "\"“”".contains($0) }.count
+            if !prefix.isEmpty, quoteCount.isMultiple(of: 2),
+               ClauseScope.read(prefix).act != .reporting {
+                value = prefix.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;")))
+            }
+        }
         // People stack repairs in one breath — "seven, no eight, actually eight
         // thirty" — and a single pass can only place the last one, which left
         // the *first* value standing and the alarm ringing at the wrong hour.
@@ -1033,7 +1123,7 @@ enum SelfCorrectionResolver {
         // A repeated unfinished travel frame is a restart, not a new errand.
         // Keep preceding context (including dates) and require the same verb
         // plus a real destination after the restarted frame.
-        var value = text.replacingOccurrences(
+        value = value.replacingOccurrences(
             of: #"(?i)\bi\s+(?:want\s+to|wanna|need\s+to)\s+(go|head|drive|walk)\s+to[\s,]+(?:or[\s,]+)?(?:actually|no\s+wait|sorry)[\s,]+(?:first[\s,]+)?(i\s+(?:want\s+to|wanna|need\s+to)\s+\1\s+to\s+)(?=[\p{L}\p{N}])"#,
             with: "$2",
             options: .regularExpression
@@ -1047,8 +1137,38 @@ enum SelfCorrectionResolver {
     }
 
     private static func resolvedOnce(_ text: String) -> String {
+        let scope = ClauseScope.read(text)
         guard let regex = NSRegularExpression.speakItCached(correctionPattern),
-              let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
+              let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last(where: { match in
+                  guard let span = Range(match.range, in: text) else { return false }
+                  if ClauseScope.isInsideQuotation(span.lowerBound, in: text) { return false }
+                  let outerReminder = scope.matrix.range(
+                    of: #"(?i)^(?:please\s+)?(?:remind|notify|alert)\b"#,
+                    options: .regularExpression
+                  ) != nil
+                  if !outerReminder, ClauseScope.continuesAttributedAction(
+                    left: String(text[..<span.lowerBound]), right: String(text[span.upperBound...])
+                  ) { return false }
+                  // Words inside a message/report are content, not edits to
+                  // the speaker's outer instruction.
+                  if let body = scope.complementRange, body.contains(span.lowerBound),
+                     scope.act == .reporting || SentenceContextCache.context(for: text)
+                        .hasSubjectPredicate(in: body.lowerBound..<span.lowerBound) {
+                      return false
+                  }
+                  let marker = String(text[span])
+                  let tail = String(text[span.upperBound...])
+                  // A negative formatting constraint describes how to retain
+                  // the value; it does not replace that value with "spaces".
+                  let formattingConstraint = marker.range(
+                      of: #"(?i)^\s*[,—–-]?\s*no\s*,?\s*$"#,
+                      options: .regularExpression
+                  ) != nil && tail.range(
+                      of: #"(?i)^(?:spaces?|hyphens?|dashes?|punctuation|commas?|periods?|capitals?|capitalization)\b"#,
+                      options: .regularExpression
+                  ) != nil
+                  return !formattingConstraint
+              }),
               let range = Range(last.range, in: text),
               range.lowerBound != text.startIndex else {
             return text
@@ -1069,6 +1189,21 @@ enum SelfCorrectionResolver {
             options: .regularExpression
         )
         guard !replacement.isEmpty, !prefix.isEmpty else { return text }
+
+        // Sequencing says that both intentions survive. A discourse repair
+        // inside "and then, actually, call..." cannot replace all earlier
+        // clauses; likewise "wait, before that go..." inserts another step.
+        let sequencedPrefix = prefix.range(
+            of: #"(?i)\b(?:and\s+)?then[\s,]*$"#,
+            options: .regularExpression
+        ) != nil
+        let sequencedReplacement = replacement.range(
+            of: #"(?i)^(?:then|before\s+that|after\s+that)[\s,]+(?:please\s+)?\#(ActionabilityReader.actionVerb)\b"#,
+            options: .regularExpression
+        ) != nil
+        if sequencedPrefix || sequencedReplacement {
+            return normalize(prefix + (sequencedReplacement ? "; " : " ") + replacement)
+        }
 
         // A repair never follows a dangling function word. "Remind me to make
         // it snappy" and "call mom and make it quick" are instructions whose
@@ -1123,7 +1258,74 @@ enum SelfCorrectionResolver {
             return text
         }
 
+        // A whole-clause correction replaces the consequence, not the
+        // condition that governs it.
+        if let dependency = ConditionalIntentScope.leading(in: prefix) {
+            return "\(dependency.condition), \(replacement)"
+        }
         return replacement
+    }
+
+    /// A replacement date plus a clock/daypart replaces one timestamp, not
+    /// just its date token. Appending the new clock after the action detaches
+    /// it from the reminder and leaves the old alert time active.
+    private static func repairCalendarFrame(
+        prefix: String, replacement: String,
+        oldDate: Range<String.Index>, newDate: Range<String.Index>
+    ) -> String? {
+        guard var newFrame = RuleBasedThoughtExtractor.leadingTemporalContext(in: replacement),
+              let newSpan = replacement.range(of: newFrame, options: [.anchored, .caseInsensitive]),
+              newSpan.upperBound > newDate.upperBound else { return nil }
+        var oldSpan = oldDate
+        if let frame = RuleBasedThoughtExtractor.leadingTemporalContext(in: String(prefix[oldDate.lowerBound...])),
+           let span = prefix.range(of: frame, options: .caseInsensitive,
+                                   range: oldDate.lowerBound..<prefix.endIndex) {
+            oldSpan = span
+        }
+        // A clock may precede its day in the same unbroken timestamp:
+        // "at five tomorrow". Never reach across a comma or another clause.
+        let before = String(prefix[..<oldDate.lowerBound])
+        let precedingClock = #"(?i)\bat\s+\#(RuleBasedThoughtExtractor.clockExpression)\s+$"#
+        if let clock = before.range(of: precedingClock, options: .regularExpression) {
+            let offset = before.distance(from: before.startIndex, to: clock.lowerBound)
+            oldSpan = prefix.index(prefix.startIndex, offsetBy: offset)..<oldSpan.upperBound
+        }
+        let oldFrame = normalizedClockFrame(String(prefix[oldSpan]))
+        newFrame = normalizedClockFrame(newFrame)
+        // An omitted meridiem inherits the explicit period already spoken;
+        // a new AM/PM, named clock or 24-hour value overrides it.
+        let explicitPeriod = #"(?i)\b(?:a\.?m\.?|p\.?m\.?|morning|afternoon|evening|night|noon|midnight)\b|\bat\s+(?:0\d|1[3-9]|2[0-3])(?=\b|:)"#
+        if newFrame.range(of: #"(?i)\bat\b"#, options: .regularExpression) != nil,
+           newFrame.range(of: explicitPeriod, options: .regularExpression) == nil {
+            if let period = oldFrame.range(of: #"(?i)\b(?:a\.?m\.?|p\.?m\.?)\b"#,
+                                           options: .regularExpression) {
+                newFrame += " " + String(oldFrame[period])
+            } else if let part = oldFrame.range(of: #"(?i)\b(?:morning|afternoon|evening|night)\b"#,
+                                               options: .regularExpression),
+                      let at = newFrame.range(of: #"(?i)\s+at\s+"#, options: .regularExpression) {
+                newFrame.insert(contentsOf: " " + String(oldFrame[part]), at: at.lowerBound)
+            }
+        }
+        return normalize(prefix.replacingCharacters(in: oldSpan, with: newFrame)
+                         + String(replacement[newSpan.upperBound...]))
+    }
+
+    /// A bare 24-hour value has an explicit period even without AM/PM.
+    /// Normalize only the clock in an already recognized timestamp, so a day
+    /// number or an object quantity cannot acquire clock meaning here.
+    private static func normalizedClockFrame(_ frame: String) -> String {
+        guard frame.range(of: #"(?i)\b(?:a\.?m\.?|p\.?m\.?)\b"#,
+                          options: .regularExpression) == nil,
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)\bat\s+((0\d|1[3-9]|2[0-3])(?::([0-5]\d))?)(?![\d:])\b"#
+              ),
+              let match = regex.firstMatch(in: frame, range: NSRange(frame.startIndex..., in: frame)),
+              let clock = Range(match.range(at: 1), in: frame),
+              let hourRange = Range(match.range(at: 2), in: frame),
+              let hour = Int(frame[hourRange]) else { return frame }
+        let minute = Range(match.range(at: 3), in: frame).map { ":" + frame[$0] } ?? ""
+        let normalized = "\(hour % 12 == 0 ? 12 : hour % 12)\(minute) \(hour < 12 ? "AM" : "PM")"
+        return frame.replacingCharacters(in: clock, with: normalized)
     }
 
     /// Whether the replacement says again something the prefix already said.
@@ -1180,12 +1382,36 @@ enum SelfCorrectionResolver {
         replacement: String,
         mayDiscardWords: Bool
     ) -> String? {
-        // Duration first: it shares its opening token with `timePattern`, and
-        // whichever is tried first wins.
+        // A corrected temporal preface before the first instruction replaces
+        // that whole preface. It does not add a second, conflicting date.
+        // This is narrower than slot repair inside an existing action, where
+        // a clock or condition may still belong to the instruction.
+        let preface = prefix.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let wholeTemporal = RuleBasedThoughtExtractor.leadingTemporalContext(in: preface)
+            .map { $0.caseInsensitiveCompare(preface) == .orderedSame } ?? false
+        let otherTemporalPreface = preface.range(
+            of: #"(?i)^(?:later\s+(?:today|tonight)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)\s+from\s+now|(?:before|after)\s+(?:work|class))$"#,
+            options: .regularExpression
+        ) != nil
+        let explicitClock = preface.range(
+            of: #"(?i)\b(?:at|around)\s+\#(RuleBasedThoughtExtractor.clockExpression)\b"#,
+            options: .regularExpression
+        ) != nil
+        if (wholeTemporal || otherTemporalPreface) && !explicitClock,
+           let day = replacement.range(of: #"(?i)^\#(repairDatePattern)\b"#, options: .regularExpression) {
+            let tail = String(replacement[day.upperBound...])
+            if tail.range(of: #"(?i)^\s*,\s*(?:i\s+(?:need|have|want)\s+to\s+|\#(ActionabilityReader.actionVerb)\b)"#,
+                          options: .regularExpression) != nil {
+                return normalize(replacement)
+            }
+        }
+
+        // Complete calendar forms come before clocks so "22 October" is a
+        // date, not a 22 o'clock repair. Durations precede bare time values.
         let candidates: [(String, Slot)] = [
+            (repairDatePattern, .date),
             (durationPattern, .duration),
             (timePattern, .time),
-            (datePattern, .date),
         ]
 
         // People restate the preposition with the value — "Dentist Tuesday at
@@ -1199,7 +1425,7 @@ enum SelfCorrectionResolver {
         )
 
         var namedASlotValue = false
-        for (pattern, _) in candidates {
+        for (pattern, slot) in candidates {
             // The replacement must *start* with this kind of value, otherwise
             // it is a new clause rather than a repair.
             guard let head = slotBody.range(
@@ -1212,8 +1438,40 @@ enum SelfCorrectionResolver {
             let newValue = String(slotBody[head])
             let rest = String(slotBody[head.upperBound...])
 
-            // The prefix must contain a value of the same kind to replace.
-            guard let old = lastMatch(in: prefix, pattern: pattern) else { continue }
+            // An explicit clock correction cannot replace a calendar's day
+            // number. Filter overlapping date spans before selecting a clock.
+            var prior = lastMatch(in: prefix, pattern: pattern)
+            if case .time = slot,
+               replacement.range(of: #"(?i)^(?:at|by|around|before|until|till)\s+|\d:\d|\b[ap]\.?m\.?\b"#,
+                                 options: .regularExpression) != nil,
+               let dates = NSRegularExpression.speakItCached(#"(?i)\b\#(repairDatePattern)\b"#),
+               let clocks = NSRegularExpression.speakItCached(#"(?i)\b\#(timePattern)\b"#) {
+                let whole = NSRange(prefix.startIndex..., in: prefix)
+                let dateSpans = dates.matches(in: prefix, range: whole).map(\.range)
+                prior = clocks.matches(in: prefix, range: whole).reversed().first { clock in
+                    !dateSpans.contains { NSIntersectionRange($0, clock.range).length > 0 }
+                }.flatMap { Range($0.range, in: prefix) }
+                if prior == nil,
+                   let frame = RuleBasedThoughtExtractor.leadingTemporalContext(in: prefix),
+                   let span = prefix.range(of: frame, options: [.anchored, .caseInsensitive]) {
+                    let addition = replacement.range(of: #"(?i)^(?:at|by|around|before|until|till)\s+"#,
+                                                     options: .regularExpression) != nil
+                        ? replacement : "at " + replacement
+                    return normalize(String(prefix[..<span.upperBound]) + " " + addition
+                                     + " " + String(prefix[span.upperBound...]))
+                }
+            }
+            // Do not consume the separator after a numeric value while
+            // replacing it; otherwise "22 I need" becomes "7I need".
+            guard let prior,
+                  let old = prefix.range(of: String(prefix[prior]).trimmingCharacters(in: .whitespacesAndNewlines),
+                                         options: .anchored, range: prior) else { continue }
+
+            if case .date = slot,
+               let repaired = repairCalendarFrame(prefix: prefix, replacement: slotBody,
+                                                   oldDate: old, newDate: head) {
+                return repaired
+            }
 
             let repairedPrefix = prefix.replacingCharacters(in: old, with: newValue)
             return normalize(repairedPrefix + rest)
@@ -1231,6 +1489,17 @@ enum SelfCorrectionResolver {
             // because appending would leave the geofence armed as well.
             if let repaired = repairTrigger(prefix: prefix, replacement: replacement) {
                 return repaired
+            }
+            // A temporal addition following a paused non-instruction frame
+            // keeps that boundary. Joining it without punctuation hides the
+            // new calendar preface from sibling-context inheritance.
+            if mayDiscardWords, !ActionabilityReader.read(prefix).belongsOnToday,
+               let frame = RuleBasedThoughtExtractor.leadingTemporalContext(in: replacement),
+               let span = replacement.range(of: frame, options: [.anchored, .caseInsensitive]),
+               replacement[span.upperBound...].contains(",") {
+                let separator = RuleBasedThoughtExtractor.leadingTemporalContext(in: prefix + " " + replacement) == nil
+                    ? ". " : ", "
+                return normalize(prefix + separator + replacement)
             }
             return normalize(prefix + " " + replacement)
         }
@@ -1736,10 +2005,35 @@ enum ClauseJuxtaposition {
             .last(where: { $0.range.upperBound <= cut })?.isVerb == true
     }
 
+    /// An article plus adjectives still needs its noun: in "a portable drive"
+    /// the verb-shaped head belongs to the object, not a fresh instruction.
+    private static func insideModifiedNounPhrase(_ clause: String, before cut: String.Index) -> Bool {
+        let tokens = SentenceContextCache.context(for: clause).tokens
+            .filter { $0.range.upperBound <= cut }
+        var sawModifier = false
+        for token in tokens.reversed() {
+            if token.lexicalClass == .adjective || token.lexicalClass == .adverb {
+                sawModifier = true
+            } else {
+                return sawModifier && (token.lexicalClass == .determiner
+                    || nounDeterminers.contains(token.text.lowercased()))
+            }
+        }
+        return false
+    }
+
     private static let dayWords: Set<String> = [
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     ]
     private static let nounDeterminers: Set<String> = ["the", "a", "an", "my", "our", "your", "his", "her", "their", "this", "that"]
+
+    private static func insideRecordedNominalSubject(_ head: String) -> Bool {
+        guard let body = ActionabilityReader.recordedFactBody(head),
+              body.range(of: #"(?i)^(?:the|my|our|your|this|that)\b"#,
+                         options: .regularExpression) != nil else { return false }
+        let context = SentenceContextCache.context(for: body)
+        return context.isVerbless(in: body.startIndex..<body.endIndex)
+    }
 
     private static func opensAsIdeaOrNote(_ clause: String) -> Bool {
         // "Great idea from the offsite: run a monthly interview" opens with
@@ -1779,7 +2073,12 @@ enum ClauseJuxtaposition {
         var pieces: [String] = []
         var lowerBound = clause.startIndex
         for match in regex.matches(in: clause, range: NSRange(clause.startIndex..., in: clause)) {
-            guard let range = Range(match.range, in: clause) else { continue }
+            guard let range = Range(match.range, in: clause),
+                  !ClauseScope.isInsideQuotation(range.lowerBound, in: clause),
+                  !ClauseScope.continuesAttributedAction(
+                    left: String(clause[lowerBound..<range.lowerBound]),
+                    right: String(clause[range.upperBound...])
+                  ) else { continue }
             let head = String(clause[lowerBound..<range.lowerBound])
             let words = head.split(separator: " ")
             // The verb has to be starting something, not continuing something.
@@ -1793,13 +2092,18 @@ enum ClauseJuxtaposition {
                     .trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
                     ?? ""
             }
-            guard !hasOpenTriggerClause(head),
+            guard !insideModifiedNounPhrase(clause, before: range.lowerBound),
+                  !hasOpenTriggerClause(head),
                   !endsOnReportedSpeech(head),
                   !opensAClausalComplement(head),
                   // "Idea for the app: let people share lists" is one idea
                   // however many verbs it describes; a capture that opens by
                   // naming itself an idea or a note is not cut.
                   !opensAsIdeaOrNote(clause),
+                  !insideRecordedNominalSubject(head),
+                  // A transport/acquisition verb plus its particle still
+                  // needs its object: "pick up contact lens solution".
+                  !(recent == ["pick", "up"] || recent == ["drop", "off"]),
                   // "Let people share lists", "let the kids pick": the verb
                   // behind a causative "let X" is its complement.
                   recent.dropLast().last != "let",
@@ -1964,6 +2268,7 @@ enum CaptureOperationDetector {
     static func partition(
         _ text: String
     ) -> (operations: [CaptureOperationRequest], remainder: String?) {
+        if hasAmbiguousLocalCancellation(text) { return ([], text) }
         let local = resolvingInCaptureCancellations(text)
         let pieces = clauses(in: local.remainder)
         guard pieces.count > 1 else {
@@ -2022,12 +2327,40 @@ enum CaptureOperationDetector {
         _ text: String
     ) -> (operations: [CaptureOperationRequest], remainder: String) {
         var pieces = clauses(in: text)
-        guard let selective = selectiveCancellation(in: pieces) else {
+        if let local = localCancellationReference(in: pieces), local.candidates.count > 1 {
             return ([], text)
+        }
+        guard let selective = selectiveCancellation(in: pieces) else {
+            guard pieces.count > 1,
+                  let tail = pieces.last,
+                  let withdrawal = detect(tail, within: text),
+                  withdrawal.operation == .retract,
+                  withdrawal.target == nil else {
+                return ([], text)
+            }
+            pieces.removeLast()
+            let start = semanticGroupStart(in: pieces)
+            // Resolve terminal withdrawals before correction repair can
+            // consume the marker and turn it into the action's object.
+            pieces.removeSubrange(start...)
+            let scoped = CaptureOperationRequest(
+                operation: withdrawal.operation,
+                polarity: withdrawal.polarity,
+                target: withdrawal.target,
+                sourceQuote: withdrawal.sourceQuote,
+                needsReview: withdrawal.needsReview,
+                isBroad: withdrawal.isBroad,
+                newTimingText: withdrawal.newTimingText,
+                isScoped: true
+            )
+            return ([scoped], pieces.joined(separator: ", "))
         }
         if selective.groupRange.lowerBound == pieces.startIndex,
            selective.groupRange.upperBound < pieces.index(before: pieces.endIndex),
-           let prefix = visitPrefix(in: pieces[selective.groupRange.lowerBound]) {
+           let prefix = visitPrefix(in: pieces[selective.groupRange.lowerBound])
+                ?? inheritedActionPrefix(in: pieces[selective.groupRange.lowerBound])
+                ?? ConditionalIntentScope.leading(in: pieces[selective.groupRange.lowerBound])?.condition
+                ?? RuleBasedThoughtExtractor.leadingTemporalContext(in: pieces[selective.groupRange.lowerBound]) {
             let survivor = selective.groupRange.upperBound
             pieces[survivor] = "\(prefix) \(pieces[survivor])"
         }
@@ -2043,6 +2376,55 @@ enum CaptureOperationDetector {
         return ([operation], pieces.joined(separator: ", "))
     }
 
+    private static func inheritedActionPrefix(in clause: String) -> String? {
+        let action = ActionabilityReader.actionBody(clause)
+        guard let span = clause.range(of: action, options: .caseInsensitive),
+              span.lowerBound > clause.startIndex else { return nil }
+        let prefix = String(clause[..<span.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+        return prefix.isEmpty ? nil : prefix
+    }
+
+    /// A restart-marked operation is not an object correction. Only exact,
+    /// unique sibling descriptions can be removed without clarification.
+    static func hasAmbiguousLocalCancellation(_ text: String) -> Bool {
+        guard text.range(of: #"(?i)\b(?:actually|wait|no|sorry|i\s+mean)\s*,?\s*cancel\b"#,
+                         options: .regularExpression) != nil else { return false }
+        guard let local = localCancellationReference(in: clauses(in: text)) else { return false }
+        return local.candidates.count > 1
+    }
+
+    private static func localCancellationReference(in pieces: [String])
+        -> (target: String, source: String, directiveRange: Range<Int>, candidates: [Int])? {
+        guard pieces.count > 1, let tail = pieces.last else { return nil }
+        let markerPattern = #"(?i)^(?:actually|wait|no|sorry|i\s+mean)\s*,?\s*"#
+        let directive: String
+        let start: Int
+        if let marker = tail.range(of: markerPattern + #"(?=cancel\b)"#,
+                                   options: .regularExpression) {
+            directive = String(tail[marker.upperBound...])
+            start = pieces.count - 1
+        } else if pieces.count > 2,
+                  pieces[pieces.count - 2].range(of: markerPattern + #"$"#,
+                                               options: .regularExpression) != nil,
+                  tail.range(of: #"(?i)^cancel\b"#, options: .regularExpression) != nil {
+            directive = tail
+            start = pieces.count - 2
+        } else { return nil }
+        guard let operation = detect(directive), operation.operation == .cancel,
+              !operation.needsReview, let target = operation.target else { return nil }
+        let wanted = canonicalDestination(target).split(separator: " ").map(String.init)
+        let candidates = (0..<start).filter { index in
+            let action = ActionabilityReader.actionBody(pieces[index])
+            guard action.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                               options: .regularExpression) != nil,
+                  ClauseScope.read(action).act == .direct else { return false }
+            let words = Set(canonicalDestination(action).split(separator: " ").map(String.init))
+            return !wanted.isEmpty && wanted.allSatisfy(words.contains)
+        }
+        return (target, pieces[start...].joined(separator: ", "), start..<pieces.count, candidates)
+    }
+
     /// A terminal, restart-marked selective cancellation can refer to a sibling
     /// already spoken in this capture. Resolve it here, while the clauses and
     /// their order still exist, rather than sending it to the repository where
@@ -2055,6 +2437,22 @@ enum CaptureOperationDetector {
         in pieces: [String]
     ) -> (groupRange: Range<Int>, directiveRange: Range<Int>, target: String, source: String)? {
         guard pieces.count > 1, let tail = pieces.last else { return nil }
+
+        if let local = localCancellationReference(in: pieces),
+           local.candidates.count == 1, let index = local.candidates.first {
+            var end = pieces.index(after: index)
+            if visitDestination(in: pieces[index]) != nil {
+                // A visit owns its adjacent purchases, but not an independent
+                // call, appointment or later visit.
+                while end < local.directiveRange.lowerBound {
+                    let action = ActionabilityReader.actionBody(pieces[end])
+                    guard action.range(of: #"(?i)^(?:buy|get|grab|pick\s+up|shop\s+for)\b"#,
+                                       options: .regularExpression) != nil else { break }
+                    end += 1
+                }
+            }
+            return (index..<end, local.directiveRange, local.target, local.source)
+        }
 
         let source: String
         let directiveRange: Range<Int>
@@ -2101,6 +2499,11 @@ enum CaptureOperationDetector {
     /// destructive withdrawal decision.
     private static func semanticGroupStart(in pieces: [String]) -> Int {
         guard pieces.count > 1 else { return pieces.startIndex }
+        if let condition = pieces.indices.reversed().first(where: {
+            ConditionalIntentScope.standalone(in: pieces[$0]) != nil
+        }) {
+            return condition
+        }
         return visitGroups(in: pieces).last(where: { $0.range.upperBound == pieces.endIndex })?.range.lowerBound
             ?? pieces.index(before: pieces.endIndex)
     }
@@ -2199,7 +2602,12 @@ enum CaptureOperationDetector {
         var pieces: [String] = []
         var lowerBound = text.startIndex
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let range = Range(match.range, in: text) else { continue }
+            guard let range = Range(match.range, in: text),
+                  !ClauseScope.isInsideQuotation(range.lowerBound, in: text),
+                  !ClauseScope.continuesAttributedAction(
+                    left: String(text[lowerBound..<range.lowerBound]),
+                    right: String(text[range.upperBound...])
+                  ) else { continue }
             append(String(text[lowerBound..<range.lowerBound]), to: &pieces)
             lowerBound = range.upperBound
         }
@@ -2260,7 +2668,13 @@ enum CaptureOperationDetector {
         let leftAFrameOpen = tail.range(
             of: #"(?i)\#(objectlessWithdrawal)\s*[.!?…]*\s*$"#,
             options: .regularExpression
-        ) != nil && ThoughtCompletion.unfinished(in: head) != nil
+        ) != nil && (
+            ThoughtCompletion.unfinished(in: head) != nil
+                || ActionabilityReader.actionBody(head).range(
+                    of: #"(?i)^(?:\#(ActionabilityReader.obligationLead)\s+)?\#(actionVerbs)$"#,
+                    options: .regularExpression
+                ) != nil
+        )
         guard announced || leftAFrameOpen else { return [clause] }
 
         // The tail is emitted as the bare withdrawal rather than as the words

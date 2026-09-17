@@ -521,4 +521,527 @@ final class ActionabilityTests: XCTestCase {
         XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("I called the plumber and he never showed"),
                        ["I called the plumber and he never showed"])
     }
+
+    // MARK: Conditional intent safety
+
+    func testUnsupportedConditionsStayAttachedAndCannotExecute() throws {
+        for text in [
+            "If Sarah replies, remind me to call Mike.",
+            "When Priya responds, remind me to submit the form.",
+            "Once the package arrives, inspect it.",
+            "Unless Dana objects, publish the note.",
+            "Call Mike if Sarah replies.",
+            "If they call text me.",
+            "Well, if Marco replies, then remind me to buy dish soap!",
+            "IF MARCO REPLIES, REMIND ME TO BUY DISH SOAP.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            )
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertEqual(result.items.count, 1, text)
+            let item = try XCTUnwrap(result.items.first)
+            XCTAssertEqual(item.organization.state, .unsupported(.unsupportedCondition), text)
+            XCTAssertEqual(item.organization.temporalIntent.unsupportedTrigger, .condition, text)
+            XCTAssertTrue(item.needsReview, text)
+            XCTAssertNil(item.organization.dueDate, text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertEqual(item.organization.reminderDelivery, .none, text)
+            XCTAssertNil(item.organization.recurrenceRule, text)
+            XCTAssertNotNil(item.suggestedTitle, text)
+        }
+    }
+
+    func testConditionalScopeCoversConsequencesButNotSiblingsOrLaterSentences() {
+        let several = ThoughtExtractionEngine.extractWithRules(
+            "If Sarah replies, call Mike and text Priya.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(several.count, 2)
+        XCTAssertTrue(several.allSatisfy { $0.organization.state == .unsupported(.unsupportedCondition) })
+        XCTAssertTrue(several.allSatisfy { $0.analysisText.lowercased().hasPrefix("if sarah replies") })
+
+        let mixed = ThoughtExtractionEngine.extractWithRules(
+            "Buy milk, and if Sarah replies, call Mike.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(mixed.count, 2)
+        XCTAssertEqual(mixed.first?.organization.state, .resolved)
+        XCTAssertEqual(mixed.last?.organization.state, .unsupported(.unsupportedCondition))
+
+        let stopped = ThoughtExtractionEngine.extractWithRules(
+            "If Sarah replies, call Mike. Buy milk.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(stopped.count, 2)
+        XCTAssertEqual(stopped.first?.organization.state, .unsupported(.unsupportedCondition))
+        XCTAssertEqual(stopped.last?.organization.state, .resolved)
+    }
+
+    func testAClockDoesNotTurnAnEventConditionIntoAnUnconditionalReminder() throws {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "If Sarah replies, remind me at five to call Mike.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 1)
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.organization.state, .unsupported(.unsupportedCondition))
+        XCTAssertNil(item.organization.dueDate)
+        XCTAssertNil(item.organization.reminderDate)
+        XCTAssertNil(item.organization.recurrenceRule)
+        XCTAssertEqual(item.organization.reminderDelivery, .none)
+    }
+
+    func testSupportedLocationAndTemporalConditionsKeepTheirExistingBehavior() throws {
+        let atHomeItems = ThoughtExtractionEngine.extractWithRules(
+            "When I get home, call Mike.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(atHomeItems.count, 1)
+        let atHome = try XCTUnwrap(atHomeItems.first)
+        XCTAssertEqual(atHome.organization.state, .resolved)
+        XCTAssertNotNil(atHome.organization.locationIntent)
+        XCTAssertNotEqual(atHome.organization.temporalIntent.unsupportedTrigger, .condition)
+
+        let afterLunchItems = ThoughtExtractionEngine.extractWithRules(
+            "After lunch, call Mike.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(afterLunchItems.count, 1)
+        let afterLunch = try XCTUnwrap(afterLunchItems.first)
+        XCTAssertEqual(afterLunch.organization.state, .resolved)
+        XCTAssertNotNil(afterLunch.organization.dueDate)
+        XCTAssertNotEqual(afterLunch.organization.temporalIntent.unsupportedTrigger, .condition)
+    }
+
+    func testCorrectionRetainsConditionAndWithdrawalRemovesOnlyConditionalGroup() throws {
+        let correctedItems = ThoughtExtractionEngine.extractWithRules(
+            "If Sarah replies, call Mike, actually text him.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(correctedItems.count, 1)
+        let corrected = try XCTUnwrap(correctedItems.first)
+        XCTAssertTrue(corrected.analysisText.lowercased().contains("if sarah replies"))
+        XCTAssertTrue(corrected.analysisText.lowercased().contains("text him"))
+        XCTAssertFalse(corrected.analysisText.lowercased().contains("call mike"))
+        XCTAssertEqual(corrected.organization.state, .unsupported(.unsupportedCondition))
+
+        let withdrawn = ThoughtExtractionEngine.extractWithRules(
+            "Buy milk, and if Sarah replies, call Mike, actually forget that.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(withdrawn.items.count, 1)
+        XCTAssertEqual(withdrawn.items.first?.organization.itemType, .shopping)
+        XCTAssertEqual(withdrawn.operations.count, 1)
+        XCTAssertEqual(withdrawn.operations.first?.operation, .retract)
+        XCTAssertEqual(withdrawn.operations.first?.isScoped, true)
+    }
+}
+
+extension ActionabilityTests {
+    func testExplicitMemoryFrameOwnsImperativesAndExecutionWords() throws {
+        for text in [
+            "Idea for the garden, install a rain barrel tomorrow.",
+            "For my notes on the rehearsal, call the conductor before five.",
+            "Random thought: send everyone a postcard, not something I need to do now.",
+            "Write down that I don't want to cancel the reservation anymore.",
+            "I might contact the clinic next week, just save that thought.",
+            "Don't make a reminder yet, but I might call Mira tomorrow.",
+            "Save this thought: remind me every Monday to call the clinic.",
+        ] {
+            for rendering in [text, text.lowercased()] {
+                let result = ThoughtExtractionEngine.extractWithRules(
+                    rendering, referenceDate: referenceDate, calendar: calendar
+                )
+                XCTAssertTrue(result.operations.isEmpty, rendering)
+                XCTAssertEqual(result.items.count, 1, rendering)
+                let item = try XCTUnwrap(result.items.first)
+                XCTAssertFalse(item.organization.itemType.isActionable, rendering)
+                XCTAssertNil(item.organization.dueDate, rendering)
+                XCTAssertNil(item.organization.reminderDate, rendering)
+                XCTAssertNil(item.organization.recurrenceRule, rendering)
+                XCTAssertNil(item.organization.locationIntent, rendering)
+            }
+        }
+    }
+
+    func testExplicitTaskSiblingEndsMemoryScope() throws {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Idea: make the garden bigger. Remind me to call Mira tomorrow at 9 AM.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertFalse(try XCTUnwrap(result.items.first).organization.itemType.isActionable)
+        XCTAssertTrue(try XCTUnwrap(result.items.last).organization.itemType.isActionable)
+        XCTAssertNotNil(try XCTUnwrap(result.items.last).organization.reminderDate)
+    }
+
+    func testPastModalReflectionDoesNotCreatePresentCommitment() {
+        for text in [
+            "I should have emailed Mira yesterday about the meeting.",
+            "I almost called Mira about the appointment.",
+            "I wish I had remembered to call Mira about the meeting.",
+            "I was going to apply but I changed my mind.",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .knowledge, text)
+            XCTAssertFalse(ThoughtOrganizer.organize(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).itemType.isActionable, text)
+        }
+        XCTAssertEqual(ActionabilityReader.read("I forgot to email Mira yesterday"), .outstanding)
+        XCTAssertEqual(ActionabilityReader.read("Mira asked me to send the plan"), .actionable)
+    }
+
+    func testInstitutionAndTopicHeadsAreNotPersonalNames() {
+        for text in ["Call Northstar Bank", "Contact University of the Valley",
+                     "Email Grant Applications", "Call Northstar claims"] {
+            XCTAssertNil(PersonMentionResolver.primary(in: text), text)
+        }
+        for text in ["Call Mira", "Call Mira at Northstar Bank", "Call Mom"] {
+            XCTAssertNotNil(PersonMentionResolver.primary(in: text), text)
+        }
+    }
+
+    func testMemoryScopeSurvivesARepairOfItsOpeningWords() throws {
+        for text in [
+            "Note to self, actually, the conference deadline is October twenty second.",
+            "Save this number, actually 416 555 0192.",
+            "I think rehearsal prep is the thing I keep forgetting about Thursday.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            let item = try XCTUnwrap(result.items.first)
+            XCTAssertFalse(item.organization.itemType.isActionable, text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertNil(item.organization.recurrenceRule, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+        }
+    }
+
+    func testUnsupportedTimingConstraintsCannotScheduleTheirPartialInterpretation() throws {
+        for text in [
+            "Every day at 9 AM until October 20 remind me to stretch.",
+            "Every other Monday starting next week remind me to call Mira.",
+            "On the last business day of every month remind me to pay rent.",
+            "Remind me about the invoice between two and four PM tomorrow.",
+            "Remind me two hours before my flight October 22.",
+            "Remind me at 9 AM Atlantis time to call Mira.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            let item = try XCTUnwrap(result.items.first)
+            XCTAssertTrue(item.organization.needsClarification, text)
+            XCTAssertNil(item.organization.dueDate, text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertNil(item.organization.recurrenceRule, text)
+        }
+    }
+
+    func testCalendarOffsetKeepsTheExplicitClockAndNamedZone() throws {
+        let result = ThoughtOrganizer.organize(
+            "Remind me at 9 AM Bangkok time in two days to call Mira.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        var namedCalendar = calendar
+        namedCalendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Bangkok"))
+        let expected = namedCalendar.date(from: DateComponents(year: 2026, month: 8, day: 5, hour: 9))
+        XCTAssertEqual(result.reminderDate, expected)
+        XCTAssertFalse(result.needsClarification)
+    }
+
+    func testSequencingRepairDoesNotDiscardEarlierTasks() {
+        for text in [
+            "Buy soap and then, actually, call Mira.",
+            "Go to the library and get paper, wait, then go to the office and buy envelopes.",
+            "Call Mira, wait, before that email Alex.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable }, text)
+        }
+    }
+
+    func testReportedInstructionsStayInsideTheRequestedMessage() throws {
+        for text in [
+            "Text Mira that I said wait then call Alex.",
+            "Text Mira that I said wait and then call Alex.",
+            "Tell Alex that Sarah said buy milk and then call Mira.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(try XCTUnwrap(result.items.first).organization.itemType.isActionable, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+        }
+    }
+
+    func testSeparateReminderStillLeavesTheMessageScope() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Text Mira that the meeting is cancelled and remind me to buy soap tomorrow.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.operations.isEmpty)
+    }
+
+    func testRestoredActionsKeepUnresolvedEventScope() {
+        for text in [
+            "After class, first buy soap, then call Mira, actually after that call Alex.",
+            "Before the rehearsal, buy soap and then, actually, call Mira.",
+            "After I finish the workshop, buy soap and then, actually, call Mira.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.needsReview }, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.state == .unsupported(.unsupportedCondition) }, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate == nil && $0.organization.reminderDate == nil }, text)
+            XCTAssertTrue(result.items.first?.analysisText.lowercased().contains("buy soap") == true, text)
+            XCTAssertTrue(result.items.first?.analysisText.lowercased().contains("call mira") == true, text)
+        }
+    }
+
+    func testIndependentReminderDoesNotInheritUnknownEvent() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "After class, remind me to call Mira, and separately remind me tomorrow at 9 to call Alex.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.items.first?.needsReview == true)
+        XCTAssertTrue(result.items.last?.needsReview == false)
+        XCTAssertNotNil(result.items.last?.organization.reminderDate)
+    }
+
+    func testOutgoingMessageDoesNotExecuteItsContents() {
+        for text in [
+            "Text Mira that I set an alarm for 7 AM.",
+            "Text Mira I set an alarm for 7 AM.",
+            "Text Mira \"set an alarm for 7 AM\".",
+            "Tell Mira to set an alarm for 7 AM.",
+            "Tell Mira not to set an alarm for 7 AM.",
+            "Text Mira that the meeting starts at 9 AM tomorrow.",
+            "Tell Mira that I water the plants every Friday.",
+            "Tell Alex that if the parcel arrives Sarah will call Mira.",
+            "Ask Mira if she can call Alex tomorrow.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertTrue(result.items.allSatisfy { !$0.needsReview }, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate == nil && $0.organization.reminderDate == nil && $0.organization.recurrenceRule == nil }, text)
+        }
+    }
+
+    func testQuotedOperationsDoNotEscapeMessageBoundaries() {
+        for text in [
+            "Text Mira \"set an alarm for 7 AM and cancel the old one\".",
+            "Tell Mira to buy milk and cancel the grocery reminder.",
+            "Text Mira that I will buy milk and cancel the grocery reminder.",
+            "Sarah said to buy milk and cancel the grocery reminder.",
+            "Text Mira ‘buy milk, cancel the grocery reminder’.",
+            "Sarah said \"buy milk cancel the grocery reminder\".",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+        }
+        let outer = ThoughtExtractionEngine.extractWithRules(
+            "Text Mira \"buy milk and cancel the old one\", and cancel my gym reminder.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(outer.items.count, 1)
+        XCTAssertEqual(outer.operations.count, 1)
+        XCTAssertEqual(outer.operations.first?.target, "my gym reminder")
+    }
+
+    func testCalendarModifierDoesNotBindAnUnknownEvent() {
+        for text in [
+            "Remind me to call Mira after class tomorrow morning.",
+            "After I finish class tomorrow morning, remind me to call Mira.",
+            "Remind me to call Mira before the meeting tomorrow afternoon.",
+            "After class October 22, remind me to call Mira.",
+            "Remind me to call Mira before the meeting December 24.",
+            "Remind me before the office closes December 24.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.needsReview }, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate == nil && $0.organization.reminderDate == nil }, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+        }
+    }
+
+    func testMessageReminderUsesOuterClockAndRetainsInnerClock() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Remind me tomorrow at 10 AM to text Mira that the meeting starts at 9 AM.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 1)
+        if let item = result.items.first, let reminder = item.organization.reminderDate {
+            XCTAssertEqual(calendar.component(.hour, from: reminder), 10)
+            XCTAssertTrue(item.suggestedTitle?.contains("9 AM") == true)
+        } else {
+            XCTFail("The explicitly requested message reminder was lost")
+        }
+    }
+
+    func testModifiedObjectDoesNotDetachAProhibition() {
+        for object in ["a hard drive", "a portable drive", "an expensive watch", "a new iron"] {
+            let text = "Remind me not to buy \(object) tomorrow."
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertNotNil(result.items.first?.organization.reminderDate, text)
+            XCTAssertTrue(result.items.first?.analysisText.lowercased().contains("not to buy \(object)") == true, text)
+        }
+    }
+
+    func testDiscourseDoesNotHideAnExplicitMemoryFrame() {
+        for text in [
+            "Actually, random thought about tuition, maybe redesign the menu, not something I need to do right now.",
+            "Actually, save this number exactly, 416 555 0199.",
+            "Note to self, yeah, the application deadline is October twenty second.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertTrue(result.items.allSatisfy { !$0.organization.itemType.isActionable }, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate == nil && $0.organization.reminderDate == nil }, text)
+        }
+    }
+
+    func testIndependentClockClauseSurvivesARequestToSaveTheThought() {
+        let text = "Tomorrow work on the notes, actually do not make that a reminder, just save the thought, and then at 2 PM call Sam."
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.operations.isEmpty)
+        XCTAssertFalse(result.items.first?.organization.itemType.isActionable ?? true)
+        XCTAssertNotNil(result.items.last?.organization.dueDate)
+        XCTAssertEqual(result.items.last?.organization.personName, "Sam")
+    }
+
+    func testFactualCommaClauseDoesNotInventShoppingAction() {
+        for text in ["Mom likes white flowers, okay done.", "My brother prefers black coffee, that is all."] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.items.allSatisfy { !$0.organization.itemType.isActionable }, text)
+            XCTAssertTrue(result.operations.isEmpty, text)
+        }
+    }
+
+    func testFrontedDayBelongsToTheRequestedReminderClock() {
+        for text in ["October 22 remind me at 5 PM to call Mira.", "Tomorrow, remind me at 5 PM to call Mira."] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            guard let item = result.items.first, let due = item.organization.dueDate,
+                  let alert = item.organization.reminderDate else { XCTFail(text); continue }
+            XCTAssertEqual(due, alert, text)
+            XCTAssertEqual(calendar.component(.hour, from: alert), 17, text)
+        }
+    }
+
+    func testDateOnlyDeadlineDoesNotOverwriteExplicitAlertClock() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Remind me Wednesday at 5 PM to finish the report Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 1)
+        guard let item = result.items.first, let due = item.organization.dueDate,
+              let alert = item.organization.reminderDate else { return XCTFail("Missing deadline or alert") }
+        XCTAssertEqual(calendar.component(.weekday, from: due), 6)
+        XCTAssertEqual(calendar.component(.weekday, from: alert), 4)
+        XCTAssertEqual(calendar.component(.hour, from: alert), 17)
+    }
+
+    func testSequencedRecipientDoesNotChangeRoutingWithNameSpelling() {
+        for name in ["Mila", "Alex"] {
+            let text = "Tomorrow at 4 PM, first work on interview notes, then call Lyft about it, actually after that call \(name) at Lyft, not Niko."
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 3, text)
+            XCTAssertEqual(result.items.last?.organization.personName, name, text)
+            XCTAssertTrue(result.items.last?.organization.itemType.isActionable == true, text)
+            XCTAssertEqual(result.items.first?.organization.dueDate, result.items.last?.organization.dueDate, text)
+        }
+    }
+
+    func testSharedCalendarPrefixDoesNotDemoteLaterActions() {
+        for lead in ["The end of the month", "Tomorrow morning at 4 PM"] {
+            let text = "\(lead), buy pens and call Mira."
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable && $0.organization.dueDate != nil }, text)
+            XCTAssertEqual(result.items.first?.organization.dueDate, result.items.last?.organization.dueDate, text)
+        }
+    }
+
+    func testDatedDiscourseIdiomKeepsSiblingDates() {
+        let text = "Before I forget today go to the salon and get a hard drive and then go to the embassy and buy a water bottle."
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertTrue((2...3).contains(result.items.count))
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable && !$0.needsReview && $0.organization.dueDate != nil })
+        XCTAssertEqual(result.items.first?.organization.dueDate, result.items.last?.organization.dueDate)
+    }
+
+    func testIndependentMessageDoesNotSwallowLocalCancellation() {
+        for text in [
+            "Text Noah about dinner and call Noah tomorrow, actually cancel the call.",
+            "Message Mira regarding the invoice and book the dentist, actually cancel the dentist."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertEqual(result.operations.count, 1, text)
+            XCTAssertEqual(result.operations.first?.isScoped, true, text)
+        }
+    }
+
+    func testLocalCancellationPreservesUnresolvedScopeAndAmbiguity() {
+        for text in [
+            "After class call Alex and buy milk, actually cancel the call.",
+            "Call Alex tomorrow and call Mira Friday, actually cancel the call."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, text)
+            XCTAssertTrue(result.items.allSatisfy { $0.needsReview && $0.organization.reminderDate == nil }, text)
+        }
+    }
+
+    func testCanceledVisitKeepsIndependentCallAndInheritedDay() {
+        let text = "Tomorrow go to Costco and buy milk and call Maya, actually cancel Costco."
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(result.items.first?.organization.personName, "Maya")
+        XCTAssertNotNil(result.items.first?.organization.dueDate)
+        XCTAssertEqual(result.operations.first?.isScoped, true)
+    }
+
+    func testCalendarCorrectionDoesNotReplaceTheActionObject() {
+        let text = "Before class I need to go to the car wash for a suitcase, actually October 22."
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertTrue(result.items.first?.analysisText.lowercased().contains("suitcase") == true)
+        XCTAssertTrue(result.items.first?.needsReview == true)
+    }
+
+    func testCorrectedRelativeDateBelongsToEverySibling() {
+        let text = "Wednesday I need to go to the mall and buy a water bottle actually in two days."
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertFalse(result.items.isEmpty)
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate != nil })
+        XCTAssertEqual(result.items.first?.organization.dueDate, result.items.last?.organization.dueDate)
+    }
+
+    func testPurposeForDoesNotTurnAProductIntoAContact() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Next Monday I need to go to the stadium for contact lens solution.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.personName == nil })
+    }
+
 }

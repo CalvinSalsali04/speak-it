@@ -1,0 +1,16 @@
+{
+  "probe_sha256": "ee994e8e04283494f33014ccda13ef2d979b9a2b8a2df188f1e66617a1a76ba6",
+  "started": 1789626824.13341,
+  "workers": 6,
+  "reference_instant": "2026-08-03T10:00:00-04:00",
+  "runtime": "macOS actual production rules candidate35; identical enriched frozen-bank measurement harness; model/store/contact-context effects not measured",
+  "candidate": 35,
+  "parent_candidate": 16,
+  "parent_campaign": "iteration-2",
+  "resume_started": 1789626827.6634262,
+  "runner_sha256": "43276a2b78b5034c01c5aa202ed1bd4606da4cee97a1e84387e085b9632ebd59",
+  "recovery": "Completed shards reused; valid interrupted prefixes retained. Only outputs not durably recorded are rerun. Interrupted in-flight/buffered executions cannot be counted exactly.",
+  "completed": 250000,
+  "elapsed_seconds": 6899.3162388801575,
+  "actual_sha256": "a18d888d3d45b133325cb545f2ddb42b341a1ad514c80edd4fcb41c8a0a44e82"
+}

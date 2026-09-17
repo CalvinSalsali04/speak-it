@@ -162,6 +162,18 @@ final class ThoughtCompletionTests: XCTestCase {
             XCTAssertEqual(reason.gap, .incompleteThought)
         }
     }
+
+    func testRequestFramesNeedTheirObjectsAndCoordinatorsNeedAContinuation() {
+        for text in ["I need to go to", "This morning I need to buy", "I should probably call",
+                     "I need to text Layla about", "I need to get soap from",
+                     "Go to the storage unit and", "Friday at 12:30, and then"] {
+            XCTAssertNotNil(ThoughtCompletion.unfinished(in: text), text)
+        }
+        for text in ["I need to buy soap", "Tomorrow I want to run", "I should probably call Mira",
+                     "I need to follow up", "Don't forget to check in"] {
+            XCTAssertNil(ThoughtCompletion.unfinished(in: text), text)
+        }
+    }
 }
 
 /// What an unfinished thought becomes once it reaches a row.

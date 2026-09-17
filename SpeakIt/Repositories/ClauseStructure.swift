@@ -38,6 +38,7 @@ struct SentenceContext {
         /// costs 9 blocking failures against 0 for every other rendering, and
         /// this tag is the reason. See `RenderingInvarianceTests`.
         let isPersonalName: Bool
+        let isOrganizationName: Bool
 
         var isVerb: Bool { lexicalClass == .verb }
         var isNominal: Bool { lexicalClass == .noun || lexicalClass == .pronoun }
@@ -59,6 +60,7 @@ struct SentenceContext {
         let whole = text.startIndex..<text.endIndex
 
         var names: [Range<String.Index>: Bool] = [:]
+        var organizations: [Range<String.Index>] = []
         tagger.enumerateTags(
             in: whole,
             unit: .word,
@@ -68,6 +70,7 @@ struct SentenceContext {
             // `.joinNames` reports "Anna Marie" as one range, so the flag is
             // recorded against the span and matched by containment below.
             if tag == .personalName { names[range] = true }
+            if tag == .organizationName { organizations.append(range) }
             return true
         }
 
@@ -85,7 +88,10 @@ struct SentenceContext {
                 text: String(text[range]),
                 range: range,
                 lexicalClass: tag,
-                isPersonalName: named
+                isPersonalName: named,
+                isOrganizationName: organizations.contains {
+                    $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound
+                }
             ))
             return true
         }
@@ -154,6 +160,232 @@ enum SentenceContextCache {
     }
 }
 
+// MARK: - Conditional intent scope
+
+/// The grammatical dependency between a condition and the action it governs.
+/// This is structural rather than a list of names, events, or action phrases.
+enum ConditionalIntentScope {
+    struct Dependency: Equatable, Sendable {
+        let condition: String
+        let consequence: String
+    }
+
+    private static let opener = #"(?:if|unless|when|whenever|once|after|before|until|till|while|as\s+soon\s+as|next\s+time|every\s+time)"#
+    private static let clausalOpener = #"(?:if|unless|when|whenever|once|until|till|while|as\s+soon\s+as|next\s+time|every\s+time)"#
+    private static let actionHead = #"(?:"# + ReminderPhrasing.sentenceLead + #"|"# + ActionabilityReader.actionVerb + #")"#
+
+    static func dependency(in text: String) -> Dependency? {
+        if let direct = leading(in: text) ?? trailing(in: text) { return direct }
+        // Inherited calendar context may precede an event condition. The day
+        // belongs to the consequence; it cannot make "before class" observable.
+        let value = normalized(text)
+        if let calendarLead = RuleBasedThoughtExtractor.leadingTemporalContext(in: value),
+           let span = value.range(of: calendarLead, options: [.anchored, .caseInsensitive]),
+           let nested = leading(in: cleaned(String(value[span.upperBound...]))),
+           nested.condition.range(of: #"(?i)^(?:before|after)\s+(?:that|this)$"#,
+                                  options: .regularExpression) == nil {
+            return Dependency(condition: nested.condition,
+                              consequence: normalized(calendarLead + " " + nested.consequence))
+        }
+        return nil
+    }
+
+    static func leading(in text: String) -> Dependency? {
+        let value = normalized(text)
+        guard startsWithOpener(value) else { return nil }
+
+        if let comma = value.firstIndex(of: ",") {
+            let condition = cleaned(String(value[..<comma]))
+            let consequence = withoutThen(String(value[value.index(after: comma)...]))
+            if isStandaloneCondition(condition), isConsequence(consequence) {
+                return Dependency(condition: condition, consequence: consequence)
+            }
+        }
+
+        let body = normalized(ActionabilityReader.actionBody(value))
+        if body.caseInsensitiveCompare(value) != .orderedSame,
+           isConsequence(body),
+           let range = value.range(of: body, options: [.caseInsensitive, .backwards]) {
+            let condition = cleaned(String(value[..<range.lowerBound]))
+            if isStandaloneCondition(condition) {
+                return Dependency(condition: condition, consequence: body)
+            }
+        }
+
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)\b\#(actionHead)\b"#) else {
+            return nil
+        }
+        for match in regex.matches(in: value, range: NSRange(value.startIndex..., in: value)) {
+            guard let range = Range(match.range, in: value), range.lowerBound != value.startIndex else {
+                continue
+            }
+            let condition = cleaned(String(value[..<range.lowerBound]))
+            let consequence = withoutThen(String(value[range.lowerBound...]))
+            if consequence.split(whereSeparator: \.isWhitespace).count >= 2,
+               isStandaloneCondition(condition),
+               isConsequence(consequence) {
+                return Dependency(condition: condition, consequence: consequence)
+            }
+        }
+        return nil
+    }
+
+    static func trailing(in text: String) -> Dependency? {
+        let value = normalized(text)
+        let instruction = ClauseScope.instructionText(value)
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)\b\#(opener)\b"#) else {
+            return nil
+        }
+        for match in regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).reversed() {
+            guard let range = Range(match.range, in: value), range.lowerBound != value.startIndex else {
+                continue
+            }
+            if instruction != value,
+               range.lowerBound.utf16Offset(in: value) >= instruction.utf16.count {
+                continue
+            }
+            let consequence = cleaned(String(value[..<range.lowerBound]))
+            let condition = cleaned(String(value[range.lowerBound...]))
+            // "except when" is a recurrence exception, not a condition on
+            // the whole action before it. Existing recurrence handling keeps
+            // the series visible for review.
+            let opensException = consequence.range(
+                of: #"(?i)\bexcept$"#,
+                options: .regularExpression
+            ) != nil
+            let fixedRelativeDate = consequence.range(
+                of: #"(?i)\bday$"#,
+                options: .regularExpression
+            ) != nil
+            let timingInsideReminderFrame = condition.range(
+                of: #"(?i)\bto\s+\#(ActionabilityReader.actionVerb)\b"#,
+                options: .regularExpression
+            ) != nil
+            if !opensException, !fixedRelativeDate, !timingInsideReminderFrame,
+               isConsequence(consequence),
+               isStandaloneCondition(condition),
+               (condition.range(
+                   of: #"(?i)^\#(clausalOpener)\b"#,
+                   options: .regularExpression
+               ) != nil || hasSubjectPredicate(condition)
+                    || (!isTemporalAdjunct(condition)
+                        && condition.range(
+                            of: #"(?i)^(?:after|before)\s+(?:that|this)\s+\#(ActionabilityReader.actionVerb)\b"#,
+                            options: .regularExpression
+                        ) == nil
+                        && ThoughtCompletion.unfinished(in: consequence) == nil)) {
+                return Dependency(condition: condition, consequence: consequence)
+            }
+        }
+        return nil
+    }
+
+    static func standalone(in text: String) -> String? {
+        let value = cleaned(text)
+        guard dependency(in: value) == nil, isStandaloneCondition(value) else { return nil }
+        return value
+    }
+
+    /// A bounded calendar adjunct, rather than an event the app must observe.
+    static func isTemporalAdjunct(_ condition: String) -> Bool {
+        let value = cleaned(condition).lowercased()
+        guard value.range(
+            of: #"^(?:after|before|until|till)\b"#,
+            options: .regularExpression
+        ) != nil else { return false }
+        // A named day or time period does not bind an unobservable event:
+        // "after I finish class tomorrow morning" still has no finish time.
+        // Only a stated clock or anchored duration can supply that binding.
+        let clock = #"\bat\s+(?:\d{1,2}(?::\d{2})?|noon|midnight|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
+            + #"|\b\d{1,2}:\d{2}\b|\b(?:noon|midnight)\b"#
+            + "|" + ActionabilityReader.meridiemClockCue
+            + "|" + ActionabilityReader.spokenClockCue
+        let duration = #"\bin\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\b"#
+        if value.range(of: clock + "|" + duration, options: .regularExpression) != nil { return true }
+        guard !hasSubjectPredicate(value) else { return false }
+        // Bare temporal noun phrases have their own established calendar or
+        // day-part meaning. An unknown event noun plus a day is not one.
+        let weekday = #"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"#
+        let month = #"(?:january|february|march|april|may|june|july|august|september|october|november|december)"#
+        let unit = #"(?:day|week|month|quarter|year|morning|afternoon|evening|night)"#
+        let nominal = #"^(?:after|before|until|till)\s+(?:the\s+)?(?:"#
+            + #"today|yesterday|tomorrow|tonight|morning|afternoon|evening|night|noon|midnight|breakfast|lunch|dinner|work|bed|bedtime"#
+            + "|" + weekday + "|" + month
+            + #"|(?:this|next|last)\s+(?:"# + unit + "|" + weekday + "|" + month + ")"
+            + #"|(?:start|beginning|end)\s+of\s+(?:(?:the|this|next)\s+)?"# + unit
+            + #"|\d{1,2}(?:st|nd|rd|th)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"#
+            + #"|\#(ActionabilityReader.ordinalWord)(?=\s+of\b|\s*$))\b"#
+        return value.range(of: nominal, options: .regularExpression) != nil
+    }
+
+    static func isDiscourseIdiom(_ condition: String) -> Bool {
+        let value = cleaned(condition)
+        guard let lead = value.range(of: #"(?i)^before\s+(?:i|we)\s+forget\b"#,
+                                    options: .regularExpression) else { return false }
+        let suffix = cleaned(String(value[lead.upperBound...]))
+        if suffix.isEmpty { return true }
+        // A bounded date after the discourse idiom belongs to the action;
+        // it does not turn forgetting into an event the app must observe.
+        guard let calendarLead = RuleBasedThoughtExtractor.leadingTemporalContext(in: suffix) else { return false }
+        return suffix.caseInsensitiveCompare(calendarLead) == .orderedSame
+    }
+
+    private static func isStandaloneCondition(_ text: String) -> Bool {
+        let value = cleaned(text)
+        guard startsWithOpener(value) else { return false }
+        let words = value.split(whereSeparator: \.isWhitespace)
+        let lower = value.lowercased()
+        if lower.range(of: #"^\#(clausalOpener)\b"#, options: .regularExpression) != nil {
+            return words.count >= openerWordCount(in: lower) + 2
+        }
+        let pronounSubject = lower.range(
+            of: #"^(?:after|before|until|till|while)\s+(?:i|we|you|he|she|they|it)(?:['’]\p{L}+)?\b"#,
+            options: .regularExpression
+        ) != nil
+        return words.count >= openerWordCount(in: lower) + (pronounSubject ? 2 : 1)
+    }
+
+    private static func isConsequence(_ text: String) -> Bool {
+        let value = withoutThen(text)
+        return !value.isEmpty && (
+            ReminderPhrasing.requestsReminder(value)
+                || ActionabilityReader.read(value).belongsOnToday
+        )
+    }
+
+    private static func hasSubjectPredicate(_ text: String) -> Bool {
+        let context = SentenceContextCache.context(for: text)
+        return context.hasSubjectPredicate(in: text.startIndex..<text.endIndex)
+    }
+
+    private static func startsWithOpener(_ text: String) -> Bool {
+        text.range(of: #"(?i)^\#(opener)\b"#, options: .regularExpression) != nil
+    }
+
+    private static func openerWordCount(in text: String) -> Int {
+        if text.hasPrefix("as soon as ") { return 3 }
+        if text.hasPrefix("next time ") || text.hasPrefix("every time ") { return 2 }
+        return 1
+    }
+
+    private static func withoutThen(_ text: String) -> String {
+        cleaned(text).replacingOccurrences(
+            of: #"(?i)^then\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+    }
+
+    private static func cleaned(_ text: String) -> String {
+        normalized(text).trimmingCharacters(in: CharacterSet(charactersIn: " ,;:.!?"))
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 // MARK: - Matrix speech act versus reported proposition
 
 /// Where the speaker stops speaking for themselves.
@@ -177,6 +409,126 @@ enum SentenceContextCache {
 /// product needs, and every family it is proved against is in
 /// `SemanticCorpusQ`.
 enum ClauseScope {
+
+    /// A command inside literal quotation is content. Apostrophes inside words
+    /// do not open quotation; an unmatched opening quote stays conservative.
+    static func isInsideQuotation(_ boundary: String.Index, in text: String) -> Bool {
+        guard text[..<boundary].contains(where: { "\"“‘'".contains($0) }) else { return false }
+        var closing: Character?
+        for index in text.indices where index < boundary {
+            let character = text[index]
+            guard "\"“”‘’'".contains(character) else { continue }
+            let before = index > text.startIndex ? text[text.index(before: index)] : nil
+            let next = text.index(after: index)
+            let after = next < text.endIndex ? text[next] : nil
+            if (character == "'" || character == "’"),
+               before?.isLetter == true, after?.isLetter == true { continue }
+            // A quote after a measurement (6" or 6') is a unit mark,
+            // unless a preceding opening quotation is being closed.
+            if closing == nil, before?.isNumber == true { continue }
+            if let expected = closing {
+                if character == expected { closing = nil }
+            } else if character == "\"" || character == "“" || character == "‘"
+                        || (character == "'" && before?.isLetter != true) {
+                closing = character == "“" ? "”" : (character == "‘" ? "’" : character)
+            }
+        }
+        return closing != nil
+    }
+
+    /// Coordinated verbs inherit the actor of an attributed imperative or
+    /// declared action. An explicit new reminder starts a new matrix act;
+    /// punctuation ending a sentence also releases the attributed scope.
+    static func continuesAttributedAction(left: String, right: String) -> Bool {
+        let prefix = left.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard prefix.last.map({ !".!?".contains($0) }) == true else { return false }
+        let following = right.trimmingCharacters(in: .whitespacesAndNewlines)
+        if following.range(of: ReminderPhrasing.sentenceLead,
+                           options: [.regularExpression, .caseInsensitive]) != nil { return false }
+        let action = ActionabilityReader.actionBody(prefix)
+        let reading = read(action)
+        guard reading.act == .communicating || reading.act == .reporting,
+              let complement = reading.complement else { return false }
+        if complement.range(of: delegatedProposition, options: .regularExpression) != nil { return true }
+        if reading.act == .reporting,
+           complement.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                            options: .regularExpression) != nil { return true }
+        let declaredAction = #"(?i)^(?:i|we|you|he|she|it|they)\s+"#
+            + #"(?:(?:will|would|can|could|should|must|may|might|do|does|don'?t|doesn'?t)\s+)?"#
+            + #"(?:not\s+|never\s+)?\#(ActionabilityReader.actionVerb)\b"#
+        if complement.range(of: declaredAction, options: .regularExpression) != nil { return true }
+        if reading.act == .communicating, let range = reading.complementRange {
+            return SentenceContextCache.context(for: action).tokens(in: range).contains { token in
+                token.isVerb && token.text.range(of: #"(?i)^\#(reportingVerb)$"#,
+                                                  options: .regularExpression) != nil
+            }
+        }
+        return false
+    }
+
+    static func hasImplicitDelegatedMessage(_ text: String) -> Bool {
+        let reading = read(ActionabilityReader.actionBody(text))
+        guard reading.act == .communicating, let body = reading.complement else { return false }
+        return body.range(of: delegatedProposition, options: .regularExpression) != nil
+    }
+
+    /// The part addressed to the app, excluding an explicitly introduced
+    /// outgoing message. Preserve outer reminder/date/location framing; the
+    /// message's own alarms, recurrence and conditions are content only.
+    static func instructionText(_ text: String) -> String {
+        guard text.range(
+            of: #"(?i)\b\#(communicationVerb)\b"#,
+            options: .regularExpression
+        ) != nil else { return text }
+        let body = ActionabilityReader.actionBody(text)
+        let reading = read(body)
+        guard reading.act == .communicating,
+              let content = reading.complementRange,
+              let bodySpan = text.range(of: body, options: [.caseInsensitive, .backwards]) else {
+            return text
+        }
+        let matrix = String(body[..<content.lowerBound])
+        // "Remind Alex" is an app reminder for the phone owner under the
+        // established delegation contract; its timing is not a message fact.
+        if matrix.range(of: #"(?i)^(?:please\s+)?(?:remind|notify|alert)\b"#,
+                        options: .regularExpression) != nil { return text }
+        // An explicit propositional marker distinguishes message content from
+        // "text Mira when I get home", whose trailing clause schedules sending.
+        let asksQuestion = matrix.range(of: #"(?i)^(?:please\s+)?ask\b"#,
+                                        options: .regularExpression) != nil
+        let markerPattern = asksQuestion
+            ? #"(?i)\s+(?:that|whether|how|if)(?:\s+if)?\s*$"#
+            : #"(?i)\s+(?:that|whether|how)(?:\s+if)?\s*$"#
+        let message = String(body[content]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let quoted = message.first.map { "\"“‘'".contains($0) } ?? false
+        if let marker = body.range(of: markerPattern.replacingOccurrences(of: #"\s*$"#, with: #"\s+"#),
+                                   options: .regularExpression),
+           !quoted || marker.lowerBound <= content.lowerBound,
+           marker.lowerBound <= content.lowerBound
+                || !SentenceContextCache.context(for: body).hasSubjectPredicate(
+                    in: content.lowerBound..<marker.lowerBound
+                ) {
+            return String(text[..<bodySpan.lowerBound]) + String(body[..<marker.lowerBound])
+        }
+        guard matrix.range(of: #"(?i)\b(?:if|when|once|after|before|until|while)\s*$"#,
+                           options: .regularExpression) == nil else { return text }
+        let declarative = message.range(
+            of: #"(?i)^(?:i|we|you|he|she|it|they|the|my|our|his|her|their)\b"#,
+            options: .regularExpression
+        ) != nil
+        let delegated = message.range(of: delegatedProposition, options: .regularExpression) != nil
+        guard quoted || declarative || delegated else { return text }
+        // With no stated outer timing and no explicit message delimiter, a
+        // trailing adjunct retains the established reminder attachment:
+        // "remind me to tell Bob I have the keys at five".
+        let outer = String(text[..<bodySpan.lowerBound])
+        if !quoted, !delegated,
+           outer.range(of: ReminderPhrasing.sentenceLead + #"\s+to\s*$"#,
+                       options: [.regularExpression, .caseInsensitive]) != nil {
+            return text
+        }
+        return String(text[..<bodySpan.lowerBound]) + matrix.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// What the speaker is doing with the matrix clause.
     enum SpeechAct: String, Equatable, Sendable {
@@ -244,6 +596,9 @@ enum ClauseScope {
     static let communicationVerb =
         #"(?:call|phone|text|email|message|contact|tell|ask|remind|let\s+know"#
         + #"|reply\s+to|respond\s+to|write\s+to|ping|dm)"#
+
+    private static let delegatedProposition =
+        #"(?i)^(?:(?:not|never)\s+to|to)\s+(?:(?:not|never|just|please|[\p{L}]+ly)\s+)*\#(ActionabilityReader.actionVerb)\b"#
 
     /// The complementizers English uses to open a reported proposition, plus the
     /// zero complementizer that speech drops constantly ("she said Ø it's off").
@@ -340,7 +695,7 @@ enum ClauseScope {
     private static func readCommunication(_ text: String) -> Reading? {
         let pattern = #"(?i)^(?:please\s+)?(?:can\s+you\s+)?"#
             + #"\#(communicationVerb)\s+"#
-            + #"((?!me\b)(?:the\s+)?[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?)"#
+            + #"((?!me\b)(?:the\s+)?[\p{L}][\p{L}'’-]*(?:\s+(?!(?:\#(complementizer)|\#(pronounSubject)|the|a|an|my|our|his|her|their|when|once|after|before|until|while|to|not|never|about|regarding|concerning|at|on|in|for|with|and|but|then|also)\b)[\p{L}][\p{L}'’-]*)?)"#
             + #"\s+(?:\#(complementizer)\b\s*)?(.+)$"#
         guard let regex = NSRegularExpression.speakItCached(pattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -352,12 +707,61 @@ enum ClauseScope {
         let body = String(text[bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return nil }
 
+        // A department designation remains part of the addressee. The native
+        // tagger can read an acronym as a pronoun and its department head as
+        // a verb, inventing a proposition and swallowing the action's date.
+        // Require a nominal unit head followed only by an adjunct or topic;
+        // explicit propositional markers and quoted messages retain ownership.
+        let matrixPrefix = String(text[..<bodyRange.lowerBound])
+        let explicitMarker = matrixPrefix.range(of: #"(?i)\b\#(complementizer)\s*$"#,
+                                                options: .regularExpression) != nil
+        let unitLead = #"(?i)^(?!(?:i|we|you|he|she|they)\b)(?:[\p{L}][\p{L}'’-]*\s+){0,4}(?:support|desk|department|team|services?|office|cent(?:er|re))\b"#
+        if !explicitMarker,
+           let unit = body.range(of: unitLead, options: .regularExpression) {
+            let unitEnd = text.index(bodyRange.lowerBound,
+                                     offsetBy: body.distance(from: body.startIndex, to: unit.upperBound))
+            let modifiers = SentenceContextCache.context(for: text)
+                .tokens(in: bodyRange.lowerBound..<unitEnd).dropLast()
+            // The designation cannot absorb a finite predicate merely because
+            // that predicate's object is itself a department head.
+            let containsPredicate = modifiers.contains { $0.isVerb }
+            let rest = String(body[unit.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let topic = rest.range(of: #"(?i)\b(?:about|regarding|concerning)\b"#,
+                                   options: .regularExpression)
+            let adjunct = String(rest[..<(topic?.lowerBound ?? rest.endIndex)])
+            if !containsPredicate && (rest.isEmpty || rest == "."
+                || rest.range(of: #"(?i)^(?:about|regarding|concerning)\b"#, options: .regularExpression) != nil
+                || (RuleBasedThoughtExtractor.leadingTemporalContext(in: rest) != nil
+                    && !SentenceContextCache.context(for: adjunct)
+                        .tokens.contains(where: \.isVerb))) {
+                return nil
+            }
+        }
+
         // Only a *clausal* complement is a message. "Text Mike tomorrow at
         // five" is an errand with a time on it, and reading the time as message
         // content would lose the reminder entirely. The tell is a subject and
         // predicate inside the body, read in full-sentence context.
         let context = SentenceContextCache.context(for: text)
-        guard context.hasSubjectPredicate(in: bodyRange) else { return nil }
+        let quoted = body.first.map { "\"“‘'".contains($0) } ?? false
+        let explicitSubjectPredicate = body.range(
+            of: #"(?i)^(?:i|we|you|they)\s+(?:(?:do|did|will|would|can|could|should|must|have|had)\s+)?\#(ActionabilityReader.actionVerb)\b"#,
+            options: .regularExpression
+        ) != nil
+        let delegated = body.range(of: delegatedProposition, options: .regularExpression) != nil
+        // A later independent command cannot supply the predicate that makes
+        // an earlier topical object look like a message proposition. In
+        // "text Noah about dinner and call Noah", only the first complement
+        // owns this matrix verb; otherwise a following correction is mistaken
+        // for quoted content and a canceled call survives.
+        let independentLead = #"(?i)(?:\s+(?:and|but|then|also|plus)\s+|[,;]\s*)(?=(?:\#(ActionabilityReader.actionVerb)\b|(?:remind|notify|alert)\s+me\b))"#
+        let firstBoundary = body.range(of: independentLead, options: .regularExpression)
+        let propositionEnd = firstBoundary?.lowerBound ?? body.endIndex
+        let propositionLength = body.distance(from: body.startIndex, to: propositionEnd)
+        let headEnd = text.index(bodyRange.lowerBound, offsetBy: propositionLength)
+        let reportedHead = readReported(String(body[..<propositionEnd])) != nil
+        guard quoted || delegated || explicitSubjectPredicate || reportedHead
+                || context.hasSubjectPredicate(in: bodyRange.lowerBound..<headEnd) else { return nil }
 
         // "to" opens a delegated command, not a message body: "tell Mike to
         // call Sarah". Handled as its own act so the actor comes out right.
@@ -373,6 +777,31 @@ enum ClauseScope {
             recipient: recipient,
             actor: .unresolved
         )
+    }
+
+    /// A report quoted inside a message does not become the user's own
+    /// command just because a later verb could start an independent clause.
+    static func isReportedMessageBoundary(
+        _ boundary: Range<String.Index>, in text: String, reading: Reading
+    ) -> Bool {
+        guard reading.act == .communicating,
+              let body = reading.complementRange,
+              body.contains(boundary.lowerBound) else { return false }
+        let prefix = text[body.lowerBound..<boundary.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let first = prefix.first, "\"“‘'".contains(first) {
+            let close: Character = first == "“" ? "”" : (first == "‘" ? "’" : first)
+            return !prefix.dropFirst().contains(close)
+        }
+        // A noun such as "sticky notes" does not report speech. Read the
+        // reporting verb in sentence context before extending its scope.
+        return SentenceContextCache.context(for: text)
+            .tokens(in: body.lowerBound..<boundary.lowerBound).contains { token in
+                token.isVerb && token.text.range(
+                    of: #"(?i)^\#(reportingVerb)$"#,
+                    options: .regularExpression
+                ) != nil
+            }
     }
 
     /// Whether a coordinator at `boundary` ends the reported proposition or
@@ -431,6 +860,14 @@ enum ClauseScope {
             return true
         }
 
+        if isReportedMessageBoundary(boundary, in: context.text, reading: reading) {
+            return false
+        }
+        if reading.act == .communicating,
+           String(context.text[rightConjunct]).trimmingCharacters(in: .whitespacesAndNewlines)
+            .range(of: ReminderPhrasing.sentenceLead, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
+        }
         let words = context.tokens(in: rightConjunct)
         guard let first = words.first, first.isVerb else { return false }
         if first.text.range(
@@ -628,6 +1065,7 @@ enum TemporalCommitment {
 /// with exactly one member — English has a single infinitive marker — so naming
 /// it is naming a structure, not enumerating vocabulary.
 enum ThoughtCompletion {
+    private static let objectTakingAction = #"(?:buy|order|call|phone|text|email|message|contact|send|submit|pick\s+up|drop\s+off)"#
 
     /// Why the utterance reads as unfinished. Named for the same reason
     /// `TemporalCommitment.Unsettled` is: the behaviour has to be explainable.
@@ -637,6 +1075,8 @@ enum ThoughtCompletion {
         /// "…milk and", "…about the". A word whose whole job is to introduce
         /// something that never arrived.
         case trailingFunctionWord
+        /// An explicit request supplied a transitive action but no object.
+        case missingObject
 
         /// All three are the same gap seen from three angles: a frame was
         /// opened and its content never came.
@@ -690,6 +1130,42 @@ enum ThoughtCompletion {
         // started.
         if ClauseScope.read(trimmed).act == .reporting { return nil }
 
+        // A coordinator cannot complete its own right-hand side. Unlike
+        // "yet" and a temporal "then", these tails announce another clause.
+        if lastWord == "and" || lastWord == "or"
+            || (lastWord == "then" && tokens.dropLast().last?.text.lowercased() == "and") {
+            return .trailingFunctionWord
+        }
+
+        var body = trimmed
+        // A day can surround an obligation frame or sit inside it. Peel the
+        // same structural layers to a fixed point before judging its object.
+        for _ in 0..<3 {
+            let next = ActionabilityReader.actionBody(body)
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if next == body { break }
+            body = next
+        }
+        // The one-word limitation above remains deliberate. Here the speaker
+        // supplied a request frame, and the required target never arrived.
+        let bareObjectTakingAction = body != trimmed && body.range(
+            of: #"^\#(objectTakingAction)$"#, options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        let framedMissingObject = trimmed.range(
+            of: #"\b\#(ActionabilityReader.obligationLead)\s+(?:probably\s+|really\s+)?\#(objectTakingAction)\s*[.!?]*$"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+        if bareObjectTakingAction || framedMissingObject {
+            return .missingObject
+        }
+        // Object-taking prepositions differ from particles such as "up",
+        // "out" and "in", and from the temporal anaphor "an hour before".
+        if ["about", "from", "with", "at", "for"].contains(lastWord),
+           body.range(of: #"^\#(ActionabilityReader.actionVerb)\b"#,
+                      options: [.regularExpression, .caseInsensitive]) != nil {
+            return .trailingFunctionWord
+        }
+
         // The infinitive marker. English has one, so this is a structural test
         // wearing a word: an infinitive was announced and no verb followed it.
         // Checked ahead of the class tests because taggers disagree about
@@ -712,7 +1188,8 @@ enum ThoughtCompletion {
             // the clause would have stopped there instead.
             let markers = tokens.filter { $0.text.lowercased() == "to" }
             if markers.count == 1 { return .danglingInfinitive }
-            return nil
+            if case .named("")? = LocationIntentParser.parse(trimmed)?.place { return nil }
+            return .trailingFunctionWord
         }
 
         // One guard covers every remaining class. A word that introduces
@@ -883,4 +1360,78 @@ enum SemanticGap: String, Equatable, Sendable, CaseIterable {
     /// is a *complete* sentence that happens to name no action ("remind me
     /// about the thing"). This one is a sentence that stopped.
     case incompleteThought
+}
+
+/// Explicit capture framing owns its complement. Verbs and dates inside a
+/// thought are content, not fresh commands. A separately addressed request
+/// closes that scope; punctuation alone inside the thought does not.
+enum CaptureContentScope {
+    private static let label = #"(?:idea|thought|question|reflection|observation)"#
+    private static let save = #"(?:save|record|store|keep|remember)"#
+    private static let independent = #"(?:(?:today|tomorrow|tonight|(?:next|this)\s+\w+|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in\s+(?:\d+|one|two|three|four|five|six|seven)\s+(?:days?|weeks?|hours?)|the\s+(?:first|end)\s+of\s+(?:the|next)\s+month|(?:after|before)\s+\w+|at\s+(?:\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?|noon|midnight)|in\s+the\s+(?:morning|afternoon|evening))\s+\#(ActionabilityReader.actionVerb)|don['’]?t\s+let\s+me\s+forget|remind\s+me|(?:i|we)\s+(?:need|have|want)\s+to|please\s+(?:remind|call|send|buy)|set\s+an?\s+(?:alarm|reminder))\b"#
+
+    static func explicitlyMemory(_ text: String) -> Bool {
+        // Read the speech act through an introductory discourse frame, without
+        // deleting any of its words from the captured quote.
+        var value = DisfluencyFilter.scopePrefix(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        value = value.replacingOccurrences(
+            of: #"(?i)^(?:(?:actually|(?:quick|one\s+more)\s+thing|for\s+later)\s*,\s*)+"#,
+            with: "", options: .regularExpression
+        )
+        value = DisfluencyFilter.scopePrefix(value)
+        if let note = value.range(of: #"(?i)^note\s+to\s+self\b[\s,:]*"#, options: .regularExpression) {
+            value = "note to self, " + DisfluencyFilter.scopePrefix(String(value[note.upperBound...]))
+        }
+        let patterns = [
+            #"^(?:(?:a|an|random|quick|just|another|my|personal|product|design)\s+)*(?:idea|question|reflection|observation)\b"#,
+            #"^(?:(?:a|random|quick|just|another|my)\s+)*thought\s*(?::|,|\b(?:about|on|that)\b)"#,
+            #"^for\s+(?:my|the)\s+notes\b"#,
+            // "Note to self" can introduce an errand or a fact. A nominal
+            // subject and copula establish the latter; a direct imperative
+            // such as "note to self, call the dentist" does not match.
+            #"^note\s+to\s+self\b[\s,:]*(?:(?:actually|well|so)\b[\s,:]*)?(?:the|my|our|your|his|her|their|this|that)\s+(?:[\p{L}'’-]+\s+){0,8}(?:is|are|was|were)\b"#,
+            // An epistemic frame plus a nominal copular complement reports
+            // an observation. A direct date ("is the first of May") and an
+            // owned obligation ("I think I need to call") remain separate.
+            #"^(?:i|we)\s+(?:think|believe|feel|notice|realize|realise)\s+(?:that\s+)?(?:[\p{L}'’-]+\s+){1,8}(?:is|are|was|were)\s+(?:the|a|an|my|our|your|his|her|their|this|that)\s+(?!\#(ActionabilityReader.ordinalWord)\b|\d|next\b|last\b)"#,
+            // Storing a literal value is a capture operation, not an errand.
+            // Anchoring keeps a future instruction to save it actionable.
+            #"^(?:please\s+)?(?:save|record|store|keep)\s+(?:this|that|the|my|a|an)\s+(?:(?:phone|telephone|account|serial|confirmation)\s+)?(?:number|code|password|pin|identifier|email|address|url)\b"#,
+            #"^(?:please\s+|just\s+)?(?:write\s+down|note|record)\s+that\b"#,
+            #"\b(?:just\s+|only\s+)?\#(save)\s+(?:this|that|it)(?:\s+as)?\s+(?:a\s+)?(?:\#(label)|note|memory)\b"#,
+            #"\b(?:just|only)\s+\#(save)\s+(?:this|that|it)\s*[.!?]*$"#,
+            #"\b(?:just|only)\s+\#(save)\s+(?:the|my)\s+(?:\#(label)|note|memory)\b"#,
+            #"\bsave\s+(?:this|that|it)\s+(?:exactly|verbatim|unchanged)\b"#,
+            #"^(?:i\s+)?(?:don['’]?t|do\s+not)\s+(?:want|need|make|create|set)\s+(?:me\s+)?(?:a|any|the)\s+reminder\b"#,
+        ]
+        guard let frame = patterns.compactMap({
+            value.range(of: $0, options: [.regularExpression, .caseInsensitive])
+        }).min(by: { $0.lowerBound < $1.lowerBound }) else { return false }
+        // In "remind me to save this thought", storage is the requested
+        // future action. Its infinitive complement does not change the outer
+        // reminder into a request to store the whole utterance as a note.
+        if let request = value.range(of: ReminderPhrasing.sentenceLeadThroughAction,
+                                     options: [.regularExpression, .caseInsensitive]),
+           request.upperBound <= frame.lowerBound,
+           value[request.upperBound..<frame.lowerBound].trimmingCharacters(in: .whitespaces).isEmpty {
+            return false
+        }
+        return true
+    }
+
+    static func independentParts(_ text: String) -> [String]? {
+        guard explicitlyMemory(text),
+              let regex = NSRegularExpression.speakItCached(
+                #"(?:[;.!?]\s+|,?\s+(?:and|but|also|then)\s+(?:then\s+)?)(?=\#(independent))"#,
+                options: [.caseInsensitive]
+              ) else { return nil }
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range, in: text) else { continue }
+            let prefix = String(text[..<range.lowerBound])
+            if explicitlyMemory(prefix) {
+                return [prefix, String(text[range.upperBound...])]
+            }
+        }
+        return nil
+    }
 }

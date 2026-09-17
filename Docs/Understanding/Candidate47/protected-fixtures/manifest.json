@@ -1,0 +1,11 @@
+{
+  "selection": "Original pre-fix P0 cluster membership, contracts copied unchanged from frozen 250K",
+  "counts": {
+    "cancellation": 187,
+    "conditional": 72
+  },
+  "sha256": {
+    "conditional": "59689788b82bf967dde08e097abd7a3954c9d2bef76d2fd2202fd0dc3e4662b8",
+    "cancellation": "97bdeab35b10302f77174b6297d43beb5a0f5cda9da7dd11dfcdc02b954fbe5a"
+  }
+}

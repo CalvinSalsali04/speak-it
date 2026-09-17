@@ -1,0 +1,1830 @@
+{
+  "cases": 15058,
+  "dimensions_before": {
+    "date": 3114,
+    "time": 468,
+    "lost_item": 2290,
+    "under_splitting": 2290,
+    "action_content": 1520,
+    "actionability": 903,
+    "object_content": 1599,
+    "temporal_phrase_lost": 459,
+    "destination_content": 1579,
+    "extra_item": 2415,
+    "over_splitting": 2415,
+    "cancellation_scope_leak_candidate": 34,
+    "ambiguity_review_absent": 110,
+    "person_identity": 219,
+    "target_identity_text": 232,
+    "task_object_as_person": 158,
+    "nonperson_as_person": 501
+  },
+  "dimensions_after": {
+    "date": 2745,
+    "time": 283,
+    "lost_item": 2299,
+    "under_splitting": 2299,
+    "action_content": 1359,
+    "actionability": 696,
+    "object_content": 1390,
+    "temporal_phrase_lost": 386,
+    "destination_content": 1185,
+    "extra_item": 1679,
+    "over_splitting": 1679,
+    "cancellation_scope_leak_candidate": 37,
+    "ambiguity_review_absent": 110,
+    "person_identity": 219,
+    "target_identity_text": 232,
+    "task_object_as_person": 157,
+    "nonperson_as_person": 501
+  },
+  "per_family": {
+    "correction.time": {
+      "total": 366,
+      "before_P0": 0,
+      "before_agreement": 220,
+      "after_P0": 0,
+      "after_agreement": 248
+    },
+    "temporal.time_correction": {
+      "total": 238,
+      "before_P0": 0,
+      "before_agreement": 120,
+      "after_P0": 0,
+      "after_agreement": 148
+    },
+    "temporal.relative_correction": {
+      "total": 297,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "asr.temporal": {
+      "total": 130,
+      "before_P0": 0,
+      "before_agreement": 6,
+      "after_P0": 0,
+      "after_agreement": 22
+    },
+    "temporal.shared_date_split_time": {
+      "total": 93,
+      "before_P0": 0,
+      "before_agreement": 63,
+      "after_P0": 0,
+      "after_agreement": 71
+    },
+    "temporal.wrapper": {
+      "total": 324,
+      "before_P0": 0,
+      "before_agreement": 116,
+      "after_P0": 0,
+      "after_agreement": 159
+    },
+    "clean.errand.pick_up": {
+      "total": 52,
+      "before_P0": 0,
+      "before_agreement": 24,
+      "after_P0": 0,
+      "after_agreement": 36
+    },
+    "clean.errand.return": {
+      "total": 70,
+      "before_P0": 0,
+      "before_agreement": 36,
+      "after_P0": 0,
+      "after_agreement": 55
+    },
+    "clean.errand.get": {
+      "total": 59,
+      "before_P0": 0,
+      "before_agreement": 28,
+      "after_P0": 0,
+      "after_agreement": 39
+    },
+    "clean.contact.text": {
+      "total": 24,
+      "before_P0": 0,
+      "before_agreement": 24,
+      "after_P0": 0,
+      "after_agreement": 24
+    },
+    "clean.admin.print": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 3,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "clean.errand.drop_off": {
+      "total": 59,
+      "before_P0": 0,
+      "before_agreement": 32,
+      "after_P0": 0,
+      "after_agreement": 51
+    },
+    "clean.contact.call": {
+      "total": 21,
+      "before_P0": 0,
+      "before_agreement": 21,
+      "after_P0": 0,
+      "after_agreement": 21
+    },
+    "clean.appointment": {
+      "total": 235,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "clean.admin.file": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "clean.contact.email": {
+      "total": 35,
+      "before_P0": 0,
+      "before_agreement": 35,
+      "after_P0": 0,
+      "after_agreement": 35
+    },
+    "clean.admin.complete": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 3,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "clean.admin.send": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 3,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "clean.admin.cancel": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "clean.errand.buy": {
+      "total": 78,
+      "before_P0": 0,
+      "before_agreement": 46,
+      "after_P0": 0,
+      "after_agreement": 59
+    },
+    "clean.admin.upload": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "clean.admin.pay": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "clean.admin.check": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "clean.admin.download": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 3,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "clean.admin.sign": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "clean.admin.fill_out": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "clean.admin.apply_for": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "clean.admin.submit": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "clean.admin.review": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 5,
+      "after_P0": 0,
+      "after_agreement": 5
+    },
+    "clean.admin.renew": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "clean.admin.reschedule": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "messy.wrapper.return": {
+      "total": 267,
+      "before_P0": 0,
+      "before_agreement": 146,
+      "after_P0": 0,
+      "after_agreement": 164
+    },
+    "messy.wrapper.buy": {
+      "total": 269,
+      "before_P0": 0,
+      "before_agreement": 113,
+      "after_P0": 0,
+      "after_agreement": 135
+    },
+    "messy.wrapper.pick_up": {
+      "total": 299,
+      "before_P0": 0,
+      "before_agreement": 116,
+      "after_P0": 0,
+      "after_agreement": 143
+    },
+    "messy.wrapper.get": {
+      "total": 245,
+      "before_P0": 0,
+      "before_agreement": 113,
+      "after_P0": 0,
+      "after_agreement": 144
+    },
+    "correction.date_preface": {
+      "total": 159,
+      "before_P0": 0,
+      "before_agreement": 62,
+      "after_P0": 0,
+      "after_agreement": 146
+    },
+    "correction.chain": {
+      "total": 183,
+      "before_P0": 0,
+      "before_agreement": 40,
+      "after_P0": 0,
+      "after_agreement": 153
+    },
+    "correction.date": {
+      "total": 200,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_2": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.6.pattern_7": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_12": {
+      "total": 28,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_15": {
+      "total": 25,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_0": {
+      "total": 20,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.2.pattern_1": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_1": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_2": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.2.pattern_6": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 7,
+      "after_P0": 3,
+      "after_agreement": 7
+    },
+    "multi.2.pattern_3": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_3": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_4": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.4.pattern_4": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 5
+    },
+    "multi.3.pattern_1": {
+      "total": 17,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_8": {
+      "total": 19,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.5.pattern_12": {
+      "total": 32,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_6": {
+      "total": 12,
+      "before_P0": 4,
+      "before_agreement": 0,
+      "after_P0": 4,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_10": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_13": {
+      "total": 34,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.5.pattern_11": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_11": {
+      "total": 18,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.4.pattern_3": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_9": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_9": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_13": {
+      "total": 26,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.2.pattern_12": {
+      "total": 27,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_5": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.2.pattern_14": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_6": {
+      "total": 14,
+      "before_P0": 5,
+      "before_agreement": 0,
+      "after_P0": 5,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_10": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_12": {
+      "total": 26,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_8": {
+      "total": 23,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 5
+    },
+    "multi.6.pattern_13": {
+      "total": 17,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.5.pattern_15": {
+      "total": 26,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_5": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "multi.4.pattern_12": {
+      "total": 31,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_4": {
+      "total": 17,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.3.pattern_7": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.3.pattern_3": {
+      "total": 24,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_10": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_2": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.3.pattern_15": {
+      "total": 20,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_6": {
+      "total": 20,
+      "before_P0": 9,
+      "before_agreement": 0,
+      "after_P0": 9,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_5": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.3.pattern_0": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.3.pattern_6": {
+      "total": 14,
+      "before_P0": 5,
+      "before_agreement": 0,
+      "after_P0": 5,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_0": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.4.pattern_7": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_2": {
+      "total": 17,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.6.pattern_8": {
+      "total": 23,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "multi.2.pattern_0": {
+      "total": 18,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "multi.4.pattern_11": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "multi.3.pattern_14": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_7": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.2.pattern_9": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.6.pattern_3": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_1": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_4": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.6.pattern_14": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.6.pattern_5": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.6.pattern_15": {
+      "total": 27,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_9": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "multi.3.pattern_8": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "multi.5.pattern_13": {
+      "total": 26,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.5.pattern_5": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "multi.4.pattern_9": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_2": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.5.pattern_7": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_8": {
+      "total": 22,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.2.pattern_11": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_14": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.4.pattern_0": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_14": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_1": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_11": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.2.pattern_10": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.3.pattern_13": {
+      "total": 25,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "multi.2.pattern_15": {
+      "total": 20,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_10": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "multi.5.pattern_4": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "unfinished.temporal": {
+      "total": 193,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "unfinished.buy": {
+      "total": 3,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "safety.unresolved": {
+      "total": 79,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "safety.temporal_negation": {
+      "total": 57,
+      "before_P0": 0,
+      "before_agreement": 57,
+      "after_P0": 0,
+      "after_agreement": 57
+    },
+    "safety.prohibit": {
+      "total": 51,
+      "before_P0": 0,
+      "before_agreement": 51,
+      "after_P0": 0,
+      "after_agreement": 51
+    },
+    "safety.partial_cancel": {
+      "total": 67,
+      "before_P0": 0,
+      "before_agreement": 8,
+      "after_P0": 0,
+      "after_agreement": 15
+    },
+    "safety.dont_forget": {
+      "total": 60,
+      "before_P0": 0,
+      "before_agreement": 60,
+      "after_P0": 0,
+      "after_agreement": 60
+    },
+    "safety.location_negation": {
+      "total": 77,
+      "before_P0": 0,
+      "before_agreement": 58,
+      "after_P0": 0,
+      "after_agreement": 58
+    },
+    "temporal.shared_date": {
+      "total": 693,
+      "before_P0": 0,
+      "before_agreement": 484,
+      "after_P0": 0,
+      "after_agreement": 552
+    },
+    "temporal.date_time": {
+      "total": 91,
+      "before_P0": 0,
+      "before_agreement": 72,
+      "after_P0": 0,
+      "after_agreement": 81
+    },
+    "temporal.negated_date": {
+      "total": 43,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "temporal.date_correction": {
+      "total": 124,
+      "before_P0": 0,
+      "before_agreement": 59,
+      "after_P0": 0,
+      "after_agreement": 91
+    },
+    "temporal.event_relative": {
+      "total": 68,
+      "before_P0": 0,
+      "before_agreement": 65,
+      "after_P0": 0,
+      "after_agreement": 65
+    },
+    "temporal.underspecified": {
+      "total": 35,
+      "before_P0": 0,
+      "before_agreement": 33,
+      "after_P0": 0,
+      "after_agreement": 33
+    },
+    "temporal.fuzzy": {
+      "total": 39,
+      "before_P0": 0,
+      "before_agreement": 24,
+      "after_P0": 0,
+      "after_agreement": 24
+    },
+    "reference.anaphoric_time": {
+      "total": 33,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "reference.same_message": {
+      "total": 37,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "reference.location_staff": {
+      "total": 34,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_9": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_7": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_8": {
+      "total": 17,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_9": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_10": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_13": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_0": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_6": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_8": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_10": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_3": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_9": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_13": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_5": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_6": {
+      "total": 19,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_1": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_12": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 3
+    },
+    "long.3.pattern_4": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_6": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_5": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_4": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_5": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_2": {
+      "total": 8,
+      "before_P0": 6,
+      "before_agreement": 0,
+      "after_P0": 6,
+      "after_agreement": 0
+    },
+    "long.3.pattern_7": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "long.4.pattern_7": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_9": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_1": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_11": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_12": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "long.5.pattern_1": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_3": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_8": {
+      "total": 16,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_2": {
+      "total": 7,
+      "before_P0": 2,
+      "before_agreement": 0,
+      "after_P0": 2,
+      "after_agreement": 0
+    },
+    "long.4.pattern_1": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_2": {
+      "total": 6,
+      "before_P0": 2,
+      "before_agreement": 0,
+      "after_P0": 2,
+      "after_agreement": 0
+    },
+    "long.5.pattern_11": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_13": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_13": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_10": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_7": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_8": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.3.pattern_10": {
+      "total": 14,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "long.3.pattern_0": {
+      "total": 20,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_3": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_11": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_4": {
+      "total": 7,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_5": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_11": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_6": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.6.pattern_2": {
+      "total": 5,
+      "before_P0": 1,
+      "before_agreement": 0,
+      "after_P0": 1,
+      "after_agreement": 0
+    },
+    "long.6.pattern_4": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_3": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_12": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "asr.negation": {
+      "total": 56,
+      "before_P0": 0,
+      "before_agreement": 55,
+      "after_P0": 0,
+      "after_agreement": 55
+    },
+    "asr.multi": {
+      "total": 92,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 11
+    },
+    "cross.long": {
+      "total": 522,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "clean.errand.grab": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "wrapper.errand.buy": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "wrapper.errand.grab": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "wrapper.errand.pick_up": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "wrapper.errand.get": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "correction.negated_old_date": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "temporal.relative_to_time": {
+      "total": 21,
+      "before_P0": 0,
+      "before_agreement": 11,
+      "after_P0": 0,
+      "after_agreement": 16
+    },
+    "temporal.fuzzy_time": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "temporal.date_plus_recurrence": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "safety.unless_condition": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_0": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "asr.multi_action": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "clean.admin.scan": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "clean.admin.update": {
+      "total": 2,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "clean.admin.reply_to": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "clean.admin.book": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "clean.admin.confirm": {
+      "total": 1,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 1
+    },
+    "correction.time_chain": {
+      "total": 106,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.5.pattern_0": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "long.4.pattern_12": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "entity.organization.reminder.subscription": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 5,
+      "after_P0": 0,
+      "after_agreement": 5
+    },
+    "entity.organization.reminder.bank": {
+      "total": 46,
+      "before_P0": 0,
+      "before_agreement": 37,
+      "after_P0": 0,
+      "after_agreement": 37
+    },
+    "entity.organization.reminder.retailer": {
+      "total": 36,
+      "before_P0": 0,
+      "before_agreement": 25,
+      "after_P0": 0,
+      "after_agreement": 25
+    },
+    "entity.organization.reminder.university": {
+      "total": 18,
+      "before_P0": 0,
+      "before_agreement": 16,
+      "after_P0": 0,
+      "after_agreement": 16
+    },
+    "entity.organization.reminder.airline": {
+      "total": 31,
+      "before_P0": 0,
+      "before_agreement": 20,
+      "after_P0": 0,
+      "after_agreement": 20
+    },
+    "entity.organization.reminder.transport": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "entity.organization.reminder.government": {
+      "total": 26,
+      "before_P0": 0,
+      "before_agreement": 15,
+      "after_P0": 0,
+      "after_agreement": 15
+    },
+    "entity.organization.reminder.technology": {
+      "total": 23,
+      "before_P0": 0,
+      "before_agreement": 16,
+      "after_P0": 0,
+      "after_agreement": 16
+    },
+    "entity.organization.reminder.courier": {
+      "total": 25,
+      "before_P0": 0,
+      "before_agreement": 20,
+      "after_P0": 0,
+      "after_agreement": 20
+    },
+    "entity.organization.reminder.support": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 7,
+      "after_P0": 0,
+      "after_agreement": 7
+    },
+    "entity.organization.reminder.financial": {
+      "total": 9,
+      "before_P0": 0,
+      "before_agreement": 7,
+      "after_P0": 0,
+      "after_agreement": 7
+    },
+    "entity.organization.reminder.restaurant": {
+      "total": 15,
+      "before_P0": 0,
+      "before_agreement": 6,
+      "after_P0": 0,
+      "after_agreement": 6
+    },
+    "entity.organization.reminder.gym": {
+      "total": 8,
+      "before_P0": 0,
+      "before_agreement": 7,
+      "after_P0": 0,
+      "after_agreement": 7
+    },
+    "entity.organization.reminder.telecom": {
+      "total": 29,
+      "before_P0": 0,
+      "before_agreement": 11,
+      "after_P0": 0,
+      "after_agreement": 11
+    },
+    "entity.organization.reminder.postal": {
+      "total": 6,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "entity.organization.reminder.utility": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "entity.organization.reminder.clinic": {
+      "total": 10,
+      "before_P0": 0,
+      "before_agreement": 8,
+      "after_P0": 0,
+      "after_agreement": 8
+    },
+    "entity.organization.reminder.company": {
+      "total": 5,
+      "before_P0": 0,
+      "before_agreement": 4,
+      "after_P0": 0,
+      "after_agreement": 4
+    },
+    "entity.organization.reminder.lab": {
+      "total": 12,
+      "before_P0": 0,
+      "before_agreement": 5,
+      "after_P0": 0,
+      "after_agreement": 5
+    },
+    "entity.organization.reminder.delivery": {
+      "total": 11,
+      "before_P0": 0,
+      "before_agreement": 10,
+      "after_P0": 0,
+      "after_agreement": 10
+    },
+    "entity.organization.messy": {
+      "total": 357,
+      "before_P0": 0,
+      "before_agreement": 305,
+      "after_P0": 0,
+      "after_agreement": 296
+    },
+    "entity.task_topic": {
+      "total": 389,
+      "before_P0": 0,
+      "before_agreement": 323,
+      "after_P0": 0,
+      "after_agreement": 323
+    },
+    "entity.task_topic.email_for": {
+      "total": 353,
+      "before_P0": 0,
+      "before_agreement": 297,
+      "after_P0": 0,
+      "after_agreement": 297
+    },
+    "entity.task_topic.messy": {
+      "total": 346,
+      "before_P0": 0,
+      "before_agreement": 291,
+      "after_P0": 0,
+      "after_agreement": 291
+    },
+    "entity.person_at_org.correction": {
+      "total": 375,
+      "before_P0": 0,
+      "before_agreement": 311,
+      "after_P0": 0,
+      "after_agreement": 311
+    },
+    "entity.department": {
+      "total": 399,
+      "before_P0": 0,
+      "before_agreement": 284,
+      "after_P0": 0,
+      "after_agreement": 303
+    },
+    "entity.department.messy": {
+      "total": 374,
+      "before_P0": 0,
+      "before_agreement": 266,
+      "after_P0": 0,
+      "after_agreement": 266
+    },
+    "entity.role": {
+      "total": 356,
+      "before_P0": 0,
+      "before_agreement": 320,
+      "after_P0": 0,
+      "after_agreement": 320
+    },
+    "entity.role.messy": {
+      "total": 330,
+      "before_P0": 0,
+      "before_agreement": 278,
+      "after_P0": 0,
+      "after_agreement": 278
+    },
+    "entity.business_location": {
+      "total": 370,
+      "before_P0": 0,
+      "before_agreement": 309,
+      "after_P0": 0,
+      "after_agreement": 309
+    },
+    "entity.organization_branch": {
+      "total": 362,
+      "before_P0": 0,
+      "before_agreement": 293,
+      "after_P0": 0,
+      "after_agreement": 293
+    },
+    "entity.ambiguous_name.organization": {
+      "total": 366,
+      "before_P0": 0,
+      "before_agreement": 274,
+      "after_P0": 0,
+      "after_agreement": 274
+    },
+    "entity.ambiguous_name.person": {
+      "total": 339,
+      "before_P0": 0,
+      "before_agreement": 220,
+      "after_P0": 0,
+      "after_agreement": 220
+    },
+    "entity.mixed.task_org": {
+      "total": 349,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "entity.mixed.task_person": {
+      "total": 350,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "domain.entity": {
+      "total": 374,
+      "before_P0": 0,
+      "before_agreement": 228,
+      "after_P0": 0,
+      "after_agreement": 228
+    },
+    "messy.entity.long": {
+      "total": 368,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "thought.memory.fact": {
+      "total": 4,
+      "before_P0": 0,
+      "before_agreement": 2,
+      "after_P0": 0,
+      "after_agreement": 2
+    },
+    "thought.attributed_memory": {
+      "total": 13,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "reported.request_as_memory": {
+      "total": 80,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "time.before": {
+      "total": 36,
+      "before_P0": 0,
+      "before_agreement": 36,
+      "after_P0": 0,
+      "after_agreement": 36
+    },
+    "time.corrected_deadline": {
+      "total": 114,
+      "before_P0": 0,
+      "before_agreement": 1,
+      "after_P0": 0,
+      "after_agreement": 0
+    },
+    "time.event_offset": {
+      "total": 69,
+      "before_P0": 0,
+      "before_agreement": 0,
+      "after_P0": 0,
+      "after_agreement": 0
+    }
+  },
+  "new_difference_cases": 68,
+  "improved_cases": 1355
+}
