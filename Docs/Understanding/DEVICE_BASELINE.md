@@ -81,6 +81,40 @@ in full — the corpus gate, the unit suite, the release build, the `--selfcheck
 assertions, and every device-only behaviour. That list is the point of the
 device phase, and it should shrink by measurement, not by editing.
 
+## The reference the deviations are measured against
+
+Every deviation count here is measured against Candidate47's own manifest,
+`Docs/Understanding/Candidate47/development/candidate47-source.json`. Edit that
+file and a real deviation disappears while every other check still passes. The
+defects thread raised this while grading #109 as a limit that could not be
+closed from inside, with Calvin's instruction not to touch the directory as the
+only thing holding it.
+
+It could be closed, and the reason is more useful than the fix. The manifest's
+SHA-256 was already recorded twice when Candidate47 was frozen —
+`f46a0a6e…`, in `evidence-integrity.json` and again in `FROZEN_CANDIDATE.json`.
+**Nothing recomputed it.** `verify_frozen.py` consults `artifacts_sha256` only
+when given `--evidence-root`, and then resolves those paths against the
+preserved output directory rather than against the manifest it has just read as
+its reference. The value was present, correct, and unchecked — which from the
+outside reads exactly like a check.
+
+The verifier now recomputes it against **both** recorded copies and requires
+them to agree, so a single edit anywhere in that set fails by name. Both are
+used rather than one copied into the receipt: a fourth copy of the same claim
+would be a fourth thing to drift, and Candidate47's files are not written.
+
+```
+edited the manifest to hide a deviation   red: both records disagree
+edited only evidence-integrity.json       red: that record disagrees
+edited the manifest AND covered it in
+  evidence-integrity.json                 red: FROZEN_CANDIDATE.json still disagrees
+```
+
+Two coordinated edits to files nobody is supposed to touch will still pass, and
+that residue is honest to state: this raises the cost of a silent change, it
+does not make one impossible.
+
 ## What runs in CI, and what does not
 
 The verifier does two separable things, and only one of them pins a tree.
