@@ -766,3 +766,71 @@ git branch -r --contains <sha>
 ```
 
 An ignore entry that matches nothing is invisible, not loud.
+
+## 19. "The isolation guard passes" — which guard, and what the deleted rule would cost
+
+Section 17 and #107 both report `test_interpretation_isolation.py` passing.
+That is true and it is weaker than it sounds, so the qualification belongs
+next to the claim rather than in somebody's memory.
+
+**Which guard passes.** The reconciliation retained Candidate47's
+`test_interpretation_isolation.py`, which has **two** rules: nothing in the
+interpretation path may reach the network, and the deterministic half may not
+import FoundationModels. Against `4b0262a` it is 135 lines where main's was
+206 — 71 fewer — and `PROMPT_FILE` and `QUOTED_EXAMPLE` are gone with them.
+
+Main's third rule, the grounding one, is **absent, not failing**. So is
+`e555f2a`'s grounding sentence in the prompt. That is Calvin's instruction
+working exactly as written — `ModelInterpreter.swift` and its isolation
+behaviour were to be retained, and `e555f2a`'s semantics held for the FM/device
+phase. What needs to be legible is the cost, because **an absent check on a
+green tree is the state this document's own instrument lessons call hardest to
+notice later.** A reader six weeks from now must not take main's green as
+evidence that grounding protection holds. It is not enforced at all.
+
+**What restoring rule 3 would cost: five sites, not two.** Measured by
+extracting the deleted `prompt_examples` from `4b0262a` and running it against
+`origin/main`'s `ModelInterpreter.swift`:
+
+```
+hits: 5
+  :92   the instructions      "Sarah ... it" is owed by somebody else
+  :93   the instructions      "Mum said I should call the dentist"
+  :99   the instructions      "Ask Dana about Friday"
+  :147  a @Guide description  'tomorrow'
+  :190  a @Guide description  'never mind'
+```
+
+**Two is the wrong answer, and the way to get it is instructive.** Running only
+the `QUOTED_EXAMPLE` regex gives the two `@Guide` hits, because that pattern
+matches single-quoted spans. The three instruction lines use double quotes,
+which inside a Swift multi-line string need no escape — and the rule's own code
+carries a *second* branch for exactly that case:
+
+```python
+if where == "the instructions" and '"' in text:
+```
+
+Its comment says why: *"Two of the four leaking sites were this shape; a rule
+that caught the other two and stopped would have read as protection."* So the
+author anticipated this undercount and wrote the branch against it. Reading the
+comment as a statement that the rule cannot see double-quoted examples, and
+stopping at two, reproduces the very failure it warns about — which is worth
+recording because two sessions did it independently today before the rule was
+run.
+
+**The falsifier, one command:**
+
+```
+git show 4b0262a:Tools/CorpusRunner/test_interpretation_isolation.py > old_guard.py
+python3 -c "import old_guard,pathlib; print(len(old_guard.prompt_examples(
+    pathlib.Path('SpeakIt/Interpretation/ModelInterpreter.swift'),'x')))"
+```
+
+On a branch that adds lines above them the `@Guide` numbers shift; on #107's
+head they are 171 and 214. The count does not move.
+
+**Not a recommendation to restore it here.** Whether rule 3 and the grounding
+sentence come back is the FM/device-phase decision Calvin parked, and section
+14 holds the reasons. This section supplies the price tag he would be deciding
+against: five sites, three of them in the instructions.
