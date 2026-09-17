@@ -748,9 +748,9 @@ recomputed and matches, and the manifests' bytes are the identity
 covering a scan of that branch. Six entries, no broadened rule, no allowlisted
 file, no ignored commit — the prohibitions in section 11 are intact.
 
-**That fix is #108, not this branch.** Another thread reached the same
-diagnosis and had it up within minutes, with verification this container could
-not produce: `ci.yml`'s own invocation at the pinned gitleaks 8.30.1, before
+**That fix is #108, not this branch** — merged as `2ef3d021`, after which
+`main`'s own CI went green again. Another thread reached the same diagnosis and
+had it up within minutes, with verification this container could not produce: `ci.yml`'s own invocation at the pinned gitleaks 8.30.1, before
 and after, plus a planted `stripe-access-token` on line 173 of
 `baseline/freeze.json` — beside an excused line, inside an excused file — still
 reported. No gitleaks binary exists here, so the duplicate this branch briefly
