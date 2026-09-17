@@ -290,3 +290,29 @@ and deleted immediately after. Its plant commit carried a different SHA from
 `15bde21`, so no ignore entry could have matched the plants even by accident,
 and lines 174 and 175 sit either side of the ignored line 173 in the same
 file. `.gitleaks.toml` is unchanged.
+
+## 12. The two Swift classes, run locally
+
+Calvin ran `SpeakItTests/SpeechRepairTests` and
+`SpeakItTests/ThoughtCompletionTests` from a fresh worktree at reconciliation
+head `db341d9` on 2026-09-17. **Both completed with exit code 0.**
+
+That closes the gap section 9 left open: CI could not reach the unit-test
+step, because the corpus gate exits 1 on Candidate47's documented behavioural
+qualification and every later step is skipped. The reference Mac has no such
+problem, and it is also the environment where `NLTagger`'s lexical-class model
+is present, so the abstaining assertions carried over from newer main were
+exercised rather than skipped.
+
+**One thing still worth writing down.** `Tools/CI/unit-tests.sh` splits its
+class selection on commas only, and a selection matching nothing exits 0
+having run no tests -- documented on PR #99, with these same two classes. Exit
+0 alone therefore does not distinguish "both classes passed" from "neither
+class was selected". The script prints the count:
+
+```
+| Result  | Passed | Failed | Skipped |
+```
+
+Recording the exit code as reported, and the count as not yet in this
+document. Anyone re-running it can settle the difference in one line.
