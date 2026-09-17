@@ -154,3 +154,87 @@ once it is approved. The final report records the main workspace at
 merge of 2026-09-09, 136 commits behind the fork base, differing in 14 frozen
 Swift files. It is neither Candidate47 nor `main`, and a capture attributed to
 the wrong tree is worse than no capture.
+
+## 9. What the macOS run answered
+
+Run 35220361423, dispatched on `21808b2` (this tree plus the report document,
+which changes no behaviour).
+
+**The corpus gate, and the port cost it nothing.**
+
+```
+rendering=identity  TOTAL 1434 cases, 3 failing, 1431 clean
+CRITICAL 0  BEHAVIORAL 1  METADATA 0  COSMETIC 2
+BLOCKING(crit+beh) = 1
+```
+
+The three failing cases are, individually, the three the Candidate47 final
+report names as its own qualifications:
+
+| severity | case | what the run printed |
+|---|---|---|
+| BEHAVIORAL | "Remind me before the office closes December 24" | `delivery: expected notification, got none` |
+| COSMETIC | "Book the dentist and before dinner call Mom" | `title[1]: expected Before dinner call Mom, got Before dinner, Call Mom` |
+| COSMETIC | "After I finish the essay, call Dave" | `title: expected Call Dave, got After I finish the essay, Call Dave` |
+
+Same count, same severities, same cases. So the ported line moved the gate by
+zero. **The control is Candidate47's own recorded measurement in its final
+report, not a run of the unmodified tree made here**, which would cost a
+second dispatch.
+
+**The gate nevertheless exits 1, and that is not about this branch.**
+`Tools/CI/corpus-gate.sh` compares against a hardcoded baseline of zero
+blocking failures, so Candidate47's qualified behavioural difference is a
+hard CI failure. Candidate47 cannot pass the gate as that script is written,
+and neither can anything built on it.
+
+**That is why the Swift test classes have no result.** Steps after a failing
+step are skipped, so `Unit tests` never ran and
+`SpeakItTests/SpeechRepairTests` and `SpeakItTests/ThoughtCompletionTests`
+remain unmeasured. No dispatch can reach them while the gate blocks.
+
+**The abandonment development set is clean on the column that matters.**
+`UNSAFE withdrawn thought given a date/reminder/place   0`, with the four
+documented failures (ABN20, ABN38, ABN40, ABN46) unchanged and still counted
+in the rates.
+
+**Foundation Models on the hosted runner**: `deviceNotEligible`, as on every
+previous run. The instructions fingerprint is `654b75ea` rather than main's,
+because `e555f2a`'s prompt change was deliberately not carried.
+
+## 10. The secret scan, and an allowlist that failed its own test
+
+The scoped allowlist proposed in section 5's neighbourhood was written,
+tested both ways, and **reverted, because it did not do what it said**.
+
+Measured with gitleaks 8.30.1, the version `ci.yml` pins:
+
+| | result |
+|---|---|
+| `condition = "AND"` + `paths` + a 64-hex regex | history scan clean — but a planted AWS key and a planted Stripe key in the same file went **undetected** |
+| control, allowlist absent, same plants | both plants **detected**, so they are real probes |
+| `condition = "AND"` + `paths` + a regex matching nothing | still excused everything |
+
+The third row is the diagnosis: a global allowlist's `paths` skips the file
+before any regex is consulted, so `condition` changes nothing there. gitleaks
+also accepts unknown allowlist keys silently — a deliberately invented key
+produced no error — so a typo and an unsupported option look identical.
+
+**"Only a 64-hex value, only in those three files" is therefore not
+expressible in a gitleaks global allowlist.** The closest formulation that
+was measured to work uses no `paths` at all:
+
+```toml
+[[allowlists]]
+regexTarget = "line"
+regexes = ['''^\s*"[A-Za-z0-9_./-]+\.[A-Za-z0-9]+": "[a-f0-9]{64}",?\s*$''']
+```
+
+The JSON key must be a file path with an extension, which is what a manifest
+line is and what a secret's key name is not. Measured: the three manifest
+hashes are excused, and all three plants are still caught — including a
+64-character hex value placed under the key `"api_key"`, which the
+value-shape-only version would have excused.
+
+It is narrower than what was tried on value shape and broader on file scope,
+so it is not what was authorised, and nothing is committed.
