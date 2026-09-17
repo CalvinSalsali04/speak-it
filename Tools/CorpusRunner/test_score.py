@@ -4,6 +4,7 @@ import collections
 import contextlib
 import csv
 import io
+import json
 import os
 import pathlib
 import re
@@ -2956,6 +2957,216 @@ class TheProseHalfOfTheLeakCheckIsTriggered(unittest.TestCase):
             f"{len(uncovered)} Markdown file(s) are read by leak-check.py and "
             f"match no path filter that starts language-tools, so changing "
             f"only them runs no sealed-set check at all")
+
+    #: Checks whose inputs are declared rather than walked. A module lands here
+    #: by exposing `INPUTS`, a tuple of repository-relative paths it reads.
+    def checks_that_declare_their_inputs(self):
+        """Every module under Tools/ exposing an `INPUTS` tuple, discovered.
+
+        Discovered rather than listed, because a hand-written list is the same
+        defect one level up: it goes stale the next time a check learns to read
+        another file, and nothing fails when it does.
+        """
+        found = {}
+        for path in sorted(self.ROOT.glob("Tools/**/*.py")):
+            source = path.read_text(encoding="utf-8", errors="replace")
+            if "INPUTS" not in source:
+                continue
+            for node in ast.parse(source).body:
+                if not isinstance(node, ast.Assign):
+                    continue
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                if "INPUTS" not in names:
+                    continue
+                # literal_eval, never exec: this walks every Python file under
+                # Tools/, and a discovery step that runs them would be a far
+                # larger thing than the guard it serves.
+                found[str(path.relative_to(self.ROOT))] = tuple(
+                    ast.literal_eval(node.value))
+        return found
+
+    def test_the_declared_input_scan_finds_something(self):
+        """Zero declaring modules makes the coverage test below vacuous, and a
+        vacuous guard reads exactly like one that holds."""
+        self.assertTrue(self.checks_that_declare_their_inputs(),
+                        "no module under Tools/ declares INPUTS, so the "
+                        "coverage test below asserts nothing")
+
+    def test_every_file_a_gated_check_reads_starts_the_job(self):
+        """The generalisation of the Markdown test above, and the reason it
+        exists: that one considers `.md` only, so a check reading JSON was
+        invisible to it.
+
+        On 2026-09-17 `verify_device_baseline.py` shipped reading three files
+        under `Docs/Understanding/Candidate47/` that matched no glob gating
+        this job. A pull request editing only them started nothing, so the
+        check that detects tampering with them never ran on the commit that
+        did it. It was missed twice in twenty minutes: once when the check was
+        written, once when it learned to read two more files.
+        """
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        uncovered = []
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            for rel in inputs:
+                if not any(p.match(rel) for p in patterns):
+                    uncovered.append(f"{rel} (read by {module})")
+        self.assertEqual(
+            uncovered, [],
+            f"{len(uncovered)} file(s) are read by a check this job runs and "
+            f"match no path filter that starts it, so a pull request editing "
+            f"only them runs that check not at all")
+
+    def test_a_declared_input_that_is_not_a_file_is_caught(self):
+        """INPUTS is prose until something resolves it. A path that does not
+        exist is a typo, and a typo is covered by no glob for the wrong
+        reason -- or worse, covered by one and silently checking nothing."""
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            for rel in inputs:
+                self.assertTrue(
+                    (self.ROOT / rel).is_file(),
+                    f"{module} declares INPUTS entry {rel!r}, which is not a "
+                    f"file in this repository")
+
+    def test_a_declaring_check_reads_nothing_it_did_not_declare(self):
+        """The declaration can drift from the code. A path literal naming a
+        real file in this repository, outside INPUTS, is a read that the
+        coverage test above cannot see.
+
+        Resolved against the root rather than matched by shape, so a JSON key
+        that happens to look like a path -- `development/candidate47-source.json`
+        is one, inside `artifacts_sha256` -- is not mistaken for a read.
+        """
+        for module, inputs in self.checks_that_declare_their_inputs().items():
+            source = (self.ROOT / module).read_text(encoding="utf-8")
+            for value, line in self.undeclared_real_files(source, inputs):
+                self.fail(
+                    f"{module}:{line} names {value!r}, a real file, but "
+                    f"INPUTS does not list it -- so nothing checks that "
+                    f"editing it starts this job")
+
+    def undeclared_real_files(self, source, declared):
+        """Every string literal in `source` naming a real file not in `declared`.
+
+        A literal is tested by resolving it against the root, NOT by looking
+        for a path separator in it. An earlier version skipped anything
+        without a "/", which silently exempted the whole repository root --
+        `ROOT / '.gitleaksignore'` is the natural way to write that read, and
+        six of the ten tracked root files match no glob that starts any job,
+        so the literals this scan could not see overlapped the files the
+        coverage test most needs to be told about.
+
+        That condition was load-bearing for a second reason, which is why it
+        is replaced rather than deleted: `is_file()` raises ENAMETOOLONG on
+        any literal with a component over 255 bytes, which every long
+        slash-free docstring in a checked module is. Catching the error keeps
+        that protection without a length cutoff, which would skip a real file
+        at a long-but-legal path (measured: 266 characters, every component
+        under 40, `is_file()` answers it fine).
+        """
+        declared = set(declared)
+        found = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Constant):
+                continue
+            if not isinstance(node.value, str) or node.value in declared:
+                continue
+            try:
+                real = (self.ROOT / node.value).is_file()
+            except (OSError, ValueError):
+                continue
+            if real:
+                found.append((node.value, node.lineno))
+        return found
+
+    def test_the_undeclared_scan_sees_a_file_at_the_repository_root(self):
+        """The falsifier for the condition above, kept rather than described.
+
+        Both halves matter. A root-level literal has no separator in it and
+        must still be reported; a long slash-free literal must not raise. The
+        first is the hole this replaced, found by the grading thread on #112;
+        the second is what the replaced condition was accidentally doing.
+        """
+        source = (
+            "ROOT = 1\n"
+            "STRAY = ROOT / '.gitleaksignore'\n"
+            "DOC = '" + "x" * 300 + "'\n"
+            "OK = 'CLAUDE.md'\n")
+        found = self.undeclared_real_files(source, ("CLAUDE.md",))
+        self.assertEqual(
+            [value for value, _ in found], [".gitleaksignore"],
+            "a real file named by a literal at the repository root must be "
+            "reported, a declared one must not be, and a 300-character "
+            "slash-free literal must neither raise nor be reported")
+        self.assertEqual([line for _, line in found], [2])
+
+    #: Observes a check's reads instead of reading its declaration. Kept as a
+    #: string because it runs in a subprocess: an audit hook cannot be removed
+    #: once installed, and this suite should not carry one for its remaining
+    #: tests.
+    OBSERVER = """
+import importlib.util, json, pathlib, sys
+ROOT = pathlib.Path(sys.argv[1]).resolve()
+MODULE = ROOT / sys.argv[2]
+opened = []
+sys.addaudithook(lambda event, args: opened.append(args[0])
+                 if event == "open" and args else None)
+spec = importlib.util.spec_from_file_location("observed", MODULE)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.argv = [str(MODULE), *sys.argv[3:]]
+try:
+    mod.main()
+except SystemExit:
+    pass
+seen = set()
+for entry in opened:
+    if not isinstance(entry, (str, bytes)):
+        continue
+    text = entry if isinstance(entry, str) else entry.decode("utf-8", "replace")
+    try:
+        rel = pathlib.Path(text).resolve().relative_to(ROOT)
+    except (ValueError, OSError):
+        continue
+    if "__pycache__" not in rel.parts:
+        seen.add(str(rel))
+print(json.dumps(sorted(seen)))
+"""
+
+    def observed_reads(self, module, *args):
+        """Every repository file `module` actually opens, by audit hook.
+
+        The declaration tests above are static: they see path literals, and a
+        path assembled from parts is invisible to them. This one sees what the
+        process opens, however the path was built -- and is blind to the other
+        half, branches this invocation does not take. Neither subsumes the
+        other, which is why both are here.
+        """
+        done = subprocess.run(
+            [sys.executable, "-c", self.OBSERVER, str(self.ROOT), module, *args],
+            capture_output=True, text=True, timeout=300)
+        self.assertEqual(done.returncode, 0,
+                         f"observing {module} failed: {done.stderr[-2000:]}")
+        return json.loads(done.stdout)
+
+    def test_every_file_a_gated_check_actually_opens_starts_the_job(self):
+        """The measured counterpart of the declared-coverage test above.
+
+        `--receipt-only` is the invocation observed because its branch set is
+        tiny and deterministic: no working tree is walked, so the read set is
+        the documents alone. The full run additionally hashes 68 Swift files,
+        which `SpeakIt/**` covers already and which would say nothing new here.
+        """
+        patterns = [self.as_regex(g) for g in self.globs(self.gate_outputs())]
+        for module in self.checks_that_declare_their_inputs():
+            reads = self.observed_reads(module, "--receipt-only", "--quiet")
+            self.assertTrue(reads, f"observing {module} recorded no reads at "
+                                   f"all, so this test asserts nothing")
+            uncovered = [r for r in reads
+                         if not any(p.match(r) for p in patterns)]
+            self.assertEqual(
+                uncovered, [],
+                f"{module} opens {len(uncovered)} file(s) matched by no path "
+                f"filter that starts this job: {uncovered[:5]}")
 
 
 
