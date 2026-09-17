@@ -475,3 +475,85 @@ it after a device session.
 
 This is a statement of fact about the two trees. It is not a recommendation to
 carry `e555f2a`, and nothing here has been changed on its account.
+
+## 15. CI on a real runner: run 35227011885
+
+Dispatched on the branch at `1be061a`, because a conflicted pull request gets
+no `pull_request` run at all (section 13). Read from each job's steps and
+counts rather than from the run's `conclusion`, which is `failure` and says
+only that something in it failed.
+
+| job | runner | result |
+|---|---|---|
+| Detect changed areas | ubuntu | success |
+| **Secrets, workflow and shell lint** | ubuntu | **success** |
+| **Language tooling** | ubuntu | **success**, all 16 steps |
+| Founder dashboard | ubuntu | success (lint + tests) |
+| Referral service | ubuntu | success |
+| iOS app | macos-26 | failure at the corpus gate — the documented qualification |
+| Language metrics | macos-26 | failure at `Measure`, which runs that same gate |
+
+### The secret scan, settled
+
+The three `.gitleaksignore` fingerprints were previously verified only with a
+locally downloaded binary. The `Scan the full history for committed secrets`
+step ran the repository's own pinned container
+(`ghcr.io/gitleaks/gitleaks:v8.30.1`, `git --redact --verbose --exit-code 1
+--config .gitleaks.toml /repo`) and **passed**. The finding-level approach
+works with this repository's exact CI invocation, which is the question
+section 11 could not close.
+
+### The corpus gate, verified as the qualification rather than assumed
+
+```
+rendering=identity  TOTAL 1434 cases, 3 failing, 1431 clean
+CRITICAL 0  BEHAVIORAL 1  METADATA 0  COSMETIC 2
+BLOCKING(crit+beh) = 1
+```
+
+Identical to Candidate47's recorded figures and to run 35220361423. Checked
+one level below the totals, because equal counts can hide swapped cases — the
+three failures fall in the three expected families, one each:
+
+```
+Dated facts          21 cases  1 failing  BEH 1     the December 24 office-closes case
+Fronted adjuncts     21 cases  1 failing  COSM 1    "After I finish the essay, call Dave"
+Fronted conditions    9 cases  1 failing  COSM 1    the before-dinner punctuation
+```
+
+Same count, same severities, same families, and the essay case's failure text
+verbatim. **The ported `SpeechRepair` line moved this gate by zero.** The gate
+exits 1 against `corpus-gate.sh`'s hardcoded baseline of zero blocking
+failures, which is Candidate47 against this repository's gate.
+
+### Why there is no unit-test evidence from this run
+
+The `Unit tests` step carries no `if:` of its own, so it inherits the implicit
+`success()` and is **skipped** whenever the gate before it fails. No
+Candidate47-based branch can reach it in CI. Nothing was changed to defeat
+that. The unit evidence therefore remains Calvin's local run at `db341d9`.
+
+### An unplanned confirmation of section 14
+
+The `What the Foundation Model reports on this runner` step prints the
+instructions fingerprint. Two runs, both `macos-26`, both Xcode 26.6, both on
+this branch:
+
+```
+run 35220361423  at 21808b2   instructions: 654b75ea
+run 35227011885  at 1be061a   instructions: 10df9b6f
+```
+
+`SpeakIt/Interpretation/ModelInterpreter.swift` is **byte-identical at both
+shas** — blob `01da454d38dcda6b418fd0991f1d69ee9eb4461a`, and at `42aae23`
+too. So the same source produced two different fingerprints on the same runner
+image within ninety minutes.
+
+That is the per-process `Hashable` seeding, demonstrated on this project's own
+CI rather than quoted from main's commit comment, and it is the defect
+`e555f2a` fixes with FNV-1a. Recorded, not fixed: Candidate47's prototype
+still carries `instructions.hashValue` at `ModelInterpreter.swift:111`, and
+whether to carry that fix is the FM/device phase's call.
+
+Both Foundation Models runs also report `availability: deviceNotEligible`, so
+the hosted runner still says nothing about an iPhone.
