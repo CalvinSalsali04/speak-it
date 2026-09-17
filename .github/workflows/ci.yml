@@ -106,8 +106,26 @@ jobs:
             # not bill a Mac. Kept as `**/*.md` rather than `Docs/**` to match
             # what the check actually reads; test_score.py fails when a file
             # the check reads is matched by none of these globs.
+            #
+            # The device-baseline receipt check and everything it reads are
+            # here rather than under `ios` for the same reason: `ios` bills a
+            # Mac, and a pull request editing a few JSON files must not.
+            #
+            # All THREE inputs need a glob, which is the part that was missed
+            # twice. The check reads the device-baseline manifest and receipt,
+            # and Candidate47's frozen manifest plus the two records pinning
+            # its hash. An edit to any of them changes the verdict, so an edit
+            # to any of them has to start the job -- otherwise the check that
+            # detects the tampering never runs on the commit that does it.
+            # Candidate47/ is taken whole rather than file by file: everything
+            # under it is frozen, so a glob deliberately wider than what the
+            # check reads costs one cheap Linux job and removes the next
+            # version of this question.
             prose:
               - '**/*.md'
+              - 'Docs/Understanding/DeviceBaseline/**'
+              - 'Docs/Understanding/Candidate47/**'
+              - 'Tools/Reliability250K/**'
               - '.github/workflows/ci.yml'
             dashboard:
               - 'FounderDashboard/**'
@@ -215,6 +233,15 @@ jobs:
       # on Linux, on every pull request, rather than on a Mac by dispatch.
       - name: The interpretation path is on-device only
         run: python3 Tools/CorpusRunner/test_interpretation_isolation.py
+      # Receipt-only: compares the device-baseline manifest with Candidate47's
+      # and the receipt with both. Three frozen files, no working tree, so this
+      # cannot redden when main legitimately moves. It catches the one mistake
+      # that is otherwise silent -- somebody regenerates the manifest after
+      # landing a change and leaves the receipt claiming two deviations. It does
+      # NOT check that any checkout matches the manifest; that is the full run,
+      # which pins a tree and is deliberately not here.
+      - name: The device-baseline receipt agrees with its manifests
+        run: python3 Tools/Reliability250K/verify_device_baseline.py --receipt-only
 
   dashboard:
     name: Founder dashboard
