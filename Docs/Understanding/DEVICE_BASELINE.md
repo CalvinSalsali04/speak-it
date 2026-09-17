@@ -126,14 +126,22 @@ the other directory.
 
 Hiding one deviation completely takes **four coordinated edits across two
 directories** — the frozen manifest, both records pinning its hash, and the
-receipt's own declaration. At that point both modes return exit 0 and the only
-surviving tell is the printed count dropping from 2 deviations to 1, which a
-reader notices and no check does.
+receipt's own declaration. Drop any one and it reddens; both other threads
+reproduced that one edit at a time.
+
+At four, both modes return exit 0, and what survives is two tells in the output
+rather than none. The count falls from 2 deviations to 1, and the printed
+reference hash changes — every passing run anyone has read prints
+`the frozen one (f46a0a6e)`, and a tampered one cannot. So the end state is
+**unflagged, not undetectable**: a reader who knows either value by sight sees
+it, and no check does.
 
 So: reliable against the accidental and partial edit, which is the realistic
 case; defeated by a deliberate four-file change, which is not silent in any
 useful sense. Stating it as "raises the cost of a silent change" would invite a
-reader to infer a resistance to tampering that nothing here provides.
+reader to infer a resistance to tampering that nothing here provides — and
+stating it as "two edits defeat it", which this section said first, invites the
+opposite error. Both understating and overstating a guard end the same way.
 
 ## What runs in CI, and what does not
 
