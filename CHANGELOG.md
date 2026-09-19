@@ -7,6 +7,24 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- The voice screen no longer says "Tap to speak" while it is still saving the
+  thought you just spoke. Finishing a recording returns the recognizer to idle
+  before the save starts, and the orb, the heading and the button's VoiceOver
+  label all read that idle state — so the longest pause in a capture, the one
+  where on-device refinement runs, was described as nothing happening.
+- A cancelled recording can no longer put its words into the next one. A late
+  result from an abandoned run passed the transcriber's state check and
+  replaced the live transcript; "Try saying it again", "Type instead" and the
+  tutorial retries all reach that path.
+- The capture review list shows what each item will actually do: its date or
+  time, a bell or alarm when something is armed, a pin for a place trigger, and
+  the specific reason a row is held instead of a bare question mark. It was
+  showing only a title and "Category · Type", so a task due Friday and a task
+  that rings on Friday looked identical on the one screen built for checking.
+- A capture receipt no longer counts a plain dated task as a reminder. "Buy
+  milk tomorrow" arms nothing, but it was announced as a reminder *and* as an
+  action, so the parts could add up to more than the number of things saved.
+
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a

@@ -116,6 +116,38 @@ struct ItemPresentation: Equatable, Sendable {
 
     var requiresReview: Bool { destination == .needsReview }
 
+    /// True when what fires this item is arriving somewhere rather than at a
+    /// time. The pin is what stops a trailing "Home" reading as a category.
+    var isPlaceTriggered: Bool { reminderState.locationIntent != nil }
+
+    /// SF Symbol for the row's persistent alert glyph, or `nil` for a date with
+    /// nothing armed on it. A bell for a notification, an alarm clock for
+    /// AlarmKit — the two things Speak It can actually deliver.
+    ///
+    /// This and the hint below were private to `CapturedItemRow`, which is why
+    /// the capture review list — the one screen a multi-item capture is read on
+    /// straight after saving — showed a task due Friday and a task that will
+    /// ring on Friday as the same row. They live here now because the
+    /// distinction is a property of the reading, not of one view.
+    /// See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
+    var alertSymbolName: String? {
+        switch reminderState.alertGlyph {
+        case .some(.notification): "bell.fill"
+        case .some(.alarm): "alarm.fill"
+        default: nil
+        }
+    }
+
+    /// VoiceOver has no way to see that glyph, so it needs the same distinction
+    /// in words.
+    var alertAccessibilityHint: String? {
+        switch reminderState.alertGlyph {
+        case .some(.notification): "Will send a reminder"
+        case .some(.alarm): "Will sound an alarm"
+        default: nil
+        }
+    }
+
     @MainActor
     static func make(
         for item: CapturedItem,

@@ -1,5 +1,71 @@
 # Decisions
 
+## 2026-09-18 — A capture surface describes what Speak It is doing, not what it happens to hold
+
+Four defects found by walking the capture-to-save journey rather than by
+reading the parser. None of them is a language failure: in every case the
+repository understood the person correctly, the store held the right record,
+and a surface said something else. They are recorded together because they are
+one mistake made four times — a screen deriving its description from a variable
+that is *nearby* rather than from the reading that answers the question.
+
+**The voice screen went idle while the save ran.** `completeFinalization`
+returns the transcriber to `.idle` before it hands the words to `save`, and the
+orb, the title, the subtitle and the button's spoken label each read
+`SpeechTranscriber.State` on their own. So for the whole of the save the screen
+said "Tap to speak — say anything you don't want to forget" over a resting orb,
+above the person's own sentence, with the only control on screen disabled. That
+window is not a flicker: it is where on-device refinement runs, it is entered
+only for a capture the rules already found ambiguous, and refinement gets two
+seconds of its own before persistence starts. The screen described itself as
+idle for the longest it is ever busy. There is now one `CaptureVoiceStatus`
+derived once and read by all four. It carries no progress fraction, because
+nothing in the save reports one and a bar moving on a timer would be an
+invention.
+
+**A cancelled recording could publish into the next one.** The transcriber
+accepted a recognizer callback on the strength of its own `state` alone. The
+legacy backend hands every result to `Task { @MainActor … }` with nothing
+identifying the run, and `SFSpeechRecognitionTask` may call it once more after
+`cancel()` — so a late partial from an abandoned recording could arrive while
+the *next* recording was `.listening`, pass the state check, and, because
+`receiveTranscript` assigns rather than appends, replace the new recording's
+words with the old ones. `save` reads that same property. Every route that
+abandons a run and starts another is a live path to it: "Try saying it again",
+"Type instead" and back, and both tutorial retries. Callbacks now carry the run
+they came from and `SpeechTranscriber.acceptsResult` decides. `activeStartID`
+could not be reused for this: it is cleared on the first microphone buffer, so
+it is nil for exactly the state the race lands in.
+
+**The capture review list dropped every schedule signal.** It is the only
+screen a multi-item capture is read on straight after saving — the receipt
+behind it shows one row and a count — and it rendered a title, "Category ·
+Type", and a bare question mark whose only description was the words "Needs
+review". So a task due Friday and a task that will ring on Friday were the same
+row, a place trigger was invisible, and the reason a row was held was never
+named. All of it already existed: `ItemPresentation` is the shared reading
+Today, Memory and the saved-capture card draw from, and
+`ClarificationRequirement.listLabel` is the sentence Today already puts on a
+review row. The row reads them now, the alert glyph and its VoiceOver hint moved
+out of `CapturedItemRow`'s private scope onto `ItemPresentation` so both
+surfaces share one answer, and the requirement moves under the title at an
+accessibility text size rather than being squeezed into a second column.
+
+**The receipt promised alerts nothing would deliver.** `reminderCount` asked
+only whether a row's state was `.time`, so "buy milk tomorrow" — a date with
+nothing armed on it — was announced as a reminder, while `actionCount` asked the
+narrower `isArmed` and counted the same row again as a thing to do. One row on
+two lines, parts that could add up to more than the number of things saved, and
+a promise of an alert that will never fire. `reminderCount` now asks `isArmed`
+too. That also keeps a blocked place reminder excluded for the reason it always
+was rather than by a separate case.
+
+The general rule these leave behind: a surface describing an item must derive
+that description from `ItemPresentation`, not from the stored fields or from a
+neighbouring view-state flag. The two failures that matter are the two this
+found — claiming something is armed when it is not, and describing the app as
+idle while it is working.
+
 ## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
 
 Three places in this repository said a declared design limit is **counted as a

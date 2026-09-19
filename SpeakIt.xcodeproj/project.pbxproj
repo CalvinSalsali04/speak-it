@@ -96,6 +96,7 @@
 		A1000000000000000000010B /* SchemaV1.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000010B /* SchemaV1.swift */; };
 		A100000000000000000001A1 /* ItemPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A1 /* ItemPresentation.swift */; };
 		A100000000000000000001A2 /* ItemPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001A2 /* ItemPresentationTests.swift */; };
+		A1000000000000000000C0FE /* CaptureFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000C0FE /* CaptureFeedbackTests.swift */; };
 		A100000000000000000001B1 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001B1 /* ShoppingListView.swift */; };
 		A100000000000000000001B2 /* ShoppingGroups.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001B2 /* ShoppingGroups.swift */; };
 		A100000000000000000001D0 /* DurabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100000000000000000001D0 /* DurabilityTests.swift */; };
@@ -275,6 +276,7 @@
 		B1000000000000000000010B /* SchemaV1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaV1.swift; sourceTree = "<group>"; };
 		B100000000000000000001A1 /* ItemPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPresentation.swift; sourceTree = "<group>"; };
 		B100000000000000000001A2 /* ItemPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPresentationTests.swift; sourceTree = "<group>"; };
+		B1000000000000000000C0FE /* CaptureFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureFeedbackTests.swift; sourceTree = "<group>"; };
 		B100000000000000000001D0 /* DurabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurabilityTests.swift; sourceTree = "<group>"; };
 		B1000000000000000000C4 /* SemanticCorpusDataC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataC.swift; sourceTree = "<group>"; };
 		B1000000000000000000E2 /* SemanticCorpusDataE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataE.swift; sourceTree = "<group>"; };
@@ -545,6 +547,7 @@
 				B10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift */,
 				B100000000000000000000F7 /* LocationReminderTests.swift */,
 				B100000000000000000001A2 /* ItemPresentationTests.swift */,
+				B1000000000000000000C0FE /* CaptureFeedbackTests.swift */,
 				B100000000000000000000F1 /* TemporalFullPathTests.swift */,
 				B100000000000000000000C1 /* SemanticCorpus.swift */,
 				B100000000000000000000C2 /* SemanticCorpusDataA.swift */,
@@ -970,6 +973,7 @@
 				A10000000000000000000012 /* SwiftDataThoughtRepositoryTests.swift in Sources */,
 				A100000000000000000000F7 /* LocationReminderTests.swift in Sources */,
 				A100000000000000000001A2 /* ItemPresentationTests.swift in Sources */,
+				A1000000000000000000C0FE /* CaptureFeedbackTests.swift in Sources */,
 				A100000000000000000000F1 /* TemporalFullPathTests.swift in Sources */,
 				A100000000000000000000C1 /* SemanticCorpus.swift in Sources */,
 				A100000000000000000000C2 /* SemanticCorpusDataA.swift in Sources */,

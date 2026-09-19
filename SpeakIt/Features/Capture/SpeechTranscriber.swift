@@ -115,6 +115,13 @@ final class SpeechTranscriber: ObservableObject {
     private var hasInstalledTap = false
     private var recoveryAudioFile: AVAudioFile?
     private var activeStartID: UUID?
+    /// Which recognition run the transcriber is currently willing to hear from.
+    ///
+    /// `activeStartID` cannot answer this: it is cleared the moment the first
+    /// microphone buffer arrives, so it is nil for the whole of `.listening`.
+    /// This one lives for the run — from `start` until the run finalizes, is
+    /// cancelled, or fails.
+    private var activeRunID: UUID?
     private var audioProfile = SpeechCaptureAudioProfile.spokenAudio
 
     /// How long a sentence that sounds finished may sit in silence before the
@@ -173,6 +180,7 @@ final class SpeechTranscriber: ObservableObject {
 
         let startID = UUID()
         activeStartID = startID
+        activeRunID = startID
         state = .requestingPermission
         transcript = ""
         audioLevel = 0
@@ -194,6 +202,7 @@ final class SpeechTranscriber: ObservableObject {
 
         guard speechAuthorization == .authorized, microphoneGranted else {
             activeStartID = nil
+            activeRunID = nil
             automaticFinalization = nil
             state = .permissionDenied
             return
@@ -226,13 +235,13 @@ final class SpeechTranscriber: ObservableObject {
                 prefersEnhancedRecognition: prefersEnhancedRecognition,
                 forcesLegacyRecognitionForBenchmark: forcesLegacyRecognitionForBenchmark,
                 onTranscript: { [weak self] text, isFinal in
-                    self?.receiveTranscript(text, isFinal: isFinal)
+                    self?.receiveTranscript(text, isFinal: isFinal, from: startID)
                 },
                 onVoiceActivity: { [weak self] in
-                    self?.receiveVoiceActivity()
+                    self?.receiveVoiceActivity(from: startID)
                 },
                 onError: { [weak self] error in
-                    self?.receiveError(error)
+                    self?.receiveError(error, from: startID)
                 }
             )
             isPreparingEnhancedRecognition = false
@@ -404,6 +413,7 @@ final class SpeechTranscriber: ObservableObject {
 
     func cancel() {
         activeStartID = nil
+        activeRunID = nil
         naturalPauseTask?.cancel()
         audioInputReadyTimeout?.cancel()
         finalizationTimeout?.cancel()
@@ -423,6 +433,7 @@ final class SpeechTranscriber: ObservableObject {
 
     func resetAfterFailure() {
         activeStartID = nil
+        activeRunID = nil
         automaticFinalization = nil
         isWaitingForContinuation = false
         isPreparingEnhancedRecognition = false
@@ -438,16 +449,16 @@ final class SpeechTranscriber: ObservableObject {
         state = .listening
     }
 
-    private func receiveVoiceActivity() {
-        guard state == .requestingPermission || state == .listening || state == .finalizing else {
+    private func receiveVoiceActivity(from runID: UUID) {
+        guard Self.acceptsResult(from: runID, currentRun: activeRunID, state: state) else {
             return
         }
         audioActivityTracker.recordVoiceActivity(at: CapturePerformanceClock.now)
         hasDetectedAudioInput = true
     }
 
-    private func receiveTranscript(_ text: String, isFinal: Bool) {
-        guard state == .requestingPermission || state == .listening || state == .finalizing else {
+    private func receiveTranscript(_ text: String, isFinal: Bool, from runID: UUID) {
+        guard Self.acceptsResult(from: runID, currentRun: activeRunID, state: state) else {
             return
         }
 
@@ -486,8 +497,8 @@ final class SpeechTranscriber: ObservableObject {
         }
     }
 
-    private func receiveError(_ error: Error) {
-        guard state == .requestingPermission || state == .listening || state == .finalizing else {
+    private func receiveError(_ error: Error, from runID: UUID) {
+        guard Self.acceptsResult(from: runID, currentRun: activeRunID, state: state) else {
             return
         }
 
@@ -509,6 +520,38 @@ final class SpeechTranscriber: ObservableObject {
             resetRecognitionResources()
             automaticFinalization = nil
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Whether a recognizer callback belongs to the run the transcriber is
+    /// listening to right now.
+    ///
+    /// The state check alone was not enough, and the gap it left is the one
+    /// failure a capture app cannot have. `cancel()` drops the backend, but the
+    /// legacy recognizer's completion handler hands every result straight to
+    /// `Task { @MainActor … }` with nothing identifying the run, and
+    /// `SFSpeechRecognitionTask` may call it once more after `cancel()`. So a
+    /// late partial from an abandoned recording arrived while the *next*
+    /// recording was `.listening`, passed the state check, and — because
+    /// `receiveTranscript` assigns rather than appends — replaced the new
+    /// recording's words with the old ones. `save` reads that same property.
+    ///
+    /// Every route that abandons a run and starts another is a live path to it:
+    /// "Try saying it again" on an unclear capture, "Type instead" and back,
+    /// and both tutorial retries.
+    ///
+    /// `activeStartID` could not be reused for this — it is cleared on the
+    /// first microphone buffer, so it is nil for exactly the state the race
+    /// lands in.
+    nonisolated static func acceptsResult(
+        from runID: UUID,
+        currentRun: UUID?,
+        state: State
+    ) -> Bool {
+        guard currentRun == runID else { return false }
+        switch state {
+        case .requestingPermission, .listening, .finalizing: return true
+        case .idle, .permissionDenied, .unavailable, .failed: return false
         }
     }
 
@@ -703,6 +746,7 @@ final class SpeechTranscriber: ObservableObject {
 
     private func completeFinalization() {
         guard state == .finalizing else { return }
+        activeRunID = nil
         finalizationTimeout?.cancel()
         markSpeechEndpointDetectedIfNeeded()
         finalTranscriptAt = CapturePerformanceClock.now

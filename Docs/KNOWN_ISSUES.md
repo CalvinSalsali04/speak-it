@@ -984,6 +984,8 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 ## Remaining validation after the September product fixes
 
 - FoundationModels cancellation is cooperative. Measure generation latency and fallback behavior on an Apple Intelligence device before claiming a strict two-second completion bound.
+- The voice screen's "Saving your thought…" state is correct by construction and covered by unit tests, but how long a person actually sees it has not been measured. On an ineligible iPhone — including the iPhone 13 this project is tested on, which is below the A17 Pro floor — refinement never runs, so the window is persistence only and the fix cannot be observed at its worst. Timing it needs an Apple Intelligence device.
+- The stale-run guard on recognizer callbacks (`SpeechTranscriber.acceptsResult`) is proven as a rule, not as an observed race: the recognition backends are not injectable, so no test drives a real late callback from an abandoned run into a live one. Reproducing it needs a device and a recognizer that delivers after `cancel()`.
 - Portable iCloud semantics have local serialization/merge coverage. Live two-device delivery, permissions and notification behavior still require device QA.
 - Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
 - The September 9 full UI run passed 24 tests, including its accessibility-text/dark-appearance flow. Its one stale pricing assertion was corrected and passed on rerun. Physical VoiceOver and animation quality still need hands-on review.
