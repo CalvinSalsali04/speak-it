@@ -1,5 +1,65 @@
 # Decisions
 
+## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
+
+The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
+only was a deliberate line (2026-09-08, below), and this moves it, for a
+reason that reading the two schedulers side by side makes plain.
+
+A reminder is scheduled only for an item holding a future `reminderDate`
+(`ReminderScheduleRequest.init(item:)` returns nil without one). So every
+timed item announces itself, by name, with Done / 10 min / Tomorrow. What
+never announces itself is an overdue item, whose reminder already fired and
+was dismissed, and a date-only item, which usually never had one. The brief
+was leading with the count that duplicates the alarms about to go off and
+saying nothing about the items it is the only warning for.
+
+Three changes, none of which touches the capture path or the parser:
+
+- **The brief names one item.** `title`/`subtitle`/`body` instead of one line:
+  "Today" / "2 due today · 1 overdue" / "Email the landlord — overdue since
+  Friday". With no name to show there is no subtitle either, rather than a
+  second line repeating the first.
+- **The lead is chosen by what will not reach the person otherwise**: overdue
+  first, then due today with no live reminder, then anything still holding
+  one. So #2 is an ordering rule rather than more words on the Lock Screen.
+- **The name is gated on `LockScreenTodayVisibility.showsTaskNames`**, the
+  preference the Today widget and the Live Activity already obey, default
+  off. With it off the brief is byte-for-byte what shipped before, so this is
+  additive and needs no new settings row. The brief stays passive, silent,
+  on its own thread, with no category actions and no item id in `userInfo`:
+  naming one task does not make it a reminder.
+
+`summaryArgument` and `summaryArgumentCount` — the APIs that would have let
+the system compose a count into the Notification Summary — are deprecated as
+of iOS 15, so the brief's own three lines are the only lever there is.
+`relevanceScore` stays 0.3: it sorts an app's own notifications and the brief
+is the only Speak It notification that enters a summary at all, because
+reminders are `.timeSensitive` / `.active` and bypass it.
+
+### Why the auto-stop had to move first
+
+"Answered" meant the app was opened within twelve hours of the brief firing.
+A brief good enough to read on the Lock Screen and act on from the widget —
+without ever unlocking — scored as unanswered, five times, and then switched
+itself off. The rule punished the brief for working, and it would have done
+so more often as the content got better.
+
+So an outcome the person produced without opening the app now answers the
+brief that preceded it. Today that means a completion from the Today widget,
+which already writes its action into the same App Group with its own
+`createdAt`; `reconcileSharedTodayActions` stamps
+`HabitDefaults.lastOffAppOutcomeAt` with that time, not with the time the
+drain happens to run, because the task was finished when the person tapped.
+An outcome from before a brief fired answers nothing.
+
+Unverified here: this was written in a Linux container with no Swift
+toolchain, so nothing in it has been compiled or run. `MorningBriefTests`
+covers the naming gate, the lead ordering, the overdue wording as it ages,
+the clock time never appearing against a day the item is not due, and the
+three answer cases. Delivery, Lock Screen presentation of a subtitle, and
+Scheduled Summary placement still need hands-on iPhone QA.
+
 ## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
 
 Three places in this repository said a declared design limit is **counted as a

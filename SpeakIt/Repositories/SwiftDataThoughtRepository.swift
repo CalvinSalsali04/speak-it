@@ -324,7 +324,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             items: briefItems,
             now: now,
             time: HabitDefaults.morningBriefTime,
-            calendar: calendar
+            calendar: calendar,
+            // A brief lands on the Lock Screen, so it names a task only where
+            // the person already said a locked phone may show task names. The
+            // widget and the Live Activity read the same preference; with it
+            // off, the brief is exactly the counts-only notification that
+            // shipped before.
+            includesNames: LockScreenTodayVisibility.showsTaskNames
         )
         Task {
             await HabitNotificationScheduler.synchronize(entries: entries, calendar: calendar)
@@ -600,6 +606,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                         action: .complete
                     )
                 }
+                // Stamped with the action's own time, not the time this drain
+                // runs: the person finished the task when they tapped the
+                // widget, which may be hours before the app was next opened,
+                // and the brief's answer window is measured against that.
+                HabitDefaults.lastOffAppOutcomeAt = pending.action.createdAt
                 SharedTodayStore.removeAction(at: pending.url)
             } catch {
                 break

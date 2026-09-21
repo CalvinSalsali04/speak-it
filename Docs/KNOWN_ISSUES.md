@@ -1001,9 +1001,22 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - A brief tap now selects Today, including on cold launch, without starting a
   capture. Direct taps reset the unanswered count regardless of age.
 - For ordinary app opens, "answered" is inferred: the app was opened within twelve hours of a brief
-  firing. Reading the brief on the Lock Screen and not opening the app counts
-  as unanswered, so five such mornings in a row switch the brief off; it can
-  be turned back on in Account & Settings.
+  firing. **Completing a task from the Today widget now answers the brief that
+  preceded it (2026-09-21)**, so reading it on the Lock Screen and acting from
+  the widget no longer counts against it. Reading it and doing nothing at all
+  still counts as unanswered, and five such mornings in a row switch the brief
+  off; it can be turned back on in Account & Settings. Any other way of acting
+  on a brief without opening the app — there is none today — would need the
+  same treatment.
+- **The brief names one task only where the person allowed task names on a
+  locked phone** (Account & Settings; the same switch the Today widget and the
+  Live Activity read). With it off the brief is counts-only, exactly as it
+  shipped. The name shown is chosen as the item least likely to reach the
+  person any other way; it is not necessarily the next one chronologically.
+- The named brief's content is fixed when scheduled, like the counts, so the
+  same staleness applies: a brief planned for a later morning can name a task
+  completed through the share extension, Siri or a Shortcut since the app was
+  last opened.
 - The brief is never announced in the app. It is found only as a switch in
   Account & Settings under Capture & reminders, so uptake depends on people
   opening that card.
