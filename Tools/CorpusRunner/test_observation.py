@@ -857,12 +857,21 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         otherwise"` and `"what is latest"` count exactly like fixtures.
         They are left in quotation marks rather than rewritten into
         backticks, because the count is a tripwire and not a target, and
-        a log entry is the cheaper honesty. Two more fixtures these
-        tests use add nothing, because they were already in this
-        directory: `"Book the flights"` in `DurabilityTests` and
-        `"5 PM"` in `SwiftDataThoughtRepositoryTests`. Predicting
-        twenty-one from the test count would have missed all three
-        directions at once. The development-set overlap stayed at 114,
+        a log entry is the cheaper honesty. Several fixtures these tests
+        use add nothing, for two different reasons that the first draft
+        of this entry ran together. Three were already in this
+        directory: `"Book the flights"` in `DurabilityTests`,
+        `"Call the dentist"` in seven files including
+        `TemporalFullPathTests`, and `"Email the landlord"` in three
+        including `InterpretationPolicyTests` — note that the literals
+        this branch adds are the *composed* forms, `"Call the dentist —
+        9 AM"` and `"Email the landlord — overdue since Friday"`, which
+        are new strings even though their task names are not. The
+        fourth, `"5 PM"`, is not a near-miss at all: it is four
+        characters, and `swift_literals` counts nothing under twelve, so
+        it was never in this population and its presence elsewhere is
+        beside the point. Predicting twenty-one from the test count
+        would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
         not assumed from the wording. What the test
