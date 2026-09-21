@@ -187,15 +187,14 @@ enum MorningBriefPlanner {
                       !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       let sortDate = item.dueDate else { continue }
                 // Lead with whatever will not reach the person any other way.
-                // An overdue item's reminder has already fired; a date-only
-                // item never had one; anything still holding a future reminder
-                // is going to ring by itself, so it goes last.
-                let rank: Int
-                switch timing {
-                case .overdue: rank = 0
-                case .today where !item.ringsOnItsOwn(on: morning): rank = 1
-                default: rank = 2
-                }
+                // Silence is the first question and age is the tiebreaker, in
+                // that order: an overdue item usually has no reminder left, but
+                // one whose reminder was pushed to later today is going to
+                // announce itself, and must not take the lead from an errand
+                // that never will. Ranking on age first would give it that
+                // lead and quietly contradict the rule above.
+                let ringsOnItsOwn = item.ringsOnItsOwn(on: morning)
+                let rank = (ringsOnItsOwn ? 2 : 0) + (timing == .overdue ? 0 : 1)
                 candidates.append((item, rank, sortDate))
             }
             guard dueToday + overdue > 0 else { continue }

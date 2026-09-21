@@ -113,6 +113,16 @@ final class MorningBriefTests: XCTestCase {
 
     private let english = Locale(identifier: "en_US")
 
+    /// iOS separates the AM/PM marker with a narrow no-break space, which is
+    /// correct typography and invisible in an assertion diff. The same
+    /// normalisation `SwiftDataThoughtRepositoryTests` uses on this very
+    /// formatter, so a real change is what fails these tests.
+    private func normalized(_ text: String?) -> String? {
+        text?
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
     private func planNamed(
         _ items: [MorningBriefItem],
         now: Date,
@@ -146,7 +156,7 @@ final class MorningBriefTests: XCTestCase {
 
         let shown = planNamed(items, now: now)
         XCTAssertEqual(shown[0].lead?.title, "Call the dentist")
-        XCTAssertEqual(shown[0].body, "Call the dentist — 9 AM")
+        XCTAssertEqual(normalized(shown[0].body), "Call the dentist — 9 AM")
         XCTAssertEqual(shown[0].subtitle, "1 due today", "the counts move up once the body is a name")
     }
 
@@ -204,6 +214,26 @@ final class MorningBriefTests: XCTestCase {
         XCTAssertEqual(plan[0].subtitle, "1 due today · 1 overdue")
     }
 
+    func testAnOverdueItemThatStillRingsDoesNotOutrankASilentOneDueToday() {
+        // Overdue normally wins, but the principle underneath the order is
+        // "what will not reach them otherwise", not "what is latest". An
+        // overdue item whose reminder was pushed to later today is going to
+        // announce itself, so it must not take the lead from an errand that
+        // will not.
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [
+            MorningBriefItem(
+                dueDate: date(2026, 9, 4, 9, 0),
+                title: "Email the landlord",
+                reminderDate: date(2026, 9, 8, 10, 0)
+            ),
+            MorningBriefItem(dueDate: date(2026, 9, 8, 14, 0), title: "Drop off the parcel")
+        ]
+        let plan = planNamed(items, now: now)
+        XCTAssertEqual(plan[0].lead?.title, "Drop off the parcel")
+        XCTAssertEqual(plan[0].subtitle, "1 due today · 1 overdue", "the counts are unchanged by the order")
+    }
+
     func testOverdueDetailStaysReadableAsItAges() {
         func detail(due: Date, morning: Date) -> String? {
             MorningBriefPlanner.detail(
@@ -215,6 +245,8 @@ final class MorningBriefTests: XCTestCase {
             )
         }
         let morning = date(2026, 9, 8, 8, 0)
+        // Earlier the same morning is already overdue, and has no day to name.
+        XCTAssertEqual(detail(due: date(2026, 9, 8, 7, 0), morning: morning), "overdue")
         XCTAssertEqual(detail(due: date(2026, 9, 7, 9, 0), morning: morning), "overdue since yesterday")
         XCTAssertEqual(detail(due: date(2026, 9, 4, 9, 0), morning: morning), "overdue since Friday")
         XCTAssertEqual(detail(due: date(2026, 9, 2, 9, 0), morning: morning), "overdue since Wednesday")
@@ -245,7 +277,7 @@ final class MorningBriefTests: XCTestCase {
             MorningBriefItem(dueDate: date(2026, 9, 8, 17, 0), title: "Pick up the keys")
         ]
         let plan = planNamed(items, now: date(2026, 9, 8, 7, 0))
-        XCTAssertEqual(plan[0].lead?.detail, "5 PM")
+        XCTAssertEqual(normalized(plan[0].lead?.detail), "5 PM")
         XCTAssertEqual(plan[1].lead?.detail, "overdue since yesterday")
     }
 
@@ -272,6 +304,10 @@ final class MorningBriefTests: XCTestCase {
         XCTAssertNil(request.content.sound)
         XCTAssertEqual(request.content.categoryIdentifier, "", "still no Done or Snooze on a brief")
         XCTAssertNil(request.content.userInfo["itemIDs"], "a brief never carries an item to act on")
+        // The absent-key assertion alone would pass if an id arrived under some
+        // other name, so pin the whole payload: the kind marker and nothing else.
+        XCTAssertEqual(request.content.userInfo.count, 1)
+        XCTAssertEqual(request.content.userInfo["habitKind"] as? String, "morning-brief")
     }
 
     // MARK: Acting on a brief without opening the app

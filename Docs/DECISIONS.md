@@ -20,9 +20,15 @@ Three changes, none of which touches the capture path or the parser:
   "Today" / "2 due today · 1 overdue" / "Email the landlord — overdue since
   Friday". With no name to show there is no subtitle either, rather than a
   second line repeating the first.
-- **The lead is chosen by what will not reach the person otherwise**: overdue
-  first, then due today with no live reminder, then anything still holding
-  one. So #2 is an ordering rule rather than more words on the Lock Screen.
+- **The lead is chosen by what will not reach the person otherwise.** Silence
+  is the first question and age is only the tiebreaker: an item still holding
+  a reminder ahead of the brief goes last whether it is overdue or not,
+  because it is going to announce itself. Ranking on age first reads the same
+  almost always — an overdue item has usually spent its reminder — and
+  contradicts the rule in the one case where the two differ, an overdue item
+  whose reminder was pushed to later today. So the order is silent-and-overdue,
+  silent-and-due-today, then the two that ring. This makes the second change
+  an ordering rule rather than more words on the Lock Screen.
 - **The name is gated on `LockScreenTodayVisibility.showsTaskNames`**, the
   preference the Today widget and the Live Activity already obey, default
   off. With it off the brief is byte-for-byte what shipped before, so this is
@@ -53,12 +59,21 @@ which already writes its action into the same App Group with its own
 drain happens to run, because the task was finished when the person tapped.
 An outcome from before a brief fired answers nothing.
 
+Switching the preference off re-plans the pending briefs
+(`AccountSettingsView`), because their content is fixed when scheduled and the
+horizon is three mornings. Without that, turning the switch off would appear
+to take effect and not have, for up to three days — the worst way for a
+privacy switch to fail.
+
 Unverified here: this was written in a Linux container with no Swift
 toolchain, so nothing in it has been compiled or run. `MorningBriefTests`
-covers the naming gate, the lead ordering, the overdue wording as it ages,
-the clock time never appearing against a day the item is not due, and the
-three answer cases. Delivery, Lock Screen presentation of a subtitle, and
-Scheduled Summary placement still need hands-on iPhone QA.
+covers the naming gate, the lead ordering including an overdue item that still
+rings, the overdue wording as it ages, the clock time never appearing against
+a day the item is not due, and the three answer cases. Time assertions
+normalise the narrow no-break space iOS puts before an AM/PM marker, the way
+`SwiftDataThoughtRepositoryTests` already does for this formatter. Delivery,
+Lock Screen presentation of a subtitle, and Scheduled Summary placement still
+need hands-on iPhone QA.
 
 ## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
 
