@@ -2,9 +2,12 @@ import UserNotifications
 import XCTest
 @testable import SpeakIt
 
-/// The morning brief is a habit notification, and these tests pin the two
-/// things that keep it one: it says only counts, and it is unmistakably not
-/// a reminder — its own prefix, its own thread, passive, silent.
+/// The morning brief is a habit notification, and these tests pin the things
+/// that keep it one: it is unmistakably not a reminder (its own prefix, its
+/// own thread, passive, silent, no action buttons), and it never says a word
+/// of the person's unless they have allowed task names on a locked phone.
+/// With that preference off — the default — every assertion about its text
+/// here is the counts-only brief that shipped first.
 final class MorningBriefTests: XCTestCase {
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -104,6 +107,257 @@ final class MorningBriefTests: XCTestCase {
         let updatedPlan = MorningBriefPlanner.plan(items: updated, now: now, time: eight, calendar: calendar)
         XCTAssertEqual(updatedPlan.first?.body, "1 due today · 1 overdue")
         XCTAssertEqual(updatedPlan[1].body, "1 due today · 2 overdue")
+    }
+
+    // MARK: Naming the first thing
+
+    private let english = Locale(identifier: "en_US")
+
+    /// iOS separates the AM/PM marker with a narrow no-break space, which is
+    /// correct typography and invisible in an assertion diff. The same
+    /// normalisation `SwiftDataThoughtRepositoryTests` uses on this very
+    /// formatter, so a real change is what fails these tests.
+    private func normalized(_ text: String?) -> String? {
+        text?
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    private func planNamed(
+        _ items: [MorningBriefItem],
+        now: Date,
+        time: WallClockTime? = nil
+    ) -> [MorningBriefEntry] {
+        MorningBriefPlanner.plan(
+            items: items,
+            now: now,
+            time: time ?? eight,
+            calendar: calendar,
+            includesNames: true,
+            locale: english
+        )
+    }
+
+    func testANameReachesTheBriefOnlyWhenTheLockScreenPreferenceAllowsIt() {
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [
+            MorningBriefItem(
+                dueDate: date(2026, 9, 8, 9, 0),
+                title: "Call the dentist",
+                reminderDate: date(2026, 9, 8, 9, 0)
+            )
+        ]
+
+        // The default. Byte-for-byte the brief that shipped before.
+        let hidden = MorningBriefPlanner.plan(items: items, now: now, time: eight, calendar: calendar)
+        XCTAssertNil(hidden[0].lead)
+        XCTAssertEqual(hidden[0].body, "1 due today")
+        XCTAssertEqual(hidden[0].subtitle, "", "no subtitle when the body is already the counts")
+
+        let shown = planNamed(items, now: now)
+        XCTAssertEqual(shown[0].lead?.title, "Call the dentist")
+        XCTAssertEqual(normalized(shown[0].body), "Call the dentist — 9 AM")
+        XCTAssertEqual(shown[0].subtitle, "1 due today", "the counts move up once the body is a name")
+    }
+
+    func testTheBriefLeadsWithWhatWillNotRingOnItsOwn() {
+        let now = date(2026, 9, 8, 7, 0)
+        // The 9 AM item holds a live reminder, so it will announce itself with
+        // its own name and buttons. The errand due today has no reminder at
+        // all, so the brief is the only thing that will ever mention it.
+        let items = [
+            MorningBriefItem(
+                dueDate: date(2026, 9, 8, 9, 0),
+                title: "Call the dentist",
+                reminderDate: date(2026, 9, 8, 9, 0)
+            ),
+            MorningBriefItem(
+                dueDate: date(2026, 9, 8, 14, 0),
+                title: "Drop off the parcel",
+                reminderDate: nil
+            )
+        ]
+        let plan = planNamed(items, now: now)
+        XCTAssertEqual(plan[0].lead?.title, "Drop off the parcel")
+        XCTAssertEqual(plan[0].subtitle, "2 due today", "the count still covers both")
+    }
+
+    func testAReminderThatHasAlreadyFiredNoLongerCountsAsRingingOnItsOwn() {
+        // Same item, two mornings. On the 8th its 9 AM reminder is still
+        // ahead of the brief; by the 9th it has fired and been dismissed, so
+        // the item is exactly the kind the brief exists to carry.
+        let item = MorningBriefItem(
+            dueDate: date(2026, 9, 8, 9, 0),
+            title: "Call the dentist",
+            reminderDate: date(2026, 9, 8, 9, 0)
+        )
+        let quiet = MorningBriefItem(
+            dueDate: date(2026, 9, 8, 14, 0),
+            title: "Drop off the parcel"
+        )
+        let plan = planNamed([item, quiet], now: date(2026, 9, 8, 7, 0))
+        XCTAssertEqual(plan[0].lead?.title, "Drop off the parcel")
+        XCTAssertEqual(plan[1].lead?.title, "Call the dentist", "overdue now, and outranks the rest")
+        XCTAssertEqual(plan[1].lead?.detail, "overdue since yesterday")
+    }
+
+    func testAnOverdueItemOutranksAnythingMerelyDueToday() {
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [
+            MorningBriefItem(dueDate: date(2026, 9, 8, 14, 0), title: "Drop off the parcel"),
+            MorningBriefItem(dueDate: date(2026, 9, 4, 9, 0), title: "Email the landlord")
+        ]
+        let plan = planNamed(items, now: now)
+        XCTAssertEqual(plan[0].lead?.title, "Email the landlord")
+        XCTAssertEqual(plan[0].lead?.detail, "overdue since Friday")
+        XCTAssertEqual(plan[0].body, "Email the landlord — overdue since Friday")
+        XCTAssertEqual(plan[0].subtitle, "1 due today · 1 overdue")
+    }
+
+    func testAnOverdueItemThatStillRingsDoesNotOutrankASilentOneDueToday() {
+        // Overdue normally wins, but the principle underneath the order is
+        // "what will not reach them otherwise", not "what is latest". An
+        // overdue item whose reminder was pushed to later today is going to
+        // announce itself, so it must not take the lead from an errand that
+        // will not.
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [
+            MorningBriefItem(
+                dueDate: date(2026, 9, 4, 9, 0),
+                title: "Email the landlord",
+                reminderDate: date(2026, 9, 8, 10, 0)
+            ),
+            MorningBriefItem(dueDate: date(2026, 9, 8, 14, 0), title: "Drop off the parcel")
+        ]
+        let plan = planNamed(items, now: now)
+        XCTAssertEqual(plan[0].lead?.title, "Drop off the parcel")
+        XCTAssertEqual(plan[0].subtitle, "1 due today · 1 overdue", "the counts are unchanged by the order")
+    }
+
+    func testOverdueDetailStaysReadableAsItAges() {
+        func detail(due: Date, morning: Date) -> String? {
+            MorningBriefPlanner.detail(
+                for: MorningBriefItem(dueDate: due, title: "x"),
+                isOverdue: true,
+                on: morning,
+                calendar: calendar,
+                locale: english
+            )
+        }
+        let morning = date(2026, 9, 8, 8, 0)
+        // Earlier the same morning is already overdue, and has no day to name.
+        XCTAssertEqual(detail(due: date(2026, 9, 8, 7, 0), morning: morning), "overdue")
+        XCTAssertEqual(detail(due: date(2026, 9, 7, 9, 0), morning: morning), "overdue since yesterday")
+        XCTAssertEqual(detail(due: date(2026, 9, 4, 9, 0), morning: morning), "overdue since Friday")
+        XCTAssertEqual(detail(due: date(2026, 9, 2, 9, 0), morning: morning), "overdue since Wednesday")
+        // Past a week a weekday name stops being unambiguous.
+        XCTAssertEqual(detail(due: date(2026, 8, 20, 9, 0), morning: morning), "overdue by 19 days")
+    }
+
+    func testADateOnlyLeadShowsNoTimeBecauseItHasNone() {
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [
+            MorningBriefItem(
+                dueDate: date(2026, 9, 8, 0, 0),
+                isDateOnly: true,
+                calendarDay: CalendarDay(year: 2026, month: 9, day: 8),
+                title: "Book the flights"
+            )
+        ]
+        let plan = planNamed(items, now: now)
+        XCTAssertNil(plan[0].lead?.detail, "a bare midnight is not a time the person asked for")
+        XCTAssertEqual(plan[0].body, "Book the flights")
+    }
+
+    func testALeadNeverShowsAClockTimeForADayItIsNotDue() {
+        // Planned three mornings out: on the 8th the item is due later today,
+        // on the 9th the same item is overdue. A "5 PM" on the 9th would be a
+        // lie about which day, so only the 8th carries a clock time.
+        let items = [
+            MorningBriefItem(dueDate: date(2026, 9, 8, 17, 0), title: "Pick up the keys")
+        ]
+        let plan = planNamed(items, now: date(2026, 9, 8, 7, 0))
+        XCTAssertEqual(normalized(plan[0].lead?.detail), "5 PM")
+        XCTAssertEqual(plan[1].lead?.detail, "overdue since yesterday")
+    }
+
+    func testAnItemWithNoTitleIsNeverLedAndTheBriefFallsBackToCounts() {
+        let now = date(2026, 9, 8, 7, 0)
+        let items = [MorningBriefItem(dueDate: date(2026, 9, 8, 9, 0), title: "   ")]
+        let plan = planNamed(items, now: now)
+        XCTAssertNil(plan[0].lead)
+        XCTAssertEqual(plan[0].body, "1 due today")
+    }
+
+    func testANamedBriefStillCarriesNoItemIdentifiersAndNoActions() {
+        let entry = MorningBriefEntry(
+            fireDate: date(2026, 9, 9, 8, 30),
+            dueToday: 2,
+            overdue: 1,
+            lead: MorningBriefLead(title: "Call the dentist", detail: "9 AM")
+        )
+        let request = HabitNotificationScheduler.makeRequest(for: entry, calendar: calendar)
+        XCTAssertEqual(request.content.title, "Today")
+        XCTAssertEqual(request.content.subtitle, "2 due today · 1 overdue")
+        XCTAssertEqual(request.content.body, "Call the dentist — 9 AM")
+        XCTAssertEqual(request.content.interruptionLevel, .passive, "naming one task does not make it a reminder")
+        XCTAssertNil(request.content.sound)
+        XCTAssertEqual(request.content.categoryIdentifier, "", "still no Done or Snooze on a brief")
+        XCTAssertNil(request.content.userInfo["itemIDs"], "a brief never carries an item to act on")
+        // The absent-key assertion alone would pass if an id arrived under some
+        // other name, so pin the whole payload: the kind marker and nothing else.
+        XCTAssertEqual(request.content.userInfo.count, 1)
+        XCTAssertEqual(request.content.userInfo["habitKind"] as? String, "morning-brief")
+    }
+
+    // MARK: Acting on a brief without opening the app
+
+    func testFinishingATaskFromTheWidgetAnswersTheBriefThatPromptedIt() {
+        // 8:00 brief, read on the Lock Screen; the task is completed from the
+        // widget at 8:05; the app is not opened until the next evening, well
+        // past the twelve-hour window. That morning worked, so it must not
+        // count against the brief.
+        let fired = date(2026, 9, 8, 8, 0)
+        let ledger = BriefAnswerLedger.settle(
+            pendingFireDates: [fired],
+            now: date(2026, 9, 9, 21, 0),
+            unanswered: 4,
+            offAppOutcomeAt: date(2026, 9, 8, 8, 5)
+        )
+        XCTAssertEqual(ledger.unanswered, 0)
+        XCTAssertTrue(ledger.answeredAny)
+        XCTAssertFalse(ledger.shouldAutoStop, "a brief that worked must not switch itself off")
+    }
+
+    func testAnOutcomeFromBeforeTheBriefFiredAnswersNothing() {
+        let fired = date(2026, 9, 8, 8, 0)
+        let ledger = BriefAnswerLedger.settle(
+            pendingFireDates: [fired],
+            now: date(2026, 9, 9, 21, 0),
+            unanswered: 4,
+            offAppOutcomeAt: date(2026, 9, 8, 7, 30)
+        )
+        XCTAssertEqual(ledger.unanswered, 5, "finishing something first says nothing about the brief")
+        XCTAssertTrue(ledger.shouldAutoStop)
+    }
+
+    func testAnOutcomeLongAfterTheWindowAnswersNothing() {
+        let fired = date(2026, 9, 8, 8, 0)
+        let ledger = BriefAnswerLedger.settle(
+            pendingFireDates: [fired],
+            now: date(2026, 9, 10, 9, 0),
+            unanswered: 0,
+            offAppOutcomeAt: date(2026, 9, 9, 18, 0)
+        )
+        XCTAssertEqual(ledger.unanswered, 1)
+    }
+
+    func testTheStoredOutcomeNeverMovesBackwards() {
+        HabitDefaults.lastOffAppOutcomeAt = date(2026, 9, 8, 12, 0)
+        HabitDefaults.lastOffAppOutcomeAt = date(2026, 9, 8, 9, 0)
+        XCTAssertEqual(HabitDefaults.lastOffAppOutcomeAt, date(2026, 9, 8, 12, 0))
+        HabitDefaults.lastOffAppOutcomeAt = date(2026, 9, 8, 18, 0)
+        XCTAssertEqual(HabitDefaults.lastOffAppOutcomeAt, date(2026, 9, 8, 18, 0))
     }
 
     // MARK: The request

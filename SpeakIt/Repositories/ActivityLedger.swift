@@ -76,6 +76,7 @@ enum HabitDefaults {
     private static let briefMinutesKey = keyPrefix + "briefMinutes"
     private static let pendingBriefFireDatesKey = keyPrefix + "pendingBriefFireDates"
     private static let unansweredBriefCountKey = keyPrefix + "unansweredBriefCount"
+    private static let lastOffAppOutcomeKey = keyPrefix + "lastOffAppOutcome"
     private static let lastWeekRowAnalyticsDayKey = keyPrefix + "lastWeekRowAnalyticsDay"
 
     static let fallbackBriefTime = WallClockTime(hour: 8, minute: 0)
@@ -128,6 +129,28 @@ enum HabitDefaults {
     static var unansweredBriefCount: Int {
         get { max(0, defaults.integer(forKey: unansweredBriefCountKey)) }
         set { defaults.set(max(0, newValue), forKey: unansweredBriefCountKey) }
+    }
+
+    /// The last time the person finished something without opening Speak It —
+    /// today that means completing a task from the Today widget, which writes
+    /// its action to this same App Group. The brief's answer ledger reads it so
+    /// that acting on a brief counts as answering it, rather than only
+    /// unlocking the phone. Never moved backwards: a later outcome always wins.
+    static var lastOffAppOutcomeAt: Date? {
+        get {
+            let stored = defaults.double(forKey: lastOffAppOutcomeKey)
+            guard stored > 0 else { return nil }
+            return Date(timeIntervalSinceReferenceDate: stored)
+        }
+        set {
+            guard let newValue else {
+                defaults.removeObject(forKey: lastOffAppOutcomeKey)
+                return
+            }
+            let stored = defaults.double(forKey: lastOffAppOutcomeKey)
+            guard newValue.timeIntervalSinceReferenceDate > stored else { return }
+            defaults.set(newValue.timeIntervalSinceReferenceDate, forKey: lastOffAppOutcomeKey)
+        }
     }
 
     /// The week row reports itself to analytics once per local day at most.

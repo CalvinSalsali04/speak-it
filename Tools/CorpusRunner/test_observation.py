@@ -841,19 +841,55 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the way to 4047. Neither recorded figure describes this tree, so
         it is recomputed rather than taken from a side, and main's
         entries above are kept because they are the only record of how
-        main reached 3928. 4047 -> 4094 on 2026-09-22, on the
-        capture-experience branch, and it is two moves rather than one
-        because the first was never written down: 4047 -> 4073 for
-        `CaptureFeedbackTests`, the suite that arrived with the four capture
-        fixes, whose commit left both this figure and the population block in
-        `LANGUAGE_BASELINE.md` stale and the `language` job red before
-        anything was added to it; then 4073 -> 4094 for the stale-callback
-        lifecycle test and the delayed-save coverage in the same file. Both
-        are fixtures and assertion messages in a suite about screens and
-        recognizer callbacks, so no parser behaviour is behind either number.
-        The doc comments written for them prefer backticks to quotation marks
-        for the same reason the entry four paragraphs above gives, so the
-        move is smaller than the amount of prose would suggest. What the test
+        main reached 3928. 4047 -> 4068 on 2026-09-21, from the morning
+        brief naming one task: fourteen tests in `MorningBriefTests`,
+        twenty-one literals, enumerated rather than assumed. Eight are
+        fixtures or expected output, and they divide the way this log
+        keeps warning they will: four task names (`"Call the dentist —
+        9 AM"`, `"Drop off the parcel"`, `"Email the landlord — overdue
+        since Friday"`, `"Pick up the keys"`) and four renderings of how
+        long something has been waiting (`"overdue since yesterday"`,
+        `"overdue since Friday"`, `"overdue since Wednesday"`, `"overdue
+        by 19 days"`). Eleven are assertion messages. **The last two are
+        the hazard three paragraphs above, hit again by somebody who had
+        just read it**: a doc comment added in review quotes the
+        principle the ranking follows, and `"what will not reach them
+        otherwise"` and `"what is latest"` count exactly like fixtures.
+        They are left in quotation marks rather than rewritten into
+        backticks, because the count is a tripwire and not a target, and
+        a log entry is the cheaper honesty. Several fixtures these tests
+        use add nothing, for two different reasons that the first draft
+        of this entry ran together. Three were already in this
+        directory: `"Book the flights"` in `DurabilityTests`,
+        `"Call the dentist"` in seven files including
+        `TemporalFullPathTests`, and `"Email the landlord"` in three
+        including `InterpretationPolicyTests` — note that the literals
+        this branch adds are the *composed* forms, `"Call the dentist —
+        9 AM"` and `"Email the landlord — overdue since Friday"`, which
+        are new strings even though their task names are not. The
+        fourth, `"5 PM"`, is not a near-miss at all: it is four
+        characters, and `swift_literals` counts nothing under twelve, so
+        it was never in this population and its presence elsewhere is
+        beside the point. Predicting twenty-one from the test count
+        would have missed all three directions at once. The development-set overlap stayed at 114,
+        so — unlike #79 — not one of the twenty-one is verbatim a devset
+        row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
+        not assumed from the wording. 4068 -> 4115 on 2026-09-22, where the
+        capture-experience branch merges in. That branch was cut before the
+        morning brief landed, so its own two moves were measured against 4047
+        and are recorded here as they were read rather than rebased onto the
+        entry above: 4047 -> 4073 for `CaptureFeedbackTests`, the suite that
+        arrived with the four capture fixes, whose commit left both this
+        figure and the population block in `LANGUAGE_BASELINE.md` stale and
+        the `language` job red before anything was added to it; then
+        4073 -> 4094 for the stale-callback lifecycle test and the
+        delayed-save coverage in the same file. The two branches touch
+        different files, so the merged tree carries both sets and nothing
+        cancels. Every one of the branch's literals is a fixture or an
+        assertion message in a suite about screens and recognizer callbacks,
+        so no parser behaviour is behind either number, and the doc comments
+        written for them prefer backticks to quotation marks for the reason
+        the entry above hit the hard way. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -867,7 +903,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4094)
+        self.assertEqual(len(space), 4115)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
