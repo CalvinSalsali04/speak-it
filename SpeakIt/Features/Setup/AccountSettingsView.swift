@@ -287,6 +287,13 @@ struct AccountSettingsView: View {
             // Republishing carries the new choice into the snapshot the widget
             // reads, and already reloads the Today timelines.
             repository?.publishSharedTodaySnapshot()
+            // Briefs are planned up to three mornings ahead and their content
+            // is fixed when scheduled, so switching names off has to replace
+            // the pending ones too. Without this, turning the preference off
+            // still leaves up to three mornings of notifications carrying a
+            // task name — the preference would appear to take effect and not
+            // have, which is the worst way for a privacy switch to fail.
+            repository?.refreshMorningBrief()
         }
         .onChange(of: analyticsEnabled) { _, isEnabled in
             guard isEnabled else { return }

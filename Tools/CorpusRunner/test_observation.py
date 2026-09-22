@@ -841,7 +841,40 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the way to 4047. Neither recorded figure describes this tree, so
         it is recomputed rather than taken from a side, and main's
         entries above are kept because they are the only record of how
-        main reached 3928. What the test
+        main reached 3928. 4047 -> 4068 on 2026-09-21, from the morning
+        brief naming one task: fourteen tests in `MorningBriefTests`,
+        twenty-one literals, enumerated rather than assumed. Eight are
+        fixtures or expected output, and they divide the way this log
+        keeps warning they will: four task names (`"Call the dentist —
+        9 AM"`, `"Drop off the parcel"`, `"Email the landlord — overdue
+        since Friday"`, `"Pick up the keys"`) and four renderings of how
+        long something has been waiting (`"overdue since yesterday"`,
+        `"overdue since Friday"`, `"overdue since Wednesday"`, `"overdue
+        by 19 days"`). Eleven are assertion messages. **The last two are
+        the hazard three paragraphs above, hit again by somebody who had
+        just read it**: a doc comment added in review quotes the
+        principle the ranking follows, and `"what will not reach them
+        otherwise"` and `"what is latest"` count exactly like fixtures.
+        They are left in quotation marks rather than rewritten into
+        backticks, because the count is a tripwire and not a target, and
+        a log entry is the cheaper honesty. Several fixtures these tests
+        use add nothing, for two different reasons that the first draft
+        of this entry ran together. Three were already in this
+        directory: `"Book the flights"` in `DurabilityTests`,
+        `"Call the dentist"` in seven files including
+        `TemporalFullPathTests`, and `"Email the landlord"` in three
+        including `InterpretationPolicyTests` — note that the literals
+        this branch adds are the *composed* forms, `"Call the dentist —
+        9 AM"` and `"Email the landlord — overdue since Friday"`, which
+        are new strings even though their task names are not. The
+        fourth, `"5 PM"`, is not a near-miss at all: it is four
+        characters, and `swift_literals` counts nothing under twelve, so
+        it was never in this population and its presence elsewhere is
+        beside the point. Predicting twenty-one from the test count
+        would have missed all three directions at once. The development-set overlap stayed at 114,
+        so — unlike #79 — not one of the twenty-one is verbatim a devset
+        row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
+        not assumed from the wording. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -855,7 +888,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4047)
+        self.assertEqual(len(space), 4068)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
