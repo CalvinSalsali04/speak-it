@@ -301,7 +301,9 @@ What is **not** established, and should not be inferred from the number: which
 cause is the same absent lexical-class model rather than a different missing
 asset. The readout that would say is `NaturalLanguageEnvironmentTests`, which
 prints the tagging rather than leaving it inferred:
-`./Tools/CI/unit-tests.sh SpeakItTests/RenderingInvarianceTests`. Until that
+`./Tools/CI/unit-tests.sh SpeakItTests/NaturalLanguageEnvironmentTests`.
+Both classes live in `RenderingInvarianceTests.swift`, and selecting the file's
+other class runs cleanly while asking the tagger nothing. Until that
 is run and its output recorded here, the cause is his diagnosis and not a
 measurement. Redownloading the simulator runtime is the first thing to try;
 nothing in the product branch should be changed to accommodate it.

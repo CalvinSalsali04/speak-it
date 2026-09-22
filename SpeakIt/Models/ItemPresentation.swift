@@ -82,7 +82,8 @@ struct ItemPresentation: Equatable, Sendable {
 
         /// What a row's persistent glyph should show, or `nil` for a date with
         /// nothing armed on it. A place trigger is its own glyph today
-        /// (`CapturedItemRow.isPlaceTriggered`), so it is not represented here.
+        /// (`ItemPresentation.isPlaceTriggered`, below), so it is not
+        /// represented here.
         var alertGlyph: ReminderDelivery? {
             switch self {
             case let .time(_, _, delivery) where delivery != .none: delivery
