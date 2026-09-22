@@ -1,5 +1,80 @@
 # Decisions
 
+## 2026-09-22 — The frame types the name, and the same evidence is read wherever a name can arrive
+
+"Evidence, not capitalization" was settled on 2026-08-19 (below), and the
+resolver has held that line. What it never had was evidence about **what a
+name-shaped word denotes**. It had two things instead: a lexical head beside
+the word (`bank`, `department`, `applications`) and Apple's name tag. A
+company said on its own — the commonest way anybody says one — has no head
+beside it, so the tag decided the whole case, and the tag is a closed
+vocabulary that misses most brands and is absent entirely on a hosted runner.
+
+Three separate things were wrong, and only the third is about brands.
+
+**The frame that finds the slot never typed the slot.** `objectIndex` knows
+exactly which construction opened an object position, and threw that away
+before `personPhrase` read the word. So `get`, `reach` and `walk` sat in
+`prepositionalAddressVerbs` beside `talk` and `speak`, and "when I get to
+<shop>" was read as a person being addressed. These verbs do reach people, but
+through a particle — "get back to", "reach out to", "walk over to" — and a bare
+"to" after them is a destination. The particle is the whole discriminator and
+it is structural: no list of places is consulted, so a shop nobody has heard
+of is read exactly as a famous one is.
+
+**The non-person evidence was applied at one of the three places a person can
+be produced.** The object of an address verb consulted it; the subject of a
+fact and the owner of something did not consult it at all. So "Call Sterling
+Bank about the transfer" was refused correctly while "Sterling Bank needs my
+signature by Friday" filed a person called Sterling Bank, and "Lakeshore
+Dental's policy is twenty-four hours" filed one called Dental — one function
+away from the guard that would have caught both instantly. All three now read
+the same `entityKind`.
+
+**The frame the name tagger was asked in contained the answer.** The helper is
+named `neutralNameEvidence` and built "I spoke with <name>" and "<name> said
+hello" — two constructions only a human is grammatical in. Apple's tagger reads
+context, so that is a leading question, and it is asked in the one situation
+where nothing else can answer. The frames are now "We talked about <name>
+yesterday." and "<name> was mentioned in the email.", which take a person, a
+company, a place and a subject equally. Whether the frame is what decided a
+given company is a measurement, not a claim: `leadingFrameEvidence` is kept
+beside the new pair so the comparison can be run, and
+`PersonMentionTests.testTheTaggerFrameIsNotALeadingQuestion` prints it rather
+than asserting an outcome nobody has read yet.
+
+**`EntityKind` is the verdict written down.** person, organization, place,
+topic, role, unknown. Only `person` is routed; everything else behaves exactly
+as an absent person did before, and a place trigger remains `LocationIntent`'s
+job. It exists because "did a mention come back?" cannot tell a refusal for the
+right reason from a refusal by luck, and a contrast set cannot be read without
+that distinction. `unknown` is deliberately the default: an unfamiliar real
+name has no evidence either way, and nothing here flips that. Absence of
+evidence that a word is a person is still not evidence against them.
+
+**One rule reads a relationship rather than a name.** An overdraft, a premium,
+a policy or a prescription refill is held with an institution, and a human is
+not on the other end of one, so "about my <that>" types the target as an
+organization. The noun list is short on purpose: the test is not "could this
+come up with a company" but "could this come up with a friend", which an
+invoice, an order, a card and a booking all fail. It fires without corroboration
+from the name tagger, which reads most companies as surnames because most of
+them are — and the cost of a wrong call is bounded and was chosen: the target
+stays on the row as words, the reminder still fires, and the only thing
+withheld is the filing under People. Empty person metadata beats an invented
+person.
+
+**A department acronym is not the word its case folds onto.** "Message IT
+support" lost its target twice: the name rules refused "IT" correctly, and the
+described reader then refused it too because "it" is a pronoun — so a
+perfectly clear errand was held for review asking who to message. An all-caps
+token inside a sentence that is not all caps is an identifier.
+
+What this does **not** answer is a bare company name in an address slot with
+no head noun and no complement — "call <brand>". There the tagger is still the
+only evidence, and `Docs/KNOWN_ISSUES.md` records it rather than a rule
+pretending otherwise.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

@@ -27,6 +27,42 @@ struct PersonMention: Equatable, Sendable {
     let role: PersonRole
 }
 
+/// What a named span in a capture turns out to denote.
+///
+/// The resolver used to answer one question — *is this a person?* — with the
+/// answer implied by whether a mention came back at all. That left no way to
+/// say **why** a span is not a person, and no way for a caller to tell "the
+/// words name nobody" from "the words name something that is not a human".
+/// `EntityKind` is that answer written down.
+///
+/// Only `person` is routed today: `personName`, Memory's People collection and
+/// the message composer read it, and everything else behaves exactly as an
+/// absent person did before. The other cases exist because the *evidence* for
+/// each one is different — a head noun makes an institution, a motion frame
+/// makes a place, a plural document noun makes a topic — and a caller that
+/// cannot see which of them fired cannot tell a correct refusal from a lucky
+/// one. Do not read the non-person cases as shipped behaviour; they are the
+/// reason for a refusal, not a destination.
+enum EntityKind: String, Equatable, Sendable {
+    /// A human participant.
+    case person
+    /// A company, institution or account holder: "TD Bank", "Costco".
+    case organization
+    /// Somewhere the speaker goes: "when I get to Costco".
+    case place
+    /// A subject of work rather than a party to it: "Job Applications".
+    case topic
+    /// A function inside an organization rather than the individual filling
+    /// it: "IT support", "HR".
+    case role
+    /// Name-shaped, and nothing in the capture says what it is. The person
+    /// path treats this as it always has, so this case changes nothing on its
+    /// own — it is where an unfamiliar real name lives.
+    case unknown
+
+    var isPerson: Bool { self == .person }
+}
+
 /// What the person is doing in the sentence. The label is the same either way;
 /// the role is what tells Today from Memory.
 enum PersonRole: String, Equatable, Sendable {
@@ -185,6 +221,64 @@ enum PersonMentionResolver {
     /// The one person a thought is about, when it is about anybody.
     static func primary(in text: String) -> PersonMention? {
         mentions(in: text).first
+    }
+
+    /// What the capture's named target turns out to be.
+    ///
+    /// The same evidence the person path reads, reported instead of consumed.
+    /// It exists because "did a mention come back?" is not a legible answer to
+    /// "what is this word?" — a refusal for the right reason and a refusal by
+    /// luck look identical from outside, and a contrast set cannot tell them
+    /// apart without this.
+    ///
+    /// **Nothing routes on the non-person cases.** A place trigger is
+    /// `LocationIntent`'s job and stays there; this reports the contextual
+    /// role and changes no destination, no date and no reminder.
+    static func entityKind(in text: String) -> EntityKind {
+        let source = text[...]
+        guard !source.isEmpty else { return .unknown }
+        let lowercaseOnly = isCasuallyCased(text)
+        let list = words(in: source)
+        guard !list.isEmpty else { return .unknown }
+
+        // An addressed target is read first, so "call Priya when I get to the
+        // office" reports Priya rather than the office she is called from.
+        for index in list.indices {
+            guard let objectIndex = objectIndex(after: index, in: list, allowLowercase: lowercaseOnly),
+                  objectIndex < list.count,
+                  !list[objectIndex].core.isEmpty else { continue }
+            let kind = entityKind(list, at: objectIndex, limit: objectLimit(after: index, in: list))
+            if kind != .unknown { return kind }
+            // A pronoun or a determiner in the object slot types nothing, so
+            // the next frame gets its turn: "remind me to buy stamps when I
+            // get to Shoppers" is about Shoppers, not about "me".
+            if isNameToken(list[objectIndex], allowLowercase: lowercaseOnly) { return .person }
+        }
+
+        // "When I get to Costco" reaches a destination. The frame decides it,
+        // not the word: an unfamiliar shop is read exactly as a famous one is.
+        // Reported loosely on purpose — "get to my taxes tonight" reports a
+        // place too — because nothing acts on this and a narrower rule here
+        // would be a second place-reader disagreeing with `LocationIntent`.
+        for index in list.indices where motionObjectIndex(after: index, in: list) != nil {
+            return .place
+        }
+
+        guard let first = list.first, !first.core.isEmpty else { return .unknown }
+        let kind = entityKind(list, at: 0, limit: nil)
+        if kind != .unknown { return kind }
+        return primary(in: text) != nil ? .person : .unknown
+    }
+
+    /// The destination of a motion or arrival frame, or `nil` when the verb
+    /// reaches a person through a particle instead ("get back to Alex").
+    private static func motionObjectIndex(after index: Int, in list: [Word]) -> Int? {
+        guard motionAddressVerbs.contains(list[index].lower),
+              index + 1 < list.count,
+              ["to", "at"].contains(list[index + 1].lower),
+              index + 2 < list.count,
+              !list[index + 2].core.isEmpty else { return nil }
+        return index + 2
     }
 
     /// Who a follow-up is aimed at, separating a target that is missing from
@@ -403,8 +497,9 @@ enum PersonMentionResolver {
         // "Follow up with", "get back to", "say hi to". These verbs mean
         // nothing on their own — "get milk" must never reach the name rules —
         // so they only count when their preposition is there too.
-        if prepositionalAddressVerbs.contains(verb) {
-            if index + 1 < list.count, connectors.contains(list[index + 1].lower) {
+        if prepositionalAddressVerbs.contains(verb) || motionAddressVerbs.contains(verb) {
+            if index + 1 < list.count, connectors.contains(list[index + 1].lower),
+               !motionAddressVerbs.contains(verb) {
                 return index + 2
             }
             if index + 2 < list.count,
@@ -450,7 +545,12 @@ enum PersonMentionResolver {
     ) -> PersonMention? {
         guard let first = list.first,
               !first.core.isEmpty,
-              isNameToken(first, allowLowercase: allowLowercase) else { return nil }
+              isNameToken(first, allowLowercase: allowLowercase),
+              // The same non-person evidence the address rules read. Without
+              // it this rule had none at all, and "TD Bank needs my void
+              // cheque" filed a person one function away from the guard that
+              // refuses "Call TD Bank".
+              !isNonPersonPhrase(list, at: 0, limit: nil) else { return nil }
 
         var label = display(first.core)
         var upper = first.range.upperBound
@@ -557,7 +657,10 @@ enum PersonMentionResolver {
                   // "The dog's grooming appointment": a name takes no
                   // determiner, so a possessive behind one is a common noun.
                   // Kinship keeps its determiner ("my sister's kids").
-                  !(determiners.contains(list[index - 1].lower) && !kinship.contains(word.lower))
+                  !(determiners.contains(list[index - 1].lower) && !kinship.contains(word.lower)),
+                  // "Costco's return policy is ninety days" is a fact about a
+                  // shop. The owner rule read no entity evidence either.
+                  !isNonPersonPhrase(list, at: index, limit: nil)
             else { continue }
             return PersonMention(
                 label: display(word.core),
@@ -689,12 +792,134 @@ enum PersonMentionResolver {
     /// An institution head or a department belongs to the target, whereas
     /// "at <company>" is a separate adjunct and must not erase its person.
     private static func isNonPersonPhrase(_ list: [Word], at index: Int, limit: Int?) -> Bool {
-        if kinship.contains(list[index].lower) { return false }
-        let evidence = neutralNameEvidence(list[index])
-        if evidence.organization { return true }
-        if list[index].isOrganizationName,
-           !evidence.personal { return true }
-        return hasNonPersonHead(list, at: index, limit: limit)
+        switch entityKind(list, at: index, limit: limit) {
+        case .person, .unknown: return false
+        case .organization, .place, .topic, .role: return true
+        }
+    }
+
+    /// What the words around the span at `index` say it denotes.
+    ///
+    /// This is the whole of the non-person defence, in one place, so that the
+    /// three rules that can produce a person — the object of an address verb,
+    /// the actor of something done to the speaker, and the subject or owner of
+    /// a fact — cannot disagree about what a name is. They used to: only the
+    /// first consulted any of this, so "TD Bank needs my void cheque" filed a
+    /// person called TD Bank through `factSubject` while "Call TD Bank" was
+    /// refused correctly one function away.
+    ///
+    /// Every branch is evidence **from the capture**, never from a list of
+    /// companies or places. A list of brands is the failure mode this file
+    /// already records for occupations: the miss is not a blank field but a
+    /// confident wrong answer, and the thirty-first brand is always missing.
+    /// So what is read here is a head noun, a governing frame, a relationship
+    /// complement and the recognizer's own tag — all of which generalise to a
+    /// name nobody has heard of.
+    ///
+    /// `.unknown` is the important case and it is deliberately the default:
+    /// an unfamiliar real name has no evidence either way, and the person path
+    /// treats `.unknown` exactly as it treated "no objection found" before.
+    /// Nothing here flips that default. Absence of evidence that a word is a
+    /// person is still not evidence that it is not one.
+    private static func entityKind(_ list: [Word], at index: Int, limit: Int?) -> EntityKind {
+        guard index < list.count else { return .unknown }
+        let word = list[index]
+        if kinship.contains(word.lower) { return .person }
+
+        // A department or function named as an acronym: "message IT support",
+        // "ask HR about the form". Read before the name tags, because a
+        // two-letter acronym folds onto an ordinary word and the tagger reads
+        // the ordinary word.
+        if isAcronymToken(word, in: list),
+           index + 1 < min(list.count, limit ?? list.count),
+           departmentHeads.contains(list[index + 1].lower) { return .role }
+
+        if let head = headEvidence(list, at: index, limit: limit) { return head }
+
+        let evidence = neutralNameEvidence(word)
+        if evidence.organization { return .organization }
+        if word.isOrganizationName, !evidence.personal { return .organization }
+
+        // "Call Halifax Credit about my overdraft", "text them about my
+        // prescription refill": an account, a policy or a premium is a
+        // relationship held with an institution, and a human is not on the
+        // other end of one. The possessive has to be the speaker's own, and
+        // kinship has already returned above, so "call Mom about my
+        // prescription" never reaches here.
+        if namesAServiceRelationship(list, from: index) { return .organization }
+
+        return .unknown
+    }
+
+    /// The kind an adjacent head noun makes the whole phrase.
+    ///
+    /// Replaces `hasNonPersonHead`'s boolean with the reason for it, so a
+    /// caller can tell an institution from a topic from a department. The scan
+    /// and its stopping rules are unchanged: an institution head or department
+    /// belongs to the target, whereas "at <company>" is a separate adjunct and
+    /// must not erase its person.
+    private static func headEvidence(_ list: [Word], at index: Int, limit: Int?) -> EntityKind? {
+        for cursor in index..<min(list.count, limit ?? list.count, index + 6) {
+            let word = list[cursor].lower
+            if cursor > index,
+               ["at", "from", "to", "for", "with", "about", "on", "in", "and", "or"].contains(word)
+                || (boundaryWords.contains(word) && word != "of") { break }
+            if departmentHeads.contains(word) { return .role }
+            if institutionHeads.contains(word) || organisationSuffixes.contains(word) {
+                return .organization
+            }
+            if topicHeads.contains(word) { return .topic }
+            if cursor > index, list[cursor].isVerb { break }
+        }
+        return nil
+    }
+
+    private static func hasNonPersonHead(_ list: [Word], at index: Int, limit: Int?) -> Bool {
+        headEvidence(list, at: index, limit: limit) != nil
+    }
+
+    /// Whether the span is followed by the speaker's own account, order or
+    /// policy — the shape of a relationship held with an institution.
+    ///
+    /// Narrow on purpose. The possessive has to be first person, so "call Sam
+    /// about the invoice" is untouched; the noun has to be one an institution
+    /// administers rather than one a person can also own, which is why
+    /// "appointment", "flight" and "booking" are absent; and the whole rule is
+    /// skipped where the span already reads as a person.
+    private static func namesAServiceRelationship(_ list: [Word], from index: Int) -> Bool {
+        var cursor = index + 1
+        let upperBound = min(list.count, index + 7)
+        while cursor < upperBound {
+            if serviceComplements.contains(list[cursor].lower),
+               cursor + 1 < list.count,
+               ["my", "our"].contains(list[cursor + 1].lower) {
+                let nounBound = min(list.count, cursor + 4)
+                for nounIndex in (cursor + 2)..<max(cursor + 2, nounBound)
+                where serviceNouns.contains(list[nounIndex].lower) { return true }
+            }
+            cursor += 1
+        }
+        return false
+    }
+
+    /// An all-caps token inside a sentence that is not all caps is an
+    /// identifier, not the ordinary word it folds onto.
+    ///
+    /// "Message IT support" lost its target entirely: `it` is in the pronoun
+    /// stoplist, so the name rules refused it correctly and the *described*
+    /// reader then refused it too, leaving a perfectly clear errand held for
+    /// review asking who to message. The same collision is waiting for any
+    /// department written as an acronym that happens to spell an English
+    /// function word.
+    ///
+    /// Two letters is enough here, unlike `isUnresolvedIdentifier`, because
+    /// this rescues a description rather than admitting a name: the widest
+    /// thing it can do is let "IT support" through as words to act on.
+    private static func isAcronymToken(_ word: Word, in list: [Word]) -> Bool {
+        let value = word.core
+        guard value.count >= 2, value == value.uppercased(),
+              value.contains(where: \.isLetter) else { return false }
+        return list.contains { !$0.core.isEmpty && $0.core != $0.core.uppercased() }
     }
 
     private static func isUnresolvedIdentifier(_ word: Word, in list: [Word]) -> Bool {
@@ -706,15 +931,50 @@ enum PersonMentionResolver {
         return acronym || mixed
     }
 
-    /// Native name tags vary with the surrounding command. A second neutral
-    /// frame corroborates identity; a single organization tag cannot erase a
-    /// person simply because dictation wrote a different lead-in.
-    private static func neutralNameEvidence(_ word: Word) -> (personal: Bool, organization: Bool) {
-        let context = SentenceContextCache.context(for: "I spoke with " + display(word.core))
+    /// Native name tags vary with the surrounding command. A second frame
+    /// corroborates identity; a single organization tag cannot erase a person
+    /// simply because dictation wrote a different lead-in.
+    ///
+    /// **Both frames have to admit every kind of entity, and the two this used
+    /// to build did not.** They were "I spoke with <name>" and "<name> said
+    /// hello" — two constructions only a human is grammatical in. Apple's name
+    /// tagger reads context, so asking it what "Costco" is while standing it
+    /// in a sentence that says somebody spoke to it is asking a leading
+    /// question, and a leading question is exactly what the caller must not
+    /// ask: this is the *only* evidence a bare company name ever meets, since
+    /// there is no head noun beside it to read.
+    ///
+    /// The replacements take a person, a company, a place and a subject
+    /// equally: you can talk about any of them and any of them can come up in
+    /// an email.
+    ///
+    /// **The falsifier.** If a known organization comes back with the same
+    /// tags from the old frames and the new ones, the frame was not what
+    /// decided it and this change buys nothing; the honest conclusion then is
+    /// that the tagger has no entry for the word and only a model can type it.
+    /// `SpeakItTests/PersonMentionTests.testTheTaggerFrameIsNotALeadingQuestion`
+    /// is that comparison, and it abstains rather than passing where the
+    /// tagger is blind.
+    static func nameEvidence(for name: String) -> (personal: Bool, organization: Bool) {
+        let mentioned = SentenceContextCache.context(for: "We talked about " + name + " yesterday.")
+        let mentionTokens = mentioned.tokens.dropFirst(3)
+        let subject = SentenceContextCache.context(for: name + " was mentioned in the email.").tokens.first
+        return (mentionTokens.contains(where: \.isPersonalName) || subject?.isPersonalName == true,
+                mentionTokens.contains(where: \.isOrganizationName) || subject?.isOrganizationName == true)
+    }
+
+    /// Test support: the frames this file used before the pair above, kept so
+    /// the comparison that justifies them can be run rather than asserted.
+    static func leadingFrameEvidence(for name: String) -> (personal: Bool, organization: Bool) {
+        let context = SentenceContextCache.context(for: "I spoke with " + name)
         let nameTokens = context.tokens.dropFirst(3)
-        let subject = SentenceContextCache.context(for: display(word.core) + " said hello").tokens.first
+        let subject = SentenceContextCache.context(for: name + " said hello").tokens.first
         return (nameTokens.contains(where: \.isPersonalName) || subject?.isPersonalName == true,
                 nameTokens.contains(where: \.isOrganizationName) || subject?.isOrganizationName == true)
+    }
+
+    private static func neutralNameEvidence(_ word: Word) -> (personal: Bool, organization: Bool) {
+        nameEvidence(for: display(word.core))
     }
 
     private static func hasNonPersonHead(_ list: [Word], at index: Int, limit: Int?) -> Bool {
@@ -741,6 +1001,47 @@ enum PersonMentionResolver {
     private static let topicHeads: Set<String> = [
         "applications", "claims", "invoices", "assignments", "notes", "documents",
         "forms", "results", "receipts", "expenses", "letters", "reports", "tickets",
+    ]
+    /// Heads that make the phrase a function inside an organization rather
+    /// than the individual filling it. Read before the institution heads so a
+    /// department reports as a department; both are refused as people either
+    /// way, and the difference is the reason, not the outcome.
+    ///
+    /// Every word here except `helpdesk` is already in `institutionHeads` or
+    /// `organisationSuffixes`, so the head scan refuses exactly what it
+    /// refused before and only the reason it gives is new. That is deliberate:
+    /// the scan reaches six tokens past the name and does not stop on a
+    /// determiner, so a word added here starts refusing shapes like "tell Sam
+    /// the <word> is booked" — a widening that has to be argued for on its own
+    /// evidence, not smuggled in behind a rename.
+    private static let departmentHeads: Set<String> = [
+        "support", "helpdesk", "department", "team", "hr", "payroll",
+        "accounting", "billing", "legal", "sales", "marketing", "finance",
+    ]
+    /// Prepositions that open a complement naming what the errand is about.
+    private static let serviceComplements: Set<String> = ["about", "regarding", "re"]
+    /// Things an **institution** administers on the speaker's behalf.
+    ///
+    /// The list is short because the test it has to pass is not "could this
+    /// come up with a company" but "could this come up with a friend". An
+    /// invoice, an order, a payment, a card, a claim and a booking all fail
+    /// that test — "text Sam about my card" is a birthday card — so none of
+    /// them is here, and the examples this was written against ("about my
+    /// card") are covered by their head noun instead. Nobody holds your
+    /// overdraft but a bank.
+    ///
+    /// The cost of a wrong call here is bounded and was chosen deliberately:
+    /// the target stays on the row as words, the reminder still fires, and the
+    /// only thing withheld is the filing under People. Nothing is lost and no
+    /// question is asked. That is the trade this project states — empty person
+    /// metadata beats an invented person — and it is why this rule is allowed
+    /// to fire without corroboration from the name tagger, which reads most of
+    /// these companies as surnames because most of them are.
+    private static let serviceNouns: Set<String> = [
+        "account", "accounts", "balance", "overdraft", "mortgage", "loan",
+        "premium", "deductible", "coverage", "policy", "statement",
+        "statements", "billing", "subscription", "warranty", "refund",
+        "prescription", "refill", "paycheck", "payslip", "tuition",
     ]
 
     private static func properName(_ word: Word, allowLowercase: Bool) -> String? {
@@ -876,7 +1177,10 @@ enum PersonMentionResolver {
             guard !next.core.isEmpty,
                   !determiners.contains(next.lower),
                   !unspecificWords.contains(next.lower) else { return nil }
-        } else if unspecificWords.contains(head.lower) {
+        } else if unspecificWords.contains(head.lower), !isAcronymToken(head, in: list) {
+            // An acronym is exempt: "IT" is a department written the way
+            // departments are written, and folding its case onto the pronoun
+            // "it" threw away a target the capture stated plainly.
             return nil
         }
 
@@ -1043,11 +1347,26 @@ enum PersonMentionResolver {
         "remind", "reminds", "reminded",
     ]
 
+    /// Verbs of motion and arrival. Their bare "to" reaches a **place**, and
+    /// reading it as a person is how "when I get to Costco" filed somebody
+    /// called Costco and "walk to the pharmacy on Bloor" filed one called
+    /// Bloor. They do address a person, but only through a particle: "get
+    /// back to Alex", "reach out to Priya", "walk over to Sam". The particle
+    /// is the whole discriminator, and it is structural rather than lexical —
+    /// no list of place names is involved, so an unfamiliar destination is
+    /// read the same way a famous one is.
+    ///
+    /// Kept out of `prepositionalAddressVerbs` rather than removed, because
+    /// `neverName` and `unspecificWords` are built from these sets and a verb
+    /// that stopped being in them would start being available as a name.
+    private static let motionAddressVerbs: Set<String> = [
+        "reach", "reaches", "reached", "get", "gets", "got", "walk", "walks",
+    ]
+
     /// Verbs that only aim at a person once their preposition arrives.
     private static let prepositionalAddressVerbs: Set<String> = [
         "follow", "follows", "followed", "following",
         "check", "checks", "checked", "catch", "catches", "caught",
-        "reach", "reaches", "reached", "get", "gets", "got",
         "talk", "talks", "talked", "speak", "speaks", "spoke",
         "write", "writes", "wrote", "say", "says", "said", "circle",
         // Social nouns behave exactly like these verbs: they name nothing
@@ -1055,7 +1374,7 @@ enum PersonMentionResolver {
         // a person. "Lunch with Alex" and "coffee with Priya" are how people
         // record who they are seeing, and neither filed anybody.
         "lunch", "dinner", "coffee", "breakfast", "brunch", "drinks",
-        "chat", "chatting", "call", "meeting", "session", "walk",
+        "chat", "chatting", "call", "meeting", "session",
     ]
 
     private static let connectors: Set<String> = ["to", "with"]
@@ -1275,6 +1594,7 @@ enum PersonMentionResolver {
         .union(bareTitles)
         .union(directAddressVerbs)
         .union(prepositionalAddressVerbs)
+        .union(motionAddressVerbs)
         .union(humanActionVerbs)
         .union(modals)
         .union(strongPeoplePredicates)
@@ -1287,6 +1607,7 @@ enum PersonMentionResolver {
         .union(functionWords.subtracting(determiners))
         .union(directAddressVerbs)
         .union(prepositionalAddressVerbs)
+        .union(motionAddressVerbs)
         .union(humanActionVerbs)
         .union(modals)
 
