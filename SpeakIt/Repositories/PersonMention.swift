@@ -499,7 +499,7 @@ enum PersonMentionResolver {
         // so they only count when their preposition is there too.
         if prepositionalAddressVerbs.contains(verb) || motionAddressVerbs.contains(verb) {
             if index + 1 < list.count, connectors.contains(list[index + 1].lower),
-               !motionAddressVerbs.contains(verb) {
+               !(motionAddressVerbs.contains(verb) && list[index + 1].lower == "to") {
                 return index + 2
             }
             if index + 2 < list.count,
@@ -861,6 +861,16 @@ enum PersonMentionResolver {
     private static func headEvidence(_ list: [Word], at index: Int, limit: Int?) -> EntityKind? {
         for cursor in index..<min(list.count, limit ?? list.count, index + 6) {
             let word = list[cursor].lower
+            // **A possessive ends the nominal.** The scan was written for the
+            // address slot, where a head noun beside the name belongs to the
+            // target — "Northwind accounting". Behind a possessive the noun is
+            // the thing possessed, and it belongs to nobody but the possessor:
+            // "Return Sam's library book", "Grab Priya's medical records",
+            // "Sign Alex's school forms". Reading those heads took the person
+            // off the row, silently and whatever the recognizer said, in every
+            // shape where a name owns something with an institutional word in
+            // its name.
+            if cursor > index, list[cursor - 1].isPossessive { break }
             if cursor > index,
                ["at", "from", "to", "for", "with", "about", "on", "in", "and", "or"].contains(word)
                 || (boundaryWords.contains(word) && word != "of") { break }
@@ -975,19 +985,6 @@ enum PersonMentionResolver {
 
     private static func neutralNameEvidence(_ word: Word) -> (personal: Bool, organization: Bool) {
         nameEvidence(for: display(word.core))
-    }
-
-    private static func hasNonPersonHead(_ list: [Word], at index: Int, limit: Int?) -> Bool {
-        for cursor in index..<min(list.count, limit ?? list.count, index + 6) {
-            let word = list[cursor].lower
-            if cursor > index,
-               ["at", "from", "to", "for", "with", "about", "on", "in", "and", "or"].contains(word)
-                || (boundaryWords.contains(word) && word != "of") { break }
-            if institutionHeads.contains(word) || organisationSuffixes.contains(word)
-                || topicHeads.contains(word) { return true }
-            if cursor > index, list[cursor].isVerb { break }
-        }
-        return false
     }
 
     // Semantic heads, never organization names or complete failed phrases.
@@ -1347,14 +1344,23 @@ enum PersonMentionResolver {
         "remind", "reminds", "reminded",
     ]
 
-    /// Verbs of motion and arrival. Their bare "to" reaches a **place**, and
-    /// reading it as a person is how "when I get to Costco" filed somebody
-    /// called Costco and "walk to the pharmacy on Bloor" filed one called
-    /// Bloor. They do address a person, but only through a particle: "get
-    /// back to Alex", "reach out to Priya", "walk over to Sam". The particle
-    /// is the whole discriminator, and it is structural rather than lexical —
-    /// no list of place names is involved, so an unfamiliar destination is
-    /// read the same way a famous one is.
+    /// Verbs whose bare **"to"** reaches a place rather than a person.
+    /// Reading that as an address is how "when I get to Costco" filed
+    /// somebody called Costco and "walk to the pharmacy on Bloor" filed one
+    /// called Bloor. They do address a person, through a particle — "get back
+    /// to Alex", "reach out to Priya", "walk over to Sam" — and the particle
+    /// is the whole discriminator: structural, not lexical, so an unfamiliar
+    /// destination is read the same way a famous one is.
+    ///
+    /// **Only "to" is vetoed, and the first version of this vetoed "with" as
+    /// well.** That was wrong for every verb here and destructive for one:
+    /// `walk` sits in this file as a social noun too — "a walk with Priya
+    /// tomorrow" is how people record who they are seeing — so vetoing its
+    /// "with" took the person out of "walk with Sam", and the run-on boundary
+    /// rules read the person layer, so "Walk with Sam tomorrow and Priya
+    /// Friday" stopped splitting and lost the Friday errand. `with` marks
+    /// accompaniment and never a destination, which is why the veto is
+    /// written against the connector rather than against the verb.
     ///
     /// Kept out of `prepositionalAddressVerbs` rather than removed, because
     /// `neverName` and `unspecificWords` are built from these sets and a verb

@@ -878,29 +878,33 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
-        is the assertion above, and it is unaffected. 4068 -> 4107 on
-        2026-09-22, from entity context: six tests in
-        `PersonMentionTests`, thirty-nine literals, enumerated by
-        diffing this file's own multi-word set against `HEAD` rather
-        than counted by hand. Every one is in that single file.
-        Seventeen are captures, eleven are assertion or skip messages,
-        two are interpolated strings that exist to be read in the log
-        (`entity-frame-comparison ...` and the control message that
-        names which control failed), **and five are the doc-comment
-        hazard this log has now recorded three times**: `"I spoke with
-        <name>"`, `"<name> said hello"` and `"when I get to <shop>"` are
-        the frames a doc comment quotes in order to say what is wrong
-        with them, and `"), and a bare "` and `"reach out to"` are not
-        phrases at all — they are the gaps between quoted fragments in
-        one sentence, which is what a comment-blind reader sees when a
-        comment lists three particle forms in quotation marks. They are
-        left as they are, on the precedent two paragraphs above: the
-        count is a tripwire, not a target, and rewriting a sentence to
-        please it would be tuning the instrument. The development-set
-        overlap stayed at 114, so none of the thirty-nine is verbatim a
-        devset row; checked by regenerating `LANGUAGE_BASELINE.md`, not
-        assumed. Predicting the count from the six test methods would
-        have missed the five comment fragments entirely.
+        is the assertion above, and it is unaffected. 4068 -> 4116 on
+        2026-09-22, from entity context: nine tests in
+        `PersonMentionTests`, forty-eight literals, enumerated by
+        diffing this file's own multi-word set against `origin/main`
+        rather than counted by hand, and every one is in that single
+        file. Twenty-nine are captures, thirteen are assertion or skip
+        messages — two of those interpolated, and they count exactly
+        like fixtures — **and six are the doc-comment hazard this log
+        has now recorded three times**. Three of the six are frames a
+        comment quotes in order to say what is wrong with them (`"I
+        spoke with <name>"`, `"<name> said hello"`, `"when I get to
+        <shop>"`) and three are not phrases at all: `"), and a bare "`,
+        `"reach out to"` and `"walk with Sam"` are the gaps between
+        quoted fragments in a sentence, which is what a comment-blind
+        reader sees when a comment lists particle forms in quotation
+        marks. 29 + 13 + 6 = 48; an earlier draft of this entry gave
+        groups that summed to 35 against a total of 39 and said six
+        tests where there were seven, which is the same failure this
+        file exists to catch, one level up — **a figure inside a log
+        entry recomputes nowhere either**. Left as they are, on the
+        precedent two paragraphs above: the count is a tripwire, not a
+        target, and rewriting a sentence to please it would be tuning
+        the instrument. The development-set overlap stayed at 114, so
+        none of the forty-eight is verbatim a devset row; checked by
+        regenerating `LANGUAGE_BASELINE.md`, not assumed. Predicting the
+        count from the nine test methods would have missed the six
+        comment fragments entirely.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -910,7 +914,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4107)
+        self.assertEqual(len(space), 4116)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

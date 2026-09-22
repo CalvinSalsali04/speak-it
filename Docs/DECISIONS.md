@@ -18,9 +18,20 @@ before `personPhrase` read the word. So `get`, `reach` and `walk` sat in
 `prepositionalAddressVerbs` beside `talk` and `speak`, and "when I get to
 <shop>" was read as a person being addressed. These verbs do reach people, but
 through a particle — "get back to", "reach out to", "walk over to" — and a bare
-"to" after them is a destination. The particle is the whole discriminator and
-it is structural: no list of places is consulted, so a shop nobody has heard
-of is read exactly as a famous one is.
+"to" after them is a destination. The discriminator is structural: no list of
+places is consulted, so a shop nobody has heard of is read exactly as a famous
+one is.
+
+**The veto is written against the connector, not against the verb**, and the
+first version of it was written against the verb. That was wrong for all three
+and destructive for one: `walk` is in this file as a social noun as well — "a
+walk with Priya tomorrow" is how people record who they are seeing — so
+vetoing its "with" took the person out of "walk with Sam". The cost was not a
+missing name. `ThoughtExtractor`'s boundary rules ask the person layer whether
+the left conjunct names somebody, so "Walk with Sam tomorrow and Priya Friday"
+stopped splitting and the Friday errand was **lost**, which is the one failure
+the architecture forbids outright. `with` marks accompaniment and never a
+destination, so only "to" is refused.
 
 **The non-person evidence was applied at one of the three places a person can
 be produced.** The object of an address verb consulted it; the subject of a
@@ -30,6 +41,15 @@ signature by Friday" filed a person called Sterling Bank, and "Lakeshore
 Dental's policy is twenty-four hours" filed one called Dental — one function
 away from the guard that would have caught both instantly. All three now read
 the same `entityKind`.
+
+Reading it in those two places exposed something the head scan had always
+assumed and never stated: it was written for the address slot, where a head
+noun beside the name belongs to the target ("Northwind accounting"). Behind a
+possessive the noun is the thing possessed and belongs to nobody but the
+owner, so "Return Sam's library book", "Grab Priya's medical records" and
+"Sign Alex's school forms" all lost their person the moment the owner rule
+started consulting the scan. **A possessive now ends the nominal**, which is
+where the scan should always have stopped.
 
 **The frame the name tagger was asked in contained the answer.** The helper is
 named `neutralNameEvidence` and built "I spoke with <name>" and "<name> said
@@ -63,6 +83,12 @@ them are — and the cost of a wrong call is bounded and was chosen: the target
 stays on the row as words, the reminder still fires, and the only thing
 withheld is the filing under People. Empty person metadata beats an invented
 person.
+
+One thing that trade costs beyond the People filing: `polished` skips name
+re-casing when `personName` is nil (`ThoughtOrganizer.swift:515`), so a
+dictated "call marguerite about my overdraft" renders the name in lowercase on
+the row. Nothing is dropped and the words stay the person's own, but the row
+reads worse, and that is part of the price rather than a separate defect.
 
 **A department acronym is not the word its case folds onto.** "Message IT
 support" lost its target twice: the name rules refused "IT" correctly, and the

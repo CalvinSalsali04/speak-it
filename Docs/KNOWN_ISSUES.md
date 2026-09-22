@@ -62,10 +62,19 @@ has to stay useful with the model unavailable.
 **Not pinned by a test.** A case asserting the defect would either freeze it
 (so the eventual fix reads as a regression) or leave the suite red, and
 `XCTExpectFailure`/`withKnownIssue` appear nowhere in `SpeakItTests`. The
-cheapest retest is `SpeakItTests/PersonMentionTests` on a Mac: the frame
-comparison in `testTheTaggerFrameIsNotALeadingQuestion` prints what the tagger
-actually knows about six companies, which is the measurement this entry is
-waiting on.
+cheapest retest is one command on a Mac:
+
+```
+./Tools/CI/unit-tests.sh SpeakItTests/PersonMentionTests
+```
+
+`testTheTaggerFrameIsNotALeadingQuestion` prints what the tagger actually
+knows about six companies, under both the old person-only frames and the
+neutral ones. It asserts nothing about them, so the test passing says nothing:
+the measurement is in the log, one line per company, and it is read with
+`grep entity-frame-comparison` over the run output or the `.xcresult`. If the
+two readings are identical the frame was never what decided those words, and
+only a model can type them.
 
 ## A considered thought and a committed one look the same once stored
 

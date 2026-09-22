@@ -596,6 +596,57 @@ final class PersonMentionTests: XCTestCase {
         )
     }
 
+    /// `walk` is a motion verb and a social noun in the same file — "a walk
+    /// with Priya tomorrow" is how people record who they are seeing — and the
+    /// first version of the motion rule vetoed its connector rather than its
+    /// destination, so "walk with Sam" named nobody.
+    ///
+    /// The second assertion is why that mattered more than a missing name.
+    /// `ThoughtExtractor`'s boundary rules ask the person layer whether the
+    /// left conjunct names somebody, so losing Sam collapsed a two-errand
+    /// capture into one row and **the Friday errand was gone**. Losing a
+    /// thought the person just spoke is the failure this app cannot have.
+    func testAccompanimentIsNotADestination() {
+        XCTAssertEqual(PersonMentionResolver.primary(in: "walk with Sam tomorrow")?.label, "Sam")
+        XCTAssertEqual(PersonMentionResolver.primary(in: "a walk with Priya tomorrow")?.label, "Priya")
+        // The destination reading is unchanged: "to" is what the veto is
+        // written against, and "with" never marks one.
+        XCTAssertNil(PersonMentionResolver.primary(in: "walk to Riverdale after dinner"))
+
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules(
+                "Walk with Sam tomorrow and Priya Friday",
+                referenceDate: referenceDate,
+                calendar: calendar
+            ).items.count,
+            2,
+            "the Friday errand is a second thought and must survive"
+        )
+    }
+
+    /// A head noun beside a name belongs to the target — "Northwind
+    /// accounting" — but behind a possessive it is the thing possessed, and it
+    /// belongs to nobody but the owner. Reading it as the owner's head took
+    /// the person off the row in every shape where somebody owns a thing with
+    /// an institutional word in its name.
+    ///
+    /// Nothing caught this. The suite's other possessive case is
+    /// "Marguerite's flight is at six", and `flight` is in none of the head
+    /// lists, so it passed and read as assurance.
+    func testAPossessedNounIsNotTheOwnersHead() {
+        XCTAssertEqual(PersonMentionResolver.primary(in: "Return Sam's library book")?.label, "Sam")
+        XCTAssertEqual(PersonMentionResolver.primary(in: "Sign Alex's school forms")?.label, "Alex")
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Grab Priya's medical records")?.label, "Priya"
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Email Dana's team about the change")?.label, "Dana"
+        )
+        // The control, so the scan is not simply switched off: a head noun
+        // that is *not* behind a possessive still types the phrase.
+        XCTAssertNil(PersonMentionResolver.primary(in: "Call Sterling Bank about the transfer"))
+    }
+
     /// The frames the name tagger is asked in are not supposed to contain the
     /// answer, and the two this file used to build did: "I spoke with <name>"
     /// and "<name> said hello" are constructions only a human is grammatical
