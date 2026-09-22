@@ -59,8 +59,6 @@ enum EntityKind: String, Equatable, Sendable {
     /// path treats this as it always has, so this case changes nothing on its
     /// own — it is where an unfamiliar real name lives.
     case unknown
-
-    var isPerson: Bool { self == .person }
 }
 
 /// What the person is doing in the sentence. The label is the same either way;
@@ -658,8 +656,14 @@ enum PersonMentionResolver {
                   // determiner, so a possessive behind one is a common noun.
                   // Kinship keeps its determiner ("my sister's kids").
                   !(determiners.contains(list[index - 1].lower) && !kinship.contains(word.lower)),
-                  // "Costco's return policy is ninety days" is a fact about a
-                  // shop. The owner rule read no entity evidence either.
+                  // The same entity evidence the address rules read; this
+                  // rule had none. Its reach is narrower than it looks: the
+                  // head scan stops at the possessive, so the thing possessed
+                  // is never read as the owner's head, and this fires only
+                  // where the possessive token is itself institutional —
+                  // "Lakeshore Dental's policy is twenty-four hours". A
+                  // sentence-initial possessive never arrives here at all,
+                  // because the loop drops index 0.
                   !isNonPersonPhrase(list, at: index, limit: nil)
             else { continue }
             return PersonMention(
@@ -1348,9 +1352,16 @@ enum PersonMentionResolver {
     /// Reading that as an address is how "when I get to Costco" filed
     /// somebody called Costco and "walk to the pharmacy on Bloor" filed one
     /// called Bloor. They do address a person, through a particle — "get back
-    /// to Alex", "reach out to Priya", "walk over to Sam" — and the particle
-    /// is the whole discriminator: structural, not lexical, so an unfamiliar
+    /// to Alex", "reach out to Priya", "walk over to Sam" — and the
+    /// discriminator is structural rather than lexical, so an unfamiliar
     /// destination is read the same way a famous one is.
+    ///
+    /// The particle admits a destination too, and saying it "discriminates"
+    /// would claim more than it does: "get back to Costco" and "reach out to
+    /// Shopify" come through the particle path and are then typed by the name
+    /// tagger alone, like any other bare company name. What the bare "to"
+    /// buys is that the commonest destination shape stops depending on the
+    /// tagger at all.
     ///
     /// **Only "to" is vetoed, and the first version of this vetoed "with" as
     /// well.** That was wrong for every verb here and destructive for one:

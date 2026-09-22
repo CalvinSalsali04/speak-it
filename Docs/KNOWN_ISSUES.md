@@ -30,9 +30,16 @@
 
 ## A company said on its own is typed by Apple's name tagger or not at all
 
-"Call <brand>" — an address verb, a capitalized word, no head noun beside it
-and no complement after it — has exactly one piece of evidence available, and
-it is `NLTagger`'s name type. That vocabulary is closed, misses most brands,
+"Call <brand>" — an address verb, a capitalized word, no head noun the scan
+will read and no complement after it — has exactly one piece of evidence
+available, and it is `NLTagger`'s name type. Three shapes are in the family,
+not one: a bare name with nothing beside it; a name reached through a particle
+("get back to <brand>"), which the motion rule does not touch; and, since the
+head scan began stopping at a possessive, `<brand>'s <head noun>` ("Costco's
+return policy", "TD Bank's branch closes at four"), where the head noun is
+right there and is no longer read. That last one is the price of not taking a
+person off the row in "Return Sam's library book", and it is the right trade,
+but it belongs in this family rather than out of it. That vocabulary is closed, misses most brands,
 and is **absent entirely on a hosted runner**, where it returns `otherWord`
 for every token. Where it says nothing, the word is filed as a person: it goes
 on the row under People, it is offered to the message composer, and it widens
