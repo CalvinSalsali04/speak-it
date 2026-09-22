@@ -214,6 +214,254 @@ final class CaptureFeedbackTests: XCTestCase {
         }
     }
 
+    // MARK: - The whole lifecycle the stale-callback race lives in
+
+    /// Steps 1 to 13 of the race, driven through the shipping callback path
+    /// rather than a description of it.
+    ///
+    /// `acceptsResult` is already covered above as a rule. What was not covered
+    /// is the lifecycle it depends on: that a run's identity is assigned when
+    /// the recording starts, dropped when it is abandoned, and replaced by the
+    /// next recording's — so the rule is asked a question whose answer is the
+    /// one that matters. Every callback fired here is the exact closure a
+    /// recognition backend is handed by `start`, and each one runs the real
+    /// `receiveTranscript`, `receiveVoiceActivity` or `receiveError`.
+    ///
+    /// Falsifier: drop the `currentRun == runID` line from `acceptsResult` and
+    /// this fails at the first delayed partial, on the assertion below that
+    /// recording B still holds its own words.
+    func testALateCallbackFromAnAbandonedRecordingNeverReachesTheNextOne() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        var savedCaptures: [String] = []
+
+        // 1 and 2. Recording A starts and says something.
+        let recordingA = transcriber.beginRunWithoutAudioForTesting {
+            savedCaptures.append($0)
+        }
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.activeRunIDForTesting, recordingA.id)
+        recordingA.deliverVoiceActivity()
+        recordingA.deliverTranscript("call the landlord about the lease", false)
+        XCTAssertFalse(transcriber.transcript.isEmpty, "recording A heard nothing to lose")
+
+        // 3. A is abandoned. Every route that does this is a live path to the
+        //    race: trying an unclear capture again, switching to typing and
+        //    back, and both tutorial retries. The backend is dropped here; its
+        //    callbacks are not, and the recognizer may still fire them.
+        transcriber.cancel()
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(transcriber.state, .idle)
+
+        // 4 and 5. Recording B starts and says something else.
+        let recordingB = transcriber.beginRunWithoutAudioForTesting {
+            savedCaptures.append($0)
+        }
+        XCTAssertNotEqual(recordingB.id, recordingA.id)
+        XCTAssertEqual(transcriber.activeRunIDForTesting, recordingB.id)
+        recordingB.deliverTranscript("book the dentist for Thursday", false)
+        let wordsOfB = transcriber.transcript
+        XCTAssertTrue(wordsOfB.contains("dentist"), "recording B heard nothing to protect")
+
+        // 6 and 7. A delayed partial from A, arriving while B is listening.
+        //    This is the frame the defect shipped in: the state check passed,
+        //    and `receiveTranscript` assigns rather than appends.
+        recordingA.deliverTranscript("call the landlord about the lease", false)
+        XCTAssertEqual(
+            transcriber.transcript,
+            wordsOfB,
+            "the abandoned recording's words replaced the live recording's"
+        )
+
+        // 8 and 9. A delayed final from A. Nothing may be saved from it, and B
+        //    must still be the recording in progress.
+        recordingA.deliverTranscript("call the landlord about the lease", true)
+        XCTAssertEqual(transcriber.transcript, wordsOfB)
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.activeRunIDForTesting, recordingB.id)
+        XCTAssertTrue(savedCaptures.isEmpty, "the abandoned recording saved a capture")
+
+        // 10 and 11. A delayed error from A. It belongs to a recording that is
+        //    over, so it may not fail or cancel the one that is running.
+        recordingA.deliverError(
+            NSError(domain: "SFSpeechRecognitionErrorDomain", code: 216, userInfo: nil)
+        )
+        XCTAssertEqual(transcriber.state, .listening, "the abandoned recording failed the live one")
+        XCTAssertEqual(transcriber.transcript, wordsOfB)
+        XCTAssertEqual(transcriber.activeRunIDForTesting, recordingB.id)
+
+        // 12 and 13. B finishes on its own. The first final closes the audio
+        //    and moves the run to `.finalizing`; the recognizer's last result
+        //    completes it. Only B's words are saved.
+        recordingB.deliverTranscript(wordsOfB, true)
+        XCTAssertEqual(transcriber.state, .finalizing)
+        recordingB.deliverTranscript(wordsOfB, true)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(savedCaptures, [wordsOfB])
+        XCTAssertFalse(
+            savedCaptures.joined().contains("landlord"),
+            "the abandoned recording's words were saved as this capture"
+        )
+    }
+
+    /// The other half of the same rule, and the one a too-strict fix would
+    /// break: a run still hears itself in every live state, including after a
+    /// previous run has been abandoned.
+    func testTheRunInProgressStillHearsItselfAfterAnEarlierOneWasAbandoned() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+
+        let abandoned = transcriber.beginRunWithoutAudioForTesting()
+        abandoned.deliverTranscript("something I changed my mind about", false)
+        transcriber.cancel()
+
+        let current = transcriber.beginRunWithoutAudioForTesting()
+        current.deliverTranscript("water the plants", false)
+        current.deliverTranscript("water the plants on Sunday", false)
+        current.deliverVoiceActivity()
+
+        XCTAssertTrue(transcriber.transcript.contains("Sunday"))
+        XCTAssertTrue(transcriber.hasDetectedAudioInput)
+        XCTAssertEqual(transcriber.state, .listening)
+    }
+
+    // MARK: - The voice screen for as long as the save runs
+
+    /// The cause, reproduced rather than assumed. `completeFinalization`
+    /// returns the transcriber to `.idle` and only then hands the words to
+    /// `save`, so the screen was reading `.idle` for the whole of the save —
+    /// and the reading it produced invited a capture that could not start.
+    func testTheSaveIsHandedItsWordsOnAScreenTheTranscriberHasAlreadyLeft() throws {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        var stateWhenTheSaveBegan: SpeechTranscriber.State?
+        var wordsHandedToTheSave: String?
+
+        let recording = transcriber.beginRunWithoutAudioForTesting { finalText in
+            stateWhenTheSaveBegan = transcriber.state
+            wordsHandedToTheSave = finalText
+        }
+        recording.deliverTranscript("pick up the prescription before six", false)
+        let spoken = transcriber.transcript
+        recording.deliverTranscript(spoken, true)
+        recording.deliverTranscript(spoken, true)
+
+        XCTAssertEqual(wordsHandedToTheSave, spoken)
+        let stateAtTheSave = try XCTUnwrap(
+            stateWhenTheSaveBegan,
+            "the save was never handed any words, so there is no frame to check"
+        )
+        XCTAssertEqual(
+            stateAtTheSave,
+            SpeechTranscriber.State.idle,
+            "this test no longer reproduces the frame the defect shipped in"
+        )
+
+        let screen = CaptureVoiceStatus(
+            transcriberState: stateAtTheSave,
+            isSaving: true,
+            isRecoveringAudio: false,
+            isWaitingForContinuation: false,
+            isPreparingEnhancedRecognition: false
+        )
+        XCTAssertEqual(screen, .saving)
+        XCTAssertTrue(screen.disablesCaptureControl)
+    }
+
+    /// What the person sees for as long as the save takes, which is the part
+    /// that could not be asserted before: the reading has to hold while the
+    /// work runs, not merely be correct at one instant.
+    ///
+    /// The delay here is decided by the test rather than by on-device
+    /// refinement or the store, so the window is deterministic and the
+    /// assertions are not racing it.
+    func testNothingOnTheScreenChangesForAsLongAsTheSaveRuns() async {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let recording = transcriber.beginRunWithoutAudioForTesting()
+        recording.deliverTranscript("pick up the prescription before six", false)
+        let spoken = transcriber.transcript
+        recording.deliverTranscript(spoken, true)
+        recording.deliverTranscript(spoken, true)
+
+        let save = SaveHeldOpenByTheTest()
+        func screen() -> CaptureVoiceStatus {
+            CaptureVoiceStatus(
+                transcriberState: transcriber.state,
+                isSaving: save.isSaving,
+                isRecoveringAudio: false,
+                isWaitingForContinuation: transcriber.isWaitingForContinuation,
+                isPreparingEnhancedRecognition: transcriber.isPreparingEnhancedRecognition
+            )
+        }
+
+        XCTAssertEqual(screen(), .idle, "nothing is saving yet")
+
+        save.begin()
+        let running = Task { @MainActor in await save.holdUntilReleased() }
+        await Task.yield()
+
+        XCTAssertEqual(screen(), .saving)
+        XCTAssertEqual(screen().orbPhase, .processing)
+        XCTAssertTrue(screen().isBusy)
+        XCTAssertTrue(screen().disablesCaptureControl, "a second capture could start on top of this one")
+        XCTAssertNotEqual(screen().title, CaptureVoiceStatus.idle.title)
+        XCTAssertNotEqual(screen().subtitle, CaptureVoiceStatus.idle.subtitle)
+        XCTAssertNotEqual(screen().buttonAccessibilityLabel, CaptureVoiceStatus.idle.buttonAccessibilityLabel)
+        XCTAssertEqual(transcriber.transcript, spoken, "the words left the screen while the save was still running")
+
+        save.succeed()
+        await running.value
+
+        XCTAssertEqual(screen(), .idle)
+        XCTAssertFalse(screen().isBusy)
+        XCTAssertFalse(screen().disablesCaptureControl)
+        XCTAssertEqual(screen().title, CaptureVoiceStatus.idle.title)
+    }
+
+    /// The failure half. A save that throws puts the person back in front of a
+    /// control they can use, and does not take their words with it.
+    func testAFailedSaveReturnsTheControlsAndKeepsTheWords() async {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let recording = transcriber.beginRunWithoutAudioForTesting()
+        recording.deliverTranscript("pick up the prescription before six", false)
+        let spoken = transcriber.transcript
+        recording.deliverTranscript(spoken, true)
+        recording.deliverTranscript(spoken, true)
+
+        let save = SaveHeldOpenByTheTest()
+        save.begin()
+        let running = Task { @MainActor in await save.holdUntilReleased() }
+        await Task.yield()
+        save.fail()
+        await running.value
+
+        let screen = CaptureVoiceStatus(
+            transcriberState: transcriber.state,
+            isSaving: save.isSaving,
+            isRecoveringAudio: false,
+            isWaitingForContinuation: false,
+            isPreparingEnhancedRecognition: false
+        )
+        XCTAssertFalse(screen.disablesCaptureControl, "the person was left with nothing to tap")
+        XCTAssertFalse(screen.isBusy)
+        XCTAssertEqual(transcriber.transcript, spoken, "the failed save took the words with it")
+    }
+
+    /// Recovery outranks a save while it runs, and the control stays refused
+    /// for both — the screen never offers a new capture during either.
+    func testEveryStateThatIsWorkingRefusesANewCapture() {
+        for status in CaptureVoiceStatus.everyState where status.isBusy {
+            XCTAssertTrue(
+                status.disablesCaptureControl,
+                "\(status) is working and still offers to start another capture"
+            )
+        }
+        XCTAssertTrue(
+            CaptureVoiceStatus.preparing(isEnhanced: false).disablesCaptureControl,
+            "the microphone is not open yet, so a tap would be dropped"
+        )
+        XCTAssertFalse(CaptureVoiceStatus.idle.disablesCaptureControl)
+        XCTAssertFalse(CaptureVoiceStatus.listening(isWaitingForContinuation: false).disablesCaptureControl)
+    }
+
     // MARK: - The capture review list
 
     private var container: ModelContainer!
@@ -368,5 +616,40 @@ extension CaptureVoiceStatus {
             .unavailable,
             .failed
         ]
+    }
+}
+
+/// A save whose length this test decides.
+///
+/// Only the flag is re-stated here: `isSaving` is `@State` inside
+/// `CaptureView`, so a unit test cannot read the real one. It is raised before
+/// the save's one `await` and lowered on both the success and the failure
+/// path, which is what `CaptureView.save` does. Everything the assertions read
+/// through it is production code.
+@MainActor
+private final class SaveHeldOpenByTheTest {
+    private(set) var isSaving = false
+    private var released = false
+    private var resume: CheckedContinuation<Void, Never>?
+
+    func begin() { isSaving = true }
+
+    func holdUntilReleased() async {
+        guard !released else { return }
+        await withCheckedContinuation { resume = $0 }
+    }
+
+    /// Both do the same thing, and that is the statement: `CaptureView.save`
+    /// lowers the flag on its success path and again in its `catch`, and the
+    /// screen reads the same either way.
+    func succeed() { release() }
+
+    func fail() { release() }
+
+    private func release() {
+        released = true
+        isSaving = false
+        resume?.resume()
+        resume = nil
     }
 }

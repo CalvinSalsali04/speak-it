@@ -214,6 +214,22 @@ enum CaptureVoiceStatus: Equatable {
         }
     }
 
+    /// Whether the orb refuses a tap.
+    ///
+    /// `isBusy` is not the same question. Preparing is not work done on words
+    /// the person has already said, so it is not busy, but the microphone is
+    /// not open yet either and a tap would be dropped.
+    ///
+    /// The save is the case this had to be able to answer. The transcriber is
+    /// `.idle` throughout it, so a control reading the transcriber alone would
+    /// have let a second capture start on top of the one being written.
+    var disablesCaptureControl: Bool {
+        switch self {
+        case .preparing, .finalizing, .saving, .recovering: true
+        case .idle, .listening, .permissionDenied, .unavailable, .failed: false
+        }
+    }
+
     var orbPhase: ListeningOrb.Phase {
         switch self {
         case .listening: .listening
@@ -599,12 +615,7 @@ struct CaptureView: View {
                 )
             }
             .buttonStyle(.speakIt)
-            .disabled(
-                transcriber.state == .requestingPermission ||
-                    transcriber.state == .finalizing ||
-                    isSaving ||
-                    isRecoveringAudio
-            )
+            .disabled(voiceStatus.disablesCaptureControl)
             .accessibilityLabel(voiceButtonAccessibilityLabel)
             .accessibilityHint(voiceButtonAccessibilityHint)
             .scaleEffect(tutorialMission == nil ? 1 : 0.72)

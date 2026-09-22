@@ -841,7 +841,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the way to 4047. Neither recorded figure describes this tree, so
         it is recomputed rather than taken from a side, and main's
         entries above are kept because they are the only record of how
-        main reached 3928. What the test
+        main reached 3928. 4047 -> 4094 on 2026-09-22, on the
+        capture-experience branch, and it is two moves rather than one
+        because the first was never written down: 4047 -> 4073 for
+        `CaptureFeedbackTests`, the suite that arrived with the four capture
+        fixes, whose commit left both this figure and the population block in
+        `LANGUAGE_BASELINE.md` stale and the `language` job red before
+        anything was added to it; then 4073 -> 4094 for the stale-callback
+        lifecycle test and the delayed-save coverage in the same file. Both
+        are fixtures and assertion messages in a suite about screens and
+        recognizer callbacks, so no parser behaviour is behind either number.
+        The doc comments written for them prefer backticks to quotation marks
+        for the same reason the entry four paragraphs above gives, so the
+        move is smaller than the amount of prose would suggest. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -855,7 +867,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4047)
+        self.assertEqual(len(space), 4094)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

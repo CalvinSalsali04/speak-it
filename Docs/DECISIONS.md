@@ -60,6 +60,24 @@ a promise of an alert that will never fire. `reminderCount` now asks `isArmed`
 too. That also keeps a blocked place reminder excluded for the reason it always
 was rather than by a separate case.
 
+**The stale-run rule is proved through the shipping callbacks, which cost the
+transcriber one test-only entry point.** `acceptsResult` is a pure function and
+was covered as a rule, but the rule is only as good as the lifecycle that feeds
+it: the identity has to be assigned when a recording starts, dropped when it is
+abandoned, and replaced by the next recording's. Driving that through `start`
+is not possible in a unit test — it needs speech authorization, an audio
+session and a live `AVAudioEngine`, none of which the race involves. So the run
+prologue is now `beginRun`, the three backend callbacks are now built once by
+`recognitionRun`, and `beginRunWithoutAudioForTesting` returns that same
+`RecognitionRun` without opening a microphone. A test holds an abandoned run's
+callbacks and fires them late into a live one, and every line it exercises is
+the line production runs. The alternative — a test that asserts the identities
+it chose itself — would have passed with the wiring removed. The orb's disabled
+condition moved onto `CaptureVoiceStatus.disablesCaptureControl` for the same
+reason: spelled out in the view body, the one guarantee that stops a second
+capture starting on top of a save was the only part of the saving state nothing
+could check.
+
 The general rule these leave behind: a surface describing an item must derive
 that description from `ItemPresentation`, not from the stored fields or from a
 neighbouring view-state flag. The two failures that matter are the two this

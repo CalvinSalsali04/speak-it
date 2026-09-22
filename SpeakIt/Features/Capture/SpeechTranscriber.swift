@@ -178,22 +178,7 @@ final class SpeechTranscriber: ObservableObject {
     ) async {
         guard state != .requestingPermission, state != .listening else { return }
 
-        let startID = UUID()
-        activeStartID = startID
-        activeRunID = startID
-        state = .requestingPermission
-        transcript = ""
-        audioLevel = 0
-        hasDetectedAudioInput = false
-        isWaitingForContinuation = false
-        isPreparingEnhancedRecognition = false
-        audioActivityTracker.reset()
-        audioQualityTracker.reset()
-        lastAudioQuality = nil
-        recognitionEngine = nil
-        speechEndpointDetectedAt = nil
-        finalTranscriptAt = nil
-        automaticFinalization = onAutomaticFinalization
+        let startID = beginRun(onAutomaticFinalization: onAutomaticFinalization)
 
         let speechAuthorization = await requestSpeechAuthorization()
         guard activeStartID == startID else { return }
@@ -227,6 +212,7 @@ final class SpeechTranscriber: ObservableObject {
             }
 
             isPreparingEnhancedRecognition = prefersEnhancedRecognition
+            let run = recognitionRun(id: startID)
             let backend = try await Self.makeStartedBackend(
                 inputFormat: format,
                 contextualPhrases: SpeechVocabularyStore.recognitionContext(
@@ -234,15 +220,9 @@ final class SpeechTranscriber: ObservableObject {
                 ),
                 prefersEnhancedRecognition: prefersEnhancedRecognition,
                 forcesLegacyRecognitionForBenchmark: forcesLegacyRecognitionForBenchmark,
-                onTranscript: { [weak self] text, isFinal in
-                    self?.receiveTranscript(text, isFinal: isFinal, from: startID)
-                },
-                onVoiceActivity: { [weak self] in
-                    self?.receiveVoiceActivity(from: startID)
-                },
-                onError: { [weak self] error in
-                    self?.receiveError(error, from: startID)
-                }
+                onTranscript: run.deliverTranscript,
+                onVoiceActivity: run.deliverVoiceActivity,
+                onError: run.deliverError
             )
             isPreparingEnhancedRecognition = false
             guard activeStartID == startID else {
@@ -354,6 +334,84 @@ final class SpeechTranscriber: ObservableObject {
             state = .failed(error.localizedDescription)
         }
     }
+
+    /// Opens a recognition run and clears everything the previous one left on
+    /// screen.
+    ///
+    /// The run identity is assigned here and nowhere else, so there is one
+    /// place to read when asking which recording the transcriber is willing to
+    /// hear from.
+    private func beginRun(onAutomaticFinalization: @escaping (String) -> Void) -> UUID {
+        let startID = UUID()
+        activeStartID = startID
+        activeRunID = startID
+        state = .requestingPermission
+        transcript = ""
+        audioLevel = 0
+        hasDetectedAudioInput = false
+        isWaitingForContinuation = false
+        isPreparingEnhancedRecognition = false
+        audioActivityTracker.reset()
+        audioQualityTracker.reset()
+        lastAudioQuality = nil
+        recognitionEngine = nil
+        speechEndpointDetectedAt = nil
+        finalTranscriptAt = nil
+        automaticFinalization = onAutomaticFinalization
+        return startID
+    }
+
+    /// The three closures a recognition backend delivers one run's results
+    /// through, each carrying the run it belongs to.
+    struct RecognitionRun {
+        let id: UUID
+        let deliverTranscript: @MainActor (String, Bool) -> Void
+        let deliverVoiceActivity: @MainActor () -> Void
+        let deliverError: @MainActor (Error) -> Void
+    }
+
+    /// Built once per run and handed straight to the backend. Tagging the run
+    /// here is what lets `acceptsResult` tell a result from the recording in
+    /// progress from a late one belonging to a recording that is over.
+    private func recognitionRun(id runID: UUID) -> RecognitionRun {
+        RecognitionRun(
+            id: runID,
+            deliverTranscript: { [weak self] text, isFinal in
+                self?.receiveTranscript(text, isFinal: isFinal, from: runID)
+            },
+            deliverVoiceActivity: { [weak self] in
+                self?.receiveVoiceActivity(from: runID)
+            },
+            deliverError: { [weak self] error in
+                self?.receiveError(error, from: runID)
+            }
+        )
+    }
+
+    /// Test support. Opens a run and reports the microphone ready, without a
+    /// microphone, and hands back the same `RecognitionRun` a backend is given.
+    ///
+    /// The race this exists for is between two runs and the callbacks of a
+    /// backend that has already been dropped, so a test has to be able to hold
+    /// a finished run's callbacks and fire them late. It cannot reach that
+    /// through `start`, which needs speech authorization, an audio session and
+    /// a live `AVAudioEngine` — none of which a unit test has, and none of
+    /// which the race involves.
+    ///
+    /// Everything the rule is made of is still the shipping code: `beginRun`
+    /// assigns the identity, `recognitionRun` tags the callbacks, and each
+    /// callback runs the real `receive…` method and the real `acceptsResult`.
+    func beginRunWithoutAudioForTesting(
+        onAutomaticFinalization: @escaping (String) -> Void = { _ in }
+    ) -> RecognitionRun {
+        let startID = beginRun(onAutomaticFinalization: onAutomaticFinalization)
+        markAudioInputReady(startID: startID)
+        return recognitionRun(id: startID)
+    }
+
+    /// Test support. Which run the transcriber is currently willing to hear
+    /// from, so a test can assert the lifecycle rather than assume it.
+    var activeRunIDForTesting: UUID? { activeRunID }
 
     /// Prefers the higher-accuracy on-device SpeechAnalyzer engine when iOS 26
     /// and its language model are available, falling back to the legacy
