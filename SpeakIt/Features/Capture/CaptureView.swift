@@ -142,6 +142,164 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     }
 }
 
+/// What the voice screen is doing, as one value.
+///
+/// The orb, the title, the subtitle and the button's spoken label used to read
+/// `SpeechTranscriber.State` independently, and not one of them could see the
+/// save. `completeFinalization` returns the transcriber to `.idle` *before* it
+/// hands the words to `save`, so for the whole of that save the screen said
+/// "Tap to speak — say anything you don't want to forget" over a resting orb,
+/// above the person's own sentence, with the only control on screen disabled.
+///
+/// That window is not a flicker. It is the one place on-device refinement runs,
+/// it is entered only for a capture the rules already found ambiguous, and the
+/// refinement gets a two-second budget of its own before persistence even
+/// starts. The screen described itself as idle for the longest it is ever busy.
+///
+/// Derived once and read by all four, so they cannot disagree again. There is
+/// no progress fraction here on purpose: nothing in the save reports how far
+/// through it is, and a bar that moves on a timer would be an invention.
+enum CaptureVoiceStatus: Equatable {
+    case idle
+    case preparing(isEnhanced: Bool)
+    case listening(isWaitingForContinuation: Bool)
+    /// The recognizer is being asked for its last words.
+    case finalizing
+    /// The words are in hand and the capture is being read and stored.
+    case saving
+    /// The recognizer failed and the protected recording is being transcribed.
+    case recovering
+    case permissionDenied
+    case unavailable
+    case failed
+
+    init(
+        transcriberState: SpeechTranscriber.State,
+        isSaving: Bool,
+        isRecoveringAudio: Bool,
+        isWaitingForContinuation: Bool,
+        isPreparingEnhancedRecognition: Bool
+    ) {
+        // Recovery and saving are both work the transcriber has no state for,
+        // and both outrank whatever it was left holding. Recovery first: it is
+        // the one that ends by starting a save.
+        if isRecoveringAudio {
+            self = .recovering
+        } else if isSaving {
+            self = .saving
+        } else {
+            switch transcriberState {
+            case .idle: self = .idle
+            case .requestingPermission:
+                self = .preparing(isEnhanced: isPreparingEnhancedRecognition)
+            case .listening:
+                self = .listening(isWaitingForContinuation: isWaitingForContinuation)
+            case .finalizing: self = .finalizing
+            case .permissionDenied: self = .permissionDenied
+            case .unavailable: self = .unavailable
+            case .failed: self = .failed
+            }
+        }
+    }
+
+    /// True while Speak It is doing something with words it already has.
+    ///
+    /// The three states this covers are the ones where the person cannot act
+    /// and must not be told to: tapping does nothing, and the words are not
+    /// theirs to lose yet.
+    var isBusy: Bool {
+        switch self {
+        case .finalizing, .saving, .recovering: true
+        case .idle, .preparing, .listening, .permissionDenied, .unavailable, .failed: false
+        }
+    }
+
+    /// Whether the orb refuses a tap.
+    ///
+    /// `isBusy` is not the same question. Preparing is not work done on words
+    /// the person has already said, so it is not busy, but the microphone is
+    /// not open yet either and a tap would be dropped.
+    ///
+    /// The save is the case this had to be able to answer. The transcriber is
+    /// `.idle` throughout it, so a control reading the transcriber alone would
+    /// have let a second capture start on top of the one being written.
+    var disablesCaptureControl: Bool {
+        switch self {
+        case .preparing, .finalizing, .saving, .recovering: true
+        case .idle, .listening, .permissionDenied, .unavailable, .failed: false
+        }
+    }
+
+    var orbPhase: ListeningOrb.Phase {
+        switch self {
+        case .listening: .listening
+        case .preparing, .finalizing, .saving, .recovering: .processing
+        case .idle, .permissionDenied, .unavailable, .failed: .ready
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .idle: "Tap to speak"
+        case let .preparing(isEnhanced):
+            isEnhanced ? "Preparing accurate recognition…" : "Getting ready…"
+        case let .listening(isWaiting):
+            isWaiting ? "Still listening…" : "Listening"
+        case .finalizing, .saving: "Saving your thought…"
+        case .recovering: "Recovering your words…"
+        case .permissionDenied: "Microphone access is off"
+        case .unavailable: "Speech recognition is unavailable"
+        case .failed: "Couldn’t hear that"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .idle: "Say anything you don’t want to forget."
+        case let .preparing(isEnhanced):
+            isEnhanced
+                ? "One-time voice setup stays on this iPhone."
+                : "Speak It only listens while you’re capturing."
+        case let .listening(isWaiting):
+            isWaiting
+                ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
+                : "Just speak. I’ll save after a natural pause."
+        case .finalizing: "The original words are saved first."
+        // Says what is left rather than claiming a fraction of it. Organizing
+        // is the part that can take a moment, and naming it is also the honest
+        // answer to why the screen is still here.
+        case .saving: "Your exact words are kept. Sorting them now."
+        case .recovering: "The temporary recording is safe on this iPhone."
+        case .permissionDenied: "Allow microphone and speech recognition, or type instead."
+        case .unavailable: "You can still capture this thought by typing."
+        case .failed: "Try once more, or continue by typing."
+        }
+    }
+
+    /// The orb is disabled throughout `isBusy`, and VoiceOver reads a disabled
+    /// button's label anyway — so "Start voice capture" was an instruction to
+    /// do the one thing that could not be done.
+    var buttonAccessibilityLabel: String {
+        switch self {
+        case .listening: "Finish recording now"
+        case .finalizing, .saving: "Saving your thought"
+        case .recovering: "Recovering your words"
+        case .idle, .preparing, .permissionDenied, .unavailable, .failed: "Start voice capture"
+        }
+    }
+
+    var buttonAccessibilityHint: String {
+        switch self {
+        case .listening:
+            "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
+        case .finalizing, .saving, .recovering:
+            "Speak It is still working. Nothing is lost while you wait."
+        case .idle, .preparing, .permissionDenied, .unavailable, .failed:
+            "Requests permission if needed, then begins listening"
+        }
+    }
+}
+
 struct CaptureView: View {
     /// Scroll anchor for the live transcript, so it keeps the newest words in
     /// view as they arrive.
@@ -457,12 +615,7 @@ struct CaptureView: View {
                 )
             }
             .buttonStyle(.speakIt)
-            .disabled(
-                transcriber.state == .requestingPermission ||
-                    transcriber.state == .finalizing ||
-                    isSaving ||
-                    isRecoveringAudio
-            )
+            .disabled(voiceStatus.disablesCaptureControl)
             .accessibilityLabel(voiceButtonAccessibilityLabel)
             .accessibilityHint(voiceButtonAccessibilityHint)
             .scaleEffect(tutorialMission == nil ? 1 : 0.72)
@@ -983,68 +1136,36 @@ struct CaptureView: View {
         onTutorialEnded()
     }
 
-    private var orbPhase: ListeningOrb.Phase {
-        if isRecoveringAudio { return .processing }
-        return switch transcriber.state {
-        case .listening:
-            .listening
-        case .requestingPermission, .finalizing:
-            .processing
-        default:
-            .ready
-        }
+    private var voiceStatus: CaptureVoiceStatus {
+        CaptureVoiceStatus(
+            transcriberState: transcriber.state,
+            isSaving: isSaving,
+            isRecoveringAudio: isRecoveringAudio,
+            isWaitingForContinuation: transcriber.isWaitingForContinuation,
+            isPreparingEnhancedRecognition: transcriber.isPreparingEnhancedRecognition
+        )
     }
 
-    private var voiceTitle: String {
-        if isRecoveringAudio { return "Recovering your words…" }
-        return switch transcriber.state {
-        case .idle: "Tap to speak"
-        case .requestingPermission:
-            transcriber.isPreparingEnhancedRecognition
-                ? "Preparing accurate recognition…"
-                : "Getting ready…"
-        case .listening:
-            transcriber.isWaitingForContinuation ? "Still listening…" : "Listening"
-        case .finalizing: "Saving your thought…"
-        case .permissionDenied: "Microphone access is off"
-        case .unavailable: "Speech recognition is unavailable"
-        case .failed: "Couldn’t hear that"
-        }
-    }
+    private var orbPhase: ListeningOrb.Phase { voiceStatus.orbPhase }
+
+    private var voiceTitle: String { voiceStatus.title }
 
     private var voiceSubtitle: String {
-        if isRecoveringAudio {
-            return "The temporary recording is safe on this iPhone."
-        }
-        if let voiceNotice {
-            return voiceNotice
-        }
-
-        return switch transcriber.state {
-        case .idle: "Say anything you don’t want to forget."
-        case .requestingPermission:
-            transcriber.isPreparingEnhancedRecognition
-                ? "One-time voice setup stays on this iPhone."
-                : "Speak It only listens while you’re capturing."
-        case .listening:
-            transcriber.isWaitingForContinuation
-                ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
-                : "Just speak. I’ll save after a natural pause."
-        case .finalizing: "The original words are saved first."
-        case .permissionDenied: "Allow microphone and speech recognition, or type instead."
-        case .unavailable: "You can still capture this thought by typing."
-        case .failed: "Try once more, or continue by typing."
-        }
+        // A notice is a specific thing that just happened — "I didn't hear
+        // speech", "try saying it a different way" — and it replaces the
+        // standing description of the state. It cannot replace a description of
+        // work in progress, though: the notice that sent the person back to the
+        // orb is stale the moment they speak again.
+        if let voiceNotice, !voiceStatus.isBusy { return voiceNotice }
+        return voiceStatus.subtitle
     }
 
     private var voiceButtonAccessibilityLabel: String {
-        transcriber.isListening ? "Finish recording now" : "Start voice capture"
+        voiceStatus.buttonAccessibilityLabel
     }
 
     private var voiceButtonAccessibilityHint: String {
-        transcriber.isListening
-            ? "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
-            : "Requests permission if needed, then begins listening"
+        voiceStatus.buttonAccessibilityHint
     }
 
     private func handleVoiceButton() {

@@ -874,7 +874,22 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4115 on 2026-09-22, where the
+        capture-experience branch merges in. That branch was cut before the
+        morning brief landed, so its own two moves were measured against 4047
+        and are recorded here as they were read rather than rebased onto the
+        entry above: 4047 -> 4073 for `CaptureFeedbackTests`, the suite that
+        arrived with the four capture fixes, whose commit left both this
+        figure and the population block in `LANGUAGE_BASELINE.md` stale and
+        the `language` job red before anything was added to it; then
+        4073 -> 4094 for the stale-callback lifecycle test and the
+        delayed-save coverage in the same file. The two branches touch
+        different files, so the merged tree carries both sets and nothing
+        cancels. Every one of the branch's literals is a fixture or an
+        assertion message in a suite about screens and recognizer callbacks,
+        so no parser behaviour is behind either number, and the doc comments
+        written for them prefer backticks to quotation marks for the reason
+        the entry above hit the hard way. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +903,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4115)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
