@@ -28,6 +28,61 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
+## A company said on its own is typed by Apple's name tagger or not at all
+
+"Call <brand>" — an address verb, a capitalized word, no head noun the scan
+will read and no complement after it — has exactly one piece of evidence
+available, and it is `NLTagger`'s name type. Three shapes are in the family,
+not one: a bare name with nothing beside it; a name reached through a particle
+("get back to <brand>"), which the motion rule does not touch; and, since the
+head scan began stopping at a possessive, `<brand>'s <head noun>` ("Costco's
+return policy", "TD Bank's branch closes at four"), where the head noun is
+right there and is no longer read. That last one is the price of not taking a
+person off the row in "Return Sam's library book", and it is the right trade,
+but it belongs in this family rather than out of it. That vocabulary is closed, misses most brands,
+and is **absent entirely on a hosted runner**, where it returns `otherWord`
+for every token. Where it says nothing, the word is filed as a person: it goes
+on the row under People, it is offered to the message composer, and it widens
+what a later cancellation can match (`CaptureTargetMatcher` reads
+`personName`).
+
+The 2026-09-22 work narrowed this family rather than closing it. A motion
+frame no longer produces a person, the same evidence is now read wherever a
+name can arrive, the tagger is no longer asked a leading question, and a
+relationship with an institution ("about my overdraft") types its target. None
+of those reaches a bare brand said with nothing around it, and **none of them
+should be extended to**: a list of company names is the failure this file
+already records for occupations — the miss is not a blank field but a
+confident wrong answer, and the thirty-first company is always missing.
+
+What would close it is contextual entity evidence from a model, constrained to
+a source span and a type, able only to **withhold** a person and never to
+create one. That is unbuilt and open with Calvin, and it carries a specific
+warning from this project's own probe record: a constrained role enum has
+failed here twice. `temporalRole` and `locationRole` were both produced and
+both useless, and `confidencePercent` reported 100 on every fabrication, so
+the model's own confidence cannot gate it. Entity type is more in-domain than
+either — it is standard NER and a property of the world rather than of Speak
+It's routing — but the failure mode to expect is the same one, and Speak It
+has to stay useful with the model unavailable.
+
+**Not pinned by a test.** A case asserting the defect would either freeze it
+(so the eventual fix reads as a regression) or leave the suite red, and
+`XCTExpectFailure`/`withKnownIssue` appear nowhere in `SpeakItTests`. The
+cheapest retest is one command on a Mac:
+
+```
+./Tools/CI/unit-tests.sh SpeakItTests/PersonMentionTests
+```
+
+`testTheTaggerFrameIsNotALeadingQuestion` prints what the tagger actually
+knows about six companies, under both the old person-only frames and the
+neutral ones. It asserts nothing about them, so the test passing says nothing:
+the measurement is in the log, one line per company, and it is read with
+`grep entity-frame-comparison` over the run output or the `.xcresult`. If the
+two readings are identical the frame was never what decided those words, and
+only a model can type them.
+
 ## A considered thought and a committed one look the same once stored
 
 `SemanticGap` names one reason per structural question the pipeline asks, and
