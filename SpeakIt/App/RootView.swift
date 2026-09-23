@@ -430,9 +430,12 @@ struct RootView: View {
             // The word embedding behind person and role detection takes a few
             // hundred milliseconds to load the first time it is touched, and
             // that first touch used to land inside the first Memory render.
+            // The lexical-model probe rides along: one five-word tagging, so
+            // the first capture normally finds its verdict already cached.
             Task.detached(priority: .utility) {
                 PersonMentionResolver.preloadEmbedding()
                 ActionabilityReader.preloadEmbedding()
+                LinguisticHealth.prewarm()
             }
             CaptureDraftStore.pruneEmptyTextDrafts()
             CaptureDraftStore.pruneResolvedTombstones()

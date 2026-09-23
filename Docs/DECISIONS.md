@@ -693,6 +693,166 @@ Shopping entries were left as they are. Today shows a shopping list as one
 card, and the widget still lists its entries individually; that is a
 different question from review and is not changed here.
 
+## 2026-09-23 — A blind tagger holds every row for review, and keeps only the triggers a row's own words state
+
+**Before:** when `NLTagger`'s lexical-class model is absent, every token
+comes back `OtherWord`, and the app routed captures anyway, without noticing.
+Most rules fail safe that way, but a few do not (U1 to U6 in the runtime-health
+audit). The worst is U1: `isBareFact` is always false, so in "Remind me every
+Friday to submit the report, and Catherine needs a copy" the fact inherits the
+shared prefix and fires every Friday. Needs Review would not have stopped it,
+because `ReminderScheduleRequest.init(item:)` asks only for a future
+`reminderDate`.
+
+**After:** the app notices, and when it does, it holds every row instead of
+guessing.
+
+- **`LinguisticHealth`** (`ClauseStructure.swift`) tags one fixed sentence,
+  `LinguisticHealth.probe`, with a fresh `SentenceContext` and calls the
+  tagger blind when no token carries a class. This is the same decision the
+  test helper `LexicalTagging` already took, and the helper now calls it. A
+  usable verdict is cached for the life of the process. A blind one is
+  probed again on every read, which costs one five-word tagging. The first
+  usable verdict empties `SentenceContextCache`, whether it follows a blind
+  verdict or no verdict at all, so readings taken without the model do not
+  outlive it. The rules run before the probe, so a capture read before the
+  first probe can have cached blind readings too. The launch task that preloads
+  the word embeddings also warms the probe, so the capture path normally
+  finds a cached verdict. When it does not, the probe runs after the raw
+  words were committed.
+- **`DegradedLanguagePolicy`** (`ThoughtExtractor.swift`) runs at the end of
+  both `extract` and `extractWithRules`, which every production parse goes
+  through, and only on a blind verdict. The capture still saves, and nothing
+  is placed in front of the raw-first commit. Refinement is skipped
+  (`refinementIsPermitted`). Every row gets `needsClarification`,
+  `needsReview` and `.underspecified(.languageAnalysisUnavailable)`, which is a
+  new `SemanticGap` stored as a raw string, so no schema version is needed.
+  Its copy reads "Not fully read" and "Speak It couldn't fully read this on
+  this iPhone right now. Your words are saved exactly." A row keeps its due
+  date, reminder, series and place only if its own words state them. No
+  row is deleted, no quote is changed, and `CaptureSession.originalTranscription`
+  is not touched. No operation runs: every one comes back with `needsReview`,
+  and the repository holds it (see "Operations are held" below).
+
+**What counts as a row's own words, and why it is not just its quote.**
+The audit proposed checking each row's `sourceQuote`. That would have
+removed the legitimate reminder as well: `sharedCommand` puts the prefix
+into `analysisText` only, so the first row of "Remind me every Friday to
+submit the report, and …" is quoted as `submit the report`. So the policy
+finds the quotes in the transcript in order, and a row's own words are its
+quote plus the words between the previous row's quote and its own. The first
+row owns the leading command, which is the only row the splitter always gives
+it to. Later rows own only their connective, and the last row owns the tail.
+If a quote cannot be found (a repair reworded it), the chain breaks, and that
+row and every row after it own their quote alone. That can remove a trigger
+but never lend one. Products cut from one spoken list share one span, because
+they share the parent's `rawQuote`.
+
+Whether the row's own words state a time is asked of the resolver that read
+the time: `ThoughtOrganizer.statesATime` (the relative and absolute readers
+`TemporalIntentParser` resolves with, as a yes/no), `RecurrenceIntentParser`
+and `LocationIntentParser`, over the own words after the pipeline's timing
+repairs (`ClockDigitRepair`, `SpokenShorthandRepair`). `ReminderPhrasing`
+decides the prefix test below. The resolver's one tagger read,
+`ordinalContinuesWithAVerb`, can only add a reading, and blind it says no, as
+it did when the row's date was read. The policy is all or nothing for each
+row. A row that borrowed any part of its
+schedule loses all of it, including its `temporalIntent`, which the audit
+wanted to keep. Kept, it would describe "every Friday" on a row that
+schedules nothing, and `ReminderScheduleRequest.repeatingComponents` reads
+the series from the intent, so one kept half could repeat a borrowed series.
+Place triggers are included because `sharedCommand` shares a place exactly as
+it shares a time, and a geofence notifies just as a reminder does. There is
+also one extra test for the prefix: if the analysis text asks for a reminder
+and the row's own words do not, the row borrowed it, even when the row names
+a time of its own.
+
+**Operations are held (revised after review, same day).** The first version
+passed operations through untouched, on the grounds that they are read
+lexically. The detectors are, but the guards that decide whose words an
+operation is are not. `withdrawalBelongsToSomeoneElse` and
+`localCancellationReference` ask `ClauseScope.read`, and its message-body test
+ends on `hasSubjectPredicate`, which needs a `.verb` token. Blind, an unmarked
+message body reads as `.direct`, which gives the speaker the message's words.
+So on a blind verdict:
+
+- Every operation is rebuilt with `needsReview: true`
+  (`DegradedLanguagePolicy.heldForReview`). Cancel, complete and reschedule
+  already stop at the repository's target guard. A retraction did not: it
+  discarded the capture whatever `needsReview` said. It now holds the capture
+  as a review row when `needsReview` is set. The detector never sets it on a
+  retraction, so a healthy device reaches the same branch it always did.
+- An operation resolved inside the capture (a scoped withdrawal, or a sibling
+  cancellation) never reaches the repository. The parser has already taken
+  its clauses out of the rows. For those, the transcript is read again with
+  `permitsOperations: false`, so every clause comes back as a held row, and
+  the held request stays in `operations`, where `pendingOperation` keeps it
+  out of the repository.
+- Item triggers (notifications, alarms, geofences) are not operations. They
+  follow the own-words rule above, and whether a held row should arm them at
+  all is still the open question in `KNOWN_ISSUES.md`. The Messages composer
+  only opens when the person taps a notification, and completion outside an
+  operation is the person's own action.
+
+**The timing test asks the resolver (revised after review, same day).** The
+first version kept a list of timing words beside the resolver. It was
+shorter than the resolver, so it stripped times the resolver reads, including
+"on the 15th pay the rent", "rent is due on the first", "by eod", "end of the
+work day", "first thing", "in forty five minutes" and "last day of the year".
+The question now goes to the resolver itself, for the reason
+`namesAMonthAndDay` gives: so the check cannot fall behind it again.
+
+**The unit-test host is inert unless a test asks.** The suites assert routing
+through the rules. The simulators they run on are believed blind, and the
+hosted one is confirmed. A policy that switched itself on there would change
+hundreds of existing answers, and a qualification run that compares against a
+baseline would report them as new failures. So `LinguisticHealth.hostDefault`
+is `.inert` in a Debug process that has XCTest loaded (the unit-test host) or
+that was launched with `--ui-testing` (which every UI test already passes).
+It is `.forcedBlind` under `--force-linguistic-degradation`, for looking at
+the degraded rows on a healthy device, and otherwise `.probe`. A Release build
+compiles to `.probe` unconditionally. Tests opt in with
+`LinguisticHealth.$override.withValue(.blind) { … }`. It is a task-local, so
+tests running side by side cannot leak a verdict into each other.
+
+This was chosen over the two alternatives because both are weaker in ways
+this repository would feel:
+
+- *A scheme environment variable.* The Test action runs with
+  `shouldUseLaunchSchemeArgsEnv = "YES"`, so it would have to go on the Launch
+  action, and then every Debug run from Xcode would be inert as well. Moving it
+  onto the Test action alone still reaches only the unit-test host, because
+  `XCUIApplication` does not pass its environment to the app. It would also tie
+  the suite's behaviour to one invocation: the scheme, which the sharded
+  `test-without-building` path, a future test plan and the owner's baseline
+  qualification would each have to carry correctly.
+- *A switch the test bundle sets at load.* It needs an `NSPrincipalClass` on
+  the test target, and it runs after the host app has launched, by which time
+  launch recovery may already have read captures under the probed verdict.
+
+Detection in the app does not depend on how the tests were started, is
+compiled out of Release, and fails loudly.
+`testTheProductionDefaultProbesAndOnlyAHarnessIsInert` asserts that this host
+reads `.inert`, and that the production default actually calls the probe.
+With an injected tagging, it checks that a blind answer gives `.blind` and a
+classed answer gives `.usable`.
+
+**Not in this change:** the refinement-outcome enum (audit §3.4), the
+content-free analytics properties (§3.5, which need a privacy decision first),
+and any global notice or Settings row, which is still the open product
+question in `KNOWN_ISSUES.md`. The U1 to U6 rules themselves are unchanged.
+This change decides where their answers land.
+
+**Checks.** No Swift toolchain was available, so none of this has been compiled
+or run. `test_observation.py`, `test_baseline_figures.py` and `test_score.py`
+pass, with the literal census moved from 4,068 to 4,083 and
+`LANGUAGE_BASELINE.md` regenerated. The review revision moved it again, to
+4,110, and regenerated the baseline again; both moves are logged in
+`test_observation.py`. The host tools (`PipelineProbe`,
+`CorpusRunner`, `InterpretationProbe`) compile the same files without `DEBUG`,
+so they probe, and on a healthy host they get `.usable`. No corpus row moves
+for that reason.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

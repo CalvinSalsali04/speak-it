@@ -1096,7 +1096,52 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         container is unavailable on this simulator"`). 4075 -> 4074 on
         2026-09-23, from the second grade: the test queues its taps in a
         folder of its own through the queue's new directory overloads, so it
-        can no longer skip, and that skip message is gone. What the test
+        can no longer skip, and that skip message is gone. 4068 -> 4083 on 2026-09-23, from
+        the runtime linguistic-health signal: sixteen added and one
+        removed, enumerated rather than assumed, and the removal is the
+        part worth reading first. The probe sentence `pay the rent on
+        friday` left this directory because `LexicalTagging.probe` now
+        reads `LinguisticHealth.probe` from the app instead of spelling
+        it out, so a literal can leave the census by moving into
+        production code and nothing else changing. Of the sixteen, seven
+        are fixtures or expected output: two captures new here (`Buy milk
+        and text Dana tomorrow at 5, and Sarah hates sushi`, `Remind me
+        at 5 pm to call Mom`), the two quotes and two analysis texts of
+        the hand-built inherited-series rows (`submit the report`,
+        `Catherine needs a copy`, `Remind me every Friday to submit the
+        report`, `Remind me every Friday to Catherine needs a copy`), and
+        the new review copy, asserted verbatim. Nine are assertion
+        messages, one of them an interpolated template. Two fixtures add
+        nothing because they were already here -- the U1 sentence itself
+        is a `SemanticCorpusDataD` row and `I had better luck last time`
+        was already a fixture -- and one reused assertion message adds
+        nothing for the same reason. 4083 -> 4110 on 2026-09-23, from the
+        review of that signal (operations held, the timing test asking
+        the resolver, the reading cache emptied on the first usable
+        verdict): twenty-seven added and none removed, enumerated rather
+        than assumed. Twelve are fixtures: two operation captures and
+        their stored target (`Cancel the plumber`, `Call the plumber`),
+        a hand-built scoped fragment (`tomorrow I need to, never mind`),
+        a hand-built reschedule and its transcript (`move the dentist to
+        Friday`, `Buy milk and move the dentist to Friday`), and seven
+        timing phrases the resolver reads (`rent is due on the first`,
+        `send it by eod`, `finish the deck by the end of the work day`,
+        `call mom first thing`, `check the oven in forty five minutes`,
+        `check the oven in 45 mins`, `file the forms by the last day of
+        the year`). Fifteen are assertion messages, two of them
+        interpolated templates. Four fixtures add nothing because they
+        were already here -- `On the 15th pay the rent` is a corpus and
+        `ActionabilityTests` row, `Actually never mind` is in
+        `CaptureOperationTests`, `Buy milk and tomorrow I need to, never
+        mind` is in `AbandonmentTests`, and `Catherine needs a copy`
+        came in with the entry above -- and a precondition message used
+        twice counts once. 4110 -> 4111 on 2026-09-23, from the second
+        review: `On the 15th pay the rent` moved to its own test, which
+        abstains on a blind tagger because only the tagger reads that
+        date, and the timing list now holds `On the 15th, pay the rent`,
+        which the day-number regex reads. That is the one addition; the
+        bare phrase and the new test's messages were already here, and
+        nothing was removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1204,7 +1249,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the merged tree, not taken from either side (4223 on the
         candidate, 4074 on #142, 4068 at their merge base; #142 adds 6
         and removes 0, 0 of its additions were already on the
-        candidate).
+        candidate). 4229 -> 4272 on 2026-09-23, merging #130 into the V1
+        candidate: measured from the merged tree, not taken from either
+        side (4229 on the candidate, 4111 on #130, 4068 at their merge
+        base; #130 adds 44 and removes 1, 0 of its additions were
+        already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1214,7 +1263,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4229)
+        self.assertEqual(len(space), 4272)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

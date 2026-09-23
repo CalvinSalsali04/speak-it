@@ -1365,8 +1365,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         session: CaptureSession,
         preservingItemIDs: Set<UUID> = []
     ) -> CaptureOperationOutcome {
-        // A retraction withdraws the capture outright.
+        // A retraction withdraws the capture outright, unless it has to ask
+        // first. The detector never marks one that way; the degraded language
+        // policy marks every operation that way, because whether a "never
+        // mind" is the speaker's or sits inside a message is read by the
+        // tagger it could not use. Held, the capture keeps its words in Needs
+        // review instead of being discarded on that reading.
         if request.operation == .retract {
+            guard !request.needsReview else {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: .retract, candidateIDs: [])
+            }
             discardCaptureItems(for: session, preserving: preservingItemIDs)
             return .retracted
         }
@@ -1395,7 +1404,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             return .needsConfirmation(operation: request.operation, candidateIDs: candidateIDs)
         }
 
-        // A pronoun target names nothing. Ask rather than guess.
+        // A pronoun target names nothing. Ask rather than guess. A request
+        // that needs review for any other reason (a reschedule with no new
+        // moment, every operation read while the tagger was blind) is held
+        // here too, before any candidate is touched.
         guard let target = request.target, !target.isEmpty, !request.needsReview else {
             holdOperation(request, in: session, preserving: preservingItemIDs)
             return .ambiguous(

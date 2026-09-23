@@ -636,6 +636,10 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// The sentence stopped before it finished. Not a question about what was
     /// meant — nothing was said yet to mean anything.
     case incompleteThought
+    /// This iPhone could not read the sentence's structure at all, so nothing
+    /// about the row was settled by reading it. Not a question about the
+    /// person's words, which are kept exactly. See `LinguisticHealth`.
+    case languageAnalysisUnavailable
 
     /// Shown on the review row. Names the gap in the person's own terms.
     var listLabel: String {
@@ -656,6 +660,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousActor: "Whose to do?"
         case .ambiguousTemporalScope: "Time not settled"
         case .incompleteThought: "Unfinished thought"
+        case .languageAnalysisUnavailable: "Not fully read"
         }
     }
 
@@ -680,6 +685,8 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousActor: "Confirm whose task this is"
         case .ambiguousTemporalScope: "Pick the day you meant"
         case .incompleteThought: "Finish the thought, or keep it as it is"
+        case .languageAnalysisUnavailable:
+            "Speak It couldn't fully read this on this iPhone right now. Your words are saved exactly."
         }
     }
 
@@ -695,6 +702,9 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousTemporalScope: .time
         case .ambiguousPerson: .person
         case .missingAction, .ambiguousActor, .reportedSpeech, .incompleteThought: .type
+        // No one field is in doubt; the whole reading is. The person confirms
+        // it, or edits whatever is wrong and then confirms.
+        case .languageAnalysisUnavailable: .confirmation
         case .time, .person, .type, .splitDecision, .confirmation,
              .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation: self
@@ -716,6 +726,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousActor: self = .ambiguousActor
         case .ambiguousTemporalScope: self = .ambiguousTemporalScope
         case .incompleteThought: self = .incompleteThought
+        case .languageAnalysisUnavailable: self = .languageAnalysisUnavailable
         }
     }
 }

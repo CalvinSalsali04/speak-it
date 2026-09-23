@@ -749,6 +749,17 @@ enum ThoughtOrganizer {
         TemporalIntentParser.namesAMonthAndDay(in: text)
     }
 
+    /// Whether the wording, read alone, names a moment the resolver reads: a
+    /// day, a clock, a delay, a deadline. Asked of the resolver's own relative
+    /// and absolute readers, so a caller that needs "does this say when"
+    /// cannot keep a shorter list than the resolver and fall behind it. Used by
+    /// `DegradedLanguagePolicy` over a row's own words. Wording the resolver
+    /// understood as naming no single moment ("next week") counts: it still
+    /// says when.
+    static func statesATime(_ text: String) -> Bool {
+        TemporalIntentParser.statesATime(in: text)
+    }
+
     /// Whether the sentence opens on an acquisition verb whose object is the
     /// person the resolver found: "get Sam from the airport", "pick up Mom".
     private static func transportsAPerson(_ person: String, in text: String) -> Bool {
@@ -3614,6 +3625,20 @@ private enum TemporalIntentParser {
     /// decides which year the day lands in, which a yes/no does not need.
     static func namesAMonthAndDay(in text: String) -> Bool {
         monthAndDay(in: text, referenceDate: Date(), calendar: .current) != nil
+    }
+
+    /// The relative and absolute readers as a yes/no. See
+    /// `ThoughtOrganizer.statesATime`. The reference instant only decides
+    /// which day a moment lands on, which a yes/no does not need, and a bare
+    /// clock is admitted because a row that says "at 5" says when.
+    static func statesATime(in text: String) -> Bool {
+        let resolution = timingResolution(
+            in: text.lowercased(),
+            referenceDate: Date(),
+            calendar: .current,
+            allowsBareClock: true
+        )
+        return resolution.date != nil || resolution.isAmbiguous
     }
 
     /// The spoken clock forms, read together. See `ThoughtOrganizer.statesAClock`.
