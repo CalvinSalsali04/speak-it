@@ -21,22 +21,67 @@ final class CaptureOperationTests: XCTestCase {
     /// Stands in for the two systems a reminder actually lives in, so a test
     /// can prove the notification and the alarm are gone rather than only that
     /// the SwiftData row is.
+    ///
+    /// The queued scheduler pass runs off the main actor and writes here while
+    /// the test reads, so every access goes through one lock. Without it the
+    /// assertions below read a set another thread may be mutating.
     private final class RecordingDelivery: @unchecked Sendable {
-        private(set) var pendingNotifications: Set<String> = []
-        private(set) var scheduledAlarms: Set<UUID> = []
+        private let lock = NSLock()
+        private var notifications: Set<String> = []
+        private var alarms: Set<UUID> = []
+        private var isHeld = false
+        private var heldPasses: [CheckedContinuation<Void, Never>] = []
 
-        func seedNotification(_ identifier: String) { pendingNotifications.insert(identifier) }
-        func seedAlarm(_ id: UUID) { scheduledAlarms.insert(id) }
+        var pendingNotifications: Set<String> { lock.withLock { notifications } }
+        var scheduledAlarms: Set<UUID> { lock.withLock { alarms } }
+
+        func seedNotification(_ identifier: String) {
+            lock.withLock { _ = notifications.insert(identifier) }
+        }
+
+        func seedAlarm(_ id: UUID) {
+            lock.withLock { _ = alarms.insert(id) }
+        }
+
+        /// While held, any scheduler pass that reads what is pending waits
+        /// here, and every pass queued after it waits behind it. This is the
+        /// earlier pass sitting on a permission prompt, made deterministic.
+        func hold() {
+            lock.withLock { isHeld = true }
+        }
+
+        func release() {
+            let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+                isHeld = false
+                defer { heldPasses = [] }
+                return heldPasses
+            }
+            waiting.forEach { $0.resume() }
+        }
+
+        private func waitWhileHeld() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let proceed = lock.withLock { () -> Bool in
+                    guard isHeld else { return true }
+                    heldPasses.append(continuation)
+                    return false
+                }
+                if proceed { continuation.resume() }
+            }
+        }
 
         var sink: ReminderDeliverySink {
             ReminderDeliverySink(
                 removeNotifications: { [self] identifiers in
-                    identifiers.forEach { pendingNotifications.remove($0) }
+                    lock.withLock { identifiers.forEach { notifications.remove($0) } }
                 },
                 cancelAlarm: { [self] id in
-                    scheduledAlarms.remove(id)
+                    lock.withLock { _ = alarms.remove(id) }
                 },
-                pendingIdentifiers: { [self] in Array(pendingNotifications) }
+                pendingIdentifiers: { [self] in
+                    await waitWhileHeld()
+                    return lock.withLock { Array(notifications) }
+                }
             )
         }
     }
@@ -59,6 +104,8 @@ final class CaptureOperationTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        // A held pass left in the static tail would stall every later test.
+        delivery.release()
         ReminderScheduler.delivery = previousDelivery
         RecurrenceStore.restore(previousRecurrences)
         repository = nil
@@ -543,11 +590,50 @@ final class CaptureOperationTests: XCTestCase {
 
 extension CaptureOperationTests {
 
+    /// Waits for every queued `ReminderScheduler.synchronize` pass, the same
+    /// way `DurabilityTests` does: an empty, empty-scoped request waits for the
+    /// tail and removes nothing.
+    private func drainScheduler() async {
+        _ = await ReminderScheduler.synchronizeAndVerify(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope()
+        )
+    }
+
+    /// Queues a pass that cannot finish until `delivery.release()`, so every
+    /// pass queued after it (the one `delete` queues included) is stuck
+    /// behind it, as it is behind a pass waiting on a permission prompt.
+    ///
+    /// Drains first, so call it before seeding: the tail is static, and a pass
+    /// another test left queued would otherwise run against what is seeded.
+    ///
+    /// The hold point is inside the pass, after its teardown, so a held pass
+    /// with a non-empty scope has already cancelled that scope before it
+    /// blocks. This one's scope is empty, so it tears nothing down.
+    private func holdTheSchedulerQueue() async {
+        await drainScheduler()
+        delivery.hold()
+        ReminderScheduler.synchronize(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope()
+        )
+    }
+
     /// A cancelled reminder must stop *arriving*, which is a different claim
     /// from its row being deleted. This asserts the exact pending request for
     /// the item is the one removed, and that a neighbouring reminder is
     /// untouched — an over-broad removal would be invisible to a row-count
     /// assertion and very visible to a person.
+    ///
+    /// The first assertion runs while the scheduler queue is held, so only a
+    /// teardown that `delete` performs itself can satisfy it. Falsifier: drop
+    /// the synchronous `ReminderScheduler.cancel(itemID:)` from
+    /// `SwiftDataThoughtRepository.delete` and it fails every run, because the
+    /// queued pass cannot run until after it. No zone pin: nothing here reads
+    /// a wall-clock result, and notification assertions stay in the machine's
+    /// zone.
     func testCancellingRemovesTheExactPendingNotification() async throws {
         _ = try await capture("Remind me about the dentist on Friday")
         _ = try await capture("Remind me about the passport on Friday")
@@ -561,6 +647,7 @@ extension CaptureOperationTests {
 
         let dentistIdentifier = ReminderScheduler.notificationIdentifier(for: dentist.id)
         let passportIdentifier = ReminderScheduler.notificationIdentifier(for: passport.id)
+        await holdTheSchedulerQueue()
         delivery.seedNotification(dentistIdentifier)
         delivery.seedNotification(passportIdentifier)
 
@@ -571,17 +658,35 @@ extension CaptureOperationTests {
         }
         XCTAssertFalse(
             delivery.pendingNotifications.contains(dentistIdentifier),
-            "The cancelled reminder's pending notification must be removed"
+            "The cancelled reminder's pending notification must be removed before any queued pass runs"
         )
         XCTAssertTrue(
             delivery.pendingNotifications.contains(passportIdentifier),
             "Cancelling one reminder must not remove another's notification"
+        )
+
+        delivery.release()
+        await drainScheduler()
+
+        XCTAssertFalse(
+            delivery.pendingNotifications.contains(dentistIdentifier),
+            "After the queued pass the cancelled reminder must still be gone"
+        )
+        XCTAssertTrue(
+            delivery.pendingNotifications.contains(passportIdentifier),
+            "The queued pass must not reach past the cancelled reminder"
         )
     }
 
     /// The alarm equivalent. An alarm that survives its item is worse than a
     /// stale notification: it takes over the screen at 7 AM for something the
     /// person explicitly cancelled.
+    ///
+    /// This used to assert straight after the capture returned, which raced
+    /// the queued pass that did the teardown and failed intermittently on
+    /// hosted runners. The first assertion now runs with the queue held.
+    /// Falsifier: drop the synchronous `ReminderScheduler.cancel(itemID:)`
+    /// from `SwiftDataThoughtRepository.delete` and it fails every run.
     func testCancellingAnAlarmTearsDownTheAlarmKitAlarm() async throws {
         _ = try await capture("Set an alarm for 7 AM to take my pills")
 
@@ -594,6 +699,7 @@ extension CaptureOperationTests {
             "Precondition: this phrasing is an alarm, not a notification"
         )
 
+        await holdTheSchedulerQueue()
         delivery.seedAlarm(item.id)
         let unrelated = UUID()
         delivery.seedAlarm(unrelated)
@@ -605,9 +711,24 @@ extension CaptureOperationTests {
         }
         XCTAssertFalse(
             delivery.scheduledAlarms.contains(item.id),
-            "A cancelled alarm must be cancelled in AlarmKit, not just deleted from the store"
+            "A cancelled alarm must be cancelled in AlarmKit before any queued pass runs"
         )
         XCTAssertTrue(delivery.scheduledAlarms.contains(unrelated))
+
+        delivery.release()
+        await drainScheduler()
+
+        // The recorder sees teardown only; arming goes to AlarmManager itself.
+        // The pass `delete` queues carries no requests, so what this checks is
+        // that the item stays disarmed and the pass reaches nothing else.
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(item.id),
+            "After the queued pass the cancelled alarm must still be gone"
+        )
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(unrelated),
+            "The queued pass must not cancel an alarm it was not asked about"
+        )
     }
 
     /// Completion also has to stop delivery. Marking something done while its

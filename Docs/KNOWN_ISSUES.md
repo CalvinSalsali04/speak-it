@@ -381,6 +381,34 @@ The optional iCloud synchronization entitlement is enabled in Release builds, bu
 
 Apple does not expose its Messages **Send Later** queue to third-party apps. Speak It can recognize a scheduled-message request, alert at the requested time, prepare the message in Apple's composer, and complete the task after a confirmed send. It cannot silently send or place a message into Apple's encrypted Send Later queue.
 
+## Removing an item: what stops at once and what still waits
+
+*2026-09-23, DEL-22.* Every path that removes an item now calls
+`ReminderScheduler.cancel(itemID:)` for each removed id right after the save,
+and relaunch cancels any AlarmKit alarm no row asks for. See `DECISIONS.md` of
+the same date. Three things are left, and none is verified on a device.
+
+- **A notification built from a capture still waits for the queued pass.**
+  `cancel(itemID:)` removes `SpeakIt.reminder.<item id>` and the item's alarm.
+  But a request made from a stored item carries its session, and
+  `notificationGroups` files it under `SpeakIt.session.<session id>.<session
+  id>-<fire time>`, shared with any sibling due at the same second. That
+  identifier is not removed synchronously, because removing it would silence
+  the siblings until the queued pass re-adds them. So a deleted item's
+  *notification*, unlike its alarm, can still arrive if the app is killed
+  before the queued pass runs and not reopened before the fire time. Relaunch
+  and foreground reconciliation (`replacesAllSpeakItReminders`) remove it on
+  the next open. The seeded identifiers in `CaptureOperationTests` and
+  `DurabilityTests` are the per-item form, so no test covers the grouped one.
+- **The kill window before the synchronous cancel.** A kill after `delete`'s
+  save and before its cancel leaves the alarm armed until the next launch or
+  foreground, where #127's orphan sweep cancels it. Without #127 it would ring.
+- **The recorder sees teardown only.** Arming goes to `AlarmManager` and
+  `UNUserNotificationCenter` directly, not through `ReminderDeliverySink`, so a
+  test cannot see a pass re-arm something. The post-drain assertions show the
+  item stays disarmed and nothing else was torn down, not that nothing was
+  armed.
+
 ## Today rows have no swipe-to-complete
 
 Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a custom `DragGesture`. Layered over scrolling content it won the touch outright and vertical swipes that started on a row did not scroll, so it was removed. Completion is unchanged through the circle on each row and through the editor. Memory and the completed log are `List`-based and keep their native swipe actions. Bringing the shortcut back to Today needs a native implementation, not another gesture.

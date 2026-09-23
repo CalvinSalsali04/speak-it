@@ -927,7 +927,37 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Relaunch must cancel an alarm whose row is gone"`. The capture
         they share, `"Set an alarm for 7 AM to take my pills"`, was
         already in `CaptureOperationTests` and adds nothing, and every
-        phrase their doc comments quote is in backticks. What the test
+        phrase their doc comments quote is in backticks. 4068 -> 4073 on 2026-09-23, from
+        cancelling an item's alarm synchronously instead of only in the
+        queued scheduler pass: seven literals in, two out, net five, and
+        all nine are assertion messages, enumerated rather than assumed.
+        The two that went out were reworded rather than deleted, which
+        moves this count exactly like adding and deleting does: `"The
+        cancelled reminder's pending notification must be removed"` and
+        `"A cancelled alarm must be cancelled in AlarmKit, not just
+        deleted from the store"`. The seven that came in are their
+        rewordings, `"The cancelled reminder's pending notification must
+        be removed before any queued pass runs"` and `"A cancelled alarm
+        must be cancelled in AlarmKit before any queued pass runs"`; the
+        two post-drain checks in `CaptureOperationTests`, `"After the
+        queued pass the cancelled reminder must still be gone"` and
+        `"After the queued pass the cancelled alarm must still be
+        gone"`; the two neighbour checks, `"The queued pass must not
+        reach past the cancelled reminder"` and `"The queued pass must
+        not cancel an alarm it was not asked about"`; and `"Relaunch must
+        cancel an alarm that no row asks for"` in `DurabilityTests`. The
+        new relaunch test's fixture, `"Set an alarm for 7 AM to take my
+        pills"`, adds nothing because `CaptureOperationTests` already had
+        it, and every phrase in the new doc comments is in backticks. The
+        development-set overlap stayed at 114, checked by regenerating
+        `LANGUAGE_BASELINE.md`. 4073 -> 4074 the same day, from the
+        sweep reading an explicit every-row set: one assertion message in
+        `DurabilityTests`, `"A pass that does not name every row must not
+        cancel an alarm it does not know"`, and none removed. 4074 ->
+        4072 the same day, from dropping this change's own alarm sweep, which
+        duplicated #127's: two `DurabilityTests` messages go with their
+        tests, that one and `"Relaunch must cancel an alarm that no row asks
+        for"`, and none is added. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -974,7 +1004,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the V1 candidate: measured from the merged tree, not taken from
         either side (4149 on the candidate, 4069 on #127, 4068 at their
         merge base; #127 adds 1 and removes 0, 0 of its additions were
-        already on the candidate).
+        already on the candidate). 4150 -> 4154 on 2026-09-23, merging
+        #145 into the V1 candidate: measured from the merged tree, not
+        taken from either side (4150 on the candidate, 4072 on #145,
+        4068 at their merge base; #145 adds 6 and removes 2, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -984,7 +1018,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4150)
+        self.assertEqual(len(space), 4154)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

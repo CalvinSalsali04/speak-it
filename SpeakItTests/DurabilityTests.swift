@@ -29,21 +29,33 @@ final class DurabilityTests: XCTestCase {
 
     /// The two systems a reminder actually lives in, so a test can prove the
     /// notification and the alarm are gone rather than only that the row is.
+    ///
+    /// Locked because the queued scheduler pass writes here off the main
+    /// actor while the test reads.
     private final class RecordingDelivery: @unchecked Sendable {
-        private(set) var pendingNotifications: Set<String> = []
-        private(set) var scheduledAlarms: Set<UUID> = []
+        private let lock = NSLock()
+        private var notifications: Set<String> = []
+        private var alarms: Set<UUID> = []
 
-        func seedNotification(_ identifier: String) { pendingNotifications.insert(identifier) }
-        func seedAlarm(_ id: UUID) { scheduledAlarms.insert(id) }
+        var pendingNotifications: Set<String> { lock.withLock { notifications } }
+        var scheduledAlarms: Set<UUID> { lock.withLock { alarms } }
+
+        func seedNotification(_ identifier: String) {
+            lock.withLock { _ = notifications.insert(identifier) }
+        }
+
+        func seedAlarm(_ id: UUID) {
+            lock.withLock { _ = alarms.insert(id) }
+        }
 
         var sink: ReminderDeliverySink {
             ReminderDeliverySink(
                 removeNotifications: { [self] identifiers in
-                    identifiers.forEach { pendingNotifications.remove($0) }
+                    lock.withLock { identifiers.forEach { notifications.remove($0) } }
                 },
-                cancelAlarm: { [self] id in scheduledAlarms.remove(id) },
-                pendingIdentifiers: { [self] in Array(pendingNotifications) },
-                scheduledAlarmIDs: { [self] in Array(scheduledAlarms) }
+                cancelAlarm: { [self] id in lock.withLock { _ = alarms.remove(id) } },
+                pendingIdentifiers: { [self] in lock.withLock { Array(notifications) } },
+                scheduledAlarmIDs: { [self] in lock.withLock { Array(alarms) } }
             )
         }
     }
