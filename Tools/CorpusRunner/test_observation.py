@@ -1100,7 +1100,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         nothing because they were already here -- the U1 sentence itself
         is a `SemanticCorpusDataD` row and `I had better luck last time`
         was already a fixture -- and one reused assertion message adds
-        nothing for the same reason. What the test
+        nothing for the same reason.
+        4135 -> 4235 on 2026-09-23: integration ref, measured.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1114,7 +1116,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4135)
+        self.assertEqual(len(space), 4235)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
