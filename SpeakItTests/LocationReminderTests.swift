@@ -43,6 +43,9 @@ final class LocationReminderTests: XCTestCase {
     override func setUpWithError() throws {
         previousPlaces = SavedPlaceStore.snapshot()
         SavedPlaceStore.restore([:])
+        // The shared monitor's verdicts are process state that every
+        // presentation reads. No case may inherit another's.
+        LocationReminderMonitor.shared.record(LocationMonitorReconciliation(), for: [])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         container = try ModelContainer(
             for: PersistenceController.schema,
@@ -58,6 +61,7 @@ final class LocationReminderTests: XCTestCase {
 
     override func tearDownWithError() throws {
         SavedPlaceStore.restore(previousPlaces)
+        LocationReminderMonitor.shared.record(LocationMonitorReconciliation(), for: [])
         repository = nil
         container = nil
     }
@@ -1245,6 +1249,283 @@ final class LocationReminderTests: XCTestCase {
             "the freed slot is taken automatically, not on the next edit"
         )
         XCTAssertTrue(after.blocked.isEmpty)
+    }
+
+    // MARK: What the monitor decided, as the person sees it
+
+    /// Seventeen repeating requests at Home that belong to no item.
+    ///
+    /// With one captured repeating reminder they make eighteen, the whole
+    /// budget, so a captured one-shot is the 19th and is the one turned away:
+    /// `plan` keeps repeating reminders first. That makes the evicted item a
+    /// choice of the test rather than of the UUIDs.
+    private func repeatingHomeFillers() -> [LocationMonitorRequest] {
+        (0..<(LocationReminderMonitor.regionBudget - 1)).map { index in
+            LocationMonitorRequest(
+                itemID: UUID(),
+                title: "filler \(index)",
+                event: .arrive,
+                place: ResolvedPlace(latitude: 43.6532, longitude: -79.3832),
+                repeats: true
+            )
+        }
+    }
+
+    /// A plan with `watched` inside the budget and `waiting` past it.
+    private func planPastTheBudget(
+        watched: CapturedItem,
+        waiting: CapturedItem
+    ) throws -> (plan: LocationMonitorReconciliation, requests: [LocationMonitorRequest]) {
+        let watchedRequest = try XCTUnwrap(watched.locationMonitorRequest(authorization: authorized))
+        let waitingRequest = try XCTUnwrap(waiting.locationMonitorRequest(authorization: authorized))
+        XCTAssertTrue(watchedRequest.repeats)
+        XCTAssertFalse(waitingRequest.repeats)
+        let requests = [watchedRequest, waitingRequest] + repeatingHomeFillers()
+        let plan = LocationReminderMonitor.plan(for: requests, authorization: authorized)
+        XCTAssertTrue(plan.monitored.contains(watched.id))
+        XCTAssertEqual(plan.blocked[waiting.id], .monitoringLimitReached)
+        return (plan, requests)
+    }
+
+    /// DEL-7. The 19th place reminder has a request like the eighteen before
+    /// it, because the resolver only knows that Home is set and access is
+    /// granted, and it was presented from that alone: `.place`, armed, and
+    /// `Next time you arrive at Home` on the row, the editor and the receipt,
+    /// while the monitor had declined to register a region for it. Every
+    /// surface now reads `CapturedItem.locationBlocker(authorization:)`, which
+    /// asks the monitor after the resolver.
+    ///
+    /// The plan is made under `authorized` and recorded on the shared monitor
+    /// through `record`, the step `reconcile` ends with, because this
+    /// simulator's own location access cannot be granted from a test.
+    ///
+    /// Falsifier: drop the `LocationReminderMonitor.shared.monitoringBlocker`
+    /// fallback from `CapturedItem.locationBlocker(authorization:)`, and the
+    /// waiting item reads `.place` and armed, goes to Today rather than
+    /// review, and its receipt reads as a place reminder again.
+    func testAPlaceReminderPastTheRegionBudgetIsNotShownAsArmed() throws {
+        setHome()
+        let watched = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let waiting = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(waiting.locationIntent)
+        let (plan, requests) = try planPastTheBudget(watched: watched, waiting: waiting)
+        XCTAssertTrue(
+            ItemPresentation.make(for: waiting, authorization: authorized).reminderState.isArmed,
+            "precondition: before the monitor has planned it, the 19th reads as armed"
+        )
+
+        LocationReminderMonitor.shared.record(plan, for: requests)
+
+        let presentation = ItemPresentation.make(for: waiting, authorization: authorized)
+        XCTAssertEqual(presentation.reminderState, .blockedPlace(place, .monitoringLimitReached))
+        XCTAssertFalse(
+            presentation.reminderState.isArmed,
+            "a reminder the budget turned away has no region behind it"
+        )
+        XCTAssertTrue(presentation.requiresReview)
+        XCTAssertFalse(waiting.belongsInToday(authorization: authorized))
+        XCTAssertEqual(
+            presentation.reviewRequirement,
+            LocationReminderBlocker.monitoringLimitReached.listLabel
+        )
+        XCTAssertEqual(
+            ReminderScheduler.confirmationContext(for: waiting, authorization: authorized),
+            "Needs review · Too many place reminders"
+        )
+
+        // The eighteen inside the budget are untouched.
+        let watchedPlace = try XCTUnwrap(watched.locationIntent)
+        let armed = ItemPresentation.make(for: watched, authorization: authorized)
+        XCTAssertEqual(armed.reminderState, .place(watchedPlace))
+        XCTAssertTrue(armed.reminderState.isArmed)
+        XCTAssertNil(watched.locationBlocker(authorization: authorized))
+    }
+
+    /// The other half of DEL-7: iOS accepted `startMonitoring(for:)` and
+    /// refused the region later, on the delegate. The next plan reports it as
+    /// `.monitoringFailed`, and that report has to reach the row. A verdict
+    /// also describes only the region it was made for: a later plan that
+    /// watches it lifts it, and moving Home, which makes a different region,
+    /// is not described by a refusal of the old one.
+    ///
+    /// Falsifiers, one per step: drop the monitor fallback in
+    /// `CapturedItem.locationBlocker(authorization:)` and the first
+    /// assertion reads `.place`; make `LocationReminderMonitor.record` merge
+    /// into the previous verdicts instead of replacing them and the retried
+    /// reminder stays blocked; key the verdicts by item rather than by region
+    /// identifier and the moved Home is still reported as refused.
+    func testARegionIOSRefusedIsNotShownAsArmedUntilAPlanWatchesIt() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(item.locationIntent)
+        let request = try XCTUnwrap(item.locationMonitorRequest(authorization: authorized))
+        let refused = LocationReminderMonitor.plan(
+            for: [request],
+            authorization: authorized,
+            failedRegionIdentifiers: [LocationReminderMonitor.regionIdentifier(for: request)]
+        )
+        LocationReminderMonitor.shared.record(refused, for: [request])
+
+        XCTAssertEqual(
+            ItemPresentation.make(for: item, authorization: authorized).reminderState,
+            .blockedPlace(place, .monitoringFailed)
+        )
+        XCTAssertEqual(
+            item.locationBlocker(authorization: authorized),
+            .monitoringFailed,
+            "the editor's status line and footer read this"
+        )
+
+        // The retry a foreground makes: failures cleared, the region watched.
+        LocationReminderMonitor.shared.record(
+            LocationReminderMonitor.plan(for: [request], authorization: authorized),
+            for: [request]
+        )
+        XCTAssertEqual(
+            ItemPresentation.make(for: item, authorization: authorized).reminderState,
+            .place(place),
+            "a region the latest plan watches is not still reported as refused"
+        )
+
+        // Home moves while the old region's refusal is still held. That
+        // refusal was about the old coordinates, and the new region has not
+        // been tried yet. Recorded after the move, because the host app's own
+        // `RootView` reconciles on the Home change and would clear it first.
+        SavedPlaceStore.set(
+            SavedPlace(latitude: 43.7, longitude: -79.4, label: "Home"),
+            for: .home
+        )
+        LocationReminderMonitor.shared.record(refused, for: [request])
+        XCTAssertNil(
+            item.locationBlocker(authorization: authorized),
+            "a verdict about the old Home does not describe the new one"
+        )
+    }
+
+    /// Freeing a slot has to reach the reminder waiting for it, on the row as
+    /// well as in CoreLocation, and without waiting for the next foreground.
+    ///
+    /// First as a plan: the budget recorded with one reminder fewer lifts the
+    /// waiting one's verdict. Then as the repository: each mutation that frees
+    /// or claims a slot must reconcile straight away, which is what replaces
+    /// the recorded verdict. That half holds whatever this simulator's
+    /// location access is, because two reminders never exceed the budget, so
+    /// no reconcile the repository makes can turn the waiting one away for it.
+    ///
+    /// Falsifiers: make `LocationReminderMonitor.record` merge instead of
+    /// replace, and the plan half fails; remove the
+    /// `reconcileLocationReminders(ifTouchingPlaces:)` call from any one of
+    /// `setCompleted`, `setArchived`, `delete`, `update` (or put its condition
+    /// back to `locationChanged` alone) or `organizePersistedCapture`, and the
+    /// step naming that mutation fails.
+    func testFreeingARegionHandsItsSlotToTheWaitingReminderAndItsRow() throws {
+        setHome()
+        let watched = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let waiting = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(waiting.locationIntent)
+        let (plan, requests) = try planPastTheBudget(watched: watched, waiting: waiting)
+
+        LocationReminderMonitor.shared.record(plan, for: requests)
+        XCTAssertFalse(ItemPresentation.make(for: waiting, authorization: authorized).reminderState.isArmed)
+        let remaining = requests.filter { $0.itemID != watched.id }
+        let freed = LocationReminderMonitor.plan(for: remaining, authorization: authorized)
+        XCTAssertTrue(freed.monitored.contains(waiting.id))
+        LocationReminderMonitor.shared.record(freed, for: remaining)
+        let rearmed = ItemPresentation.make(for: waiting, authorization: authorized)
+        XCTAssertEqual(rearmed.reminderState, .place(place))
+        XCTAssertTrue(
+            rearmed.reminderState.isArmed,
+            "the slot a finished reminder gave up is the waiting one's"
+        )
+
+        func freeing(
+            _ step: String,
+            text: String,
+            _ mutation: (CapturedItem) throws -> Void
+        ) throws {
+            let other = try repository.createCapture(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            XCTAssertNotNil(other.locationIntent, "precondition for \(step): a place reminder")
+            LocationReminderMonitor.shared.record(plan, for: requests)
+            XCTAssertEqual(waiting.locationBlocker(authorization: authorized), .monitoringLimitReached)
+            try mutation(other)
+            XCTAssertNotEqual(
+                waiting.locationBlocker(authorization: authorized),
+                .monitoringLimitReached,
+                "\(step) must re-plan the region budget at once, not at the next foreground"
+            )
+        }
+
+        try freeing("completing", text: "Remind me to feed the cat every time I get home") {
+            try repository.setCompleted($0, completed: true)
+        }
+        try freeing("archiving", text: "Remind me to water the plants every time I get home") {
+            try repository.setArchived($0, archived: true)
+        }
+        try freeing("deleting", text: "Remind me to charge my phone every time I get home") {
+            try repository.delete($0)
+        }
+        try freeing("dating", text: "Remind me to check the mail every time I get home") { item in
+            // A spoken move leaves the place `.unchanged`, and the date beside
+            // it holds the place, which frees its slot.
+            try repository.update(item, with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: Date.now.addingTimeInterval(3 * 86_400),
+                reminderDate: nil,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: nil,
+                locationIntent: .unchanged,
+                dueDateHasTime: true
+            ))
+            XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        }
+
+        // Capturing one claims a slot, and the receipt reads the answer.
+        LocationReminderMonitor.shared.record(plan, for: requests)
+        _ = try repository.createCapture(
+            text: "Remind me to lock the bike every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        XCTAssertNotEqual(
+            waiting.locationBlocker(authorization: authorized),
+            .monitoringLimitReached,
+            "capturing a place reminder must re-plan the region budget"
+        )
     }
 
     /// A reminder stored before firing was recorded reads back as "never fired",

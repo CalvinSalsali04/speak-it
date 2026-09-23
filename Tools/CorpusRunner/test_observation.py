@@ -921,7 +921,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         time, got \\(state)"`, which counts with its interpolation
         unexpanded). Its fixture is the same bins sentence as the test
         before it and adds nothing, and its doc comment quotes in
-        backticks. What the test
+        backticks. 4088 -> 4104 on 2026-09-23, from DEL-7, a place reminder
+        past the region budget or refused by iOS shown as armed: three
+        `LocationReminderTests` methods and two helpers, sixteen literals,
+        enumerated by diffing the set rather than assumed. Five are
+        fixtures, one per mutation that frees or claims a slot (`"Remind me
+        to feed the cat every time I get home"`, and the same frame around
+        `water the plants`, `charge my phone`, `check the mail` and `lock
+        the bike`); one is expected output, the receipt `"Needs review · Too
+        many place reminders"`; one is the helper's request title `"filler
+        \\(index)"`, which counts with its interpolation unexpanded. The
+        other nine are assertion messages, two of them interpolated
+        (`"precondition for \\(step): a place reminder"` and `"\\(step) must
+        re-plan the region budget at once, not at the next foreground"`),
+        each counted once however many steps run it. That second message
+        first read `not wait for a foreground`, and a new row for `wait`
+        moved the pinned motivating figures above, so it was reworded rather
+        than the figures re-pinned: they argue from the corpus as it was,
+        and an assertion message is not evidence about `wait`. The badge-in and garbage
+        sentences were already in this file and add nothing, and every
+        phrase the doc comments quote is in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -935,7 +954,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4088)
+        self.assertEqual(len(space), 4104)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

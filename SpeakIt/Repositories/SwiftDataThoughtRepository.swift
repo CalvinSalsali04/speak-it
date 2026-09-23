@@ -483,6 +483,26 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return reconciliation
     }
 
+    /// Re-plans the region budget after a mutation that touched a place
+    /// reminder, rather than waiting for the next foreground.
+    ///
+    /// The budget is shared, so one item's change moves another's answer:
+    /// completing, archiving, deleting or dating a watched place reminder frees
+    /// a slot the 19th is waiting for, and capturing one can take the last
+    /// slot. Only a reconcile turns that into a region and into what the rows
+    /// show (`LocationReminderMonitor.unwatchedRegions`). These paths used to
+    /// stop the one region or nothing at all, which left the waiting reminder
+    /// shown as blocked while a slot sat free, or a new one shown as armed with
+    /// no region, until the app next came to the foreground.
+    ///
+    /// Callers pass whether a place reminder was involved, read *before* the
+    /// mutation where the mutation removes the item, so an edit to a plain task
+    /// does not pay for a fetch of every item.
+    private func reconcileLocationReminders(ifTouchingPlaces touchesPlaces: Bool) {
+        guard touchesPlaces else { return }
+        reconcileLocationReminders()
+    }
+
     /// The shortest gap between two deliveries of a repeating place reminder.
     ///
     /// A repeating trigger has no final firing to record, so duplicate delivery
@@ -593,6 +613,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // that arrived while scheduling was suspended.
         if !currentIntent.repeats {
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+            // The retired region was a slot. Hand it to whichever reminder the
+            // budget had turned away.
+            reconcileLocationReminders()
         }
     }
 
@@ -868,6 +891,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard !sessions.isEmpty else { return 0 }
 
         let itemIDs = sessions.flatMap(\.items).map(\.id)
+        let touchesPlaces = sessions.flatMap(\.items).contains { $0.locationIntent != nil }
         sessions.forEach(modelContext.delete)
 
         // Practice is never included in an iCloud snapshot, so cleanup must
@@ -880,6 +904,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
             ReminderScheduler.cancel(itemID: itemID)
         }
+        reconcileLocationReminders(ifTouchingPlaces: touchesPlaces)
         MemoryPinStore.removeMetadata(for: itemIDs)
         ShoppingGroupStore.removeMetadata(for: itemIDs)
         IdeaStageStore.removeMetadata(for: itemIDs)
@@ -1477,9 +1502,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // changed or removed has to be re-reconciled or iOS keeps watching the
         // old one. Turning a place reminder off in the editor and still being
         // notified at that place is exactly the failure this prevents.
-        if locationChanged {
-            reconcileLocationReminders()
-        }
+        //
+        // An unchanged place counts too. A date set beside it (by the editor
+        // or by a spoken "move it to Friday") holds the place, which frees its
+        // slot, and clearing the date wants the slot back.
+        reconcileLocationReminders(
+            ifTouchingPlaces: locationChanged || item.locationIntent != nil
+        )
         if let personName = item.personName {
             SpeechVocabularyStore.rememberContextualPhrases([personName])
         }
@@ -1549,6 +1578,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // deliberately; reconcile it against the current permission and let
         // the existing permission UI explain a missing grant.
         synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
+        reconcileLocationReminders(ifTouchingPlaces: item.locationIntent != nil)
     }
 
     func setArchived(_ item: CapturedItem, archived: Bool) throws {
@@ -1566,6 +1596,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // it must not surface a surprise system prompt from a fire-and-forget
         // repository mutation.
         synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
+        reconcileLocationReminders(ifTouchingPlaces: item.locationIntent != nil)
     }
 
     func markReviewed(_ item: CapturedItem) throws {
@@ -1581,6 +1612,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let deletesSession = (session?.items.count ?? 0) <= 1
         let recurrenceIDs = deletesSession ? (session?.items.map(\.id) ?? [itemID]) : [itemID]
         let sessionID = session?.id
+        // Read before the delete: afterwards there is no item left to ask.
+        let touchesPlaces = item.locationIntent != nil
+            || (deletesSession && session?.items.contains(where: { $0.locationIntent != nil }) == true)
         if let session, deletesSession {
             modelContext.delete(session)
         } else {
@@ -1609,6 +1643,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         if !deletesSession {
             synchronizeReminders(for: session, requestAuthorizationIfNeeded: false)
         }
+        reconcileLocationReminders(ifTouchingPlaces: touchesPlaces)
     }
 
     func split(_ item: CapturedItem, into parts: [String]) throws {
@@ -1837,6 +1872,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let oldItems = orderedItems(in: session)
         ensureFallbackItem(for: session)
         let existingItems = orderedItems(in: session)
+        // Read before `apply` rewrites them: a reorganize can take a place away.
+        let hadPlaceReminder = existingItems.contains { $0.locationIntent != nil }
         var organized: [CapturedItem] = []
 
         for (index, candidate) in candidates.enumerated() {
@@ -1877,6 +1914,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     for: session,
                     requestAuthorizationIfNeeded: true,
                     performance: performance
+                )
+                // The place twin of the line above. Without it a place
+                // reminder captured in the app was not watched until the next
+                // foreground, and the receipt could not know whether it had
+                // taken the last slot.
+                reconcileLocationReminders(
+                    ifTouchingPlaces: hadPlaceReminder
+                        || organized.contains(where: { $0.locationIntent != nil })
                 )
             }
             freezeCurrentLocationSnapshots(in: organized)

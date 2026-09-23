@@ -1,5 +1,37 @@
 # Decisions
 
+## 2026-09-23 — Whether a place reminder is watched is the monitor's answer, read in one place
+
+`LocationReminderMonitor.plan` turns away every request past the 18-region
+budget (`monitoringLimitReached`) and every region iOS refused
+(`monitoringFailed`), and `reconcile` registers nothing for them. Its result
+was then discarded at every call site, and the presentation asked only
+`LocationReminderResolver`, which knows whether a place resolves and access is
+granted. The 19th reminder resolves exactly like the 18th, so the row, the
+editor and the receipt all said `Next time you arrive at Home` with no region
+behind it (DEL-7). The monitor now keeps what its last reconcile did not watch,
+keyed by region identifier (`unwatchedRegions`), and
+`CapturedItem.locationBlocker(authorization:)` asks it after the resolver. That
+function was already what `ItemPresentation`, `requiresReview` and the editor
+read, so every surface and count follows without a second channel: the item
+goes to Needs review as `Too many place reminders` or `Couldn’t watch this
+place`, like any other blocked place. `locationMonitorRequest` does not read it,
+or a reminder once over budget could never be planned again. The property is
+`Observable` by hand, for that one property, because a refusal arrives on the
+delegate with no SwiftData change and nothing else would redraw the row.
+
+The budget is shared, so one item's mutation moves another's answer. Capturing
+in the app, completing, archiving, deleting, editing a place reminder (including
+a date that holds it), retiring a fired one-shot and a Siri or Shortcut capture
+now reconcile straight after saving, instead of leaving the region and the row
+as they were until the next foreground. Before this, a place reminder captured
+in the app was not registered at all until the app next came to the foreground.
+A verdict keyed by region identifier describes only the request it was made
+for, so an edit or a moved Home reads as watched until the reconcile that
+follows it says otherwise; treating an unplanned request as blocked instead
+would show every place reminder as broken between launch and the first
+reconcile.
+
 ## 2026-09-23 — A date beside a place is shown as holding the place, not as a place reminder
 
 Turning on `Has a due date` for a live place reminder stores a date beside the
