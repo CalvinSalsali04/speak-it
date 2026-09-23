@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftData
 import XCTest
 @testable import SpeakIt
@@ -322,6 +323,70 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertTrue(transcriber.transcript.contains("Sunday"))
         XCTAssertTrue(transcriber.hasDetectedAudioInput)
         XCTAssertEqual(transcriber.state, .listening)
+    }
+
+    // MARK: - A stale start releases only what it created (LIF-7)
+    //
+    // The race: recording A is inside its `makeStartedBackend` await (model
+    // preparation can take seconds), the person taps Type instead, Speak
+    // instead and the orb, and recording B starts and is listening before A's
+    // await returns. These tests stop each run where `start` would stand at
+    // that step, which `beginRunWithoutAudioForTesting` cannot: it reports the
+    // microphone ready at once.
+
+    /// Falsifier: put `resetRecognitionResources()` back in the stale branch
+    /// of `SpeechTranscriber.adoptStartedBackend`. B's backend is then
+    /// cancelled and uninstalled, and B still says `.listening`.
+    func testAStaleStartReleasesOnlyItsOwnBackendAndLeavesTheNewerRecordingListening() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let staleBackend = RecordingRecognitionBackend()
+        let currentBackend = RecordingRecognitionBackend()
+        defer { transcriber.cancel() }
+
+        let staleRun = transcriber.openRunWithoutAudioForTesting()
+        transcriber.cancel()
+        let currentRun = transcriber.openRunWithoutAudioForTesting()
+        XCTAssertTrue(transcriber.adoptStartedBackendForTesting(currentBackend, for: currentRun))
+        transcriber.reportAudioInputReadyForTesting(startID: currentRun)
+        XCTAssertEqual(transcriber.state, .listening)
+
+        XCTAssertFalse(transcriber.adoptStartedBackendForTesting(staleBackend, for: staleRun))
+
+        XCTAssertEqual(staleBackend.cancelCount, 1, "the stale run must release the backend it was handed")
+        XCTAssertEqual(currentBackend.cancelCount, 0, "the stale run tore down the newer recording")
+        XCTAssertTrue(transcriber.isInstalledBackendForTesting(currentBackend))
+        XCTAssertFalse(transcriber.isInstalledBackendForTesting(staleBackend))
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.activeRunIDForTesting, currentRun)
+
+        // And B is still the recording a stop reaches.
+        transcriber.cancel()
+        XCTAssertEqual(currentBackend.cancelCount, 1)
+    }
+
+    /// Falsifier: lower `isPreparingEnhancedRecognition` before the ownership
+    /// guard in `adoptStartedBackend`, where `start` used to. The stale run
+    /// then hides the newer recording's model preparation. The second half
+    /// fails if the owning branch stops lowering it.
+    func testAStaleStartLeavesTheNewerRecordingsModelPreparationShowing() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        defer { transcriber.cancel() }
+
+        let staleRun = transcriber.openRunWithoutAudioForTesting(preparingEnhancedRecognition: true)
+        transcriber.cancel()
+        XCTAssertFalse(transcriber.isPreparingEnhancedRecognition)
+        let currentRun = transcriber.openRunWithoutAudioForTesting(preparingEnhancedRecognition: true)
+
+        XCTAssertFalse(
+            transcriber.adoptStartedBackendForTesting(RecordingRecognitionBackend(), for: staleRun)
+        )
+        XCTAssertTrue(transcriber.isPreparingEnhancedRecognition)
+        XCTAssertEqual(transcriber.state, .requestingPermission)
+
+        XCTAssertTrue(
+            transcriber.adoptStartedBackendForTesting(RecordingRecognitionBackend(), for: currentRun)
+        )
+        XCTAssertFalse(transcriber.isPreparingEnhancedRecognition)
     }
 
     // MARK: - The voice screen for as long as the save runs
@@ -695,5 +760,29 @@ private final class SaveHeldOpenByTheTest {
         outcome = result
         resume?.resume(with: result)
         resume = nil
+    }
+}
+
+/// A recognition backend that only records what the transcriber asks of it.
+/// It never produces a result.
+@MainActor
+private final class RecordingRecognitionBackend: SpeechRecognitionBackend {
+    let engine = SpeechRecognitionEngine.legacyRecognizer
+    let usesTrainedVoiceActivityDetection = false
+    private(set) var cancelCount = 0
+
+    func start(
+        contextualPhrases: [String],
+        onTranscript: @escaping @MainActor (String, Bool) -> Void,
+        onVoiceActivity: @escaping @MainActor () -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) async throws {}
+
+    nonisolated func append(_ buffer: AVAudioPCMBuffer) {}
+
+    func endAudio() {}
+
+    func cancel() {
+        cancelCount += 1
     }
 }

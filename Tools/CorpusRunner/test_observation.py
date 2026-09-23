@@ -894,7 +894,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         test walks every way out of persistence. Four, enumerated: three
         assertion messages and the ending `"threw a cancellation"` (named `"was cancelled"` in the first draft), which counts
         because it has a space in it; `"returned"` and `"threw"` do not.
-        The rewritten test double added none. What the test
+        The rewritten test double added none. 4119 -> 4121 later on
+        2026-09-23, from two `CaptureFeedbackTests` tests proving a stale
+        speech `start` releases only the backend it was handed (LIF-7).
+        Two, enumerated: both are assertion messages. The tests deliver
+        no words, and every phrase in their doc comments is in backticks.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -908,7 +913,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4119)
+        self.assertEqual(len(space), 4121)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
