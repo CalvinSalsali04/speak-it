@@ -433,7 +433,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
         XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
-            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) must wait for the person")
             XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
             XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place is kept as said")
             XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
@@ -510,7 +510,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
             XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place ends before the delay")
-            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) must wait for the person")
             XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
             XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
         }
@@ -609,6 +609,83 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         XCTAssertEqual(shaped.count, 1, "a place-triggered list stays one row")
         XCTAssertEqual(shaped.first?.shoppingGroup, "Costco")
+    }
+
+    /// A shopping row held only by the place-and-time hold (DEL-18) keeps
+    /// the store's list, because it asks which trigger to keep and not what
+    /// the words meant. Any other reason for review still names no list. A
+    /// held row fires nothing, so it cannot fold a dated trip clause away.
+    ///
+    /// Falsifier: a shopping row in review for another reason lands on the
+    /// Costco list. That covers a row with no place and an open question, and
+    /// a held row that also has an open question. The other falsifier is a
+    /// dated "go to Costco" task that disappears beside a held row.
+    func testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let capture = "When I get to Costco tomorrow, buy milk"
+        func row(place: Bool, otherQuestion: Bool) -> ExtractedThought {
+            let reading = OrganizedThought(
+                itemType: .shopping,
+                category: .shopping,
+                priority: .normal,
+                personName: nil,
+                dueDate: day,
+                reminderDate: day,
+                reminderDelivery: .notification,
+                recurrenceRule: nil,
+                needsClarification: otherQuestion,
+                temporalIntent: TemporalIntent(kind: .dateOnly),
+                locationIntent: place ? LocationIntent(event: .arrive, place: .named("costco")) : nil
+            ).holdingPlaceAndTime()
+            return ExtractedThought(
+                sourceQuote: "buy milk",
+                rawQuote: "buy milk",
+                wasRepaired: false,
+                analysisText: "buy milk",
+                suggestedTitle: "Buy milk",
+                organization: reading,
+                confidence: reading.needsClarification ? 0.58 : 1,
+                needsReview: reading.needsClarification
+            )
+        }
+        func group(_ item: ExtractedThought) -> String? {
+            RuleBasedThoughtExtractor.shapingShoppingLists([item], capture: capture).first?.shoppingGroup
+        }
+
+        let heldOnly = row(place: true, otherQuestion: false)
+        XCTAssertTrue(heldOnly.needsReview, "fixture: the hold puts the row in review")
+        XCTAssertEqual(group(heldOnly), "Costco", "the hold alone keeps the store's list")
+        XCTAssertNil(
+            group(row(place: false, otherQuestion: true)),
+            "a row in review for another reason names no list"
+        )
+        XCTAssertNil(
+            group(row(place: true, otherQuestion: true)),
+            "the hold beside another question names no list"
+        )
+
+        let trip = ExtractedThought(
+            sourceQuote: "go to Costco",
+            rawQuote: "go to Costco",
+            wasRepaired: false,
+            analysisText: "go to Costco",
+            suggestedTitle: "Go to Costco",
+            organization: OrganizedThought(
+                itemType: .task,
+                category: .general,
+                priority: .normal,
+                personName: nil,
+                dueDate: day,
+                reminderDate: day,
+                reminderDelivery: .notification,
+                recurrenceRule: nil,
+                needsClarification: false
+            ),
+            confidence: 1,
+            needsReview: false
+        )
+        let shaped = RuleBasedThoughtExtractor.shapingShoppingLists([trip, heldOnly], capture: capture)
+        XCTAssertEqual(shaped.count, 2, "the dated trip keeps its reminder beside a held list")
     }
 
     /// Items an older build parked in review for a named place and a time are

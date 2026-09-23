@@ -1856,7 +1856,7 @@ final class LocationReminderTests: XCTestCase {
         )
         XCTAssertNil(
             reconciliation.blocked[item.id],
-            "an excluded row is neither watched nor blocked: it stays in review"
+            "an excluded row is neither watched nor blocked: it waits in review"
         )
     }
 
@@ -1925,6 +1925,34 @@ final class LocationReminderTests: XCTestCase {
             LocationIntentParser.parse("Remind me to stretch when I get to the gym")?.place,
             .named("gym")
         )
+    }
+
+    /// Names that end in a number or in a weekday: what the cut does to them
+    /// today, pinned as it is rather than as it should be.
+    ///
+    /// A number alone is not a time. The bare-hour clock needs a preposition
+    /// in front of it, so "gate 5" and "room 204" keep their numbers. A
+    /// plural weekday is not a time to the temporal grammar either, so "TGI
+    /// Fridays" keeps its name. A name that ends in a singular weekday is cut:
+    /// "Ruby Tuesday" leaves "ruby". Nothing in the words tells that name
+    /// from "Costco Tuesday", which is a place and a day. The sentence-level
+    /// parse reads the Tuesday either way, so only the place shown in review
+    /// is wrong (see Docs/KNOWN_ISSUES.md).
+    ///
+    /// Falsifier: "gate 5" or "room 204" losing its number means the cut now
+    /// reads a bare number as a clock. "Ruby Tuesday" keeping its name, or
+    /// "TGI Fridays" losing its plural, means the rule changed and the known
+    /// issue needs revisiting.
+    func testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem() {
+        let cases: [(String, PlaceReference)] = [
+            ("Remind me to get a coffee when I get to gate 5", .named("gate 5")),
+            ("Remind me to drop off the forms when I get to room 204", .named("room 204")),
+            ("Remind me to grab a table when I get to TGI Fridays", .named("tgi fridays")),
+            ("Remind me to grab napkins when I get to Ruby Tuesday", .named("ruby")),
+        ]
+        for (text, place) in cases {
+            XCTAssertEqual(LocationIntentParser.parse(text)?.place, place, text)
+        }
     }
 
     /// The natural phrasing, end to end: held exactly like "…when I get home
@@ -1999,9 +2027,14 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
-    /// Either intent marked as set by hand counts as the person deciding, the
-    /// same marks launch recovery reads.
-    func testSchedulerAcceptsAPlaceAndTimeRowWhoseIntentThePersonEdited() throws {
+    /// Only the time marked as set by hand counts as the person deciding. A
+    /// place marked by hand does not: a reorganize keeps a hand-set place with
+    /// its mark and rewrites the time, so that mark says nothing about the
+    /// clock.
+    ///
+    /// Falsifier: the row with only its place marked produces a request, so a
+    /// confirmed place releases a guessed clock.
+    func testSchedulerAcceptsAPlaceAndTimeRowOnlyWhenThePersonEditedTheTime() throws {
         let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
         let fire = try XCTUnwrap(
             Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
@@ -2021,7 +2054,10 @@ final class LocationReminderTests: XCTestCase {
 
         XCTAssertNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: false)))
         XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: true, locationEdited: false)))
-        XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)))
+        XCTAssertNil(
+            ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)),
+            "a place set by hand does not confirm the time beside it"
+        )
     }
 
     /// The editor's way out still arms. Setting a time on a held row goes
@@ -2111,7 +2147,7 @@ final class LocationReminderTests: XCTestCase {
         let unreadable = reading(.named(""), .dateOnly)
         XCTAssertEqual(
             unreadable.holdingPlaceAndTime(), unreadable,
-            "a place lead with no readable place names no place to hold for"
+            "a place lead with no readable place names nothing to wait for"
         )
         let placeOnly = reading(.home, TemporalKind.none)
         XCTAssertEqual(placeOnly.holdingPlaceAndTime(), placeOnly, "no time was said, so nothing is held")

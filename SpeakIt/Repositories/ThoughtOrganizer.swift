@@ -21,6 +21,18 @@ struct OrganizedThought: Equatable, Sendable {
     /// not. `needsClarification` says *that* something is unclear; this says
     /// *what*, in a form a rule can branch on and a person can be shown.
     let state: SemanticState
+    /// Whether review is asked for some reason other than the place-and-time
+    /// hold: an ambiguous date, a vague time, an unsupported exception, a
+    /// missing person, low model confidence.
+    ///
+    /// `needsClarification` cannot say this, because the hold sets it too.
+    /// The one reader is the shopping pass, which names a store list for a
+    /// row held only by the hold and for no other row in review (see
+    /// `isHeldOnlyForPlaceAndTime`). It defaults to `needsClarification`, so a
+    /// reading built anywhere that does not know its reasons counts every
+    /// question as another reason. Only `ThoughtOrganizer.organize` and the
+    /// refinement path's validation state it.
+    let clarificationBesidesPlaceAndTime: Bool
 
     init(
         itemType: ItemType,
@@ -34,7 +46,8 @@ struct OrganizedThought: Equatable, Sendable {
         needsClarification: Bool,
         temporalIntent: TemporalIntent = .none,
         locationIntent: LocationIntent? = nil,
-        state: SemanticState = .resolved
+        state: SemanticState = .resolved,
+        clarificationBesidesPlaceAndTime: Bool? = nil
     ) {
         self.itemType = itemType
         self.category = category
@@ -48,6 +61,7 @@ struct OrganizedThought: Equatable, Sendable {
         self.temporalIntent = temporalIntent
         self.locationIntent = locationIntent
         self.state = state
+        self.clarificationBesidesPlaceAndTime = clarificationBesidesPlaceAndTime ?? needsClarification
     }
 }
 
@@ -68,6 +82,14 @@ extension OrganizedThought {
         return temporalIntent.kind != .none
     }
 
+    /// True when the place-and-time hold is the only reason this reading is
+    /// in review. Such a row is waiting for the person to pick a trigger, not
+    /// for its content to be understood, so the store it names still names
+    /// its shopping list, as it does for the same list with only a place.
+    var isHeldOnlyForPlaceAndTime: Bool {
+        holdsPlaceAndTime && needsClarification && !clarificationBesidesPlaceAndTime
+    }
+
     /// The place-and-time hold, applied as a post-condition on a finished
     /// reading.
     ///
@@ -82,8 +104,9 @@ extension OrganizedThought {
     /// final return of `TemporalIntentParser.parse`. The day, the place, the
     /// intent, the recurrence and the semantic state are all kept as spoken,
     /// so review can offer either half back. Only the three fields that would
-    /// execute or stay silent change. A reading that is not a place beside a
-    /// time is returned unchanged.
+    /// execute or stay silent change, and `clarificationBesidesPlaceAndTime`
+    /// is carried over as it was, so the hold never counts as another reason.
+    /// A reading that is not a place beside a time is returned unchanged.
     func holdingPlaceAndTime() -> OrganizedThought {
         guard holdsPlaceAndTime else { return self }
         return OrganizedThought(
@@ -98,7 +121,8 @@ extension OrganizedThought {
             needsClarification: true,
             temporalIntent: temporalIntent,
             locationIntent: locationIntent,
-            state: state
+            state: state,
+            clarificationBesidesPlaceAndTime: clarificationBesidesPlaceAndTime
         )
     }
 }
@@ -1043,6 +1067,8 @@ enum ThoughtOrganizer {
                     reminderDate: reminder,
                     delivery: reminderPass.delivery == .none ? .notification : reminderPass.delivery,
                     needsClarification: duePass.needsClarification || reminderPass.needsClarification,
+                    clarificationBesidesPlaceAndTime: duePass.clarificationBesidesPlaceAndTime
+                        || reminderPass.clarificationBesidesPlaceAndTime,
                     // The intent describes the deadline, which is what the item
                     // is actually about; the reminder is how it gets announced.
                     intent: duePass.intent,
@@ -1055,8 +1081,8 @@ enum ThoughtOrganizer {
         if actionability == .knowledge {
             timing = ParsedTiming(
                 dueDate: nil, reminderDate: nil, delivery: .none,
-                needsClarification: false, intent: timing.intent,
-                locationIntent: nil, wantsReminder: false
+                needsClarification: false, clarificationBesidesPlaceAndTime: false,
+                intent: timing.intent, locationIntent: nil, wantsReminder: false
             )
         }
 
@@ -1211,6 +1237,14 @@ enum ThoughtOrganizer {
             )
         }
 
+        // Everything besides the timing that asks for review. Kept apart so
+        // the reasons other than the place-and-time hold can be stated on
+        // their own; `needsClarification` is exactly what it was.
+        let otherQuestions = missingFollowUpTarget
+            || TemporalIntentParser.carriesUnsupportedException(
+                in: lowercase,
+                recurrence: recurrenceRule
+            )
         return OrganizedThought(
             itemType: type,
             category: category,
@@ -1221,13 +1255,11 @@ enum ThoughtOrganizer {
             reminderDelivery: reminderDelivery,
             recurrenceRule: recurrenceRule,
             needsClarification: (timing.needsClarification && recurringDate == nil)
-                || missingFollowUpTarget
-                || TemporalIntentParser.carriesUnsupportedException(
-                    in: lowercase,
-                    recurrence: recurrenceRule
-                ),
+                || otherQuestions,
             temporalIntent: resolvedIntent,
-            locationIntent: timing.locationIntent
+            locationIntent: timing.locationIntent,
+            clarificationBesidesPlaceAndTime: (timing.clarificationBesidesPlaceAndTime && recurringDate == nil)
+                || otherQuestions
         )
     }
 
@@ -2133,6 +2165,11 @@ private struct ParsedTiming: Equatable {
     let reminderDate: Date?
     let delivery: ReminderDelivery
     let needsClarification: Bool
+    /// `needsClarification` without the parser's own place-and-time disjunct.
+    /// Differs from it only on the final return of `TemporalIntentParser.parse`
+    /// for a place beside a time; see
+    /// `OrganizedThought.clarificationBesidesPlaceAndTime`.
+    let clarificationBesidesPlaceAndTime: Bool
     let intent: TemporalIntent
     /// Set when the wording named a place rather than (or as well as) a time.
     var locationIntent: LocationIntent?
@@ -2514,11 +2551,11 @@ private enum TemporalIntentParser {
         } else {
             false
         }
-        let needsClarification = resolution.isAmbiguous
+        let clarificationBesidesPlaceAndTime = resolution.isAmbiguous
             || locationPlaceUnreadable
-            || combinesPlaceAndTime
             || unsupportedCondition
             || (locationIntent == nil && wantsReminder && (reminderDate == nil || vagueTime))
+        let needsClarification = clarificationBesidesPlaceAndTime || combinesPlaceAndTime
 
         // A date-only day whose reminder was requested still needs a moment to
         // fire at. That moment belongs to the notification, not to the intent,
@@ -2572,6 +2609,7 @@ private enum TemporalIntentParser {
                     reminderDate: alert,
                     delivery: delivery,
                     needsClarification: vagueTime,
+                    clarificationBesidesPlaceAndTime: vagueTime,
                     intent: intent,
                     locationIntent: locationIntent,
                     wantsReminder: wantsReminder
@@ -2586,6 +2624,7 @@ private enum TemporalIntentParser {
                     reminderDate: nil,
                     delivery: .none,
                     needsClarification: vagueTime,
+                    clarificationBesidesPlaceAndTime: vagueTime,
                     intent: intent,
                     locationIntent: locationIntent,
                     wantsReminder: wantsReminder
@@ -2598,6 +2637,7 @@ private enum TemporalIntentParser {
             reminderDate: reminderDate,
             delivery: reminderDate == nil ? .none : delivery,
             needsClarification: needsClarification,
+            clarificationBesidesPlaceAndTime: clarificationBesidesPlaceAndTime,
             intent: intent,
             locationIntent: locationIntent,
             wantsReminder: wantsReminder

@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (60, 18, 32, 32)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -911,13 +911,57 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
         Removed: the Costco row's old note and eleven assertion messages
         from the tests that asserted the time won over a named place.
-        Three of the new assertion messages first said "wait", and the
-        `wait` bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed`
-        counts any utterance in this directory that contains the word,
-        assertion messages included: it moved from 58 rows to 60 on prose
-        nobody would say. The messages were reworded to say "held" and
-        "stays" rather than the bullet repinned, because the bullet is about
-        how people say the word and these were never people talking.
+        Three of the new assertion messages said "wait", and the `wait`
+        bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed` counts
+        any utterance in this directory that contains the word, assertion
+        messages included: it moved from 58 rows to 60 on prose nobody
+        would say. The messages were first reworded to say "held" and
+        "stays" rather than the bullet repinned. Review called that what it
+        is, test prose edited to keep a figure, so on 2026-09-23 the three
+        messages were restored word for word and the bullet repinned from
+        (58, 18, 30, 33) to (60, 18, 32, 32), in `MOTIVATING` and in the
+        `observation.py` docstring. That this census reads assertion
+        messages as utterances is a defect in the instrument, left visible
+        rather than hidden. The count here does not move: three literals
+        out, the same three back.
+        4145 -> 4154 on 2026-09-23, from the second review of that change
+        (names that end in a number or a weekday): nine added, none
+        removed, enumerated by diffing this population at both commits.
+        Four test captures (`"Remind me to get a coffee when I get to gate
+        5"`, `"Remind me to drop off the forms when I get to room 204"`,
+        `"Remind me to grab a table when I get to TGI Fridays"`, `"Remind
+        me to grab napkins when I get to Ruby Tuesday"`), each also a
+        `corpusCase` in `SemanticCorpusB.location` except the room; three
+        `note:` arguments on those rows; and two phrases quoted in a doc
+        comment, `"Ruby Tuesday"` and `"Costco Tuesday"`. The
+        development-set overlap stayed at 114.
+        4154 -> 4155 on 2026-09-23, from aligning the scheduler refusal
+        with #138 (a place set by hand no longer releases the time beside
+        it): one assertion message added, `"a place set by hand does not
+        confirm the time beside it"`, none removed, found by diffing this
+        population at both commits. The overlap stayed at 114.
+        4155 -> 4159 on 2026-09-23, from making DEL-18's shift visible:
+        four added, none removed, found by diffing this population at both
+        commits. Two `corpusCase` captures in `SemanticCorpusB.location`
+        (`"Remind me to take my pills when I go to bed tonight"`, `"Remind me
+        to mute my phone when I'm in a meeting tomorrow"`) and their two
+        `note:` arguments. The overlap stayed at 114. Still 4159 on
+        2026-09-23 after the round-3 grade: those two notes each gained a
+        sentence saying the place they pin (bed, meeting) is a false place a
+        later fix should move, so two literals were replaced by two and the
+        count did not change.
+        4159 -> 4167 on 2026-09-23, from keeping the store list on a
+        shopping row held only by DEL-18's place-and-time hold: eight added,
+        none removed, found by diffing this population at both commits. One
+        test, `testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`,
+        brought its capture (`"When I get to Costco tomorrow, buy milk"`),
+        a trip fixture's quote and title (`"go to Costco"`, `"Go to
+        Costco"`) and five assertion messages (`"fixture: the hold puts the
+        row in review"`, `"the hold alone keeps the store's list"`, `"a row
+        in review for another reason names no list"`, `"the hold beside
+        another question names no list"`, `"the dated trip keeps its
+        reminder beside a held list"`). Its `"buy milk"` and `"Buy milk"`
+        were already in the population.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -932,7 +976,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4145)
+        self.assertEqual(len(space), 4167)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

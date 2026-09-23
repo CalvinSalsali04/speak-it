@@ -56,10 +56,46 @@ Sobeys capture is no longer a timed list on either path. A place-triggered
 list stays one row, as it always has, so a held timed list at a named store
 no longer splits.
 
+The shift is wider than shopping. Any place lead followed by a noun and a
+time now holds: "when I go to bed tonight" names a place called "bed", and
+"when I'm in a meeting tomorrow" one called "meeting". Both used to arm the
+time (8 PM tonight, 9 AM tomorrow) and are now held for review. Two rows in
+`SemanticCorpusB.location` make that visible ("Remind me to take my pills
+when I go to bed tonight", "Remind me to mute my phone when I'm in a
+meeting tomorrow"), so these common sentences are in front of the owner
+before the word on this default is given.
+
 **Falsifier.** Any capture that names a place by name beside a time and
 comes out of `organize` with a reminder date, a delivery or no review
 question; or any "remind me at <clock>" that the international-clock rows
 read as a time and that now parses as a place.
+
+**A held shopping row keeps its store list.** Hosted CI (run 35858682400)
+failed the four tests that pin "the place still names the list": the two
+Sobeys captures and both "When I go to Costco today…" forms held correctly
+and got no list. `holdingPlaceAndTime()` sets `needsClarification`, the
+rules extractor copies it into `needsReview`, and
+`RuleBasedThoughtExtractor.assigningShoppingGroups` named only shopping rows
+with `!needsReview`. That filter has been there since the shopping-list pass
+was added on 2026-08-22, with no recorded reason. Its effect is that a row
+whose meaning is in question is not filed on a store's list. Before DEL-18
+these rows were not in review, so the filter never met them.
+
+The hold asks which trigger to keep, not what the words meant, so it is the
+one reason for review that now keeps the list. `OrganizedThought` records
+`clarificationBesidesPlaceAndTime`: whether review is asked for any other
+reason. `TemporalIntentParser.parse` and `organize` state it beside
+`needsClarification`, which is unchanged. The refinement path adds model
+confidence below 0.82 to it. Every other constructor defaults it to
+`needsClarification`, so a reading that does not know its reasons keeps the
+old behaviour. The shopping pass names a row in review only when
+`isHeldOnlyForPlaceAndTime` is true. A held row still lends no fire moment to
+the trip-clause fold, because it rings at no time.
+`SwiftDataThoughtRepositoryTests.testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`
+pins this. **Falsifier:** a shopping row in review for another reason, with
+or without the hold beside it, that is named for the store. The other
+falsifier is a dated "go to Costco" task folded away beside a held row. The
+four CI tests are the other direction.
 
 **Not covered.** Rows captured before this change stored no place, so neither
 the hold nor the scheduler refusal can see them (see `KNOWN_ISSUES.md`).
@@ -75,11 +111,37 @@ the hold would ring once at 9 AM, wherever the person was.
 **The decision.** `ReminderScheduleRequest` now also refuses a row for which
 `CapturedItem.awaitsPlaceOrTimeChoice` is true: the row constrains both a
 place and a time (`constrainsBothPlaceAndTime`), and nothing shows the
-person decided. The marks are the ones launch recovery reads for "the
-person's hand is on this row": `isReviewed`, or `isUserEdited` on either
-intent. The editor's way out is setting a time. That goes through
+person confirmed the time: neither `isReviewed` nor `isUserEdited` on the
+temporal intent. The editor's way out is setting a time. That goes through
 `SwiftDataThoughtRepository.update`, which sets `isReviewed` and stamps the
 temporal intent `isUserEdited`, so a row the person resolved still arms.
+
+The location intent's `isUserEdited` does not release the time. The first
+version of this refusal read it, as launch recovery does. #138 settled that
+only a review or the temporal mark confirms a time, because a reorganize
+(`apply`) rewrites the temporal intent and keeps a hand-set place with its
+mark, so a place the person confirmed would release a clock they never saw.
+This refusal follows the same rule (round two of the review, R2).
+
+**Merge instruction, for whichever of #136 and #138 merges second.** #138
+makes `ItemPresentation.scheduledDelivery` read the stored `reminderDate`,
+gated only by `ItemPresentation.mayArmTime`, and makes
+`ReminderScheduleRequest.init?` read `scheduledDelivery`, so that what a row
+shows as armed and what iOS is handed are one function. This refusal is a
+second gate beside it. Merged as they stand, a stored, unreviewed "…when I
+get home tomorrow" row would show a notification bell while its request is
+refused. The second merge must:
+
+1. Move `awaitsPlaceOrTimeChoice` into `ItemPresentation.mayArmTime`, as a
+   `return false` when it holds, so the bell, the receipt and the request
+   refuse together, and drop the separate `guard` in
+   `ReminderScheduleRequest.init?`.
+2. Add one assertion to `testSchedulerRefusesAStoredPlaceAndTimeRowUntilThePersonDecides`
+   (or its successor): the refused row's `ItemPresentation.scheduledDelivery`
+   is `.none`, and becomes `.notification` once `isReviewed` is set.
+
+The release rule is already the same on both branches: `isReviewed`, or the
+temporal intent's `isUserEdited`.
 
 This is a second layer, not the fix the entry below rejected. The capture
 hold still asks the question. The refusal covers stored rows and any
@@ -87,8 +149,9 @@ producer outside `organize`, and asks nothing, which is why it cannot be
 the only layer.
 
 **Falsifier.** A stored place-and-time row, unreviewed and unedited, with a
-future reminder date, that produces a `ReminderScheduleRequest`; or the same
-row, reviewed or edited by hand, that does not. Both are in
+future reminder date, that produces a `ReminderScheduleRequest`; the same
+row with only its place marked as set by hand, that produces one; or the
+same row, reviewed or with its time set by hand, that does not. Both are in
 `LocationReminderTests`, with dates built in the machine's zone, and so is
 the editor path through `update`.
 

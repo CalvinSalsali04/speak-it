@@ -367,6 +367,26 @@ enum SemanticCorpusB {
                    remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
                    note: "The terminator's \"after\" cut this name at \"home the day\". The grammar reads the day with what follows it."),
 
+        // Names that end in a number or a weekday (2026-09-23, round two of
+        // DEL-11). Pinned as the grammar reads them now. A number alone is
+        // not a clock, so a numbered place keeps its number. A name ending in
+        // a singular weekday is cut there, which is the known issue: the day
+        // was read as a time before the cut too, so the row is held either
+        // way and only the place name shown is wrong. Falsifier: "gate 5"
+        // losing its number, or any of these arming a reminder.
+        corpusCase(.location, "Remind me to get a coffee when I get to gate 5", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("gate 5"))],
+                   note: "A bare number needs \"at\" or the like in front of it to be a clock, so the gate keeps its number."),
+        corpusCase(.location, "Remind me to grab napkins when I get to Ruby Tuesday", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("ruby"))], review: [true],
+                   note: "Known issue: the name is cut at the weekday. Nothing in the words tells it from a place and a day, and the Tuesday was read as the day before the cut as well."),
+        corpusCase(.location, "Remind me to grab a table when I get to TGI Fridays", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("tgi fridays"))],
+                   note: "A plural weekday is a repeat only after \"every\" or \"weekly\", and never a single day, so the name is kept whole."),
+
         // Controls for the rows above. The same place alone, the same time
         // alone, and the forms that were already held. The hold must not move
         // any of them. The named-place row among them did move, on purpose:
@@ -398,6 +418,23 @@ enum SemanticCorpusB {
         corpusCase(.location, "Remind me to water the plants next week when I get home", count: 1,
                    remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
                    note: "A week is not a day, so this asks and fires no clock. The region half is still watched, because the stored reading carries no time: see Docs/KNOWN_ISSUES.md."),
+
+        // What DEL-18 moves beyond shopping (2026-09-23, round two). A place
+        // lead ("go to", "I'm in") followed by anything and then a time now
+        // names a place beside a time, so the whole sentence is held for
+        // review where the time used to win and arm. Both of these are common, and both are held on
+        // purpose: the arrival condition would otherwise execute
+        // unconditionally. They are here so the shift is visible in the
+        // corpus, not only in the decision. Falsifier: either row arming a
+        // reminder, or losing its place.
+        corpusCase(.location, "Remind me to take my pills when I go to bed tonight", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("bed"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 8 PM tonight was armed, with the place dropped. Held now: going to bed is the condition, and 8 PM is a guess at it. The place named bed is a false place, an activity read as somewhere to go; a fix for that moves this row on purpose."),
+        corpusCase(.location, "Remind me to mute my phone when I'm in a meeting tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("meeting"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 9 AM tomorrow was armed, with the place dropped. The meeting is the condition, and 9 AM is a guess at it. The place named meeting is a false place, an event read as somewhere to go; a fix for that moves this row on purpose."),
     ]
 
     static let all: [CorpusCase] = temporalAmbiguity + nonTimeNumbers + people + recurrence + location

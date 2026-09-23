@@ -159,7 +159,11 @@ enum LocationIntentParser {
             // reading one as a place would hold an ordinary timed reminder
             // for review over a place that exists nowhere.
             let (name, following) = placeName(in: remainder)
-            if lead.objectMayBeATime, readsAsTime("at " + name, followedBy: following) {
+            if lead.objectMayBeATime, readsAsTime(
+                "at " + name,
+                followedBy: following,
+                whichAloneReads: ThoughtOrganizer.statedTime(in: following)
+            ) {
                 return nil
             }
 
@@ -315,23 +319,50 @@ enum LocationIntentParser {
     /// not before "Monday". The first word is never a candidate: something has
     /// to be left to name the place. Neither is a cut that would leave only an
     /// article, because "the" is not a place: "the weekend" is a time.
+    ///
+    /// Only the last `trailingTimeWordLimit` words are tried as a start. This
+    /// runs inside every `parse` that matches a lead, several times per
+    /// capture, and each try is up to two full temporal parses of the rest of
+    /// the text. Unpunctuated dictation can hand it a long phrase, and trying
+    /// every word would cost words × length on the capture path. The cap
+    /// makes it a fixed number of tries, whatever the phrase's length.
     private static func trailingTimeStart(
         in phrase: String,
         followedBy following: String
     ) -> String.Index? {
         let words = wordRanges(in: phrase)
         guard words.count > 1 else { return nil }
-        for word in words.dropFirst() {
+        // What the rest of the sentence says without any of these words. The
+        // same for every candidate, so it is read once.
+        let followingAlone = ThoughtOrganizer.statedTime(in: following)
+        for word in words.dropFirst().suffix(trailingTimeWordLimit) {
             let head = phrase[..<word.lowerBound].trimmingCharacters(in: .whitespaces)
             if head.range(of: #"^(?:the|a|an|my)$"#, options: [.regularExpression]) != nil {
                 continue
             }
-            if readsAsTime(String(phrase[word.lowerBound...]), followedBy: following) {
+            if readsAsTime(
+                String(phrase[word.lowerBound...]),
+                followedBy: following,
+                whichAloneReads: followingAlone
+            ) {
                 return word.lowerBound
             }
         }
         return nil
     }
+
+    /// How many of a place phrase's last words may start a time.
+    ///
+    /// A position cap, not a list of words: it says nothing about which
+    /// words are times, only how far back from the end one may begin. Five is
+    /// enough for every time the corpus rows put straight after a place. The
+    /// longest they need is "the day after tomorrow", four words, and the
+    /// terminator already ends that phrase at "after", so only "the day" is
+    /// tried. "On the 15th" is three words and "next Monday" two. A time
+    /// longer than five words would keep its first words in the place name.
+    /// That name is then no saved place, and a named place beside a time is
+    /// held for review, so the error asks rather than arms a clock.
+    private static let trailingTimeWordLimit = 5
 
     /// True when `words` state a time that runs to their last word, in the
     /// sentence they are part of.
@@ -343,9 +374,17 @@ enum LocationIntentParser {
     /// so the time does not run to the end and nothing is cut. `following` is
     /// read with them because a time can need its context: "at twenty" is
     /// nothing, and "at twenty to eight" is 7:40.
-    private static func readsAsTime(_ words: String, followedBy following: String) -> Bool {
+    ///
+    /// `followingAlone` is what `following` reads as on its own, passed in so
+    /// that a caller asking about several `words` before the same `following`
+    /// reads it once.
+    private static func readsAsTime(
+        _ words: String,
+        followedBy following: String,
+        whichAloneReads followingAlone: ThoughtOrganizer.StatedTime?
+    ) -> Bool {
         guard let reading = ThoughtOrganizer.statedTime(in: words + following),
-              reading != ThoughtOrganizer.statedTime(in: following) else { return false }
+              reading != followingAlone else { return false }
         let lastWord = wordRanges(in: words).last?.lowerBound ?? words.startIndex
         return reading != ThoughtOrganizer.statedTime(in: String(words[..<lastWord]) + following)
     }

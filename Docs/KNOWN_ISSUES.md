@@ -536,7 +536,10 @@ The specifics:
   ("tomorrow when I get to Costco"); before that its time won and the place
   was dropped. Because a named place is not geocoded, the place half of such
   a request cannot fire yet: choosing it leaves an inert reminder, and the
-  clock half is the only way out that rings.
+  clock half is the only way out that rings. A held shopping list keeps its
+  store's name only when the hold is its only question. If it also has
+  another one, such as an ambiguous date, a vague "later" or low model
+  confidence, it gets no store list, and resolving review does not add one.
 
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
@@ -572,11 +575,21 @@ The specifics:
     phrasings sit in the corpus beside the day-first rows (see
     `DECISIONS.md`, 2026-09-23). A name that still ends in a time the
     grammar cannot read keeps the whole phrase as a named place.
+  - **A place name that ends in a weekday loses the weekday.** "When I get
+    to Ruby Tuesday" names a place called "ruby". The name ends where the
+    temporal grammar finds a time, and nothing in the words tells "Ruby
+    Tuesday" from "Costco Tuesday", a place and then a day. The time is still
+    read, and was read before the cut too, so the request is held for review
+    either way and nothing is armed. Only the place name shown in review is
+    cut. A number is not cut ("gate 5", "room 204"), and neither is a plural
+    weekday ("TGI Fridays"). The corpus rows and
+    `testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem` pin all
+    four as they read now.
   - *Resolved the same day for rows that kept their place.* A row captured
     before the fix still carries its 9 AM alert, and no launch pass re-reads
     it, but `ReminderScheduleRequest` now refuses any row that constrains a
-    place and a time until the person has decided (`isReviewed`, or either
-    intent marked `isUserEdited`). Such a row stays silent and unwatched.
+    place and a time until the person has decided (`isReviewed`, or the
+    temporal intent marked `isUserEdited`). Such a row stays silent and unwatched.
     Nothing moves it into Needs review, though: its stored
     `needsClarification` is still false, so it sits on Today with its day
     and no alert, and nothing tells the person that the alert they were
