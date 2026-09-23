@@ -918,7 +918,48 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"a discarded recording was saved"`. The fixture
         `"buy milk and eggs today"` was already counted earlier in this entry.
         The development-set overlap stayed at 114, checked by
-        regenerating `LANGUAGE_BASELINE.md`. What the test
+        regenerating `LANGUAGE_BASELINE.md`. 4135 -> 4153 on 2026-09-23,
+        when the relaunch-handoff branch (#128) was stacked on this one: it
+        was measured on its own as 4068 -> 4086, from
+        recording the handoff of a draft to its CaptureSession so a
+        relaunch stops replaying words already committed: seven
+        test methods in `DurabilityTests.swift` and eighteen literals, enumerated rather
+        than assumed. Nine are fixtures: `"Call the landlord about the
+        lease"`, `"Renew the passport before March"`, `"Book the car in
+        for its service"`, `"Text Jordan the gate code"`, `"Text  Jordan
+        the gate code "` (the same words with a doubled space and a
+        trailing one, which is the point of that test and a distinct
+        string here), `"Text Jordan the new gate code"`, `"Water the
+        tomatoes tonight"`, `"Something else entirely"` and `"Ask Dana for
+        the invoice number"`. Eight are assertion messages: `"A committed
+        practice save must not be replayed"`, `"A committed handoff
+        releases its draft"`, `"The seeded recording must be one the audio
+        pass would replay"`, `"Uncommitted words must come back"`, `"The
+        text pass leaves audio drafts to the audio pass"`, `"The same
+        words, differently spaced, are still the handed-off words"`, `"The
+        old format must decode"` and `"A pre-handoff draft must still be
+        replayed after the update"`. The eighteenth is the doc-comment
+        hazard once more: a test explaining how an older draft decodes
+        quotes `"not handed off"`, and it counts like a fixture. The
+        practice sentence the tutorial test reuses, `"Tomorrow at 9, ask
+        Maya about the proposal."`, adds nothing, because three files here
+        already carry it. Stacked, the eighteen land on 4135 unchanged,
+        because the two branches' test literals share none; that is the
+        merged tree measured, not the two figures added. The
+        development-set overlap stayed at 114, checked
+        by regenerating `LANGUAGE_BASELINE.md` rather than assumed.
+        4153 -> 4156 on 2026-09-23, when the Save Thought intent and
+        Today's typed recovery came to hand off through
+        `CaptureDraftStore.handOff`, and late audio recovery came to
+        withdraw a handoff as `update` does: four test methods in
+        `DurabilityTests.swift` and three literals, enumerated. One is a
+        fixture, `"Pick up the dry cleaning on Thursday"`, the typed words,
+        used twice. Two are assertion messages, `"The draft must carry the
+        handoff before the commit starts"` and `"The commit's error must
+        reach the caller"`. The rest add nothing: the practice sentence,
+        `"No speech detected"`, the gate-code fixtures the withdrawal
+        test reuses and the reused assertion messages are already
+        counted. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -932,7 +973,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4135)
+        self.assertEqual(len(space), 4156)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -436,6 +436,13 @@ struct RootView: View {
             }
             CaptureDraftStore.pruneEmptyTextDrafts()
             CaptureDraftStore.pruneResolvedTombstones()
+            // Before either replay path runs: a draft whose words already
+            // reached a committed session must not be replayed into another,
+            // and the audio pass would otherwise re-transcribe it first. This
+            // line is the audio pass's only protection; the release inside
+            // `recoverInterruptedCaptureDraft` covers the text pass alone.
+            // Keep it above `recoverInterruptedAudioDrafts()`.
+            repository?.releaseHandedOffCaptureDrafts()
             await recoverInterruptedAudioDrafts()
             repository?.recoverUnorganizedCaptures()
             repository?.recoverInterruptedCaptureDraft()
@@ -1342,11 +1349,22 @@ struct RootView: View {
             }
 
             do {
+                // The payload's own ID is the session's: the share extension
+                // mints it once and it names the inbox file. A kill between this
+                // commit and the removal below leaves a file whose session is
+                // already in the store, and the next import gets that session
+                // back unchanged (`createdNewCapture` false, so nothing is
+                // charged or counted twice) and removes the file. Dedupe
+                // usually caught this before, because a replay carries the
+                // payload's own `createdAt`, text and source; the ID makes it
+                // exact instead of depending on the fingerprint and the window.
                 let result = try await repository.createCaptureResult(
                     text: text,
                     source: .shareSheet,
                     createdAt: pending.payload.createdAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: pending.payload.id
                 )
                 SharedCaptureInbox.remove(at: pending.url)
                 if result.createdNewCapture {
@@ -1407,11 +1425,21 @@ struct RootView: View {
             CaptureDraftStore.markProcessing(id: draft.id)
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Recovery's own save is handed off the same way a live one
+                // is, so a kill inside it is not replayed at the next launch.
+                let sessionID = UUID()
+                CaptureDraftStore.recordHandoff(
+                    id: draft.id,
+                    transcript: recoveredText,
+                    sessionID: sessionID
+                )
                 let result = try await repository.createCaptureResult(
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 if result.createdNewCapture {
