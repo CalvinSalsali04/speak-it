@@ -66,14 +66,11 @@ enum ShoppingListProjection {
         )
     }
 
-    @MainActor
-    static func belongsInTopLevelReview(
-        _ item: CapturedItem,
-        authorization: LocationAuthorization
-    ) -> Bool {
-        !contains(item) && item.requiresReview(authorization: authorization)
-    }
-
+    // There is deliberately no shopping-specific review predicate. A held
+    // shopping row is listed under Needs review by
+    // `ItemPresentation.belongsInNeedsReview`, the one predicate the receipt
+    // also reads, and it stays on its list here. Excluding it from review
+    // left the receipt pointing at a row the section never showed.
 }
 
 /// A deliberately small projection of the existing captured items. Shopping
@@ -405,25 +402,54 @@ struct ShoppingListView: View {
             .accessibilityLabel("Complete \(item.displayTitle)")
             .accessibilityIdentifier("list.complete.\(item.displayTitle)")
 
+            // The same reading Today's rows use — memoized, so this costs a
+            // cache lookup per row.
+            let presentation = ItemPresentation.make(
+                for: item,
+                authorization: LocationReminderMonitor.shared.authorization
+            )
+            let review = reviewDetail(for: presentation)
             Button { selectedItem = item } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.displayTitle)
-                        .font(SpeakItTypography.itemTitle)
-                        .foregroundStyle(Color.speakInk)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.displayTitle)
+                            .font(SpeakItTypography.itemTitle)
+                            .foregroundStyle(Color.speakInk)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                    // A timed entry ("remind me to get eggs in an hour") keeps
-                    // its trigger visible here, the same reading Today's rows
-                    // use — memoized, so this costs a cache lookup per row.
-                    reminderDetail(for: item)
+                        // A timed entry ("remind me to get eggs in an hour")
+                        // keeps its trigger visible here. A row held for
+                        // review says what it is waiting for underneath
+                        // instead, so a proposed time cannot read as set.
+                        if review == nil {
+                            reminderDetail(for: presentation)
+                        }
+                    }
+
+                    if let review {
+                        Text(review.reason)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color.speakWarning)
+                            .multilineTextAlignment(.leading)
+                        if let detail = review.detail {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(Color.speakMuted)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.speakIt)
-            .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityLabel(
+                ["Edit \(item.displayTitle)", review?.reason, review?.detail]
+                    .compactMap { $0 }
+                    .joined(separator: ". ")
+            )
             .accessibilityIdentifier("list.item.\(item.displayTitle)")
         }
         .padding(.vertical, 6)
@@ -432,12 +458,25 @@ struct ShoppingListView: View {
         .listRowBackground(Color.speakBackground)
     }
 
-    @ViewBuilder
-    private func reminderDetail(for item: CapturedItem) -> some View {
-        let presentation = ItemPresentation.make(
-            for: item,
-            authorization: LocationReminderMonitor.shared.authorization
+    /// What a row in Needs review is waiting for, and what it would do once
+    /// confirmed: the reason Today's Needs review row leads with, then
+    /// `withheldTriggerText` (`Reminder not set · 8:00 PM`), or the plain
+    /// timing when nothing is withheld (a blocked place's name, a due date).
+    /// `nil` for a row that is not in review, which keeps its usual trailing
+    /// timing and bell.
+    private func reviewDetail(
+        for presentation: ItemPresentation
+    ) -> (reason: String, detail: String?)? {
+        guard presentation.requiresReview else { return nil }
+        return (
+            reason: presentation.reviewRequirement
+                ?? ClarificationRequirement.confirmation.listLabel,
+            detail: presentation.withheldTriggerText ?? presentation.primaryTimingText
         )
+    }
+
+    @ViewBuilder
+    private func reminderDetail(for presentation: ItemPresentation) -> some View {
         if let timing = presentation.primaryTimingText {
             HStack(spacing: 3) {
                 if presentation.reminderState.alertGlyph == .notification {

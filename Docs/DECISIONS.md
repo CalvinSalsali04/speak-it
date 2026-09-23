@@ -437,6 +437,60 @@ would, and the editor says `Off while a date is set` the moment a
 date is turned on. The place itself is kept, and turning the date off arms it
 again.
 
+## 2026-09-23 — Needs review lists what the receipt says it does
+
+A shopping row the system held for review was never listed under Needs
+review, yet the capture receipt counted it. "Remind me to buy cereal when I
+get to Costco" was announced as `Needs review · Can't watch a named place`,
+and a multi-item capture said `1 to review`, while Today's section stayed
+empty and the row sat on the Costco list looking ready. After the entry
+below, such a row also arms nothing, so it was silent **and** unlisted: the
+person was told to review something they could not find (REV-3). A held
+`Task or note?` row whose title was edited to a product left review the same
+way, retyped to shopping with the type question still open.
+
+The cause was two predicates. The receipt read `ItemPresentation.destination`,
+which asks `requiresReview`; Today built the section through
+`ShoppingListProjection.belongsInTopLevelReview`, which added
+`!contains(item)`. Nothing tied the two together, so they disagreed without
+anything failing.
+
+**The rule:** `ItemPresentation.belongsInNeedsReview` is the only answer to
+"is this row in Needs review", and `needsReviewMembers(in:authorization:)` is
+the only way to list them. Today's section is built from it,
+`CaptureCreationResult.needsReviewCount` counts with it, and `destination`
+asks it first, so the single-item receipt follows too. The shopping
+predicate is removed rather than corrected, so there is no second place to
+drift.
+
+Every item type is a member, shopping included. A held shopping row is
+listed in Needs review **and stays on its list**: review is where the
+question is asked, the list is still where the item lives, and nothing moves
+between Today and Memory. The alternative, listing it only on the list with
+a marker there, was rejected because it leaves the receipt pointing at a
+section that does not show it, which is the bug. On its list the held row now
+leads with the same reason the Needs review row shows and, under it, the
+caption from the entry below (`Reminder not set · 8:00 PM`) in place of a
+bare time that read as set. There are no new controls.
+
+A held row also no longer times its list, so the Today list card and the
+morning brief do not read its proposal (the entry below).
+
+What pins it. Four `ItemPresentationTests` pin the shared definition:
+`belongsInNeedsReview` and `needsReviewMembers` admit a held shopping row,
+the receipt's count and label agree with them, and a title edit that
+retypes a held row to shopping keeps it a member
+(`testTheReceiptCountsExactlyTheRowsNeedsReviewLists`,
+`testASingleItemReceiptSaysReviewExactlyWhenNeedsReviewListsTheRow`,
+`testAHeldShoppingRowStaysOnItsListAndIsListedInNeedsReview`,
+`testAHeldRowRetypedToShoppingByATitleEditStaysInNeedsReview`). None of them
+reaches `TodayView.needsReview`, which is where REV-3 lived: putting the
+shopping exclusion back in the view leaves all four passing. The UI test
+`SpeakItUITests.testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard`
+pins the view. It types the Costco sentence and finds the row by its
+`today.review.<title>` identifier, with the `Costco` list card still on Today.
+UI tests do not run in CI, so it is on the owner's hand-run list.
+
 ## 2026-09-23 — A row the system holds for review arms nothing
 
 Rows held for review could still act. A vague `later today` kept a guessed

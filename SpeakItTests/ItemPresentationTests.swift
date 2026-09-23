@@ -564,6 +564,61 @@ final class ItemPresentationTests: XCTestCase {
         )
     }
 
+    /// REV-3's own scenario. `Remind me to buy cereal when I get to Costco` is
+    /// a shopping row on the Costco list with a named place Speak It cannot
+    /// watch, and the receipt says `Needs review · Can't watch a named place`.
+    /// Today's Needs review section used to stay empty, because it filtered
+    /// shopping out with a predicate of its own. Whatever a single-item
+    /// receipt says about review must now be true of the section, in both
+    /// directions, shopping or not.
+    ///
+    /// Falsifier: restore the shopping exclusion in `belongsInNeedsReview`
+    /// and the Costco row's receipt says review while the row is not listed;
+    /// have `confirmationContext` decide review from `needsClarification`
+    /// alone and a blocked place row is listed while its receipt says
+    /// otherwise.
+    func testASingleItemReceiptSaysReviewExactlyWhenNeedsReviewListsTheRow() throws {
+        // Home deliberately not configured.
+        let costco = try repository.createCapture(
+            text: "Remind me to buy cereal when I get to Costco",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertEqual(costco.itemType, .shopping, "precondition: a Costco list row")
+        XCTAssertEqual(ShoppingGroupStore.group(for: costco.id), "Costco")
+        XCTAssertTrue(
+            ItemPresentation.belongsInNeedsReview(costco, authorization: authorized),
+            "a shopping row held for its place is listed in Needs review"
+        )
+
+        let others = try [
+            "Remind me to buy milk when I get home",
+            "Take the bins out when I get home",
+            "Buy milk",
+            "Remind me to call mom tomorrow at 5pm",
+        ].map {
+            try repository.createCapture(
+                text: $0,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+        }
+
+        for item in [costco] + others {
+            let receipt = ReminderScheduler.confirmationContext(
+                for: item,
+                authorization: authorized
+            )
+            XCTAssertEqual(
+                receipt.hasPrefix("Needs review"),
+                ItemPresentation.belongsInNeedsReview(item, authorization: authorized),
+                "\"\(item.originalTextSegment)\" (\(item.itemType)): receipt \"\(receipt)\""
+            )
+        }
+    }
+
     /// The receipt and Today must agree for every item, not just the one that
     /// was reported. This asserts the relationship rather than a string.
     func testConfirmationAgreesWithDestinationForBothPlaceStates() throws {
@@ -652,9 +707,18 @@ final class ItemPresentationTests: XCTestCase {
     }
 
     /// Shopping is still actionable in the model so reminders, widgets, and
-    /// completion keep working. The Today UI alone projects it behind one
-    /// Shopping entry instead of rendering another top-level row.
-    func testShoppingProjectionKeepsOpenItemsOutOfTopLevelTodayAndReview() {
+    /// completion keep working. The Today UI projects an open shopping row
+    /// behind one Shopping entry instead of rendering another top-level row,
+    /// and a row held for review stays on that list. It is also listed under
+    /// Needs review: that section used to filter shopping out with a
+    /// predicate of its own while the receipt counted it, so the person was
+    /// told to review a row they could not find (REV-3).
+    ///
+    /// Falsifier: put the shopping exclusion back into
+    /// `ItemPresentation.belongsInNeedsReview` (`!ShoppingListProjection
+    /// .contains(item) && …`) and the held row is not a member; drop held rows
+    /// from `openItems` and it leaves its list.
+    func testAHeldShoppingRowStaysOnItsListAndIsListedInNeedsReview() {
         let shopping = CapturedItem(
             originalTextSegment: "Buy milk",
             displayTitle: "Buy milk",
@@ -680,12 +744,12 @@ final class ItemPresentationTests: XCTestCase {
             category: .shopping,
             completedAt: .now
         )
+        let all = [shopping, task, shoppingNeedingReview, completedShopping]
 
         XCTAssertEqual(
-            ShoppingListProjection.openItems(
-                in: [shopping, task, shoppingNeedingReview, completedShopping]
-            ).map(\.id),
-            [shopping.id, shoppingNeedingReview.id]
+            ShoppingListProjection.openItems(in: all).map(\.id),
+            [shopping.id, shoppingNeedingReview.id],
+            "the held row keeps its home on the list"
         )
         XCTAssertFalse(
             ShoppingListProjection.belongsOnTopLevelToday(
@@ -694,6 +758,14 @@ final class ItemPresentationTests: XCTestCase {
                 relativeTo: .now
             )
         )
+        XCTAssertFalse(
+            ShoppingListProjection.belongsOnTopLevelToday(
+                shoppingNeedingReview,
+                authorization: authorized,
+                relativeTo: .now
+            ),
+            "a held row is never a ready Today action"
+        )
         XCTAssertTrue(
             ShoppingListProjection.belongsOnTopLevelToday(
                 task,
@@ -701,11 +773,160 @@ final class ItemPresentationTests: XCTestCase {
                 relativeTo: .now
             )
         )
-        XCTAssertFalse(
-            ShoppingListProjection.belongsInTopLevelReview(
-                shoppingNeedingReview,
-                authorization: authorized
-            )
+        XCTAssertEqual(
+            ItemPresentation.needsReviewMembers(in: all, authorization: authorized).map(\.id),
+            [shoppingNeedingReview.id],
+            "Needs review lists the held shopping row, and only it"
+        )
+        XCTAssertEqual(presentation(for: shoppingNeedingReview).destination, .needsReview)
+    }
+
+    /// The acceptance case for REV-3: one capture that is a shopping list and
+    /// a task, with one shopping row held for a vague time. The receipt's `1
+    /// to review` and Today's Needs review section must describe the same
+    /// rows, because both are `ItemPresentation.needsReviewMembers`. The held
+    /// row also says what it would do once confirmed, the caption the Needs
+    /// review row and the list row both show.
+    ///
+    /// The rows are built by hand, in the shape the pipeline stores, because
+    /// which row of a real sentence gets held is the parser's business and
+    /// not what this pins. No wall clock is asserted.
+    ///
+    /// Falsifier: count `needsReviewCount` from anything but
+    /// `needsReviewMembers` (for instance `needsClarification` on non-shopping
+    /// rows, the old split) and the two numbers differ; restore the shopping
+    /// exclusion in `belongsInNeedsReview` and the section is empty while the
+    /// held row is still held.
+    func testTheReceiptCountsExactlyTheRowsNeedsReviewLists() throws {
+        let createdAt = Date.now
+        let proposed = createdAt.addingTimeInterval(2 * 24 * 60 * 60)
+        let session = CaptureSession(
+            originalTranscription: "Buy milk and eggs later, and call the plumber",
+            createdAt: createdAt,
+            captureSource: .inAppText,
+            processingStatus: .complete
+        )
+        container.mainContext.insert(session)
+        let milk = CapturedItem(
+            originalTextSegment: "Buy milk",
+            displayTitle: "Buy milk",
+            itemType: .shopping,
+            category: .shopping,
+            createdAt: createdAt,
+            captureSession: session
+        )
+        // Held by the system: a vague time kept as a proposal, the intent
+        // untouched by the person, so `mayArmTime` is false.
+        let eggs = CapturedItem(
+            originalTextSegment: "Buy eggs later",
+            displayTitle: "Buy eggs",
+            itemType: .shopping,
+            category: .shopping,
+            createdAt: createdAt,
+            reminderDate: proposed,
+            needsClarification: true,
+            captureSession: session
+        )
+        let plumber = CapturedItem(
+            originalTextSegment: "Call the plumber",
+            displayTitle: "Call the plumber",
+            itemType: .task,
+            createdAt: createdAt,
+            captureSession: session
+        )
+        let rows = [milk, eggs, plumber]
+        rows.forEach { container.mainContext.insert($0) }
+        try container.mainContext.save()
+        XCTAssertFalse(ItemPresentation.mayArmTime(eggs), "precondition: the system holds the eggs")
+
+        // Today builds its section from the whole store; the receipt from the
+        // capture's rows.
+        let stored = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let listed = ItemPresentation.needsReviewMembers(in: stored, authorization: authorized)
+        let result = CaptureCreationResult(session: session, items: rows)
+
+        XCTAssertEqual(listed.map(\.id), [eggs.id])
+        XCTAssertEqual(
+            result.needsReviewCount,
+            listed.count,
+            "the receipt's review count is the Needs review section's membership"
+        )
+        XCTAssertTrue(
+            result.receiptContext.contains("1 to review"),
+            "got \(result.receiptContext)"
+        )
+        XCTAssertEqual(
+            ShoppingListProjection.openItems(in: stored).map(\.id).sorted { $0.uuidString < $1.uuidString },
+            [milk.id, eggs.id].sorted { $0.uuidString < $1.uuidString },
+            "both shopping rows stay on their list"
+        )
+
+        let shown = presentation(for: eggs)
+        XCTAssertNil(ReminderScheduleRequest(item: eggs), "held, so nothing reaches iOS")
+        let timing = try XCTUnwrap(shown.primaryTimingText)
+        XCTAssertEqual(shown.withheldTriggerText, "Reminder not set · \(timing)")
+    }
+
+    /// The second way into REV-3: a held `Task or note?` row whose title the
+    /// person edits to a product, without touching Type, is retyped to
+    /// shopping by `ItemEditSemanticReconciler`. The type question is still
+    /// open, so the row stays held, and it used to leave Needs review for
+    /// the list with nothing resolved.
+    ///
+    /// Falsifier: restore the shopping exclusion in `belongsInNeedsReview`
+    /// and the retyped row drops out of Needs review while still held.
+    func testAHeldRowRetypedToShoppingByATitleEditStaysInNeedsReview() throws {
+        let session = CaptureSession(
+            originalTranscription: "Dish soap thing",
+            createdAt: .now,
+            captureSource: .inAppText,
+            processingStatus: .complete
+        )
+        container.mainContext.insert(session)
+        let item = CapturedItem(
+            originalTextSegment: "Dish soap thing",
+            displayTitle: "Dish soap thing",
+            itemType: .unclear,
+            needsClarification: true,
+            captureSession: session
+        )
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        defer { try? repository.delete(item) }
+
+        let reconciled = ItemEditSemanticReconciler.reconcile(
+            title: "Buy dish soap",
+            itemType: item.itemType,
+            category: item.category,
+            personName: item.personName,
+            originalTitle: item.displayTitle,
+            originalItemType: item.itemType,
+            originalCategory: item.category,
+            originalPersonName: item.personName
+        )
+        XCTAssertEqual(
+            reconciled.itemType,
+            .shopping,
+            "precondition: the title edit alone retypes the row"
+        )
+        // The editor's save: Type untouched, so the type question is still
+        // open and Needs review stays on.
+        try repository.update(item, with: ItemEdits(
+            title: reconciled.title,
+            itemType: reconciled.itemType,
+            category: reconciled.category,
+            dueDate: nil,
+            reminderDate: nil,
+            priority: item.priority,
+            personName: reconciled.personName,
+            needsClarification: true
+        ))
+
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertTrue(ShoppingListProjection.contains(item), "it lives on a list now")
+        XCTAssertTrue(
+            ItemPresentation.belongsInNeedsReview(item, authorization: authorized),
+            "and, still held, it is listed where it can be resolved"
         )
     }
 

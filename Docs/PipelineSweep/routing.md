@@ -397,8 +397,11 @@ note; but `i'm not going to bother with the extended warranty` → cancel.
 
 **(a) Memory items appear on Today.** `TodayView.needsReview` (`TodayView.swift:230-240`)
 filters `allItems` — every non-archived item — through
-`ShoppingListProjection.belongsInTopLevelReview`, which calls
-`CapturedItem.requiresReview` (`CapturedItem.swift:183`):
+`ItemPresentation.needsReviewMembers`, which calls
+`CapturedItem.requiresReview` (`CapturedItem.swift:183`). *(Updated
+2026-09-23: at the time of this sweep the filter was a shopping-excluding
+predicate in `ShoppingListProjection`, since removed. The finding is
+unchanged, because both ask `requiresReview`.)*
 
 ```swift
 return needsClarification || locationBlocker(authorization:) != nil

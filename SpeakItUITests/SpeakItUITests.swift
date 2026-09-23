@@ -121,6 +121,38 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(list.waitForExistence(timeout: 4), "the Today root is back on screen")
     }
 
+    /// A shopping row the system holds for review is listed in Needs review
+    /// and stays on its list (REV-3). Costco has not been resolved to a
+    /// place, so the row is held by its live location blocker and the
+    /// receipt says `Needs review`. This is the test that reads Today's own
+    /// section; `ItemPresentationTests` pins the shared predicate behind it.
+    ///
+    /// Falsifier: rebuild `TodayView.needsReview` as
+    /// `allItems.filter { !ShoppingListProjection.contains($0) && ItemPresentation.belongsInNeedsReview($0, authorization: authorization) }`.
+    /// The row leaves Needs review while its list card stays, so the first
+    /// assertion after Done fails. Every `ItemPresentationTests` test still
+    /// passes.
+    func testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard() {
+        let app = launchApp("--ui-testing-skip-welcome")
+
+        saveTypedCapture("Remind me to buy cereal when I get to Costco", in: app)
+
+        // A receipt that counts a row to review waits for a choice instead of
+        // dismissing itself.
+        let done = app.buttons["capture.receiptDone"]
+        XCTAssertTrue(done.waitForExistence(timeout: 4), "the review receipt offers Done")
+        done.tap()
+
+        XCTAssertTrue(
+            app.buttons["today.review.Buy cereal"].waitForExistence(timeout: 8),
+            "the held shopping row is listed in Needs review"
+        )
+        XCTAssertTrue(
+            app.buttons["today.shoppingListCard.Costco"].exists,
+            "the held shopping row is still on its list"
+        )
+    }
+
     /// A collapsed section is not merely invisible: its rows have to be gone
     /// from the accessibility tree. XCUITest queries that same tree, so a row
     /// this test can still find is a row VoiceOver would read out — and read
