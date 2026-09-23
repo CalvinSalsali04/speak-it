@@ -179,7 +179,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// A combination built on a *saved* place — "when I get home tonight" —
     /// is deliberately left alone: it is held for review at capture on
     /// purpose, because Speak It can enforce either half and must ask which.
-    /// A place the person set by hand in the editor is never touched either.
+    /// A place the person set by hand in the editor is never touched either,
+    /// and neither is a time they set there.
     private func resolveCombinedPlaceAndTimeHoldouts() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         var changed = false
@@ -197,9 +198,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 referenceDate: item.createdAt
             )
             item.locationIntent = nil
-            if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
-            if item.dueDate == nil { item.dueDate = reparsed.dueDate }
-            item.temporalIntent = reparsed.temporalIntent
+            // The place dropped here is the system's (a hand-set one is
+            // excluded above). A time set by hand is the person's, and stays
+            // whole, as `apply` keeps it: only the place is released.
+            let keepsHandSetTime = item.temporalIntent?.isUserEdited == true
+            if !keepsHandSetTime {
+                if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
+                if item.dueDate == nil { item.dueDate = reparsed.dueDate }
+            }
+            item.temporalIntent = keepsHandSetTime ? item.temporalIntent : reparsed.temporalIntent
             item.needsClarification = reparsed.needsClarification
             item.lastModifiedAt = .now
             changed = true
@@ -607,15 +614,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// although the second exists to save decoding a blob. It is not an exact
     /// mirror of "has a place": the `temporalIntent` setter writes `time` over
     /// `location` whenever a timed intent is stored after the place, and
-    /// clears the column when a later untimed one replaces it. A place set by
-    /// hand, then a date moved by voice (`.unchanged` place), then a
-    /// reorganize whose sentence has no time leaves a live place reminder with
-    /// a nil trigger kind, and a predicate on that column would never plan it
-    /// (`testALivePlaceWithNoTriggerKindIsStillPlanned`). It sticks because
-    /// `apply` re-writes the place after the intent only when the place is not
-    /// user-edited, so a place set in the editor is never written back. The
-    /// first two steps alone leave the column reading `time` on a live place
-    /// reminder, so `== "location"` misses it sooner still. The blob column is
+    /// clears the column when a later untimed one replaces it, and a store
+    /// written by an earlier build can hold a live place reminder whose column
+    /// reads `time` or nothing. (A place set by hand, then a date moved by
+    /// voice, then a reorganize with no time used to produce one in the app;
+    /// the reorganize now keeps a time set by hand, so that sequence ends on a
+    /// combined row instead.) A predicate on that column would never plan such
+    /// a row (`testALivePlaceWithNoTriggerKindIsStillPlanned`). The blob column is
     /// the definition: the `locationIntent` setter writes it exactly when a
     /// place is stored.
     @discardableResult
@@ -2573,6 +2578,16 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         reviewed: Bool
     ) {
         let organization = candidate.organization
+        // A time set by hand outranks the sentence, the same rule the place
+        // follows below and the same mark: `update(_:with:)` stamps
+        // `isUserEdited` on the intent it writes, and nothing else does. The
+        // time is one family — due date, reminder date, intent and the
+        // repeat rule are all written by that one editor save — so it is kept
+        // or re-read whole, never field by field, or a kept 4 PM would sit
+        // beside a re-read "every Monday". Everything else here is still the
+        // system's reading and refreshes. `isReviewed` alone is not this
+        // mark: `markReviewed` accepts the reading, it does not replace it.
+        let keepsHandSetTime = item.temporalIntent?.isUserEdited == true
         item.originalTextSegment = candidate.sourceQuote
         item.displayTitle = displayTitle(
             for: candidate,
@@ -2582,14 +2597,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         item.category = organization.category
         item.priority = organization.priority
         item.personName = organization.personName
-        item.dueDate = organization.dueDate
-        item.reminderDate = organization.reminderDate
+        if !keepsHandSetTime {
+            item.dueDate = organization.dueDate
+            item.reminderDate = organization.reminderDate
+        }
         item.createdAt = createdAt
         item.processingConfidence = candidate.confidence
         item.needsClarification = organization.needsClarification || candidate.needsReview
         item.isReviewed = reviewed
         item.lastModifiedAt = .now
-        item.temporalIntent = organization.temporalIntent
+        // Written back even when kept, in the same order as before: the
+        // setter keeps `reminderTriggerKindRawValue` in step, and the place
+        // written after it relies on finding the time's answer there.
+        item.temporalIntent = keepsHandSetTime ? item.temporalIntent : organization.temporalIntent
         // The interpreter's own verdict, kept rather than dropped. Before
         // version 4 this line did not exist and every screen that wanted the
         // reason re-derived one from the fields below — see
@@ -2611,7 +2631,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
             item.locationIntent = reparsed
         }
-        RecurrenceStore.set(organization.recurrenceRule, for: item.id)
+        if !keepsHandSetTime {
+            RecurrenceStore.set(organization.recurrenceRule, for: item.id)
+        }
         ShoppingGroupStore.set(
             organization.itemType == .shopping ? candidate.shoppingGroup : nil,
             for: item.id

@@ -6059,6 +6059,202 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertTrue(item.temporalIntent?.isUserEdited == true)
     }
 
+    // MARK: Re-reading the words keeps a time set by hand
+
+    /// 4 PM three days from today in the machine's own calendar. Built, not
+    /// parsed, so no zone pin is needed and the runner's zone is the one read.
+    private func handSetMoment() throws -> Date {
+        let calendar = Calendar.current
+        let day = try XCTUnwrap(
+            calendar.date(byAdding: .day, value: 3, to: calendar.startOfDay(for: .now))
+        )
+        return try XCTUnwrap(calendar.date(bySettingHour: 16, minute: 0, second: 0, of: day))
+    }
+
+    /// The editor's save, changing only the time family.
+    private func setTimeByHand(
+        _ item: CapturedItem,
+        to moment: Date?,
+        repeating rule: RecurrenceRule? = nil
+    ) throws {
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: moment,
+            reminderDate: moment,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            recurrenceRule: rule
+        ))
+    }
+
+    /// Falsifier: drop the `keepsHandSetTime` guards in `apply` and the row
+    /// goes back to the spoken tomorrow at 9, with no repeat and an intent
+    /// that no longer says the person set it.
+    func testOrganizeAgainKeepsATimeSetByHand() throws {
+        let transcript = "Remind me to call Catherine tomorrow at 9 AM"
+        let item = try repository.createCapture(text: transcript)
+        let session = try XCTUnwrap(item.captureSession)
+        let spoken = try XCTUnwrap(item.reminderDate, "the fixture needs a spoken time to lose")
+        let chosen = try handSetMoment()
+        XCTAssertNotEqual(spoken, chosen)
+        let weekly = RecurrenceRule(frequency: .weekly)
+        try setTimeByHand(item, to: chosen, repeating: weekly)
+
+        try repository.reorganize(session)
+
+        XCTAssertEqual(session.items.count, 1)
+        let row = try XCTUnwrap(session.items.first)
+        XCTAssertEqual(row.id, item.id)
+        XCTAssertEqual(row.dueDate, chosen, "Organize again replaced a due date set by hand")
+        XCTAssertEqual(row.reminderDate, chosen)
+        XCTAssertEqual(row.temporalIntent?.isUserEdited, true)
+        XCTAssertEqual(row.temporalIntent?.time, WallClockTime(hour: 16, minute: 0))
+        XCTAssertEqual(RecurrenceStore.rule(for: row.id), weekly)
+        // The system's half still refreshes: the re-read row is back in review.
+        XCTAssertFalse(row.isReviewed)
+        XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
+    /// Falsifier: key the guard on the kept intent having a time (kind not
+    /// `.none`) and the spoken tomorrow at 9 comes back. Clearing the time is
+    /// as much the person's hand as setting one.
+    func testOrganizeAgainKeepsATimeClearedByHand() throws {
+        let item = try repository.createCapture(text: "Remind me to call Catherine tomorrow at 9 AM")
+        let session = try XCTUnwrap(item.captureSession)
+        XCTAssertNotNil(item.reminderDate)
+        try setTimeByHand(item, to: nil)
+
+        try repository.reorganize(session)
+
+        let row = try XCTUnwrap(session.items.first)
+        XCTAssertNil(row.dueDate, "Organize again restored a time the person removed")
+        XCTAssertNil(row.reminderDate)
+        XCTAssertEqual(row.temporalIntent?.isUserEdited, true)
+    }
+
+    /// Falsifier: key the guard on `isReviewed`, or on any stored time, and
+    /// the stale 4 PM survives. Accepting a reading is not setting a time, so
+    /// the re-read must still replace a time only the system wrote.
+    func testOrganizeAgainStillRereadsATimeNobodySetByHand() throws {
+        let item = try repository.createCapture(text: "Remind me to call Catherine tomorrow at 9 AM")
+        let session = try XCTUnwrap(item.captureSession)
+        let spoken = try XCTUnwrap(item.reminderDate)
+        try repository.markReviewed(item)
+        // A stale system reading, as an older build could have stored it.
+        let stale = try handSetMoment()
+        item.dueDate = stale
+        item.reminderDate = stale
+        try container.mainContext.save()
+        XCTAssertNotEqual(item.temporalIntent?.isUserEdited, true)
+
+        try repository.reorganize(session)
+
+        let row = try XCTUnwrap(session.items.first)
+        XCTAssertEqual(row.reminderDate, spoken, "a time only the system wrote was not re-read")
+        XCTAssertNotEqual(row.temporalIntent?.isUserEdited, true)
+    }
+
+    /// Falsifier: move the guard out of `apply` into `reorganize` (or the
+    /// organize pass) and a split re-reads the first part, putting the
+    /// spoken tomorrow at 9 back on the row the person had moved.
+    func testSplitKeepsATimeSetByHandOnTheRowItKeeps() throws {
+        let item = try repository.createCapture(text: "Remind me to call Catherine tomorrow at 9 AM")
+        let session = try XCTUnwrap(item.captureSession)
+        let chosen = try handSetMoment()
+        try setTimeByHand(item, to: chosen)
+
+        try repository.split(item, into: ["Remind me to call Catherine tomorrow at 9 AM", "Buy milk"])
+
+        XCTAssertEqual(session.items.count, 2)
+        XCTAssertEqual(item.reminderDate, chosen, "a split replaced a time set by hand")
+        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+        let other = try XCTUnwrap(session.items.first { $0.id != item.id })
+        XCTAssertNil(other.reminderDate)
+        XCTAssertEqual(session.originalTranscription, "Remind me to call Catherine tomorrow at 9 AM")
+    }
+
+    /// Pins positional behaviour, and is not a claim that it is ideal. The
+    /// time words go to part 1 this time, and the hand-set time still stays
+    /// on part 0, the original row, because `split` applies the first part
+    /// to the row it keeps and builds the rest fresh. Part 0's words are now
+    /// the fragment without a time, yet it keeps the hand-set time and the
+    /// hand-set repeat rule; part 1, which carries the spoken time, gets its
+    /// own fresh reading of it. See Known issues, row identity is positional.
+    /// A fix that moves the kept time to the row whose words carry it must
+    /// change these assertions on purpose, not break them by surprise.
+    func testSplitKeepsATimeSetByHandOnPartZeroEvenWhenTheTimeWordsMoveToPartOne() throws {
+        let transcript = "Remind me to call Catherine tomorrow at 9 AM"
+        let item = try repository.createCapture(text: transcript)
+        let session = try XCTUnwrap(item.captureSession)
+        let spoken = try XCTUnwrap(item.reminderDate)
+        let chosen = try handSetMoment()
+        XCTAssertNotEqual(spoken, chosen)
+        let weekly = RecurrenceRule(frequency: .weekly)
+        try setTimeByHand(item, to: chosen, repeating: weekly)
+
+        try repository.split(item, into: ["Buy milk", transcript])
+
+        XCTAssertEqual(session.items.count, 2)
+        // Part 0 is the original row, now holding only the fragment.
+        XCTAssertEqual(item.originalTextSegment, "Buy milk")
+        XCTAssertEqual(item.reminderDate, chosen, "part 0 no longer keeps the time by position")
+        XCTAssertEqual(item.dueDate, chosen)
+        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+        XCTAssertEqual(RecurrenceStore.rule(for: item.id), weekly)
+        // Part 1 carries the words with the time, and reads them afresh.
+        let other = try XCTUnwrap(session.items.first { $0.id != item.id })
+        XCTAssertEqual(other.originalTextSegment, transcript)
+        XCTAssertEqual(other.reminderDate, spoken, "part 1 did not read its own spoken time")
+        XCTAssertNotEqual(other.temporalIntent?.isUserEdited, true)
+        XCTAssertNil(RecurrenceStore.rule(for: other.id))
+        XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
+    /// Falsifier: drop the guard in `resolveCombinedPlaceAndTimeHoldouts` and
+    /// launch swaps the hand-set intent for the one-hour reading. The dates
+    /// survive either way (that pass only fills empty ones), which is why the
+    /// intent is what this asserts on.
+    func testLaunchReleasesAHoldoutWithoutRereadingATimeSetByHand() throws {
+        let createdAt = Date.now.addingTimeInterval(-120)
+        let chosen = try handSetMoment()
+        let wording = "When I go to Sobeys, remind me to get bread in one hour"
+        let stuck = CapturedItem(
+            originalTextSegment: wording,
+            displayTitle: "Get bread",
+            itemType: .shopping,
+            category: .shopping,
+            createdAt: createdAt,
+            dueDate: chosen,
+            reminderDate: chosen,
+            processingConfidence: 0.58,
+            needsClarification: true,
+            isReviewed: true,
+            lastModifiedAt: createdAt,
+            temporalIntent: TemporalIntent.userEdited(
+                dueDate: chosen,
+                reminderDate: chosen,
+                recurrence: nil,
+                sourceText: wording,
+                calendar: .current
+            ),
+            locationIntent: LocationIntentParser.parse("remind me when I get to Sobeys to get bread")
+        )
+        XCTAssertEqual(stuck.locationIntent?.isUserEdited, false, "the place must be the system's")
+        XCTAssertTrue(stuck.constrainsBothPlaceAndTime)
+        container.mainContext.insert(stuck)
+        try container.mainContext.save()
+
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertNil(stuck.locationIntent, "the system's place is still released")
+        XCTAssertEqual(stuck.reminderDate, chosen)
+        XCTAssertEqual(stuck.temporalIntent?.isUserEdited, true, "launch re-read a time set by hand")
+        XCTAssertEqual(stuck.temporalIntent?.time, WallClockTime(hour: 16, minute: 0))
+    }
+
     func testActionButtonRecommendationMatchesSupportedIPhoneFamilies() {
         XCTAssertFalse(SpeakItHardware.supportsActionButton(modelIdentifier: "iPhone14,5")) // iPhone 13
         XCTAssertFalse(SpeakItHardware.supportsActionButton(modelIdentifier: "iPhone15,4")) // iPhone 15

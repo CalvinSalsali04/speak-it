@@ -113,7 +113,9 @@ struct CaptureSessionReviewView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Speak It will read your original words again from scratch. Any changes you made to these items by hand will be replaced. Your original capture is not touched.")
+            // Says what `apply` does. A time or place set in the editor is kept
+            // (the `isUserEdited` mark); every other hand change is re-read.
+            Text("Speak It will read your original words again from scratch. A time or place you set by hand is kept; other changes you made to these items are replaced. Your original capture is not touched.")
         }
         .confirmationDialog(
             "Undo organization?",

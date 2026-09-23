@@ -1905,13 +1905,18 @@ final class LocationReminderTests: XCTestCase {
 
     /// `reconcileLocationReminders` fetches only rows that store a place, and
     /// the column it filters on has to be the one that means that.
-    /// `reminderTriggerKindRawValue` looks like it, and is not: the
-    /// `temporalIntent` setter writes `time` over `location` when a timed
-    /// intent is stored after the place, and clears it when an untimed one
-    /// replaces that. This is the sequence that leaves a live place reminder
-    /// with no trigger kind: a place set in the editor, a date moved by voice
-    /// (which leaves the place `.unchanged`), then a reorganize whose sentence
-    /// carries no time.
+    /// `reminderTriggerKindRawValue` looks like it, and is not: it is a
+    /// denormalized copy the `temporalIntent` and `locationIntent` setters
+    /// write in turn, and a store written by an earlier build can hold a live
+    /// place reminder whose copy reads `time`.
+    ///
+    /// Built around that row directly. This test used to reach a stale column
+    /// through the app: a place set in the editor, a date moved by voice, then
+    /// a reorganize whose sentence carries no time, which took the time away
+    /// and left the column nil (DEL-20). Organize again now keeps a time set by
+    /// hand (#143), so that sequence ends on a combined place-and-time row,
+    /// which is never watched, and no longer reaches a live place with a stale
+    /// column. The fetch still has to plan such a row when the store holds one.
     ///
     /// Asserted through what reconcile accounts for, which is every row it
     /// fetched, monitored or blocked, whatever this simulator's access is.
@@ -1932,29 +1937,29 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: false
         )
         let place = try XCTUnwrap(item.locationIntent)
-        func edit(dueDate: Date?, location: LocationIntentEdit) throws {
-            try repository.update(item, with: ItemEdits(
-                title: item.displayTitle,
-                itemType: item.itemType,
-                category: item.category,
-                dueDate: dueDate,
-                reminderDate: nil,
-                priority: item.priority,
-                personName: item.personName,
-                needsClarification: item.needsClarification,
-                recurrenceRule: nil,
-                locationIntent: location,
-                dueDateHasTime: true
-            ))
-        }
-        try edit(dueDate: nil, location: .update(place))
-        try edit(dueDate: Date.now.addingTimeInterval(3 * 86_400), location: .unchanged)
-        XCTAssertEqual(item.reminderTriggerKind, .time, "precondition: the date wrote over the place")
-        try repository.reorganize(try XCTUnwrap(item.captureSession))
+        // Confirmed in the editor, so no review hold decides the outcome.
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: nil,
+            reminderDate: nil,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: item.needsClarification,
+            recurrenceRule: nil,
+            locationIntent: .update(place),
+            dueDateHasTime: true
+        ))
+        XCTAssertEqual(item.reminderTriggerKind, .location, "precondition: the setter keeps the copy in step")
 
-        XCTAssertNotNil(item.locationIntent, "precondition: a hand-set place survives a reorganize")
-        XCTAssertFalse(item.constrainsBothPlaceAndTime, "precondition: the reorganize took the time away")
-        XCTAssertNil(item.reminderTriggerKindRawValue, "precondition: the column no longer says location")
+        item.reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
+        try container.mainContext.save()
+
+        XCTAssertEqual(item.reminderTriggerKind, .time, "precondition: the column reads time")
+        XCTAssertNotNil(item.locationIntent, "precondition: the place is still stored")
+        XCTAssertFalse(item.constrainsBothPlaceAndTime, "precondition: no time sits beside the place")
+        XCTAssertTrue(item.hasLivePlaceTrigger, "precondition: a live place reminder")
 
         let reconciliation = repository.reconcileLocationReminders()
         XCTAssertTrue(
