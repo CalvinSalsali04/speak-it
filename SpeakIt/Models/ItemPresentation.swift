@@ -185,10 +185,16 @@ struct ItemPresentation: Equatable, Sendable {
         for item: CapturedItem,
         blocker: LocationReminderBlocker?
     ) -> ReminderState {
-        // A place trigger outranks a stored date for the same reason
-        // `CapturedItem.reminderTrigger` prefers it: the place is what decides
-        // the moment, and a date alongside it only narrows the window.
-        if let locationIntent = item.locationIntent {
+        // A place is reported only while the monitor would actually watch it.
+        // A place stored beside a date is `constrainsBothPlaceAndTime`, which
+        // `reconcileLocationReminders()` excludes and `handleLocationTrigger`
+        // refuses (Docs/DECISIONS.md, 2026-08-14, "held, not halved"). This
+        // branch used to take any stored place, so turning on `Has a due date`
+        // for a live place reminder unregistered its region while the row kept
+        // its pin and the editor kept saying `Active`. Such an item falls
+        // through to its date instead, read exactly as it would be for an item
+        // with no place, since only the clock half can be scheduled.
+        if let locationIntent = item.locationIntent, !item.constrainsBothPlaceAndTime {
             if let blocker { return .blockedPlace(locationIntent, blocker) }
             return .place(locationIntent)
         }

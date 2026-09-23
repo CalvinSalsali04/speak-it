@@ -215,6 +215,11 @@ final class CapturedItem: Identifiable {
     /// names a place *and* a day, and the place is what decides the moment while
     /// the day only narrows it. Storing both and preferring location here is
     /// what keeps that sentence expressible without a combined rule engine.
+    ///
+    /// This is what was *meant*, not what is armed. While a place and a time
+    /// are both present neither is monitored (`constrainsBothPlaceAndTime`),
+    /// so a surface describing whether something will fire asks
+    /// `ItemPresentation`, never this.
     var reminderTrigger: ReminderTrigger? {
         if let locationIntent { return .location(locationIntent) }
         if let temporalIntent, temporalIntent.kind != .none { return .time(temporalIntent) }
