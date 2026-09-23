@@ -962,6 +962,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         another question names no list"`, `"the dated trip keeps its
         reminder beside a held list"`). Its `"buy milk"` and `"Buy milk"`
         were already in the population.
+        4167 -> 4190 on 2026-09-23, from the launch pass that moves a
+        stored place-and-time row nobody was asked about into review (F7):
+        23 added, none removed, found by diffing this population at both
+        commits. Four tests in `SwiftDataThoughtRepositoryTests` brought a
+        title (`"Take out the garbage"`), a phrase quoted in a doc comment
+        (`"when I get home tomorrow"`), two row names (`"time set by
+        hand"`, `"already in review"`), three interpolated messages read
+        as literal text (`"\\(name): review flag changed"` and two
+        siblings) and 16 other assertion messages.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -976,7 +985,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4167)
+        self.assertEqual(len(space), 4190)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

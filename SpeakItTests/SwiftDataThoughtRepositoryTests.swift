@@ -729,6 +729,173 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertNil(ReminderScheduleRequest(item: stuck))
     }
 
+    // MARK: - Launch asks about a stored place-and-time row nobody was asked about
+
+    /// The DEL-11 shape: "when I get home tomorrow" stored by a build before
+    /// the capture-time hold, with Home, a date-only day, a 9 AM clock and no
+    /// review flag.
+    ///
+    /// Dates are built in the machine's zone, never under a fixture pin,
+    /// because the tests read `ReminderScheduleRequest`, which compares
+    /// against the real clock. The title polish is stamped as already run so
+    /// a changed title can only come from the pass under test.
+    private func storedPlaceAndTimeRow(
+        isReviewed: Bool = false,
+        timeSetByHand: Bool = false,
+        needsClarification: Bool = false
+    ) throws -> CapturedItem {
+        UserDefaults.standard.set(
+            SwiftDataThoughtRepository.titlePolishVersion,
+            forKey: SwiftDataThoughtRepository.titlePolishVersionKey
+        )
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let fire = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        let row = CapturedItem(
+            originalTextSegment: "Remind me to call Mom when I get home tomorrow",
+            displayTitle: "Call Mom",
+            itemType: .personFollowUp,
+            dueDate: Calendar.current.startOfDay(for: tomorrow),
+            reminderDate: fire,
+            needsClarification: needsClarification,
+            isReviewed: isReviewed,
+            lastModifiedAt: Self.storedModificationDate,
+            temporalIntent: TemporalIntent(kind: .dateOnly, isUserEdited: timeSetByHand),
+            locationIntent: LocationIntent(event: .arrive, place: .home)
+        )
+        container.mainContext.insert(row)
+        try container.mainContext.save()
+        XCTAssertTrue(row.constrainsBothPlaceAndTime, "fixture must be the stored DEL-11 shape")
+        return row
+    }
+
+    private static let storedModificationDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+    /// A stored place-and-time row that no one was asked about goes to review
+    /// at launch, carrying its words, its place and its clock unchanged, and
+    /// one review gives the clock back.
+    ///
+    /// Before this pass the row sat in Today showing its date while the
+    /// scheduler refused its clock and no region watched its place: nothing
+    /// fired and nothing asked (REHEARSAL F7).
+    ///
+    /// Falsifier: after launch the row is still out of review, or it lost a
+    /// word, its place, its day or its clock, or reviewing it does not arm
+    /// the clock it was stored with.
+    func testLaunchMovesAStoredPlaceAndTimeRowNobodyWasAskedAboutIntoReview() throws {
+        let row = try storedPlaceAndTimeRow()
+        let fire = try XCTUnwrap(row.reminderDate)
+        let due = row.dueDate
+        let place = row.locationIntent
+        let time = row.temporalIntent
+        XCTAssertNil(ReminderScheduleRequest(item: row), "the silent state: the clock is refused")
+        XCTAssertTrue(row.belongsInToday, "the silent state: it shows in Today, not in review")
+
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertTrue(row.needsClarification, "the row is in review")
+        XCTAssertEqual(row.clarificationRequirement, .combinedTimeAndPlace)
+        XCTAssertFalse(row.belongsInToday, "a row in review is not also in Today")
+        XCTAssertFalse(row.isReviewed, "the pass does not answer the question for the person")
+        XCTAssertNotEqual(row.lastModifiedAt, Self.storedModificationDate, "the change is dated for sync")
+        XCTAssertEqual(row.originalTextSegment, "Remind me to call Mom when I get home tomorrow")
+        XCTAssertEqual(row.displayTitle, "Call Mom")
+        XCTAssertEqual(row.locationIntent, place, "the place is kept")
+        XCTAssertEqual(row.temporalIntent, time, "the time is kept")
+        XCTAssertEqual(row.reminderDate, fire, "the clock is kept")
+        XCTAssertEqual(row.dueDate, due, "the day is kept")
+        XCTAssertNil(ReminderScheduleRequest(item: row), "still refused until the person answers")
+
+        try repository.markReviewed(row)
+
+        XCTAssertFalse(row.needsClarification)
+        XCTAssertEqual(
+            ReminderScheduleRequest(item: row)?.fireDate,
+            fire,
+            "one review arms the clock the row was stored with"
+        )
+    }
+
+    /// The pass reads only the rows the scheduler refuses and nothing asks
+    /// about. A reviewed row, a row whose time the person set, a row already
+    /// in review, a done or archived row, and a place or a time alone are
+    /// each left exactly as stored.
+    ///
+    /// Falsifier: any of them gains the review flag or a new modification
+    /// date, or a reviewed or hand-set row stops arming its clock.
+    func testLaunchLeavesAReviewedOrHandSetOrAlreadyHeldPlaceAndTimeRowAlone() throws {
+        let reviewed = try storedPlaceAndTimeRow(isReviewed: true)
+        let timeSetByHand = try storedPlaceAndTimeRow(timeSetByHand: true)
+        let alreadyInReview = try storedPlaceAndTimeRow(needsClarification: true)
+        let done = try storedPlaceAndTimeRow()
+        done.completedAt = Self.storedModificationDate
+        let archived = try storedPlaceAndTimeRow()
+        archived.isArchived = true
+        let placeAlone = CapturedItem(
+            originalTextSegment: "Remind me to take out the garbage when I get home",
+            displayTitle: "Take out the garbage",
+            itemType: .task,
+            lastModifiedAt: Self.storedModificationDate,
+            temporalIntent: .none,
+            locationIntent: LocationIntent(event: .arrive, place: .home)
+        )
+        let timeAlone = try storedPlaceAndTimeRow()
+        timeAlone.locationIntent = nil
+        container.mainContext.insert(placeAlone)
+        try container.mainContext.save()
+        XCTAssertFalse(placeAlone.constrainsBothPlaceAndTime)
+        XCTAssertFalse(timeAlone.constrainsBothPlaceAndTime)
+
+        repository.recoverUnorganizedCaptures()
+
+        for (name, row, wasInReview) in [
+            ("reviewed", reviewed, false),
+            ("time set by hand", timeSetByHand, false),
+            ("already in review", alreadyInReview, true),
+            ("done", done, false),
+            ("archived", archived, false),
+            ("place alone", placeAlone, false),
+            ("time alone", timeAlone, false),
+        ] {
+            XCTAssertEqual(row.needsClarification, wasInReview, "\(name): review flag changed")
+            XCTAssertEqual(row.lastModifiedAt, Self.storedModificationDate, "\(name): row was touched")
+            XCTAssertFalse(
+                SwiftDataThoughtRepository.isSelectedByUnaskedPlaceAndTimePass(row),
+                "\(name): selected by the pass"
+            )
+        }
+        XCTAssertNotNil(ReminderScheduleRequest(item: reviewed), "a reviewed row still arms")
+        XCTAssertNotNil(ReminderScheduleRequest(item: timeSetByHand), "a hand-set time still arms")
+    }
+
+    /// The pass is idempotent. A row it moved is in review, so the next
+    /// launch does not select it, and nothing in the store changes.
+    ///
+    /// Falsifier: the second launch re-dates the row, changes any field, or
+    /// leaves unsaved changes in the context.
+    func testASecondLaunchChangesNothing() throws {
+        let row = try storedPlaceAndTimeRow()
+
+        repository.recoverUnorganizedCaptures()
+        XCTAssertTrue(row.needsClarification)
+        let movedAt = row.lastModifiedAt
+        let fire = row.reminderDate
+        let place = row.locationIntent
+        let time = row.temporalIntent
+        XCTAssertFalse(SwiftDataThoughtRepository.isSelectedByUnaskedPlaceAndTimePass(row))
+
+        repository.recoverUnorganizedCaptures()
+
+        XCTAssertTrue(row.needsClarification)
+        XCTAssertFalse(row.isReviewed)
+        XCTAssertEqual(row.lastModifiedAt, movedAt, "the second launch re-dated the row")
+        XCTAssertEqual(row.reminderDate, fire)
+        XCTAssertEqual(row.locationIntent, place)
+        XCTAssertEqual(row.temporalIntent, time)
+        XCTAssertFalse(container.mainContext.hasChanges, "the second launch left changes behind")
+    }
+
     /// The parser reads stores from natural phrasings and refuses generics.
     func testShoppingGroupParserReadsStoreNames() {
         XCTAssertEqual(

@@ -1984,8 +1984,10 @@ final class LocationReminderTests: XCTestCase {
     // MARK: The scheduler refuses a place beside a time (second layer)
 
     /// A row stored before the hold still carries the 9 AM clock it was given.
-    /// No launch pass re-reads it, so the scheduler must refuse it until the
-    /// person has decided.
+    /// No launch pass re-reads that clock: the launch pass that asks about the
+    /// row puts it in review and keeps the clock as stored
+    /// (`testLaunchMovesAStoredPlaceAndTimeRowNobodyWasAskedAboutIntoReview`),
+    /// so the scheduler must refuse it until the person has decided.
     ///
     /// Every date here is built in the machine's zone, never under a fixture
     /// zone pin, because `ReminderScheduleRequest` compares against the real
