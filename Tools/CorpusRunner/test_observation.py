@@ -961,7 +961,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         gating-corpus cancel with target` a quoted noun, and the extractor
         reads the words *between* the closing and the opening quotation
         marks as a literal, ` is a gating-corpus cancel with target `,
-        counted once for both. Left as written. What the test
+        counted once for both. Left as written. 4138 -> 4142 the same day,
+        in review of #152: the "Never mind the lease" test gains an
+        unrelated action row, so a vague reading would list two rows and
+        fail. Four literals, recounted from the tree: the row's words,
+        `Water the tomato plants`, and three assertion messages. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -975,7 +979,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4138)
+        self.assertEqual(len(space), 4142)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -300,14 +300,34 @@ final class CaptureOperationTests: XCTestCase {
     /// "milk"; `cancelsAnArrangement` reads only a leading "cancel", so
     /// "lease" does not turn this one into an errand.
     ///
-    /// Falsifier: as above, the note and its transcript are deleted.
+    /// An action row that does not name the lease sits beside it. It anchors
+    /// this frame the way the control anchors the landlord one: a pronoun or
+    /// vague reading would list every active row, two here, and fail the
+    /// single-row equality, so the hold can only come from the kind check.
+    /// It also shows the check is per row: the reminder is left alone.
+    ///
+    /// Falsifier: as above, the note and its transcript are deleted; and if
+    /// the parser ever read "Never mind the lease" as vague, the candidates
+    /// would be two rows, not one.
     func testASingleTargetCancelHoldsANoteHeldForReview() async throws {
         let transcript = "Something about the lease"
         let rowID = try insertFinishedRow(transcript, type: .note, needsClarification: true)
+        let unrelatedID = try insertFinishedRow(
+            "Water the tomato plants",
+            type: .task,
+            reminderDate: Date.now.addingTimeInterval(86_400)
+        )
+        let unrelated = try XCTUnwrap(try allItems().first { $0.id == unrelatedID })
+        XCTAssertTrue(unrelated.isActionKind, "precondition: the unrelated row is an action row")
 
         let result = try await capture("Never mind the lease")
 
         try assertHeldForThePerson(result, rowID: rowID, transcript: transcript)
+        let untouched = try XCTUnwrap(
+            try allItems().first { $0.id == unrelatedID },
+            "a row the cancel did not name was deleted"
+        )
+        XCTAssertFalse(untouched.isCompleted, "a row the cancel did not name was completed")
     }
 
     /// The control, in the same frame as the reported-speech case: one
