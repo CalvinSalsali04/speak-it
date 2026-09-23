@@ -35,17 +35,25 @@ scoped pass, which cancels and re-arms every in-scope ID. The sweep decides only
 for IDs that name no row, so the two can never disagree about a live item. The
 rows are read on the main actor after the alarm list is read, not captured when
 the pass is queued, so a row saved while the pass waited in the scheduler's
-queue still protects its alarm. A failed fetch cancels nothing. Only alarms in
-the `.scheduled` state are swept. One that is alerting is already in front of
-the person.
+queue still protects its alarm. A failed fetch cancels nothing. A fetch that
+succeeds with zero rows is authoritative, though: a store that opens empty
+cancels every listed alarm, which is the intended reading of "no row names it"
+and the one remaining path by which the sweep deletes alarms silently. Every
+alarm except one that is alerting is swept: an alerting alarm is already in
+front of the person, while a scheduled one, or a counting-down or paused one if
+a countdown is ever added, will still alert with no row behind it. The
+state filter lives in `ReminderDeliverySink.live`, the side every test
+replaces, so no test covers it.
 
 The seam is `ReminderDeliverySink.scheduledAlarmIDs`, next to the
 `cancelAlarm` and `pendingIdentifiers` it pairs with, rather than another
 repository initializer argument. The decision itself is
 `ReminderScheduler.orphanedAlarmIDs(scheduled:accountedFor:)`, a pure function.
-Unconfirmed until it runs on an iPhone: that `alarms` omits an alarm that has
-fired and been stopped, as Apple's documentation says, and that `cancel(id:)`
-on a listed orphan removes it without side effects on the app's other alarms.
+Apple's documentation for `AlarmManager.alarms` says an alarm is deleted from
+the daemon's store as soon as it fires and stops, so the list is live state
+rather than a log. Unconfirmed until it runs on an iPhone: that an alarm this
+build schedules is listed as `.scheduled`, and that `cancel(id:)` on a listed
+orphan removes it without side effects on the app's other alarms.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

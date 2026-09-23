@@ -430,8 +430,10 @@ struct ReminderDeliverySink: Sendable {
         },
         cancelAlarm: { itemID in
             if #available(iOS 26.0, *) {
-                // `cancel` removes a *scheduled* alarm; one already alerting —
-                // or snoozing in its countdown — is only silenced by `stop`.
+                // `cancel` removes an alarm that is not alerting; one already
+                // alerting is only silenced by `stop`. (Speak It's alarms carry
+                // no countdown presentation, so they never enter `.countdown`
+                // or `.paused`; if one ever does, `cancel` covers it.)
                 // Completing an item must shut its alarm down in every state,
                 // so both are issued; each throws harmlessly in the state the
                 // other one owns.
@@ -452,7 +454,10 @@ struct ReminderDeliverySink: Sendable {
             // cannot answer, and an unreadable list must mean "cancel
             // nothing", never "every alarm is an orphan".
             guard let alarms = try? AlarmManager.shared.alarms else { return [] }
-            return alarms.filter { $0.state == .scheduled }.map(\.id)
+            // Every state but `.alerting`: an alerting alarm is in front of
+            // the person, while a scheduled, counting-down or paused orphan
+            // will still alert and nobody can reach it but this sweep.
+            return alarms.filter { $0.state != .alerting }.map(\.id)
         }
     )
 }
