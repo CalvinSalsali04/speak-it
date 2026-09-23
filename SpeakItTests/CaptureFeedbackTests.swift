@@ -324,6 +324,32 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertEqual(transcriber.state, .listening)
     }
 
+    // MARK: - Words typed before speaking, on the voice screen
+
+    /// The voice screen shows the words typed before speaking above the
+    /// speech, because a spoken save stores both. VoiceOver reads them as
+    /// part of the transcript, marked as typed; with nothing typed it reads
+    /// the speech exactly as before.
+    ///
+    /// Falsifier: return the spoken words alone and the first two assertions
+    /// fail; drop the empty check and a screen with nothing typed reads
+    /// "Typed:" in front of every transcript.
+    func testTheVoiceScreenReadsTypedWordsAsPartOfTheTranscript() {
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: "Call Dana", spoken: "about the invoice"),
+            "Typed: Call Dana. about the invoice"
+        )
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: " Call\nDana ", spoken: ""),
+            "Typed: Call Dana"
+        )
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: " \n ", spoken: "about the invoice"),
+            "about the invoice"
+        )
+        XCTAssertEqual(CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: "", spoken: ""), "")
+    }
+
     // MARK: - Type instead after the words have moved to the editor
 
     /// Type instead folds the spoken words into the editor and then asks the

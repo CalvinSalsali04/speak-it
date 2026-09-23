@@ -142,6 +142,21 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     }
 }
 
+/// What VoiceOver reads for the voice screen's words. A spoken save stores
+/// the words typed before speaking ahead of what is said, and the screen
+/// shows them above the speech in a quieter style, so they are read as part
+/// of the transcript and marked as typed, the one thing the style says that
+/// a listener cannot see.
+enum CaptureVoiceTranscriptAccessibility {
+    static func value(typedBeforeSpeaking typed: String, spoken: String) -> String {
+        let typedWords = CaptureDraftStore.joined(typedBeforeSpeaking: typed, spoken: "")
+        let spokenWords = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typedWords.isEmpty else { return spokenWords }
+        let typedPart = "Typed: \(typedWords)"
+        return spokenWords.isEmpty ? typedPart : "\(typedPart). \(spokenWords)"
+    }
+}
+
 /// What the voice screen is doing, as one value.
 ///
 /// The orb, the title, the subtitle and the button's spoken label used to read
@@ -608,6 +623,12 @@ struct CaptureView: View {
         tutorialMission?.repairVoiceTranscript(transcriber.transcript) ?? transcriber.transcript
     }
 
+    /// The editor's words while the voice screen is up: what a spoken save
+    /// stores ahead of the speech (`save` joins them the same way).
+    private var typedBeforeSpeakingOnScreen: String {
+        CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: "")
+    }
+
     init(
         initialMode: CaptureInitialMode = .voice,
         autoStartsVoiceCapture: Bool = false,
@@ -889,13 +910,36 @@ struct CaptureView: View {
             // screen the whole product is built around.
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
-                        .font(.title3)
-                        .foregroundStyle(Color.speakInk.opacity(0.84))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 330)
-                        .padding(.horizontal)
-                        .id(Self.transcriptTailID)
+                    VStack(spacing: 6) {
+                        // What was typed before speaking. A spoken save
+                        // stores it ahead of what is said, so the screen
+                        // shows it too, quieter than the speech. The last
+                        // lines stay visible, since they are the ones the
+                        // speech continues.
+                        if !typedBeforeSpeakingOnScreen.isEmpty {
+                            Text(typedBeforeSpeakingOnScreen)
+                                .font(SpeakItTypography.sectionDetail)
+                                .foregroundStyle(Color.speakMuted)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3)
+                                .truncationMode(.head)
+                                .frame(maxWidth: 330)
+                                .padding(.horizontal)
+                                .accessibilityLabel(
+                                    CaptureVoiceTranscriptAccessibility.value(
+                                        typedBeforeSpeaking: typedBeforeSpeakingOnScreen,
+                                        spoken: ""
+                                    )
+                                )
+                        }
+                        Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
+                            .font(.title3)
+                            .foregroundStyle(Color.speakInk.opacity(0.84))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 330)
+                            .padding(.horizontal)
+                            .id(Self.transcriptTailID)
+                    }
                 }
                 .onChange(of: tutorialAwareVoiceTranscript) { _, _ in
                     // Not animated: at speaking speed this fires on nearly
@@ -905,12 +949,19 @@ struct CaptureView: View {
                 }
             }
             .frame(
-                maxHeight: tutorialMission != nil && transcriber.transcript.isEmpty
+                maxHeight: tutorialMission != nil
+                    && transcriber.transcript.isEmpty
+                    && typedBeforeSpeakingOnScreen.isEmpty
                     ? 30
                     : 126
             )
             .accessibilityLabel("Live transcription")
-            .accessibilityValue(tutorialAwareVoiceTranscript)
+            .accessibilityValue(
+                CaptureVoiceTranscriptAccessibility.value(
+                    typedBeforeSpeaking: typedBeforeSpeakingOnScreen,
+                    spoken: tutorialAwareVoiceTranscript
+                )
+            )
 
             if showsGuidedExamples,
                tutorialMission == nil,
