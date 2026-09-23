@@ -919,6 +919,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         as a repeating trigger"`, is used again and was already here, and
         the rollback test's identifiers (`"one-shot"`, `"series"`) are under
         twelve characters, so they were never in this population.
+        4088 -> 4088 the same day, and a swap is worth a line for the same
+        reason a zero was: a hosted Mac in UTC failed the scheduler
+        assertions these tests made under the Toronto pin, so they moved
+        into two machine-zone helpers. One message left, `"a repeating
+        trigger built from the snoozed minute retimes the series on the
+        phone"`, and one arrived, `"the repeating match must be the series'
+        own clock, not the snooze's"`. `"the series' first match must be
+        the next occurrence, not this one again"` moved into a helper and
+        still counts once. One out and one in, enumerated rather than
+        assumed: an unchanged count here is a different population.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly

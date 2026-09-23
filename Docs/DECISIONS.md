@@ -120,8 +120,13 @@ so the notification actions reach an alarm item only after it has fallen
 back to a notification. At that point it gets both requests like any other
 notification. See `KNOWN_ISSUES.md`.
 
-Covered by seven tests in `TemporalFullPathTests`, pinned to the fixture
-zone:
+Covered by seven tests in `TemporalFullPathTests`. Parsing and the
+repository's date arithmetic run pinned to the fixture zone. Every value
+the scheduler builds is read in the machine's zone. A hosted Mac in UTC
+showed why: under the pin, `Calendar.current` follows the fixture zone
+while `TimeZone.current` stays the machine's. Components built there carry
+Toronto's clock labelled with UTC's zone. On a device the two cannot
+disagree, because the app never sets `NSTimeZone.default`. The seven tests:
 
 - a weekly snooze followed by completion;
 - the scheduler's plan for a snoozed weekly occurrence, which holds the

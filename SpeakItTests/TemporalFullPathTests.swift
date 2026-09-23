@@ -773,6 +773,73 @@ final class TemporalFullPathTests: XCTestCase {
 
     // MARK: Snooze moves one occurrence, never the series
 
+    /// Asserts that repeating components the scheduler built describe the
+    /// series' alert, read in the machine's zone.
+    ///
+    /// Call it **outside** `withFixtureClock`. `ReminderScheduleRequest` builds
+    /// its components from `Calendar.current` and stamps them with
+    /// `TimeZone.current`, the same as the native repeating path. Under the
+    /// pin, on Xcode 26.6's Foundation, the first follows the fixture zone and
+    /// the second stays the machine's. The components then carried Toronto's
+    /// 9:00 labelled as UTC, and a UTC runner matched 9:00 UTC, four hours
+    /// early. On a device the two never disagree, because nothing in the app
+    /// sets `NSTimeZone.default`. So scheduler values are built and read in
+    /// the machine's zone, like every other scheduling assertion here, and
+    /// only parsing runs under the pin.
+    private func assertSeriesComponents(
+        _ components: DateComponents?,
+        describe seriesAlert: Date,
+        weekday: Int?,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let machine = Calendar.current
+        XCTAssertEqual(components?.timeZone, TimeZone.current, file: file, line: line)
+        XCTAssertEqual(
+            components?.hour,
+            machine.component(.hour, from: seriesAlert),
+            "the repeating match must be the series' own clock, not the snooze's",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(components?.minute, machine.component(.minute, from: seriesAlert), file: file, line: line)
+        XCTAssertEqual(components?.weekday, weekday, file: file, line: line)
+    }
+
+    /// Asserts that `components`, as armed, first fire at the series' next
+    /// occurrence: after `now`, not the displaced occurrence again, within one
+    /// week, and on the series' clock. Machine zone, like
+    /// `assertSeriesComponents`.
+    private func assertFirstMatchIsTheNextOccurrence(
+        of components: DateComponents,
+        after now: Date,
+        displacedOccurrence: Date,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let machine = Calendar.current
+        let firstMatch = try XCTUnwrap(
+            ReminderScheduler.nextMatch(of: components, after: now),
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(firstMatch, now, file: file, line: line)
+        XCTAssertGreaterThan(
+            firstMatch.timeIntervalSince(displacedOccurrence),
+            60,
+            "the series' first match must be the next occurrence, not this one again",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThanOrEqual(firstMatch.timeIntervalSince(now), 7 * 24 * 60 * 60, file: file, line: line)
+        XCTAssertEqual(
+            machine.dateComponents([.hour, .minute], from: firstMatch),
+            machine.dateComponents([.hour, .minute], from: displacedOccurrence),
+            file: file,
+            line: line
+        )
+    }
+
     /// Snoozing one occurrence of a weekly series by ten minutes must leave the
     /// next occurrence at the series' own time, and must not hand iOS a
     /// repeating trigger at the snoozed minute.
@@ -784,11 +851,14 @@ final class TemporalFullPathTests: XCTestCase {
     /// 9:00:00. `ReminderScheduleRequest` also took its repeating components
     /// from the snoozed fire date, so they matched the snooze's clock instead
     /// of 9:00. Both assertions fail on that code; the second can only pass by
-    /// accident when the suite runs between 8:50 and 8:51 AM Toronto time.
+    /// accident when the suite runs in the minute ten minutes before the
+    /// series' alert.
     func testSnoozingAWeeklyOccurrenceLeavesTheNextOneAtTheSeriesTime() throws {
+        var item: CapturedItem!
+        var firstDue: Date!
         try withFixtureClock { calendar in
             let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
-            let item = try repository.createCapture(
+            item = try repository.createCapture(
                 text: "Remind me every Monday at 9 am to take the bins out",
                 source: .inAppText,
                 createdAt: createdAt,
@@ -797,7 +867,7 @@ final class TemporalFullPathTests: XCTestCase {
             let rule = try XCTUnwrap(RecurrenceStore.rule(for: item.id))
             XCTAssertEqual(rule.frequency, .weekly)
             XCTAssertEqual(rule.weekdays, [2])
-            let firstDue = try XCTUnwrap(item.dueDate)
+            firstDue = try XCTUnwrap(item.dueDate)
             XCTAssertEqual(item.reminderDate, firstDue, "Precondition: the series alerts at its due time")
             XCTAssertEqual(
                 calendar.dateComponents([.weekday, .hour, .minute], from: firstDue),
@@ -808,19 +878,16 @@ final class TemporalFullPathTests: XCTestCase {
             XCTAssertEqual(item.reminderDate?.timeIntervalSinceNow ?? 0, 10 * 60, accuracy: 3)
             XCTAssertEqual(item.dueDate, firstDue, "a snooze moves the alert, not the occurrence")
             XCTAssertEqual(item.temporalIntent?.snoozedFromReminderDate, firstDue)
+        }
 
-            // What iOS is handed for the snoozed occurrence. The fire date is
-            // the snooze; any repeating match must still be the series' clock.
-            let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
-            XCTAssertEqual(request.fireDate, item.reminderDate)
-            XCTAssertEqual(
-                request.repeatingComponents?.hour,
-                9,
-                "a repeating trigger built from the snoozed minute retimes the series on the phone"
-            )
-            XCTAssertEqual(request.repeatingComponents?.minute, 0)
-            XCTAssertEqual(request.repeatingComponents?.weekday, 2)
+        // What iOS is handed for the snoozed occurrence, in the machine's
+        // zone. The fire date is the snooze; any repeating match must still
+        // be the series' clock.
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(request.fireDate, item.reminderDate)
+        assertSeriesComponents(request.repeatingComponents, describe: firstDue, weekday: 2)
 
+        try withFixtureClock { calendar in
             try repository.setCompleted(item, completed: true)
             let next = try loadItem(
                 withID: try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: item.id))
@@ -845,8 +912,9 @@ final class TemporalFullPathTests: XCTestCase {
     /// first match is the next occurrence.
     ///
     /// Asserted on `plannedNotifications`, the same planning
-    /// `scheduleNotification` hands to `UNUserNotificationCenter`, so no
-    /// notification-center state is involved and the zone pin is safe here.
+    /// `scheduleNotification` hands to `UNUserNotificationCenter`. The capture
+    /// and the snooze run under the pin, and the plan is built and read in the
+    /// machine's zone (see `assertSeriesComponents` for why).
     ///
     /// Falsifier: b74d002 armed the snoozed occurrence as a one-shot and
     /// nothing else, so once the snooze fired the series had no trigger at all
@@ -855,57 +923,47 @@ final class TemporalFullPathTests: XCTestCase {
     /// here, so on b74d002 the test does not compile; ported to its inline
     /// trigger logic, the count and the series lookup both fail.
     func testSnoozedWeeklyOccurrenceArmsTheOneShotAndTheSeries() throws {
+        var item: CapturedItem!
+        var firstDue: Date!
         try withFixtureClock { calendar in
             let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
-            let item = try repository.createCapture(
+            item = try repository.createCapture(
                 text: "Remind me every Monday at 9 am to take the bins out",
                 source: .inAppText,
                 createdAt: createdAt,
                 schedulesReminder: false
             )
-            let firstDue = try XCTUnwrap(item.dueDate)
+            firstDue = try XCTUnwrap(item.dueDate)
             try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
-
-            let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
-            XCTAssertEqual(request.seriesContinuation?.occurrenceFireDate, firstDue)
-            let now = Date.now
-            let plan = ReminderScheduler.plannedNotifications(for: [request], now: now)
-            XCTAssertEqual(plan.count, 2, "a snoozed occurrence needs its one-shot and its series")
-
-            let seriesID = ReminderScheduler.seriesNotificationIdentifier(for: item.id)
-            let series = try XCTUnwrap(plan.first { $0.identifier == seriesID })
-            XCTAssertEqual(series.itemIDs, [item.id])
-            guard case let .repeating(components) = series.trigger else {
-                return XCTFail("the series must be armed as a repeating trigger")
-            }
-            XCTAssertEqual(components.hour, 9)
-            XCTAssertEqual(components.minute, 0)
-            XCTAssertEqual(components.weekday, 2)
-            let nextOccurrence = try XCTUnwrap(calendar.nextDate(
-                after: now,
-                matching: DateComponents(hour: 9, minute: 0, weekday: 2),
-                matchingPolicy: .nextTime
-            ))
-            XCTAssertEqual(
-                ReminderScheduler.nextMatch(of: components, after: now),
-                nextOccurrence,
-                "the series' first match must be the next occurrence, not this one again"
-            )
-            XCTAssertGreaterThan(nextOccurrence, firstDue)
-
-            let oneShot = try XCTUnwrap(plan.first { $0.identifier != seriesID })
-            XCTAssertEqual(oneShot.itemIDs, [item.id])
-            guard case let .exact(fireComponents) = oneShot.trigger else {
-                return XCTFail("the snoozed fire must be a one-shot")
-            }
-            let armedFire = try XCTUnwrap(calendar.date(from: fireComponents))
-            XCTAssertEqual(
-                armedFire.timeIntervalSince(request.fireDate),
-                0,
-                accuracy: 1,
-                "the one-shot fires at the snooze"
-            )
         }
+
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(request.seriesContinuation?.occurrenceFireDate, firstDue)
+        let now = Date.now
+        let plan = ReminderScheduler.plannedNotifications(for: [request], now: now)
+        XCTAssertEqual(plan.count, 2, "a snoozed occurrence needs its one-shot and its series")
+
+        let seriesID = ReminderScheduler.seriesNotificationIdentifier(for: item.id)
+        let series = try XCTUnwrap(plan.first { $0.identifier == seriesID })
+        XCTAssertEqual(series.itemIDs, [item.id])
+        guard case let .repeating(components) = series.trigger else {
+            return XCTFail("the series must be armed as a repeating trigger")
+        }
+        assertSeriesComponents(components, describe: firstDue, weekday: 2)
+        try assertFirstMatchIsTheNextOccurrence(of: components, after: now, displacedOccurrence: firstDue)
+
+        let oneShot = try XCTUnwrap(plan.first { $0.identifier != seriesID })
+        XCTAssertEqual(oneShot.itemIDs, [item.id])
+        guard case let .exact(fireComponents) = oneShot.trigger else {
+            return XCTFail("the snoozed fire must be a one-shot")
+        }
+        let armedFire = try XCTUnwrap(Calendar.current.date(from: fireComponents))
+        XCTAssertEqual(
+            armedFire.timeIntervalSince(request.fireDate),
+            0,
+            accuracy: 1,
+            "the one-shot fires at the snooze"
+        )
     }
 
     /// Once the snoozed one-shot has fired and before the next occurrence, a
@@ -922,40 +980,34 @@ final class TemporalFullPathTests: XCTestCase {
     /// on 3b10701 this does not compile. Restoring either filter empties the
     /// plan and fails the count.
     func testSnoozedSeriesStaysArmedAfterItsOneShotHasFired() throws {
+        var item: CapturedItem!
+        var firstDue: Date!
         try withFixtureClock { calendar in
             let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
-            let item = try repository.createCapture(
+            item = try repository.createCapture(
                 text: "Remind me every Monday at 9 am to take the bins out",
                 source: .inAppText,
                 createdAt: createdAt,
                 schedulesReminder: false
             )
+            firstDue = try XCTUnwrap(item.dueDate)
             try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
-            let later = try XCTUnwrap(item.reminderDate).addingTimeInterval(60)
-
-            let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: later))
-            XCTAssertLessThan(request.fireDate, later, "Precondition: the snoozed one-shot has fired")
-            let plan = ReminderScheduler.plannedNotifications(for: [request], now: later)
-            XCTAssertEqual(
-                plan.map(\.identifier),
-                [ReminderScheduler.seriesNotificationIdentifier(for: item.id)],
-                "after the snooze fires, the series trigger is all that is left to arm"
-            )
-            guard case let .repeating(components) = try XCTUnwrap(plan.first).trigger else {
-                return XCTFail("the series must be armed as a repeating trigger")
-            }
-            XCTAssertEqual(components.hour, 9)
-            XCTAssertEqual(components.minute, 0)
-            XCTAssertEqual(components.weekday, 2)
-            XCTAssertEqual(
-                ReminderScheduler.nextMatch(of: components, after: later),
-                calendar.nextDate(
-                    after: later,
-                    matching: DateComponents(hour: 9, minute: 0, weekday: 2),
-                    matchingPolicy: .nextTime
-                )
-            )
         }
+        let later = try XCTUnwrap(item.reminderDate).addingTimeInterval(60)
+
+        let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: later))
+        XCTAssertLessThan(request.fireDate, later, "Precondition: the snoozed one-shot has fired")
+        let plan = ReminderScheduler.plannedNotifications(for: [request], now: later)
+        XCTAssertEqual(
+            plan.map(\.identifier),
+            [ReminderScheduler.seriesNotificationIdentifier(for: item.id)],
+            "after the snooze fires, the series trigger is all that is left to arm"
+        )
+        guard case let .repeating(components) = try XCTUnwrap(plan.first).trigger else {
+            return XCTFail("the series must be armed as a repeating trigger")
+        }
+        assertSeriesComponents(components, describe: firstDue, weekday: 2)
+        try assertFirstMatchIsTheNextOccurrence(of: components, after: later, displacedOccurrence: firstDue)
     }
 
     /// The same mechanism without a snooze (DEL-12): a native repeating series
@@ -969,28 +1021,29 @@ final class TemporalFullPathTests: XCTestCase {
     /// series was disarmed until the next foreground. `forScheduling` is new,
     /// so on 3b10701 this does not compile.
     func testAlertedRepeatingSeriesStaysArmedThroughASchedulingPass() throws {
+        var item: CapturedItem!
         try withFixtureClock { calendar in
             let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
-            let item = try repository.createCapture(
+            item = try repository.createCapture(
                 text: "Remind me every Monday at 9 am to take the bins out",
                 source: .inAppText,
                 createdAt: createdAt,
                 schedulesReminder: false
             )
-            XCTAssertLessThan(try XCTUnwrap(item.reminderDate), .now, "Precondition: the alert has fired")
-            XCTAssertNil(ReminderScheduleRequest(item: item), "Today still counts only alerts ahead")
-
-            let now = Date.now
-            let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
-            let plan = ReminderScheduler.plannedNotifications(for: [request], now: now)
-            XCTAssertEqual(plan.map(\.identifier), [ReminderScheduler.seriesNotificationIdentifier(for: item.id)])
-            guard case let .repeating(components) = try XCTUnwrap(plan.first).trigger else {
-                return XCTFail("the series must be armed as a repeating trigger")
-            }
-            XCTAssertEqual(components.hour, 9)
-            XCTAssertEqual(components.minute, 0)
-            XCTAssertEqual(components.weekday, 2)
         }
+        let alerted = try XCTUnwrap(item.reminderDate)
+        XCTAssertLessThan(alerted, .now, "Precondition: the alert has fired")
+        XCTAssertNil(ReminderScheduleRequest(item: item), "Today still counts only alerts ahead")
+
+        let now = Date.now
+        let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
+        let plan = ReminderScheduler.plannedNotifications(for: [request], now: now)
+        XCTAssertEqual(plan.map(\.identifier), [ReminderScheduler.seriesNotificationIdentifier(for: item.id)])
+        guard case let .repeating(components) = try XCTUnwrap(plan.first).trigger else {
+            return XCTFail("the series must be armed as a repeating trigger")
+        }
+        assertSeriesComponents(components, describe: alerted, weekday: 2)
+        try assertFirstMatchIsTheNextOccurrence(of: components, after: now, displacedOccurrence: alerted)
     }
 
     /// A recurring row that reaches a snooze without an intent blob must still
@@ -1043,11 +1096,15 @@ final class TemporalFullPathTests: XCTestCase {
     /// at the snooze's minute (8:10 for an 8:00 alert snoozed on time) and the
     /// repeating components followed it, arming iOS for that minute every
     /// day. The first two assertions fail on that code unless the suite runs
-    /// between 7:50 and 7:51 AM Toronto time.
+    /// between 7:50 and 7:51 AM Toronto time. Only the capture, the actions
+    /// and the completion run under the pin; the request is read in the
+    /// machine's zone.
     func testTomorrowOnASnoozedDailyOccurrenceKeepsTheSeriesClock() throws {
+        var item: CapturedItem!
+        var tomorrow: Date!
         try withFixtureClock { calendar in
             let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -3, to: .now))
-            let item = try repository.createCapture(
+            item = try repository.createCapture(
                 text: "Remind me every day at 8 am to take my meds",
                 source: .inAppText,
                 createdAt: createdAt,
@@ -1059,7 +1116,7 @@ final class TemporalFullPathTests: XCTestCase {
             try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
             try repository.performReminderAction(itemIDs: [item.id], action: .tomorrow)
 
-            let tomorrow = try XCTUnwrap(
+            tomorrow = try XCTUnwrap(
                 calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now))
             )
             let tomorrowAtEight = try XCTUnwrap(
@@ -1072,17 +1129,20 @@ final class TemporalFullPathTests: XCTestCase {
             )
             XCTAssertEqual(item.dueDate, tomorrowAtEight)
             XCTAssertNil(item.temporalIntent?.snoozedFromReminderDate)
+        }
 
-            let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
-            XCTAssertEqual(request.repeatingComponents?.hour, 8)
-            XCTAssertEqual(request.repeatingComponents?.minute, 0)
-            XCTAssertNil(request.seriesContinuation)
-            XCTAssertEqual(
-                ReminderScheduler.plannedNotifications(for: [request]).count,
-                1,
-                "an occurrence back on its series' alert needs no second trigger"
-            )
+        // Scheduler values, in the machine's zone.
+        let movedAlert = try XCTUnwrap(item.reminderDate)
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        assertSeriesComponents(request.repeatingComponents, describe: movedAlert, weekday: nil)
+        XCTAssertNil(request.seriesContinuation)
+        XCTAssertEqual(
+            ReminderScheduler.plannedNotifications(for: [request]).count,
+            1,
+            "an occurrence back on its series' alert needs no second trigger"
+        )
 
+        try withFixtureClock { calendar in
             try repository.setCompleted(item, completed: true)
             let next = try loadItem(
                 withID: try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: item.id))
