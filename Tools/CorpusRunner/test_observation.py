@@ -890,7 +890,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         (`"a tap from a stale widget does not complete a held row"`, `"an
         ordinary row's tap is still applied"`, `"the dropped tap is not
         retried forever"`) and one skip message (`"the shared app group
-        container is unavailable on this simulator"`). What the test
+        container is unavailable on this simulator"`). 4075 -> 4074 on
+        2026-09-23, from the second grade: the test queues its taps in a
+        folder of its own through the queue's new directory overloads, so it
+        can no longer skip, and that skip message is gone. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -904,7 +907,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4075)
+        self.assertEqual(len(space), 4074)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

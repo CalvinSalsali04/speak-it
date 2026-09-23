@@ -615,14 +615,28 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// row waits in Needs review. Dropping loses a tap the person made;
     /// keeping it would re-apply forever or complete a held row, and the
     /// person can still finish it from Needs review in one tap.
-    func reconcileSharedTodayActions(authorization: LocationAuthorization, now: Date) {
-        for pending in SharedTodayStore.pendingActions() {
+    ///
+    /// `actionsIn` names the queue's folder for a test; `nil` is the app
+    /// group's, which is what every caller in the app uses.
+    func reconcileSharedTodayActions(
+        authorization: LocationAuthorization,
+        now: Date,
+        actionsIn directory: URL? = nil
+    ) {
+        let pendingActions = directory.map { SharedTodayStore.pendingActions(in: $0) }
+            ?? SharedTodayStore.pendingActions()
+        for pending in pendingActions {
             do {
                 switch pending.action.kind {
                 case .complete:
                     if let item = try findItem(withID: pending.action.itemID),
                        item.requiresReview(authorization: authorization) {
                         SharedTodayStore.removeAction(at: pending.url)
+                        // `continue` moves on to the next queued tap. The
+                        // `break` in the catch below is not its twin: an
+                        // unlabeled `break` there leaves the whole loop, so a
+                        // store that cannot be written stops the drain and
+                        // every remaining tap is retried at the next one.
                         continue
                     }
                     try performReminderAction(

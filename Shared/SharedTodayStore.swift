@@ -266,21 +266,31 @@ enum SharedTodayStore {
 
     @discardableResult
     static func enqueueCompletion(itemID: UUID) -> SharedTodayAction? {
+        guard let directory = actionDirectory,
+              let action = enqueueCompletion(itemID: itemID, in: directory) else { return nil }
+        markCompleted(itemID)
+        return action
+    }
+
+    /// The queue's counterpart of `save(_:to:)`: the same write, into a
+    /// directory the caller names, so a test can use its own folder instead of
+    /// the app group's. It leaves the snapshot alone; only the overload above
+    /// marks the row done on the widget.
+    @discardableResult
+    static func enqueueCompletion(itemID: UUID, in directory: URL) -> SharedTodayAction? {
         let action = SharedTodayAction(
             id: UUID(),
             itemID: itemID,
             kind: .complete,
             createdAt: .now
         )
-        guard let directory = actionDirectory,
-              let data = try? encoder.encode(action) else { return nil }
+        guard let data = try? encoder.encode(action) else { return nil }
         do {
             try ensureDirectory(directory)
             try data.write(
                 to: directory.appendingPathComponent("\(action.id.uuidString).json"),
                 options: .atomic
             )
-            markCompleted(itemID)
             return action
         } catch {
             return nil
@@ -288,8 +298,13 @@ enum SharedTodayStore {
     }
 
     static func pendingActions() -> [(action: SharedTodayAction, url: URL)] {
-        guard let directory = actionDirectory,
-              let urls = try? FileManager.default.contentsOfDirectory(
+        guard let directory = actionDirectory else { return [] }
+        return pendingActions(in: directory)
+    }
+
+    /// The queue's counterpart of `load(from:)`.
+    static func pendingActions(in directory: URL) -> [(action: SharedTodayAction, url: URL)] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
                   at: directory,
                   includingPropertiesForKeys: nil
               ) else { return [] }

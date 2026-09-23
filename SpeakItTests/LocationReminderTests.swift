@@ -1583,20 +1583,20 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertTrue(held.requiresReview(authorization: denied))
         XCTAssertFalse(control.requiresReview(authorization: denied))
 
-        for pending in SharedTodayStore.pendingActions() {
-            SharedTodayStore.removeAction(at: pending.url)
-        }
-        try XCTSkipIf(
-            SharedTodayStore.enqueueCompletion(itemID: held.id) == nil,
-            "the shared app group container is unavailable on this simulator"
-        )
-        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: control.id))
+        // A folder of the test's own, never the app group's queue: nothing
+        // else can add to it or drain it, and there is nothing to skip.
+        let queue = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: queue) }
+        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: held.id, in: queue))
+        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: control.id, in: queue))
+        XCTAssertEqual(SharedTodayStore.pendingActions(in: queue).count, 2)
 
-        repository.reconcileSharedTodayActions(authorization: denied, now: .now)
+        repository.reconcileSharedTodayActions(authorization: denied, now: .now, actionsIn: queue)
 
         XCTAssertFalse(held.isCompleted, "a tap from a stale widget does not complete a held row")
         XCTAssertTrue(control.isCompleted, "an ordinary row's tap is still applied")
-        XCTAssertTrue(SharedTodayStore.pendingActions().isEmpty, "the dropped tap is not retried forever")
+        XCTAssertTrue(SharedTodayStore.pendingActions(in: queue).isEmpty, "the dropped tap is not retried forever")
     }
 
     /// Precedence: the missing place is named before the missing permission,
