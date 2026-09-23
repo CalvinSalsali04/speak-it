@@ -962,8 +962,9 @@ final class SpeechTranscriber: ObservableObject {
         // a recording, then start another before its finalization settles,
         // and if the new run reaches `.finalizing` inside that window the old
         // deadline force-completes the new run's finalization early,
-        // truncating it. A start while `.finalizing` reaches this reset and
-        // no other cancel of this deadline, so this one is not redundant.
+        // truncating it. A start made while the previous run is `.finalizing`
+        // reaches this reset and no other cancel of this deadline, so this
+        // one is not redundant.
         finalizationTimeout?.cancel()
         finalizationTimeout = nil
         lastEndpointingSignature = ""
