@@ -1043,3 +1043,30 @@ decisions for reported instructions and prohibitions. Its destination score is
 not an independent release verdict. The unseen set remains 72.8% on destination
 and 7/69 acted-on ambiguous captures; the date-topic fix did not improve that
 aggregate.
+
+## Merge and Undo: what the 2026-09-23 survivor rule leaves
+
+A merge or undo that mixes done and open rows now keeps an open row (see
+`Docs/DECISIONS.md`, 2026-09-23). What it does not do:
+
+- **A merged-away done row is not remembered as done.** "Buy milk" ticked
+  and then merged with an open "call Mom" comes back as one open row. That
+  is the chosen side of the trade, not a defect, but it is visible.
+- **The review sheet does not show which rows are done or archived**, so the
+  person cannot see beforehand that a merge will reopen something.
+- **Undo over a capture whose rows are all closed** keeps a completed row.
+  Completed rows never ask for review, so the footer's "one reviewable item"
+  is not true in that one shape.
+- **Place regions are not re-planned by Merge or Undo** (REV-10). A region
+  left behind by a merged-away row is stopped the first time it is crossed
+  and dropped at the next foreground reconcile; until then it holds one of
+  the region slots. Open PR #135 adds the reconcile to `merge`, not to
+  `undoOrganization`.
+- **Merge still discards hand edits** on the rows it joins (REV-8), except
+  what stays on the surviving row: its pin, idea stage and hand-set place.
+  The survivor may be a later row, so a pin on an earlier, closed row is
+  lost.
+- **The receipt refresh after a review-sheet change is unverified on a
+  device.** It replaces the stale rows the capture screen held (LIF-11), but
+  no UI test drives Merge or Undo from the receipt, and the crash it removes
+  was never reproduced in a simulator.
