@@ -5473,6 +5473,43 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(session.originalTranscription, "Remind me to call Catherine tomorrow at 9 AM")
     }
 
+    /// Pins positional behaviour, and is not a claim that it is ideal. The
+    /// time words go to part 1 this time, and the hand-set time still stays
+    /// on part 0, the original row, because `split` applies the first part
+    /// to the row it keeps and builds the rest fresh. Part 0's words are now
+    /// the fragment without a time, yet it keeps the hand-set time and the
+    /// hand-set repeat rule; part 1, which carries the spoken time, gets its
+    /// own fresh reading of it. See Known issues, row identity is positional.
+    /// A fix that moves the kept time to the row whose words carry it must
+    /// change these assertions on purpose, not break them by surprise.
+    func testSplitKeepsATimeSetByHandOnPartZeroEvenWhenTheTimeWordsMoveToPartOne() throws {
+        let transcript = "Remind me to call Catherine tomorrow at 9 AM"
+        let item = try repository.createCapture(text: transcript)
+        let session = try XCTUnwrap(item.captureSession)
+        let spoken = try XCTUnwrap(item.reminderDate)
+        let chosen = try handSetMoment()
+        XCTAssertNotEqual(spoken, chosen)
+        let weekly = RecurrenceRule(frequency: .weekly)
+        try setTimeByHand(item, to: chosen, repeating: weekly)
+
+        try repository.split(item, into: ["Buy milk", transcript])
+
+        XCTAssertEqual(session.items.count, 2)
+        // Part 0 is the original row, now holding only the fragment.
+        XCTAssertEqual(item.originalTextSegment, "Buy milk")
+        XCTAssertEqual(item.reminderDate, chosen, "part 0 no longer keeps the time by position")
+        XCTAssertEqual(item.dueDate, chosen)
+        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+        XCTAssertEqual(RecurrenceStore.rule(for: item.id), weekly)
+        // Part 1 carries the words with the time, and reads them afresh.
+        let other = try XCTUnwrap(session.items.first { $0.id != item.id })
+        XCTAssertEqual(other.originalTextSegment, transcript)
+        XCTAssertEqual(other.reminderDate, spoken, "part 1 did not read its own spoken time")
+        XCTAssertNotEqual(other.temporalIntent?.isUserEdited, true)
+        XCTAssertNil(RecurrenceStore.rule(for: other.id))
+        XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
     /// Falsifier: drop the guard in `resolveCombinedPlaceAndTimeHoldouts` and
     /// launch swaps the hand-set intent for the one-hour reading. The dates
     /// survive either way (that pass only fills empty ones), which is why the

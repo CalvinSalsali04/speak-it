@@ -887,7 +887,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         spoken time to lose"`, `"the place must be the system's"` and
         `"the system's place is still released"`. The Sobeys wording the
         holdout test reuses was already here, and no phrase in the new doc
-        comments is in quotation marks. What the test
+        comments is in quotation marks. 4077 -> 4079 on 2026-09-23, from
+        review of the same change: one more split test, which puts the
+        time words in part 1, two literals added and none removed, found
+        by diffing `swift_literals` before and after. Both are assertion
+        messages, `"part 0 no longer keeps the time by position"` and
+        `"part 1 did not read its own spoken time"`. Its fixture is the
+        Catherine sentence above, already counted, `"Buy milk"` is under
+        twelve characters, and its doc comment quotes nothing. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -901,7 +908,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4077)
+        self.assertEqual(len(space), 4079)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

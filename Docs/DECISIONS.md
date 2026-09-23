@@ -43,6 +43,20 @@ from the wording each time it is shown or scheduled
 (`ItemPresentation.effectiveReminderDelivery`), so there is no stored
 value for a re-read to overwrite.
 
+When #141 lands: merge takes the surviving row, the first one that is
+neither completed nor archived, instead of the first row, so the mark that
+counts is the survivor's, not the first row's. Merging a done row that
+carries a hand-set time with an open row that does not keeps the open
+survivor's reading: the done row's hand-set time is replaced by the re-read
+of the joined words. The open row is the one the person is still working
+on, so that is the better answer, but it is a different one from this entry
+alone.
+
+With #138, `mayArmPlace` is being changed to read only the location mark,
+and the editor save to stamp a present place it did not change as the
+person's; after that change, a temporal mark kept by a re-read cannot arm a
+place the same re-read proposed.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
