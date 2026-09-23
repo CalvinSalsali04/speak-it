@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-09-23 — A series that names its weekdays keeps the clock it was given
+
+`RecurrenceRule.nextDate` takes the clock the person stated
+(`preferredWallClock`, from the row's intent) so that one daylight-saving
+nudge does not become permanent. Every branch honoured it through
+`snappingToWallClock` except weekly-with-named-days, which matched on the
+previous occurrence's hour and minute. So "every Sunday at 2:30 AM" fired at
+3:00 on the spring-forward Sunday, correctly, and then at 3:00 every Sunday
+after, while "every day at 2:30 AM" returned to 2:30. The same branch carried
+a clock moved by travel forward in the same way. It now builds its match from
+the stated clock when the row has one (seconds zero, as the snap does) and
+from the previous instant otherwise, so a row with no intent behaves exactly
+as before. Found by the grade of #133, where it first appeared as a wrinkle of
+repeating alarms; it predates them and moves notifications too.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

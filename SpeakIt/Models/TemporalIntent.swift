@@ -345,10 +345,15 @@ enum TemporalResolver {
 
         case .calendarRecurrence:
             guard let rule = intent.recurrence else { return nil }
+            // The stated clock, as the scheduler's `nextRecurrenceDate`
+            // passes it. Nothing in the app calls this today; without it, a
+            // caller would bring back the daylight-saving drift that
+            // `preferredWallClock` removes.
             return rule.nextDate(
                 scheduledDate: previous,
                 completedAt: previous,
-                calendar: calendar
+                calendar: calendar,
+                preferredWallClock: intent.time
             )
 
         case .none, .dateOnly, .exactDateTime, .relativeDuration:
