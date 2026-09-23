@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftData
+import UserNotifications
 import XCTest
 @testable import SpeakIt
 
@@ -2536,6 +2537,162 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         try repository.reorganize(session)
         XCTAssertEqual(session.items.count, 2)
         XCTAssertEqual(session.originalTranscription, transcript)
+    }
+
+    // MARK: - Merge and Undo never bury open work under a closed row
+
+    /// Two rows in one capture, the first already done: the shape REV-5 needs.
+    ///
+    /// Built by `split` so the parts are exactly these two whatever the
+    /// extractor does with a joined sentence. The first part leads with its
+    /// reminder so the merged sentence, "Remind me to call Sam in 3 hours and
+    /// pay the water bill", states a future time wherever the organizer files
+    /// the rest; the test checks that precondition rather than assuming it.
+    private func captureWithCompletedFirstRow() throws -> (
+        session: CaptureSession, doneRow: CapturedItem, openRow: CapturedItem
+    ) {
+        let item = try repository.createCapture(
+            text: "Remind me to call Sam in 3 hours",
+            source: .inAppText,
+            createdAt: .now
+        )
+        let session = try XCTUnwrap(item.captureSession)
+        try repository.split(item, into: ["Remind me to call Sam in 3 hours", "Pay the water bill"])
+        let rows = session.items.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        XCTAssertEqual(rows.count, 2, "precondition: the capture holds exactly the two split rows")
+        try repository.setCompleted(rows[0], completed: true)
+        XCTAssertTrue(rows[0].isCompleted, "precondition: the first row is done")
+        XCTAssertFalse(rows[1].isCompleted, "precondition: the second row is open")
+        return (session, rows[0], rows[1])
+    }
+
+    /// Waits for `ReminderScheduler`'s serial tail, so the pending set read
+    /// next reflects every synchronize already issued. Removes nothing.
+    private func drainReminderScheduler() async {
+        _ = await ReminderScheduler.synchronizeAndVerify(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope()
+        )
+    }
+
+    private func pendingNotificationRequests(for itemID: UUID) async -> [UNNotificationRequest] {
+        await UNUserNotificationCenter.current().pendingNotificationRequests().filter { request in
+            request.identifier.contains(itemID.uuidString) ||
+                (request.content.userInfo["itemIDs"] as? [String])?
+                    .contains(itemID.uuidString) == true
+        }
+    }
+
+    /// Provisional authorization needs no prompt on a fresh simulator, so the
+    /// pending-notification half runs on CI. Asked for before the mutation,
+    /// because scheduling reads the permission at the moment it runs. Returns
+    /// whether notifications can be scheduled; a denied install is not
+    /// overridden.
+    private func grantProvisionalNotificationAuthorization() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        if await center.notificationSettings().authorizationStatus == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge, .provisional])
+        }
+        let status = await center.notificationSettings().authorizationStatus
+        return status == .authorized || status == .provisional || status == .ephemeral
+    }
+
+    /// REV-5. Merge kept the earliest row, and `apply` never writes
+    /// `completedAt`, so an open row merged onto a done one became done: it
+    /// left Today, `synchronizeReminders` skipped it, and the merged reminder
+    /// was never armed.
+    ///
+    /// Falsifier: `survivingRow(of:)` returning `ordered[0]` (the old
+    /// `uniqueItems[0]`) keeps the completed row, and the survivor, open-state
+    /// and pending-notification assertions all fail.
+    func testMergingOntoACompletedFirstRowLeavesTheResultOpenWithItsReminderPending() async throws {
+        let notificationsAuthorized = await grantProvisionalNotificationAuthorization()
+        let (session, _, openRow) = try captureWithCompletedFirstRow()
+        let openID = openRow.id
+
+        try repository.merge(session.items)
+
+        XCTAssertEqual(session.items.count, 1)
+        let merged = try XCTUnwrap(session.items.first)
+        XCTAssertEqual(merged.id, openID, "the open row is the one that survives")
+        XCTAssertFalse(merged.isCompleted, "one open row among the sources keeps the result open")
+        XCTAssertFalse(merged.isArchived)
+        XCTAssertTrue(merged.originalTextSegment.contains("Pay the water bill"))
+        XCTAssertTrue(merged.originalTextSegment.contains("call Sam"))
+        let reminder = try XCTUnwrap(
+            merged.reminderDate,
+            "precondition: the merged sentence states a time"
+        )
+        XCTAssertGreaterThan(reminder, .now)
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: merged),
+            "the result is something the scheduler would arm"
+        )
+
+        // The state above is checked on every simulator; only the system's
+        // pending set needs a grant. Skipped after, never instead of, those.
+        try XCTSkipUnless(
+            notificationsAuthorized,
+            "notification permission is not granted on this simulator"
+        )
+        await drainReminderScheduler()
+        let pending = await pendingNotificationRequests(for: merged.id)
+        XCTAssertEqual(
+            pending.count,
+            1,
+            "merge re-arms the result through synchronizeReminders, so it is pending now"
+        )
+    }
+
+    /// REV-5, the Undo half. Undo promises "one reviewable item"; kept on the
+    /// done first row it was a completed row, which never requires review and
+    /// sits in Completed where nobody reviews it.
+    ///
+    /// Falsifier: `undoOrganization` keeping `ordered.first` again keeps the
+    /// completed row, and the survivor and open-state assertions fail.
+    func testUndoingOrganizationOverACompletedFirstRowLeavesOneOpenReviewRow() throws {
+        let (session, _, openRow) = try captureWithCompletedFirstRow()
+        let openID = openRow.id
+        let transcript = session.originalTranscription
+
+        try repository.undoOrganization(session)
+
+        XCTAssertEqual(session.items.count, 1)
+        let restored = try XCTUnwrap(session.items.first)
+        XCTAssertEqual(restored.id, openID, "the open row is the one that survives")
+        XCTAssertFalse(restored.isCompleted, "one open row among the sources keeps the result open")
+        XCTAssertFalse(restored.isArchived)
+        XCTAssertTrue(restored.needsClarification, "Undo files the whole capture for review")
+        XCTAssertEqual(restored.originalTextSegment, transcript, "the whole transcript is the row's words")
+        XCTAssertEqual(session.originalTranscription, transcript, "the original words are untouched")
+        XCTAssertEqual(restored.createdAt, session.createdAt)
+    }
+
+    /// The other side of the rule: when nothing was open, nothing is reopened.
+    /// A capture finished row by row stays finished when its rows are joined.
+    ///
+    /// Falsifier: a survivor rule that clears `completedAt` whenever rows are
+    /// folded, or that always prefers a later row, fails the completed or the
+    /// survivor assertion.
+    func testMergingRowsThatAreAllCompletedLeavesTheResultCompleted() throws {
+        let (session, doneRow, openRow) = try captureWithCompletedFirstRow()
+        let doneID = doneRow.id
+        try repository.setCompleted(openRow, completed: true)
+
+        try repository.merge(session.items)
+
+        XCTAssertEqual(session.items.count, 1)
+        let merged = try XCTUnwrap(session.items.first)
+        XCTAssertEqual(merged.id, doneID, "with every row closed the earliest row survives")
+        XCTAssertTrue(merged.isCompleted, "every source row was done, so the result is done")
+        XCTAssertNil(
+            session.items.first(where: { !$0.isCompleted && !$0.isArchived }),
+            "no open row appears from a capture that was finished"
+        )
     }
 
     func testOneHundredActionPairsAreSeparatedPredictably() {

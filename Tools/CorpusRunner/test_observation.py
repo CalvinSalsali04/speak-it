@@ -879,6 +879,31 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
+
+        4068 -> 4084 on 2026-09-23, from Merge and Undo keeping an open row
+        open (REV-5): three `SwiftDataThoughtRepositoryTests` tests and their
+        shared fixture, sixteen literals, enumerated rather than assumed. One
+        fixture, `"Pay the water bill"`. Fourteen assertion messages:
+        `"precondition: the capture holds exactly the two split rows"`,
+        `"precondition: the first row is done"`, `"precondition: the second
+        row is open"`, `"precondition: the merged sentence states a time"`,
+        `"the open row is the one that survives"`, `"one open row among the
+        sources keeps the result open"`, `"the result is something the
+        scheduler would arm"`, `"merge re-arms the result through
+        synchronizeReminders, so it is pending now"`, `"Undo files the whole
+        capture for review"`, `"the whole transcript is the row's words"`,
+        `"the original words are untouched"`, `"with every row closed the
+        earliest row survives"`, `"every source row was done, so the result
+        is done"` and `"no open row appears from a capture that was
+        finished"`. And one phrase quoted in a doc comment, `"one reviewable
+        item"`, the footer the Undo test is named against: the hazard this log
+        has named three times, left in quotation marks for the same reason as
+        before. Two literals the tests use add nothing because they were
+        already here: the fixture `"Remind me to call Sam in 3 hours"` and the
+        skip message `"notification permission is not granted on this
+        simulator"`, both in `TemporalFullPathTests`. The merged sentence the
+        fixture's doc comment quotes spans two lines, so it is not one literal
+        and counts for nothing.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -888,7 +913,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4084)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
