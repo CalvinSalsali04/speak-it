@@ -36,13 +36,23 @@ leads with the same reason the Needs review row shows and, under it, the
 caption from the entry below (`Reminder not set · 8:00 PM`) in place of a
 bare time that read as set. There are no new controls.
 
-What is left: the Today list card and the morning brief still time a list by
-its earliest date, held rows included (Docs/KNOWN_ISSUES.md). Pinned by
-`ItemPresentationTests`
+A held row also no longer times its list, so the Today list card and the
+morning brief do not read its proposal (the entry below).
+
+What pins it. Four `ItemPresentationTests` pin the shared definition:
+`belongsInNeedsReview` and `needsReviewMembers` admit a held shopping row,
+the receipt's count and label agree with them, and a title edit that
+retypes a held row to shopping keeps it a member
 (`testTheReceiptCountsExactlyTheRowsNeedsReviewLists`,
 `testASingleItemReceiptSaysReviewExactlyWhenNeedsReviewListsTheRow`,
 `testAHeldShoppingRowStaysOnItsListAndIsListedInNeedsReview`,
-`testAHeldRowRetypedToShoppingByATitleEditStaysInNeedsReview`).
+`testAHeldRowRetypedToShoppingByATitleEditStaysInNeedsReview`). None of them
+reaches `TodayView.needsReview`, which is where REV-3 lived: putting the
+shopping exclusion back in the view leaves all four passing. The UI test
+`SpeakItUITests.testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard`
+pins the view. It types the Costco sentence and finds the row by its
+`today.review.<title>` identifier, with the `Costco` list card still on Today.
+UI tests do not run in CI, so it is on the owner's hand-run list.
 
 ## 2026-09-23 — A row the system holds for review arms nothing
 

@@ -1053,6 +1053,7 @@ struct TodayView: View {
                             .joined(separator: ". ")
                     )
                     .accessibilityHint("Opens this item so you can supply what is missing")
+                    .accessibilityIdentifier("today.review.\(item.displayTitle)")
                     Divider().overlay(Color.speakDivider)
                 }
             }
