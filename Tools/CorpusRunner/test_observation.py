@@ -900,9 +900,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         finalization. Nine, enumerated: eight assertion messages, one of them
         interpolated, and the fixture `"buy milk and eggs today"`, the final
         wording a finalization delivers; its partial, `"buy milk and eggs"`,
-        was already counted elsewhere and adds nothing. The development-set
-        overlap stayed at 114, checked by regenerating
-        `LANGUAGE_BASELINE.md`. What the test
+        was already counted elsewhere and adds nothing. Then 4128 -> 4132
+        on the same branch, when review found the late save's charge and
+        retry cleanup asserted by nothing and they moved into
+        `CaptureSaveSettlement`. Four, enumerated, all assertion messages:
+        `"a stored thought went uncharged because its screen had gone"`,
+        `"the stored thought's draft was left to be recovered again"`,
+        `"the replaced attempt stayed in Needs review beside its retry"` and
+        `"a clarification retry spent a second free capture"`. The event
+        names the order test logs are single words under twelve characters
+        and add none. The development-set overlap stayed at 114, checked by
+        regenerating `LANGUAGE_BASELINE.md`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -916,7 +924,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4128)
+        self.assertEqual(len(space), 4132)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

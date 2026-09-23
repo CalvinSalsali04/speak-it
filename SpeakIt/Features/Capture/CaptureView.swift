@@ -396,6 +396,72 @@ final class CapturePresentation {
     }
 }
 
+/// What a persisted save does before it may publish, and in what order.
+///
+/// The durable effects come first and run whether or not the screen that
+/// started the save is still up: the free-capture charge, the saved-capture
+/// analytics event, and the deletion of the clarification attempt this save
+/// replaces. Only then is `publishes` asked. A save whose screen has gone
+/// clears its own draft by the id it captured and stops; one whose screen is
+/// still up returns to `CaptureView.save`, which publishes.
+///
+/// A late save used to be the case nothing checked: moving the publishing
+/// check above the charge or the deletion would have dropped both on every
+/// save that outlived its screen, and every test stayed green. The view calls
+/// this function, and the tests run it rather than a copy of it.
+///
+/// Synchronous on purpose. It runs inside the span after persistence has
+/// returned, where `isSaving` is already down and the save slot already free,
+/// and nothing in that span may suspend.
+enum CaptureSaveSettlement {
+    struct Settled: Equatable {
+        /// Whether the screen that started the save may hear about it.
+        let publishes: Bool
+        /// Deleting the superseded clarification attempt failed, so both
+        /// versions are in Needs review. Only a save that publishes has a
+        /// screen to say so on.
+        let retrySourceSurvived: Bool
+    }
+
+    @MainActor
+    static func settle(
+        createdNewCapture: Bool,
+        consumesFreeCapture: Bool,
+        replacesRetrySource: Bool,
+        chargeFreeCapture: () -> Void,
+        recordSaved: () -> Void,
+        deleteRetrySource: () throws -> Void,
+        publishes: () -> Bool,
+        clearDraftOfEndedScreen: () -> Void
+    ) -> Settled {
+        if createdNewCapture {
+            // A clarification retry replaces an attempt that was already
+            // charged, so the person never spends two captures for helping
+            // Speak It understand one thought.
+            if consumesFreeCapture, !replacesRetrySource {
+                chargeFreeCapture()
+            }
+            recordSaved()
+        }
+        var retrySourceSurvived = false
+        if replacesRetrySource {
+            // The retry was durable before this deletion starts. If deletion
+            // fails, both versions remain recoverable rather than either one
+            // being lost.
+            do {
+                try deleteRetrySource()
+            } catch {
+                retrySourceSurvived = true
+            }
+        }
+        guard publishes() else {
+            clearDraftOfEndedScreen()
+            return Settled(publishes: false, retrySourceSurvived: retrySourceSurvived)
+        }
+        return Settled(publishes: true, retrySourceSurvived: retrySourceSurvived)
+    }
+}
+
 /// What the close dialog's Save & Close does with the words on screen.
 enum CaptureCloseRequest: Equatable {
     /// Start a save of what is on screen, and close when it finishes.
@@ -403,7 +469,8 @@ enum CaptureCloseRequest: Equatable {
     /// A save already owns these words, or is about to: finalization will
     /// hand the recognizer's last result to `save`, and audio recovery ends by
     /// starting one. Close when that save finishes rather than starting a
-    /// second save of an earlier wording.
+    /// second save of an earlier wording. If recovery fails instead, there is
+    /// no save to close after, and `recoverActiveAudio` withdraws the close.
     case closeWhenSaveFinishes
     /// The words are already saved and confirmed on screen.
     case closeSaved
@@ -1355,6 +1422,13 @@ struct CaptureView: View {
                 save(recoveredText, source: .inAppVoice)
             } catch {
                 isRecoveringAudio = false
+                // Save & Close during recovery waited for the save recovery was
+                // going to start. There is none now, so the close is withdrawn
+                // rather than left armed for whatever the person saves next.
+                // The screen stays open on the notice below: the recording is
+                // kept for recovery, and closing would hide that nothing was
+                // saved.
+                closesAfterSave = false
                 CaptureDraftStore.markFailed(id: draft.id, error: error)
                 continueByTyping(
                     notice: "Your recording is safe. Type this thought now, or recover it later from Today."
@@ -1485,8 +1559,9 @@ struct CaptureView: View {
         }
         subscriptionStore.refreshFreeAllowance()
         // A clarification retry is exempt, because it replaces an attempt that
-        // was already charged — the `!replacesRetrySource` condition below
-        // guarantees it cannot charge a second time. Without this, the app
+        // was already charged — the `!replacesRetrySource` condition in
+        // `CaptureSaveSettlement.settle` guarantees it cannot charge a second
+        // time. Without this, the app
         // invited the person to "try saying it again" on their tenth capture
         // and then refused the retry it had just asked for.
         guard tutorialMission != nil
@@ -1521,9 +1596,13 @@ struct CaptureView: View {
         }
         guard let thisSave = presentation.beginSave() else { return }
         // Held here rather than read back from `@State` after the `await`: the
-        // screen may be gone by then.
+        // screen may be gone by then, and a torn-down view's `@State` is not a
+        // reliable thing to read. The retry source matters most of the three:
+        // read as `nil` from a dead screen, it charged a clarification retry
+        // and left the attempt it replaced in Needs review beside it.
         let owner = presentation
         let savingDraftID = activeDraftID
+        let savingRetrySource = retryingUnclearResult
         isSaving = true
         Task { @MainActor in
             do {
@@ -1542,57 +1621,70 @@ struct CaptureView: View {
                         performance: performance
                     )
                 }
-                // `isSaving` is already down here. Nothing between this line
-                // and `savedResult = result` may suspend: an `await` added in
-                // this span would show the orb idle while the save is still
-                // finishing (see `CaptureSaveInFlight`).
-                let retrySource = retryingUnclearResult
-                let replacesRetrySource = retrySource.map {
+                // `isSaving` is already down here, and this save's slot is
+                // already free. Nothing between this line and
+                // `savedResult = result` may suspend: an `await` added in this
+                // span would show the orb idle while the save is still
+                // finishing (see `CaptureSaveInFlight`), and would let a second
+                // `save` of this screen claim the slot and store the same words
+                // again (see `CapturePresentation`).
+                let replacesRetrySource = savingRetrySource.map {
                     result.createdNewCapture && $0.session.id != result.session.id
                 } ?? false
-                if result.createdNewCapture {
+                // The durable effects, then the one question of whether this
+                // screen still hears about them. The thought is durable, so the
+                // charge, the retry cleanup and the draft happen whatever
+                // happened to the screen. Everything after the guard publishes
+                // the result: to this screen, the parent's navigation, the Live
+                // Activity and the auto-dismiss timer. A save whose screen was
+                // discarded or closed must not publish into the capture that
+                // replaced it.
+                let settled = CaptureSaveSettlement.settle(
+                    createdNewCapture: result.createdNewCapture,
                     // Cancelling, completing or withdrawing manages existing
-                    // content rather than storing a new thought, so it does not
-                    // spend one of the ten free captures.
-                    // A clarification retry replaces an already-charged
-                    // attempt, so the person never spends two captures for
-                    // helping Speak It understand one thought.
-                    if result.consumesFreeCapture, !replacesRetrySource {
+                    // content rather than storing a new thought, so it does
+                    // not spend one of the ten free captures.
+                    consumesFreeCapture: result.consumesFreeCapture,
+                    replacesRetrySource: replacesRetrySource,
+                    chargeFreeCapture: {
                         subscriptionStore.recordSuccessfulCapture()
-                    }
-                    if tutorialMission == nil {
+                    },
+                    recordSaved: {
+                        guard tutorialMission == nil else { return }
                         SpeakItAnalytics.track(.captureSaved(
                             source: source == .inAppVoice ? .voice : .text,
                             itemCount: result.itemCount,
                             needsReviewCount: result.needsReviewCount,
                             plan: subscriptionStore.hasProAccess ? .pro : .free
                         ))
-                    }
-                }
-                if replacesRetrySource, let retrySource {
-                    do {
-                        // The retry was durable before this deletion starts.
-                        // If deletion fails, both versions remain recoverable
-                        // and the person is told instead of losing either one.
-                        for item in retrySource.items {
+                    },
+                    deleteRetrySource: {
+                        guard let savingRetrySource else { return }
+                        for item in savingRetrySource.items {
                             try repository.delete(item)
                         }
-                    } catch {
-                        errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
+                    },
+                    publishes: { owner.publishes(thisSave) },
+                    clearDraftOfEndedScreen: {
+                        if let savingDraftID {
+                            CaptureDraftStore.clear(id: savingDraftID)
+                        }
                     }
-                }
+                )
+                // A save whose screen has gone has nobody to tell that the
+                // earlier attempt survived. Both versions stay in Needs review,
+                // where the person will find them; nothing is written to this
+                // screen's `@State`, which nobody is looking at.
+                guard settled.publishes else { return }
                 retryingUnclearResult = nil
-                // The thought is durable, so its draft goes whatever happened to
-                // the screen. Everything after this guard publishes the result:
-                // to this screen, the parent's navigation, the Live Activity and
-                // the auto-dismiss timer. A save whose screen was discarded or
-                // closed must not publish into the capture that replaced it.
-                guard owner.publishes(thisSave) else {
-                    if let savingDraftID {
-                        CaptureDraftStore.clear(id: savingDraftID)
-                    }
-                    return
+                if settled.retrySourceSurvived {
+                    errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
                 }
+                // The live id, not `savingDraftID`. They are equal unless the
+                // person edited during the save, which the editor allows:
+                // clearing the text retires the saving draft, and typing again
+                // begins a new one. That draft holds the words the next line
+                // clears from the editor, and only the live id reaches it.
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
