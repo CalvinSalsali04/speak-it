@@ -107,8 +107,13 @@ enum SpeakItAnalyticsEvent: Sendable {
     case captureSaved(source: AnalyticsCaptureSource, itemCount: Int, needsReviewCount: Int, plan: AnalyticsPlan)
     case captureFailed(source: AnalyticsCaptureSource, category: String)
     case capturePerformance(CaptureLatencySample)
-    /// `finalizedBy` and `stopTrigger` are `nil` when the transcriber did not
-    /// finalize this capture (no speech, or words recovered from the recording).
+    /// `finalizedBy` and `stopTrigger` are both `nil` when the transcriber did
+    /// not finalize this capture (no speech, or words recovered from the
+    /// recording). `stopTrigger` alone is also `nil` on two paths that do
+    /// finalize, because nothing asked the capture to stop: the recognizer
+    /// delivered its own final result while still listening, or an error
+    /// arrived after partial words while still listening. Those send
+    /// `finalized_by` without `stop_trigger`.
     case speechCaptureQuality(
         SpeechCaptureAudioQuality,
         producedWords: Bool,

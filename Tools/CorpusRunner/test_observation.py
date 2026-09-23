@@ -1652,6 +1652,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         expected value is a snake_case label with no space and the one
         private-message fixture, `"The user typed a private thought
         here"`, was already in `SwiftDataThoughtRepositoryTests`.
+        4068 -> 4068 on 2026-09-23, from the diagnostics' truthfulness
+        fixes: dropping `max_duration` from the pinned `stop_trigger` set
+        removes a snake_case label, not a multi-word literal.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1899,7 +1902,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #132 with #135): `deleteCapture` re-plans the region budget, and
         the region-freeing test gains a step for it. Two in (`Remind me
         to bring the umbrella every time I get home`, `replacing an
-        attempt`), none out: 4773 + 2 - 0 = 4775.
+        attempt`), none out: 4773 + 2 - 0 = 4775. 4775 -> 4775 on
+        2026-09-23, merging #148 at `373ddc5` into the V1 candidate in
+        the rehearsal-2 follow-up: measured from the merged tree, not
+        taken from either side (4775 on the candidate, 4068 on #148,
+        4068 at their merge base `666eb1e`; #148 adds 0 and removes 0, 0
+        of its additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
