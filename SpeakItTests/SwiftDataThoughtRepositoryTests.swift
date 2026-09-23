@@ -6605,6 +6605,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         "I had better luck last time",
     ]
 
+    /// Captures that carry an operation: one confident cancellation, a
+    /// whole-capture withdrawal, and a withdrawal scoped to the clause spoken
+    /// before it.
+    private static let operationFixtures = [
+        "Cancel the plumber",
+        "Actually never mind",
+        "Buy milk and tomorrow I need to, never mind",
+    ]
+
     private func sessionRows(of item: CapturedItem) throws -> [CapturedItem] {
         let session = try XCTUnwrap(item.captureSession)
         return session.items.sorted { $0.createdAt < $1.createdAt }
@@ -6848,20 +6857,25 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertFalse(ThoughtExtractionEngine.refinementIsPermitted(requested: false, tagger: .usable))
     }
 
-    /// A usable verdict hands back exactly the rules reading. Runs on every
-    /// machine, blind or not, because the override decides the verdict and
-    /// the rules are compared with themselves.
+    /// A usable verdict hands back exactly the rules reading, rows and
+    /// operations alike. Runs on every machine, blind or not, because the
+    /// override decides the verdict and the rules are compared with
+    /// themselves. This is the proof that holding operations, re-reading a
+    /// scoped one and asking the resolver for timing cost a healthy device
+    /// nothing: none of it runs unless the verdict is blind.
     ///
     /// Falsifier: apply the policy whatever the verdict, or swap the cases in
-    /// `ThoughtExtractionEngine.finished`, and every row comes back held.
+    /// `ThoughtExtractionEngine.finished`, and every row comes back held and
+    /// every operation comes back needing review.
     func testAUsableVerdictLeavesTheRulesReadingUntouched() {
         let at = Date(timeIntervalSince1970: 1_786_550_400)
-        for text in Self.policyFixtures {
-            let rules = RuleBasedThoughtExtractor.process(text, referenceDate: at).items
+        for text in Self.policyFixtures + Self.operationFixtures {
+            let rules = RuleBasedThoughtExtractor.process(text, referenceDate: at)
             let engine = LinguisticHealth.$override.withValue(.usable) {
                 ThoughtExtractionEngine.extractWithRules(text, referenceDate: at)
             }
-            XCTAssertEqual(engine.items, rules, text)
+            XCTAssertEqual(engine.items, rules.items, text)
+            XCTAssertEqual(engine.operations, rules.operations, text)
         }
     }
 
@@ -6888,5 +6902,286 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             }
             XCTAssertEqual(production.items, rules, text)
         }
+    }
+
+    // MARK: - A blind tagger runs no operation
+
+    private func allStoredItems() throws -> [CapturedItem] {
+        try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+    }
+
+    /// The rules reading under a usable verdict. Synchronous on purpose, so
+    /// an async test calling it cannot pick `withValue`'s async overload.
+    private func usableReading(_ text: String, at referenceDate: Date = .now) -> ThoughtExtractionResult {
+        LinguisticHealth.$override.withValue(.usable) {
+            ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate)
+        }
+    }
+
+    private func plainRow(_ quote: String, dueDate: Date? = nil) -> ExtractedThought {
+        ExtractedThought(
+            sourceQuote: quote,
+            rawQuote: quote,
+            wasRepaired: false,
+            analysisText: quote,
+            suggestedTitle: nil,
+            organization: OrganizedThought(
+                itemType: .task,
+                category: .general,
+                priority: .normal,
+                personName: nil,
+                dueDate: dueDate,
+                reminderDate: nil,
+                reminderDelivery: .none,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: dueDate == nil ? TemporalIntent.none : TemporalIntent(kind: .dateOnly)
+            ),
+            confidence: 1,
+            needsReview: false
+        )
+    }
+
+    /// One confident cancellation of one stored row, read while the tagger is
+    /// blind, is held for review rather than performed. The detector is
+    /// lexical, but whose words an operation is (`ClauseScope.read`) is not,
+    /// so nothing destructive may run on that reading.
+    ///
+    /// Falsifier: return `result.operations` unchanged from
+    /// `DegradedLanguagePolicy.applying` (drop `heldForReview`), and the
+    /// cancellation is performed and the plumber row is deleted. The
+    /// preconditions prove it would have been: read usable, the request does
+    /// not ask for review and names exactly that one row.
+    func testABlindTaggerHoldsASingleCandidateCancellation() async throws {
+        let plumber = try repository.createCapture(text: "Call the plumber")
+        // Pinned, so the stored row is a task on any simulator, blind or not.
+        plumber.itemType = .task
+        plumber.needsClarification = false
+        try container.mainContext.save()
+        let plumberID = plumber.id
+        let text = Self.operationFixtures[0]
+
+        let usable = usableReading(text)
+        let request = try XCTUnwrap(usable.pendingOperation, "precondition: this is an operation")
+        XCTAssertEqual(request.operation, .cancel)
+        XCTAssertFalse(request.needsReview, "precondition: read usable, it would run")
+        let target = try XCTUnwrap(request.target)
+        XCTAssertEqual(
+            CaptureTargetMatcher.candidates(for: target, in: try allStoredItems()).map(\.id),
+            [plumberID],
+            "precondition: exactly one candidate"
+        )
+
+        let result = try await LinguisticHealth.$override.withValue(.blind) {
+            try await repository.createCaptureResult(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminders: false
+            )
+        }
+
+        guard case let .ambiguous(operation, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("expected the cancellation held, got \(String(describing: result.operationOutcome))")
+        }
+        XCTAssertEqual(operation, .cancel)
+        let survivor = try XCTUnwrap(
+            try allStoredItems().first { $0.id == plumberID },
+            "a held cancellation deleted the row it named"
+        )
+        XCTAssertNil(survivor.completedAt)
+        XCTAssertFalse(result.items.isEmpty, "the capture's words stay as a review row")
+        XCTAssertTrue(result.items.allSatisfy(\.needsClarification))
+        XCTAssertEqual(Array(result.session.originalTranscription.utf8), Array(text.utf8))
+    }
+
+    /// A withdrawal read while the tagger is blind keeps the capture in Needs
+    /// review instead of discarding it. Whether "never mind" is the speaker's
+    /// or sits inside a message is `withdrawalBelongsToSomeoneElse`, which asks
+    /// `ClauseScope.read`. The repository used to discard on any retraction,
+    /// needs-review or not.
+    ///
+    /// Falsifier: remove the `needsReview` guard from the retraction branch of
+    /// `applyCaptureOperation`, or drop `heldForReview` from the policy, and
+    /// the outcome is `.retracted` with no row left.
+    func testABlindTaggerHoldsAWithdrawalInsteadOfDiscardingTheCapture() async throws {
+        let text = Self.operationFixtures[1]
+        let usable = usableReading(text)
+        let request = try XCTUnwrap(usable.pendingOperation, "precondition: this is an operation")
+        XCTAssertEqual(request.operation, .retract)
+        XCTAssertFalse(request.needsReview, "precondition: read usable, it would discard")
+
+        let result = try await LinguisticHealth.$override.withValue(.blind) {
+            try await repository.createCaptureResult(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminders: false
+            )
+        }
+
+        guard case let .ambiguous(operation, candidateIDs) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("expected the withdrawal held, got \(String(describing: result.operationOutcome))")
+        }
+        XCTAssertEqual(operation, .retract)
+        XCTAssertTrue(candidateIDs.isEmpty)
+        XCTAssertEqual(result.items.map(\.originalTextSegment), [text])
+        XCTAssertTrue(result.items.allSatisfy(\.needsClarification))
+        XCTAssertEqual(result.session.processingStatus, .complete)
+        XCTAssertEqual(try allStoredItems().count, 1)
+    }
+
+    /// A withdrawal scoped to the clause before it never reaches the
+    /// repository: the parser has already taken that clause out of the rows.
+    /// Blind, the rows are read again without operations, so the clause comes
+    /// back as a held row and nothing runs.
+    ///
+    /// Falsifier: ignore `rereadWithoutOperations` in
+    /// `DegradedLanguagePolicy.applying`, and the stored rows are the usable
+    /// reading's rows, which no longer hold the withdrawn clause.
+    func testABlindTaggerKeepsTheClauseAScopedWithdrawalTookOut() async throws {
+        let text = Self.operationFixtures[2]
+        let at = Date()
+        let usable = usableReading(text, at: at)
+        XCTAssertTrue(usable.operations.contains(where: \.isScoped), "precondition: the withdrawal is scoped")
+        let whole = RuleBasedThoughtExtractor.process(
+            text,
+            referenceDate: at,
+            permitsOperations: false
+        ).items
+        XCTAssertNotEqual(
+            whole.map(\.sourceQuote),
+            usable.items.map(\.sourceQuote),
+            "precondition: the scoped withdrawal removed words from the rows"
+        )
+
+        let result = try await LinguisticHealth.$override.withValue(.blind) {
+            try await repository.createCaptureResult(
+                text: text,
+                source: .inAppText,
+                createdAt: at,
+                schedulesReminders: false
+            )
+        }
+
+        XCTAssertNil(result.operationOutcome, "no operation may run on a blind reading")
+        XCTAssertEqual(result.items.map(\.originalTextSegment), whole.map(\.sourceQuote))
+        for item in result.items {
+            XCTAssertTrue(item.needsClarification, item.originalTextSegment)
+            XCTAssertEqual(
+                item.semanticState,
+                .underspecified(.languageAnalysisUnavailable),
+                item.originalTextSegment
+            )
+        }
+    }
+
+    /// The policy by hand, so it does not depend on the machine: every
+    /// operation comes back asking for review with nothing else about it
+    /// changed; only a scoped one causes a second reading, whose rows replace
+    /// the ones it had cut; and a held scoped request stays out of the
+    /// repository while any row exists.
+    ///
+    /// Falsifier: drop `heldForReview`, and `needsReview` stays false. Re-read
+    /// for every operation, and the reread count reaches two. Ignore the
+    /// reread, and the fragment row is missing.
+    func testTheDegradedPolicyHoldsEveryOperationAndPutsBackScopedClauses() {
+        let milk = plainRow("Buy milk")
+        let fragment = plainRow("tomorrow I need to, never mind")
+        let withdrawal = CaptureOperationRequest(
+            operation: .retract,
+            target: nil,
+            sourceQuote: "never mind",
+            needsReview: false,
+            isScoped: true
+        )
+        var rereads = 0
+        let scoped = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [milk], operations: [withdrawal], method: .rules),
+            transcript: Self.operationFixtures[2],
+            rereadWithoutOperations: {
+                rereads += 1
+                return [milk, fragment]
+            }
+        )
+        XCTAssertEqual(rereads, 1)
+        XCTAssertEqual(scoped.items.map(\.sourceQuote), [milk.sourceQuote, fragment.sourceQuote])
+        XCTAssertTrue(scoped.items.allSatisfy(\.needsReview))
+        XCTAssertEqual(scoped.operations.map(\.needsReview), [true])
+        XCTAssertEqual(scoped.operations.map(\.isScoped), [true])
+        XCTAssertNil(scoped.pendingOperation)
+
+        let move = CaptureOperationRequest(
+            operation: .reschedule,
+            polarity: .positive,
+            target: "dentist",
+            sourceQuote: "move the dentist to Friday",
+            needsReview: false,
+            newTimingText: "friday"
+        )
+        let unscoped = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [milk], operations: [move], method: .rules),
+            transcript: "Buy milk and move the dentist to Friday",
+            rereadWithoutOperations: {
+                rereads += 1
+                return []
+            }
+        )
+        XCTAssertEqual(rereads, 1, "an operation that took nothing out of the rows needs no second reading")
+        XCTAssertEqual(unscoped.items.map(\.sourceQuote), [milk.sourceQuote])
+        let held = unscoped.pendingOperation
+        XCTAssertEqual(held?.needsReview, true)
+        XCTAssertEqual(held?.operation, .reschedule)
+        XCTAssertEqual(held?.polarity, .positive)
+        XCTAssertEqual(held?.target, "dentist")
+        XCTAssertEqual(held?.sourceQuote, "move the dentist to Friday")
+        XCTAssertEqual(held?.newTimingText, "friday")
+        XCTAssertEqual(held?.isBroad, false)
+        XCTAssertEqual(held?.isScoped, false)
+    }
+
+    // MARK: - A row that states its own time keeps it
+
+    /// Timing the resolver reads, stated in the row's own words, survives
+    /// the degraded policy. Each of these was stripped by the list the policy
+    /// used to keep beside the resolver, including the sentence in the blind
+    /// readout itself.
+    ///
+    /// Falsifier: go back to the `timingWording` regex list in
+    /// `statesItsOwnTiming` (with the clock and month readers), and every
+    /// phrase here but the last loses its date. Skip `asThePipelineReadsIt`,
+    /// and "in 45 mins" loses its. The control proves the check is not
+    /// simply true: a fact that names no time still loses an inherited one.
+    func testTheDegradedPolicyKeepsATimeTheResolverReadsInTheRowsOwnWords() {
+        let due = Date(timeIntervalSince1970: 1_786_550_400)
+        let phrases = [
+            "On the 15th pay the rent",
+            "rent is due on the first",
+            "send it by eod",
+            "finish the deck by the end of the work day",
+            "call mom first thing",
+            "check the oven in forty five minutes",
+            "file the forms by the last day of the year",
+            // Repaired before it is read, as the pipeline repairs it.
+            "check the oven in 45 mins",
+        ]
+        for phrase in phrases {
+            XCTAssertTrue(DegradedLanguagePolicy.statesItsOwnTiming(phrase), phrase)
+            let held = DegradedLanguagePolicy.applying(
+                to: ThoughtExtractionResult(items: [plainRow(phrase, dueDate: due)], method: .rules),
+                transcript: phrase
+            ).items
+            XCTAssertEqual(held.first?.organization.dueDate, due, phrase)
+            XCTAssertEqual(held.first?.organization.temporalIntent.kind, .dateOnly, phrase)
+            XCTAssertEqual(held.first?.needsReview, true, phrase)
+        }
+
+        let control = "Catherine needs a copy"
+        XCTAssertFalse(DegradedLanguagePolicy.statesItsOwnTiming(control))
+        let stripped = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [plainRow(control, dueDate: due)], method: .rules),
+            transcript: control
+        ).items
+        XCTAssertNil(stripped.first?.organization.dueDate)
     }
 }

@@ -470,6 +470,36 @@ final class LexicalTaggingHealthTests: XCTestCase {
         XCTAssertEqual(recoveries, 1)
     }
 
+    /// The first probe of a process that reads usable empties the reading
+    /// cache too, not only a probe that follows a blind one. The rules run
+    /// before the probe, so a capture read before the first probe (a cold
+    /// launch from Back Tap or an App Intent, before prewarm) may have cached
+    /// readings taken without the model. A first probe that reads blind
+    /// empties nothing, and neither does a usable verdict read from the cache.
+    ///
+    /// Falsifier: go back to `last == .blind` alone in `VerdictCache.current`,
+    /// and the first count stays zero.
+    func testTheFirstUsableVerdictEmptiesTheReadingCache() {
+        var recoveries = 0
+        let cache = LinguisticHealth.VerdictCache(
+            tagging: { _ in [.verb] },
+            recovered: { recoveries += 1 }
+        )
+        XCTAssertEqual(cache.current(), .usable)
+        XCTAssertEqual(recoveries, 1, "nothing had checked before, so the cache may hold blind readings")
+        XCTAssertEqual(cache.current(), .usable)
+        XCTAssertEqual(recoveries, 1, "a kept verdict must not empty the cache again")
+
+        var blindRecoveries = 0
+        let blind = LinguisticHealth.VerdictCache(
+            tagging: { _ in [.otherWord] },
+            recovered: { blindRecoveries += 1 }
+        )
+        XCTAssertEqual(blind.current(), .blind)
+        XCTAssertEqual(blind.current(), .blind)
+        XCTAssertEqual(blindRecoveries, 0, "a blind verdict has nothing to recover from")
+    }
+
     /// Production probes; only a test harness is inert; an override beats
     /// both. This is the test that fails if the default path stops probing.
     ///

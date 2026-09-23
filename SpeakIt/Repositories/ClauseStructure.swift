@@ -159,8 +159,8 @@ enum SentenceContextCache {
         return built
     }
 
-    /// Forgets every reading. Called when the lexical model turns out to be
-    /// present after readings were cached without it, so a reading taken blind
+    /// Forgets every reading. Called when the lexical model is first found
+    /// present, so a reading taken blind (or before anything had checked)
     /// does not outlive the blindness. The cache is keyed by text alone and has
     /// no other way to know. See `LinguisticHealth.VerdictCache`.
     static func removeAll() {
@@ -286,9 +286,13 @@ enum LinguisticHealth {
 
     /// A usable verdict is kept for the life of the process. A blind one is
     /// not: every read probes again, which is one five-word tagging, so a
-    /// model that arrives mid-process is noticed on the next capture. On that
-    /// transition the reading cache is emptied, because it holds readings
-    /// taken without the model and is keyed by text alone.
+    /// model that arrives mid-process is noticed on the next capture. The
+    /// first usable verdict empties the reading cache, whether the verdict
+    /// before it was blind or there was none yet: the rules run before the
+    /// probe, so a capture read before the first probe (a Back Tap or App
+    /// Intent cold launch, before prewarm) can have cached readings taken
+    /// without the model, and the cache is keyed by text alone. It happens
+    /// once per process and costs nothing when the cache is empty.
     final class VerdictCache: @unchecked Sendable {
         private let lock = NSLock()
         private var known: Tagger?
@@ -313,7 +317,8 @@ enum LinguisticHealth {
             lock.lock()
             known = fresh
             lock.unlock()
-            if last == .blind, fresh == .usable { recovered() }
+            // `last` is nil or `.blind` here; `.usable` returned above.
+            if fresh == .usable, last == .blind || last == nil { recovered() }
             return fresh
         }
     }

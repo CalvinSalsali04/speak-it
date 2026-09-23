@@ -323,6 +323,21 @@ the row's own words did not state. The reasoning is in `DECISIONS.md`
   notice, no Settings or diagnostics row, and nothing in analytics. The
   refinement model's outcome is still collapsed into one `nil`. Those are
   the audit's §3.4 and §3.5 and the product decision above.
+- **A held operation reads as a question, not as "Not fully read".** On a
+  blind tagger every cancel, complete, reschedule and withdrawal is held. The
+  review row is the operation's own words (or the capture's placeholder),
+  without the new gap, and the receipt says "Which one?" with every active
+  item counted, because that is the existing held-operation path. A held
+  withdrawal leaves a review row, so it now spends a free capture where a
+  withdrawal on a healthy device does not. An operation resolved inside the
+  capture (a scoped withdrawal, a sibling cancellation) is undone by reading
+  the transcript again without operations, so its clauses come back as held
+  rows the person has to clear by hand.
+- **A capture read before the first probe can still pass as healthy.** The
+  first usable verdict now empties `SentenceContextCache`, so no later capture
+  reuses a reading taken before the model answered. The capture whose rules
+  ran before that first probe (a Back Tap or App Intent cold launch, before
+  prewarm) has already been read, and it is not re-read.
 - **Test harnesses never apply it by default.** The unit-test host and any
   `--ui-testing` launch read the tagger as usable (`LinguisticHealth.hostDefault`),
   so the existing suites still measure the rules as before on a blind

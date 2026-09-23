@@ -13,7 +13,9 @@ Entries before September 2026 were reconstructed from the commit history and
   save, but every row now waits in Needs review as "Not fully read". A row
   keeps a time, series or place only if its own words said it, so a fact can
   no longer inherit "remind me every Friday" from the sentence around it.
-  Refinement is skipped in that state. Nothing changes on a healthy device.
+  Refinement is skipped in that state, and no cancel, complete, reschedule
+  or "never mind" is carried out: each waits in Needs review with its words.
+  Nothing changes on a healthy device.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

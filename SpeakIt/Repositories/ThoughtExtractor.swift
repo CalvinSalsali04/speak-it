@@ -209,24 +209,71 @@ enum RefinementPolicy {
 ///    it.** Review alone does not stop a notification
 ///    (`ReminderScheduleRequest.init(item:)` asks only whether a future
 ///    `reminderDate` exists), and blindness is exactly what lets a fact clause
-///    inherit a shared "remind me every Friday" prefix. Every check here is a
-///    regular expression; none of them asks the tagger anything.
-///
-/// Operations are not touched. They are read lexically, and the destructive
-/// ones are already held for confirmation when they are broad.
+///    inherit a shared "remind me every Friday" prefix. "States it" is asked of
+///    the resolver that read the time in the first place
+///    (`ThoughtOrganizer.statesATime`, `RecurrenceIntentParser`,
+///    `LocationIntentParser`), over the row's own words, so the check cannot
+///    fall behind the resolver. The resolver's one tagger read
+///    (`ordinalContinuesWithAVerb`) can only add a reading, and blind it says
+///    no, as it did when the row's date was read.
+/// 4. **No operation runs.** Every operation comes back with `needsReview`
+///    set, so the repository holds it instead of acting on it. The detectors
+///    are lexical, but the guards deciding whose words an operation is are
+///    not: `withdrawalBelongsToSomeoneElse` and `localCancellationReference`
+///    ask `ClauseScope.read`, whose message-body test needs a verb, and blind
+///    an unmarked message body reads as the speaker's own words. An operation
+///    already resolved inside the capture (a scoped withdrawal, a sibling
+///    cancellation) has removed words from the rows before this runs, so for
+///    those the rows are read again without operations and every clause comes
+///    back as a row.
 enum DegradedLanguagePolicy {
+    /// - Parameter rereadWithoutOperations: the rules reading of the same
+    ///   transcript with `permitsOperations: false`. Asked for only when an
+    ///   operation was resolved inside the capture. `nil` keeps the rows as
+    ///   they came.
     static func applying(
         to result: ThoughtExtractionResult,
-        transcript: String
+        transcript: String,
+        rereadWithoutOperations: (() -> [ExtractedThought])? = nil
     ) -> ThoughtExtractionResult {
-        let spans = ownWords(of: result.items, in: transcript)
-        let held = zip(result.items, spans).map { item, words in
+        let items: [ExtractedThought]
+        if result.operations.contains(where: \.isScoped), let rereadWithoutOperations {
+            // A scoped operation took its clauses out of the rows on a reading
+            // this device could not make. Reading again without operations
+            // puts them back as rows, and the scoped request, now held, stays
+            // in `operations`, where `pendingOperation` keeps it away from the
+            // repository while any row exists.
+            let whole = rereadWithoutOperations()
+            items = whole.isEmpty ? result.items : whole
+        } else {
+            items = result.items
+        }
+        let spans = ownWords(of: items, in: transcript)
+        let held = zip(items, spans).map { item, words in
             holding(item, ownWords: words)
         }
         return ThoughtExtractionResult(
             items: held,
-            operations: result.operations,
+            operations: result.operations.map(heldForReview),
             method: result.method
+        )
+    }
+
+    /// One operation, unchanged except that it now asks first.
+    ///
+    /// `SwiftDataThoughtRepository.applyCaptureOperation` holds a request that
+    /// needs review instead of acting on it: cancel, complete and reschedule at
+    /// the target guard, a withdrawal before it discards anything.
+    static func heldForReview(_ request: CaptureOperationRequest) -> CaptureOperationRequest {
+        CaptureOperationRequest(
+            operation: request.operation,
+            polarity: request.polarity,
+            target: request.target,
+            sourceQuote: request.sourceQuote,
+            needsReview: true,
+            isBroad: request.isBroad,
+            newTimingText: request.newTimingText,
+            isScoped: request.isScoped
         )
     }
 
@@ -281,7 +328,7 @@ enum DegradedLanguagePolicy {
         let evidence = [ownWords, item.sourceQuote]
         if carriesTime, !evidence.contains(where: statesItsOwnTiming) { return false }
         if organization.recurrenceRule != nil,
-           !evidence.contains(where: { RecurrenceIntentParser.parse($0.lowercased()) != nil }) {
+           !evidence.contains(where: { RecurrenceIntentParser.parse(asThePipelineReadsIt($0)) != nil }) {
             return false
         }
         if carriesPlace, !evidence.contains(where: { LocationIntentParser.parse($0) != nil }) {
@@ -298,24 +345,29 @@ enum DegradedLanguagePolicy {
     }
 
     /// Whether these words, read alone, name a day, a clock, a delay or a
-    /// series. Deliberately broad in what it accepts as timing and narrow in
-    /// where it looks: a row's own words, never its analysis text.
+    /// series. Narrow in where it looks: a row's own words, never its analysis
+    /// text.
+    ///
+    /// Asked of the resolver itself rather than of a list beside it. A list
+    /// here was a second, shorter copy of the resolver's grammar, and it
+    /// stripped times the resolver reads: "on the 15th pay the rent", "rent is
+    /// due on the first", "by eod", "first thing", "in forty five minutes".
     static func statesItsOwnTiming(_ text: String) -> Bool {
-        let lower = text.lowercased()
-        if RecurrenceIntentParser.parse(lower) != nil { return true }
-        if ThoughtOrganizer.statesAClock(lower) || ThoughtOrganizer.namesAMonthAndDay(lower) {
-            return true
-        }
-        return lower.range(of: timingWording, options: .regularExpression) != nil
+        let read = asThePipelineReadsIt(text)
+        if RecurrenceIntentParser.parse(read) != nil { return true }
+        return ThoughtOrganizer.statesATime(read)
     }
 
-    private static let timingWording = #"(?i)\b(?:today|tonight|tomorrow|tmrw|yesterday|noon|midnight|morning|afternoon|evening|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"#
-        + #"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?\s?m\b"#
-        + #"|\b\d{1,2}:\d{2}\b"#
-        + #"|\b(?:at|by|before|after|around|until)\s+(?:\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
-        + #"|\bin\s+(?:an?|a\s+few|a\s+couple(?:\s+of)?|\d+|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|half\s+an?)\s+(?:seconds?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)\b"#
-        + #"|\b(?:next|this|coming)\s+(?:week|month|year)\b"#
-        + #"|\b(?:end|start|beginning)\s+of\s+(?:the\s+)?(?:day|week|month|year)\b"#
+    /// A row's own words are cut from the raw transcript, and the resolver
+    /// read the repaired one. The timing repairs are run first ("in 45 mins",
+    /// "by COB", "annually", "at 1700"), in the pipeline's order, so the
+    /// question is asked of the words the resolver saw. All three are regular
+    /// expressions.
+    static func asThePipelineReadsIt(_ text: String) -> String {
+        SpokenShorthandRepair.twentyFourHourClock(
+            SpokenShorthandRepair.repaired(ClockDigitRepair.repaired(text))
+        ).lowercased()
+    }
 
     /// The words each row was spoken with, found in the transcript in order.
     ///
@@ -415,6 +467,8 @@ enum ThoughtExtractionEngine {
                     method: .rules
                 ),
                 transcript: transcript,
+                referenceDate: referenceDate,
+                calendar: calendar,
                 tagger: tagger
             )
         }
@@ -450,6 +504,8 @@ enum ThoughtExtractionEngine {
                 method: .rules
             ),
             transcript: transcript,
+            referenceDate: referenceDate,
+            calendar: calendar,
             tagger: tagger
         )
     }
@@ -473,11 +529,25 @@ enum ThoughtExtractionEngine {
     private static func finished(
         _ result: ThoughtExtractionResult,
         transcript: String,
+        referenceDate: Date,
+        calendar: Calendar,
         tagger: LinguisticHealth.Tagger
     ) -> ThoughtExtractionResult {
         switch tagger {
         case .usable: return result
-        case .blind: return DegradedLanguagePolicy.applying(to: result, transcript: transcript)
+        case .blind:
+            return DegradedLanguagePolicy.applying(
+                to: result,
+                transcript: transcript,
+                rereadWithoutOperations: {
+                    RuleBasedThoughtExtractor.process(
+                        transcript,
+                        referenceDate: referenceDate,
+                        calendar: calendar,
+                        permitsOperations: false
+                    ).items
+                }
+            )
         }
     }
 
@@ -502,6 +572,8 @@ enum ThoughtExtractionEngine {
                 method: .rules
             ),
             transcript: transcript,
+            referenceDate: referenceDate,
+            calendar: calendar,
             tagger: LinguisticHealth.effective
         )
     }

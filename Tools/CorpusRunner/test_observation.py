@@ -893,7 +893,27 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         nothing because they were already here -- the U1 sentence itself
         is a `SemanticCorpusDataD` row and `I had better luck last time`
         was already a fixture -- and one reused assertion message adds
-        nothing for the same reason. What the test
+        nothing for the same reason. 4083 -> 4110 on 2026-09-23, from the
+        review of that signal (operations held, the timing test asking
+        the resolver, the reading cache emptied on the first usable
+        verdict): twenty-seven added and none removed, enumerated rather
+        than assumed. Twelve are fixtures: two operation captures and
+        their stored target (`Cancel the plumber`, `Call the plumber`),
+        a hand-built scoped fragment (`tomorrow I need to, never mind`),
+        a hand-built reschedule and its transcript (`move the dentist to
+        Friday`, `Buy milk and move the dentist to Friday`), and seven
+        timing phrases the resolver reads (`rent is due on the first`,
+        `send it by eod`, `finish the deck by the end of the work day`,
+        `call mom first thing`, `check the oven in forty five minutes`,
+        `check the oven in 45 mins`, `file the forms by the last day of
+        the year`). Fifteen are assertion messages, two of them
+        interpolated templates. Four fixtures add nothing because they
+        were already here -- `On the 15th pay the rent` is a corpus and
+        `ActionabilityTests` row, `Actually never mind` is in
+        `CaptureOperationTests`, `Buy milk and tomorrow I need to, never
+        mind` is in `AbandonmentTests`, and `Catherine needs a copy`
+        came in with the entry above -- and a precondition message used
+        twice counts once. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -907,7 +927,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4083)
+        self.assertEqual(len(space), 4110)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
