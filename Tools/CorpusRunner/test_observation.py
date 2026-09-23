@@ -975,7 +975,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         quotation is the point: a falsifier quotes the broken reading
         `"Can you clarify?."`, and a test's summary quotes the design it
         rejects, `"post it before the engine starts"`. No parser behaviour is
-        behind any of the twenty. What the test
+        behind any of the twenty. 4176 -> 4178 on 2026-09-23, when review
+        found the open-microphone count with no backstop and
+        `SpeechTranscriber` came to give its claim back in `deinit`: one test
+        method and two literals, enumerated, both assertion messages:
+        `"a released transcriber kept the microphone claimed"` and `"the
+        transcriber outlived its last reference, so this proves nothing"`.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -989,7 +995,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4176)
+        self.assertEqual(len(space), 4178)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
@@ -1164,10 +1170,20 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
         path = self.ROOT / "SpeakIt" / "Features" / "Capture" / "SpeechTranscriber.swift"
         return path.read_text(encoding="utf-8", errors="replace").splitlines()
 
-    def only(self, lines, needle):
-        found = [i for i, line in enumerate(lines) if needle in self.code(line)]
+    def only(self, lines, needle, calls=False):
+        """The one line carrying `needle`. With `calls`, a line declaring a
+        function is not a call of it and is skipped."""
+        found = [i for i, line in enumerate(lines) if needle in self.code(line)
+                 and not (calls and "func " in self.code(line))]
         self.assertEqual(len(found), 1, f"expected one `{needle}`, found {len(found)}")
         return found[0]
+
+    def body(self, lines, declaration):
+        """A member's lines, from its declaration to its closing brace."""
+        first = self.only(lines, declaration)
+        last = next(i for i in range(first + 1, len(lines))
+                    if lines[i].startswith("    }"))
+        return [self.code(line) for line in lines[first:last]]
 
     def test_every_announcement_goes_through_the_one_helper(self):
         posting = []
@@ -1185,7 +1201,7 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
     def test_the_microphone_opens_straight_after_the_wait(self):
         lines = self.transcriber()
         wait = self.only(lines, "waitUntilMicrophoneMayOpen(")
-        opened = self.only(lines, "VoiceOverAnnouncer.shared.microphoneWillOpen()")
+        opened = self.only(lines, "claimMicrophone()", calls=True)
         start = self.only(lines, "audioEngine.start()")
         self.assertLess(wait, opened)
         self.assertLess(opened, start)
@@ -1196,17 +1212,25 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
             "a suspension between the wait and `audioEngine.start()` lets a "
             "notice be posted after the check and spoken into the microphone")
 
+    def test_the_claim_reports_the_microphone_open(self):
+        body = self.body(self.transcriber(), "func claimMicrophone()")
+        self.assertTrue(any("announcer.microphoneWillOpen()" in line for line in body))
+
     def test_closing_the_microphone_is_reported_where_audio_stops(self):
         lines = self.transcriber()
-        body_start = self.only(lines, "private func stopAudioInput()")
-        body_end = next(i for i in range(body_start + 1, len(lines))
-                        if lines[i].startswith("    }"))
-        body = [self.code(line) for line in lines[body_start:body_end]]
+        body = self.body(lines, "private func stopAudioInput()")
         self.assertTrue(any("audioEngine.stop()" in line for line in body))
         self.assertTrue(
-            any("VoiceOverAnnouncer.shared.microphoneDidClose()" in line for line in body),
+            any("announcer.microphoneDidClose()" in line for line in body),
             "a microphone that is never reported closed silences VoiceOver for "
             "the rest of the session")
+
+    def test_a_transcriber_that_goes_gives_its_claim_back(self):
+        """`SpeechTranscriber` is released by its screen, and a claim it
+        still holds then must not outlive it (see its `deinit`)."""
+        body = self.body(self.transcriber(), "deinit {")
+        self.assertTrue(any("holdsMicrophone" in line for line in body))
+        self.assertTrue(any("announcer.microphoneDidClose()" in line for line in body))
 
     def test_there_is_something_to_check(self):
         """Without this the first test passes when the helper is renamed or

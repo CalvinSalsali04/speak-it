@@ -1230,6 +1230,7 @@ final class VoiceOverAnnouncementTests: XCTestCase {
         XCTAssertEqual(announcer.announce("Recovering your words"), .microphoneOpen)
         XCTAssertEqual(spoken, [], "an announcement was spoken into the open microphone")
         XCTAssertEqual(announcer.unfinished, [])
+        XCTAssertEqual(announcer.withheldAnnouncements, 1)
 
         announcer.microphoneDidClose()
         XCTAssertEqual(announcer.announce("Recovering your words"), .speak)
@@ -1251,6 +1252,27 @@ final class VoiceOverAnnouncementTests: XCTestCase {
             VoiceOverAnnouncer.decision(voiceOverRunning: true, openMicrophones: 1),
             .microphoneOpen
         )
+    }
+
+    /// The count is process-wide, so a claim that is never given back
+    /// withholds every announcement until the app is killed. The transcriber
+    /// that took the claim gives it back when it goes, whether or not its
+    /// screen remembered to cancel it.
+    ///
+    /// Falsifier: delete `SpeechTranscriber`'s `deinit`, and the count stays at
+    /// one after the transcriber is gone, so the last announcement here is
+    /// withheld.
+    func testATranscriberReleasedWhileHoldingTheMicrophoneGivesItBack() {
+        let announcer = makeAnnouncer()
+        var transcriber: SpeechTranscriber? = SpeechTranscriber(reportsAudioLevel: false, announcer: announcer)
+        transcriber?.claimMicrophone()
+        XCTAssertEqual(announcer.openMicrophones, 1)
+
+        weak var released = transcriber
+        transcriber = nil
+        XCTAssertNil(released, "the transcriber outlived its last reference, so this proves nothing")
+        XCTAssertEqual(announcer.openMicrophones, 0, "a released transcriber kept the microphone claimed")
+        XCTAssertEqual(announcer.announce("Remembered"), .speak)
     }
 
     // MARK: - The microphone does not open over something still being spoken

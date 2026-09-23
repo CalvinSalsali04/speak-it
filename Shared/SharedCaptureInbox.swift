@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import os
 
 /// Upper bound on capture text that arrives from outside the app.
 ///
@@ -234,7 +235,20 @@ final class VoiceOverAnnouncer {
 
     /// Microphones open right now, counted rather than flagged so two
     /// transcribers cannot close each other's.
+    ///
+    /// Everything rests on this returning to zero: while it is above zero
+    /// every announcement is withheld. So each withheld announcement is
+    /// logged with this count, and a close with nothing open is a fault.
     private(set) var openMicrophones = 0
+
+    /// Announcements withheld because a microphone was open, since launch.
+    /// A count that only ever grows while nothing is recording is a claim
+    /// that was never given back.
+    private(set) var withheldAnnouncements = 0
+
+    /// Counts only. What was withheld is never logged: it can carry the
+    /// person's own words, and those do not leave the screen.
+    private static let log = Logger(subsystem: "com.calvinwak.SpeakIt", category: "VoiceOverAnnouncer")
 
     /// Posted and not yet reported finished, in the order they were posted.
     var unfinished: [String] { pending.map(\.text) }
@@ -283,6 +297,12 @@ final class VoiceOverAnnouncer {
             voiceOverRunning: isVoiceOverRunning(),
             openMicrophones: openMicrophones
         )
+        if decision == .microphoneOpen, !text.isEmpty {
+            withheldAnnouncements += 1
+            Self.log.debug(
+                "Withheld an announcement: \(self.openMicrophones, privacy: .public) open, \(self.withheldAnnouncements, privacy: .public) withheld since launch"
+            )
+        }
         guard decision == .speak, !text.isEmpty else { return decision }
         let now = ContinuousClock.now
         pending.removeAll { $0.assumedSpokenBy <= now }
@@ -336,7 +356,15 @@ final class VoiceOverAnnouncer {
     }
 
     func microphoneDidClose() {
-        openMicrophones = max(0, openMicrophones - 1)
+        guard openMicrophones > 0 else {
+            // Some claim was given back twice, so the count no longer says
+            // which microphones are open. Loud in Debug; in Release the count
+            // stays at zero rather than going negative.
+            Self.log.fault("A microphone was reported closed with none open")
+            assertionFailure("A microphone was reported closed with none open")
+            return
+        }
+        openMicrophones -= 1
     }
 
     /// VoiceOver finished speaking `spoken`, or was interrupted.
