@@ -1666,10 +1666,33 @@ struct CaptureView: View {
 
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
-        if let activeDraftID {
-            CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+        // Name the session before it exists and write that name onto the draft
+        // first. A kill after the commit then leaves a draft a relaunch can
+        // recognise as already saved, instead of replaying it into a second
+        // session; a kill before the commit leaves a name the store does not
+        // hold, and the draft is replayed exactly as before.
+        //
+        // The handoff is recorded only once this save has claimed the
+        // screen's save slot. A save refused because another is still
+        // running commits nothing, so naming a session for it would point the
+        // draft at a session that never exists while the running save's
+        // session goes unrecorded; a kill after that one commits would replay
+        // its words a second time. A refused save still checkpoints its words,
+        // as before, and different words withdraw the running save's handoff.
+        let sessionID = UUID()
+        guard let thisSave = presentation.beginSave() else {
+            if let activeDraftID {
+                CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+            }
+            return
         }
-        guard let thisSave = presentation.beginSave() else { return }
+        if let activeDraftID {
+            CaptureDraftStore.recordHandoff(
+                id: activeDraftID,
+                transcript: normalizedText,
+                sessionID: sessionID
+            )
+        }
         // Held here rather than read back from `@State` after the `await`: the
         // screen may be gone by then, and a torn-down view's `@State` is not a
         // reliable thing to read. The retry source matters most of the three:
@@ -1693,7 +1716,8 @@ struct CaptureView: View {
                         source: persistenceSource,
                         createdAt: captureStartedAt ?? .now,
                         schedulesReminders: tutorialMission == nil,
-                        performance: performance
+                        performance: performance,
+                        sessionID: sessionID
                     )
                 }
                 // `isSaving` is already down here, and this save's slot is

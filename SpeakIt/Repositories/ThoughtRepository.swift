@@ -343,6 +343,9 @@ struct CaptureCreationResult {
 protocol ThoughtRepository: AnyObject, Sendable {
     func recoverUnorganizedCaptures()
     func recoverInterruptedCaptureDraft()
+    /// Releases the drafts whose words already reached a committed session,
+    /// so no launch recovery path can replay them into a second one.
+    func releaseHandedOffCaptureDrafts()
     func reconcilePendingReminders()
     /// Re-plans the morning brief from the store as it stands, and books the
     /// briefs that have already fired against the answer window.
@@ -390,6 +393,20 @@ protocol ThoughtRepository: AnyObject, Sendable {
         createdAt: Date,
         schedulesReminders: Bool,
         performance: CapturePerformanceTrace?
+    ) async throws -> CaptureCreationResult
+
+    /// The same save, committing its session under `sessionID` — an ID the
+    /// caller already recorded on its draft with
+    /// `CaptureDraftStore.recordHandoff`, so a relaunch can tell whether those
+    /// words were committed. If a session with that ID is already in the store
+    /// it is returned unchanged.
+    func createCaptureResult(
+        text: String,
+        source: CaptureSource,
+        createdAt: Date,
+        schedulesReminders: Bool,
+        performance: CapturePerformanceTrace?,
+        sessionID: UUID
     ) async throws -> CaptureCreationResult
 
     /// Adds typed (or keyboard-dictated) entries straight onto a named

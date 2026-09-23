@@ -1875,11 +1875,21 @@ struct CaptureHistoryView: View {
         Task { @MainActor in
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Handed off before the commit, like a live save, so a kill
+                // inside this save is not replayed at the next launch.
+                let sessionID = UUID()
+                CaptureDraftStore.recordHandoff(
+                    id: draft.id,
+                    transcript: recoveredText,
+                    sessionID: sessionID
+                )
                 _ = try await repository.createCaptureResult(
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 recoveringDraftID = nil

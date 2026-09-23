@@ -23,6 +23,14 @@ enum CaptureDraftStore {
         var recoveryStatusRawValue: String?
         var recoveryFailureMessage: String?
         var recoveryFailureKindRawValue: String?
+        /// The `CaptureSession` these exact words were handed to. It is written
+        /// *before* the session commits, so on its own it proves nothing: a
+        /// relaunch trusts it only when the store actually holds a session with
+        /// this ID (`SwiftDataThoughtRepository.releaseHandedOffCaptureDrafts`).
+        /// Checkpointing different words clears it, because those words were
+        /// never handed to anything. Optional, like every field added after the
+        /// first build, so older drafts decode as "not handed off" and replay.
+        var handedOffSessionID: UUID?
 
         var captureSource: CaptureSource {
             CaptureSource(rawValue: captureSourceRawValue ?? "") ?? .shortcut
@@ -73,7 +81,8 @@ enum CaptureDraftStore {
                 : "\(id.uuidString).caf",
             recoveryStatusRawValue: RecoveryStatus.capturing.rawValue,
             recoveryFailureMessage: nil,
-            recoveryFailureKindRawValue: nil
+            recoveryFailureKindRawValue: nil,
+            handedOffSessionID: nil
         )
         var drafts = allDrafts()
         drafts.append(draft)
@@ -84,7 +93,13 @@ enum CaptureDraftStore {
     static func update(id: UUID, transcript: String, at date: Date = .now) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
-        drafts[index].transcript = normalizedTranscript(transcript)
+        let normalized = normalizedTranscript(transcript)
+        if normalized != drafts[index].transcript {
+            // A handoff covers the words it was recorded with and nothing
+            // else. New words have not reached any session yet.
+            drafts[index].handedOffSessionID = nil
+        }
+        drafts[index].transcript = normalized
         drafts[index].updatedAt = date
         persist(drafts)
     }
@@ -102,6 +117,36 @@ enum CaptureDraftStore {
         // Characters, not words: whichever text is longer stays.
         guard recovered.count > existing.transcript.count else { return }
         update(id: id, transcript: recovered, at: date)
+    }
+
+    /// Records that these words are about to be committed as the session
+    /// `sessionID`. Call it immediately before persistence starts, with an ID
+    /// the repository will give that session.
+    ///
+    /// The order is what makes a kill on either side recoverable. Killed before
+    /// the session commits, the store has no such session and the draft is
+    /// replayed as it always was. Killed after, the session is in the store,
+    /// launch recovery organizes it, and the draft is released instead of
+    /// replayed into a second session. Words and ID are written in one write so
+    /// a handoff can never describe words other than the ones stored beside it.
+    static func recordHandoff(
+        id: UUID,
+        transcript: String,
+        sessionID: UUID,
+        at date: Date = .now
+    ) {
+        var drafts = allDrafts()
+        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        drafts[index].transcript = normalizedTranscript(transcript)
+        drafts[index].handedOffSessionID = sessionID
+        drafts[index].updatedAt = date
+        persist(drafts)
+    }
+
+    /// Every draft that recorded a handoff, whether or not it committed.
+    /// Deciding which ones did needs the store, so that is the repository's.
+    static func handedOffDrafts() -> [Draft] {
+        allDrafts().filter { $0.handedOffSessionID != nil }
     }
 
     private static func normalizedTranscript(_ transcript: String) -> String {
@@ -142,6 +187,11 @@ enum CaptureDraftStore {
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !normalized.isEmpty {
+            if normalized != drafts[index].transcript {
+                // As in `update`: a handoff covers only the words it was
+                // recorded with, and these have reached no session.
+                drafts[index].handedOffSessionID = nil
+            }
             drafts[index].transcript = normalized
         }
         drafts[index].recoveryStatusRawValue = RecoveryStatus.capturing.rawValue

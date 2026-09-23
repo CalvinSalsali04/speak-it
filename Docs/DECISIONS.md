@@ -184,6 +184,61 @@ rather than a log. Unconfirmed until it runs on an iPhone: that an alarm this
 build schedules is listed as `.scheduled`, and that `cancel(id:)` on a listed
 orphan removes it without side effects on the app's other alarms.
 
+## 2026-09-23 — A draft records which session its words were handed to
+
+Relaunch recovery replayed drafts whose words had already been committed. A
+save commits the raw words as a pending `CaptureSession` before extraction
+(and, on an Apple Intelligence device, the 2 s refinement), and clears the
+draft only when the whole save returns. A kill inside that window, which
+locking the phone mid-save makes likely, left both the session and the draft,
+and the next launch saved the words twice. For a practice capture it always
+did: the draft is `.inAppText` or `.inAppVoice`, the session is `.tutorial`,
+and dedupe is scoped by source, so the tutorial sentence came back as a real
+capture with a real reminder that tutorial cleanup does not remove. For a
+voice capture it did whenever re-transcribing the recording at launch gave
+different words from the live transcript, which also defeats dedupe.
+(Audit `v1/audits/capture-lifecycle.md`, D3.)
+
+The fix records the handoff instead of inferring it.
+
+- **The session is named before it exists.** `CaptureView.save` makes the
+  session's UUID, writes it onto the draft together with the words it is
+  saving (`CaptureDraftStore.recordHandoff`, one write), and only then calls
+  `createCaptureResult(…, sessionID:)`, which commits the session under that
+  ID. The two launch- and Today-initiated audio recoveries do the same.
+- **A relaunch trusts the store, not the mark.**
+  `releaseHandedOffCaptureDrafts` runs before the audio pass and at the top
+  of the text pass, and clears a draft only when a session with its recorded
+  ID is in the store. That session is finished by
+  `recoverUnorganizedCaptures`. A kill before the commit leaves an ID the
+  store does not hold, and the draft is replayed exactly as before, recording
+  included. Either side of the handoff is recoverable, and the uncertain
+  direction always keeps the words: a duplicate can be deleted, a lost
+  thought cannot.
+- **A handoff covers only its own words.** Checkpointing different words
+  onto the draft clears the ID, so a committed session never vouches for
+  words it does not hold.
+- **No schema change.** The ID lives on the draft, which is JSON in
+  `UserDefaults`, as an optional field; drafts written by earlier builds have
+  no such key and decode as not handed off. `CaptureSession.id` was already
+  settable. Because it is unique, and SwiftData turns a second insert with a
+  unique value into an update, the session-ID save returns an existing
+  session with that ID unchanged rather than overwrite its original words.
+
+Rejected: matching a session by `createdAt == draft.startedAt`, the audit's
+smallest fix. It infers what can be recorded, and it is only as good as the
+promise that nothing else writes that pairing. Also rejected: a new
+`RecoveryStatus.persisting`. It says a save started, not that it committed,
+so it could not tell the two kill points apart.
+
+Not changed here: a draft is still created as `.inAppText`/`.inAppVoice`
+during practice, so a practice save killed *before* its commit is still
+replayed as a real capture. The words exist nowhere else in that case, so
+keeping them is the durability rule working; whether practice words should
+be replayed at all is a separate decision. The relaunch-after-lock timing
+that feeds this (no background-task assertion during a save, audit S4) needs
+a device.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

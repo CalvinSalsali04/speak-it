@@ -436,6 +436,10 @@ struct RootView: View {
             }
             CaptureDraftStore.pruneEmptyTextDrafts()
             CaptureDraftStore.pruneResolvedTombstones()
+            // Before either replay path runs: a draft whose words already
+            // reached a committed session must not be replayed into another,
+            // and the audio pass would otherwise re-transcribe it first.
+            repository?.releaseHandedOffCaptureDrafts()
             await recoverInterruptedAudioDrafts()
             repository?.recoverUnorganizedCaptures()
             repository?.recoverInterruptedCaptureDraft()
@@ -1407,11 +1411,21 @@ struct RootView: View {
             CaptureDraftStore.markProcessing(id: draft.id)
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Recovery's own save is handed off the same way a live one
+                // is, so a kill inside it is not replayed at the next launch.
+                let sessionID = UUID()
+                CaptureDraftStore.recordHandoff(
+                    id: draft.id,
+                    transcript: recoveredText,
+                    sessionID: sessionID
+                )
                 let result = try await repository.createCaptureResult(
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 if result.createdNewCapture {
