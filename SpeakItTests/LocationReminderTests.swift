@@ -1704,9 +1704,9 @@ final class LocationReminderTests: XCTestCase {
     /// Falsifiers: make `LocationReminderMonitor.record` merge instead of
     /// replace, and the plan half fails; remove the
     /// `reconcileLocationReminders(ifTouchingPlaces:)` call from any one of
-    /// `setCompleted`, `setArchived`, `delete`, `update` (or put its condition
-    /// back to `locationChanged` alone) or `organizePersistedCapture`, and the
-    /// step naming that mutation fails.
+    /// `setCompleted`, `setArchived`, `delete`, `deleteCapture`, `update` (or
+    /// put its condition back to `locationChanged` alone) or
+    /// `organizePersistedCapture`, and the step naming that mutation fails.
     func testFreeingARegionHandsItsSlotToTheWaitingReminderAndItsRow() throws {
         setHome()
         let watched = try repository.createCapture(
@@ -1767,6 +1767,9 @@ final class LocationReminderTests: XCTestCase {
         }
         try freeing("deleting", text: "Remind me to charge my phone every time I get home") {
             try repository.delete($0)
+        }
+        try freeing("replacing an attempt", text: "Remind me to bring the umbrella every time I get home") {
+            _ = try repository.deleteCapture(sessionID: try XCTUnwrap($0.captureSession?.id))
         }
         try freeing("dating", text: "Remind me to check the mail every time I get home") { item in
             // A spoken move leaves the place `.unchanged`, and the date beside

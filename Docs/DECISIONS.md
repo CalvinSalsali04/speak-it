@@ -1491,7 +1491,12 @@ each row, which stops that row's region at once, and that stays. What it does
 not do is re-plan the region budget, so a place reminder waiting for a free
 slot gets the one this frees only at the next foreground. #135 adds that
 re-plan to the other delete paths (`reconcileLocationReminders(ifTouchingPlaces:)`),
-and it has to be added here when the two meet. **Not covered:** no test
+and it has to be added here when the two meet. In the V1 candidate (merge line
+F3, 2026-09-23) it is: `deleteCapture` reads whether any of its rows is a place
+reminder before the delete and re-plans after the queued pass. The
+"replacing an attempt" step of
+`LocationReminderTests.testFreeingARegionHandsItsSlotToTheWaitingReminderAndItsRow`
+fails without the call. **Not covered:** no test
 reaches AlarmKit or CoreLocation; the recorder sees teardown only, and a kill
 between the save and the synchronous cancel is still a window, a narrower one.
 

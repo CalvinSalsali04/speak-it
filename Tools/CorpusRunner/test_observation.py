@@ -1894,7 +1894,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         where a relative alarm is refused by design`, `the snooze must
         not replace the series' alarm`), one out (`the series' next ring
         is within a minute of the snooze, where the repetition is armed
-        by design`): 4767 + 7 - 1 = 4773.
+        by design`): 4767 + 7 - 1 = 4773. 4773 -> 4775 on 2026-09-23, a
+        candidate commit of the second merge rehearsal (merge line F3,
+        #132 with #135): `deleteCapture` re-plans the region budget, and
+        the region-freeing test gains a step for it. Two in (`Remind me
+        to bring the umbrella every time I get home`, `replacing an
+        attempt`), none out: 4773 + 2 - 0 = 4775.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1904,7 +1909,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4773)
+        self.assertEqual(len(space), 4775)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

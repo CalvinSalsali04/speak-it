@@ -2186,6 +2186,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         let itemIDs = session.items.map(\.id)
         let isTutorial = session.captureSource == .tutorial
+        // Read before the delete: afterwards there is no row left to ask.
+        let touchesPlaces = session.items.contains { $0.locationIntent != nil }
         // The cascade takes every row the session has, the same way `delete`
         // removes a session with its last row.
         modelContext.delete(session)
@@ -2218,6 +2220,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 captureSessionIDs: [sessionID]
             )
         )
+        // A place reminder waiting for a region slot gets the one this frees
+        // now, not at the next foreground (see `delete`).
+        reconcileLocationReminders(ifTouchingPlaces: touchesPlaces)
         return itemIDs.count
     }
 
