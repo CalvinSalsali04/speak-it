@@ -1284,6 +1284,25 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
         self.assertTrue(any("holdsMicrophone" in line for line in body))
         self.assertTrue(any("announcer.microphoneDidClose()" in line for line in body))
 
+    def test_a_finish_report_is_read_through_the_helper(self):
+        """VoiceOver may report a finished announcement as an attributed
+        string, which does not bridge to `String`. `spokenText(fromFinishReport:)`
+        reads both forms and `VoiceOverAnnouncementTests` asks it, but an
+        observer that went back to `as? String` would leave that test green
+        and silently never match an attributed report, holding the
+        microphone's wait to its full allowance."""
+        lines = (self.ROOT / self.HOME).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+        observed = self.only(lines, "UIAccessibility.announcementDidFinishNotification")
+        closes = next(i for i in range(observed + 1, len(lines))
+                      if self.code(lines[i]).strip() == "})")
+        body = [self.code(line) for line in lines[observed:closes]]
+        self.assertTrue(
+            any("VoiceOverAnnouncer.spokenText(" in line for line in body),
+            "the finish observer no longer reads its report through "
+            "`spokenText(fromFinishReport:)`")
+        self.assertFalse(any("as? String" in line for line in body))
+
     def test_there_is_something_to_check(self):
         """Without this the first test passes when the helper is renamed or
         moved: nothing posts anywhere, and `[HOME]` becomes `[]`."""

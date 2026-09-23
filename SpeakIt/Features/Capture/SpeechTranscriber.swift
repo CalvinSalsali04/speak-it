@@ -850,8 +850,15 @@ final class SpeechTranscriber: ObservableObject {
         // The microphone closes before the state says finalizing, because
         // entering finalizing is announced ("Saving your thought") and the
         // announcer must already have the claim back. `stopAudioInput` reads
-        // nothing of `state`, and every callback it can trigger reaches this
-        // actor as a new task, so the order is otherwise free.
+        // nothing of `state`, so the order is otherwise free as long as no
+        // callback re-enters this actor synchronously while it drains. That
+        // holds in the backends, not in `recognitionRun`, whose closures call
+        // straight through: `SpeechRecognitionBackend` declares its callbacks
+        // `@MainActor` and both implementations deliver them in a new
+        // `Task { @MainActor }`. A backend that called back synchronously
+        // would meet `state == .listening` and no `finalization` here, so an
+        // error would fail the capture instead of finalizing it, and a final
+        // transcript would wait out the finalization timeout.
         stopAudioInput()
         state = .finalizing
         finalization = completion
