@@ -677,16 +677,16 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 6,162 | population |
+| utterances | share of 6,178 | population |
 |---:|---:|---|
-| 4,325 | 70.2% | the gating corpus in `SpeakItTests` |
-| 818 | 13.3% | `Tools/SpeechLab/phase2`, in four byte-identical files |
-| 695 | 11.3% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
-| 472 | 7.7% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 4,341 | 70.3% | the gating corpus in `SpeakItTests` |
+| 818 | 13.2% | `Tools/SpeechLab/phase2`, in four byte-identical files |
+| 695 | 11.2% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
+| 472 | 7.6% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
 | 163 | 2.6% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
 | 123 | 2.0% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
 | 121 | 2.0% | `Tools/CorpusRunner/devsets/coordination.tsv` |
-| 114 | 1.9% | `Tools/CorpusRunner/devsets/routed.tsv` |
+| 114 | 1.8% | `Tools/CorpusRunner/devsets/routed.tsv` |
 | 85 | 1.4% | `Tools/CorpusRunner/devsets/rambling.tsv` |
 | 55 | 0.9% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
 | 46 | 0.7% | `Tools/CorpusRunner/devsets/runon.tsv` |
@@ -697,10 +697,10 @@ times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 7,062 and its shares to 114.6%, because the twelve
+**That column sums to 7,078 and its shares to 114.6%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
 may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 6,162, is a
+additional maximal population that contains it. Only the union, 6,178, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,18 +708,18 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 4,325 + 1,333 + 618 = 6,276 against a union of
-6,162 and do not add up. Written out so that they do:
+114, so the three kinds are 4,341 + 1,333 + 618 = 6,292 against a union of
+6,178 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 6,162 |
+| kind | utterances | share of 6,178 |
 |---|---:|---:|
-| test fixtures only | 4,211 | 68.3% |
+| test fixtures only | 4,227 | 68.4% |
 | generated renderings (the SpeechLab tree) | 1,333 | 21.6% |
 | development sets only | 504 | 8.2% |
-| in both a development set and a fixture | 114 | 1.9% |
-| **total** | **6,162** | |
+| in both a development set and a fixture | 114 | 1.8% |
+| **total** | **6,178** | |
 
-**91.8% of everything this project may read — 5,658 of 6,162 — is either a
+**91.8% of everything this project may read — 5,674 of 6,178 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
 utterances, of which 504 exist nowhere else.

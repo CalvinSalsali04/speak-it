@@ -563,6 +563,426 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertFalse(CaptureVoiceStatus.listening(isWaitingForContinuation: false).disablesCaptureControl)
     }
 
+    // MARK: - A save belongs to the screen that started it
+
+    /// Discard during a save that is already running. The save has to finish,
+    /// because those are the person's words, but its screen is gone: in the
+    /// shipped defect the finished save called `onSaved`, and `RootView` closed
+    /// whatever capture was up by then, mid-sentence.
+    ///
+    /// The persistence, the slot, the durable effects and the publishing check
+    /// are the shipping `CaptureSaveInFlight.persisting`,
+    /// `CaptureSaveSettlement.settle` and `CapturePresentation`. What
+    /// `ScreenSave` restates is one line: `CaptureView.save` publishes only
+    /// when `settle` says the save still publishes.
+    ///
+    /// Falsifier: drop `!hasEnded` from `CapturePresentation.publishes` and
+    /// the closed-screen count below is 1. Move the `publishes()` guard in
+    /// `settle` above the charge and the charged count is 0.
+    func testASaveThatFinishesAfterItsScreenWasDiscardedDoesNotCloseTheNextOne() async throws {
+        let discarded = ScreenSave()
+        let save = try XCTUnwrap(discarded.presentation.beginSave())
+        let running = Task { @MainActor in await discarded.run(save) }
+        await Task.yield()
+
+        // The person taps Discard, then opens a new capture.
+        discarded.presentation.end()
+        let next = CapturePresentation()
+        XCTAssertNotNil(next.beginSave(), "a new screen starts with its own free save slot")
+
+        discarded.releasePersistence()
+        await running.value
+
+        XCTAssertEqual(discarded.persistedCount, 1, "the words must still be stored")
+        XCTAssertEqual(discarded.chargedCount, 1, "a stored thought went uncharged because its screen had gone")
+        XCTAssertEqual(discarded.endedScreenDraftClearedCount, 1, "the stored thought's draft was left to be recovered again")
+        XCTAssertFalse(discarded.presentation.isSaveInFlight)
+        XCTAssertEqual(
+            discarded.closedScreenCount,
+            0,
+            "a save whose screen was discarded closed the screen that replaced it"
+        )
+    }
+
+    /// A "Try saying it again" save that outlives its screen. Its attempt was
+    /// already charged, so the retry is free, and the attempt it replaces has
+    /// to go, or the person finds both in Needs review. This cannot see where
+    /// `CaptureView.save` reads the retry source from (it now holds it from
+    /// before the `await`, rather than reading `@State` from a screen that may
+    /// be gone); it checks what a late save does once it knows.
+    ///
+    /// Falsifier: move the `publishes()` guard in
+    /// `CaptureSaveSettlement.settle` above the deletion and the deleted count
+    /// is 0.
+    func testARetryThatFinishesAfterItsScreenWasDiscardedStillReplacesItsAttemptWithoutACharge() async throws {
+        let discarded = ScreenSave()
+        discarded.replacesRetrySource = true
+        let save = try XCTUnwrap(discarded.presentation.beginSave())
+        let running = Task { @MainActor in await discarded.run(save) }
+        await Task.yield()
+
+        discarded.presentation.end()
+        discarded.releasePersistence()
+        await running.value
+
+        XCTAssertEqual(discarded.persistedCount, 1)
+        XCTAssertEqual(discarded.retrySourceDeletedCount, 1, "the replaced attempt stayed in Needs review beside its retry")
+        XCTAssertEqual(discarded.chargedCount, 0, "a clarification retry spent a second free capture")
+        XCTAssertEqual(discarded.endedScreenDraftClearedCount, 1)
+        XCTAssertEqual(discarded.closedScreenCount, 0)
+    }
+
+    /// The order itself, with every effect logged. A late save does all the
+    /// durable work and then asks whether it may publish; the draft of a gone
+    /// screen is cleared after that answer and only on that answer.
+    ///
+    /// Falsifier: move the `publishes()` guard in
+    /// `CaptureSaveSettlement.settle` above the charge, the analytics event or
+    /// the deletion, and the log loses them.
+    func testALateSaveDoesEveryDurableThingBeforeAskingWhetherItPublishes() {
+        var log: [String] = []
+        let settled = CaptureSaveSettlement.settle(
+            createdNewCapture: true,
+            consumesFreeCapture: true,
+            replacesRetrySource: false,
+            chargeFreeCapture: { log.append("charge") },
+            recordSaved: { log.append("analytics") },
+            deleteRetrySource: { log.append("deletion") },
+            publishes: {
+                log.append("publishes")
+                return false
+            },
+            clearDraftOfEndedScreen: { log.append("draft") }
+        )
+        XCTAssertEqual(log, ["charge", "analytics", "publishes", "draft"])
+        XCTAssertEqual(settled, CaptureSaveSettlement.Settled(publishes: false, retrySourceSurvived: false))
+
+        log = []
+        let retry = CaptureSaveSettlement.settle(
+            createdNewCapture: true,
+            consumesFreeCapture: true,
+            replacesRetrySource: true,
+            chargeFreeCapture: { log.append("charge") },
+            recordSaved: { log.append("analytics") },
+            deleteRetrySource: { log.append("deletion") },
+            publishes: {
+                log.append("publishes")
+                return false
+            },
+            clearDraftOfEndedScreen: { log.append("draft") }
+        )
+        XCTAssertEqual(log, ["analytics", "deletion", "publishes", "draft"])
+        XCTAssertEqual(retry, CaptureSaveSettlement.Settled(publishes: false, retrySourceSurvived: false))
+    }
+
+    /// The other side of the same order: a save on its own screen does the
+    /// same durable work, publishes, and leaves its draft to the screen, which
+    /// clears it as it shows the result. A failed retry cleanup is reported
+    /// either way, and only `CaptureView.save` decides who hears about it:
+    /// on a gone screen, nobody.
+    ///
+    /// Falsifier: drop `retrySourceSurvived = true` from `settle`'s `catch`
+    /// and the failed cleanup is reported as a success.
+    func testASaveOnItsOwnScreenPublishesAndReportsARetryThatCouldNotBeDeleted() {
+        struct DeletionRefused: Error {}
+        var log: [String] = []
+        let settled = CaptureSaveSettlement.settle(
+            createdNewCapture: true,
+            consumesFreeCapture: true,
+            replacesRetrySource: true,
+            chargeFreeCapture: { log.append("charge") },
+            recordSaved: { log.append("analytics") },
+            deleteRetrySource: {
+                log.append("deletion")
+                throw DeletionRefused()
+            },
+            publishes: {
+                log.append("publishes")
+                return true
+            },
+            clearDraftOfEndedScreen: { log.append("draft") }
+        )
+        XCTAssertEqual(log, ["analytics", "deletion", "publishes"])
+        XCTAssertEqual(settled, CaptureSaveSettlement.Settled(publishes: true, retrySourceSurvived: true))
+
+        // An operation on existing content stores no new thought: no charge,
+        // no saved-capture event, nothing to replace.
+        log = []
+        _ = CaptureSaveSettlement.settle(
+            createdNewCapture: false,
+            consumesFreeCapture: false,
+            replacesRetrySource: false,
+            chargeFreeCapture: { log.append("charge") },
+            recordSaved: { log.append("analytics") },
+            deleteRetrySource: { log.append("deletion") },
+            publishes: {
+                log.append("publishes")
+                return true
+            },
+            clearDraftOfEndedScreen: { log.append("draft") }
+        )
+        XCTAssertEqual(log, ["publishes"])
+    }
+
+    /// Control for the test above: nothing about the gate may stop a save on
+    /// its own screen from closing that screen, exactly once.
+    func testASaveOnTheScreenThatStartedItStillClosesItOnce() async throws {
+        let screen = ScreenSave()
+        let save = try XCTUnwrap(screen.presentation.beginSave())
+        let running = Task { @MainActor in await screen.run(save) }
+        await Task.yield()
+        screen.releasePersistence()
+        await running.value
+
+        XCTAssertEqual(screen.persistedCount, 1)
+        XCTAssertEqual(screen.chargedCount, 1)
+        XCTAssertEqual(screen.endedScreenDraftClearedCount, 0)
+        XCTAssertEqual(screen.closedScreenCount, 1)
+        XCTAssertTrue(screen.presentation.publishes(save))
+    }
+
+    /// One screen, one save of its words at a time, and the slot comes back
+    /// when the save is done, because "Try saying it again" saves again on the
+    /// same screen.
+    ///
+    /// Falsifier: drop the `saveInFlight == nil` guard from
+    /// `CapturePresentation.beginSave` and the second request is granted.
+    func testASecondSaveOfTheSameScreenIsRefusedWhileTheFirstRuns() async throws {
+        let screen = ScreenSave()
+        let first = try XCTUnwrap(screen.presentation.beginSave())
+        let running = Task { @MainActor in await screen.run(first) }
+        await Task.yield()
+
+        XCTAssertTrue(screen.presentation.isSaveInFlight)
+        XCTAssertNil(
+            screen.presentation.beginSave(),
+            "a second save of these words started while the first was still being stored"
+        )
+
+        screen.releasePersistence()
+        await running.value
+
+        XCTAssertFalse(screen.presentation.isSaveInFlight)
+        let retry = try XCTUnwrap(screen.presentation.beginSave(), "the slot never came back")
+        XCTAssertTrue(screen.presentation.publishes(retry))
+        XCTAssertFalse(
+            screen.presentation.publishes(first),
+            "an older save of this screen may not publish once a newer one started"
+        )
+    }
+
+    // MARK: - Audio recovery that outlives its screen
+
+    /// Recovery transcribes for up to 25 seconds in a Task the screen does not
+    /// cancel. When it finishes after the screen has gone, the words must not
+    /// be saved through that screen's `save`, which reads its `@State` and
+    /// publishes, and must not be lost: they stay on the draft, beside the
+    /// recording, which Today then offers to recover.
+    ///
+    /// The draft store here is the shipping `CaptureDraftStore`, with a real
+    /// recording file on disk.
+    ///
+    /// Falsifier: drop the `hasEnded` guard from the success arm of
+    /// `CaptureRecoveryHandoff.finish` and the words go to `save` instead.
+    func testRecoveryThatFinishesAfterItsScreenEndedLeavesTheWordsForToday() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let owner = CapturePresentation()
+        owner.end()
+        var saved: [String] = []
+        var typed = 0
+
+        let outcome = CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: owner,
+            save: { saved.append($0) },
+            continueByTyping: { typed += 1 }
+        )
+
+        XCTAssertEqual(outcome, .leftForToday)
+        XCTAssertEqual(saved, [])
+        XCTAssertEqual(typed, 0)
+        let kept = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        XCTAssertEqual(kept.transcript, "buy milk and eggs today")
+        XCTAssertEqual(kept.recoveryStatus, .capturing)
+        XCTAssertTrue(CaptureDraftStore.hasRecoveryAudio(for: kept))
+        XCTAssertEqual(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id), [draft.id])
+    }
+
+    /// Control: on a screen that is still up, recovered words are saved there
+    /// and the draft is left for that save to clear.
+    func testRecoveryOnItsOwnScreenStillSavesThere() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        var saved: [String] = []
+
+        let outcome = CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: CapturePresentation(),
+            save: { saved.append($0) },
+            continueByTyping: { XCTFail("recovered words were sent to typing") }
+        )
+
+        XCTAssertEqual(outcome, .returnedToScreen)
+        XCTAssertEqual(saved, ["buy milk and eggs today"])
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.recoveryStatus, .processing)
+    }
+
+    /// A failed recovery is recorded on the draft either way, and only a
+    /// screen that is still up is switched to typing.
+    ///
+    /// Falsifier: drop the `hasEnded` guard from the failure arm and the ended
+    /// screen is switched to typing.
+    func testFailedRecoveryTouchesOnlyAScreenThatIsStillUp() throws {
+        struct RecognizerGaveUp: Error {}
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let ended = CapturePresentation()
+        ended.end()
+        var typed = 0
+
+        let late = CaptureRecoveryHandoff.finish(
+            .failure(RecognizerGaveUp()),
+            draftID: draft.id,
+            owner: ended,
+            save: { _ in XCTFail("a failed recovery started a save") },
+            continueByTyping: { typed += 1 }
+        )
+        XCTAssertEqual(late, .leftForToday)
+        XCTAssertEqual(typed, 0)
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.recoveryStatus, .failed)
+        XCTAssertTrue(CaptureDraftStore.hasRecoveryAudio(for: draft))
+
+        let live = CaptureRecoveryHandoff.finish(
+            .failure(RecognizerGaveUp()),
+            draftID: draft.id,
+            owner: CapturePresentation(),
+            save: { _ in XCTFail("a failed recovery started a save") },
+            continueByTyping: { typed += 1 }
+        )
+        XCTAssertEqual(live, .returnedToScreen)
+        XCTAssertEqual(typed, 1)
+    }
+
+    /// Discard clears the draft while recovery is still running. The late
+    /// result must not bring it back.
+    ///
+    /// Falsifier: let `leaveRecoveredWordsForToday` insert a draft it did not find.
+    func testRecoveryThatFinishesAfterDiscardDoesNotBringTheDraftBack() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let owner = CapturePresentation()
+        owner.end()
+        CaptureDraftStore.clear(id: draft.id)
+
+        CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: owner,
+            save: { _ in XCTFail("a discarded recording was saved") },
+            continueByTyping: {}
+        )
+
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id))
+    }
+
+    /// A voice draft with a protected recording on disk, marked as being
+    /// recovered, as `recoverActiveAudio` leaves it.
+    private func recordingDraft() throws -> CaptureDraftStore.Draft {
+        let draft = CaptureDraftStore.begin(source: .inAppVoice)
+        let audioURL = try XCTUnwrap(CaptureDraftStore.prepareAudioURL(for: draft))
+        try Data(repeating: 0x1, count: 1_024).write(to: audioURL, options: .atomic)
+        CaptureDraftStore.markProcessing(id: draft.id)
+        return draft
+    }
+
+    /// The finalization window, driven through a real transcriber. Save &
+    /// Close landed after the recognizer's first final result and before its
+    /// last one, saved the partial wording, and then finalization saved the
+    /// final wording as a second capture.
+    ///
+    /// Persistence here finishes at once and gives the slot back before the
+    /// final words arrive, which is the timing under which the shipped defect
+    /// stored two captures. While persistence is still running, the slot alone
+    /// refuses the second save, and the count could not tell the fix from the
+    /// defect.
+    ///
+    /// Falsifier: remove the `.finalizing` branch from
+    /// `CaptureCloseRequest.resolveSaveAndClose` and both assertions on
+    /// `saved` fail: the partial wording is stored first and the final wording
+    /// is stored beside it.
+    func testSaveAndCloseDuringFinalizationSavesTheFinalWordsOnce() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let presentation = CapturePresentation()
+        var saved: [String] = []
+        // `CaptureView.save`'s claim and nothing else of it, with a
+        // persistence that returns straight away and frees the slot.
+        let save: (String) -> Void = { text in
+            guard let claimed = presentation.beginSave() else { return }
+            saved.append(text)
+            presentation.finishPersisting(claimed)
+        }
+
+        let recording = transcriber.beginRunWithoutAudioForTesting { save($0) }
+        recording.deliverTranscript("buy milk and eggs", false)
+        recording.deliverTranscript("buy milk and eggs", true)
+        XCTAssertEqual(transcriber.state, .finalizing)
+
+        let request = CaptureCloseRequest.resolveSaveAndClose(
+            isVoiceMode: true,
+            transcriberState: transcriber.state,
+            isSaveInFlight: presentation.isSaveInFlight,
+            isRecoveringAudio: false,
+            showsSavedConfirmation: false
+        )
+        XCTAssertEqual(request, .closeWhenSaveFinishes)
+        if request == .saveThenClose {
+            save(transcriber.transcript)
+        }
+
+        recording.deliverTranscript("buy milk and eggs today", true)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertEqual(saved.count, 1, "one recording was stored as \(saved.count) captures")
+        XCTAssertEqual(saved.first, transcriber.transcript)
+        XCTAssertTrue(saved.first?.contains("today") ?? false, "the partial wording was saved")
+    }
+
+    /// Every other answer Save & Close can give, so the fix above cannot have
+    /// taken the ordinary save away.
+    func testSaveAndCloseOnlyStartsASaveWhenNothingElseOwnsTheWords() {
+        func resolve(
+            voice: Bool = true,
+            state: SpeechTranscriber.State = .idle,
+            inFlight: Bool = false,
+            recovering: Bool = false,
+            confirmed: Bool = false
+        ) -> CaptureCloseRequest {
+            CaptureCloseRequest.resolveSaveAndClose(
+                isVoiceMode: voice,
+                transcriberState: state,
+                isSaveInFlight: inFlight,
+                isRecoveringAudio: recovering,
+                showsSavedConfirmation: confirmed
+            )
+        }
+
+        XCTAssertEqual(resolve(state: .listening), .saveThenClose)
+        XCTAssertEqual(resolve(state: .idle), .saveThenClose)
+        XCTAssertEqual(resolve(voice: false), .saveThenClose)
+        XCTAssertEqual(resolve(voice: false, state: .finalizing), .saveThenClose)
+        XCTAssertEqual(resolve(inFlight: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(voice: false, inFlight: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(recovering: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(confirmed: true), .closeSaved)
+        XCTAssertEqual(resolve(inFlight: true, confirmed: true), .closeWhenSaveFinishes)
+    }
+
     // MARK: - The capture review list
 
     private var container: ModelContainer!
@@ -784,5 +1204,62 @@ private final class RecordingRecognitionBackend: SpeechRecognitionBackend {
 
     func cancel() {
         cancelCount += 1
+    }
+}
+
+/// One capture screen's save, with persistence held open until the test lets
+/// it finish.
+///
+/// It runs the shipping `CaptureSaveInFlight.persisting` and frees the slot
+/// through it, then the shipping `CaptureSaveSettlement.settle`, as
+/// `CaptureView.save` does, counting each durable effect. The one line
+/// restated is the gate: `CaptureView.save` reaches `onSaved`, whether by
+/// Save & Close or by the auto-dismiss timer, only when `settle` says the save
+/// still publishes.
+@MainActor
+private final class ScreenSave {
+    let presentation = CapturePresentation()
+    /// A "Try saying it again" save, which replaces an already-charged attempt.
+    var replacesRetrySource = false
+    private(set) var persistedCount = 0
+    private(set) var chargedCount = 0
+    private(set) var retrySourceDeletedCount = 0
+    private(set) var endedScreenDraftClearedCount = 0
+    private(set) var closedScreenCount = 0
+    private var isReleased = false
+    private var resume: CheckedContinuation<Void, Never>?
+
+    func run(_ save: CapturePresentation.Save) async {
+        _ = try? await CaptureSaveInFlight.persisting(lower: {
+            presentation.finishPersisting(save)
+        }) {
+            await holdUntilReleased()
+            persistedCount += 1
+        }
+        let settled = CaptureSaveSettlement.settle(
+            createdNewCapture: true,
+            consumesFreeCapture: true,
+            replacesRetrySource: replacesRetrySource,
+            chargeFreeCapture: { chargedCount += 1 },
+            recordSaved: {},
+            deleteRetrySource: { retrySourceDeletedCount += 1 },
+            publishes: { presentation.publishes(save) },
+            clearDraftOfEndedScreen: { endedScreenDraftClearedCount += 1 }
+        )
+        guard settled.publishes else { return }
+        closedScreenCount += 1
+    }
+
+    func releasePersistence() {
+        isReleased = true
+        resume?.resume()
+        resume = nil
+    }
+
+    private func holdUntilReleased() async {
+        guard !isReleased else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            resume = continuation
+        }
     }
 }

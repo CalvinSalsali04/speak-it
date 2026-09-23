@@ -1166,7 +1166,31 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         speech `start` releases only the backend it was handed (LIF-7).
         Two, enumerated: both are assertion messages. The tests deliver
         no words, and every phrase in their doc comments is in backticks.
-        What the test
+        4119 -> 4128 on 2026-09-23,
+        when a save came to belong to the capture screen that started it
+        (`CapturePresentation`) and Save & Close stopped racing
+        finalization. Nine, enumerated: eight assertion messages, one of them
+        interpolated, and the fixture `"buy milk and eggs today"`, the final
+        wording a finalization delivers; its partial, `"buy milk and eggs"`,
+        was already counted elsewhere and adds nothing. Then 4128 -> 4132
+        on the same branch, when review found the late save's charge and
+        retry cleanup asserted by nothing and they moved into
+        `CaptureSaveSettlement`. Four, enumerated, all assertion messages:
+        `"a stored thought went uncharged because its screen had gone"`,
+        `"the stored thought's draft was left to be recovered again"`,
+        `"the replaced attempt stayed in Needs review beside its retry"` and
+        `"a clarification retry spent a second free capture"`. The event
+        names the order test logs are single words under twelve characters
+        and add none. Then 4132 -> 4135, when audio recovery that finishes
+        after its screen has gone came to leave its words on the draft
+        (`CaptureRecoveryHandoff`) rather than saving through that screen.
+        Three, enumerated, all failure messages of closures that must not
+        run: `"recovered words were sent to typing"`,
+        `"a failed recovery started a save"` and
+        `"a discarded recording was saved"`. The fixture
+        `"buy milk and eggs today"` was already counted earlier in this entry.
+        The development-set overlap stayed at 114, checked by
+        regenerating `LANGUAGE_BASELINE.md`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1291,7 +1315,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         candidate: measured from the merged tree, not taken from either
         side (4323 on the candidate, 4121 on #134, 4119 at their merge
         base; #134 adds 2 and removes 0, 0 of its additions were already
-        on the candidate).
+        on the candidate). 4325 -> 4341 on 2026-09-23, merging #126 into
+        the V1 candidate: measured from the merged tree, not taken from
+        either side (4325 on the candidate, 4135 on #126, 4119 at their
+        merge base; #126 adds 16 and removes 0, 0 of its additions were
+        already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1301,7 +1329,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4325)
+        self.assertEqual(len(space), 4341)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

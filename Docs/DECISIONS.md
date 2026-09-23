@@ -883,6 +883,48 @@ session. The race itself still needs a device to confirm: the
 capture-lifecycle audit's proposed row N-6, not yet in
 `Docs/CAPTURE_STRESS_TEST_PLAN.md`.
 
+## 2026-09-23 — A save belongs to the capture screen that started it
+
+A save's Task outlives its screen, and it used to publish into whatever was on
+screen when it finished: after Discard or Save & Close during a running save,
+it called `onSaved`, and `RootView` closed the next capture mid-sentence and
+rewrote its Live Activity. Each presentation now holds a `CapturePresentation`
+in `@State`: the save persists, charges and clears its draft regardless, but
+the screen, `onSaved`, the Live Activity and the auto-dismiss timer run only
+while `publishes(_:)` says its own screen is still up. The same object holds
+one save slot, and Save & Close no longer saves the partial wording when a save
+is running or finalization is about to hand over the final wording; it waits
+for that save and closes (`CaptureCloseRequest`), so one recording stores once,
+with the recognizer's last words. The durable half is one function,
+`CaptureSaveSettlement.settle`, which charges, records and deletes a replaced
+clarification attempt before it asks `publishes`, and `save` holds the retry
+source, the draft id and the presentation from before its `await` rather than
+reading a possibly torn-down screen's `@State`. A late save whose retry cleanup
+fails tells nobody: both versions stay in Needs review, and nothing is written
+to the gone screen. If audio recovery fails after Save & Close, the close is
+withdrawn and the screen stays open on the "your recording is safe" notice,
+rather than staying armed for the next save. Audio recovery is held to the
+same rule (`CaptureRecoveryHandoff`): its transcription can outlast the screen,
+and if it does, it no longer calls that screen's `save`. Recovered words stay
+on the draft beside the recording (`CaptureDraftStore.leaveRecoveredWordsForToday`), so
+Today offers them and the next launch recovers them; a failure is recorded on
+the draft; neither touches the gone screen. A clarification retry recovered
+this way arrives as a new capture, and the unclear attempt it was replacing
+stays in Needs review.
+
+What reaches a save that outlives its screen: Discard from the close dialog
+when the dialog was opened while listening and the recognizer finished behind
+it (the person reading the dialog can be the pause that ends a thought; the
+dialog was already up, so disabling the close button and the swipe during a
+save does not reach its Discard), and the Lock Screen widget's
+`speakit://today` link, which closes whatever is presented without the check
+`speakit://capture`, Back Tap and quick actions make. Termination is not one:
+the save's Task ends with the process. After such a Discard the thought stays
+stored and the free capture spent; whether it should is a product question left
+open. Whether presenting a sheet from the capture screen fires its
+`onDisappear`, which would end the presentation for good and withhold the
+save's confirmation and close, is a device question that needs QA on hardware.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
