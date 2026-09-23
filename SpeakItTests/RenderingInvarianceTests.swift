@@ -313,14 +313,18 @@ enum LexicalTagging {
     /// Blind means no token carried a usable class. A partial answer is not
     /// blindness: a tagger that classes some words and not others is a tagger
     /// that can be wrong, and an assertion that can be wrong should run.
+    ///
+    /// Since 2026-09-23 the app takes this decision too, in
+    /// `LinguisticHealth`, and this helper asks it rather than keeping a copy.
+    /// Two copies of one decision can drift; one cannot.
     static func isBlind(_ classes: [NLTag?]) -> Bool {
-        !classes.contains { $0 != nil && $0 != .otherWord }
+        LinguisticHealth.isBlind(classes)
     }
 
     /// A verb, a determiner and a noun. Any one of the three coming back
     /// classed is enough, because the question is whether the model answered at
-    /// all and not whether it answered well.
-    static let probe = "pay the rent on friday"
+    /// all and not whether it answered well. The app probes the same sentence.
+    static let probe = LinguisticHealth.probe
 
     /// Read once. The model does not arrive halfway through a run.
     static let isBlindHere: Bool = isBlind(SentenceContext(probe).tokens.map(\.lexicalClass))
@@ -392,5 +396,137 @@ final class LexicalTaggingHealthTests: XCTestCase {
             SentenceContext(LexicalTagging.probe).tokens.count, 4,
             "the probe must be a sentence: \(LexicalTagging.probe)"
         )
+    }
+
+    // MARK: The app's own verdict
+
+    /// The verdict the capture pipeline acts on, read from an injected tagging
+    /// in both directions, and read from the probe sentence rather than from
+    /// whatever text happens to be passed.
+    ///
+    /// Falsifier: make `LinguisticHealth.verdict` return `.usable`
+    /// unconditionally (or tag an empty string instead of `probe`), and the
+    /// first assertion (or the last) fails. On a healthy Mac nothing else in
+    /// the suite would notice, because no machine the suite runs on is blind
+    /// while its tests assert a degraded verdict.
+    func testTheProductionVerdictReadsAnInjectedTaggingBothWays() {
+        var asked: [String] = []
+        let blind = LinguisticHealth.verdict { text in
+            asked.append(text)
+            return [.otherWord, .otherWord]
+        }
+        let usable = LinguisticHealth.verdict { _ in [.verb, .determiner] }
+
+        XCTAssertEqual(blind, .blind, "every token OtherWord is the documented blind state")
+        XCTAssertEqual(usable, .usable, "a classed verb means the model answered")
+        XCTAssertEqual(asked, [LinguisticHealth.probe], "the verdict tags the probe sentence, once")
+    }
+
+    /// The test helper and the app take one decision, not two.
+    ///
+    /// Falsifier: give `LexicalTagging.isBlind` its own body again and change
+    /// either copy (for example, count `nil` as a class), and the fixtures
+    /// below disagree.
+    func testTheTestHelperAndTheAppShareOneDecision() {
+        let fixtures: [[NLTag?]] = [
+            [.otherWord, .otherWord, .otherWord],
+            [nil, nil],
+            [],
+            [.otherWord, .verb, .otherWord],
+            [.determiner],
+        ]
+        for classes in fixtures {
+            XCTAssertEqual(
+                LexicalTagging.isBlind(classes),
+                LinguisticHealth.isBlind(classes),
+                "\(classes)"
+            )
+        }
+        XCTAssertEqual(LexicalTagging.probe, LinguisticHealth.probe)
+    }
+
+    /// A blind verdict is probed again on the next read, a usable one is
+    /// kept, and the reading cache is emptied exactly once, on the way from
+    /// blind to usable.
+    ///
+    /// Falsifier: cache `.blind` like `.usable` in `VerdictCache.current`, and
+    /// the second read stays blind. Drop the `recovered` call, and the count
+    /// stays zero.
+    func testABlindVerdictIsReprobed() {
+        var taggings = 0
+        var recoveries = 0
+        let cache = LinguisticHealth.VerdictCache(
+            tagging: { _ in
+                taggings += 1
+                return taggings == 1 ? [.otherWord] : [.verb]
+            },
+            recovered: { recoveries += 1 }
+        )
+
+        XCTAssertEqual(cache.current(), .blind)
+        XCTAssertEqual(cache.current(), .usable, "a blind verdict must not be sticky")
+        XCTAssertEqual(cache.current(), .usable)
+        XCTAssertEqual(taggings, 2, "a usable verdict is kept, not probed again")
+        XCTAssertEqual(recoveries, 1)
+    }
+
+    /// The first probe of a process that reads usable empties the reading
+    /// cache too, not only a probe that follows a blind one. The rules run
+    /// before the probe, so a capture read before the first probe (a cold
+    /// launch from Back Tap or an App Intent, before prewarm) may have cached
+    /// readings taken without the model. A first probe that reads blind
+    /// empties nothing, and neither does a usable verdict read from the cache.
+    ///
+    /// Falsifier: go back to `last == .blind` alone in `VerdictCache.current`,
+    /// and the first count stays zero.
+    func testTheFirstUsableVerdictEmptiesTheReadingCache() {
+        var recoveries = 0
+        let cache = LinguisticHealth.VerdictCache(
+            tagging: { _ in [.verb] },
+            recovered: { recoveries += 1 }
+        )
+        XCTAssertEqual(cache.current(), .usable)
+        XCTAssertEqual(recoveries, 1, "nothing had checked before, so the cache may hold blind readings")
+        XCTAssertEqual(cache.current(), .usable)
+        XCTAssertEqual(recoveries, 1, "a kept verdict must not empty the cache again")
+
+        var blindRecoveries = 0
+        let blind = LinguisticHealth.VerdictCache(
+            tagging: { _ in [.otherWord] },
+            recovered: { blindRecoveries += 1 }
+        )
+        XCTAssertEqual(blind.current(), .blind)
+        XCTAssertEqual(blind.current(), .blind)
+        XCTAssertEqual(blindRecoveries, 0, "a blind verdict has nothing to recover from")
+    }
+
+    /// Production probes; only a test harness is inert; an override beats
+    /// both. This is the test that fails if the default path stops probing.
+    ///
+    /// Falsifier: make `policyVerdict` return `.usable` for `.probe` (or
+    /// return `hostDefault` as `.probe` inside this host), and the matching
+    /// assertion fails. The last two assertions are the mechanism every other
+    /// test in the suite relies on: if this host stopped reading as inert, the
+    /// degraded policy would switch itself on across the whole suite on a
+    /// blind simulator.
+    func testTheProductionDefaultProbesAndOnlyAHarnessIsInert() {
+        var measured = 0
+        let readsBlind: () -> LinguisticHealth.Tagger = { measured += 1; return .blind }
+        let readsUsable: () -> LinguisticHealth.Tagger = { measured += 1; return .usable }
+
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: nil, host: .probe, measure: readsBlind), .blind)
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: nil, host: .probe, measure: readsUsable), .usable)
+        XCTAssertEqual(measured, 2, "the production default must actually probe")
+
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: nil, host: .inert, measure: readsBlind), .usable)
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: nil, host: .forcedBlind, measure: readsUsable), .blind)
+        XCTAssertEqual(measured, 2, "a harness and a forced launch do not probe")
+
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: .blind, host: .inert, measure: readsUsable), .blind)
+        XCTAssertEqual(LinguisticHealth.policyVerdict(override: .usable, host: .probe, measure: readsBlind), .usable)
+        XCTAssertEqual(measured, 2, "an override is not second-guessed by a probe")
+
+        XCTAssertEqual(LinguisticHealth.hostDefault, .inert, "the unit-test host must read as a harness")
+        XCTAssertEqual(LinguisticHealth.effective, .usable)
     }
 }
