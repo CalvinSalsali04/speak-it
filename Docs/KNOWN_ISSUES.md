@@ -280,6 +280,34 @@ fails loudly. The diagnostic must never abstain — a suite that skips its way t
 green is the same defect as a step that runs no tests, one level up — and a
 test pins that it does not.
 
+**2026-09-22: the reference environment reached the same state.** Reported by
+Calvin from his Mac, not measured here. A full `./Tools/CI/unit-tests.sh` on
+the capture-experience branch ended in **45 failures**, and the same 45 failed
+on the untouched baseline with the branch's commits absent — the branch
+introduced none of them. He attributes them to the simulator's
+`NaturalLanguage` assets being missing, which is this entry's failure mode
+arriving on the one machine the two paragraphs above call the reference.
+
+That matters more than the count. Everything above is written on the premise
+that a hosted image is blind and the author's Mac is where a tagger-dependent
+assertion can still be believed. While a local simulator is in this state
+there is no environment left that can answer one, and the abstention in
+`LexicalTagging.skipIfBlind` moves those assertions into Skipped rather than
+Passed there too — so a shrinking failure count is not the same as the rules
+being exercised.
+
+What is **not** established, and should not be inferred from the number: which
+45, whether they are the same classes as the hosted runner's, or whether the
+cause is the same absent lexical-class model rather than a different missing
+asset. The readout that would say is `NaturalLanguageEnvironmentTests`, which
+prints the tagging rather than leaving it inferred:
+`./Tools/CI/unit-tests.sh SpeakItTests/NaturalLanguageEnvironmentTests`.
+Both classes live in `RenderingInvarianceTests.swift`, and selecting the file's
+other class runs cleanly while asking the tagger nothing. Until that
+is run and its output recorded here, the cause is his diagnosis and not a
+measurement. Redownloading the simulator runtime is the first thing to try;
+nothing in the product branch should be changed to accommodate it.
+
 This has a deadline. `ci.yml` defaults the test selection to the whole of
 `SpeakItTests` and runs the `iOS app` job only on dispatch or once
 `vars.IOS_RUNNER` names a self-hosted Mac. So the unit suite cannot come back
@@ -984,6 +1012,8 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 ## Remaining validation after the September product fixes
 
 - FoundationModels cancellation is cooperative. Measure generation latency and fallback behavior on an Apple Intelligence device before claiming a strict two-second completion bound.
+- The voice screen's "Saving your thought…" state is correct by construction and covered by unit tests, but how long a person actually sees it has not been measured. On an ineligible iPhone — including the iPhone 13 this project is tested on, which is below the A17 Pro floor — refinement never runs, so the window is persistence only and the fix cannot be observed at its worst. Timing it needs an Apple Intelligence device.
+- The stale-run guard on recognizer callbacks (`SpeechTranscriber.acceptsResult`) is now covered as a lifecycle: `CaptureFeedbackTests` drives two runs and fires an abandoned run's real callbacks late into a live one. What is still not observed is a real recognizer doing it — the backends are not injectable, so no test starts `SFSpeechRecognitionTask` and waits for it to deliver after `cancel()`. That last step needs a device.
 - Portable iCloud semantics have local serialization/merge coverage. Live two-device delivery, permissions and notification behavior still require device QA.
 - Whole-library search and full-file cloud snapshots remain in use. The projection and ranking changes do not establish performance at 50,000 items.
 - The September 9 full UI run passed 24 tests, including its accessibility-text/dark-appearance flow. Its one stale pricing assertion was corrected and passed on rerun. Physical VoiceOver and animation quality still need hands-on review.

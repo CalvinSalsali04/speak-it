@@ -281,13 +281,23 @@ struct CaptureCreationResult {
         }
     }
 
+    /// How many of these rows will actually alert.
+    ///
+    /// This asked only whether the row had a *state* — any `.time` counted —
+    /// so "buy milk tomorrow", a date with nothing armed on it, was announced
+    /// as a reminder. `actionCount` below asks the narrower `isArmed`, so the
+    /// same row was also counted as a thing to do: one row on two lines, and a
+    /// receipt whose parts could add up to more than the number of things
+    /// saved. The row drawn underneath has separated a date from an armed
+    /// reminder since Docs/FINAL_RELEASE_AUDIT.md B-1/C-1; the count above it
+    /// had not, which is the one direction that misleads — promising an alert
+    /// nothing will deliver.
+    ///
+    /// `isArmed` is false for `.blockedPlace`, so a place reminder iOS is not
+    /// watching is still excluded, and it stays excluded for the reason it
+    /// always was rather than by a separate case.
     var reminderCount: Int {
-        presentations.filter { presentation in
-            switch presentation.reminderState {
-            case .time, .place: !presentation.requiresReview
-            case .none, .blockedPlace: false
-            }
-        }.count
+        presentations.filter { $0.reminderState.isArmed && !$0.requiresReview }.count
     }
 
     var actionCount: Int {
