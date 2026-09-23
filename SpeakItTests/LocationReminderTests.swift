@@ -1493,6 +1493,112 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
+    /// The widget, the Lock Screen count and "Complete my next item" read the
+    /// shared Today snapshot, so it must hold exactly what Today holds. A place
+    /// reminder with permission denied keeps `needsClarification == false`
+    /// while Today puts it in Needs review; the snapshot used to read only the
+    /// stored flags, count it, and offer it first to be completed.
+    ///
+    /// Falsifier: build the snapshot from the stored `belongsInToday` (or with
+    /// only a `needsClarification == false` filter) instead of
+    /// `belongsOnTodaySurface(authorization:relativeTo:)`, and the denied pass
+    /// counts two and names the held reminder first.
+    func testSharedTodaySnapshotNeverOffersARowTodayHoldsForReview() throws {
+        setHome()
+        let now = Date.now
+        let held = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: now.addingTimeInterval(-60),
+            schedulesReminder: false
+        )
+        // The control: an ordinary open action, captured later, so under the
+        // old ordering it came second and the held row was "next".
+        let control = try repository.createCapture(
+            text: "I need to implement calendar integration tomorrow",
+            source: .inAppText,
+            createdAt: now,
+            schedulesReminder: false
+        )
+        control.dueDate = nil
+        control.reminderDate = nil
+        control.priority = held.priority
+
+        let denied = LocationAuthorization(
+            status: .denied,
+            isPrecise: true,
+            isRegionMonitoringAvailable: true
+        )
+        // Preconditions: the stored flags alone call both rows ready.
+        XCTAssertFalse(held.needsClarification)
+        XCTAssertTrue(held.belongsInToday)
+        XCTAssertTrue(held.requiresReview(authorization: denied))
+        XCTAssertTrue(control.belongsOnTodaySurface(authorization: denied, relativeTo: now))
+
+        let whileDenied = try XCTUnwrap(
+            repository.makeSharedTodaySnapshot(authorization: denied, now: now)
+        )
+        XCTAssertEqual(whileDenied.openCount, 1, "a row in review is not counted as due")
+        XCTAssertEqual(
+            whileDenied.items.map(\.id), [control.id],
+            "the ordinary row is next, and the held one is never offered"
+        )
+
+        // Same rows, permission granted: the reminder can act, so it is on
+        // Today and, being older, is first. What moved it was authorization.
+        let whileAuthorized = try XCTUnwrap(
+            repository.makeSharedTodaySnapshot(authorization: authorized, now: now)
+        )
+        XCTAssertEqual(whileAuthorized.openCount, 2)
+        XCTAssertEqual(whileAuthorized.items.map(\.id), [held.id, control.id])
+    }
+
+    /// The widget's own complete button reaches the store through the queue,
+    /// and the queue is drained before the shortcut rebuilds its snapshot. A
+    /// file written before permission was revoked still offers the held row,
+    /// so a tap on it must not complete it.
+    ///
+    /// Falsifier: drain the queue without the `requiresReview` check and the
+    /// held reminder is completed. The control shows the drain still applies
+    /// an ordinary row's tap.
+    func testAQueuedWidgetTapDoesNotCompleteARowTodayHoldsForReview() throws {
+        setHome()
+        let held = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now.addingTimeInterval(-60),
+            schedulesReminder: false
+        )
+        let control = try repository.createCapture(
+            text: "I need to implement calendar integration tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let denied = LocationAuthorization(
+            status: .denied,
+            isPrecise: true,
+            isRegionMonitoringAvailable: true
+        )
+        XCTAssertTrue(held.requiresReview(authorization: denied))
+        XCTAssertFalse(control.requiresReview(authorization: denied))
+
+        // A folder of the test's own, never the app group's queue: nothing
+        // else can add to it or drain it, and there is nothing to skip.
+        let queue = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: queue) }
+        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: held.id, in: queue))
+        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: control.id, in: queue))
+        XCTAssertEqual(SharedTodayStore.pendingActions(in: queue).count, 2)
+
+        repository.reconcileSharedTodayActions(authorization: denied, now: .now, actionsIn: queue)
+
+        XCTAssertFalse(held.isCompleted, "a tap from a stale widget does not complete a held row")
+        XCTAssertTrue(control.isCompleted, "an ordinary row's tap is still applied")
+        XCTAssertTrue(SharedTodayStore.pendingActions(in: queue).isEmpty, "the dropped tap is not retried forever")
+    }
+
     /// Precedence: the missing place is named before the missing permission,
     /// because granting location access does not tell Speak It where home is.
     func testMissingHomeOutranksMissingPermission() throws {
