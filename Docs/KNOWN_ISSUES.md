@@ -83,6 +83,27 @@ the measurement is in the log, one line per company, and it is read with
 two readings are identical the frame was never what decided those words, and
 only a model can type them.
 
+## VoiceOver can still speak into a recording, just not at Speak It's request
+
+*2026-09-23.* `VoiceOverAnnouncer` stops everything Speak It posts from being
+spoken while a microphone is open, and it holds the microphone shut until what
+was already posted has been spoken (see the decision of the same date). Three
+things remain outside that rule, and none of them is verified on hardware:
+
+- **VoiceOver reading the element under the person's finger.** Swiping to
+  "Finish recording now" while recording speaks each element on the way, into
+  the open microphone. The audio session has no echo cancellation. Magic Tap
+  (A11Y-6) is the fix, and it is still open.
+- **A lost finish report.** If VoiceOver never reports an announcement
+  finished, the microphone opens once that announcement's allowance runs out
+  (at most 12 s). At a very slow speaking rate, a long announcement could
+  still be playing when that happens.
+- **Messages that arrive while recording are dropped, not deferred.** A launch
+  recovery that finishes during a capture is not announced. The recovered item
+  is on Today.
+
+Audit `v1/audits/accessibility.md`, D-3, D-4 and D-16.
+
 ## A considered thought and a committed one look the same once stored
 
 `SemanticGap` names one reason per structural question the pipeline asks, and

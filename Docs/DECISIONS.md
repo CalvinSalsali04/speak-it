@@ -883,6 +883,119 @@ session. The race itself still needs a device to confirm: the
 capture-lifecycle audit's proposed row N-6, not yet in
 `Docs/CAPTURE_STRESS_TEST_PLAN.md`.
 
+## 2026-09-23 — Nothing Speak It asks VoiceOver to say is spoken into an open microphone
+
+The capture screen spoke to VoiceOver while recording. "Listening" was posted
+on the first microphone buffer and "Still listening…" during a pause, and the
+production audio session (`.playAndRecord`, `.spokenAudio`, no voice
+processing) has no echo cancellation. So VoiceOver's own words could be
+transcribed into a `CaptureSession`'s immutable original words, and the pause
+check could read them as speech. Meanwhile the things a VoiceOver user most
+needed to hear were not spoken at all: the save result, the no-speech timeout,
+a voice failure, audio recovery, a recovered capture on Today or at launch, and
+the Share extension's result. (Audit `v1/audits/accessibility.md`, A11Y-1 to
+A11Y-5.)
+
+Every announcement now goes through `VoiceOverAnnouncer`
+(`Shared/SharedCaptureInbox.swift`, the one source compiled into both the app
+and the Share extension), and it holds one rule in two halves:
+
+- **Nothing is posted while a microphone is open.** `SpeechTranscriber` reports
+  the microphone open immediately before `AVAudioEngine.start()` and closed in
+  `stopAudioInput`, and `announce` withholds anything that arrives in between.
+  A withheld message is dropped, not deferred: it describes a moment that is
+  over by the time the microphone closes, and the screen still shows it.
+- **A microphone does not open while something already posted may still be
+  being spoken.** `SpeechTranscriber.start` awaits
+  `waitUntilMicrophoneMayOpen(cue:)` with no suspension before the engine
+  starts, and that wait ends on `UIAccessibility.announcementDidFinishNotification`
+  for everything the announcer posted. The first half alone leaked: "Try saying
+  it again" posts a notice and opens the microphone 260 ms later.
+
+The alternatives, and why not:
+
+- **Post "Listening" before the engine starts, and nothing else.**
+  VoiceOver would still be speaking it, or the notice before it, when the
+  engine starts.
+- **Suppress every announcement and use haptics only.** This would leave A11Y-1
+  and A11Y-2 unfixed, because a haptic cannot say "Can you clarify?".
+- **Enable voice processing (echo cancellation).** This changes the
+  recognizer's input for every user to protect some, and it is a
+  recognition-quality decision to measure, not an accessibility fix.
+
+What changed:
+
+- **"Listening" is the cue** passed to the wait, so it is spoken and finished
+  before the engine starts. The first-buffer haptic stays as the "the
+  microphone is live" signal.
+- **"Still listening" is not spoken.** A VoiceOver user gets the same light
+  haptic, and the subtitle still says it.
+- **The receipt** announces its title and detail and is a heading.
+- **Saving, recovery and permission denial** are announced by
+  `CaptureVoiceStatus.spokenChange(from:to:)`. No state entered with the
+  microphone open is ever named there, and a test walks every pair.
+- **Notices** (`voiceNotice`, `captureNotice`), Today's recovery toasts and the
+  root notices (launch recovery, shared imports) are announced.
+- **An empty Finish with VoiceOver on ends the attempt**, exactly as the
+  no-speech timeout does: it recovers any recorded audio, and otherwise stops
+  and says so. The sighted behaviour, a visible "say your thought" while the
+  recording continues, cannot be spoken without speaking into the microphone.
+  The button already reads "Finish recording now", so it now does that.
+- **The Share extension** announces its result and, with VoiceOver on, stays
+  up until the announcement has been spoken.
+
+**With VoiceOver off**, nothing is posted and the wait returns at once, so no
+capture gets slower. With it on, a capture opens its microphone after
+"Listening" has been spoken, which is about half a second.
+
+**If VoiceOver never reports an announcement finished**, the wait gives up
+after an allowance: 1.5 s plus 0.12 s a character, at most 12 s each, with
+queued announcements' allowances running end to end. It also gives up when
+VoiceOver turns off. That allowance is the one place the rule is an assumption
+rather than a guarantee. So is the claim that the real VoiceOver sends the
+finish report with the posted string, which the announcer matches exactly so
+that a report about some other string cannot open the microphone early. It
+reads that string whether the report carries a `String` or the
+`NSAttributedString` that was posted, because reading only one form would
+silently turn every wait into its full allowance. Both are device checks
+(audit D-3, D-4 and D-14).
+
+**The count has to come back to zero**, because while it is above zero every
+announcement is withheld, for the rest of the process. `SpeechTranscriber`
+gives an unreleased claim back in its `deinit` as well as in
+`stopAudioInput`, so the line is held by the object that took the claim and
+not only by its screens' `.onDisappear`. Each withheld announcement is logged
+with the counts and never the text, and a close with nothing open is a fault
+(an assertion in Debug).
+
+The rule covers what Speak It posts. It cannot stop VoiceOver reading the
+element under the person's finger while they record. Magic Tap (A11Y-6) is the
+fix for that, and it is still open.
+
+Checked by `VoiceOverAnnouncementTests` in `CaptureFeedbackTests.swift`, which
+ask the announcer's decisions directly, and by
+`NothingSpeakItSaysReachesAnOpenMicrophone` in
+`Tools/CorpusRunner/test_observation.py`. The Python test checks the facts
+about other files that the rule depends on: neither `UIAccessibility.post(`
+nor SwiftUI's `AccessibilityNotification.Announcement(` appears outside
+`VoiceOverAnnouncer`, even broken across lines, `SpeechTranscriber.start`
+has no `await` between the wait and `audioEngine.start()`, and both
+`stopAudioInput` and `deinit` report the close.
+
+**Merging #134 (`claude/v1-reliability-nyngoe-mic2`) after this.** The two
+conflict in `SpeechTranscriber.start`, around the ownership guard right after
+`audioEngine.start()`, and the resolution is not only textual. #134's comment
+there opens "Nothing between adopting the backend and here suspends"; this
+branch adds an await between the two, so that sentence must become "nothing
+between the wait's own ownership check and here suspends", which is still
+why the guard cannot fail today. And that guard's body must release this
+run's own microphone claim and nothing else: set `holdsMicrophone` false and
+call `announcer.microphoneDidClose()` if it was held, then return. The
+pre-#134 body here (`resetRecognitionResources()`) would tear down a newer
+run's microphone (LIF-7), and #134's bare `return` would strand the count
+and silence VoiceOver for the rest of the process. The guard is dead on both
+branches; the body matters for the await someone adds later.
+
 ## 2026-09-23 — A draft records which session its words were handed to
 
 Relaunch recovery replayed drafts whose words had already been committed. A

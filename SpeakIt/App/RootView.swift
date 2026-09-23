@@ -253,6 +253,13 @@ struct RootView: View {
                     .zIndex(20)
             }
         }
+        // Every notice here is a short toast, and the ones that matter most —
+        // interrupted captures recovered at launch, shared thoughts remembered —
+        // were never spoken (A11Y-4). A launch recovery can finish while a new
+        // capture is recording; `VoiceOverAnnouncer` withholds it then.
+        .onChange(of: sharedImportNotice) { _, notice in
+            if let notice { VoiceOverAnnouncer.shared.announce(notice) }
+        }
 #if DEBUG
         // Comes into existence only once the launch-time task above has run to
         // the end, so UI tests have something to wait on instead of racing it

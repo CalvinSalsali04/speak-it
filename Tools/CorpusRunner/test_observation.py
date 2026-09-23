@@ -1268,7 +1268,42 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         again, `"Call the bank about the overdraft fee"`; and eighteen
         assertion messages, five of them preconditions. The merge of
         `claude/v1-reliability-nyngoe-stale-save` touched no test file and
-        added none. What the test
+        added none. 4156 -> 4176 on 2026-09-23, when VoiceOver announcements
+        moved behind `VoiceOverAnnouncer` so that nothing Speak It posts is
+        spoken into an open microphone: `VoiceOverAnnouncementTests`, ten
+        test methods in `CaptureFeedbackTests.swift`, and twenty literals,
+        enumerated. Seven are fixtures (`"Can you clarify?"`, `"I understood
+        the thought, but not when."`, `"Recovering your words"`,
+        `"Remembered. Memory."`, `"Today\\n2 free captures left"`, `"Try
+        saying it a different way, or include the missing detail."` and
+        `"Still listening"`) and three are expected output (`"Can you
+        clarify? I understood the thought, but not when."`, `"Remembered.
+        Today. 2 free captures left."` and `"Saving your thought"`). Eight are
+        assertion messages, one of them interpolated. The last two are the
+        doc-comment hazard once more, hit on purpose this time because the
+        quotation is the point: a falsifier quotes the broken reading
+        `"Can you clarify?."`, and a test's summary quotes the design it
+        rejects, `"post it before the engine starts"`. No parser behaviour is
+        behind any of the twenty. 4176 -> 4178 on 2026-09-23, when review
+        found the open-microphone count with no backstop and
+        `SpeechTranscriber` came to give its claim back in `deinit`: one test
+        method and two literals, enumerated, both assertion messages:
+        `"a released transcriber kept the microphone claimed"` and `"the
+        transcriber outlived its last reference, so this proves nothing"`.
+        4178 -> 4179 on 2026-09-23, when a VoiceOver finish report came to be
+        read as either a string or an attributed string: one test method
+        and one literal, an assertion message, `"a report in the attributed
+        form did not match what was posted"`. Its fixture, `"Listening"`, is
+        one word and adds nothing. 4179 -> 4181 on 2026-09-23, when the
+        lost-finish-report test came to wait for its own task for at most
+        five seconds instead of hanging under its falsifier: no new method
+        and two literals, enumerated: the expectation's description, `"the
+        allowance ran out and the microphone could open"`, and an assertion
+        message, `"a lost finish report held the microphone shut"`. The
+        description avoids the word `wait` on purpose: a test literal
+        carrying it moves the `wait` figures pinned in
+        `TheMotivatingFiguresAtTheTopAreRecomputed`.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1410,7 +1445,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         candidate: measured from the merged tree, not taken from either
         side (4371 on the candidate, 4182 on #132, 4135 at their merge
         base; #132 adds 47 and removes 0, 0 of its additions were
-        already on the candidate).
+        already on the candidate). 4418 -> 4443 on 2026-09-23, merging
+        #139 into the V1 candidate: measured from the merged tree, not
+        taken from either side (4418 on the candidate, 4181 on #139,
+        4156 at their merge base; #139 adds 25 and removes 0, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1420,7 +1459,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4418)
+        self.assertEqual(len(space), 4443)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
@@ -1561,6 +1600,167 @@ class TheAbstentionRunsBeforeAnythingItCouldSwallow(unittest.TestCase):
         first` becomes true of the empty set -- the same shape as a test
         selection that matches nothing, and as the guard that cannot fire."""
         self.assertGreaterEqual(len(self.call_sites()), 1)
+
+
+
+class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
+    """The audio session has no echo cancellation, so an announcement
+    VoiceOver speaks while the recognizer is capturing can be transcribed into
+    the person's original words (audit `v1/audits/accessibility.md`, A11Y-3).
+
+    `VoiceOverAnnouncer` holds the rule and `VoiceOverAnnouncementTests` asks
+    its decisions. What neither can see is the two facts about *other* files
+    that the rule depends on: that nothing posts an announcement around it,
+    and that `SpeechTranscriber.start` waits for silence immediately before
+    the engine starts, with no suspension in between. An `await` added in that
+    span is exactly the frame in which a notice could be posted and spoken
+    into the microphone, and no Swift test can run `start` without a
+    microphone. Checked here for the reason `TheDiagnosticIsNotAllowedToAbstain`
+    gives: it is a claim about which source calls what, and this suite runs on
+    Linux on every pull request.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
+    HOME = pathlib.Path("Shared") / "SharedCaptureInbox.swift"
+    #: Both ways Swift can ask VoiceOver to speak: UIKit's
+    #: `UIAccessibility.post(notification:argument:)` and SwiftUI's
+    #: `AccessibilityNotification.Announcement(_:).post()`. Whitespace,
+    #: newlines included, may sit around the dot, so a call broken across two
+    #: lines is still one call.
+    POSTS = (
+        re.compile(r"UIAccessibility\s*\.\s*post\s*\("),
+        re.compile(r"AccessibilityNotification\s*\.\s*Announcement\s*\("),
+    )
+
+    @staticmethod
+    def code(line):
+        """The line without a trailing `//` comment; a comment names, it does
+        not call."""
+        return line.split("//", 1)[0]
+
+    def transcriber(self):
+        path = self.ROOT / "SpeakIt" / "Features" / "Capture" / "SpeechTranscriber.swift"
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    def only(self, lines, needle, calls=False):
+        """The one line carrying `needle`. With `calls`, a line declaring a
+        function is not a call of it and is skipped."""
+        found = [i for i, line in enumerate(lines) if needle in self.code(line)
+                 and not (calls and "func " in self.code(line))]
+        self.assertEqual(len(found), 1, f"expected one `{needle}`, found {len(found)}")
+        return found[0]
+
+    def body(self, lines, declaration):
+        """A member's lines, from its declaration to its closing brace."""
+        first = self.only(lines, declaration)
+        last = next(i for i in range(first + 1, len(lines))
+                    if lines[i].startswith("    }"))
+        return [self.code(line) for line in lines[first:last]]
+
+    def posts(self, text):
+        """The line number of every announcement posted in `text`, with
+        trailing comments removed first."""
+        code = "\n".join(self.code(line) for line in text.splitlines())
+        return sorted(code.count("\n", 0, found.start()) + 1
+                      for pattern in self.POSTS for found in pattern.finditer(code))
+
+    def announcer_lines(self):
+        """The first and last line of `VoiceOverAnnouncer` in `HOME`: from its
+        declaration to the first closing brace in column zero."""
+        lines = (self.ROOT / self.HOME).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+        first = self.only(lines, "final class VoiceOverAnnouncer")
+        last = next(i for i in range(first + 1, len(lines)) if lines[i] == "}")
+        return first + 1, last + 1
+
+    def all_posts(self):
+        found = []
+        for top in self.SOURCES:
+            for swift in sorted((self.ROOT / top).rglob("*.swift")):
+                text = swift.read_text(encoding="utf-8", errors="replace")
+                found += [(swift.relative_to(self.ROOT), n) for n in self.posts(text)]
+        return found
+
+    def test_every_announcement_goes_through_the_one_helper(self):
+        first, last = self.announcer_lines()
+        outside = [(path, n) for path, n in self.all_posts()
+                   if not (path == self.HOME and first <= n <= last)]
+        self.assertEqual(
+            outside, [],
+            f"announcements posted outside VoiceOverAnnouncer ({self.HOME}, "
+            f"lines {first}-{last}): {outside}. Each one is spoken whether or "
+            "not a microphone is open.")
+
+    def test_the_scan_knows_both_apis_and_a_broken_line(self):
+        """Falsifier for the scan itself: with only the UIKit spelling, or
+        with a per-line search, one of these three is missed."""
+        self.assertEqual(self.posts(
+            "UIAccessibility.post(notification: .announcement, argument: m)\n"
+            "AccessibilityNotification.Announcement(m).post()\n"
+            "UIAccessibility\n    .post(notification: .announcement, argument: m)\n"
+            "// UIAccessibility.post( in a comment is not a call\n"), [1, 2, 3])
+
+    def test_the_microphone_opens_straight_after_the_wait(self):
+        lines = self.transcriber()
+        wait = self.only(lines, "waitUntilMicrophoneMayOpen(")
+        opened = self.only(lines, "claimMicrophone()", calls=True)
+        start = self.only(lines, "audioEngine.start()")
+        self.assertLess(wait, opened)
+        self.assertLess(opened, start)
+        between = [self.code(line).strip() for line in lines[wait + 1:start]]
+        suspending = [line for line in between if "await" in line]
+        self.assertEqual(
+            suspending, [],
+            "a suspension between the wait and `audioEngine.start()` lets a "
+            "notice be posted after the check and spoken into the microphone")
+
+    def test_the_claim_reports_the_microphone_open(self):
+        body = self.body(self.transcriber(), "func claimMicrophone()")
+        self.assertTrue(any("announcer.microphoneWillOpen()" in line for line in body))
+
+    def test_closing_the_microphone_is_reported_where_audio_stops(self):
+        lines = self.transcriber()
+        body = self.body(lines, "private func stopAudioInput()")
+        self.assertTrue(any("audioEngine.stop()" in line for line in body))
+        self.assertTrue(
+            any("announcer.microphoneDidClose()" in line for line in body),
+            "a microphone that is never reported closed silences VoiceOver for "
+            "the rest of the session")
+
+    def test_a_transcriber_that_goes_gives_its_claim_back(self):
+        """`SpeechTranscriber` is released by its screen, and a claim it
+        still holds then must not outlive it (see its `deinit`)."""
+        body = self.body(self.transcriber(), "deinit {")
+        self.assertTrue(any("holdsMicrophone" in line for line in body))
+        self.assertTrue(any("announcer.microphoneDidClose()" in line for line in body))
+
+    def test_a_finish_report_is_read_through_the_helper(self):
+        """VoiceOver may report a finished announcement as an attributed
+        string, which does not bridge to `String`. `spokenText(fromFinishReport:)`
+        reads both forms and `VoiceOverAnnouncementTests` asks it, but an
+        observer that went back to `as? String` would leave that test green
+        and silently never match an attributed report, holding the
+        microphone's wait to its full allowance."""
+        lines = (self.ROOT / self.HOME).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+        observed = self.only(lines, "UIAccessibility.announcementDidFinishNotification")
+        closes = next(i for i in range(observed + 1, len(lines))
+                      if self.code(lines[i]).strip() == "})")
+        body = [self.code(line) for line in lines[observed:closes]]
+        self.assertTrue(
+            any("VoiceOverAnnouncer.spokenText(" in line for line in body),
+            "the finish observer no longer reads its report through "
+            "`spokenText(fromFinishReport:)`")
+        self.assertFalse(any("as? String" in line for line in body))
+
+    def test_there_is_something_to_check(self):
+        """Without this the first test passes when the helper is renamed or
+        moved: nothing posts anywhere, and `[HOME]` becomes `[]`."""
+        first, last = self.announcer_lines()
+        inside = [n for path, n in self.all_posts()
+                  if path == self.HOME and first <= n <= last]
+        self.assertGreaterEqual(len(inside), 1)
 
 
 if __name__ == "__main__":
