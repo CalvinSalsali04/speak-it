@@ -1459,6 +1459,8 @@ struct CaptureView: View {
             return "I heard a day but not a decision. Try again with the one you meant."
         case .incompleteThought:
             return "It sounded like that thought wasn’t finished. Your words are safe — pick it up where you left off."
+        case .languageAnalysisUnavailable:
+            return "Speak It couldn’t fully read this on this iPhone right now. Your words are saved exactly."
         case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
             return "This needs a quick review. Your original words are safe."

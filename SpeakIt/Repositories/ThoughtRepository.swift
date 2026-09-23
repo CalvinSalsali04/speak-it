@@ -274,6 +274,11 @@ struct CaptureCreationResult {
             // was said yet.
             case .incompleteThought:
                 return true
+            // Saying it again would be read the same way on this iPhone, so
+            // offering to hear it again promises something it cannot deliver.
+            // The row is still in Needs review.
+            case .languageAnalysisUnavailable:
+                return false
             case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
                  .locationTrigger, .combinedTimeAndPlace, .pendingOperation, .none:
                 return false

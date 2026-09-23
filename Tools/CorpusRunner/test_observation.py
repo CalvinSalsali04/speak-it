@@ -874,7 +874,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4083 on 2026-09-23, from
+        the runtime linguistic-health signal: sixteen added and one
+        removed, enumerated rather than assumed, and the removal is the
+        part worth reading first. The probe sentence `pay the rent on
+        friday` left this directory because `LexicalTagging.probe` now
+        reads `LinguisticHealth.probe` from the app instead of spelling
+        it out, so a literal can leave the census by moving into
+        production code and nothing else changing. Of the sixteen, seven
+        are fixtures or expected output: two captures new here (`Buy milk
+        and text Dana tomorrow at 5, and Sarah hates sushi`, `Remind me
+        at 5 pm to call Mom`), the two quotes and two analysis texts of
+        the hand-built inherited-series rows (`submit the report`,
+        `Catherine needs a copy`, `Remind me every Friday to submit the
+        report`, `Remind me every Friday to Catherine needs a copy`), and
+        the new review copy, asserted verbatim. Nine are assertion
+        messages, one of them an interpolated template. Two fixtures add
+        nothing because they were already here -- the U1 sentence itself
+        is a `SemanticCorpusDataD` row and `I had better luck last time`
+        was already a fixture -- and one reused assertion message adds
+        nothing for the same reason. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +907,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4083)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
