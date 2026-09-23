@@ -466,7 +466,9 @@ registering would ring at the next match rather than not at all; and the
 repeating hour and minute are read from the occurrence's fire date, so an
 occurrence daylight saving moved out of a skipped hour ("every day at 2:30 AM"
 on the spring-forward night) repeats at the moved time until the next
-foreground re-arms it at 2:30. A relative alarm also follows the device's time
+foreground re-arms it at 2:30. The same reading truncates seconds: a fire date
+with seconds becomes a weekly match at its minute, so that series rings up to
+59 seconds early on every occurrence, not once. A relative alarm also follows the device's time
 zone, so travelling moves it with the clock, which is the documented default
 for recurring reminders below.
 
@@ -476,11 +478,11 @@ needs no app run, so after a flight from Toronto to London "every weekday at
 6:30" rings at 6:30 London time, five hours before the 11:30 the row still
 claims. The app running does not settle it at once: the foreground pass re-arms
 the alarm from the row, so it repeats at 11:30 until that occurrence passes and
-the series advances, and a series on several named weekdays then advances at
+the series advances, and a series that names any weekday then advances at
 11:30 rather than 6:30, because the weekly branch of `RecurrenceRule.nextDate`
-reads the clock of the previous occurrence and ignores the stated one (a
-limitation that predates repeating alarms and moves notifications the same
-way). The same series can also answer differently from one occurrence to the
+reads the clock of the previous occurrence and ignores the stated one. That is
+a recurrence bug that predates repeating alarms and moves notifications too
+(DEL-21, fixed separately in #137). The same series can also answer differently from one occurrence to the
 next: an occurrence that fell back to a `.fixed` alarm does not travel, and the
 repeating notification path pins `components.timeZone = TimeZone.current`, so a
 repeating notification for the same rule does not travel either. No behaviour
