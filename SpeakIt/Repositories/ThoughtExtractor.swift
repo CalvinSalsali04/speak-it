@@ -2952,31 +2952,49 @@ enum BudgetedWork {
     ) async -> T? {
         // Checked before the claim: once claimed, the work must run, because
         // only the work releases the token.
-        guard !Task.isCancelled, token.claim() else { return nil }
+        guard !Task.isCancelled, let claim = token.claim() else { return nil }
         return await firstResult(within: budget) {
-            defer { token.release() }
+            defer { token.release(claim) }
             return await work()
         }
     }
 }
 
 /// Admits one holder at a time; `claim` answers at once and never waits.
+///
+/// A claim older than `staleAfter` counts as free. Only the work releases a
+/// claim, so a call that never returns would otherwise hold it for the rest
+/// of the process. Each claim is numbered, and a late release from the
+/// holder that was taken over does not free the one that replaced it.
 final class InFlightToken: @unchecked Sendable {
-    private let lock = NSLock()
-    private var held = false
-
-    func claim() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        if held { return false }
-        held = true
-        return true
+    struct Claim: Equatable, Sendable {
+        fileprivate let number: UInt64
     }
 
-    func release() {
+    private let lock = NSLock()
+    private let staleAfter: Duration
+    private var current: (claim: Claim, at: ContinuousClock.Instant)?
+    private var issued: UInt64 = 0
+
+    init(staleAfter: Duration) {
+        self.staleAfter = staleAfter
+    }
+
+    func claim() -> Claim? {
         lock.lock()
-        held = false
-        lock.unlock()
+        defer { lock.unlock() }
+        let now = ContinuousClock.now
+        if let current, now - current.at < staleAfter { return nil }
+        issued += 1
+        let claim = Claim(number: issued)
+        current = (claim, now)
+        return claim
+    }
+
+    func release(_ claim: Claim) {
+        lock.lock()
+        defer { lock.unlock() }
+        if current?.claim == claim { current = nil }
     }
 }
 
@@ -3079,8 +3097,10 @@ enum IntelligentThoughtExtractor {
     }
 
     /// Nothing else serialises model calls: `extract` builds a new
-    /// `LanguageModelSession` each time.
-    private static let modelInFlight = InFlightToken()
+    /// `LanguageModelSession` each time. A call still running ten budgets
+    /// after it began is treated as hung, so one stuck call cannot turn
+    /// refinement off until the next launch.
+    private static let modelInFlight = InFlightToken(staleAfter: .seconds(20))
 
     static func extractWithinBudget(
         _ transcript: String, referenceDate: Date, calendar: Calendar

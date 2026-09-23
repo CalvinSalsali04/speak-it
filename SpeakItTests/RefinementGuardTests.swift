@@ -369,9 +369,9 @@ final class BudgetedWorkTests: XCTestCase {
     /// rather than a second call beside the first, and the token comes back
     /// when the abandoned work ends.
     func testASecondCallIsRefusedWhileAnAbandonedOneStillRuns() async {
-        let token = InFlightToken()
+        let token = InFlightToken(staleAfter: .seconds(60))
         let first = await BudgetedWork.firstResult(within: .milliseconds(100), oneAtATime: token) {
-            await BudgetedWorkTests.stubborn(1, after: 1.5)
+            await BudgetedWorkTests.stubborn(1, after: 3)
         }
         XCTAssertNil(first)
 
@@ -386,7 +386,7 @@ final class BudgetedWorkTests: XCTestCase {
 
         var third: Int?
         var polls = 0
-        while third == nil, polls < 80 {
+        while third == nil, polls < 120 {
             polls += 1
             try? await Task.sleep(for: .milliseconds(50))
             third = await BudgetedWork.firstResult(within: .seconds(1), oneAtATime: token) { () async -> Int? in 3 }
@@ -395,7 +395,7 @@ final class BudgetedWorkTests: XCTestCase {
     }
 
     func testACancelledCaptureNeverStartsTheWork() async {
-        let token = InFlightToken()
+        let token = InFlightToken(staleAfter: .seconds(60))
         let recorder = EventRecorder()
         let waiting = Task { () async -> Int? in
             withUnsafeCurrentTask { $0?.cancel() }
@@ -408,7 +408,48 @@ final class BudgetedWorkTests: XCTestCase {
         XCTAssertNil(result)
         let started = await recorder.happened
         XCTAssertFalse(started, "A capture cancelled before the call still started it")
-        XCTAssertTrue(token.claim(), "A capture that never ran the work kept the token")
+        XCTAssertNotNil(token.claim(), "A capture that never ran the work kept the token")
+    }
+
+    /// A capture cancelled after it claimed the token has already started
+    /// the work, and only the work gives the token back. It must still do so.
+    func testACaptureCancelledMidCallStillGivesTheTokenBack() async {
+        let token = InFlightToken(staleAfter: .seconds(60))
+        let waiting = Task {
+            await BudgetedWork.firstResult(within: .seconds(10), oneAtATime: token) {
+                await BudgetedWorkTests.stubborn(1, after: 0.5)
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        waiting.cancel()
+        let result = await waiting.value
+        XCTAssertNil(result)
+
+        var claimed: InFlightToken.Claim?
+        var polls = 0
+        while claimed == nil, polls < 60 {
+            polls += 1
+            try? await Task.sleep(for: .milliseconds(50))
+            claimed = token.claim()
+        }
+        XCTAssertNotNil(claimed, "A capture cancelled mid-call kept the token")
+    }
+
+    /// A call that never returns must not turn refinement off for good.
+    func testAClaimThatNeverEndsIsTakenOverAfterItsDeadline() async {
+        let token = InFlightToken(staleAfter: .seconds(1))
+        let stuck = token.claim()
+        XCTAssertNotNil(stuck)
+        XCTAssertNil(token.claim(), "A second claim was admitted beside a live one")
+
+        try? await Task.sleep(for: .milliseconds(1_200))
+        let fresh = token.claim()
+        XCTAssertNotNil(fresh, "A call that never ended held the token for good")
+        if let stuck { token.release(stuck) }
+        XCTAssertNil(
+            token.claim(),
+            "A late release from the abandoned call freed its replacement's claim"
+        )
     }
 }
 
