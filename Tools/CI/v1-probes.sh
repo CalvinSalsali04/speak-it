@@ -93,6 +93,10 @@ trap cleanup EXIT
 
 STEPS="$OUT/steps.txt"
 : > "$STEPS"
+# A re-run into the same directory must not let one step read another
+# step's answers from an earlier run: candidate-controls reads
+# 151-unchanged.jsonl, and a guard failure there writes none.
+rm -f "$OUT"/*.jsonl "$OUT"/*.tsv
 FAILED=0
 record() {
   printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$STEPS"
