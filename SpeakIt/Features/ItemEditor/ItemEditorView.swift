@@ -1090,7 +1090,8 @@ struct ItemEditorView: View {
         // fields above. Spelled out rather than defaulted so a new gap has to
         // decide what closes it.
         case .missingAction, .ambiguousPerson, .reportedSpeech,
-             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought: false
+             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought,
+             .languageAnalysisUnavailable: false
         }
     }
 

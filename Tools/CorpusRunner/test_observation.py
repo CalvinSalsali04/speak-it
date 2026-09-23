@@ -1081,7 +1081,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         not this one again"` and `"the snoozed fire must be a one-shot"`.
         The one fixture is reused again, and the identifier test's doc
         comment keeps its names in backticks, so neither adds anything.
-        What the test
+        4068 -> 4083 on 2026-09-23, from
+        the runtime linguistic-health signal: sixteen added and one
+        removed, enumerated rather than assumed, and the removal is the
+        part worth reading first. The probe sentence `pay the rent on
+        friday` left this directory because `LexicalTagging.probe` now
+        reads `LinguisticHealth.probe` from the app instead of spelling
+        it out, so a literal can leave the census by moving into
+        production code and nothing else changing. Of the sixteen, seven
+        are fixtures or expected output: two captures new here (`Buy milk
+        and text Dana tomorrow at 5, and Sarah hates sushi`, `Remind me
+        at 5 pm to call Mom`), the two quotes and two analysis texts of
+        the hand-built inherited-series rows (`submit the report`,
+        `Catherine needs a copy`, `Remind me every Friday to submit the
+        report`, `Remind me every Friday to Catherine needs a copy`), and
+        the new review copy, asserted verbatim. Nine are assertion
+        messages, one of them an interpolated template. Two fixtures add
+        nothing because they were already here -- the U1 sentence itself
+        is a `SemanticCorpusDataD` row and `I had better luck last time`
+        was already a fixture -- and one reused assertion message adds
+        nothing for the same reason. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —

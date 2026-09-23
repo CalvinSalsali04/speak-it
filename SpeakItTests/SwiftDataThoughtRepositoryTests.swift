@@ -6639,4 +6639,306 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         XCTAssertNil(item.clarificationRequirement)
     }
+
+    // MARK: - A blind tagger keeps the words and settles nothing
+
+    // Every test below that wants a blind verdict binds one through
+    // `LinguisticHealth.$override`. Nothing else in this suite sees the
+    // degraded policy: the unit-test host reads as inert, whether or not the
+    // simulator's tagger is blind (`LinguisticHealth.HostDefault`).
+
+    /// Captures that reach the rules paths the policy was written for: the
+    /// inherited series (U1), an errand beside a fact (U3), an explicit own
+    /// reminder, and the false task (U2).
+    private static let policyFixtures = [
+        "Remind me every Friday to submit the report, and Catherine needs a copy",
+        "Buy milk and text Dana tomorrow at 5, and Sarah hates sushi",
+        "Remind me at 5 pm to call Mom",
+        "I had better luck last time",
+    ]
+
+    private func sessionRows(of item: CapturedItem) throws -> [CapturedItem] {
+        let session = try XCTUnwrap(item.captureSession)
+        return session.items.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// The one thing blindness must never cost is the capture itself.
+    ///
+    /// Falsifier: let `DegradedLanguagePolicy.applying` drop rows or rewrite
+    /// a quote, and the row count or the word check fails. Anything that
+    /// touched `originalTranscription` fails the byte comparison.
+    func testABlindTaggerStillSavesTheOriginalTranscript() async throws {
+        let text = Self.policyFixtures[0]
+        let result = try await LinguisticHealth.$override.withValue(.blind) {
+            try await repository.createCaptureResult(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminders: false
+            )
+        }
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(sessions.count, 1)
+        let session = try XCTUnwrap(sessions.first)
+        XCTAssertEqual(Array(session.originalTranscription.utf8), Array(text.utf8))
+        XCTAssertEqual(session.processingStatus, .complete)
+        XCTAssertGreaterThanOrEqual(result.items.count, 1)
+        let kept = result.items.map(\.originalTextSegment).joined(separator: " ")
+        for word in ["report", "Catherine", "copy"] {
+            XCTAssertTrue(kept.contains(word), "\(word) is missing from the saved rows: \(kept)")
+        }
+    }
+
+    /// Every row of a blind capture waits in Needs review and says why, and
+    /// the capture screen does not offer to hear it again.
+    ///
+    /// Falsifier: drop `needsClarification: true` or the recorded state from
+    /// `DegradedLanguagePolicy.holding`, and a row the rules read as settled
+    /// (the milk, on a healthy simulator) is reported as ready. Return `true`
+    /// for the new reason in `needsInterpretationConfirmation`, and the last
+    /// assertion fails.
+    func testABlindTaggerSendsEveryRowToNeedsReviewWithTheLanguageGap() async throws {
+        let text = Self.policyFixtures[1]
+        let result = try await LinguisticHealth.$override.withValue(.blind) {
+            try await repository.createCaptureResult(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminders: false
+            )
+        }
+
+        XCTAssertFalse(result.items.isEmpty)
+        for item in result.items {
+            XCTAssertTrue(item.needsClarification, item.originalTextSegment)
+            XCTAssertEqual(
+                item.semanticState,
+                .underspecified(.languageAnalysisUnavailable),
+                item.originalTextSegment
+            )
+            XCTAssertEqual(
+                item.clarificationRequirement,
+                .languageAnalysisUnavailable,
+                item.originalTextSegment
+            )
+        }
+        XCTAssertEqual(result.needsReviewCount, result.items.count)
+        XCTAssertEqual(
+            ClarificationRequirement.languageAnalysisUnavailable.editorPrompt,
+            "Speak It couldn't fully read this on this iPhone right now. Your words are saved exactly."
+        )
+        XCTAssertFalse(result.needsInterpretationConfirmation)
+    }
+
+    /// The U1 shape, built by hand so that it does not depend on the
+    /// simulator: a blind splitter gave a fact the shared prefix. The fact's
+    /// own words never named a time, so it loses the series, the reminder and
+    /// the intent. The row the prefix was spoken with keeps all three.
+    ///
+    /// Falsifier: keep every trigger in `DegradedLanguagePolicy.holding`, or
+    /// give the leading words to every row in `ownWords` rather than the
+    /// first, and the fact keeps its reminder. Strip every trigger
+    /// unconditionally, and the report loses its series.
+    func testTheDegradedPolicyTakesAnInheritedSeriesOffAFact() {
+        let transcript = Self.policyFixtures[0]
+        let friday = Date(timeIntervalSince1970: 1_786_550_400)
+        let weekly = RecurrenceRule(frequency: .weekly, weekdays: [6])
+        let series = OrganizedThought(
+            itemType: .task,
+            category: .work,
+            priority: .normal,
+            personName: nil,
+            dueDate: friday,
+            reminderDate: friday,
+            reminderDelivery: .notification,
+            recurrenceRule: weekly,
+            needsClarification: false,
+            temporalIntent: TemporalIntent(kind: .calendarRecurrence, recurrence: weekly)
+        )
+        let report = ExtractedThought(
+            sourceQuote: "submit the report",
+            rawQuote: "submit the report",
+            wasRepaired: false,
+            analysisText: "Remind me every Friday to submit the report",
+            suggestedTitle: nil,
+            organization: series,
+            confidence: 0.88,
+            needsReview: false
+        )
+        let fact = ExtractedThought(
+            sourceQuote: "Catherine needs a copy",
+            rawQuote: "Catherine needs a copy",
+            wasRepaired: false,
+            analysisText: "Remind me every Friday to Catherine needs a copy",
+            suggestedTitle: nil,
+            organization: series,
+            confidence: 0.88,
+            needsReview: false
+        )
+
+        let held = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [report, fact], method: .rules),
+            transcript: transcript
+        ).items
+
+        XCTAssertEqual(held.map(\.sourceQuote), [report.sourceQuote, fact.sourceQuote])
+        XCTAssertEqual(held[0].organization.recurrenceRule, weekly)
+        XCTAssertEqual(held[0].organization.reminderDate, friday)
+        XCTAssertNil(held[1].organization.reminderDate)
+        XCTAssertNil(held[1].organization.dueDate)
+        XCTAssertNil(held[1].organization.recurrenceRule)
+        XCTAssertEqual(held[1].organization.reminderDelivery, ReminderDelivery.none)
+        XCTAssertEqual(held[1].organization.temporalIntent, TemporalIntent.none)
+        for row in held {
+            XCTAssertTrue(row.needsReview)
+            XCTAssertEqual(row.organization.state, .underspecified(.languageAnalysisUnavailable))
+        }
+    }
+
+    /// The U1 sentence end to end. Whatever this simulator's tagger does with
+    /// the split, no row that does not hold the report may carry a time, a
+    /// series or a notification.
+    ///
+    /// Falsifier: on a blind simulator, keep every trigger in
+    /// `DegradedLanguagePolicy.holding` and the Catherine row inherits the
+    /// weekly series. On a healthy simulator the splitter already withholds
+    /// the prefix, so this passes either way there, and
+    /// `testTheDegradedPolicyTakesAnInheritedSeriesOffAFact` is the test that
+    /// catches the change.
+    func testABlindTaggerDoesNotLetAFactInheritAReminder() throws {
+        let text = Self.policyFixtures[0]
+        let item = try LinguisticHealth.$override.withValue(.blind) {
+            try repository.createCapture(
+                text: text,
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+        }
+
+        let rows = try sessionRows(of: item)
+        XCTAssertFalse(rows.isEmpty)
+        for row in rows where !row.originalTextSegment.localizedCaseInsensitiveContains("report") {
+            XCTAssertNil(row.reminderDate, row.originalTextSegment)
+            XCTAssertNil(row.dueDate, row.originalTextSegment)
+            XCTAssertNil(RecurrenceStore.rule(for: row.id), row.originalTextSegment)
+            XCTAssertNil(ReminderScheduleRequest(item: row), row.originalTextSegment)
+        }
+    }
+
+    /// An explicit reminder the row asked for in its own words survives.
+    /// Losing it would be a defect of its own: the person said when.
+    ///
+    /// Falsifier: strip every trigger regardless of the row's own words, and
+    /// the hand-built row loses its reminder. The repository half compares the
+    /// saved reminder with what the rules produce under a usable verdict on
+    /// the same machine, so it holds on a blind simulator and a healthy one
+    /// alike; wherever the rules produce a reminder, the same change fails it.
+    func testABlindTaggerKeepsAnExplicitOwnReminder() throws {
+        let text = Self.policyFixtures[2]
+        let five = Date(timeIntervalSince1970: 1_786_550_400)
+        let asked = ExtractedThought(
+            sourceQuote: text,
+            rawQuote: text,
+            wasRepaired: false,
+            analysisText: text,
+            suggestedTitle: nil,
+            organization: OrganizedThought(
+                itemType: .personFollowUp,
+                category: .people,
+                priority: .normal,
+                personName: "Mom",
+                dueDate: nil,
+                reminderDate: five,
+                reminderDelivery: .notification,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: TemporalIntent(
+                    kind: .exactDateTime,
+                    time: WallClockTime(hour: 17, minute: 0)
+                )
+            ),
+            confidence: 1,
+            needsReview: false
+        )
+        let held = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [asked], method: .rules),
+            transcript: text
+        ).items
+        XCTAssertEqual(held.first?.organization.reminderDate, five)
+        XCTAssertEqual(held.first?.organization.reminderDelivery, .notification)
+        XCTAssertEqual(held.first?.needsReview, true)
+
+        let createdAt = Date()
+        let rules = LinguisticHealth.$override.withValue(.usable) {
+            ThoughtExtractionEngine.extractWithRules(text, referenceDate: createdAt)
+        }
+        let item = try LinguisticHealth.$override.withValue(.blind) {
+            try repository.createCapture(
+                text: text,
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+        }
+        XCTAssertEqual(
+            try sessionRows(of: item).map(\.reminderDate),
+            rules.items.map(\.organization.reminderDate)
+        )
+    }
+
+    /// Refinement is never asked for while the tagger is blind.
+    ///
+    /// Falsifier: drop `tagger == .usable` from
+    /// `ThoughtExtractionEngine.refinementIsPermitted`, and the first
+    /// assertion fails. The model call itself needs an Apple Intelligence
+    /// device and is not reachable from here.
+    func testABlindTaggerSkipsRefinement() {
+        XCTAssertFalse(ThoughtExtractionEngine.refinementIsPermitted(requested: true, tagger: .blind))
+        XCTAssertTrue(ThoughtExtractionEngine.refinementIsPermitted(requested: true, tagger: .usable))
+        XCTAssertFalse(ThoughtExtractionEngine.refinementIsPermitted(requested: false, tagger: .usable))
+    }
+
+    /// A usable verdict hands back exactly the rules reading. Runs on every
+    /// machine, blind or not, because the override decides the verdict and
+    /// the rules are compared with themselves.
+    ///
+    /// Falsifier: apply the policy whatever the verdict, or swap the cases in
+    /// `ThoughtExtractionEngine.finished`, and every row comes back held.
+    func testAUsableVerdictLeavesTheRulesReadingUntouched() {
+        let at = Date(timeIntervalSince1970: 1_786_550_400)
+        for text in Self.policyFixtures {
+            let rules = RuleBasedThoughtExtractor.process(text, referenceDate: at).items
+            let engine = LinguisticHealth.$override.withValue(.usable) {
+                ThoughtExtractionEngine.extractWithRules(text, referenceDate: at)
+            }
+            XCTAssertEqual(engine.items, rules, text)
+        }
+    }
+
+    /// The healthy twin of the tests above: on a tagger that answers, the
+    /// production probe itself reads usable, and a capture read under that
+    /// verdict is exactly the rules reading. This is the claim that the policy
+    /// stays out of the way on a healthy iPhone. It abstains on a blind
+    /// simulator, where the probe is right to read blind.
+    ///
+    /// Falsifier: invert `LinguisticHealth.isBlind`, or point the probe at a
+    /// sentence the model cannot class, and the first assertion fails on a
+    /// healthy Mac.
+    func testAHealthyVerdictChangesNothing() throws {
+        try LexicalTagging.skipIfBlind()
+        let probe = LinguisticHealth.VerdictCache(tagging: LinguisticHealth.lexicalClasses(of:))
+        let measured = LinguisticHealth.policyVerdict(override: nil, host: .probe, measure: probe.current)
+        XCTAssertEqual(measured, .usable, LexicalTagging.reading)
+
+        let at = Date(timeIntervalSince1970: 1_786_550_400)
+        for text in Self.policyFixtures {
+            let rules = RuleBasedThoughtExtractor.process(text, referenceDate: at).items
+            let production = LinguisticHealth.$override.withValue(measured) {
+                ThoughtExtractionEngine.extractWithRules(text, referenceDate: at)
+            }
+            XCTAssertEqual(production.items, rules, text)
+        }
+    }
 }

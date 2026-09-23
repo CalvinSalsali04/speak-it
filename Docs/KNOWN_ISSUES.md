@@ -315,6 +315,48 @@ green on a hosted runner today, and on the day anyone sets `IOS_RUNNER` — whic
 that file describes as the intended direction — every pull request goes red on
 its first run for reasons unrelated to it.
 
+**2026-09-23: the app now notices, and what it still does not handle.**
+`LinguisticHealth` runs the one-sentence check described above. On a blind
+verdict, `DegradedLanguagePolicy` sends every row of the capture to Needs
+review, labelled "Not fully read", and removes any time, series or place that
+the row's own words did not state. The reasoning is in `DECISIONS.md`
+(2026-09-23). What remains:
+
+- **The rules are unchanged.** U1 to U6 still happen on a blind tagger. A
+  row can still be typed as shopping when it is an errand, or as a task when
+  it is a fact, or be attached to the wrong person. The only difference is
+  that the row now waits in review instead of being presented as settled, and
+  that a trigger it borrowed no longer fires. The type and grouping that
+  review shows the person are the blind reading's.
+- **Whether a real iPhone can go blind is still open.** Only the hosted
+  runner's simulator has been observed blind. The probe has never been run
+  on a device that lost the model, and neither has the re-probe (a blind
+  verdict is checked again on every capture) that covers a model arriving
+  mid-process. `--force-linguistic-degradation` on a Debug launch shows the
+  degraded rows on a healthy device. The notification half of this change
+  (no alert for a fact that inherited a trigger, while an explicit own
+  reminder still fires) needs that check on a device.
+- **Sharing a trigger costs the row that relied on it.** On a blind tagger,
+  "call Mum" in "Remind me tomorrow at 9 to buy milk and call Mum" loses the
+  9 o'clock it legitimately shared, and waits in review for a time. That is
+  the price of never lending a trigger to a fact. A reworded quote (after a
+  repair) keeps only what its own quote states, for the same reason.
+- **Paths outside the two engines are not held.** Splitting or merging by
+  hand re-reads the parts through `ThoughtOrganizer.organize` without the
+  policy, which is the person acting on their own words. The launch pass
+  `resolveCombinedPlaceAndTimeHoldouts` re-derives a reminder from a row's
+  own `originalTextSegment`. Neither can borrow a prefix, but both read
+  blind.
+- **Nothing tells the person why, beyond the row.** There is no global
+  notice, no Settings or diagnostics row, and nothing in analytics. The
+  refinement model's outcome is still collapsed into one `nil`. Those are
+  the audit's §3.4 and §3.5 and the product decision above.
+- **Test harnesses never apply it by default.** The unit-test host and any
+  `--ui-testing` launch read the tagger as usable (`LinguisticHealth.hostDefault`),
+  so the existing suites still measure the rules as before on a blind
+  simulator. Only tests that bind `LinguisticHealth.$override` see the
+  policy.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.

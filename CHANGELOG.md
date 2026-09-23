@@ -31,6 +31,12 @@ Entries before September 2026 were reconstructed from the commit history and
   row kept its pin and the editor said Active. The row now shows the date, the
   editor says the place is off while a date is set, and removing the date
   brings the place reminder back.
+- When this iPhone's language model cannot read sentence structure (every
+  word comes back unclassified, as on the hosted CI simulator), captures still
+  save, but every row now waits in Needs review as "Not fully read". A row
+  keeps a time, series or place only if its own words said it, so a fact can
+  no longer inherit "remind me every Friday" from the sentence around it.
+  Refinement is skipped in that state. Nothing changes on a healthy device.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

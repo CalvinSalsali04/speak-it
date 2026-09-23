@@ -158,6 +158,170 @@ enum SentenceContextCache {
         lock.unlock()
         return built
     }
+
+    /// Forgets every reading. Called when the lexical model turns out to be
+    /// present after readings were cached without it, so a reading taken blind
+    /// does not outlive the blindness. The cache is keyed by text alone and has
+    /// no other way to know. See `LinguisticHealth.VerdictCache`.
+    static func removeAll() {
+        lock.lock()
+        storage.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+}
+
+// MARK: - Whether the tagger answered at all
+
+/// Whether `NLTagger`'s lexical-class model answered in this process.
+///
+/// Almost every routing rule is a structural query over one framework answer:
+/// is this token a verb, is this span verbless. When the model is absent every
+/// token comes back `OtherWord`, no rule sees anything unusual, and captures
+/// quietly read as though they held no verbs (`Docs/KNOWN_ISSUES.md`, "Every
+/// routing rule rests on one framework answer"). Most of those readings fail
+/// safe. A few do not: the worst lets a fact inherit a shared "remind me every
+/// Friday" prefix and fire every week. `DegradedLanguagePolicy` is what the
+/// pipeline does about it; this is how it knows.
+///
+/// The check is one sentence: tag a fixed string and see whether any token
+/// comes back as anything but `OtherWord`. It is the same decision the test
+/// suite's `LexicalTagging` helper takes, and that helper now calls this one.
+enum LinguisticHealth {
+    enum Tagger: Equatable, Sendable {
+        case usable
+        case blind
+    }
+
+    /// Where the verdict comes from when nothing has bound `override`.
+    enum HostDefault: Equatable, Sendable {
+        /// Probe the framework. Every Release build, and every ordinary Debug
+        /// launch.
+        case probe
+        /// A test harness: the unit-test host, or a `--ui-testing` launch.
+        /// The existing suites assert routing through the rules, and the
+        /// simulators they run on are believed blind (the hosted one is
+        /// confirmed). A policy that switched itself on there would change
+        /// hundreds of unrelated answers, so a harness reads as usable and the
+        /// degraded tests opt in through `override`.
+        case inert
+        /// `--force-linguistic-degradation` on a Debug launch, so the degraded
+        /// rows can be looked at on a device whose tagger is healthy.
+        case forcedBlind
+    }
+
+    /// Blind means no token carried a usable class. A partial answer is not
+    /// blindness: a tagger that classes some words and not others can be
+    /// wrong, and a wrong reading still goes through the rules.
+    static func isBlind(_ classes: [NLTag?]) -> Bool {
+        !classes.contains { $0 != nil && $0 != .otherWord }
+    }
+
+    /// A verb, a determiner and a noun. Any one of the three coming back
+    /// classed is enough, because the question is whether the model answered
+    /// at all and not whether it answered well.
+    static let probe = "pay the rent on friday"
+
+    /// The verdict as a function of a tagging, so both answers can be injected.
+    static func verdict(tagging: (String) -> [NLTag?]) -> Tagger {
+        isBlind(tagging(probe)) ? .blind : .usable
+    }
+
+    /// The production tagging: a fresh `SentenceContext`, never the cache, so
+    /// a probe cannot be answered by a reading taken before the model arrived.
+    static func lexicalClasses(of text: String) -> [NLTag?] {
+        SentenceContext(text).tokens.map(\.lexicalClass)
+    }
+
+    /// Set by tests, which is the only way a harness sees a blind verdict. A
+    /// task-local rather than a global so tests running side by side cannot
+    /// leak one another's verdict.
+    @TaskLocal static var override: Tagger?
+
+    /// The decision, with every input injected. `effective` is this function
+    /// applied to the process; the tests read this one.
+    static func policyVerdict(
+        override bound: Tagger?,
+        host: HostDefault,
+        measure: () -> Tagger
+    ) -> Tagger {
+        if let bound { return bound }
+        switch host {
+        case .probe: return measure()
+        case .inert: return .usable
+        case .forcedBlind: return .blind
+        }
+    }
+
+    /// Which default this process runs under.
+    ///
+    /// Read on every call rather than cached: the unit-test host loads XCTest
+    /// into the app's own process, and nothing here should depend on whether
+    /// the first read happened before or after that. `NSClassFromString` is a
+    /// table lookup. A Release build cannot be anything but `.probe`.
+    static var hostDefault: HostDefault {
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--force-linguistic-degradation") { return .forcedBlind }
+        if NSClassFromString("XCTestCase") != nil || arguments.contains("--ui-testing") {
+            return .inert
+        }
+#endif
+        return .probe
+    }
+
+    /// The verdict the capture pipeline acts on.
+    static var effective: Tagger {
+        policyVerdict(
+            override: LinguisticHealth.override,
+            host: hostDefault,
+            measure: measurement.current
+        )
+    }
+
+    /// Touches the probe off the capture path. Called from the launch task
+    /// that already preloads the word embeddings.
+    static func prewarm() {
+        _ = measurement.current()
+    }
+
+    /// A usable verdict is kept for the life of the process. A blind one is
+    /// not: every read probes again, which is one five-word tagging, so a
+    /// model that arrives mid-process is noticed on the next capture. On that
+    /// transition the reading cache is emptied, because it holds readings
+    /// taken without the model and is keyed by text alone.
+    final class VerdictCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var known: Tagger?
+        private let tagging: (String) -> [NLTag?]
+        private let recovered: () -> Void
+
+        init(
+            tagging: @escaping (String) -> [NLTag?],
+            recovered: @escaping () -> Void = {}
+        ) {
+            self.tagging = tagging
+            self.recovered = recovered
+        }
+
+        func current() -> Tagger {
+            lock.lock()
+            let last = known
+            lock.unlock()
+            if last == .usable { return .usable }
+
+            let fresh = LinguisticHealth.verdict(tagging: tagging)
+            lock.lock()
+            known = fresh
+            lock.unlock()
+            if last == .blind, fresh == .usable { recovered() }
+            return fresh
+        }
+    }
+
+    static let measurement = VerdictCache(
+        tagging: { LinguisticHealth.lexicalClasses(of: $0) },
+        recovered: { SentenceContextCache.removeAll() }
+    )
 }
 
 // MARK: - Conditional intent scope
@@ -1360,6 +1524,11 @@ enum SemanticGap: String, Equatable, Sendable, CaseIterable {
     /// is a *complete* sentence that happens to name no action ("remind me
     /// about the thing"). This one is a sentence that stopped.
     case incompleteThought
+    /// Not a judgement about the sentence at all: `NLTagger` answered
+    /// `OtherWord` for every word of a known sentence on this device, so none
+    /// of the structural questions could be asked. Recorded on every row read
+    /// in that state. See `LinguisticHealth` and `DegradedLanguagePolicy`.
+    case languageAnalysisUnavailable
 }
 
 /// Explicit capture framing owns its complement. Verbs and dates inside a
