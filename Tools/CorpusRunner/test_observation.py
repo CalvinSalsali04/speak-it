@@ -879,7 +879,36 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         spring-forward: one assertion message (`"2:30 does not exist that
         night"`) and one quotation in the new test's doc comment (`"every
         Sunday at 2:30 AM"`), which counts like a fixture, the hazard
-        above again. Nothing was removed. What the test
+        above again. Nothing was removed. 4068 -> 4076 on 2026-09-23, from
+        launch recovery leaving a capture the person has touched alone:
+        three `DurabilityTests` tests, eight literals, enumerated rather
+        than assumed. One is a fixture, the edited title `Call the plumber
+        about the kitchen leak`, and seven are assertion messages
+        interpolating the processing status, each counted once: `left open,
+        it is re-read at every launch`, `recovery must neither delete the
+        edited row nor add rows beside it`, `recovery must still split the
+        capture it never finished`, `recovery reset the review`, `the
+        hand-picked date was reverted`, `the placeholder was left
+        unorganized`, and `the typed title was reverted`. The two-thought
+        sentence and `The original words are never rewritten` were already
+        in `DurabilityTests` and add nothing. Review of the same change
+        moved it 4076 -> 4090 that day, with three more tests (a spoken
+        move and a spoken cancel held rather than acted on an unorganized
+        placeholder, and each mark keeping recovery off alone) and
+        fourteen more literals. Three are fixtures, `Move the plumber to
+        Friday` and the table names `time set by hand` and `place set by
+        hand`. One is the hazard above once more, `book the car service`
+        quoted in two doc comments and counted once. Ten are assertion
+        messages: `A move whose only match is an unorganized placeholder
+        must be held`, the same with `A cancel`, `recovery must still
+        split the capture the move never reached`, the same with `the
+        cancel`, `the held move stays as a review row`, `the held move
+        was lost at relaunch`, `the placeholder was marked as the
+        person's`, `the placeholder was moved`, and two interpolating the
+        mark's name, `recovery re-read a capture the person had marked`
+        and `the row must carry this mark alone`. `Cancel the plumber
+        reminder` was already in `CaptureOperationTests` and adds
+        nothing. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -913,7 +942,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #137 into the V1 candidate: measured from the merged tree, not
         taken from either side (4116 on the candidate, 4070 on #137,
         4068 at their merge base; #137 adds 2 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4118 -> 4140 on
+        2026-09-23, merging #124 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4118 on the
+        candidate, 4090 on #124, 4068 at their merge base; #124 adds 22
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -923,7 +957,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4118)
+        self.assertEqual(len(space), 4140)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
