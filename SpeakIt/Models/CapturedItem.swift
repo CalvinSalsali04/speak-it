@@ -231,6 +231,12 @@ final class CapturedItem: Identifiable {
     /// names a place *and* a day, and the place is what decides the moment while
     /// the day only narrows it. Storing both and preferring location here is
     /// what keeps that sentence expressible without a combined rule engine.
+    ///
+    /// This is what was *meant*, not what is armed. While a place and a time
+    /// are both present (`constrainsBothPlaceAndTime`) the place is not
+    /// monitored, though a stored `reminderDate` is still scheduled, so a
+    /// surface describing whether something will fire asks
+    /// `ItemPresentation`, never this.
     var reminderTrigger: ReminderTrigger? {
         if let locationIntent { return .location(locationIntent) }
         if let temporalIntent, temporalIntent.kind != .none { return .time(temporalIntent) }
@@ -250,9 +256,20 @@ final class CapturedItem: Identifiable {
     /// Both single-constraint readings are wrong in a way the person would
     /// notice — the time half fires away from the place, the place half fires at
     /// the wrong time — so this is surfaced as review rather than being resolved
-    /// silently in either direction. It also keeps the item out of both
-    /// schedulers, which is what stops "when I get home tonight" from firing
-    /// twice once Home is configured.
+    /// silently in either direction.
+    ///
+    /// It keeps the item out of the **place** scheduler only, which is what
+    /// stops "when I get home tonight" from firing twice once Home is
+    /// configured: `reconcileLocationReminders()` drops the region and
+    /// `handleLocationTrigger` refuses a crossing. The **clock** scheduler does
+    /// not read this. `reconcilePendingReminders()` filters on archived and
+    /// completed and then asks `ReminderScheduleRequest(item:)`, whose only
+    /// guard is a future `reminderDate`, so a held item that carries one still
+    /// has its time reminder scheduled. `ItemPresentation.reminderState`
+    /// depends on exactly that: a held item falls through to its date because
+    /// the date is the half iOS is holding. Excluding held items from the
+    /// clock scheduler as well would leave that row showing a bell for a
+    /// reminder nothing schedules.
     var constrainsBothPlaceAndTime: Bool {
         isLocationTriggered && (temporalKind ?? .none) != .none
     }
