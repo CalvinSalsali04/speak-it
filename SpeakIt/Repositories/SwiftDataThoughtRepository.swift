@@ -1273,6 +1273,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 holdOperation(request, in: session, preserving: preservingItemIDs)
                 return .ambiguous(operation: request.operation, candidateIDs: [itemID])
             }
+            // The search refuses rows in Memory (`belongsInMemory`), and a
+            // knowledge row held in Needs review is not in Memory: the `.unclear`
+            // safety row for reported speech, a note waiting on a question. As
+            // the one match it used to be deleted, and `delete` takes the
+            // capture's transcript with its last row. Only an action row is
+            // acted on without the person (DEL-26). Held rather than dropped,
+            // for the reason given above: dropping it would report nothing
+            // found and file the sentence as a new errand.
+            guard item.isActionKind else {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: request.operation, candidateIDs: [itemID])
+            }
             let title = item.displayTitle
             do {
                 switch request.operation {

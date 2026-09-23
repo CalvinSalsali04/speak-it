@@ -7,6 +7,10 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- A spoken cancel, complete or move whose one match is a knowledge row held
+  in Needs review (reported speech, a note waiting on a question) is held for
+  the person instead of acted on. A cancel used to delete the row, and the
+  capture's original words with its last row (DEL-26).
 - A confirmed broad request such as "cancel all my reminders" reaches only
   Today's action rows (tasks, errands, follow-ups, events, and anything with
   a reminder). Memory's notes, ideas and people facts, and knowledge rows

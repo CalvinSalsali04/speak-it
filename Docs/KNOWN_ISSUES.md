@@ -740,6 +740,26 @@ builds a broad request with `target: nil`, so narrowing by noun needs the noun
 kept on `CaptureOperationRequest` first. The prompt shows a count, not the
 rows. See `Docs/DECISIONS.md`, 2026-09-23.
 
+## A held single-target request has nothing to confirm
+
+A spoken cancel, complete or move whose one match is a knowledge row held
+for review (DEL-26) is held rather than acted on, and so is one whose only
+match belongs to a capture not yet organized. The receipt says "Which one?"
+and "Confirm in Needs review". There is nothing to confirm there. No
+`PendingOperationStore` record is written for a single-target hold (the only
+writer is the broad path), so the review row never shows the confirm
+control. It falls through to the ordinary review questions, so a row whose
+words are "Never mind the lease" asks how to split it or what kind of thing
+it is. The words survive and nothing is
+deleted; the person can find the row and act on it by hand. This is REV-15
+("choose in Needs review" has no chooser), reached now from a plain
+sentence.
+
+Reusing #150's confirmation for it does not work: `heldCandidate` filters
+by `isActionKind`, so a record naming a held knowledge row would count zero,
+say "Nothing to cancel", and confirm nothing. A chooser for this hold needs
+a second predicate of its own. See `Docs/DECISIONS.md`, 2026-09-23 (DEL-26).
+
 ## A verb with no object is not read as an unfinished thought
 
 **Measured 2026-09-11**, run 34617253884 on `macos-26`, from

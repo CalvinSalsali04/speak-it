@@ -949,7 +949,23 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         row for the DEL-25 tests, an `.unclear` safety row held for review
         in a finished capture, so that only its kind can leave it out. One
         literal, its words, `Something I never finished saying`, recounted
-        from the tree rather than incremented. What the test
+        from the tree rather than incremented. 4125 -> 4138 on
+        2026-09-23, from DEL-26 (a single-target cancel deleting a
+        knowledge row held for review): three `CaptureOperationTests`
+        tests and a helper, thirteen literals, enumerated rather than
+        assumed. Four are fixtures (`Sarah said the landlord is raising
+        the rent`, `Stop reminding me about the landlord`, `Never mind the
+        lease`, `Remind me to call the landlord tomorrow`) and eight are
+        assertion messages. The thirteenth is a new shape of the quoting
+        hazard: two doc comments each say a quoted utterance `is a
+        gating-corpus cancel with target` a quoted noun, and the extractor
+        reads the words *between* the closing and the opening quotation
+        marks as a literal, ` is a gating-corpus cancel with target `,
+        counted once for both. Left as written. 4138 -> 4142 the same day,
+        in review of #152: the "Never mind the lease" test gains an
+        unrelated action row, so a vague reading would list two rows and
+        fail. Four literals, recounted from the tree: the row's words,
+        `Water the tomato plants`, and three assertion messages. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -963,7 +979,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4125)
+        self.assertEqual(len(space), 4142)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
