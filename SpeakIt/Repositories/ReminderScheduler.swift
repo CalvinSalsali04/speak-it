@@ -1473,7 +1473,10 @@ enum ReminderScheduler {
 
             // DEL-23: the alarm AlarmKit holds for this row may be ringing,
             // and re-arming it starts with a stop. It is left as it is; the
-            // first reconcile after `alertingWindow` re-arms it.
+            // first reconcile after `alertingWindow` re-arms it. `.scheduled`
+            // here means "left as AlarmKit holds it", not "armed for this
+            // request": a `.fixed` row rolled forward in place has nothing
+            // armed for its next occurrence until then (KNOWN_ISSUES).
             if authorization == .authorized, leavingAlarmAlone {
                 return .scheduled
             }
