@@ -635,10 +635,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                        item.requiresReview(authorization: authorization) {
                         SharedTodayStore.removeAction(at: pending.url)
                         // `continue` moves on to the next queued tap. The
-                        // `break` in the catch below is not its twin: an
-                        // unlabeled `break` there leaves the whole loop, so a
-                        // store that cannot be written stops the drain and
-                        // every remaining tap is retried at the next one.
+                        // `break` in the catch below is not its twin: it sits
+                        // outside the `switch`, so as an unlabeled `break` it
+                        // leaves the whole loop (inside the `switch` it would
+                        // only end the `switch`). A store that cannot be read
+                        // or written stops the drain, and every remaining tap
+                        // is retried at the next one.
                         continue
                     }
                     try performReminderAction(
