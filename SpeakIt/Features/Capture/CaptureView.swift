@@ -1784,6 +1784,9 @@ struct CaptureView: View {
                 // clearing the text retires the saving draft, and typing again
                 // begins a new one. That draft holds the words the next line
                 // clears from the editor, and only the live id reaches it.
+                // The retired saving draft is left to the launch sweep
+                // (`CaptureDraftStore.pruneEmptyTextDrafts`); if that sweep
+                // changes, it would linger holding words already saved.
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
