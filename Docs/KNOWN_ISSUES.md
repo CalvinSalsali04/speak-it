@@ -460,20 +460,41 @@ needs alarm IDs that are not the item ID and is not built.
 Even an expressible series starts as a one-shot in three cases, and repeats
 from its next re-arm: its first occurrence is later than the next weekday match
 (created today for next week, or completed before it rang, which moves the
-next occurrence past the match that is still to come today); it rings in under a minute; and the repeating hour and
-minute are read from the occurrence's fire date, so an occurrence daylight
-saving moved out of a skipped hour ("every day at 2:30 AM" on the
-spring-forward night) repeats at the moved time until the next foreground
-re-arms it at 2:30. A relative alarm also follows the device's time zone, so
-travelling moves it with the clock, which is the documented default for
-recurring reminders below.
+next occurrence past the match that is still to come today); it rings a
+minute from now or sooner, where a relative alarm that missed its moment while
+registering would ring at the next match rather than not at all; and the
+repeating hour and minute are read from the occurrence's fire date, so an
+occurrence daylight saving moved out of a skipped hour ("every day at 2:30 AM"
+on the spring-forward night) repeats at the moved time until the next
+foreground re-arms it at 2:30. A relative alarm also follows the device's time
+zone, so travelling moves it with the clock, which is the documented default
+for recurring reminders below.
+
+The row does not travel with it. `reminderDate` is an absolute instant that
+nothing re-reads in the new zone until the app runs, while the relative alarm
+needs no app run, so after a flight from Toronto to London "every weekday at
+6:30" rings at 6:30 London time, five hours before the 11:30 the row still
+claims. The app running does not settle it at once: the foreground pass re-arms
+the alarm from the row, so it repeats at 11:30 until that occurrence passes and
+the series advances, and a series on several named weekdays then advances at
+11:30 rather than 6:30, because the weekly branch of `RecurrenceRule.nextDate`
+reads the clock of the previous occurrence and ignores the stated one (a
+limitation that predates repeating alarms and moves notifications the same
+way). The same series can also answer differently from one occurrence to the
+next: an occurrence that fell back to a `.fixed` alarm does not travel, and the
+repeating notification path pins `components.timeZone = TimeZone.current`, so a
+repeating notification for the same rule does not travel either. No behaviour
+change is planned here; an alarm following the device's zone is what an alarm
+clock does.
 
 Not verified on an iPhone: that a relative weekly alarm rings twice without the
 app being opened in between, that stopping it leaves it `.scheduled` for the
-next occurrence (so the orphan sweep keeps protecting it), and that
-`cancel(id:)` removes the whole series. A snoozed occurrence of a repeating
-alarm (PR #129) is not reconciled with the series yet; see the follow-up in
-`DECISIONS.md`.
+next occurrence (so the orphan sweep keeps protecting it), that
+`cancel(id:)` removes the whole series, and that `.weekly` with all seven
+`Locale.Weekday` values behaves as a daily alarm, which is how a daily series
+is armed and which Apple's documentation neither promises nor rules out. A
+snoozed occurrence of a repeating alarm (PR #129) is not reconciled with the
+series yet; see the follow-up in `DECISIONS.md`.
 
 ## Temporal intent is stored; two kinds of trigger are still missing
 

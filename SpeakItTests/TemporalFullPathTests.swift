@@ -1236,7 +1236,57 @@ final class TemporalFullPathTests: XCTestCase {
                     calendar: calendar
                 ),
                 .fixed(halfAMinuteOut),
-                "an occurrence under a minute away could pass while AlarmKit registers it"
+                "a relative alarm registered too late rings at the next match, not today"
+            )
+        }
+    }
+
+    /// The path production takes, not the arithmetic beside it. `schedule`
+    /// asks `alarmSchedule(for:)`, which reads the repetition
+    /// `ReminderScheduleRequest.init` stored on the request. Every test above
+    /// calls the `rule:` overload, which recomputes the repetition itself, so
+    /// none of them can see the initializer stop storing one.
+    ///
+    /// The request is built inside the pin because the initializer reads the
+    /// hour and minute through `Calendar.current`, which follows
+    /// `NSTimeZone.default`, so it and the fixture calendar agree on a runner
+    /// in any zone. Nothing here reaches `UNUserNotificationCenter`. The
+    /// capture is dated now, because the initializer refuses a fire date that
+    /// has passed on the real clock, and the schedule is asked an hour before
+    /// the occurrence, so its first ring is this one on any day the suite runs.
+    ///
+    /// Falsifier: assign `nil` to `alarmRepetition` in
+    /// `ReminderScheduleRequest.init` instead of computing it, and the request
+    /// carries no repetition and the alarm is a one-shot again.
+    func testAnAlarmRequestBuiltFromARealItemRepeats() throws {
+        try withFixtureClock { calendar in
+            let item = try repository.createCapture(
+                text: "Set an alarm every day at 6:30 AM",
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.frequency, .daily)
+
+            let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+            XCTAssertEqual(request.delivery, .alarm, "production asks alarmSchedule only for an alarm")
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: request.fireDate),
+                DateComponents(hour: 6, minute: 30)
+            )
+            XCTAssertNotNil(request.alarmRepetition)
+
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    for: request,
+                    now: request.fireDate.addingTimeInterval(-60 * 60),
+                    calendar: calendar
+                ),
+                .weekly(
+                    hour: 6,
+                    minute: 30,
+                    weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+                )
             )
         }
     }

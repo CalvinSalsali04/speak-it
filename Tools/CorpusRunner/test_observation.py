@@ -893,6 +893,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `", every Tuesday for "`: a quotation opened on one line and
         closed on the next pairs with the wrong mark and counts the prose
         between two quotes as a literal. Those comments use backticks now.
+        4076 -> 4078 on 2026-09-23, from that change's review: one
+        `TemporalFullPathTests` method that builds a real request, because
+        the six above never reached the overload production calls. Three
+        literals in, one out, enumerated rather than assumed. In: the
+        capture `"Set an alarm every day at 6:30 AM"`, new to this
+        directory, and two assertion messages, `"production asks
+        alarmSchedule only for an alarm"` and `"a relative alarm registered
+        too late rings at the next match, not today"`. Out: `"an occurrence
+        under a minute away could pass while AlarmKit registers it"`, the
+        message the second one replaced because the reason it gave applied
+        to the one-shot branch just as much. A reworded message is a fall
+        and a rise, not a zero, and it only nets to zero when both sides
+        clear twelve characters.
         What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -906,7 +919,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4076)
+        self.assertEqual(len(space), 4078)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

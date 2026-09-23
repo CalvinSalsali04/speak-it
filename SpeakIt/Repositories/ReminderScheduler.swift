@@ -943,9 +943,17 @@ enum ReminderScheduler {
     /// the repeating notification trigger follows. A series whose next
     /// occurrence is further out (created for next month, or rolled past a
     /// day by completing early) stays a one-shot, and rejoins the repeating
-    /// path when the foreground pass re-arms its next occurrence. So does an
-    /// occurrence less than a minute away, which could pass while AlarmKit is
-    /// still registering it.
+    /// path when the foreground pass re-arms its next occurrence.
+    ///
+    /// So does an occurrence a minute away or less, and the reason is not the
+    /// race itself, which both branches share: the two branches lose it
+    /// differently. A `.fixed` alarm whose moment passes while AlarmKit is
+    /// still registering it just does not fire, and the foreground pass
+    /// re-arms the series. A `.relative` one has no date to miss: it rings at
+    /// the next match instead, tomorrow or next week, while the row still
+    /// claims today, and nothing notices until the app next runs. The
+    /// `> 60` clause keeps that failure on the `.fixed` side. Do not delete it
+    /// on the grounds that `.fixed` is exposed to the same race.
     static func alarmSchedule(
         repeating repetition: ReminderAlarmRepetition?,
         fireDate: Date,
