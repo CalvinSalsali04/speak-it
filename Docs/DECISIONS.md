@@ -78,7 +78,10 @@ with no AlarmKit type in it (`ReminderAlarmSchedule`,
 fixture zone. One of those tests builds a real item and its
 `ReminderScheduleRequest` and asks `alarmSchedule(for:)`, the overload
 `schedule` calls, because the others recompute the repetition from the rule and
-would stay green if the initializer stopped storing it. Only the translation to
+would stay green if the initializer stopped storing it. That test pins the
+zone only for the parse and builds the request in the machine's zone, as
+`CLAUDE.md` requires, with its expected hour and minute read on the machine's
+clock. Only the translation to
 `Alarm.Schedule` in `ReminderScheduler.schedule` touches AlarmKit, and no test
 reaches it.
 
