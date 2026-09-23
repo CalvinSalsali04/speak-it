@@ -15,6 +15,7 @@ import FoundationModels
 //   semantic-map --rules-report <utterances.txt>
 //   semantic-map --run <utterances.txt> --out runs.jsonl [--shadow] [--no-jobs] [--atom-format lines|inline]
 //   semantic-map --replay runs.jsonl --arm rules|production|asked|map [--policy NAME] [--records-out r.jsonl]
+//   semantic-map --units-experiment inputs.jsonl --out results.jsonl
 //
 // `--census` needs no model: it is the rules reading, the features and
 // production's routing decision for every capture, content-free. `--run` is
@@ -34,6 +35,7 @@ usage: semantic-map --availability
        semantic-map --rules-report <utterances.txt>
        semantic-map --run <utterances.txt> --out <runs.jsonl> [--shadow] [--no-jobs] [--atom-format lines|inline]
        semantic-map --replay <runs.jsonl> --arm rules|production|asked|map [--policy standard|observe|no-splits|no-merges|no-withdrawals|no-entities] [--records-out <records.jsonl>]
+       semantic-map --units-experiment <inputs.jsonl> --out <results.jsonl>
 """
 
 var arguments = Array(CommandLine.arguments.dropFirst())
@@ -57,6 +59,7 @@ let censusPath = value("--census")
 let rulesReportPath = value("--rules-report")
 let runPath = value("--run")
 let replayPath = value("--replay")
+let unitsExperimentPath = value("--units-experiment")
 let outPath = value("--out")
 let recordsOutPath = value("--records-out")
 let arm = value("--arm")
@@ -113,6 +116,9 @@ func reportAvailability() {
     print("relations prompt:  \(SemanticJobPrompts.relationsFingerprint)")
     print("entities prompt:   \(SemanticJobPrompts.entitiesFingerprint)")
     print("production prompt: \(SemanticJobPrompts.fingerprint(of: ProductionRefinementPrompt.instructions))")
+    print("ranges prompt:     \(UnitsExperimentPrompts.rangesFingerprint)")
+    print("labels prompt:     \(UnitsExperimentPrompts.labelsFingerprint)")
+    print("thought cap:       \(unitsExperimentThoughtCap) (ranges arm)")
 }
 
 // MARK: - Census (no model)
@@ -304,6 +310,13 @@ if wantsAvailability {
     census([censusPath] + arguments)
 } else if let rulesReportPath {
     rulesReport([rulesReportPath] + arguments)
+} else if let unitsExperimentPath {
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        await runUnitsExperiment(unitsExperimentPath, out: outPath)
+        semaphore.signal()
+    }
+    semaphore.wait()
 } else if let runPath {
     let semaphore = DispatchSemaphore(value: 0)
     Task {

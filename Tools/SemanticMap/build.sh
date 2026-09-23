@@ -129,5 +129,6 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   "$SP/Sources/ProductionRoute.swift" \
   "$SP/Sources/Records.swift" \
   "$SP/Sources/SelfCheck.swift" \
+  "$SP/Sources/UnitsExperiment.swift" \
   "$SP/Sources/main.swift" 2> "$OUT/build-errors.log" || { cat "$OUT/build-errors.log" >&2; exit 1; }
 test -x "$OUT/semantic-map" && echo "semantic-map probe built: $OUT/semantic-map ($COMMIT$([ "$DIRTY" = true ] && echo ', dirty tree'))"
