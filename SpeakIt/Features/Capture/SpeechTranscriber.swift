@@ -1210,13 +1210,110 @@ private final class AudioActivityTracker: @unchecked Sendable {
 /// Reprocesses the protected temporary recording when live recognition fails.
 /// It intentionally uses the same system recognizer and vocabulary corrections
 /// as normal capture, keeping recovery local to the app's existing speech path.
+///
+/// Only a final result is the whole recording. A pass that times out or errors
+/// after some partial text has read only the audio decoded so far, so it fails
+/// rather than succeeding with the head of a long capture: every caller saves a
+/// success and then deletes the recording, which would lose the tail for good.
 enum CaptureAudioRecovery {
+    /// How a recognition pass stopped. Only `finished` means the recognizer reached
+    /// the end of the recording.
+    enum Ending {
+        case finished(String)
+        case timedOut
+        case failed(Error)
+    }
+
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
+        try await transcribe(draft, reading: transcribeAudio(at:))
+    }
+
+    /// `transcribe(_:)` with the recognition pass supplied, so the handling
+    /// around it can be tested without a recognizer. Production passes
+    /// `transcribeAudio(at:)` and nothing else.
+    static func transcribe(
+        _ draft: CaptureDraftStore.Draft,
+        reading read: (URL) async throws -> String
+    ) async throws -> String {
         guard let url = await CaptureDraftStore.audioURL(for: draft),
               await CaptureDraftStore.hasRecoveryAudio(for: draft) else {
             throw CaptureAudioRecoveryError.missingRecording
         }
-        return try await transcribeAudio(at: url)
+        do {
+            return try await read(url)
+        } catch {
+            // The words read before the pass stopped are stored on the draft,
+            // beside the recording, which is untouched and stays retryable.
+            // Stored is not shown: the capture screen offers them when it
+            // switches to typing (`wordsToOffer`), but Today's row shows only
+            // the failure kind and its Type Instead sheet starts empty.
+            if let partial = partialTranscript(in: error) {
+                await CaptureDraftStore.keepRecoveredWords(partial, id: draft.id)
+            }
+            throw error
+        }
+    }
+
+    /// What the capture screen puts in the text field after a recovery pass
+    /// failed: the live recognizer's transcript, or the words kept on the draft
+    /// when those carry on from it.
+    ///
+    /// The kept words win only when they contain everything the live
+    /// transcript says and more, compared without case, accents, punctuation
+    /// or spacing, so a live "buy milk and" gives way to a kept "Buy milk, and
+    /// call Mom". When the two disagree anywhere, the live transcript wins even
+    /// if it is shorter: taking the kept words would drop something the person
+    /// was already shown, and the recording stays for another attempt. Either
+    /// side that is empty yields to the other.
+    static func wordsToOffer(live: String, kept: String) -> String {
+        let live = live.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kept = kept.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return live }
+        guard !live.isEmpty else { return kept }
+        let liveKey = comparisonKey(live)
+        let keptKey = comparisonKey(kept)
+        // Whole words only: a live "buy milk" does not give way to a kept
+        // "buy milkshake", which changes a word the person was shown.
+        guard keptKey.hasPrefix(liveKey + " ") else { return live }
+        return kept
+    }
+
+    private static func comparisonKey(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// The terminal decision for one recognition pass, kept pure so it can be
+    /// tested without a recognizer. `latest` is the most recent partial text.
+    static func outcome(latest: String?, ending: Ending) -> Result<String, Error> {
+        let partial = latest?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch ending {
+        case .finished(let text):
+            return .success(text)
+        case .timedOut:
+            guard !partial.isEmpty else {
+                return .failure(CaptureAudioRecoveryError.timedOut)
+            }
+            return .failure(CaptureAudioRecoveryError.timedOutAfterPartial(partial))
+        case .failed(let error):
+            guard !partial.isEmpty else {
+                return .failure(error)
+            }
+            return .failure(CaptureAudioRecoveryError.stoppedEarly(partial))
+        }
+    }
+
+    /// The words an incomplete pass did read, when `error` is one.
+    static func partialTranscript(in error: Error) -> String? {
+        guard let recoveryError = error as? CaptureAudioRecoveryError else { return nil }
+        switch recoveryError {
+        case .timedOutAfterPartial(let partial), .stoppedEarly(let partial):
+            return partial
+        default:
+            return nil
+        }
     }
 
     static func transcribeAudio(at url: URL) async throws -> String {
@@ -1259,17 +1356,19 @@ enum CaptureAudioRecovery {
                         )
                         completion.updateLatest(text)
                         if result.isFinal {
-                            completion.finish(with: .success(text))
+                            completion.finish(with: CaptureAudioRecovery.outcome(
+                                latest: text,
+                                ending: .finished(text)
+                            ))
                             return
                         }
                     }
 
                     if let error {
-                        if let latest = completion.latestNonemptyTranscript {
-                            completion.finish(with: .success(latest))
-                        } else {
-                            completion.finish(with: .failure(error))
-                        }
+                        completion.finish(with: CaptureAudioRecovery.outcome(
+                            latest: completion.latestNonemptyTranscript,
+                            ending: .failed(error)
+                        ))
                     }
                 }
                 completion.setRecognitionTask(task)
@@ -1277,11 +1376,10 @@ enum CaptureAudioRecovery {
                 let timeoutTask = Task {
                     try? await Task.sleep(for: .seconds(25))
                     guard !Task.isCancelled else { return }
-                    if let latest = completion.latestNonemptyTranscript {
-                        completion.finish(with: .success(latest))
-                    } else {
-                        completion.finish(with: .failure(CaptureAudioRecoveryError.timedOut))
-                    }
+                    completion.finish(with: CaptureAudioRecovery.outcome(
+                        latest: completion.latestNonemptyTranscript,
+                        ending: .timedOut
+                    ))
                 }
                 completion.setTimeoutTask(timeoutTask)
             }
@@ -1379,6 +1477,12 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
     case recognizerUnavailable
     case onDeviceRecognitionUnavailable
     case timedOut
+    /// Timed out after reading only part of the recording.
+    case timedOutAfterPartial(String)
+    /// The recognizer stopped with an error after reading only part of the
+    /// recording. Not `noSpeechDetected`, even when that is the error: words
+    /// were found, so the row must keep offering another attempt.
+    case stoppedEarly(String)
     case cancelled
 
     var errorDescription: String? {
@@ -1391,8 +1495,10 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
             "Speech Recognition is temporarily unavailable."
         case .onDeviceRecognitionUnavailable:
             "This language has no on-device speech model, so recovering the recording would send it to Apple’s speech service."
-        case .timedOut:
+        case .timedOut, .timedOutAfterPartial:
             "Recovery took too long. Your recording is still safe."
+        case .stoppedEarly:
+            "Recovery stopped before the end of the recording. Your recording is still safe."
         case .cancelled:
             "Recovery was cancelled."
         }
@@ -1404,7 +1510,8 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
         case .permissionRequired: .permissionRequired
         case .recognizerUnavailable: .recognizerUnavailable
         case .onDeviceRecognitionUnavailable: .onDeviceRecognitionUnavailable
-        case .timedOut: .timedOut
+        case .timedOut, .timedOutAfterPartial: .timedOut
+        case .stoppedEarly: .unknown
         case .cancelled: .cancelled
         }
     }

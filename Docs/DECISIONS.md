@@ -83,6 +83,30 @@ showing (`testAPastReminderReadsAsArmedThoughNothingIsScheduled` pins the
 pair), and delivery still depends on a time-zone-sensitive re-parse; both are
 left as they were.
 
+## 2026-09-23 — An audio recovery is complete only when the recognizer says it finished
+
+`CaptureAudioRecovery` used to hand back its latest partial transcript as a
+success when its 25-second timeout fired or the recognizer errored after some
+words, and every caller then saved those words as the whole capture and
+deleted the recording, so the tail of a long capture was lost with the only
+copy of it. Now only a final result is a success (`CaptureAudioRecovery.outcome`):
+a timeout after partial text fails as `timedOut`, and an error after partial
+text fails as `unknown` rather than `noSpeechDetected`, because words were
+found and another attempt must stay on offer. The words that pass did read are
+kept on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`,
+never shrinking a longer checkpoint). When the capture screen switches to
+typing after such a pass, it offers those words in place of the live
+transcript if they carry on from it (`CaptureAudioRecovery.wordsToOffer`,
+compared without case or punctuation); where the two disagree the live words
+stay, so nothing the person was already shown is dropped. Today's row still
+shows only the failure kind, and its Type Instead sheet starts empty. The
+recording stays listed for Try Again, Type Instead or Delete; the person sees
+the existing timed-out or did-not-finish copy instead of `Interrupted capture
+recovered`. The 25-second
+limit is unchanged, so a recording too long to read in that time is kept and
+retryable but never recovers on its own, which is honest where the old
+behaviour was silent (audit F1, `capacity-truncation.md`).
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

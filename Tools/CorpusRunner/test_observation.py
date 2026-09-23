@@ -966,7 +966,27 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         time, got \\(state)"`, which counts with its interpolation
         unexpanded). Its fixture is the same bins sentence as the test
         before it and adds nothing, and its doc comment quotes in
-        backticks. What the test
+        backticks.
+        4068 -> 4075 on 2026-09-23, from
+        audio recovery no longer calling a pass that stopped partway the
+        whole recording: six tests across `CaptureRecoveryEscapeTests` and
+        `DurabilityTests`, seven literals, enumerated by diffing
+        `swift_literals` before and after rather than assumed. Five are
+        fixtures (`" buy milk and call "`, padded on purpose to exercise the
+        trim, `"buy milk and call"`, `"buy milk and call the"`, `"buy milk
+        and call mom"`, `"Renew the parking permit and"`) and two are
+        assertion messages (`"Another attempt has to stay on offer"` and
+        `"Reported as the whole recording: \\(text)"`, which counts with its
+        interpolation). `"buy milk"` and `"   "` add nothing: both are under
+        the twelve-character minimum. 4075 -> 4076 the same day, from the
+        capture screen offering the words a failed pass kept: two more tests
+        in `CaptureRecoveryEscapeTests` add one fixture, `"Buy milk, and call
+        the plumber"`, capitalised and punctuated on purpose to exercise the
+        comparison; every other literal they use was already counted.
+        4076 -> 4077 the same day, from `"buy milkshake"`, the fixture
+        pinning that the kept words must carry on by whole words.
+        The doc comments use backticks, and the development-set overlap
+        stayed at 114. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
