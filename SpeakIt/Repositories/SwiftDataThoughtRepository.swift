@@ -340,6 +340,23 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 replacesAllSpeakItReminders: true
             )
         )
+        // The pass above reaches an alarm only through a row it can name, so an
+        // alarm whose row is already gone (removed by iCloud, or by a kill
+        // between `delete`'s save and its teardown) would still ring. Every
+        // row that still exists protects its alarm here; whether that row
+        // should ring is the pass above's decision, not this sweep's.
+        ReminderScheduler.cancelOrphanedAlarms(accountedFor: { [weak self] in
+            self?.itemIDsAccountingForAlarms()
+        })
+    }
+
+    /// Every item ID in the store, or `nil` when the store cannot be read, which
+    /// the orphan sweep treats as "cancel nothing".
+    private func itemIDsAccountingForAlarms() -> Set<UUID>? {
+        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else {
+            return nil
+        }
+        return Set(items.map(\.id))
     }
 
     /// The morning brief is planned from the same rows Today shows, so the
