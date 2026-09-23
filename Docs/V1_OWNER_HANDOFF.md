@@ -77,7 +77,7 @@ evidence that closed it).
 | `pr142-widget-review` | #142 | `89e68b8` | `claude/v1-reliability-nyngoe-widget-review` | `LocationReminderTests` | yes / yes |
 | `pr143-edit-time` | #143 | `d5fe9ea` | `claude/v1-reliability-nyngoe-edit-time` | `SwiftDataThoughtRepositoryTests` | yes / yes |
 | `pr144-typed-draft` | #144 | `e87d305` | `claude/v1-reliability-nyngoe-typed-draft` | `DurabilityTests` | yes / yes |
-| `semantic-units` | #118 | `d072bb5` | `claude/semantic-map-xklzll` | - (extra: the units experiment, M2) | no / no |
+| `semantic-units` | #118 | `09a9eed` | `claude/semantic-map-xklzll` | - (extra: the units experiment, M2) | no / no |
 
 Stacked rows, whose head contains their base's commits: #125 on #122 (up to
 `60c660b`, not #122's two later fixture commits), #126 and #134 on #119, #128
@@ -96,10 +96,10 @@ contained in its pin, which `--check-pins` does not check.
 
 | | |
 |---|---|
-| Commit | `d072bb5` on `claude/semantic-map-xklzll` (#118, draft) |
+| Commit | `09a9eed` on `claude/semantic-map-xklzll` (#118, draft) |
 | Why a Mac | The on-device model needs an Apple Intelligence Mac on macOS 26. The hosted runner compiles Swift but cannot run the model. The probe `Tools/SemanticMap/Sources/UnitsExperiment.swift` has never been compiled; an independent read found one error, fixed before this commit. |
-| Command | the manifest's `semantic-units` row, which runs `./Tools/SemanticMap/UnitsExperiment/run.sh` in a clean worktree at `d072bb5` and writes into `semantic-units/units-experiment/` |
-| Expected evidence | Every line of `steps.txt` is PASS: clean tree, 11 manifest hashes, inputs regenerate, scorer selftest, precheck, build, model available, generation, score, decision. `availability.txt` shows `available`, with prompt fingerprints ranges `df4c6e25` and labels `71e026b5`. `results.jsonl` has 60 records (30 ranges, 30 labels; RB14C's labels job is skipped as a one-line capture) and holds ids, integers and labels only, no capture text. `precheck.txt`, `score.txt` and `decision.txt` are present; `decision.txt` ends with the outcome (A ranges, B labels, C neither) from the decision rule pinned before any generation (`DECISION_PLAN.md`, `decide.py`). If the build fails, `build.txt` comes back; a compile fix changes a pinned hash and ships with a MANIFEST update, which is allowed because nothing has been generated. |
+| Command | the manifest's `semantic-units` row, which runs `./Tools/SemanticMap/UnitsExperiment/run.sh` in a clean worktree at `09a9eed` and writes into `semantic-units/units-experiment/` |
+| Expected evidence | Every line of `steps.txt` is PASS: clean tree, 11 manifest hashes, inputs regenerate, scorer selftest, precheck, build, model available, generation, score, decision. `availability.txt` shows `available`, with prompt fingerprints ranges `df4c6e25` and labels `71e026b5`. `results.jsonl` has 60 records (30 ranges, 30 labels; RB14C's labels job is skipped as a one-line capture) and holds ids, integers and labels only, no capture text. `precheck.txt`, `score.txt` and `decision.txt` are present; `decision.txt` ends with the outcome (A ranges, B labels, C neither) from the decision rule pinned before any generation (`DECISION_PLAN.md`, `decide.py`). The last line may read `OUTCOME A (no clear winner)` when A is reached without a clear margin. If it reads RUN INVALID and names a generation error, that is not a failed experiment and nothing more is needed from you: the remedy is pre-registered in `DECISION_PLAN.md` (the semantic-map thread checks the error name against Apple's documentation, re-decides on the same `results.jsonl` if it is model behaviour, and regenerates only for a genuine infrastructure failure). If the build fails, `build.txt` comes back; a compile fix changes a pinned hash and ships with a MANIFEST update, which is allowed because nothing has been generated. |
 | Cost | 59 local generations. No paid inference, no CI minutes. |
 | Later work depends on it | The choice between the two candidates (or neither), and any arbitration experiment after it. No other V1 lane depends on it. |
 | Release blocker | No by itself. The production change it chooses will be. |
