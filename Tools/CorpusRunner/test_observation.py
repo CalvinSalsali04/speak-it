@@ -936,7 +936,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         again, `"Call the bank about the overdraft fee"`; and eighteen
         assertion messages, five of them preconditions. The merge of
         `claude/v1-reliability-nyngoe-stale-save` touched no test file and
-        added none. What the test
+        added none. 4182 -> 4190 on 2026-09-23, when replacing the attempt
+        began stopping its alarm synchronously: one method and eight
+        literals, enumerated rather than assumed. One fixture, the retry
+        `"Set an alarm for 7:30 AM to take my vitamins"` (the attempt, `"Set
+        an alarm for 7 AM to take my pills"`, was already counted), and
+        seven assertion messages, two of them preconditions. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -950,7 +955,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4182)
+        self.assertEqual(len(space), 4190)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
