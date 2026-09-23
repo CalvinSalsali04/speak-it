@@ -627,17 +627,23 @@ enum Arbiter {
                         conditionText, referenceDate: referenceDate, calendar: calendar, permitsOperations: false
                     ).items.map(\.organization)
                     if let place = organization.locationIntent {
-                        // The condition names this trigger's place (or, read
-                        // alone, gives this very trigger), and the row
-                        // carries no instant beside it.
+                        // The condition is the speaker's own arrival ("when
+                        // Sam gets to Costco" is not their trigger), names this
+                        // trigger's place as a whole word ("work" is not
+                        // "workout") or gives this very trigger read alone,
+                        // and the row carries no instant beside it.
+                        let firstPerson = conditionText.range(
+                            of: #"(?i)\b(?:i|we|i['’]m|we['’]re)\b"#, options: .regularExpression
+                        ) != nil
+                        let word = #"\b"# + NSRegularExpression.escapedPattern(for: place.place.displayName) + #"\b"#
                         let named = conditionText.range(
-                            of: place.place.displayName, options: [.caseInsensitive, .diacriticInsensitive]
+                            of: word, options: [.regularExpression, .caseInsensitive, .diacriticInsensitive]
                         ) != nil
                         let same = alone.contains {
                             $0.locationIntent?.event == place.event && $0.locationIntent?.place == place.place
                         }
                         return organization.reminderDate == nil && organization.dueDate == nil
-                            && organization.recurrenceRule == nil && (named || same)
+                            && organization.recurrenceRule == nil && firstPerson && (named || same)
                     }
                     // A bounded time ("after five", "before noon") read alone
                     // gives every instant the row carries.
