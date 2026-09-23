@@ -332,9 +332,26 @@ jobs:
       # so the dispatch that was meant to compile a branch reported one
       # blocking corpus row and nothing about the Swift. Each stage now
       # answers for itself in the summary at the end.
+      #
+      # The step, not corpus-gate.sh, reads the gate's own BLOCKING line back
+      # out of its log and hands the count to the summary, so the gate row can
+      # say how many blocking rows there are rather than a bare FAIL: one known
+      # row and forty regressions are different findings. corpus-gate.sh is
+      # untouched and its exit status is the step's. An absent count (the gate
+      # stopped before corpus-run printed one) stays absent.
       - name: Corpus gate (rules path, no simulator)
         id: gate
-        run: Tools/CI/corpus-gate.sh
+        run: |
+          gate_log="$RUNNER_TEMP/corpus-gate.log"
+          set +e
+          Tools/CI/corpus-gate.sh 2>&1 | tee "$gate_log"
+          status="${PIPESTATUS[0]}"
+          set -e
+          blocking="$(grep -o 'BLOCKING(crit+beh) = [0-9]*' "$gate_log" | head -n 1 | grep -o '[0-9]*$' || true)"
+          if [ -n "$blocking" ]; then
+            echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
 
       # A stock simulator holds ~3.7 GB; the SimSlim profile in Tools/CI cuts
       # it to ~0.9 GB, which is the difference between one simulator and
@@ -418,6 +435,7 @@ jobs:
         if: ${{ always() }}
         env:
           GATE: ${{ steps.gate.outcome }}
+          GATE_BLOCKING: ${{ steps.gate.outputs.blocking }}
           COMPILE: ${{ steps.compile.outcome }}
           UNIT: ${{ steps.unit.outcome }}
           SELECTION: ${{ inputs.tests || 'SpeakItTests' }}

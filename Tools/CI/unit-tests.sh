@@ -126,9 +126,19 @@ if [ "$SHARDS" = "1" ] || [[ "$ONLY" == */* ]]; then
   # typo in a dispatched class name turns into a PASS. Only a clean exit with a
   # readable bundle that ran no test is changed; a run that failed keeps its
   # own status, and a run that ran anything is untouched.
+  #
+  # The two shapes of "nothing ran" have different causes. With skips, the
+  # selection matched and every test in it abstained, which on a simulator
+  # without NLTagger's lexical-class model is skipIfBlind doing its job; only
+  # with no skips either is a mistyped class name the likely reading. Both
+  # still exit 3, because neither measured anything.
   if [ "$status" = "0" ] && [ -n "$COUNT_PASSED" ] \
     && [ "$COUNT_PASSED" = "0" ] && [ "$COUNT_FAILED" = "0" ]; then
-    echo "unit-tests.sh: '$ONLY' ran no test (0 passed, 0 failed, $COUNT_SKIPPED skipped); check the class names" >&2
+    if [ "${COUNT_SKIPPED:-0}" -gt 0 ] 2>/dev/null; then
+      echo "unit-tests.sh: every test in '$ONLY' skipped (0 passed, 0 failed, $COUNT_SKIPPED skipped), so nothing was measured; likely skipIfBlind on a simulator without NLTagger's lexical-class model, not a mistyped class name" >&2
+    else
+      echo "unit-tests.sh: '$ONLY' ran no test (0 passed, 0 failed, 0 skipped); check the class names" >&2
+    fi
     status=3
   fi
   exit $status
