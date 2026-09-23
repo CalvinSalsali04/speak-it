@@ -127,8 +127,9 @@ struct ItemPresentation: Equatable, Sendable {
     var recurrenceSummary: String?
     /// What a row the system is holding for review would arm once the person
     /// confirms it (`Reminder not set · 8:00 PM`), or `nil` when nothing is
-    /// being withheld. The Needs review row shows it so a proposed time or
-    /// place cannot read as one that is already set.
+    /// being withheld. The Needs review row and a held shopping row on its
+    /// list show it, so a proposed time or place cannot read as one that is
+    /// already set.
     var withheldTriggerText: String?
 
     var requiresReview: Bool { destination == .needsReview }
@@ -210,6 +211,40 @@ struct ItemPresentation: Equatable, Sendable {
     private static let deliveryCacheLock = NSLock()
     nonisolated(unsafe) private static var deliveryCache:
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
+
+    /// Whether this item is listed under Today's "Needs review", and **the only
+    /// answer to that question.** Today builds the section from
+    /// `needsReviewMembers(in:authorization:)`; the capture receipt counts
+    /// with the same function (`CaptureCreationResult.needsReviewCount`), and
+    /// its single-item "Needs review · …" reads `destination`, which asks this
+    /// first. So a receipt can never send the person to review a row the
+    /// section does not list.
+    ///
+    /// Every item type is a member, shopping included. Today used to filter
+    /// shopping out of review with a second predicate of its own, so "Remind
+    /// me to buy cereal when I get to Costco" was announced as "Needs review ·
+    /// Can't watch a named place" while the section stayed empty, and the row
+    /// sat on the Costco list looking ready (Docs/DECISIONS.md, 2026-09-23,
+    /// "Needs review lists what the receipt says it does"). A held shopping row
+    /// is listed here **and** stays on its list: review is where the question
+    /// is asked, the list is still where the item lives.
+    @MainActor
+    static func belongsInNeedsReview(
+        _ item: CapturedItem,
+        authorization: LocationAuthorization
+    ) -> Bool {
+        item.requiresReview(authorization: authorization)
+    }
+
+    /// The rows Today lists under "Needs review", in the order given. Today
+    /// and the receipt both call this, so their answers are one computation.
+    @MainActor
+    static func needsReviewMembers(
+        in items: [CapturedItem],
+        authorization: LocationAuthorization
+    ) -> [CapturedItem] {
+        items.filter { belongsInNeedsReview($0, authorization: authorization) }
+    }
 
     /// Whether this item may arm anything at all: a notification, an alarm or
     /// a monitored region. **The one rule for held rows.** Everything that
@@ -319,8 +354,9 @@ struct ItemPresentation: Equatable, Sendable {
         calendar: Calendar
     ) -> Destination {
         // Review outranks everything: an item waiting on the person is not
-        // available to act on, whichever section its dates would suggest.
-        if item.requiresReview(authorization: authorization) { return .needsReview }
+        // available to act on, whichever section its dates would suggest. The
+        // same predicate Today's Needs review section is built from.
+        if belongsInNeedsReview(item, authorization: authorization) { return .needsReview }
         if item.belongsInMemory { return .memory }
 
         switch TodayActionTiming.group(for: item, relativeTo: now, calendar: calendar) {

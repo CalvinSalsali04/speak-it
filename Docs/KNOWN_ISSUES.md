@@ -42,10 +42,14 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
   is not rolled forward, so it waits in Needs review with a past proposed
   date. Once confirmed, the next foreground continues the series; the save
   itself arms nothing, because the date has passed.
-- **Two surfaces still do not show the withheld trigger.** A held shopping row
-  is still not in Needs review (REV-3). It is silent now, but its list row
-  shows the proposed time with no bell and no "not set". A held place row with
-  a live blocker shows the blocker label instead, which is already true.
+- **A list is still timed by a held row's proposal.** A held shopping row is
+  listed in Needs review and its list row says `Reminder not set · …`
+  (Docs/DECISIONS.md, 2026-09-23, "Needs review lists what the receipt says
+  it does"). The Today list card and the morning brief still time a list by
+  its earliest date, held rows included, so a list whose only timed row is
+  held sits under that proposed time with no "not set". Nothing fires on it.
+  A held place row with a live blocker shows the blocker label instead,
+  which is already true.
 
 ## A considered thought and a committed one look the same once stored
 

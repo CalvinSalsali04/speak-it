@@ -909,7 +909,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the vague-time and series-exception rows in `SemanticCorpusDataE`
         and `SemanticCorpusDataD`, `"Remind me to call mom tomorrow at 5pm"`
         in `ItemPresentationTests`, and both Home transcripts in
-        `LocationReminderTests`. What the test
+        `LocationReminderTests`. 4107 -> 4126 on 2026-09-23 again, from
+        Needs review listing what the receipt says it does (REV-3): three
+        new tests and one rewritten in `ItemPresentationTests`, nineteen
+        literals, enumerated by diffing this census against `HEAD`. Five are
+        fixtures: a transcript, `"Buy milk and eggs later, and call the
+        plumber"`; a segment, `"Buy eggs later"`; a hand-built title,
+        `"Call the plumber"`, which is its segment too; and the title edit,
+        `"Dish soap thing"` to `"Buy dish soap"`. Fourteen are assertion
+        messages, one of them the interpolated per-sentence message of the
+        single-item receipt loop, and one `"got \\(result.receiptContext)"`.
+        The transcripts that loop captures add nothing, because each is
+        already in this directory, and the doc comments quote in backticks.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -923,7 +935,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4107)
+        self.assertEqual(len(space), 4126)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

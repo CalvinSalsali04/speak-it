@@ -239,8 +239,17 @@ struct CaptureCreationResult {
     /// place reminder waiting on a Home address is blocked by what the *device*
     /// lacks, and reading only the flag is what let a blocked item be announced
     /// as a ready action and be counted twice.
+    ///
+    /// Counted by the function Today builds its Needs review section with
+    /// (`ItemPresentation.needsReviewMembers`), not by a reading of its own:
+    /// "1 to review" used to count a held shopping row that Today filtered out
+    /// of the section, so the person was sent to review something they could
+    /// not find.
     var needsReviewCount: Int {
-        presentations.filter(\.requiresReview).count
+        ItemPresentation.needsReviewMembers(
+            in: items,
+            authorization: LocationReminderMonitor.shared.authorization
+        ).count
     }
 
     /// True only when Speak It is unsure about the meaning of the capture.

@@ -277,16 +277,16 @@ struct TodayView: View {
         }
     }
 
+    /// Built from the predicate the capture receipt counts with
+    /// (`ItemPresentation.needsReviewMembers`), so "1 to review" always names a
+    /// row that is here. Held shopping rows are included; they also stay on
+    /// their list behind the Shopping card.
     private var needsReview: [CapturedItem] {
-        let authorization = locationAuthorization
-        return allItems
-            .filter {
-                ShoppingListProjection.belongsInTopLevelReview(
-                    $0,
-                    authorization: authorization
-                )
-            }
-            .sorted { $0.createdAt > $1.createdAt }
+        ItemPresentation.needsReviewMembers(
+            in: allItems,
+            authorization: locationAuthorization
+        )
+        .sorted { $0.createdAt > $1.createdAt }
     }
 
     private var overdue: [CapturedItem] {
