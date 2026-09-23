@@ -1307,7 +1307,10 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
     def test_nothing_new_suspends_above_the_text_pass_in_a_shipping_build(self):
         """The window between the prune and the text pass already holds the
         audio pass, the one unbounded suspension in the task; a second one
-        there eats the same 12 s margin."""
+        there eats the same 12 s margin. The allowed list is compared exactly,
+        so moving the text pass above the audio pass, which is safer, also
+        fails here: whoever does it updates `ALLOWED_ABOVE_TEXT_PASS` to say
+        so. That is a false alarm by design, not a catch."""
         self.assertEqual(
             self.suspensions_above("repository?.recoverInterruptedCaptureDraft()"),
             self.ALLOWED_ABOVE_TEXT_PASS,
@@ -1317,7 +1320,7 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
             "it had been interrupted. Move the new work below the launch passes.")
 
     def test_there_is_something_to_check(self):
-        """The two tests above already refuse an empty answer: a renamed pass
+        """The tests above already refuse an empty answer: a renamed pass
         has no call site to count, and a filter that blanked the whole task
         would find no `Task.yield()`. This pins the rest of what they assume:
         that the region they read is a real launch task whose maintenance
