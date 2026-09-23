@@ -16,7 +16,11 @@
 #   suite        Tools/CI/unit-tests.sh (the whole unit suite), with a result
 #                bundle whose failing test names are written to a file
 #   release      Tools/CI/release-build.sh
-#   extra        the row's extra command, if any (for example a model run)
+#   extra        the row's extra command, if any (for example a model run),
+#                run with QUALIFICATION_ROW_DIR set to the row's evidence
+#                directory so it can write its results there. Anything the
+#                command leaves under the tree's output/ is copied there too,
+#                because the tree is removed when the row finishes.
 #
 # Every stage is PASS, FAIL or NOT RUN, and NOT RUN always carries the reason.
 # A stage is only NOT RUN when the manifest does not ask for it or a stage it
@@ -240,7 +244,10 @@ for row in "${ROWS[@]}"; do
   if [ "$extra" = "-" ] || [ -z "$extra" ]; then
     extra_r="$(not_run "$dir" extra "none listed")"
   else
-    extra_r="$(cd "$tree" && run_stage "$dir" extra /bin/bash -c "$extra")"
+    extra_r="$(cd "$tree" && run_stage "$dir" extra env QUALIFICATION_ROW_DIR="$dir" /bin/bash -c "$extra")"
+  fi
+  if [ -d "$tree/output" ]; then
+    cp -R "$tree/output" "$dir/tree-output"
   fi
 
   echo "| $label | \`$commit\` | $compile_r | $gate_r | $focused_r | $suite_r | $release_r | $extra_r |" >> "$SUMMARY"

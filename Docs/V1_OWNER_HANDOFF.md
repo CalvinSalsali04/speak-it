@@ -25,11 +25,11 @@ evidence that closed it).
 
 | | |
 |---|---|
-| Commits | `7656ef9` (#116 with #119 on top), `c51842c` (#117), baseline `fbb6f90` (main) |
-| Why a Mac | GitHub's hosted macOS simulator has no `NLTagger` lexical-class model: every token tags `OtherWord`. The whole unit suite and every tagger-dependent assertion can only be answered where the model exists. Hosted dispatches can still settle whether the Swift compiles and whether the Release build passes, and those runs are recorded under *Hosted evidence* below. |
-| Command | `./Tools/CI/v1-qualification.sh` |
-| Expected evidence | `SUMMARY.md`: compile PASS and Release PASS on both PR rows; focused `CaptureFeedbackTests` and `PersonMentionTests` PASS (#117's `testAnAccountIsHeldWithAnInstitutionAndNotWithAPerson` may skip if the tagger reads its brand as a name, and a skip is reported as a skip); whole-suite **NEW failures against the baseline row: 0**; the corpus gate adds no blocking row beyond the baseline's; the `NaturalLanguageEnvironmentTests` readout. From #117's own list: paste `grep entity-frame-comparison pr117/focused.log`. |
-| Later work depends on it | Yes. #116, #119 and #117 cannot be proposed for merge without it, and the readout decides how every tagger-dependent failure is read. |
+| Commits | one manifest row each: baseline `fbb6f90` (main); #116 with #119 `bfc482d`; #117 `c51842c`; #122 alert bell `32453a2`; #123 recovery `216ac33`; #124 edits `3374631`; #125 place `2238b02`; #126 stale save `cae7402` (on #119) |
+| Why a Mac | GitHub's hosted macOS simulator has no `NLTagger` lexical-class model: every token tags `OtherWord`. The whole unit suite and every tagger-dependent assertion can only be answered where the model exists. Hosted dispatches can still settle whether the Swift compiles and whether the Release build passes, and those runs are recorded under *Hosted evidence* below. None of these commits has been through a compiler yet. |
+| Command | `./Tools/CI/v1-qualification.sh` (runs M1 and M2 together) |
+| Expected evidence | `SUMMARY.md`, with PASS on every PR row for compile, Release and the focused class: `CaptureFeedbackTests`, `PersonMentionTests`, `ItemPresentationTests`, `DurabilityTests` and `LocationReminderTests`. #117's `testAnAccountIsHeldWithAnInstitutionAndNotWithAPerson` may skip if the tagger reads its brand as a name; a skip is reported as a skip. The whole suite shows **0 NEW failures against the baseline row**. The corpus gate adds no blocking row beyond the baseline's. Also the `NaturalLanguageEnvironmentTests` readout, and from #117's own list, `grep entity-frame-comparison pr117/focused.log` (six informational lines). |
+| Later work depends on it | Yes. No PR here can be proposed for merge without it, and the readout decides how every tagger-dependent failure is read. |
 | Release blocker | Yes. The frozen commit must compile and build Release. |
 | Status | queued |
 
@@ -37,13 +37,14 @@ evidence that closed it).
 
 | | |
 |---|---|
-| Commit | not yet built: the semantic-map lane (#118) is designing two grounded candidates, and a separate thread is writing the development gold blind |
-| Why a Mac | The on-device model is reachable only on Calvin's Mac (`en_CA`); CI reports `deviceNotEligible`. Recorded outputs are replayed off the Mac with `--replay`, so the Mac is needed for generation only. |
-| Command | added to the manifest's `extra` column when the experiment exists |
-| Expected evidence | one `runs.jsonl` per candidate over the frozen capture list, scored off-Mac on whole semantic-unit recovery |
-| Later work depends on it | The production semantic change does. No other V1 lane does. |
+| Commit | `d79d9fa` on `claude/semantic-map-xklzll` (#118, draft) |
+| Why a Mac | The on-device model needs an Apple Intelligence Mac on macOS 26. The hosted runner compiles Swift but cannot run the model. The probe `Tools/SemanticMap/Sources/UnitsExperiment.swift` has never been compiled; an independent read found one error, fixed before this commit. |
+| Command | the manifest's `semantic-units` row, which runs `./Tools/SemanticMap/UnitsExperiment/run.sh` in a clean worktree at `d79d9fa` and writes into `semantic-units/units-experiment/` |
+| Expected evidence | Every line of `steps.txt` is PASS: clean tree, 9 manifest hashes, inputs regenerate, scorer selftest, precheck, build, model available, generation, score. `availability.txt` shows `available`, with prompt fingerprints ranges `df4c6e25` and labels `71e026b5`. `results.jsonl` has 60 records (30 ranges, 30 labels; RB14C's labels job is skipped as a one-line capture) and holds ids, integers and labels only, no capture text. `precheck.txt` and `score.txt` are present. If the build fails, `build.txt` comes back; a compile fix changes a pinned hash and ships with a MANIFEST update, which is allowed because nothing has been generated. |
+| Cost | 59 local generations. No paid inference, no CI minutes. |
+| Later work depends on it | The choice between the two candidates (or neither), and any arbitration experiment after it. No other V1 lane depends on it. |
 | Release blocker | No by itself. The production change it chooses will be. |
-| Status | pending |
+| Status | queued |
 
 ## Physical iPhone
 

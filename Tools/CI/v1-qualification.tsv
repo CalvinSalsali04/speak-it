@@ -6,5 +6,11 @@
 # about a moved branch is evidence about nothing. Keep this file and
 # Docs/V1_OWNER_HANDOFF.md in step.
 baseline	fbb6f909ad7309491b267256e3291925e2836b0f	-	yes	no	-
-pr116-with-119	7656ef9645cce2dfd0b0d481224dfa330ff89061	SpeakItTests/CaptureFeedbackTests	yes	yes	-
+pr116-with-119	bfc482ddf28d9ed38a3488e354b003b0e06dd294	SpeakItTests/CaptureFeedbackTests	yes	yes	-
 pr117	c51842c966be68e509f519f0689e99a0cc75c9c1	SpeakItTests/PersonMentionTests	yes	yes	-
+pr122-bell	32453a242c39d3f6c6951a50616581481ff0c8a4	SpeakItTests/ItemPresentationTests	yes	yes	-
+pr123-recovery	216ac33fe6b928a0f20bc4073dc90be70c7ae9d0	SpeakItTests/DurabilityTests	yes	yes	-
+pr124-edits	3374631a0a5e5bbc52b6737bef1b810bbb84b09b	SpeakItTests/DurabilityTests	yes	yes	-
+pr126-stale-save	cae7402a657a244b5e2722ecba2c17b111612e88	SpeakItTests/CaptureFeedbackTests	yes	yes	-
+pr125-place	2238b021eaf9d2adb54a390360624a641476254b	SpeakItTests/LocationReminderTests	yes	yes	-
+semantic-units	d79d9fa21aabd03855fdcb330d52b29ed77261fa	-	no	no	./Tools/SemanticMap/UnitsExperiment/run.sh "$QUALIFICATION_ROW_DIR/units-experiment"
