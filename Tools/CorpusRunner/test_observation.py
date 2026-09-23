@@ -874,7 +874,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4074 on 2026-09-23, from
+        `BudgetedWorkTests`: six new literals, all assertion messages,
+        none a fixture, enumerated by diffing the literal sets rather than
+        counted from the tests. 4074 -> 4079 the same day, from the two
+        tests the grade asked for (one model call at a time, and a
+        cancelled capture): five more assertion messages, no fixture.
+        4079 -> 4083 from the second round's two (a capture cancelled
+        mid-call, and the claim deadline): four assertion messages.
+        4083 -> 4085 from the third round: the claimed-path precondition
+        and the takeover being observable, two assertion messages.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +898,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4085)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

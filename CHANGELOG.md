@@ -8,6 +8,9 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- A capture sent to Apple Intelligence for a second reading now waits at
+  most the two-second budget. The old race waited for the model call to
+  finish even after the timer won, so a slow model held the capture.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.
