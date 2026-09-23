@@ -313,7 +313,7 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertEqual(
             ThoughtOrganizer.organize(
                 session.originalTranscription,
-                referenceDate: accountant.createdAt
+                referenceDate: session.createdAt
             ).reminderDelivery,
             .alarm
         )
