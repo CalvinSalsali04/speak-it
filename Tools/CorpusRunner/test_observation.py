@@ -900,7 +900,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `LANGUAGE_BASELINE.md`. 4073 -> 4074 the same day, from the
         sweep reading an explicit every-row set: one assertion message in
         `DurabilityTests`, `"A pass that does not name every row must not
-        cancel an alarm it does not know"`, and none removed. What the test
+        cancel an alarm it does not know"`, and none removed. 4074 ->
+        4072 the same day, from dropping this change's own alarm sweep, which
+        duplicated #127's: two `DurabilityTests` messages go with their
+        tests, that one and `"Relaunch must cancel an alarm that no row asks
+        for"`, and none is added. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -914,7 +918,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4074)
+        self.assertEqual(len(space), 4072)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

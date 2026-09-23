@@ -345,20 +345,9 @@ the same date. Three things are left, and none is verified on a device.
   and foreground reconciliation (`replacesAllSpeakItReminders`) remove it on
   the next open. The seeded identifiers in `CaptureOperationTests` and
   `DurabilityTests` are the per-item form, so no test covers the grouped one.
-- **The relaunch alarm sweep is only exercised through the test recorder.** It
-  lists alarms with `AlarmManager.shared.alarms` (iOS 26) and cancels every id
-  outside `everyItemID`, the set of every row that `reconcilePendingReminders`
-  fetched. Apple documents the getter as returning
-  the alarms that belong to the calling app. Whether that includes an alarm
-  already alerting or snoozed, and what it does without alarm access, is not
-  documented and has not been observed; if it throws, the sweep cancels
-  nothing. On a device: arm an alarm, delete its row with the app killed
-  before any teardown runs (a debugger breakpoint in `delete` does it),
-  relaunch, and confirm the alarm does not ring. The sweep also shares the
-  notification pass's one exposure: a capture from another process that saves
-  its row after this pass fetched and arms its alarm before this pass sweeps
-  would lose that alarm until the next foreground. Nothing observed says this
-  happens; it is read from the order of the code.
+- **The kill window before the synchronous cancel.** A kill after `delete`'s
+  save and before its cancel leaves the alarm armed until the next launch or
+  foreground, where #127's orphan sweep cancels it. Without #127 it would ring.
 - **The recorder sees teardown only.** Arming goes to `AlarmManager` and
   `UNUserNotificationCenter` directly, not through `ReminderDeliverySink`, so a
   test cannot see a pass re-arm something. The post-drain assertions show the

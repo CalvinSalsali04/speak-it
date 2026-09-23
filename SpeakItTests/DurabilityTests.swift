@@ -54,8 +54,7 @@ final class DurabilityTests: XCTestCase {
                     lock.withLock { identifiers.forEach { notifications.remove($0) } }
                 },
                 cancelAlarm: { [self] id in lock.withLock { _ = alarms.remove(id) } },
-                pendingIdentifiers: { [self] in lock.withLock { Array(notifications) } },
-                armedAlarmIDs: { [self] in lock.withLock { Array(alarms) } }
+                pendingIdentifiers: { [self] in lock.withLock { Array(notifications) } }
             )
         }
     }
@@ -346,53 +345,6 @@ final class DurabilityTests: XCTestCase {
         XCTAssertFalse(
             delivery.pendingNotifications.contains(identifier),
             "Relaunch must reconcile away a reminder with no row"
-        )
-    }
-
-    /// The alarm twin of the test above. Relaunch used to reconcile
-    /// notification identifiers only, so an alarm whose row was deleted
-    /// before its queued teardown ran stayed armed for good. Falsifier: remove
-    /// the `cancelOrphanedAlarms` call from `ReminderScheduler.scheduleBatch`
-    /// and the orphan is still armed after relaunch.
-    func testRelaunchDisarmsAnAlarmWhoseRowIsAlreadyGone() async throws {
-        let created = try await capture("Set an alarm for 7 AM to take my pills")
-        let itemID = created.primaryItem.id
-        await drainScheduler()
-
-        // Kill between save and teardown, as in the notification case.
-        container.mainContext.delete(created.primaryItem)
-        try container.mainContext.save()
-        delivery.seedAlarm(itemID)
-
-        await relaunchAndDrain()
-
-        XCTAssertFalse(
-            delivery.scheduledAlarms.contains(itemID),
-            "Relaunch must cancel an alarm that no row asks for"
-        )
-    }
-
-    /// Only a pass that names every row may sweep. Loading sample data
-    /// replaces every notification from a scope of future reminders alone,
-    /// and an alarm still ringing or snoozed past its time belongs to a row
-    /// that scope leaves out, so sweeping there would silence it.
-    /// Falsifier: sweep on `replacesAllSpeakItReminders` instead of
-    /// `everyItemID` and the alarm is cancelled.
-    func testAWholeLibraryPassThatDoesNotNameEveryRowSweepsNoAlarm() async throws {
-        await drainScheduler()
-        let ringing = UUID()
-        delivery.seedAlarm(ringing)
-
-        ReminderScheduler.synchronize(
-            [],
-            requestAuthorizationIfNeeded: false,
-            scope: ReminderSynchronizationScope(replacesAllSpeakItReminders: true)
-        )
-        await drainScheduler()
-
-        XCTAssertTrue(
-            delivery.scheduledAlarms.contains(ringing),
-            "A pass that does not name every row must not cancel an alarm it does not know"
         )
     }
 

@@ -81,8 +81,7 @@ final class CaptureOperationTests: XCTestCase {
                 pendingIdentifiers: { [self] in
                     await waitWhileHeld()
                     return lock.withLock { Array(notifications) }
-                },
-                armedAlarmIDs: { [self] in lock.withLock { Array(alarms) } }
+                }
             )
         }
     }

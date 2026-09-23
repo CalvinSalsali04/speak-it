@@ -32,26 +32,19 @@ was. The queued pass is kept exactly where it was, because it re-cancels
 anything an earlier pass arms after the synchronous call. `split` removes no
 row, so it has nothing to cancel.
 
-**Relaunch now reconciles alarms as well.** AlarmKit can list what is armed
-(`AlarmManager.alarms`, iOS 26), so `ReminderDeliverySink` gained
-`armedAlarmIDs` beside `pendingIdentifiers`. A pass whose scope carries
-`everyItemID`, the id of every row in the store, now cancels any armed alarm
-whose id is outside that set. Only `reconcilePendingReminders` (launch,
-foreground and iCloud apply) passes it, because only it fetches every row.
-What the sweep finds belongs to no row at all; an alarm keyed to a row that is
-open, done or archived is left to the pass's own teardown. The set is kept
-apart from the scope's `itemIDs` and from `replacesAllSpeakItReminders` on
-purpose. Loading sample data (`synchronizeAllReminders`) also replaces every
-notification, but its `itemIDs` names only rows with a future reminder, and an
-alarm still ringing or snoozed past its time belongs to an open row outside
-that set. A sweep keyed to either would silence it.
+**The kill window is healed at relaunch by #127, not here.** A kill after
+the save and before the synchronous cancel still leaves the alarm armed. #127
+(`cancelOrphanedAlarms(accountedFor:)` after `reconcilePendingReminders`)
+cancels every non-alerting AlarmKit alarm whose id names no row, reading the
+rows after the alarm list, so this PR does not add a sweep of its own. A first
+version did, and it duplicated #127's with a weaker design: it swept alerting
+alarms too and read the rows before the list.
 
 The two teardown tests in `CaptureOperationTests` now hold the scheduler queue
 behind a pass that cannot finish, which reproduces the permission prompt
 deterministically, assert straight away, then release, drain and assert again.
 Without the synchronous cancel in `delete` they fail on every run, not
-intermittently. `DurabilityTests.testRelaunchDisarmsAnAlarmWhoseRowIsAlreadyGone`
-covers the sweep. Both test recorders are now locked, because the queued pass
+intermittently. Both test recorders are now locked, because the queued pass
 writes to them off the main actor while the test reads. What is left is in
 `KNOWN_ISSUES.md` under "Removing an item".
 
