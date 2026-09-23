@@ -1303,6 +1303,67 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         description avoids the word `wait` on purpose: a test literal
         carrying it moves the `wait` figures pinned in
         `TheMotivatingFiguresAtTheTopAreRecomputed`.
+        4156 -> 4161 on 2026-09-23, when a voice capture that
+        reuses a typed draft came to get a protected recording (audit D6):
+        four test methods in `DurabilityTests.swift` and five literals,
+        enumerated. Three are assertion messages, `"Today and the launch
+        audio pass must offer the recording"`, `"The text pass must leave a
+        draft with a recording to the audio pass, or one thought is saved
+        twice"` and `"An empty transcript beside a recording is still a
+        capture to recover"`. Two are button titles quoted in the tests' doc
+        comments, `"Speak instead"` and `"Type instead"`, which the
+        extractor reads like any other line. The typed fixture `"Pick up the
+        dry cleaning"` is already counted, and `"Call Dana"` is under the
+        twelve-character floor. 4161 -> 4166 the same day, when words typed
+        before speaking came to be kept ahead of the recovered recording:
+        three test methods in `DurabilityTests.swift` and five literals,
+        enumerated. Three are fixtures, `"about the invoice tomorrow"`, the
+        recognizer's stand-in result, `"Call Dana about the"`, the spoken
+        checkpoint, and `"Call Dana about the invoice tomorrow"`, the joined
+        words. Two are assertion messages, `"The original transcript is what
+        was typed and what was said, in that order"` and `"The recognizer's
+        failure must reach the caller"`. `"No speech detected"` and `"Email
+        Sam"` add nothing: the first is already counted and the second is
+        under the floor. 4166 -> 4182 on 2026-09-23, when review of #144
+        found Type instead keeping a finished run's words, erased typed
+        words coming back with the recording, and Today's save of kept
+        typed words untested: three test methods added and one rewritten,
+        across `CaptureFeedbackTests.swift` and `DurabilityTests.swift`, and
+        sixteen literals, enumerated. Twelve are assertion messages:
+        `"this no longer reproduces the idle state that kept its words"`,
+        `"a finished run has no Live Activity to end"`, `"the spoken words
+        were saved a second time after the editor that already held them"`,
+        `"The recording is still a capture to recover after the editor is
+        emptied"`, `"Erased words were still set aside for recovery"`,
+        `"Recovering the recording brought back the words the person
+        erased"`, `"Deleting the recording saved words the person had
+        erased"`, `"a recording is intended"`, `"The typed words were left
+        to no recovery pass"`, `"The launch must release a kept draft whose
+        words reached a committed session"`, `"The text pass never replayed
+        the kept draft"` and `"Today's save and the launch fallback stored
+        the kept words twice"`. Three are fixtures. One is the spoken
+        words, `"about the invoice"`; the other two are the readings
+        VoiceOver is given for the voice screen, `"Typed: Call Dana"` and
+        `"Typed: Call Dana. about the invoice"`. The sixteenth is the doc-comment hazard again: a
+        falsifier quotes the words that used to come back, `"Call Dana about
+        the invoice"`. `"buy milk"`, `"and eggs"`, `"and bread"` and
+        `"Typed:"` are under the floor, and the button titles the doc
+        comments quote were already counted. The development-set overlap
+        stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        4182 -> 4184 the same day, when the typing fallback after a voice
+        failure came to call `stopForTyping` as "Type instead" does: a
+        `.failed` half added to `testTypeInsteadForgetsTheSpokenWordsInEveryState`,
+        and two literals, both assertion messages, `"this no longer
+        reproduces the failed state the typing fallback reads"` and `"a
+        failed run has no Live Activity left to end"`. The error domain is
+        one word and adds nothing. 4184 stays 4184 the same day, when that
+        test's last assertion was found to be entailed by the one above it
+        (`joined` with an empty second argument returns the first) and was
+        removed: one assertion message out, `"the spoken words were saved a
+        second time after the editor that already held them"`, and one in,
+        `"the transcriber kept words the editor already holds, for the next
+        save to add again"`, now on the empty-transcript assertion that can
+        fail. `"buy milk"`, which went with it, was under the floor.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1449,7 +1510,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #139 into the V1 candidate: measured from the merged tree, not
         taken from either side (4418 on the candidate, 4181 on #139,
         4156 at their merge base; #139 adds 25 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4443 -> 4471 on
+        2026-09-23, merging #144 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4443 on the
+        candidate, 4184 on #144, 4156 at their merge base; #144 adds 28
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1459,7 +1525,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4443)
+        self.assertEqual(len(space), 4471)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
@@ -1761,6 +1827,146 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
         inside = [n for path, n in self.all_posts()
                   if path == self.HOME and first <= n <= last]
         self.assertGreaterEqual(len(inside), 1)
+
+class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
+    """Two launch passes may only run while no capture is under way in this
+    process (Known Issues, "The launch passes rely on ordering").
+
+    After a kill, a draft killed before its first audio buffer is identical in
+    the store to one being recorded right now: `.capturing`, a recording file
+    name, and under 512 bytes on disk. What tells them apart is not persisted,
+    only *when* the pass runs. `pruneEmptyTextDrafts` drops a draft with no
+    words and no recording, which is a live recording before its first buffer;
+    `recoverInterruptedCaptureDraft` commits a draft with words and no
+    recording, which is a live recording that carries typed words. Both are
+    right only because they run in `RootView`'s launch task before the capture
+    screen could have begun a draft, and the review of #144 found that nothing
+    failed if that stopped being true.
+
+    Two facts, then. Each pass has one caller, in the launch task. And the
+    launch task does not suspend above the prune in a shipping build, except
+    for the one `Task.yield()` it has always had, which the capture screen
+    cannot use: it has to be presented, and its own `.task` sleeps 180 ms
+    before it begins a draft. `#if DEBUG` lines are left out, because the
+    example loaders there await before the prune on purpose and Known Issues
+    says so; their `#else` branches are shipping code and are kept.
+
+    Checked here rather than in Swift because no XCTest can run the launch
+    task, and because it is a claim about where source sits, which is what
+    this suite reads on Linux on every pull request.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
+    HOME = pathlib.Path("SpeakIt") / "App" / "RootView.swift"
+    PASSES = ("recoverInterruptedCaptureDraft", "pruneEmptyTextDrafts")
+    #: The one suspension above the prune that the argument above allows.
+    ALLOWED = ["await Task.yield()"]
+
+    @staticmethod
+    def code(line):
+        """The line without a trailing `//` comment; a comment names, it does
+        not call."""
+        return line.split("//", 1)[0]
+
+    def root_view(self):
+        return (self.ROOT / self.HOME).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+
+    def launch_task(self, lines):
+        """(first, last) line indices of the `.task` that holds the
+        once-per-process maintenance guard, braces included."""
+        guards = [i for i, line in enumerate(lines)
+                  if "guard !hasPerformedMaintenance" in self.code(line)]
+        self.assertEqual(len(guards), 1, "expected one maintenance guard")
+        first = next(i for i in range(guards[0], -1, -1)
+                     if self.code(lines[i]).strip() == ".task {")
+        indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
+        last = next(i for i in range(first + 1, len(lines))
+                    if lines[i].rstrip() == indent + "}")
+        return first, last
+
+    def shipping(self, lines):
+        """`lines` with every line only a DEBUG build compiles blanked out."""
+        kept, stack = [], []
+        for line in lines:
+            directive = line.strip()
+            if directive.startswith("#if"):
+                stack.append(directive == "#if DEBUG")
+                kept.append("")
+                continue
+            if directive.startswith(("#else", "#elseif")) and stack:
+                stack[-1] = False
+                kept.append("")
+                continue
+            if directive.startswith("#endif") and stack:
+                stack.pop()
+                kept.append("")
+                continue
+            kept.append("" if any(stack) else line)
+        return kept
+
+    def test_each_pass_has_one_caller_and_it_is_the_launch_task(self):
+        lines = self.root_view()
+        first, last = self.launch_task(lines)
+        for name in self.PASSES:
+            use = re.compile(r"\b" + name + r"\b")
+            sites = []
+            for top in self.SOURCES:
+                for swift in sorted((self.ROOT / top).rglob("*.swift")):
+                    for number, line in enumerate(
+                            swift.read_text(encoding="utf-8",
+                                            errors="replace").splitlines(), 1):
+                        code = self.code(line)
+                        if use.search(code) and "func " + name not in code:
+                            sites.append((swift.relative_to(self.ROOT), number))
+            self.assertEqual(
+                len(sites), 1,
+                f"`{name}` is used at {sites}. A second caller can run while a "
+                "capture is being recorded, and a live recording is "
+                "indistinguishable in the store from an interrupted one.")
+            path, number = sites[0]
+            self.assertEqual(path, self.HOME)
+            self.assertTrue(
+                first < number - 1 < last,
+                f"`{name}` is called at RootView.swift:{number}, outside the "
+                "launch task, where a capture may already be under way.")
+
+    def test_nothing_suspends_above_the_prune_in_a_shipping_build(self):
+        lines = self.root_view()
+        first, last = self.launch_task(lines)
+        prune = [i for i in range(first, last)
+                 if "CaptureDraftStore.pruneEmptyTextDrafts()" in self.code(lines[i])]
+        self.assertEqual(len(prune), 1)
+        above = self.shipping(lines[first:prune[0]])
+        suspending = [self.code(line).strip() for line in above
+                      if re.search(r"\bawait\b", self.code(line))]
+        self.assertEqual(
+            suspending, self.ALLOWED,
+            "the launch task suspends before `pruneEmptyTextDrafts()`, so the "
+            "capture screen can begin a recording first and the prune can "
+            "delete it before its first buffer lands. Move the new work below "
+            "the launch passes.")
+
+    def test_there_is_something_to_check(self):
+        """The two tests above already refuse an empty answer: a renamed pass
+        has no call site to count, and a filter that blanked the whole task
+        would find no `Task.yield()`. This pins the rest of what they assume:
+        that the region they read is a real launch task whose maintenance
+        guard is shipping code, and that the passes are still declared under
+        the names this class reads."""
+        lines = self.root_view()
+        first, last = self.launch_task(lines)
+        self.assertGreater(last - first, 10)
+        body = self.shipping(lines[first:last])
+        self.assertIn("guard !hasPerformedMaintenance else { return }",
+                      [line.strip() for line in body])
+        store = (self.ROOT / "SpeakIt" / "Features" / "Capture"
+                 / "CaptureDraftStore.swift").read_text(encoding="utf-8")
+        self.assertIn("static func pruneEmptyTextDrafts()", store)
+        repository = (self.ROOT / "SpeakIt" / "Repositories"
+                      / "SwiftDataThoughtRepository.swift").read_text(encoding="utf-8")
+        self.assertIn("func recoverInterruptedCaptureDraft()", repository)
 
 
 if __name__ == "__main__":

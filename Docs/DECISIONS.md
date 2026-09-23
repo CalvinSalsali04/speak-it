@@ -1154,6 +1154,156 @@ captures stay, and a screen that is still up says so. An attempt that is already
 gone is a no-op, not a failure. `deleteCapture` is for a replacement the person asked for, and
 nothing else calls it.
 
+## 2026-09-23 — A draft's recording follows how it is being captured now
+
+A voice capture that reused a typed draft had no protected recording. Whether
+a draft may record was decided once, in `CaptureDraftStore.begin`, from the
+source it began with, and `updateSource` never revisited it. The capture
+screen keeps one draft across "Speak instead" and "Type instead", so speaking
+into a draft that began as typing asked `prepareAudioURL` for a file the draft
+did not have, got nil, and the recognizer recorded nothing to protect. A call
+or a failed recognizer then fell back to typing instead of "Recovering your
+words…", and a kill kept only the last partial transcript checkpointed, or
+nothing spoken at all if it came before the first.
+The same happened after every typed save that asked for clarification: the
+save emptied the editor, the empty editor's checkpoint began a fresh typed
+draft 220 ms later, and "Try saying it again" recorded into it, dated from the
+save rather than from the recording. (Audit `v1/audits/capture-lifecycle.md`,
+D6.)
+
+- **Protection is asked again whenever the source changes.**
+  `CaptureDraftStore.recordsProtectedAudio(for:)` is the one rule (every source
+  except in-app typing), and `begin` and `updateSource` both ask it. Moving a
+  draft to a source that records gives it its file, under the same
+  deterministic name `deleteRecording` removes by. A draft that began as
+  typing and is then spoken into is protected exactly like one that began as
+  speech, and the in-screen failure, the launch audio pass and Today's
+  recovery treat it the same way.
+- **Moving back to typing never removes a recording.** One made before "Type
+  instead" can hold the only copy of spoken words.
+- **An empty checkpoint never begins a draft.**
+  `CaptureDraftStore.shouldCheckpoint(_:hasActiveDraft:)`: words always
+  checkpoint, and empty text only updates a draft that already exists. After
+  a typed save there is no draft until the retry begins its own, as a voice
+  draft, dated from the recording. The screen also no longer leaves an empty
+  draft behind after every typed save.
+
+**Words typed before speaking are kept, ahead of what is said.** Protecting
+the recording first made it win: the audio passes saved only what the
+recording said, so words typed before "Speak instead" were lost on exactly the
+path that used to keep them. (Only sometimes kept, even then: the first spoken
+checkpoint overwrote the draft's text, and a live voice save dropped the
+editor's words every time.) A capture's words are now what was typed, then
+what was said, in one `CaptureSession`, whichever path saves them.
+
+- **The draft sets the typed words aside.** On the switch from typing to a
+  recording source, `updateSource` (or `begin`, for a new draft) stores the
+  editor's words as `typedBeforeSpeaking`, an optional field, so drafts from
+  earlier builds decode as spoken from the start. It is replaced, not added
+  to, on each switch: the editor already holds anything earlier, and words the
+  person erased stay erased.
+- **Every save of spoken words joins them after it.**
+  `CaptureDraftStore.joined(typedBeforeSpeaking:spoken:)` and
+  `words(for:spoken:)`: a single space, nothing deduplicated, since a
+  duplicate can be edited and a lost word cannot.
+  - `CaptureAudioRecovery.transcribe(_:)` returns the joined words, so the
+    launch audio pass and Today's recovery save both without changes.
+  - The capture screen still holds the typed words in its editor while
+    speaking. Its `save`, its checkpoints and its flush on leaving join them
+    there. In-screen recovery reads the recording alone
+    (`transcribeRecording(of:)`) and goes through that `save`.
+  - Recovery that outlives the screen joins them on the draft
+    (`leaveRecoveredWordsForToday`).
+  - "Type instead", the typing fallback and the paywall put the typed words
+    and what was said in the editor, rather than what was said alone.
+- **A live voice save keeps them too.** This is a behaviour change. After
+  "Speak instead", the saved thought now begins with what was typed. Saving
+  only the speech would make an interrupted capture store different words
+  from an uninterrupted one, and the rule forbids either silently replacing
+  the other.
+- **The voice screen shows them.** Decided after review of #144: a save that
+  stores words the screen never showed reads as a bug. While the voice screen
+  is up, the editor's words sit above the live transcript in
+  `SpeakItTypography.sectionDetail` and `Color.speakMuted`, the quieter style
+  the screen already uses for its subtitle, so the speech stays the main
+  line. They are joined exactly as `save` joins them, so the screen shows what
+  will be stored. At most three lines, truncated at the start: the last words
+  typed are the ones the speech continues, and the box still follows the
+  newest speech. VoiceOver reads them as part of the live transcription,
+  marked "Typed:", because the style is the only thing telling them apart and
+  a listener cannot see it (`CaptureVoiceTranscriptAccessibility`). Nothing
+  is added when nothing was typed. Rejected: a caption or a control to drop
+  the typed words from the voice screen. Type instead already edits them, and
+  the screen is kept to the orb, the words and one way out.
+- **Erasing the editor erases them from the draft.** A checkpoint that
+  empties a draft's transcript also clears `typedBeforeSpeaking`
+  (`CaptureDraftStore.update`). The screen checkpoints typed and spoken words
+  together, so an empty checkpoint means the person erased everything, and a
+  draft whose recording survived that must not bring the erased words back in
+  front of it when it is recovered. Before this only a later switch to
+  speaking replaced them, so typing, speaking, Type instead, select all,
+  delete and leaving brought them back.
+- **A failed recording keeps the typed words listed.** The draft stays on
+  Today with its words. "Type it" starts from the typed words, because saving
+  a reconstruction deletes the recording. Delete removes the recording and
+  keeps the typed words (`deleteRecordingKeepingTypedWords`): Today saves them
+  at once as their own thought (`commitKeptTypedWords`), and the launch text
+  pass saves them if it cannot. Words recognized from the deleted recording
+  are not kept, because they are the recording. The two saves cannot both
+  store them, for two reasons that are tested separately. A kill after
+  Today's commit leaves the kept draft naming a committed session, and the
+  launch releases it before the text pass runs. A replay the handoff did not
+  stop commits as typing under the recording's start time, as Today does, so
+  the in-app deduplication window returns the stored session. Delete shows
+  one notice: the save's, or "Recording deleted" when nothing typed was kept
+  or storage is unavailable.
+- **A handed-over transcript is released, in every state.** Once "Type
+  instead" or the typing fallback has moved a run's words into the editor,
+  the transcriber forgets them (`releaseTranscript`). Otherwise a later "Type
+  instead" or Save & Close would read them again and, now that words are
+  joined, add them twice. "Type instead" first skipped this when the
+  transcriber was already idle, which is where a finished run whose save
+  returned early leaves its final words. `SpeechTranscriber.stopForTyping`
+  now makes the whole decision for both ways to typing and releases in every
+  state; no branch leaves a run open, so the release never declines.
+
+Rejected: beginning a second, voice-only draft for the recording beside the
+typed one. Both would be replayed after a kill, as two captures of one
+thought, and the typed one after a successful voice save as well, unless
+every save learned to retire a sibling draft. Also rejected: saving the typed
+words alone when recognition fails. The recording can still be read later,
+and its words would then arrive as a second capture without the first half
+of the sentence. What remains open is in Known Issues, "Typed edits made
+after a recording lose to the recording".
+
+Also rejected, after review: telling the launch text pass to leave alone any
+draft that *intends* a recording (`recoveryAudioFilename != nil`), rather than
+one whose recording is already on disk (`hasRecoveryAudio`, more than 512
+bytes). The aim was a wider margin against the text pass claiming a live
+recording's typed words. But a draft from every source but typing carries a
+file name, from `begin` or from the switch to speaking
+(`recordsProtectedAudio(for:)` is `source != .inAppText`), so a draft
+killed before its first audio buffer, or one whose recording never reached
+disk, would be left to neither pass: kept by the launch prune because it has
+words, and saved by nothing. Typed words ahead of a recording that never
+started are the whole capture in that case.
+`testTypedWordsSurviveAKillBeforeTheRecordingHasAudio` names the rejected
+line as its falsifier, and the margin that remains is in Known Issues, "The
+launch passes rely on ordering".
+
+Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
+take a call; expect "Recovering your words…", not the typing fallback. Then a
+typed save that asks for clarification, Try saying it again, speak, and
+interrupt the same way; expect recovery. Force-quitting instead of taking the
+call, the next launch should save the typed word and the spoken words as one
+thought, or list the recording on Today if recognition fails; then "Type it"
+should open with the typed word, and Delete should save it as a thought,
+with one notice. On the voice screen after Speak instead, the typed word
+should sit above the speech in the muted style, in light and dark, at the
+largest accessibility text size, and with a paragraph typed (three lines,
+starting with an ellipsis); VoiceOver should read it as "Typed:" within the
+live transcription.
+
 ## 2026-09-23 — A save belongs to the capture screen that started it
 
 A save's Task outlives its screen, and it used to publish into whatever was on

@@ -659,6 +659,40 @@ final class SpeechTranscriber: ObservableObject {
         state = .idle
     }
 
+    /// Forgets the words of a run that has already ended, once the screen has
+    /// moved them into its editor. `resetAfterFailure` keeps them so they can
+    /// be read first; left there afterwards, a later "Type instead" or Save &
+    /// Close read them again and added them a second time. Nothing else is
+    /// reset: whether audio was heard still decides if a recording is kept.
+    func releaseTranscript() {
+        guard activeRunID == nil else { return }
+        transcript = ""
+    }
+
+    /// "Type instead", or the typing fallback after voice fails, once the
+    /// screen has moved the words into its editor. Stops a run that is
+    /// starting or listening, settles any other state, and forgets the words
+    /// in every one of them. Returns whether a run was cancelled, so the
+    /// caller can end its Live Activity.
+    ///
+    /// The words are forgotten even when the transcriber is already `.idle`:
+    /// a finished run leaves its final words there for the save it hands them
+    /// to, and a save that returned early leaves them behind. Kept, the next
+    /// Save & Close read them again and added them after the editor, which
+    /// already held them. Every branch leaves no run open, so
+    /// `releaseTranscript` never declines here.
+    @discardableResult
+    func stopForTyping() -> Bool {
+        let wasStartingOrListening = state == .requestingPermission || isListening
+        if wasStartingOrListening {
+            cancel()
+        } else if state != .idle {
+            resetAfterFailure()
+        }
+        releaseTranscript()
+        return wasStartingOrListening
+    }
+
     private func markAudioInputReady(startID: UUID) {
         guard state == .requestingPermission, activeStartID == startID else { return }
         audioInputReadyTimeout?.cancel()
@@ -1411,15 +1445,43 @@ enum CaptureAudioRecovery {
         case failed(Error)
     }
 
+    /// The draft's words, as a save of them should store them: anything
+    /// typed before the recording started, then what the recording says
+    /// (`CaptureDraftStore.words(for:spoken:)`). Every recovery that saves a
+    /// draft by itself uses this, so a typed beginning is not replaced by the
+    /// recording (audit D6). The capture screen, which still holds the typed
+    /// words in its editor, uses `transcribeRecording(of:)` and joins them
+    /// in `save` instead.
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
-        try await transcribe(draft, reading: transcribeAudio(at:))
+        try await transcribe(draft, reading: { url in
+            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        })
     }
 
-    /// `transcribe(_:)` with the recognition pass supplied, so the handling
-    /// around it can be tested without a recognizer. Production passes
-    /// `transcribeAudio(at:)` and nothing else.
+    /// `transcribe` with the recognizer supplied, so the joining can be
+    /// tested without one.
     static func transcribe(
         _ draft: CaptureDraftStore.Draft,
+        reading read: (URL) async throws -> String
+    ) async throws -> String {
+        let spoken = try await transcribeRecording(of: draft, reading: read)
+        return CaptureDraftStore.words(for: draft, spoken: spoken)
+    }
+
+    /// What the draft's recording says, and nothing else.
+    static func transcribeRecording(of draft: CaptureDraftStore.Draft) async throws -> String {
+        try await transcribeRecording(of: draft, reading: { url in
+            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        })
+    }
+
+    /// `transcribeRecording(of:)` with the recognition pass supplied, so the
+    /// handling around it can be tested without a recognizer. Production
+    /// passes `transcribeAudio(at:)` and nothing else. An incomplete pass
+    /// keeps the words it read on the draft here, whichever of the entry
+    /// points above reached it.
+    static func transcribeRecording(
+        of draft: CaptureDraftStore.Draft,
         reading read: (URL) async throws -> String
     ) async throws -> String {
         guard let url = await CaptureDraftStore.audioURL(for: draft),
@@ -1433,7 +1495,11 @@ enum CaptureAudioRecovery {
             // beside the recording, which is untouched and stays retryable.
             // Stored is not shown: the capture screen offers them when it
             // switches to typing (`wordsToOffer`), but Today's row shows only
-            // the failure kind and its Type Instead sheet starts empty.
+            // the failure kind, and its Type Instead sheet starts from the
+            // words typed before speaking (`typeInsteadStartingText`), never
+            // from these. They are the spoken words alone, because the screen
+            // compares them with the live recognizer's and joins what it
+            // offers after the editor's typed words.
             if let partial = partialTranscript(in: error) {
                 await CaptureDraftStore.keepRecoveredWords(partial, id: draft.id)
             }
