@@ -732,11 +732,18 @@ extension CaptureRecoveryFailureKind {
     /// A recording the recognizer read but found no words in is not "ready to
     /// recover" — retrying is allowed, but the interface must stop implying it
     /// is expected to work.
+    ///
+    /// Every kind is named, with no `default:`, so a new kind does not compile
+    /// until someone decides whether it still promises recovery. The two
+    /// partial kinds keep the promise on purpose: words were read, so another
+    /// attempt can finish the recording.
     var stopsPromisingRecovery: Bool {
         switch self {
         case .noSpeechDetected, .missingRecording, .onDeviceRecognitionUnavailable:
             true
-        default:
+        case .permissionRequired, .recognizerUnavailable, .timedOut,
+             .timedOutAfterPartial, .stoppedAfterPartial, .cancelled,
+             .storageUnavailable, .unknown:
             false
         }
     }

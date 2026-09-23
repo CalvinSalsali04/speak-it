@@ -260,6 +260,7 @@ the stated clock when the row has one (seconds zero, as the snap does) and
 from the previous instant otherwise, so a row with no intent behaves exactly
 as before. Found by the grade of #133, where it first appeared as a wrinkle of
 repeating alarms; it predates them and moves notifications too.
+
 ## 2026-09-23 — A single spoken cancel holds on a knowledge row instead of deleting it (DEL-26)
 
 Found in review of #150 (DEL-25). The single-target search refuses rows in
@@ -2659,7 +2660,19 @@ so they are fixed in a candidate commit rather than on #148:
   per-install id. For the same reason the quality sample is not sent there
   either, and no VoiceOver-gated branch may send analytics. An empty Finish
   with recorded audio still recovers it, and that recovery reports as any
-  other `live_audio` recovery does.
+  other `live_audio` recovery does. That claim covers events only.
+  `capture_ready_ms` is sent raw, not bucketed, and its window includes the
+  VoiceOver "Listening" cue: `SpeechTranscriber.start` awaits
+  `waitUntilMicrophoneMayOpen(cue:)` before `audioEngine.start()`, a wait
+  that returns at once with VoiceOver off. So its magnitude may correlate
+  with VoiceOver use, on every capture, against the per-install id. The
+  ordering is proved by reading the source; the magnitude is inferred and
+  is a device measurement in the handoff (Known Issues, "VoiceOver use is
+  kept out of analytics events, not out of one timing"). The ending each
+  call site passes is pinned by `AVoiceOverGatedBranchSendsNoAnalytics` in
+  `Tools/CorpusRunner/test_observation.py`, which reads `CaptureView.swift`
+  and fails if `.finishedByPerson` is passed outside the VoiceOver gate,
+  `.noSpeechTimeout` inside one, or any analytics call sits in a gate.
 - `transcribe(_:)` now delegates to `transcribe(_:reading:)` with the real
   recognizer, and `transcribeReportingEnding` does too, so there is one
   typed-and-spoken join and the tests reach it. The text is unchanged.

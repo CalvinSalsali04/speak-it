@@ -2483,5 +2483,234 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
         self.assertIn("func recoverInterruptedCaptureDraft()", repository)
 
 
+class AVoiceOverGatedBranchSendsNoAnalytics(unittest.TestCase):
+    """A branch that runs only while VoiceOver is on must send no analytics
+    event, because any event of its own says "VoiceOver is on" against a
+    per-install id (DECISIONS, #148's "Rehearsal-2 follow-up").
+
+    `CaptureWordlessEnding.analyticsEvents(quality:)` makes the decision and
+    a Swift test drives it, but the ending is an argument: the capture
+    screen's VoiceOver-gated finish passes `.finishedByPerson`, which sends
+    nothing, and `armNoSpeechTimeout` passes `.noSpeechTimeout`, which sends
+    `capture_failed(speech)` and a quality sample. Swap the two and every
+    Swift test still passes (diagnostics follow-up grade, "The gap"). So this
+    reads `CaptureView.swift` and checks three facts:
+
+    - the one place `.finishedByPerson` is passed is inside a
+      VoiceOver-gated branch;
+    - `.noSpeechTimeout` is passed only from `armNoSpeechTimeout`, and never
+      from inside a VoiceOver-gated branch;
+    - nothing inside a VoiceOver-gated branch calls `SpeakItAnalytics` or
+      `analyticsEvents(` directly.
+
+    A gate is an `if` or `guard` whose condition names
+    `accessibilityVoiceOverEnabled`. An `if` gates its whole chain, `else`
+    branches included, since an event sent only when VoiceOver is *off* is
+    the same flag read the other way. A `guard` gates the rest of the block
+    it sits in. Any other use of the flag is refused until it is listed in
+    `NOT_GATES` or taught here, so a new shape cannot slip past unread. What
+    this cannot see is a property derived from the flag, such as
+    `requiresExplicitSavedConfirmation`, which the grade walked and found
+    silent; and it checks where the analytics call sits, not the timing
+    `capture_ready_ms` carries (Known Issues, "VoiceOver use is kept out of
+    analytics events, not out of one timing").
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
+    HOME = pathlib.Path("SpeakIt") / "Features" / "Capture" / "CaptureView.swift"
+    FLAG = re.compile(r"\baccessibilityVoiceOverEnabled\b")
+    #: Uses of the flag that are not a branch, as their stripped source line.
+    NOT_GATES = (
+        "@Environment(\\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled",
+        "!autoDismissesSingleItemConfirmation || accessibilityVoiceOverEnabled",
+    )
+    FINISHED = re.compile(r"\.finishedByPerson\b")
+    TIMEOUT = re.compile(r"\.noSpeechTimeout\b")
+    ANALYTICS = re.compile(r"\bSpeakItAnalytics\b|\banalyticsEvents\s*\(")
+    #: String literals and comments, in one left-to-right pass, so a brace or
+    #: a name inside either is not read as code.
+    NOT_CODE = re.compile(
+        r'"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*[\s\S]*?\*/')
+
+    @classmethod
+    def code(cls, text):
+        """`text` with every string literal and comment blanked, newlines
+        kept, so offsets and line numbers still match the file."""
+        return cls.NOT_CODE.sub(
+            lambda found: re.sub(r"[^\n]", " ", found.group(0)), text)
+
+    @staticmethod
+    def closing(code, opening):
+        """The offset of the `}` that closes the `{` at `opening`."""
+        depth = 0
+        for index in range(opening, len(code)):
+            if code[index] == "{":
+                depth += 1
+            elif code[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    return index
+        raise AssertionError(f"unbalanced brace at offset {opening}")
+
+    @staticmethod
+    def enclosing(code, offset):
+        """The offset of the `{` that opens the block holding `offset`."""
+        depth = 0
+        for index in range(offset - 1, -1, -1):
+            if code[index] == "}":
+                depth += 1
+            elif code[index] == "{":
+                if depth == 0:
+                    return index
+                depth -= 1
+        raise AssertionError(f"no block encloses offset {offset}")
+
+    def gates(self, code):
+        """(start, end) offsets of every VoiceOver-gated region, and the
+        stripped lines of any use of the flag this class cannot classify."""
+        regions, unknown = [], []
+        for found in self.FLAG.finditer(code):
+            start = code.rfind("\n", 0, found.start()) + 1
+            end = code.find("\n", found.start())
+            line = code[start:end if end != -1 else len(code)].strip()
+            if line in self.NOT_GATES:
+                continue
+            if re.match(r"(\}\s*else\s+)?if\b", line):
+                last = self.closing(code, code.index("{", found.end()))
+                while re.match(r"\s*else\b", code[last + 1:]):
+                    last = self.closing(code, code.index("{", last + 1))
+                regions.append((start, last))
+            elif re.match(r"guard\b", line):
+                regions.append((start, self.closing(
+                    code, self.enclosing(code, found.start()))))
+            else:
+                unknown.append(line)
+        return regions, unknown
+
+    def violations(self, text):
+        """Every way `text`, a copy of the capture screen, breaks the rule.
+        Empty when it keeps it."""
+        code = self.code(text)
+        regions, unknown = self.gates(code)
+        problems = [f"unclassified use of the VoiceOver flag: {line!r}"
+                    for line in unknown]
+        gated = lambda offset: any(a <= offset <= b for a, b in regions)
+        line_of = lambda offset: code.count("\n", 0, offset) + 1
+        uses = lambda pattern: [
+            found.start() for found in pattern.finditer(code)
+            if not code[code.rfind("\n", 0, found.start()) + 1:found.start()]
+            .strip().startswith("case")]
+
+        finished = uses(self.FINISHED)
+        if len(finished) != 1:
+            problems.append(f"`.finishedByPerson` passed {len(finished)} times, "
+                            f"at lines {[line_of(o) for o in finished]}; expected once")
+        problems += [f"`.finishedByPerson` passed outside a VoiceOver gate at "
+                     f"line {line_of(o)}" for o in finished if not gated(o)]
+
+        declared = re.search(r"func armNoSpeechTimeout\(\)[^{]*\{", code)
+        timer = ((declared.end() - 1, self.closing(code, declared.end() - 1))
+                 if declared else (-1, -1))
+        timeout = uses(self.TIMEOUT)
+        if not timeout:
+            problems.append("`.noSpeechTimeout` is passed nowhere")
+        for offset in timeout:
+            if gated(offset):
+                problems.append(f"`.noSpeechTimeout` passed inside a VoiceOver "
+                                f"gate at line {line_of(offset)}")
+            if not timer[0] < offset < timer[1]:
+                problems.append(f"`.noSpeechTimeout` passed outside "
+                                f"`armNoSpeechTimeout` at line {line_of(offset)}")
+
+        problems += [f"analytics call inside a VoiceOver gate at line "
+                     f"{line_of(found.start())}"
+                     for found in self.ANALYTICS.finditer(code)
+                     if gated(found.start())]
+        return problems
+
+    def capture_view(self):
+        return (self.ROOT / self.HOME).read_text(encoding="utf-8", errors="replace")
+
+    def test_the_capture_screen_keeps_every_gate_silent(self):
+        self.assertEqual(
+            self.violations(self.capture_view()), [],
+            "a VoiceOver-gated branch in CaptureView.swift can now send "
+            "analytics, which says \"VoiceOver is on\" against a per-install id")
+
+    def test_neither_ending_is_passed_anywhere_else(self):
+        """`CaptureWordlessEnding` is internal, so another file could pass an
+        ending without this class reading it. Test targets are not scanned:
+        they drive the decision directly, which is what they are for."""
+        elsewhere = []
+        for top in self.SOURCES:
+            for swift in sorted((self.ROOT / top).rglob("*.swift")):
+                if swift.relative_to(self.ROOT) == self.HOME:
+                    continue
+                code = self.code(swift.read_text(encoding="utf-8", errors="replace"))
+                if self.FINISHED.search(code) or self.TIMEOUT.search(code):
+                    elsewhere.append(swift.relative_to(self.ROOT))
+        self.assertEqual(elsewhere, [])
+
+    def test_swapping_the_two_endings_is_caught(self):
+        """The planted swap the grade describes: both call sites exchange
+        their argument. Each one must be reported."""
+        text = self.capture_view()
+        swapped = (text.replace("endAttemptWithoutWords(.finishedByPerson)", "\0")
+                   .replace("endAttemptWithoutWords(.noSpeechTimeout)",
+                            "endAttemptWithoutWords(.finishedByPerson)")
+                   .replace("\0", "endAttemptWithoutWords(.noSpeechTimeout)"))
+        self.assertNotEqual(swapped, text)
+        problems = self.violations(swapped)
+        self.assertTrue(any("`.finishedByPerson` passed outside" in p for p in problems),
+                        problems)
+        self.assertTrue(any("`.noSpeechTimeout` passed inside" in p for p in problems),
+                        problems)
+
+    def test_the_scan_reads_each_gate_shape(self):
+        """Falsifiers for the scan itself, on small sources: an event in an
+        `if` gate, in its `else`, and after a `guard` gate is each caught; the
+        same event outside any gate, or in a comment or a string, is not; an
+        unlisted use of the flag is refused."""
+        def reads(body):
+            return self.violations(
+                "func f() {\n" + body + "\n}\n"
+                "func g() { endAttemptWithoutWords(.finishedByPerson) }\n"
+                "private func armNoSpeechTimeout() {\n"
+                "    endAttemptWithoutWords(.noSpeechTimeout)\n}\n")
+        track = "SpeakItAnalytics.track(.x)"
+        self.assertEqual(reads(track), ["`.finishedByPerson` passed outside a "
+                                        "VoiceOver gate at line 4"])
+        gate = "if accessibilityVoiceOverEnabled {\n  endAttemptWithoutWords(.finishedByPerson)\n"
+        clean = lambda body: self.violations(
+            "func f() {\n" + body + "\n}\n"
+            "private func armNoSpeechTimeout() {\n"
+            "    endAttemptWithoutWords(.noSpeechTimeout)\n}\n")
+        self.assertEqual(clean(gate + "}\n" + track), [])
+        self.assertEqual(clean(gate + "  // " + track + "\n  let s = \"" + track + "\"\n}"), [])
+        self.assertEqual(len(clean(gate + "  " + track + "\n}")), 1)
+        self.assertEqual(len(clean(gate + "} else {\n  " + track + "\n}")), 1)
+        self.assertEqual(len(clean(
+            "guard accessibilityVoiceOverEnabled else { return }\n"
+            "endAttemptWithoutWords(.finishedByPerson)\n" + track)), 1)
+        self.assertEqual(len(clean(gate + "}\nlet v = accessibilityVoiceOverEnabled")), 1)
+
+    def test_there_is_something_to_check(self):
+        """The screen still has the gates and the calls this class reads: the
+        empty-finish gate and the listening-haptic `guard`, and analytics
+        still sent through `SpeakItAnalytics.track`."""
+        text = self.capture_view()
+        code = self.code(text)
+        regions, _ = self.gates(code)
+        self.assertGreaterEqual(len(regions), 2)
+        self.assertIn("endAttemptWithoutWords(.finishedByPerson)", code)
+        self.assertIn("endAttemptWithoutWords(.noSpeechTimeout)", code)
+        self.assertIn("SpeakItAnalytics.track(", code)
+        service = (self.ROOT / "SpeakIt" / "App" / "AnalyticsService.swift").read_text(
+            encoding="utf-8")
+        self.assertIn("enum SpeakItAnalytics {", service)
+        self.assertIn("static func track(_ event: SpeakItAnalyticsEvent)", service)
+
+
 if __name__ == "__main__":
     unittest.main()

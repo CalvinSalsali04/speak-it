@@ -104,6 +104,26 @@ things remain outside that rule, and none of them is verified on hardware:
 
 Audit `v1/audits/accessibility.md`, D-3, D-4 and D-16.
 
+## VoiceOver use is kept out of analytics events, not out of one timing
+
+*2026-09-23.* No VoiceOver-gated branch sends an analytics event
+(`AVoiceOverGatedBranchSendsNoAnalytics` in
+`Tools/CorpusRunner/test_observation.py` checks the capture screen). Two
+things follow from that rule and neither is resolved:
+
+- **`capture_ready_ms` can still carry VoiceOver use.** It is sent raw, and
+  its window includes the "Listening" cue: `SpeechTranscriber.start` awaits
+  `waitUntilMicrophoneMayOpen(cue:)` before `audioEngine.start()`, and that
+  wait returns at once with VoiceOver off. So a VoiceOver install's timing
+  may run consistently longer, on every capture, against its per-install id.
+  The ordering is proved by reading; how large the difference is has not
+  been measured. The handoff asks for that measurement on device and a
+  decision on bucketing the value.
+- **The VoiceOver finish is unmeasurable by design.** Finishing an empty
+  recording with VoiceOver on sends nothing, so how often VoiceOver users end
+  a capture with no words is not in the data and cannot be. That question
+  belongs to device QA and the owner handoff.
+
 ## A held row arms nothing, and four edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or
