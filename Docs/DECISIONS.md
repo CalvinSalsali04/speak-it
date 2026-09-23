@@ -1,5 +1,47 @@
 # Decisions
 
+## 2026-09-23 — A single spoken cancel holds on a knowledge row instead of deleting it (DEL-26)
+
+Found in review of #150 (DEL-25). The single-target search refuses rows in
+Memory (`CaptureTargetMatcher.candidates` asks `belongsInMemory`), and
+`belongsInMemory` is false for a row that needs clarification. So a
+knowledge row held in Needs review is still searched: the `.unclear` safety
+row the extractor writes for reported speech or a point it cannot identify,
+or a note waiting on a question. As the one match of "stop reminding me
+about the landlord" it went straight to `delete`, and `delete` removes the
+capture and its original transcript with its last row. The same harm as
+DEL-25, on the sibling path.
+
+**Producible from speech, by reading.** Tier 1 of the cancel patterns takes
+any object phrase: `stop reminding me about X`, `never mind X`, `forget
+about X`, `don't remind me about X`. The gating corpus already pins "Stop
+reminding me about the gym" and "Never mind the milk" as `.cancel` with
+targets "gym" and "milk", and the new tests use those frames with a
+different noun. A leading "cancel" is the one frame that does not reach
+"the lease": `cancelsAnArrangement` reads "lease" as an arrangement and
+files the sentence as an errand. Not run here (no Swift toolchain); the new
+tests drive the rules path when the suite runs.
+
+**The change.** The row stays searchable, and when the one match is not
+`isActionKind` the request is held, beside the existing `awaitsOrganization`
+hold: `holdOperation` keeps the capture as a Needs review row and the
+outcome is `.ambiguous` naming that row. Nothing is deleted, completed or
+moved without the person, and the request is not dropped. Excluding such
+rows from the search instead was rejected: with no match the request reports
+nothing found and its words become a new errand, which silently drops what
+the person asked. It applies to complete and reschedule as well as cancel,
+since the rows it reaches are only knowledge rows held for review.
+
+**Hypothesis.** A single-target cancel, complete or move acts without the
+person only on a row that is `isActionKind`. A knowledge row held for review
+that is the one match is held, with the row and its transcript intact.
+
+**Falsifier.** `testASingleTargetCancelHoldsAReportedSpeechRowHeldForReview`
+or `testASingleTargetCancelHoldsANoteHeldForReview` reporting `.performed`,
+losing the row or its transcript, or leaving no review row for the request;
+or `testASingleTargetCancelStillActsOnAnActionRow` no longer cancelling the
+one action row in the same frame.
+
 ## 2026-09-23 — A broad request reaches Today's action rows and never Memory (DEL-25)
 
 "Cancel all my reminders" and "delete all my tasks" are held for
@@ -24,7 +66,7 @@ reminder (on Today, by the person's own request) is reached. That makes the
 broad line stricter than the single-target one, not the same: the
 single-target search asks `belongsInMemory`, which a held knowledge row does
 not satisfy, so a single-target cancel can still reach one. This entry covers
-the broad path only.
+the broad path only; DEL-26 (above) holds the single-target case.
 `SwiftDataThoughtRepository.broadOperationCandidates(in:)` applies it. The
 prompt's "Cancel N items?" and the confirmation both read the stored list
 again through `heldCandidates` (below), so the number confirmed is the

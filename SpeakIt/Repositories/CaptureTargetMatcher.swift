@@ -40,7 +40,9 @@ enum CaptureTargetMatcher {
             // milk reminder" and must never be what that sentence destroys, so
             // the durable knowledge layer is simply not searched. If only a
             // memory matches, the honest answer is "no reminder found", with
-            // the fact left standing.
+            // the fact left standing. A knowledge row held in Needs review is
+            // not in Memory and is still searched; when it is the one match,
+            // the repository holds the request instead of acting on it.
             guard !item.belongsInMemory else { return false }
             let haystack = tokens(in: [
                 item.displayTitle,

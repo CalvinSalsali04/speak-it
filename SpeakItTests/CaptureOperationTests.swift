@@ -244,6 +244,92 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertTrue(try activeTitles().contains { $0.localizedCaseInsensitiveContains("dentist") })
     }
 
+    /// DEL-26. The search refuses rows in Memory, and a knowledge row held
+    /// in Needs review is not in Memory, so it is still searched. As the one
+    /// match of a spoken cancel it was deleted, and its capture's transcript
+    /// with it. It is held for the person now, and the request is kept.
+    private func assertHeldForThePerson(
+        _ result: CaptureCreationResult,
+        rowID: UUID,
+        transcript: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        guard case let .ambiguous(operation, candidateIDs) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("a cancel naming a held knowledge row was not held", file: file, line: line)
+        }
+        XCTAssertEqual(operation, .cancel, file: file, line: line)
+        XCTAssertEqual(candidateIDs, [rowID], file: file, line: line)
+        let row = try XCTUnwrap(
+            try allItems().first { $0.id == rowID },
+            "the held knowledge row was deleted",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(row.isCompleted, file: file, line: line)
+        XCTAssertEqual(row.captureSession?.originalTranscription, transcript, file: file, line: line)
+        XCTAssertFalse(
+            try allItems().filter { $0.captureSession?.id == result.session.id }.isEmpty,
+            "the request was dropped instead of held",
+            file: file,
+            line: line
+        )
+    }
+
+    /// The safety row the extractor writes for reported speech: `.unclear`
+    /// and held for review, in a finished capture. "Stop reminding me about
+    /// the gym" is a gating-corpus cancel with target "gym"; this is the same
+    /// frame with the reported sentence's noun.
+    ///
+    /// Falsifier: without the kind check beside the `awaitsOrganization` hold
+    /// the cancel is performed and the row and its transcript are gone.
+    func testASingleTargetCancelHoldsAReportedSpeechRowHeldForReview() async throws {
+        let transcript = "Sarah said the landlord is raising the rent"
+        let rowID = try insertFinishedRow(transcript, type: .unclear, needsClarification: true)
+        let row = try XCTUnwrap(try allItems().first { $0.id == rowID })
+        XCTAssertFalse(row.belongsInMemory, "precondition: the search still reaches this row")
+        XCTAssertFalse(row.isActionKind, "precondition: this row is not an action")
+
+        let result = try await capture("Stop reminding me about the landlord")
+
+        try assertHeldForThePerson(result, rowID: rowID, transcript: transcript)
+    }
+
+    /// A note waiting on a question is knowledge in Needs review, not in
+    /// Memory. "Never mind the milk" is a gating-corpus cancel with target
+    /// "milk"; `cancelsAnArrangement` reads only a leading "cancel", so
+    /// "lease" does not turn this one into an errand.
+    ///
+    /// Falsifier: as above, the note and its transcript are deleted.
+    func testASingleTargetCancelHoldsANoteHeldForReview() async throws {
+        let transcript = "Something about the lease"
+        let rowID = try insertFinishedRow(transcript, type: .note, needsClarification: true)
+
+        let result = try await capture("Never mind the lease")
+
+        try assertHeldForThePerson(result, rowID: rowID, transcript: transcript)
+    }
+
+    /// The control, in the same frame as the reported-speech case: one
+    /// action row naming the landlord is still cancelled at once.
+    ///
+    /// Falsifier: a fix that held every single match, or that dropped rows
+    /// needing clarification from the search, fails here.
+    func testASingleTargetCancelStillActsOnAnActionRow() async throws {
+        let taskID = try await capture("Remind me to call the landlord tomorrow").primaryItem.id
+        let task = try XCTUnwrap(try allItems().first { $0.id == taskID })
+        XCTAssertTrue(task.isActionKind, "precondition: the reminder is an action row")
+
+        let result = try await capture("Stop reminding me about the landlord")
+
+        guard case let .performed(operation, itemID, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("a cancel naming one action row must act")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertEqual(itemID, taskID)
+        XCTAssertNil(try allItems().first { $0.id == taskID }, "the reminder was not cancelled")
+    }
+
     func testCancelWithNoMatchInventsNothing() async throws {
         _ = try await capture("Buy milk")
 
