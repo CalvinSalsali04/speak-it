@@ -78,6 +78,7 @@ struct ThoughtExtractionResult: Equatable, Sendable {
 /// Accept optional model output only when it preserves the deterministic reading.
 /// Independent actions stay separate; quotes retain actions, objects and negation.
 /// Shared timing may move into context, and resolved behavioral metadata must agree.
+/// A row held for somebody else's words may not come back armed or confident.
 /// This contract is testable without FoundationModels or an AI-capable device.
 enum RefinementGuard {
     /// A single narrative may lose its obligation frame, but not its substance.
@@ -144,9 +145,34 @@ enum RefinementGuard {
                         && result.recurrenceRule == rule.organization.recurrenceRule
                 }) else { return false }
             }
+            // Somebody else's advice that the rules held for review (case 4 of
+            // Calvin's 2026-09-16 reported-speech ruling) stays unarmed until
+            // the person says it is theirs. The resolved check above never
+            // runs for it, and the quote checks cannot see the bypass: split
+            // "Sarah said" into a row of its own and "I should call Mike
+            // tomorrow at 3" covers every token, then organizes as a
+            // confident task armed for 3. No row about this one may come back
+            // dated, reminding, repeating, placed, or resolved and
+            // actionable. See `Docs/DECISIONS.md`, 2026-09-23.
+            if rule.organization.state == .underspecified(.reportedSpeech) {
+                guard !matching.contains(where: { candidate in
+                    commitsThePerson(refined[candidate].organization)
+                }) else { return false }
+            }
         }
 
         return true
+    }
+
+    /// Whether a refined row would put something on the person that a row
+    /// held for somebody else's words must not: an instant, a repeat, a place
+    /// trigger, or a confident errand with no question left on it.
+    private static func commitsThePerson(_ organization: OrganizedThought) -> Bool {
+        organization.dueDate != nil
+            || organization.reminderDate != nil
+            || organization.recurrenceRule != nil
+            || organization.locationIntent != nil
+            || (organization.state.kind == .resolved && organization.itemType.isActionable)
     }
 
     private static func tokens(in text: String) -> Set<String> {
@@ -2932,8 +2958,10 @@ enum RuleBasedThoughtExtractor {
         // today" reads as an event purely because of the date word, and taking
         // that reading at face value turned the condition into a phantom event
         // row while its shopping list drifted off to the "Other" list.
+        // `advised` names an errand as plainly as `actionable` does; it only
+        // differs in whose it is, which is not a question a condition asks.
         let reading = ActionabilityReader.read(text)
-        guard reading != .actionable, reading != .outstanding else { return nil }
+        guard reading != .actionable, reading != .outstanding, reading != .advised else { return nil }
         guard text.range(
             of: #"(?i)^(?:(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b|(?:after|before|until|till|while)\s+(?:i|we)\b).+$"#,
             options: .regularExpression

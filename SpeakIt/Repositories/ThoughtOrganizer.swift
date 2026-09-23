@@ -1213,6 +1213,34 @@ enum ThoughtOrganizer {
             )
         }
 
+        // Advice somebody else gave the person — "Sarah said I should call
+        // Mike tomorrow at 3" — is case 4 of Calvin's 2026-09-16 ruling: the
+        // reported modality is kept and the row is reviewable, never a
+        // confident obligation. The words are kept whole and the row goes to
+        // Needs review as "Someone else's words", the reason the review
+        // vocabulary already had for it. Nothing is dated or armed, whatever
+        // time it names: a stated time is part of the advice, and the person
+        // has not yet said the advice is theirs. The same discard as the two
+        // returns above, naming every commitment field, and for the same
+        // reason: an actionable type would put the row on Today or on a
+        // shopping list as a plain item.
+        if actionability == .advised {
+            return OrganizedThought(
+                itemType: type.isActionable ? .unclear : type,
+                category: category,
+                priority: .normal,
+                personName: personName,
+                dueDate: nil,
+                reminderDate: nil,
+                reminderDelivery: .none,
+                recurrenceRule: nil,
+                needsClarification: true,
+                temporalIntent: .none,
+                locationIntent: nil,
+                state: .underspecified(.reportedSpeech)
+            )
+        }
+
         let resolvedIntent = finalIntent(
             timing: timing,
             recurrenceRule: recurrenceRule,

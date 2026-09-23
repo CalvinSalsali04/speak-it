@@ -1290,6 +1290,41 @@ still cannot be decided mechanically here, so the check does not try — it hand
 a new subject to a person, which is the smallest thing that makes an
 unrecomputable claim fail out loud.
 
+## Reported advice: what case 4 does not yet cover
+
+Since 2026-09-23 the rules path holds reported advice for review ("Sarah said I
+should call Mike", Calvin's 2026-09-16 ruling, case 4). The reading is
+`Actionability.advised`, and the row carries the `reportedSpeech` gap with no
+date and nothing armed. These edges ship open. Each is written up with its
+reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
+
+- **Reported strong modals keep their errand.** "Sarah said I need to call
+  Mike" is still a confident task. Whether a reported obligation on the person
+  is case 3 or case 4 has not been ruled on.
+- **Gerunds and subjectless frames are not read.** "Sarah suggested calling
+  Mike" and a dictated "said I should call Mike" keep their old reading. So do
+  colloquial frames ("Sarah was like I should call Mike", "Sarah goes I
+  should…"), a "like" filler inside the frame ("Sarah said like I should…"),
+  and a passive reminder ("I was reminded I should call Mike").
+- **Advice with a vague deadline asks for a time, not whose it is.** In
+  "Sarah said I should call Mike before the office closes" the unresolved
+  constraint is read before the advice, so the row is expected to be held as a
+  task needing a time (`ambiguousTemporalScope`). Its review question asks when,
+  never "is this yours?", and answering it makes a confident task. Nothing is
+  armed until the person answers. Inferred from the order in
+  `ThoughtOrganizer.organize`; no test pins it.
+- **A split capture keeps a review row beside the errand.** When "Sarah said I
+  should call Mike, so I need to call him today" is cut in two, the report half
+  is held for review and the commitment half is the errand.
+- **The refinement pass costs a held row its latency.** A held row makes
+  `RefinementPolicy.shouldRefine` true, so on an Apple Intelligence device
+  these captures wait for the model, up to its budget. Since 2026-09-23
+  `RefinementGuard` rejects any refinement that would date, remind, repeat,
+  place or confidently action a row held for somebody else's words, so the
+  model cannot undo the hold. A merge the model makes across a held row and
+  the person's own commitment is rejected with it, and the rules reading
+  stands.
+
 ## Removal requests: one defect closed, one decision open
 
 *The old heading here — "delete and remove are not operation verbs" — was

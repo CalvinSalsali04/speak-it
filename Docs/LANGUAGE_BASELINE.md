@@ -677,12 +677,12 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 6,680 | population |
+| utterances | share of 6,718 | population |
 |---:|---:|---|
-| 4,843 | 72.5% | the gating corpus in `SpeakItTests` |
+| 4,882 | 72.7% | the gating corpus in `SpeakItTests` |
 | 818 | 12.2% | `Tools/SpeechLab/phase2`, in four byte-identical files |
-| 695 | 10.4% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
-| 472 | 7.1% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 695 | 10.3% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
+| 472 | 7.0% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
 | 163 | 2.4% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
 | 123 | 1.8% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
 | 121 | 1.8% | `Tools/CorpusRunner/devsets/coordination.tsv` |
@@ -697,10 +697,10 @@ times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 7,580 and its shares to 113.5%, because the twelve
+**That column sums to 7,619 and its shares to 113.4%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
-may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 6,680, is a
+may still overlap one. The excess of 901 counts an utterance once for every
+additional maximal population that contains it. Only the union, 6,718, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,38 +708,38 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 4,843 + 1,333 + 618 = 6,794 against a union of
-6,680 and do not add up. Written out so that they do:
+115, so the three kinds are 4,882 + 1,333 + 618 = 6,833 against a union of
+6,718 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 6,680 |
+| kind | utterances | share of 6,718 |
 |---|---:|---:|
-| test fixtures only | 4,729 | 70.8% |
-| generated renderings (the SpeechLab tree) | 1,333 | 20.0% |
-| development sets only | 504 | 7.5% |
-| in both a development set and a fixture | 114 | 1.7% |
-| **total** | **6,680** | |
+| test fixtures only | 4,767 | 71.0% |
+| generated renderings (the SpeechLab tree) | 1,333 | 19.8% |
+| development sets only | 503 | 7.5% |
+| in both a development set and a fixture | 115 | 1.7% |
+| **total** | **6,718** | |
 
-**92.5% of everything this project may read — 6,176 of 6,680 — is either a
+**92.5% of everything this project may read — 6,215 of 6,718 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
-utterances, of which 504 exist nowhere else.
+utterances, of which 503 exist nowhere else.
 
-### The 114 are not spread evenly, and where they land is the interesting part
+### The 115 are not spread evenly, and where they land is the interesting part
 
 | development set | also a fixture | of |
 |---|---:|---:|
 | `abandonment.tsv` | 36 | 55 (65.5%) |
 | `runon.tsv` | 13 | 46 (28.3%) |
 | `unfinished.tsv` | 45 | 163 (27.6%) |
-| `routed.tsv` | 15 | 114 (13.2%) |
+| `routed.tsv` | 16 | 114 (14.0%) |
 | `coordination.tsv` | 12 | 121 (9.9%) |
 | `framing.tsv` | 0 | 45 |
 | `rambling.tsv` | 0 | 85 |
 
-**That column sums to 121 against a heading of 114**, for the same reason one
-level down: 7 of the 114 sit in two development sets each and are counted in
+**That column sums to 122 against a heading of 115**, for the same reason one
+level down: 7 of the 115 sit in two development sets each and are counted in
 both rows — three in `coordination` and `routed`, two in `abandonment` and
-`unfinished`, two in `routed` and `unfinished`. 121 − 7 = 114.
+`unfinished`, two in `routed` and `unfinished`. 122 − 7 = 115.
 
 <!-- end generated: population -->
 

@@ -1709,7 +1709,39 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         not taken from either side (4800 on the candidate, 4142 on #152,
         4099 at their merge base `b9f044c`; #152 and #150 add 43 and
         remove 0, and none of the 43 was already on the candidate):
-        4800 + 43 - 0 = 4843. What the test
+        4800 + 43 - 0 = 4843.
+        #151's branch had, on its own parent, 4068 -> 4102 on 2026-09-23, from
+        holding reported advice for review (case 4 of Calvin's
+        2026-09-16 reported-speech ruling): thirty-five literals in and
+        one out, enumerated with the census helper rather than predicted.
+        Thirty are utterances in six `ActionabilityTests` methods and
+        seven new `SemanticCorpusQ` rows, four are `note:` arguments, and
+        one is an assertion message. The one out is the old `note:` on
+        the `SemanticCorpusD` row "Priya said I should call the
+        landlord", which the ruling changed from a Today task to a review
+        row; its replacement note carries the old sentence plus the
+        ruling, so the edit counts once each way rather than not at all.
+        This time the overlap moved, 114 -> 115: "Sarah told me to call
+        Mike" is `routed.tsv` row AO04 verbatim, found by regenerating
+        `LANGUAGE_BASELINE.md` rather than by reading. 4102 -> 4105 on
+        2026-09-23, from the grade of #151 (F1) adding the reminder and
+        message verbs to the advice frame: three utterances in two
+        `ActionabilityTests` methods, `"Sarah reminded me I should call
+        Mike"`, `"Sarah texted me that I should call Mike tomorrow at
+        3"` and the case-3 control `"Sarah reminded me to call Mike"`,
+        enumerated with the census helper, none out. 4105 -> 4107 the
+        same day, from the refinement guard for held reported advice
+        (grade of #151, section 4): two literals in two
+        `RefinementGuardTests` methods, the canned action half `"I
+        should call Mike tomorrow at 3"` and the assertion message
+        `"the split handed back a dated task for somebody else's
+        advice"`, none out.
+        4843 -> 4882 on 2026-09-23, merging #151 at `9fb10da` into the V1
+        candidate: measured from the merged tree, not taken from either side
+        (4843 on the candidate, 4107 on #151, 4068 at their merge base
+        `fbb6f90`; #151 adds 40 and removes 1, none of the 40 was already
+        on the candidate, and the one it removes, the old `SemanticCorpusD`
+        note, was still there): 4843 + 40 - 1 = 4882. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -2001,7 +2033,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4843)
+        self.assertEqual(len(space), 4882)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -5891,3 +5891,158 @@ that row.
 **No cost-ledger row is owed.** Nothing here changes an executable line of the
 engine — the skips are test-side, and INC58 is a development row whose answer
 the next language dispatch reports — so no sealed measure can move.
+
+## 2026-09-23 — Reported advice is held for review, not read as the speaker's own
+
+**Ruling.** Calvin, 2026-09-16 (thread "Prototype the Foundation Models path",
+section 6): reported speech has five cases. (1) A reported fact is a report.
+(2) A reported third-party obligation is not the person's task. (3) An explicit
+directive to the person ("Sarah asked me to call Mike") may be an errand, with
+attribution kept. (4) A weak or reported recommendation ("Sarah said I should
+call Mike") keeps its reported modality and is treated conservatively, as
+reported and reviewable, not a confident obligation. (5) A self-commitment
+after reported context ("…, so I need to call him today") is an errand.
+Attribution says whose words these are; grammar and meaning say whether the
+person owes anything. This entry covers case 4 on the rules path only.
+`InterpretationPolicy.swift:137` is unchanged, as ruled.
+
+**Defect (SEM-2).** `ActionabilityReader.read` sent case 4 to Today as a
+confident task. `isReportedSpeech && carriesOwnObligation` (then
+`Actionability.swift:326`, `:482`) read the first-person "I should" inside the
+report as the speaker's own, and a cognitive frame ("Sarah thinks I should")
+reached the same answer through the bare `obligationLead`. With a time the
+row was dated. With a repeat or an alarm verb it repeated or asked for one.
+
+**Hypothesis.** The obligation layer never asked the modality question. It
+asked whether a first-person obligation word appeared, and advisory modality
+(`should`, `ought to`, `might want to`, `'d better`, or an advising verb such
+as `suggested`, `advised me to`) inside a third party's report is the same
+words as the speaker's own resolution. The family is the conjunction of three
+closed-class facts: a verb of saying, thinking or advising whose subject is not
+the speaker (or "according to X", or a passive "I was told"); `I`/`we` with an
+advisory modal; and an advised action `actionVerb` names. The boundaries:
+case 3 is a bare infinitive after `me`/`us` ("told me to", "asked me to") with
+no modal; case 5 is anything in the person's own voice outside the report that
+commits them (a first-person obligation or future, "let's", a reminder or alarm
+request, "make sure I").
+
+**Falsifier, stated before the change.** (a) The new rule fires on any readable
+sentence that is not case 4. (b) It fires on a speaker's own resolution ("I
+think I should call the dentist", "I've always said I should…"). (c) A case 1,
+2, 3 or 5 sentence changes reading. For (a), a Python mirror of the rule, whose
+patterns are read out of the Swift source, was run over every readable
+utterance (`observation.readable_pairs()`, 11,516 pairs on 2026-09-23) and every string in
+the two 10k development JSONL files. It fires on exactly one sentence, "Priya
+said I should call the landlord", which is case 4 and was a corpus row
+asserting Today. No sealed set was read. (b) and (c) are pinned by the new
+`ActionabilityTests` minimal pairs and seven `SemanticCorpusQ` rows. Only a
+Mac run can check them against the engine.
+
+**Widened the same day (grade of #151, F1).** The advice frame first listed
+only verbs of saying, thinking and advising, so "Sarah reminded me I should
+call Mike" and "Sarah texted me that I should call Mike tomorrow at 3" kept the
+confident, dated task. `reminded`, `texted`, `emailed`, `messaged` and `wrote`
+are now frame verbs: the codebase already read the first four as reports
+(`isReportedSpeech`, `CaptureOperationDetector.reportVerb`), and `wrote` is the
+same act on paper. Only past forms, because "texts", "emails" and "messages"
+are nouns as often as verbs and the imperatives ask rather than report. Case 3
+cannot enter: every shape still needs `I`/`we` plus an advisory modal after
+the verb, so "Sarah reminded me to call Mike" is the errand it was, and a test
+pins it. The walk was re-run with the widened rule against `main` (`fbb6f90`):
+11,516 readable pairs and the same 9,608 JSONL strings, and it still frames
+and fires on exactly one sentence, "Priya said I should call the landlord".
+At the widened head the only other hits are this entry's own test literals.
+
+**Change.** `Actionability.advised` is a new reading. `read` returns it after
+the discharged and outstanding families and ahead of the reported-obligation
+rule. `belongsOnToday` answers yes, so clause splitting and person resolution
+see the words as they did before. `ThoughtOrganizer.organize` then holds the
+row. `itemType` becomes `.unclear` when the type was actionable, so a shopping
+reading cannot slip onto a list. The state is `.underspecified(.reportedSpeech)`,
+the gap the review vocabulary already had ("Someone else's words", "This quotes
+someone else — confirm it is yours to do"). No due date, reminder, delivery,
+recurrence, place or temporal intent is set, whatever time the advice names.
+Nothing is added to the schema or to the list of destinations.
+
+**Left out on purpose, each a question rather than an oversight.**
+- A reported strong modal ("Sarah said I need to call Mike") keeps its
+  actionable reading. It reports an obligation, not a recommendation, and the
+  ruling does not say whether a reported obligation on the person is case 3 or
+  case 4. `SemanticCorpusD`'s "Remember Catherine said I need to call Alex
+  Friday" still pins it as an errand.
+- Advice with no errand in it ("my doctor says I should cut back on coffee")
+  stays the Memory note it was. It asks the same `actionVerb` question
+  `carriesOwnObligation` asks.
+- Gerunds ("Sarah suggested calling Mike") and subjectless frames ("said I
+  should call Mike") are not matched and keep their old reading.
+- When segmentation cuts "Sarah said I should call Mike, so I need to call him
+  today" into two rows, the report half is held and the commitment half is the
+  errand. Over the whole capture the reader sees case 5 and does not hold.
+- On Apple Intelligence devices a held row now invites the refinement pass
+  (`RefinementPolicy.shouldRefine`). `RefinementGuard` checked behavioural
+  fields only for resolved rules rows, so a model that split the frame from
+  the action could return a confident task. Closed the same day by the next
+  entry.
+
+**Sealed measures.** Not measured: no parser runs here and no sealed set was
+read. The next Mac `language-metrics.sh` run decides whether a ledger row is
+owed.
+
+## 2026-09-23 — A refinement may not arm a row held for somebody else's words
+
+**Defect (grade of #151, section 4).** Holding reported advice for review
+(the entry above) makes `RefinementPolicy.shouldRefine` true for it, so on an
+Apple Intelligence device the model re-reads the capture. `RefinementGuard`
+compared behavioural fields only for a rules row that was `resolved`, and a
+held row is not. A single frame-stripped quote was already rejected, because
+"sarah" and "said" are required tokens. Splitting was not: item A "Sarah said"
+plus item B "I should call Mike tomorrow at 3" covers every token, and
+`IntelligentThoughtExtractor.validate` organizes B's own words into a
+confident task armed for tomorrow at 3. That is the Foundation Models path
+bypassing a safety hold, an exit-gate P0 family. Whether the model produces
+the split is not known; it fits the recorded tendency to split frames off.
+
+**Hypothesis.** The bypass needs a refined row that is about the held row and
+carries a commitment the hold withheld. "About" is already decided in the
+guard: the refined rows whose quote shares a distinctive token with the rules
+row (or contains all its tokens when it has none of its own), the `matching`
+set every other check uses. "Commitment" is closed: a due date, a reminder
+date, a recurrence rule, a place trigger, or a resolved actionable reading.
+Rejecting on that conjunction closes the split and the whole-quote variant and
+leaves every other refinement of a held row alone: a retitle, a recategory, or
+a split whose action half stays held and undated.
+
+**Change.** In `RefinementGuard.preservesEverything`, when a rules row carries
+`.underspecified(.reportedSpeech)`, the refinement is rejected if any matching
+refined row carries any of those five. Rejection keeps the rules reading, as
+every other failed check does. The rules path is the only producer of that
+state (`ThoughtOrganizer.organize`, the advised branch; the unshipped
+`InterpretationBridge` also produces it), so no other row is affected. Tests
+in `RefinementGuardTests` feed the canned split and the armed whole quote
+through the guard and show both rejected, with a control where the same split
+with the action half still held passes. The two splits differ only in that
+row's organization, so the rejection is the new check's.
+
+**Falsifier.** (a) A refinement of a held reported-advice row reaches the
+store with a due date, reminder, recurrence, place, or as a resolved
+actionable row. (b) A refinement that changes only title, category or split
+shape of a held row, arming nothing, is rejected. (c) A capture with no row
+held for reported speech is accepted or rejected differently than before. The
+check is per capture, not per row: in a capture that has a held row, the whole
+refinement goes, so its other rows fall back to the rules reading too (the
+cost below). The unit tests pin (a) and (b) for the split shape. (c) holds by
+construction: the new check does nothing when no rules row is in that state.
+Not examined: a refined row that matches no rules row at all. Reaching it
+needs a quote of filler words alone, or every content word of the held row
+repeated in another row; the worst case is the behaviour before this change. Only a Mac run of
+`RefinementGuardTests` checks the tests, and only an Apple Intelligence
+device can show what the model actually returns.
+
+**Cost, accepted.** When the model merges a case-5 capture ("Sarah said I
+should call Mike, so I need to call him today") into one dated row that also
+covers the held half, the whole refinement is rejected and the rules reading
+stands: the held row plus the errand due today. The person loses the model's
+tidier merge, never the errand.
+
+**No cost-ledger row is owed.** The corpus gate runs the rules path, which
+this does not change.

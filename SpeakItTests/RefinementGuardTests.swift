@@ -157,6 +157,68 @@ final class RefinementGuardTests: XCTestCase {
         XCTAssertFalse(RefinementPolicy.shouldRefine(text, fallback: rulesReading(of: text)))
     }
 
+    // MARK: Somebody else's advice stays held
+
+    /// The rules hold "Sarah said I should call Mike tomorrow at 3" for review
+    /// with nothing armed (case 4 of the 2026-09-16 reported-speech ruling),
+    /// and a held row invites the model. Splitting the frame into a row of its
+    /// own covers every token of the capture, so the quote checks pass, and
+    /// the action half organizes on its own words as a task dated tomorrow.
+    /// The rules reading has to win, and so it does when the model keeps the
+    /// whole quote but hands back the armed organization.
+    func testRefinementCannotArmHeldReportedAdvice() throws {
+        let transcript = "Sarah said I should call Mike tomorrow at 3"
+        let rules = rulesReading(of: transcript)
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(held.organization.state, .underspecified(.reportedSpeech))
+
+        let action = refined("I should call Mike tomorrow at 3")
+        // The canned answer has to be the dangerous one, or the rejection
+        // below proves nothing about the guard.
+        XCTAssertNotNil(action.organization.dueDate)
+        let split = [refined("Sarah said"), action]
+        XCTAssertFalse(
+            RefinementGuard.preservesEverything(in: split, found: rules),
+            "the split handed back a dated task for somebody else's advice"
+        )
+
+        let wholeQuoteArmed = ExtractedThought(
+            sourceQuote: held.sourceQuote,
+            rawQuote: held.rawQuote,
+            wasRepaired: held.wasRepaired,
+            analysisText: held.analysisText,
+            suggestedTitle: "Call Mike",
+            organization: action.organization,
+            confidence: 0.95,
+            needsReview: false
+        )
+        XCTAssertFalse(RefinementGuard.preservesEverything(in: [wholeQuoteArmed], found: rules))
+    }
+
+    /// The control. The same split, with the action half still held and
+    /// undated, is a legitimate re-reading and passes. The two refinements
+    /// differ only in that row's organization, so the rejection above is the
+    /// guard's and not the quote checks'.
+    func testRefinementThatKeepsReportedAdviceHeldIsAccepted() throws {
+        let rules = rulesReading(of: "Sarah said I should call Mike tomorrow at 3")
+        let held = try XCTUnwrap(rules.first)
+        let action = refined("I should call Mike tomorrow at 3")
+        let stillHeld = ExtractedThought(
+            sourceQuote: action.sourceQuote,
+            rawQuote: action.rawQuote,
+            wasRepaired: action.wasRepaired,
+            analysisText: action.analysisText,
+            suggestedTitle: "Call Mike",
+            organization: held.organization,
+            confidence: 0.9,
+            needsReview: true
+        )
+        XCTAssertTrue(RefinementGuard.preservesEverything(
+            in: [refined("Sarah said"), stillHeld], found: rules
+        ))
+    }
+
     // MARK: The corpus, replayed through the seam
 
     /// The rules' own reading must always satisfy the guard.
