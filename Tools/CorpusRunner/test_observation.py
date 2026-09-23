@@ -1874,7 +1874,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the second merge rehearsal: measured from the merged tree, not
         taken from either side (4767 on the candidate, 4068 on #148,
         4068 at their merge base; #148 adds 0 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4767 -> 4767 on
+        2026-09-23, a candidate commit of the second merge rehearsal
+        (rehearsal-1 grade, item (c)): the snoozed repeating-alarm test
+        now skips on the condition the schedule turns on, not on equal
+        clocks, so its skip message changed. One in (`the series' next
+        ring is within a minute of the snooze, where the repetition is
+        armed by design`), one out (`the snooze landed on the series'
+        own minute, so the two readings agree`).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()

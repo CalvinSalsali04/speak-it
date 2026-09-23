@@ -2094,9 +2094,13 @@ final class TemporalFullPathTests: XCTestCase {
     /// snooze's clock and move every later occurrence of the series to it.
     ///
     /// Only the capture and the snooze are pinned; the request is built and
-    /// read in the machine's zone, as in the test above. The one minute a day
-    /// when the snooze lands on the series' own clock cannot tell the two
-    /// readings apart, and skips.
+    /// read in the machine's zone, as in the test above. The schedule check
+    /// skips when the series' next ring is within a minute of the snooze,
+    /// the condition `alarmSchedule(repeating:fireDate:now:calendar:)` itself
+    /// turns on: there it arms the repetition by design. Equal clocks were a
+    /// narrower proxy for that and missed about a minute a day (machine
+    /// clock 6:19 to 6:20 for a 6:30 series). The hour and minute checks
+    /// need no skip.
     ///
     /// Falsifier: build `alarmRepetition` from `fireDate` in
     /// `ReminderScheduleRequest.init`, and its hour and minute are the
@@ -2127,16 +2131,17 @@ final class TemporalFullPathTests: XCTestCase {
             "a daily series is one AlarmKit can repeat"
         )
         let seriesClock = machineCalendar.dateComponents([.hour, .minute], from: seriesAlert)
-        let snoozeClock = machineCalendar.dateComponents([.hour, .minute], from: request.fireDate)
-        try XCTSkipIf(
-            seriesClock == snoozeClock,
-            "the snooze landed on the series' own minute, so the two readings agree"
-        )
 
         XCTAssertEqual(repetition.hour, seriesClock.hour, "the repetition must keep the series' hour")
         XCTAssertEqual(repetition.minute, seriesClock.minute, "the repetition must keep the series' minute")
+        let now = Date.now
+        let firstRing = try XCTUnwrap(repetition.nextOccurrence(after: now, calendar: machineCalendar))
+        try XCTSkipIf(
+            abs(firstRing.timeIntervalSince(request.fireDate)) < 60,
+            "the series' next ring is within a minute of the snooze, where the repetition is armed by design"
+        )
         XCTAssertEqual(
-            ReminderScheduler.alarmSchedule(for: request, now: .now, calendar: machineCalendar),
+            ReminderScheduler.alarmSchedule(for: request, now: now, calendar: machineCalendar),
             .fixed(request.fireDate),
             "the snoozed occurrence rings once, at the snooze"
         )
