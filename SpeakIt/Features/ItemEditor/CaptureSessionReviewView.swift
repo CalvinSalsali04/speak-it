@@ -162,48 +162,167 @@ struct CaptureSessionReviewView: View {
     }
 }
 
+/// One row of the organized capture.
+///
+/// This is the only screen a multi-item capture is read on straight after
+/// saving — the receipt behind it shows a single row and a count — and it used
+/// to render a title and "Category · Type" and stop there. So the list that is
+/// supposed to answer "what did it do with what I said" could not tell a task
+/// due Friday from one that will ring on Friday, said nothing about a place
+/// trigger, and marked an unresolved row with a bare question mark whose only
+/// description was the words "Needs review".
+///
+/// Every one of those distinctions already existed: `ItemPresentation` is the
+/// shared reading Today, Memory and the saved-capture card are drawn from, and
+/// `ClarificationRequirement.listLabel` is the sentence Today already puts on a
+/// review row. This row reads them too, so a capture cannot describe itself one
+/// way here and another way on the screen it lands on.
 private struct CaptureReviewItemRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let item: CapturedItem
     let canMerge: Bool
     let splitAction: () -> Void
     let mergeAction: () -> Void
 
     var body: some View {
+        let presentation = ItemPresentation.make(
+            for: item,
+            authorization: LocationReminderMonitor.shared.authorization
+        )
+
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: item.itemType.systemImage)
                     .foregroundStyle(.secondary)
                     .frame(width: 24)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.displayTitle)
                         .font(.body.weight(.medium))
-                    Text("\(item.category.displayName) · \(item.itemType.displayName)")
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(secondaryText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    if let timing = presentation.primaryTimingText {
+                        HStack(spacing: 4) {
+                            if presentation.isPlaceTriggered {
+                                Image(systemName: "mappin.and.ellipse")
+                                    .accessibilityHidden(true)
+                            }
+                            if let alertGlyph = presentation.alertSymbolName {
+                                Image(systemName: alertGlyph)
+                                    .accessibilityHidden(true)
+                            }
+                            Text(timing)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    // At an accessibility text size there is no room beside
+                    // the title for a second column, and the gap is the reason
+                    // the person opened this screen. It moves under the title
+                    // rather than being squeezed into two characters a line.
+                    if dynamicTypeSize.isAccessibilitySize {
+                        reviewRequirementLabel(presentation)
+                    }
                 }
 
-                Spacer()
-
-                if item.needsClarification {
-                    Image(systemName: "questionmark.circle")
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Needs review")
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer(minLength: 8)
+                    reviewRequirementLabel(presentation)
                 }
             }
+            // One element, read in the order it is drawn. Split apart, VoiceOver
+            // announced a title, a type and a date with no way to hear that the
+            // date will actually alert.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spokenLabel(for: presentation))
+            .accessibilityHint(presentation.alertAccessibilityHint ?? "")
 
             HStack(spacing: 18) {
                 Button("Split", action: splitAction)
-                .buttonStyle(.speakIt)
+                    .buttonStyle(.speakIt)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Split \(item.displayTitle)")
 
                 if canMerge {
                     Button("Merge with next", action: mergeAction)
-                .buttonStyle(.speakIt)
+                        .buttonStyle(.speakIt)
+                        .frame(minHeight: 44)
+                        .accessibilityLabel("Merge \(item.displayTitle) with the next item")
                 }
             }
             .font(.caption.weight(.semibold))
         }
         .padding(.vertical, 4)
+    }
+
+    /// Names the gap rather than only marking one. The icon stays for the
+    /// glance; the words are what make the row actionable, and they are the
+    /// same words Today's review section already uses.
+    @ViewBuilder
+    private func reviewRequirementLabel(_ presentation: ItemPresentation) -> some View {
+        if let requirement = presentation.reviewRequirement {
+            HStack(spacing: 4) {
+                Image(systemName: "questionmark.circle")
+                    .accessibilityHidden(true)
+                Text(requirement)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(
+                        dynamicTypeSize.isAccessibilitySize ? .leading : .trailing
+                    )
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var secondaryText: String {
+        CaptureReviewRowReading.secondaryText(for: item)
+    }
+
+    private func spokenLabel(for presentation: ItemPresentation) -> String {
+        CaptureReviewRowReading.spokenLabel(for: item, presentation: presentation)
+    }
+}
+
+/// What the capture review row says, kept out of the view so it can be
+/// asserted.
+///
+/// The row is the answer to "what did Speak It do with what I said", and the
+/// two things it has to carry are the schedule and the reason a row is held.
+/// Both are read from `ItemPresentation`, the same reading Today and Memory
+/// draw from, rather than recomputed here.
+enum CaptureReviewRowReading {
+    static func secondaryText(for item: CapturedItem) -> String {
+        let category = item.category.displayName
+        let type = item.itemType.displayName
+        if item.category == .general { return type }
+        if category.caseInsensitiveCompare(type) == .orderedSame { return type }
+        return "\(category) · \(type)"
+    }
+
+    /// Everything the row draws, in the order it is drawn.
+    ///
+    /// The glyphs that separate an armed reminder from a bare date are silent
+    /// to VoiceOver by design, so the distinction is carried in the hint —
+    /// `ItemPresentation.alertAccessibilityHint` — and this label stays the
+    /// visible text.
+    static func spokenLabel(for item: CapturedItem, presentation: ItemPresentation) -> String {
+        [
+            item.displayTitle,
+            secondaryText(for: item),
+            presentation.primaryTimingText,
+            presentation.reviewRequirement
+        ]
+        .compactMap { $0 }
+        .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        .joined(separator: ", ")
     }
 }
 
