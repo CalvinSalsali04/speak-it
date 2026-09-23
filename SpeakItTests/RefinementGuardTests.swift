@@ -273,3 +273,100 @@ enum IntelligentThoughtExtractorExposure {
         RefinementPolicy.shouldRefine(transcript, fallback: fallback)
     }
 }
+
+/// The refinement budget caps how long a capture waits for the model. The
+/// model call is stood in for by work that ignores cancellation, which is the
+/// case the task group this replaced could not bound: it waited for every
+/// child, so a model that kept going held the capture past the budget.
+final class BudgetedWorkTests: XCTestCase {
+
+    /// Work that pays no attention to cancellation and answers after `delay`.
+    private static func stubborn(_ value: Int, after delay: TimeInterval) async -> Int? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                continuation.resume(returning: value)
+            }
+        }
+    }
+
+    func testTheBudgetEndsTheWaitEvenWhenTheWorkIgnoresCancellation() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = await BudgetedWork.firstResult(within: .milliseconds(200)) {
+            await BudgetedWorkTests.stubborn(1, after: 5)
+        }
+        XCTAssertNil(result, "An answer that came after the budget has to be dropped")
+        XCTAssertLessThan(
+            clock.now - start, .seconds(2),
+            "The capture waited for the work instead of the budget"
+        )
+    }
+
+    func testAnAnswerInsideTheBudgetDoesNotWaitOutTheBudget() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = await BudgetedWork.firstResult(within: .seconds(10)) { () async -> Int? in 42 }
+        XCTAssertEqual(result, 42)
+        XCTAssertLessThan(
+            clock.now - start, .seconds(5),
+            "A finished answer waited out the rest of the budget"
+        )
+    }
+
+    func testANilAnswerInsideTheBudgetEndsTheWaitAtOnce() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = await BudgetedWork.firstResult(within: .seconds(10)) { () async -> Int? in nil }
+        XCTAssertNil(result)
+        XCTAssertLessThan(
+            clock.now - start, .seconds(5),
+            "A model that declined waited out the rest of the budget"
+        )
+    }
+
+    func testCancellingTheCaptureEndsTheWait() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let waiting = Task {
+            await BudgetedWork.firstResult(within: .seconds(10)) {
+                await BudgetedWorkTests.stubborn(1, after: 5)
+            }
+        }
+        waiting.cancel()
+        let result = await waiting.value
+        XCTAssertNil(result)
+        XCTAssertLessThan(
+            clock.now - start, .seconds(2),
+            "A cancelled capture kept waiting for the work"
+        )
+    }
+
+    func testTheWorkThatLostIsCancelled() async {
+        let recorder = CancellationRecorder()
+        let result = await BudgetedWork.firstResult(within: .milliseconds(100)) { () async -> Int? in
+            do {
+                try await Task.sleep(for: .seconds(30))
+                return 1
+            } catch {
+                await recorder.record()
+                return nil
+            }
+        }
+        XCTAssertNil(result)
+        var polls = 0
+        while !(await recorder.wasCancelled), polls < 40 {
+            polls += 1
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let cancelled = await recorder.wasCancelled
+        XCTAssertTrue(cancelled, "The work past the budget was left running uncancelled")
+    }
+}
+
+private actor CancellationRecorder {
+    private(set) var wasCancelled = false
+
+    func record() {
+        wasCancelled = true
+    }
+}

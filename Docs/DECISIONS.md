@@ -1,5 +1,40 @@
 # Decisions
 
+## 2026-09-23 — The refinement budget ends the wait, not just the model call
+
+`IntelligentThoughtExtractor.extractWithinBudget` raced the model call against
+a two-second timer inside `withTaskGroup`. A task group does not return until
+every child has returned, `cancelAll()` included, so a timer that won only
+cancelled the model call and then waited for it to finish. How long the
+capture waited was set by how quickly the model call noticed it had been
+cancelled, which nothing here controls. The V1 performance audit found this
+by reading (`/mnt/project-files/v1/audits/performance.md`, item 2). It fits
+the earlier measurement on the owner's Mac, where the refinement ran past its
+budget on 17 of 21 complex captures, although that run did not separate the
+model's time from the wait.
+
+`BudgetedWork.firstResult(within:_:)` replaces the group. The model call and
+the timer run as two unstructured tasks, the first to settle resumes the
+capture, and the loser is cancelled and not awaited. An answer that arrives
+after the budget is dropped, as before. A capture that is itself cancelled
+stops waiting at once.
+
+**Hypothesis:** a capture sent for refinement waits at most the budget plus
+scheduling slack, whatever the model call does with cancellation.
+**Falsifier:** `BudgetedWorkTests`, whose stand-in work ignores cancellation
+and answers after five seconds. Under the task group the first and fourth
+tests wait the full five seconds and fail; here they must return within two.
+On a device, a `SemanticParsing` signpost interval well above 2.1 seconds on
+a capture that was sent for refinement falsifies it.
+
+**What this does not change.** The budget is still two seconds, the capture
+still keeps the rules reading when the model is late, and the refinement gate
+(Needs Review, 1,500 characters) is untouched. A late model call now keeps
+running in the background until it notices the cancellation, so a capture
+made right after it can find the model still busy. That costs that capture
+its refinement at worst, never its words, because the rules reading is
+always kept.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

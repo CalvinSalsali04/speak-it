@@ -2905,6 +2905,83 @@ private extension String {
     }
 }
 
+/// Returns what `work` produces, or `nil` once `budget` has passed, whichever
+/// comes first, and cancels the one that lost.
+///
+/// A task group cannot do this. `withTaskGroup` waits for every child before
+/// it returns, `cancelAll()` included, so a timer child that wins only sets a
+/// flag the model call may not look at for a while, and the capture waits for
+/// the model anyway. Here the losing work is cancelled and left to finish on
+/// its own; nothing waits for it, and its result is dropped.
+enum BudgetedWork {
+    static func firstResult<T: Sendable>(
+        within budget: Duration,
+        _ work: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        let race = BudgetRace<T>()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+                let worker = Task {
+                    let value = await work()
+                    race.settle(value)
+                }
+                let timer = Task {
+                    try? await Task.sleep(for: budget)
+                    race.settle(nil)
+                }
+                race.wait(continuation) {
+                    worker.cancel()
+                    timer.cancel()
+                }
+            }
+        } onCancel: {
+            // A capture that is itself cancelled stops waiting at once.
+            race.settle(nil)
+        }
+    }
+}
+
+/// The first `settle` wins. Either the continuation or the outcome can arrive
+/// first, since the two tasks start before `wait` stores the continuation.
+private final class BudgetRace<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var outcome: T??
+    private var continuation: CheckedContinuation<T?, Never>?
+    private var cancelLosers: (@Sendable () -> Void)?
+
+    func settle(_ value: T?) {
+        lock.lock()
+        guard outcome == nil else {
+            lock.unlock()
+            return
+        }
+        outcome = .some(value)
+        let waiting = continuation
+        let cancel = cancelLosers
+        continuation = nil
+        cancelLosers = nil
+        lock.unlock()
+        waiting?.resume(returning: value)
+        cancel?()
+    }
+
+    func wait(
+        _ continuation: CheckedContinuation<T?, Never>,
+        cancelling cancelLosers: @escaping @Sendable () -> Void
+    ) {
+        lock.lock()
+        if let outcome {
+            lock.unlock()
+            continuation.resume(returning: outcome)
+            cancelLosers()
+            return
+        }
+        self.continuation = continuation
+        self.cancelLosers = cancelLosers
+        lock.unlock()
+    }
+}
+
 #if canImport(FoundationModels)
 @available(iOS 26.0, *)
 enum IntelligentThoughtExtractor {
@@ -2965,17 +3042,8 @@ enum IntelligentThoughtExtractor {
     static func extractWithinBudget(
         _ transcript: String, referenceDate: Date, calendar: Calendar
     ) async -> [ExtractedThought]? {
-        await withTaskGroup(of: [ExtractedThought]?.self) { group in
-            group.addTask {
-                await extract(transcript, referenceDate: referenceDate, calendar: calendar)
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(2))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
+        await BudgetedWork.firstResult(within: .seconds(2)) {
+            await extract(transcript, referenceDate: referenceDate, calendar: calendar)
         }
     }
 
