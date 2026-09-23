@@ -1,0 +1,10 @@
+# V1 qualification manifest, read by v1-qualification.sh. Tab-separated.
+# label	commit	focused classes (comma-separated, or -)	whole suite (yes/no)	release build (yes/no)	extra command run in the tree (or -)
+#
+# `baseline` is the row every other row's whole-suite failures are compared
+# with. Pin full commits, never branch names: a branch moves, and evidence
+# about a moved branch is evidence about nothing. Keep this file and
+# Docs/V1_OWNER_HANDOFF.md in step.
+baseline	fbb6f909ad7309491b267256e3291925e2836b0f	-	yes	no	-
+pr116-with-119	7656ef9645cce2dfd0b0d481224dfa330ff89061	SpeakItTests/CaptureFeedbackTests	yes	yes	-
+pr117	c51842c966be68e509f519f0689e99a0cc75c9c1	SpeakItTests/PersonMentionTests	yes	yes	-

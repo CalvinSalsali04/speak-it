@@ -11,6 +11,7 @@ evidence as the CI job.
 | `compile.sh` | Builds the app, its extensions and both test bundles for a simulator without running a test (`build-for-testing`), so "the Swift compiled" is an answer of its own | yes |
 | `unit-tests.sh [target]` | Runs `SpeakItTests` (default), one test class, or `SpeakItUITests` | yes |
 | `release-build.sh` | Compiles the Release configuration for a generic iOS device, unsigned | no |
+| `v1-qualification.sh` | The owner's one Mac run: qualifies every commit in `v1-qualification.tsv` in fresh pinned worktrees (compile, corpus gate, focused classes, whole suite with failures compared against the baseline row, Release, optional extra command) and writes one evidence directory and zip. See `Docs/V1_OWNER_HANDOFF.md` | yes |
 | `stage-summary.sh` | Prints one line per iOS-job stage from the step outcomes: PASS only for `success`, and NOT RUN for a stage that did not run, so a skipped stage cannot read as a pass | no |
 | `simulator-id.sh` | Picks the simulator `unit-tests.sh` uses: `SPEAKIT_SIMULATOR_ID`, else a `SpeakIt-Slim-*` pool device, else a booted iPhone | — |
 | `simulator-pool.sh [N]` | Creates or reuses `SpeakIt-Slim-1…N`, slims them with the profile below, boots them, prints their UDIDs | — |
