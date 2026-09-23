@@ -181,6 +181,292 @@ struct RootView: View {
     }
 
     var body: some View {
+        // Split in two so the type checker sees two chains of modifiers
+        // instead of one. Merged together, the V1 fixes made the single
+        // chain too long to type-check in reasonable time.
+        presentedRoot
+        .sheet(isPresented: $showsFreeLimit) {
+            SpeakItProView(context: .freeLimit)
+        }
+        .sheet(item: $proMomentSheet) { moment in
+            SpeakItProView(context: moment.presentationContext)
+                // Marked delivered because it reached the screen, not because
+                // something asked for it. If presentation is refused — another
+                // sheet already up somewhere below — the moment stays pending
+                // and is offered again rather than being silently spent.
+                .onAppear { subscriptionStore.consumeProMoment() }
+        }
+        .onChange(of: proMomentGate) { _, _ in
+            presentPendingProMomentIfReady()
+        }
+        .sheet(isPresented: isShowingReferralProgram) {
+            NavigationStack {
+                ReferralProgramView(initialReferralCode: activeReferralCode)
+            }
+            .environmentObject(subscriptionStore)
+        }
+        .task { await performLaunchWork() }
+        .onChange(of: quickActionRouter.pendingRequest) { _, request in
+            handleQuickAction(request)
+        }
+        .onChange(of: quickActionRouter.pendingTodayRequest) { _, request in
+            handleTodayRequest(request)
+        }
+        .onChange(of: selectedDestination) { _, destination in
+            SpeakItAnalytics.track(.screenViewed(
+                destination == .today ? .today : .memory
+            ))
+        }
+        .onOpenURL(perform: handleDeepLink)
+        .onChange(of: scenePhase) { _, phase in handleScenePhase(phase) }
+        // Location permission changed in Settings while the app was open. The
+        // reminders have not changed meaning, so nothing is deleted — the
+        // monitored set is simply rebuilt for whatever access now exists.
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: LocationReminderMonitor.authorizationDidChangeNotification
+            )
+        ) { _ in
+            // New access is a new chance for a region that was refused under the
+            // old access, so those are retried too.
+            LocationReminderMonitor.shared.clearMonitoringFailures()
+            repository?.reconcileLocationReminders()
+        }
+        // iOS refused a region after accepting the call to monitor it. What the
+        // app believes it is watching is now wrong, so the monitored set is
+        // rebuilt — this one *without* clearing the failures, since retrying
+        // here would only produce the same refusal and the same notification.
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: LocationReminderMonitor.monitoringDidFailNotification
+            )
+        ) { _ in
+            repository?.reconcileLocationReminders()
+        }
+        // Home or Work moved. Every reminder that says "home" still says "home";
+        // only where that resolves to has changed, so re-resolving is a
+        // reconcile rather than an edit to any of them.
+        .onReceive(NotificationCenter.default.publisher(for: SavedPlaceStore.didChangeNotification)) { _ in
+            repository?.reconcileLocationReminders()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .speakItMemoryMetadataDidChange)) { _ in
+            ICloudSyncState.markLocalChange()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                _ = await repository?.reconcileICloudSync()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .speakItUseTestPrompt)) { notice in
+            guard let text = notice.object as? String, !text.isEmpty else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(320))
+                presentCapture(initialMode: .text, initialText: text, entry: .testPrompt)
+            }
+        }
+    }
+
+    /// Launch-time work, run once the root first appears. A method rather
+    /// than a closure in `body` so it is type-checked on its own.
+    private func performLaunchWork() async {
+        repairInterruptedTutorialIfNeeded()
+        if hasCompletedWelcome,
+           ReferralProgramConfiguration.isEnabled,
+           let pendingCode = PendingReferralStore.code {
+            activeReferralCode = pendingCode
+        }
+        if !hasTrackedInitialScreen {
+            hasTrackedInitialScreen = true
+            SpeakItAnalytics.track(.screenViewed(
+                selectedDestination == .today ? .today : .memory
+            ))
+        }
+        handleQuickAction(quickActionRouter.pendingRequest)
+        handleTodayRequest(quickActionRouter.pendingTodayRequest)
+        // A moment earned outside the app — a Back Tap capture, a shared
+        // thought imported at activation — is already pending when this
+        // view first appears, and `onChange` never fires for a value that
+        // arrived before the observer did.
+        presentPendingProMomentIfReady()
+        guard !hasPerformedMaintenance else { return }
+        hasPerformedMaintenance = true
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--load-examples"),
+           let repository {
+            _ = try? repository.loadSampleData(referenceDate: .now)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--load-memory-examples"),
+           let repository,
+           !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedMemoryQAExamples") {
+            let referenceDate = Date.now
+            for (index, text) in SampleDataLibrary.memoryExamples.enumerated() {
+                _ = try? await repository.createCaptureResult(
+                    text: text,
+                    source: .sample,
+                    createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                    schedulesReminders: false
+                )
+            }
+            UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMemoryQAExamples")
+        }
+        if ProcessInfo.processInfo.arguments.contains("--load-marketing-examples"),
+           let repository,
+           !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedMarketingExamples") {
+            // Home first. A "when I get home" capture with no Home configured
+            // is a blocked reminder, and a blocked reminder is exactly the
+            // Needs review row these fixtures exist to avoid.
+            if SavedPlaceStore.place(for: .home) == nil {
+                SavedPlaceStore.set(
+                    SavedPlace(
+                        latitude: 43.6532,
+                        longitude: -79.3832,
+                        label: "Home"
+                    ),
+                    for: .home
+                )
+            }
+            let referenceDate = Date.now
+            var pinnable: [String: UUID] = [:]
+            for (index, text) in (SampleDataLibrary.Marketing.today
+                + SampleDataLibrary.Marketing.memory).enumerated() {
+                let result = try? await repository.createCaptureResult(
+                    text: text,
+                    source: .sample,
+                    createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                    schedulesReminders: false
+                )
+                if let item = result?.items.first {
+                    pinnable[text] = item.id
+                }
+            }
+            for text in SampleDataLibrary.Marketing.pinned {
+                guard let id = pinnable[text] else { continue }
+                MemoryPinStore.setPinned(true, for: id)
+            }
+            UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMarketingExamples")
+        }
+        if ProcessInfo.processInfo.arguments.contains("--load-today-examples"),
+           let repository,
+           !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedTodayQAExamples") {
+            let referenceDate = Date.now
+            for (index, text) in SampleDataLibrary.todayExamples.enumerated() {
+                _ = try? await repository.createCaptureResult(
+                    text: text,
+                    source: .sample,
+                    createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                    schedulesReminders: false
+                )
+            }
+            UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedTodayQAExamples")
+        }
+#endif
+        // Keep database recovery and reminder reconciliation out of the
+        // App Intent cold-start path so a hardware trigger can reach the microphone
+        // with as little main-actor work as possible.
+        await Task.yield()
+        // The word embedding behind person and role detection takes a few
+        // hundred milliseconds to load the first time it is touched, and
+        // that first touch used to land inside the first Memory render.
+        Task.detached(priority: .utility) {
+            PersonMentionResolver.preloadEmbedding()
+            ActionabilityReader.preloadEmbedding()
+        }
+        CaptureDraftStore.pruneEmptyTextDrafts()
+        CaptureDraftStore.pruneResolvedTombstones()
+        // Before either replay path runs: a draft whose words already
+        // reached a committed session must not be replayed into another,
+        // and the audio pass would otherwise re-transcribe it first. This
+        // line is the audio pass's only protection; the release inside
+        // `recoverInterruptedCaptureDraft` covers the text pass alone.
+        // Keep it above `recoverInterruptedAudioDrafts()`.
+        repository?.releaseHandedOffCaptureDrafts()
+        await recoverInterruptedAudioDrafts()
+        repository?.recoverUnorganizedCaptures()
+        repository?.recoverInterruptedCaptureDraft()
+        repository?.reconcileSharedTodayActions()
+        repository?.reconcilePendingReminders()
+        // Regions are crossed while the app is in the background, so the
+        // handler has to be installed before monitoring resumes rather than
+        // when a view happens to appear.
+        LocationReminderMonitor.shared.onRegionEvent = {
+            itemID, event, triggerRevision, regionIdentifier in
+            Task { @MainActor in
+                await repository?.handleLocationTrigger(
+                    itemID: itemID,
+                    event: event,
+                    triggerRevision: triggerRevision,
+                    regionIdentifier: regionIdentifier
+                )
+            }
+        }
+        repository?.reconcileLocationReminders()
+        _ = await repository?.reconcileICloudSync()
+        await importSharedCaptures()
+#if DEBUG
+        hasFinishedLaunchWork = true
+#endif
+    }
+
+    private func handleScenePhase(_ phase: ScenePhase) {
+        // Going to the background is when the store is most recently
+        // right, so the morning brief is re-planned from it here as well
+        // as on the way back in.
+        if phase == .background {
+            repository?.refreshMorningBrief()
+        }
+        guard phase == .active else { return }
+        // A moment whose sheet never reached the screen — SwiftUI refusing
+        // to present over something a descendant screen already had up —
+        // leaves the binding set and the store's moment unconsumed. Clear
+        // the stale binding so the offer gets another chance instead of
+        // blocking every later one.
+        if proMomentSheet != nil, subscriptionStore.pendingProMoment != nil {
+            proMomentSheet = nil
+        }
+        // Captures made outside this process — Siri, Back Tap, a Shortcut —
+        // move the Keychain ledger without this store hearing about it.
+        // Re-reading on every foreground keeps the remaining count on Today
+        // honest, and is what lets a moment those captures earned be offered
+        // without waiting for a relaunch. The shared-inbox import below only
+        // refreshes when a share-extension payload is actually waiting.
+        subscriptionStore.refreshFreeAllowance()
+        repository?.reconcileSharedTodayActions()
+        // Self-healing pass. SwiftData and UNUserNotificationCenter are two
+        // stores that can fall out of step — a scheduling call that failed,
+        // a crash between saving and scheduling, notifications revoked in
+        // Settings, or requests orphaned by an edit. Rebuilding the pending
+        // set from the saved items on every foreground repairs all of them
+        // without the app needing to know which one happened.
+        repository?.reconcilePendingReminders()
+        // The habit notifications get the same self-healing pass, and this
+        // foreground is also what answers a brief that fired this morning.
+        repository?.refreshMorningBrief()
+        // The same argument, for the same reason, against CoreLocation:
+        // regions can be orphaned by an edit, stranded by a delete that
+        // happened while the app was closed, invalidated by a changed Home
+        // address, or stopped by a permission revoked in Settings.
+        //
+        // A foreground is also the retry point for regions iOS refused. The
+        // usual cause is no network reachability, which is exactly the kind
+        // of thing that has often fixed itself by the next time the app is
+        // opened, so the failures are forgotten first and the reminders get
+        // a genuine second attempt rather than being told again.
+        LocationReminderMonitor.shared.clearMonitoringFailures()
+        repository?.reconcileLocationReminders()
+        Task {
+            _ = await repository?.reconcileICloudSync()
+            await importSharedCaptures()
+        }
+    }
+
+    private var isShowingReferralProgram: Binding<Bool> {
+        Binding(
+            get: { activeReferralCode != nil },
+            set: { if !$0 { activeReferralCode = nil } }
+        )
+    }
+
+    /// The screen itself, its notices, and what it covers itself with.
+    private var presentedRoot: some View {
         // A real layout row rather than an overlay or a safe-area inset. Today
         // and Memory hide their navigation bars, and both of those approaches
         // let their scroll content start underneath the banner instead of below
@@ -253,6 +539,13 @@ struct RootView: View {
                     .zIndex(20)
             }
         }
+        // Every notice here is a short toast, and the ones that matter most —
+        // interrupted captures recovered at launch, shared thoughts remembered —
+        // were never spoken (A11Y-4). A launch recovery can finish while a new
+        // capture is recording; `VoiceOverAnnouncer` withholds it then.
+        .onChange(of: sharedImportNotice) { _, notice in
+            if let notice { VoiceOverAnnouncer.shared.announce(notice) }
+        }
 #if DEBUG
         // Comes into existence only once the launch-time task above has run to
         // the end, so UI tests have something to wait on instead of racing it
@@ -304,276 +597,6 @@ struct RootView: View {
                     remainingFreeCaptures: subscriptionStore.freeCapturesRemaining,
                     onContinue: completeTutorial
                 )
-            }
-        }
-        .sheet(isPresented: $showsFreeLimit) {
-            SpeakItProView(context: .freeLimit)
-        }
-        .sheet(item: $proMomentSheet) { moment in
-            SpeakItProView(context: moment.presentationContext)
-                // Marked delivered because it reached the screen, not because
-                // something asked for it. If presentation is refused — another
-                // sheet already up somewhere below — the moment stays pending
-                // and is offered again rather than being silently spent.
-                .onAppear { subscriptionStore.consumeProMoment() }
-        }
-        .onChange(of: proMomentGate) { _, _ in
-            presentPendingProMomentIfReady()
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { activeReferralCode != nil },
-                set: { if !$0 { activeReferralCode = nil } }
-            )
-        ) {
-            NavigationStack {
-                ReferralProgramView(initialReferralCode: activeReferralCode)
-            }
-            .environmentObject(subscriptionStore)
-        }
-        .task {
-            repairInterruptedTutorialIfNeeded()
-            if hasCompletedWelcome,
-               ReferralProgramConfiguration.isEnabled,
-               let pendingCode = PendingReferralStore.code {
-                activeReferralCode = pendingCode
-            }
-            if !hasTrackedInitialScreen {
-                hasTrackedInitialScreen = true
-                SpeakItAnalytics.track(.screenViewed(
-                    selectedDestination == .today ? .today : .memory
-                ))
-            }
-            handleQuickAction(quickActionRouter.pendingRequest)
-            handleTodayRequest(quickActionRouter.pendingTodayRequest)
-            // A moment earned outside the app — a Back Tap capture, a shared
-            // thought imported at activation — is already pending when this
-            // view first appears, and `onChange` never fires for a value that
-            // arrived before the observer did.
-            presentPendingProMomentIfReady()
-            guard !hasPerformedMaintenance else { return }
-            hasPerformedMaintenance = true
-#if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--load-examples"),
-               let repository {
-                _ = try? repository.loadSampleData(referenceDate: .now)
-            }
-            if ProcessInfo.processInfo.arguments.contains("--load-memory-examples"),
-               let repository,
-               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedMemoryQAExamples") {
-                let referenceDate = Date.now
-                for (index, text) in SampleDataLibrary.memoryExamples.enumerated() {
-                    _ = try? await repository.createCaptureResult(
-                        text: text,
-                        source: .sample,
-                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
-                        schedulesReminders: false
-                    )
-                }
-                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMemoryQAExamples")
-            }
-            if ProcessInfo.processInfo.arguments.contains("--load-marketing-examples"),
-               let repository,
-               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedMarketingExamples") {
-                // Home first. A "when I get home" capture with no Home configured
-                // is a blocked reminder, and a blocked reminder is exactly the
-                // Needs review row these fixtures exist to avoid.
-                if SavedPlaceStore.place(for: .home) == nil {
-                    SavedPlaceStore.set(
-                        SavedPlace(
-                            latitude: 43.6532,
-                            longitude: -79.3832,
-                            label: "Home"
-                        ),
-                        for: .home
-                    )
-                }
-                let referenceDate = Date.now
-                var pinnable: [String: UUID] = [:]
-                for (index, text) in (SampleDataLibrary.Marketing.today
-                    + SampleDataLibrary.Marketing.memory).enumerated() {
-                    let result = try? await repository.createCaptureResult(
-                        text: text,
-                        source: .sample,
-                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
-                        schedulesReminders: false
-                    )
-                    if let item = result?.items.first {
-                        pinnable[text] = item.id
-                    }
-                }
-                for text in SampleDataLibrary.Marketing.pinned {
-                    guard let id = pinnable[text] else { continue }
-                    MemoryPinStore.setPinned(true, for: id)
-                }
-                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedMarketingExamples")
-            }
-            if ProcessInfo.processInfo.arguments.contains("--load-today-examples"),
-               let repository,
-               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedTodayQAExamples") {
-                let referenceDate = Date.now
-                for (index, text) in SampleDataLibrary.todayExamples.enumerated() {
-                    _ = try? await repository.createCaptureResult(
-                        text: text,
-                        source: .sample,
-                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
-                        schedulesReminders: false
-                    )
-                }
-                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedTodayQAExamples")
-            }
-#endif
-            // Keep database recovery and reminder reconciliation out of the
-            // App Intent cold-start path so a hardware trigger can reach the microphone
-            // with as little main-actor work as possible.
-            await Task.yield()
-            // The word embedding behind person and role detection takes a few
-            // hundred milliseconds to load the first time it is touched, and
-            // that first touch used to land inside the first Memory render.
-            Task.detached(priority: .utility) {
-                PersonMentionResolver.preloadEmbedding()
-                ActionabilityReader.preloadEmbedding()
-            }
-            CaptureDraftStore.pruneEmptyTextDrafts()
-            CaptureDraftStore.pruneResolvedTombstones()
-            // Before either replay path runs: a draft whose words already
-            // reached a committed session must not be replayed into another,
-            // and the audio pass would otherwise re-transcribe it first. This
-            // line is the audio pass's only protection; the release inside
-            // `recoverInterruptedCaptureDraft` covers the text pass alone.
-            // Keep it above `recoverInterruptedAudioDrafts()`.
-            repository?.releaseHandedOffCaptureDrafts()
-            await recoverInterruptedAudioDrafts()
-            repository?.recoverUnorganizedCaptures()
-            repository?.recoverInterruptedCaptureDraft()
-            repository?.reconcileSharedTodayActions()
-            repository?.reconcilePendingReminders()
-            // Regions are crossed while the app is in the background, so the
-            // handler has to be installed before monitoring resumes rather than
-            // when a view happens to appear.
-            LocationReminderMonitor.shared.onRegionEvent = {
-                itemID, event, triggerRevision, regionIdentifier in
-                Task { @MainActor in
-                    await repository?.handleLocationTrigger(
-                        itemID: itemID,
-                        event: event,
-                        triggerRevision: triggerRevision,
-                        regionIdentifier: regionIdentifier
-                    )
-                }
-            }
-            repository?.reconcileLocationReminders()
-            _ = await repository?.reconcileICloudSync()
-            await importSharedCaptures()
-#if DEBUG
-            hasFinishedLaunchWork = true
-#endif
-        }
-        .onChange(of: quickActionRouter.pendingRequest) { _, request in
-            handleQuickAction(request)
-        }
-        .onChange(of: quickActionRouter.pendingTodayRequest) { _, request in
-            handleTodayRequest(request)
-        }
-        .onChange(of: selectedDestination) { _, destination in
-            SpeakItAnalytics.track(.screenViewed(
-                destination == .today ? .today : .memory
-            ))
-        }
-        .onOpenURL(perform: handleDeepLink)
-        .onChange(of: scenePhase) { _, phase in
-            // Going to the background is when the store is most recently
-            // right, so the morning brief is re-planned from it here as well
-            // as on the way back in.
-            if phase == .background {
-                repository?.refreshMorningBrief()
-            }
-            guard phase == .active else { return }
-            // A moment whose sheet never reached the screen — SwiftUI refusing
-            // to present over something a descendant screen already had up —
-            // leaves the binding set and the store's moment unconsumed. Clear
-            // the stale binding so the offer gets another chance instead of
-            // blocking every later one.
-            if proMomentSheet != nil, subscriptionStore.pendingProMoment != nil {
-                proMomentSheet = nil
-            }
-            // Captures made outside this process — Siri, Back Tap, a Shortcut —
-            // move the Keychain ledger without this store hearing about it.
-            // Re-reading on every foreground keeps the remaining count on Today
-            // honest, and is what lets a moment those captures earned be offered
-            // without waiting for a relaunch. The shared-inbox import below only
-            // refreshes when a share-extension payload is actually waiting.
-            subscriptionStore.refreshFreeAllowance()
-            repository?.reconcileSharedTodayActions()
-            // Self-healing pass. SwiftData and UNUserNotificationCenter are two
-            // stores that can fall out of step — a scheduling call that failed,
-            // a crash between saving and scheduling, notifications revoked in
-            // Settings, or requests orphaned by an edit. Rebuilding the pending
-            // set from the saved items on every foreground repairs all of them
-            // without the app needing to know which one happened.
-            repository?.reconcilePendingReminders()
-            // The habit notifications get the same self-healing pass, and this
-            // foreground is also what answers a brief that fired this morning.
-            repository?.refreshMorningBrief()
-            // The same argument, for the same reason, against CoreLocation:
-            // regions can be orphaned by an edit, stranded by a delete that
-            // happened while the app was closed, invalidated by a changed Home
-            // address, or stopped by a permission revoked in Settings.
-            //
-            // A foreground is also the retry point for regions iOS refused. The
-            // usual cause is no network reachability, which is exactly the kind
-            // of thing that has often fixed itself by the next time the app is
-            // opened, so the failures are forgotten first and the reminders get
-            // a genuine second attempt rather than being told again.
-            LocationReminderMonitor.shared.clearMonitoringFailures()
-            repository?.reconcileLocationReminders()
-            Task {
-                _ = await repository?.reconcileICloudSync()
-                await importSharedCaptures()
-            }
-        }
-        // Location permission changed in Settings while the app was open. The
-        // reminders have not changed meaning, so nothing is deleted — the
-        // monitored set is simply rebuilt for whatever access now exists.
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: LocationReminderMonitor.authorizationDidChangeNotification
-            )
-        ) { _ in
-            // New access is a new chance for a region that was refused under the
-            // old access, so those are retried too.
-            LocationReminderMonitor.shared.clearMonitoringFailures()
-            repository?.reconcileLocationReminders()
-        }
-        // iOS refused a region after accepting the call to monitor it. What the
-        // app believes it is watching is now wrong, so the monitored set is
-        // rebuilt — this one *without* clearing the failures, since retrying
-        // here would only produce the same refusal and the same notification.
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: LocationReminderMonitor.monitoringDidFailNotification
-            )
-        ) { _ in
-            repository?.reconcileLocationReminders()
-        }
-        // Home or Work moved. Every reminder that says "home" still says "home";
-        // only where that resolves to has changed, so re-resolving is a
-        // reconcile rather than an edit to any of them.
-        .onReceive(NotificationCenter.default.publisher(for: SavedPlaceStore.didChangeNotification)) { _ in
-            repository?.reconcileLocationReminders()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .speakItMemoryMetadataDidChange)) { _ in
-            ICloudSyncState.markLocalChange()
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(500))
-                _ = await repository?.reconcileICloudSync()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .speakItUseTestPrompt)) { notice in
-            guard let text = notice.object as? String, !text.isEmpty else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(320))
-                presentCapture(initialMode: .text, initialText: text, entry: .testPrompt)
             }
         }
     }

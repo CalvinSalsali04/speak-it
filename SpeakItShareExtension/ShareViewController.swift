@@ -106,7 +106,16 @@ final class ShareViewController: UIViewController {
             closeButton.setTitle("Done", for: .normal)
 
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // The sheet used to close 0.9 s later having said nothing, so a
+            // VoiceOver user could not tell a saved share from a dropped one
+            // (A11Y-5). With VoiceOver on, the sheet also stays until the
+            // confirmation has been spoken; with it off, `untilSilent` returns
+            // at once and the timing is unchanged.
+            VoiceOverAnnouncer.shared.announce(
+                VoiceOverAnnouncer.sentence([titleLabel.text ?? "", detailLabel.text ?? ""])
+            )
             try await Task.sleep(for: .milliseconds(900))
+            await VoiceOverAnnouncer.shared.untilSilent()
             try Task.checkCancellation()
             extensionContext?.completeRequest(returningItems: nil)
         } catch is CancellationError {
@@ -119,6 +128,9 @@ final class ShareViewController: UIViewController {
             titleLabel.text = "Couldn’t remember this"
             detailLabel.text = error.localizedDescription
             closeButton.setTitle("Close", for: .normal)
+            VoiceOverAnnouncer.shared.announce(
+                VoiceOverAnnouncer.sentence([titleLabel.text ?? "", detailLabel.text ?? ""])
+            )
         }
     }
 

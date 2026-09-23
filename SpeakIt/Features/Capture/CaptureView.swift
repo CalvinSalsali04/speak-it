@@ -288,6 +288,32 @@ enum CaptureVoiceStatus: Equatable {
         }
     }
 
+    /// What VoiceOver is told when the screen moves from `old` to `new`, or
+    /// `nil` when the change is not news.
+    ///
+    /// These were the silent state changes of A11Y-2: the title changed and
+    /// nothing was said. Only states entered with the microphone already shut
+    /// are named, and `VoiceOverAnnouncer` withholds anything that arrives
+    /// while it is open anyway. Finalizing and saving read as one state on
+    /// screen, so moving from one to the other is not announced twice.
+    static func spokenChange(from old: CaptureVoiceStatus, to new: CaptureVoiceStatus) -> String? {
+        guard old != new else { return nil }
+        switch new {
+        case .finalizing, .saving:
+            if old == .finalizing || old == .saving { return nil }
+            return "Saving your thought"
+        case .recovering:
+            return "Recovering your words. The temporary recording is safe on this iPhone."
+        case .permissionDenied:
+            return "Microphone access is off. Allow microphone and speech recognition, or type instead."
+        case .idle, .preparing, .listening, .unavailable, .failed:
+            // Unavailable and failed hand over to typing, whose notice says
+            // why; the rest are the person's own doing, or a microphone about
+            // to open.
+            return nil
+        }
+    }
+
     var buttonAccessibilityHint: String {
         switch self {
         case .listening:
@@ -724,13 +750,12 @@ struct CaptureView: View {
         .onChange(of: transcriber.state) { _, newState in
             switch newState {
             case .listening:
-                // This transition now occurs on the first real microphone
-                // buffer, so the cue is safe to speak after—not merely an
-                // animation that can race Core Audio/model startup.
+                // This transition occurs on the first real microphone buffer,
+                // so the haptic is not an animation racing Core Audio/model
+                // startup. It is the only cue here: the microphone is open, so
+                // nothing may be spoken now. VoiceOver heard "Listening" before
+                // the engine started (`listeningCue` in `startVoiceCapture`).
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if accessibilityVoiceOverEnabled {
-                    UIAccessibility.post(notification: .announcement, argument: "Listening")
-                }
                 performance?.markMicrophoneReady()
                 armNoSpeechTimeout()
                 Task { await CaptureActivityManager.beginListening() }
@@ -771,11 +796,28 @@ struct CaptureView: View {
             }
         }
         .onChange(of: transcriber.isWaitingForContinuation) { _, isWaiting in
+            // This used to announce "Still listening…" — into the open
+            // microphone, where it could become part of the person's original
+            // words and read as speech by the pause check (A11Y-3). The
+            // subtitle still says it; VoiceOver gets the listening haptic.
             guard isWaiting, accessibilityVoiceOverEnabled else { return }
-            UIAccessibility.post(
-                notification: .announcement,
-                argument: "Still listening. Take your time, or tap the pulse when you're finished."
-            )
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        .onChange(of: voiceStatus) { oldStatus, newStatus in
+            if let spoken = CaptureVoiceStatus.spokenChange(from: oldStatus, to: newStatus) {
+                VoiceOverAnnouncer.shared.announce(spoken)
+            }
+        }
+        .onChange(of: voiceNotice) { _, notice in
+            // Set once the recording has stopped, with one exception: the
+            // empty-Finish notice shown while still listening, which is only
+            // set with VoiceOver off (a VoiceOver user's empty Finish ends the
+            // attempt; see `handleVoiceButton`). Anything that does arrive
+            // while the microphone is open, `VoiceOverAnnouncer` withholds.
+            if let notice { VoiceOverAnnouncer.shared.announce(notice) }
+        }
+        .onChange(of: captureNotice) { _, notice in
+            if let notice { VoiceOverAnnouncer.shared.announce(notice) }
         }
         .onChange(of: typedText) { _, newText in
             if newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1088,6 +1130,7 @@ struct CaptureView: View {
             )
             Text(savedConfirmationTitle)
                 .font(.largeTitle.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text(savedConfirmationDetail)
                 .foregroundStyle(Color.speakMuted)
 
@@ -1417,6 +1460,17 @@ struct CaptureView: View {
     private func handleVoiceButton() {
         if transcriber.isListening {
             guard !transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                if accessibilityVoiceOverEnabled {
+                    // "Keep talking" cannot be spoken into the open microphone
+                    // (A11Y-3), and a notice nobody hears left a VoiceOver user
+                    // waiting on a recording they had asked to finish. The
+                    // button says "Finish recording now", so it does: exactly
+                    // as the no-speech timeout would, recovering any recorded
+                    // audio and otherwise saying so once the microphone is shut.
+                    noSpeechTimeoutTask?.cancel()
+                    endAttemptWithoutWords()
+                    return
+                }
                 voiceNotice = "I’m listening — say your thought, then pause."
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 return
@@ -1439,7 +1493,9 @@ struct CaptureView: View {
         await transcriber.start(
             recoveryAudioURL: recoveryURL,
             contextualPhrases: tutorialMission?.contextualPhrases ?? [],
-            prefersEnhancedRecognition: tutorialMission != nil
+            prefersEnhancedRecognition: tutorialMission != nil,
+            // Spoken, and finished, before the engine starts (A11Y-3).
+            listeningCue: "Listening"
         ) { finalText in
             save(finalText, source: .inAppVoice)
         }
@@ -1509,26 +1565,33 @@ struct CaptureView: View {
                   transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return
             }
-
-            if hasRecoverableActiveAudio {
-                recoverActiveAudio()
-            } else {
-                transcriber.cancel()
-                discardActiveDraft()
-                if let quality = transcriber.lastAudioQuality, quality.isVeryQuiet {
-                    voiceNotice = "That was very quiet. Bring the iPhone closer and try once more."
-                } else if let quality = transcriber.lastAudioQuality, quality.isLikelyClipped {
-                    voiceNotice = "That was too loud for the microphone. Move it a little farther away."
-                } else {
-                    voiceNotice = "I didn’t hear speech. Tap when you’re ready, or type instead."
-                }
-                if let quality = transcriber.lastAudioQuality {
-                    SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: false))
-                }
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                Task { await CaptureActivityManager.cancelListening() }
-            }
+            endAttemptWithoutWords()
         }
+    }
+
+    /// Ends a recording that produced no words: recovers the protected audio
+    /// if any was heard, and otherwise stops and says why. The notice is set
+    /// after `transcriber.cancel()` has shut the microphone, so it can be
+    /// announced (A11Y-2).
+    private func endAttemptWithoutWords() {
+        if hasRecoverableActiveAudio {
+            recoverActiveAudio()
+            return
+        }
+        transcriber.cancel()
+        discardActiveDraft()
+        if let quality = transcriber.lastAudioQuality, quality.isVeryQuiet {
+            voiceNotice = "That was very quiet. Bring the iPhone closer and try once more."
+        } else if let quality = transcriber.lastAudioQuality, quality.isLikelyClipped {
+            voiceNotice = "That was too loud for the microphone. Move it a little farther away."
+        } else {
+            voiceNotice = "I didn’t hear speech. Tap when you’re ready, or type instead."
+        }
+        if let quality = transcriber.lastAudioQuality {
+            SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: false))
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        Task { await CaptureActivityManager.cancelListening() }
     }
 
     private func switchToTyping() {
@@ -1817,6 +1880,12 @@ struct CaptureView: View {
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
+                // The receipt replaces the orb that held VoiceOver's focus, and
+                // nothing said where the result went (A11Y-1). The recognizer
+                // has stopped by now, so this cannot reach a transcript.
+                VoiceOverAnnouncer.shared.announce(
+                    VoiceOverAnnouncer.sentence([savedConfirmationTitle, savedConfirmationDetail])
+                )
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
                     showsSavedConfirmation = true
                 }

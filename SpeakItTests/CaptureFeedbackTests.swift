@@ -1056,8 +1056,13 @@ final class CaptureFeedbackTests: XCTestCase {
 }
 
 extension CaptureVoiceStatus {
-    /// Every state, so a check that must hold for all of them cannot quietly
-    /// miss one that is added later.
+    /// Every state as this list was written, with both values of each
+    /// associated `Bool`. It is written by hand: the associated values keep
+    /// `CaptureVoiceStatus` from synthesizing `CaseIterable`, and nothing
+    /// puts a case added later on this list. The exhaustive switch in
+    /// `spokenChange` fails to compile on a new case, but it can be satisfied
+    /// without touching this list, so a check over `everyState` says nothing
+    /// about a case missing from it. Add any new case here by hand.
     static var everyState: [CaptureVoiceStatus] {
         [
             .idle,
@@ -1172,5 +1177,281 @@ private final class ScreenSave {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             resume = continuation
         }
+    }
+}
+
+/// What Speak It asks VoiceOver to say, and the one rule over all of it:
+/// nothing it posts is spoken while a microphone is open. (Audit
+/// `v1/audits/accessibility.md`, A11Y-1 to A11Y-5.)
+///
+/// There is no echo cancellation in the production audio session, so an
+/// announcement spoken into an open microphone can be transcribed into the
+/// person's original words. These tests ask `VoiceOverAnnouncer`'s decisions
+/// directly, with VoiceOver, the speech itself and VoiceOver's finish reports
+/// played by the test. What they cannot show is that the real VoiceOver sends
+/// the report this relies on, or where its audio goes while the session is
+/// `.playAndRecord`; those are the device checks.
+@MainActor
+final class VoiceOverAnnouncementTests: XCTestCase {
+    private var voiceOverRunning = true
+    private var spoken: [String] = []
+    private var microphoneOpened = false
+    private var silentAfter: Duration?
+
+    private func makeAnnouncer(allowance: Duration = .seconds(30)) -> VoiceOverAnnouncer {
+        VoiceOverAnnouncer(
+            isVoiceOverRunning: { [unowned self] in self.voiceOverRunning },
+            speak: { [unowned self] in self.spoken.append($0) },
+            allowance: { _ in allowance }
+        )
+    }
+
+    /// Opens the microphone the way `SpeechTranscriber.start` does: after the
+    /// wait, with nothing in between.
+    private func openMicrophone(with announcer: VoiceOverAnnouncer, cue: String?) -> Task<Void, Never> {
+        Task { @MainActor in
+            await announcer.waitUntilMicrophoneMayOpen(cue: cue)
+            announcer.microphoneWillOpen()
+            self.microphoneOpened = true
+        }
+    }
+
+    /// Lets a waiting task reach its continuation. Bounded, so a regression
+    /// fails here instead of hanging the suite.
+    private func untilWaiting(_ announcer: VoiceOverAnnouncer) async {
+        for _ in 0..<1_000 where announcer.waitingCount == 0 && !microphoneOpened {
+            await Task.yield()
+        }
+    }
+
+    // MARK: - Nothing is spoken into an open microphone
+
+    /// Falsifier: drop `guard openMicrophones == 0` from
+    /// `VoiceOverAnnouncer.decision` and the recovery notice reaches VoiceOver
+    /// while the recognizer is capturing.
+    func testNothingIsSpokenWhileAMicrophoneIsOpen() {
+        let announcer = makeAnnouncer()
+        announcer.microphoneWillOpen()
+
+        XCTAssertEqual(announcer.announce("Recovering your words"), .microphoneOpen)
+        XCTAssertEqual(spoken, [], "an announcement was spoken into the open microphone")
+        XCTAssertEqual(announcer.unfinished, [])
+        XCTAssertEqual(announcer.withheldAnnouncements, 1)
+
+        announcer.microphoneDidClose()
+        XCTAssertEqual(announcer.announce("Recovering your words"), .speak)
+        XCTAssertEqual(spoken, ["Recovering your words"])
+    }
+
+    /// Falsifier: make the open microphone a flag rather than a count, and the
+    /// first transcriber to close lets announcements through while the second
+    /// is still recording.
+    func testOneMicrophoneClosingDoesNotReopenSpeechWhileAnotherIsOpen() {
+        let announcer = makeAnnouncer()
+        announcer.microphoneWillOpen()
+        announcer.microphoneWillOpen()
+        announcer.microphoneDidClose()
+
+        XCTAssertEqual(announcer.announce("Remembered"), .microphoneOpen)
+        XCTAssertEqual(spoken, [])
+        XCTAssertEqual(
+            VoiceOverAnnouncer.decision(voiceOverRunning: true, openMicrophones: 1),
+            .microphoneOpen
+        )
+    }
+
+    /// The count is process-wide, so a claim that is never given back
+    /// withholds every announcement until the app is killed. The transcriber
+    /// that took the claim gives it back when it goes, whether or not its
+    /// screen remembered to cancel it.
+    ///
+    /// Falsifier: delete `SpeechTranscriber`'s `deinit`, and the count stays at
+    /// one after the transcriber is gone, so the last announcement here is
+    /// withheld.
+    func testATranscriberReleasedWhileHoldingTheMicrophoneGivesItBack() {
+        let announcer = makeAnnouncer()
+        var transcriber: SpeechTranscriber? = SpeechTranscriber(reportsAudioLevel: false, announcer: announcer)
+        transcriber?.claimMicrophone()
+        XCTAssertEqual(announcer.openMicrophones, 1)
+
+        weak var released = transcriber
+        transcriber = nil
+        XCTAssertNil(released, "the transcriber outlived its last reference, so this proves nothing")
+        XCTAssertEqual(announcer.openMicrophones, 0, "a released transcriber kept the microphone claimed")
+        XCTAssertEqual(announcer.announce("Remembered"), .speak)
+    }
+
+    // MARK: - The microphone does not open over something still being spoken
+
+    /// The case that made "post it before the engine starts" insufficient on
+    /// its own: "Try saying it again" posts a notice and opens the microphone
+    /// 260 ms later, and VoiceOver is still reading it then.
+    ///
+    /// Falsifier: have `mayOpenMicrophone` ignore `unfinishedAnnouncements`,
+    /// and the microphone opens while the notice and the cue are unspoken.
+    func testTheMicrophoneOpensOnlyAfterEverythingPostedHasBeenSpoken() async {
+        let announcer = makeAnnouncer()
+        let notice = "Try saying it a different way, or include the missing detail."
+        announcer.announce(notice)
+
+        let opening = openMicrophone(with: announcer, cue: "Listening")
+        await untilWaiting(announcer)
+        XCTAssertEqual(spoken, [notice, "Listening"], "the cue is posted before the microphone opens")
+        XCTAssertFalse(microphoneOpened, "the microphone opened while the notice was being spoken")
+
+        announcer.announcementDidFinish(notice)
+        await untilWaiting(announcer)
+        XCTAssertFalse(microphoneOpened, "the microphone opened while the cue was being spoken")
+
+        announcer.announcementDidFinish("Listening")
+        await opening.value
+        XCTAssertTrue(microphoneOpened)
+        XCTAssertEqual(announcer.announce("Still listening"), .microphoneOpen)
+    }
+
+    /// Falsifier: release the oldest unfinished announcement on any finish
+    /// report, and a report about the receipt opens the microphone while the
+    /// cue is still being spoken.
+    func testAReportAboutAnotherAnnouncementDoesNotOpenTheMicrophone() async {
+        let announcer = makeAnnouncer()
+        let opening = openMicrophone(with: announcer, cue: "Listening")
+        await untilWaiting(announcer)
+
+        announcer.announcementDidFinish("Remembered. Memory.")
+        await untilWaiting(announcer)
+        XCTAssertFalse(microphoneOpened, "an unrelated report released the microphone")
+
+        announcer.announcementDidFinish("Listening")
+        await opening.value
+        XCTAssertTrue(microphoneOpened)
+    }
+
+    /// Speak It posts an attributed string, and VoiceOver's finish report may
+    /// carry either form. This cannot show which one the real VoiceOver sends
+    /// (a device check); it shows that either one releases the wait.
+    ///
+    /// Falsifier: read the report only as a `String`, and the attributed form
+    /// matches nothing, so every wait runs its whole allowance.
+    func testAFinishReportIsReadInEitherFormItMayArriveIn() {
+        XCTAssertEqual(VoiceOverAnnouncer.spokenText(fromFinishReport: NSAttributedString(string: "Listening")), "Listening")
+        XCTAssertEqual(VoiceOverAnnouncer.spokenText(fromFinishReport: "Listening"), "Listening")
+        XCTAssertNil(VoiceOverAnnouncer.spokenText(fromFinishReport: nil))
+        XCTAssertNil(VoiceOverAnnouncer.spokenText(fromFinishReport: 7))
+
+        let announcer = makeAnnouncer()
+        announcer.announce("Listening")
+        announcer.announcementDidFinish(
+            VoiceOverAnnouncer.spokenText(fromFinishReport: NSAttributedString(string: "Listening"))
+        )
+        XCTAssertEqual(announcer.unfinished, [], "a report in the attributed form did not match what was posted")
+    }
+
+    // MARK: - No cost without VoiceOver, and no permanent hold with it
+
+    /// Falsifier: drop `!voiceOverRunning ||` from `mayOpenMicrophone`, and a
+    /// capture waits out the thirty-second allowance of an announcement
+    /// VoiceOver will never speak.
+    func testWithoutVoiceOverNothingIsSpokenAndTheMicrophoneDoesNotWait() async {
+        let announcer = makeAnnouncer()
+        announcer.announce("Saving your thought")
+        voiceOverRunning = false
+
+        XCTAssertEqual(announcer.announce("Remembered"), .voiceOverOff)
+        XCTAssertEqual(spoken, ["Saving your thought"])
+        XCTAssertTrue(
+            VoiceOverAnnouncer.mayOpenMicrophone(voiceOverRunning: false, unfinishedAnnouncements: 3)
+        )
+
+        let started = ContinuousClock.now
+        await announcer.waitUntilMicrophoneMayOpen(cue: "Listening")
+        XCTAssertLessThan(started.duration(to: .now), .seconds(1), "the microphone waited with VoiceOver off")
+        XCTAssertEqual(spoken, ["Saving your thought"], "the cue was posted with VoiceOver off")
+    }
+
+    /// Falsifier: remove the timeout task from `untilSilent`, and a finish
+    /// report VoiceOver never sends holds the microphone shut for good. The
+    /// wait runs in its own task and this test waits for it for five
+    /// seconds at most, so that mutation fails here rather than hanging the
+    /// suite; the stranded task is left suspended. The lower bound catches
+    /// the opposite mutation, a wait that does not wait at all.
+    func testALostFinishReportHoldsTheMicrophoneOnlyForItsAllowance() async throws {
+        let announcer = makeAnnouncer(allowance: .milliseconds(80))
+        let started = ContinuousClock.now
+        announcer.announce("Listening")
+
+        let silent = expectation(description: "the allowance ran out and the microphone could open")
+        Task { @MainActor in
+            await announcer.untilSilent()
+            self.silentAfter = started.duration(to: .now)
+            silent.fulfill()
+        }
+        await fulfillment(of: [silent], timeout: 5)
+
+        let waited = try XCTUnwrap(silentAfter, "a lost finish report held the microphone shut")
+        XCTAssertGreaterThanOrEqual(waited, .milliseconds(80))
+        XCTAssertEqual(announcer.unfinished, [])
+    }
+
+    /// Falsifier: have `wakeWaiters` resume only when nothing is unfinished,
+    /// and turning VoiceOver off mid-announcement strands a capture waiting
+    /// for a report that will never come.
+    func testTurningVoiceOverOffReleasesAWaitingMicrophone() async {
+        let announcer = makeAnnouncer()
+        let opening = openMicrophone(with: announcer, cue: "Listening")
+        await untilWaiting(announcer)
+        XCTAssertFalse(microphoneOpened)
+
+        voiceOverRunning = false
+        announcer.wakeWaiters()
+        await opening.value
+        XCTAssertTrue(microphoneOpened)
+    }
+
+    // MARK: - What is said
+
+    /// Falsifier: join the parts with a full stop regardless, and the receipt
+    /// reads "Can you clarify?." aloud.
+    func testAReceiptIsReadAsSentences() {
+        XCTAssertEqual(
+            VoiceOverAnnouncer.sentence(["Can you clarify?", "I understood the thought, but not when."]),
+            "Can you clarify? I understood the thought, but not when."
+        )
+        XCTAssertEqual(
+            VoiceOverAnnouncer.sentence(["Remembered", "Today\n2 free captures left"]),
+            "Remembered. Today. 2 free captures left."
+        )
+        XCTAssertEqual(VoiceOverAnnouncer.sentence(["Remembered", ""]), "Remembered.")
+    }
+
+    /// Falsifier: announce `.listening` here (the original "Listening" after
+    /// the first microphone buffer), and a state entered with the microphone
+    /// open is spoken into it.
+    func testNoVoiceStateEnteredWithTheMicrophoneOpenIsAnnounced() {
+        for old in CaptureVoiceStatus.everyState {
+            for new in CaptureVoiceStatus.everyState {
+                guard CaptureVoiceStatus.spokenChange(from: old, to: new) != nil else { continue }
+                switch new {
+                case .listening, .preparing:
+                    XCTFail("\(old) to \(new) is announced, and the microphone opens in that state")
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    /// Falsifier: drop the finalizing-to-saving exception, and one save is
+    /// announced twice.
+    func testASaveIsAnnouncedOnceAndRecoveryIsAnnounced() {
+        XCTAssertEqual(
+            CaptureVoiceStatus.spokenChange(from: .listening(isWaitingForContinuation: false), to: .finalizing),
+            "Saving your thought"
+        )
+        XCTAssertNil(CaptureVoiceStatus.spokenChange(from: .finalizing, to: .saving))
+        XCTAssertEqual(CaptureVoiceStatus.spokenChange(from: .idle, to: .saving), "Saving your thought")
+        XCTAssertNotNil(
+            CaptureVoiceStatus.spokenChange(from: .listening(isWaitingForContinuation: false), to: .recovering)
+        )
+        XCTAssertNil(CaptureVoiceStatus.spokenChange(from: .saving, to: .saving))
     }
 }

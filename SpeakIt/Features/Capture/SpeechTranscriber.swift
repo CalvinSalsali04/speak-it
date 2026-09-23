@@ -113,6 +113,13 @@ final class SpeechTranscriber: ObservableObject {
     private var finalization: ((String) -> Void)?
     private var automaticFinalization: ((String) -> Void)?
     private var hasInstalledTap = false
+    /// Whether this transcriber has told `announcer` its microphone is open,
+    /// so it closes exactly what it opened: in `stopAudioInput`, or in
+    /// `deinit` if it is released first.
+    private var holdsMicrophone = false
+    /// The process's announcer in the app; a test's own in a test, so a test
+    /// can count what one transcriber claims without touching the shared one.
+    private let announcer: VoiceOverAnnouncer
     private var recoveryAudioFile: AVAudioFile?
     private var activeStartID: UUID?
     /// Which recognition run the transcriber is currently willing to hear from.
@@ -155,9 +162,45 @@ final class SpeechTranscriber: ObservableObject {
 
     var isListening: Bool { state == .listening }
 
-    init(reportsAudioLevel: Bool = true) {
+    init(reportsAudioLevel: Bool = true, announcer: VoiceOverAnnouncer? = nil) {
         self.reportsAudioLevel = reportsAudioLevel
+        self.announcer = announcer ?? .shared
         observeAudioSessionChanges()
+    }
+
+    /// Gives back this transcriber's microphone claim if it is released
+    /// while still holding one.
+    ///
+    /// The announcer's count is process-wide, and a count that never returns
+    /// to zero withholds every announcement for the rest of the process. Both
+    /// owners cancel in `.onDisappear` today, so no path is known to reach
+    /// this with a claim; it is here so that the invariant is held by the
+    /// object that took the claim rather than by two view modifiers.
+    ///
+    /// `deinit` is nonisolated even on a `@MainActor` class. The last release
+    /// of a main-actor object is almost always on the main thread, and there
+    /// `MainActor.assumeIsolated` releases the claim synchronously, before
+    /// anything else can announce. It traps off the main thread, so a release
+    /// anywhere else hops instead: the claim comes back one turn of the main
+    /// actor later, which can only withhold, never speak into a microphone.
+    /// Only the announcer is captured; `self` is being destroyed.
+    deinit {
+        guard holdsMicrophone else { return }
+        let announcer = self.announcer
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { announcer.microphoneDidClose() }
+        } else {
+            Task { @MainActor in announcer.microphoneDidClose() }
+        }
+    }
+
+    /// Tells the announcer this transcriber's microphone is open. `start`
+    /// calls it immediately before the engine starts, and a test calls it to
+    /// stand in for an engine it cannot start.
+    func claimMicrophone() {
+        guard !holdsMicrophone else { return }
+        announcer.microphoneWillOpen()
+        holdsMicrophone = true
     }
 
     /// Starts the system-owned iOS 26 model installation without opening the
@@ -174,6 +217,7 @@ final class SpeechTranscriber: ObservableObject {
         contextualPhrases: [String] = [],
         prefersEnhancedRecognition: Bool = false,
         forcesLegacyRecognitionForBenchmark: Bool = false,
+        listeningCue: String? = nil,
         onAutomaticFinalization: @escaping (String) -> Void
     ) async {
         guard state != .requestingPermission, state != .listening else { return }
@@ -301,6 +345,20 @@ final class SpeechTranscriber: ObservableObject {
             }
             hasInstalledTap = true
 
+            // The microphone opens here and nowhere else, so this is where
+            // VoiceOver must already be quiet. With VoiceOver on, `listeningCue`
+            // is spoken now and finished — along with anything Speak It posted
+            // before it — before the engine starts; with it off this returns
+            // at once. There is no suspension between this await and
+            // `audioEngine.start()`, and while the microphone is open
+            // `VoiceOverAnnouncer` withholds everything, so nothing Speak It
+            // asks VoiceOver to say reaches the recognizer. (A11Y-3)
+            await announcer.waitUntilMicrophoneMayOpen(cue: listeningCue)
+            // Abandoned while VoiceOver spoke. `cancel` and `resetAfterFailure`
+            // have already released this run's tap and backend, and a newer
+            // run may own the engine now, so nothing is torn down here.
+            guard activeStartID == startID else { return }
+            claimMicrophone()
             audioEngine.prepare()
             try audioEngine.start()
             guard activeStartID == startID else {
@@ -789,9 +847,21 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseTask?.cancel()
         isWaitingForContinuation = false
         markSpeechEndpointDetectedIfNeeded()
+        // The microphone closes before the state says finalizing, because
+        // entering finalizing is announced ("Saving your thought") and the
+        // announcer must already have the claim back. `stopAudioInput` reads
+        // nothing of `state`, so the order is otherwise free as long as no
+        // callback re-enters this actor synchronously while it drains. That
+        // holds in the backends, not in `recognitionRun`, whose closures call
+        // straight through: `SpeechRecognitionBackend` declares its callbacks
+        // `@MainActor` and both implementations deliver them in a new
+        // `Task { @MainActor }`. A backend that called back synchronously
+        // would meet `state == .listening` and no `finalization` here, so an
+        // error would fail the capture instead of finalizing it, and a final
+        // transcript would wait out the finalization timeout.
+        stopAudioInput()
         state = .finalizing
         finalization = completion
-        stopAudioInput()
         recognitionBackend?.endAudio()
 
         finalizationTimeout?.cancel()
@@ -830,6 +900,10 @@ final class SpeechTranscriber: ObservableObject {
         if hasInstalledTap {
             audioEngine.inputNode.removeTap(onBus: 0)
             hasInstalledTap = false
+        }
+        if holdsMicrophone {
+            holdsMicrophone = false
+            announcer.microphoneDidClose()
         }
         // `finish` closes submissions and synchronously drains already-copied
         // buffers. `beginFinalization` calls `endAudio` only after this returns,
