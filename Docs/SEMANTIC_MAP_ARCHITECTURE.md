@@ -183,8 +183,11 @@ Two rules about evidence the grader of #118 sharpened:
   unless the parser repaired it (the correction was applied in place); for
   `isConditionFor` a row holding its own condition that executes with a
   resolved state is withdrawn (`spanningRowStillExecutes`), unless the row
-  already encodes the condition: a place trigger for "when I get to Costco",
-  or an instant the condition's own words give (`conditionEncodedInRow`).
+  already encodes a condition that is purely a trigger: a place trigger for
+  the place the condition names ("when I get to Costco"), or the instant a
+  bounded time condition alone gives ("after five") (`conditionEncodedInRow`).
+  An "if" or "unless" state of the world ("if Sam says yes", "if Sam hasn't
+  replied by five") is never encoded by a trigger or a deadline.
   For `isMessageContentOf`, a row carrying both a message and its contents
   keeps its instant only when the words outside the contents carry it on
   their own ("at five text Sam that I'm late"), and that is recorded as

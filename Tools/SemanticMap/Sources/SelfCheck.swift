@@ -431,6 +431,33 @@ enum SelfCheck {
                && costcoResult.decisions.contains { $0.reason == .conditionEncodedInRow && $0.verdict == .agree },
                "a place trigger that encodes its condition is kept: \(costcoResult.decisions.map(\.reason.rawValue))")
 
+        // A state of the world is not something a trigger or an instant can
+        // honour, however the row is shaped.
+        let stated = "if Sam says yes remind me when I get to Costco to buy wine"
+        let statedRow = [thought(stated, type: .shopping, place: trigger)]
+        let statedResult = Arbiter.arbitrate(
+            transcript: stated, rules: (statedRow, []),
+            map: map(atoms: 14, units: [span(0, 3), span(4, 13)],
+                     relations: [UnitRelation(kind: .isConditionFor, from: 0, to: 1)]),
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(statedResult.items.first?.organization.locationIntent == nil
+               && !statedResult.decisions.contains { $0.reason == .conditionEncodedInRow },
+               "an if-condition is never read as encoded by a place trigger")
+        let deadline = "if Sam has not replied by five call him"
+        let deadlineRow = [thought(deadline, type: .task, reminder: reminder)]
+        let deadlineResult = Arbiter.arbitrate(
+            transcript: deadline, rules: (deadlineRow, []),
+            map: map(atoms: 9, units: [span(0, 6), span(7, 8)],
+                     relations: [UnitRelation(kind: .isConditionFor, from: 0, to: 1)]),
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(deadlineResult.items.first?.organization.reminderDate == nil
+               && !deadlineResult.decisions.contains { $0.reason == .conditionEncodedInRow },
+               "a state condition with a deadline is never read as encoded by the deadline's instant")
+
         // An accepted split, the arbiter's main power. Both pieces are plain
         // parser input; a refusal here means splitting is inert.
         let joined = "buy milk call the dentist"
@@ -477,7 +504,8 @@ enum SelfCheck {
                                  (oneRowWithdrawn, oneRow), (repairedResult, repairedRow), (heldApart, conditionRows),
                                  (heldTogether, conditionRow), (heldByRules, alreadyHeld),
                                  (contentWithdrawn, contentRows), (contentTimed, messageRow), (matrixKept, matrixRow),
-                                 (costcoResult, costcoRow), (splitResult, joinedRow)] {
+                                 (costcoResult, costcoRow), (statedResult, statedRow), (deadlineResult, deadlineRow),
+                                 (splitResult, joinedRow)] {
             expect(Arbiter.executablesAreSubset(result.items, of: source), "arbitration created no new instant")
             expect(!result.decisions.contains { $0.reason == .executingRowsAdded }, "arbitration added no executing row")
             expect(result.decisions.contains { $0.reason == .noNewInstantHeld }

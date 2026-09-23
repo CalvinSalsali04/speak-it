@@ -110,8 +110,9 @@ enum DecisionReason: String, Codable, CaseIterable, Sendable {
     /// their own ("at five text Sam that I'm late"). Kept, never agreed with.
     case messageRowTimedOutsideContent
     /// A row carrying its own condition executes only as the condition says:
-    /// a place trigger for "when I get to", or an instant the condition's own
-    /// words give. Kept.
+    /// the place trigger the condition alone reads as ("when I get to"), or
+    /// the instant a bounded time condition alone gives ("after five"). Never
+    /// for an "if"/"unless" state of the world. Kept.
     case conditionEncodedInRow
     case relationNotActedOn
     case relationTargetsUnlocated
@@ -614,16 +615,34 @@ enum Arbiter {
                 // would remove the correct answer.
                 let encoded = affected.filter { index in
                     let row = rows[index]
-                    guard row.span.overlaps(source) else { return false }
+                    guard row.span.overlaps(source), let conditionText else { return false }
                     let organization = row.item.organization
-                    if organization.locationIntent != nil, organization.reminderDate == nil,
-                       organization.dueDate == nil, organization.recurrenceRule == nil {
-                        return true
-                    }
-                    guard let conditionText, organization.locationIntent == nil else { return false }
-                    let instants = RuleBasedThoughtExtractor.process(
+                    // Only a condition that is purely the trigger. A state of
+                    // the world ("if Sam says yes", "if Sam hasn't replied by
+                    // five") is not something a place trigger or an instant
+                    // can honour, whatever else the row carries.
+                    guard conditionText.range(of: #"(?i)^\s*(?:if|unless)\b"#, options: .regularExpression) == nil
+                    else { return false }
+                    let alone = RuleBasedThoughtExtractor.process(
                         conditionText, referenceDate: referenceDate, calendar: calendar, permitsOperations: false
-                    ).items.flatMap { [$0.organization.reminderDate, $0.organization.dueDate].compactMap { $0 } }
+                    ).items.map(\.organization)
+                    if let place = organization.locationIntent {
+                        // The condition names this trigger's place (or, read
+                        // alone, gives this very trigger), and the row
+                        // carries no instant beside it.
+                        let named = conditionText.range(
+                            of: place.place.displayName, options: [.caseInsensitive, .diacriticInsensitive]
+                        ) != nil
+                        let same = alone.contains {
+                            $0.locationIntent?.event == place.event && $0.locationIntent?.place == place.place
+                        }
+                        return organization.reminderDate == nil && organization.dueDate == nil
+                            && organization.recurrenceRule == nil && (named || same)
+                    }
+                    // A bounded time ("after five", "before noon") read alone
+                    // gives every instant the row carries.
+                    guard ConditionalIntentScope.isTemporalAdjunct(conditionText) else { return false }
+                    let instants = alone.flatMap { [$0.reminderDate, $0.dueDate].compactMap { $0 } }
                     let own = [organization.reminderDate, organization.dueDate].compactMap { $0 }
                     return !own.isEmpty && own.allSatisfy { instants.contains($0) }
                 }
