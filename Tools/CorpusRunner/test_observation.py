@@ -884,7 +884,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         once more. Both capture fixtures add nothing: `"Remind me to take
         out the garbage when I get home"` is already in this file and
         `"I need to implement calendar integration tomorrow"` in
-        `SwiftDataThoughtRepositoryTests`. What the test
+        `SwiftDataThoughtRepositoryTests`. 4071 -> 4075 on 2026-09-23, from
+        the grade of that change: the widget's queued tap on a held row is
+        dropped, one test with four literals, three assertion messages
+        (`"a tap from a stale widget does not complete a held row"`, `"an
+        ordinary row's tap is still applied"`, `"the dropped tap is not
+        retried forever"`) and one skip message (`"the shared app group
+        container is unavailable on this simulator"`). What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -898,7 +904,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4071)
+        self.assertEqual(len(space), 4075)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

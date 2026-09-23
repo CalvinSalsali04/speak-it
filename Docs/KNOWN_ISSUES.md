@@ -549,7 +549,9 @@ The specifics:
   can still count the reminder and show its complete button, because the file
   was written under the old access. "Complete my next item" is not affected:
   it rebuilds the snapshot against the live authorization before choosing.
-  Tapping a stale row on the widget completes the row that was tapped.
+  Tapping a stale row on the widget is dropped when the app next drains the
+  queue, if Today holds that row for review, so the tap looks done on the
+  widget and the row comes back in Needs review.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

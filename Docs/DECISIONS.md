@@ -28,6 +28,16 @@ a task the person had been asked to look at.
   authorization before taking the first row, rather than trusting a file that
   may predate a permission revoked in Settings. A store that cannot be read
   is reported as an error, not as "all clear".
+- **A queued widget tap on a held row is dropped.** The widget's own
+  complete button only queues, and the queue is drained by
+  `reconcileSharedTodayActions` before the shortcut rebuilds anything. A file
+  written before permission was revoked can still offer the held row, so the
+  drain skips, and deletes, a completion for a row that
+  `requiresReview(authorization:)` now holds. The row waits in Needs review.
+  Dropping loses a tap the person made; keeping it would either retry forever
+  or complete the row they are being asked about, and finishing it from
+  Needs review is one tap. This is a reversible default for the owner's
+  decision batch.
 
 Shopping entries were left as they are. Today shows a shopping list as one
 card, and the widget still lists its entries individually; that is a

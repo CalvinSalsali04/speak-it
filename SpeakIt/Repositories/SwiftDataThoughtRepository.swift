@@ -597,10 +597,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func reconcileSharedTodayActions() {
+        reconcileSharedTodayActions(
+            authorization: LocationReminderMonitor.shared.authorization,
+            now: .now
+        )
+    }
+
+    /// Applies the widget's queued taps, except a completion of a row Today
+    /// now holds for review.
+    ///
+    /// The widget draws from a file written the last time the app ran. A
+    /// permission revoked in Settings while the app was closed reaches no
+    /// delegate and republishes nothing, so the file can still offer a row
+    /// Today would now hold, and a tap on it is queued here. Applying it would
+    /// complete the row the person is about to be asked about, through the
+    /// widget rather than the shortcut. So the queued tap is dropped and the
+    /// row waits in Needs review. Dropping loses a tap the person made;
+    /// keeping it would re-apply forever or complete a held row, and the
+    /// person can still finish it from Needs review in one tap.
+    func reconcileSharedTodayActions(authorization: LocationAuthorization, now: Date) {
         for pending in SharedTodayStore.pendingActions() {
             do {
                 switch pending.action.kind {
                 case .complete:
+                    if let item = try findItem(withID: pending.action.itemID),
+                       item.requiresReview(authorization: authorization) {
+                        SharedTodayStore.removeAction(at: pending.url)
+                        continue
+                    }
                     try performReminderAction(
                         itemIDs: [pending.action.itemID],
                         action: .complete

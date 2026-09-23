@@ -1553,6 +1553,52 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(whileAuthorized.items.map(\.id), [held.id, control.id])
     }
 
+    /// The widget's own complete button reaches the store through the queue,
+    /// and the queue is drained before the shortcut rebuilds its snapshot. A
+    /// file written before permission was revoked still offers the held row,
+    /// so a tap on it must not complete it.
+    ///
+    /// Falsifier: drain the queue without the `requiresReview` check and the
+    /// held reminder is completed. The control shows the drain still applies
+    /// an ordinary row's tap.
+    func testAQueuedWidgetTapDoesNotCompleteARowTodayHoldsForReview() throws {
+        setHome()
+        let held = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now.addingTimeInterval(-60),
+            schedulesReminder: false
+        )
+        let control = try repository.createCapture(
+            text: "I need to implement calendar integration tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let denied = LocationAuthorization(
+            status: .denied,
+            isPrecise: true,
+            isRegionMonitoringAvailable: true
+        )
+        XCTAssertTrue(held.requiresReview(authorization: denied))
+        XCTAssertFalse(control.requiresReview(authorization: denied))
+
+        for pending in SharedTodayStore.pendingActions() {
+            SharedTodayStore.removeAction(at: pending.url)
+        }
+        try XCTSkipIf(
+            SharedTodayStore.enqueueCompletion(itemID: held.id) == nil,
+            "the shared app group container is unavailable on this simulator"
+        )
+        XCTAssertNotNil(SharedTodayStore.enqueueCompletion(itemID: control.id))
+
+        repository.reconcileSharedTodayActions(authorization: denied, now: .now)
+
+        XCTAssertFalse(held.isCompleted, "a tap from a stale widget does not complete a held row")
+        XCTAssertTrue(control.isCompleted, "an ordinary row's tap is still applied")
+        XCTAssertTrue(SharedTodayStore.pendingActions().isEmpty, "the dropped tap is not retried forever")
+    }
+
     /// Precedence: the missing place is named before the missing permission,
     /// because granting location access does not tell Speak It where home is.
     func testMissingHomeOutranksMissingPermission() throws {
