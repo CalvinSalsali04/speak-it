@@ -161,8 +161,11 @@ enum CaptureDraftStore {
     /// Audio recovery finished after the capture screen that started it had
     /// gone, so there is no screen to save the words on. They stay on the
     /// draft, beside the recording, which is not touched, and the draft goes
-    /// back to ready-to-recover, so Today offers it and the next launch's sweep
-    /// recovers it. An empty result leaves an earlier partial transcript as it
+    /// back to ready-to-recover, so it does not sit in `.processing` forever:
+    /// Today offers it and the next launch's sweep recovers it. Today does not
+    /// display these words, and the next audio pass re-reads the recording;
+    /// they matter only if the recording goes missing while the draft
+    /// survives, when they are the one remaining copy. An empty result leaves an earlier partial transcript as it
     /// was. A draft that no longer exists, because the person discarded it, is
     /// not brought back.
     static func leaveRecoveredWordsForToday(id: UUID, transcript: String, at date: Date = .now) {
