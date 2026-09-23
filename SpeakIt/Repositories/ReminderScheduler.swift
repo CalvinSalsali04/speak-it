@@ -16,6 +16,17 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// express, which keep the existing one-shot-then-regenerate-on-completion
     /// path (see `SwiftDataThoughtRepository.setCompleted`).
     let repeatingComponents: DateComponents?
+    /// The series' own repeating trigger, armed *beside* this request's fire
+    /// when a snooze has displaced it. `nil` for everything else.
+    ///
+    /// A snoozed occurrence cannot use `repeatingComponents` for its own fire:
+    /// the snooze is not the series' time. Arming only the one-shot left
+    /// nothing armed for the series once the snooze fired, until the app next
+    /// ran, which is a missed reminder for anyone who snoozes and does not
+    /// open Speak It. So a displaced occurrence gets two notifications: the
+    /// one-shot at the snooze, and this repeating match under
+    /// `ReminderScheduler.seriesNotificationIdentifier(for:)`.
+    let seriesContinuation: SeriesContinuation?
     /// The named list a shopping row belongs to ("Sobeys"), or `nil` for
     /// everything else. A coalesced notification whose rows all share one
     /// list is titled by that list, so the alert reads the way the person
@@ -45,14 +56,34 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         )
         self.fireDate = fireDate
         delivery = scheduledDelivery
+        // The series' own alert, not a snoozed one. Taken from a snoozed fire
+        // date, the repeating match's first fire *was* the snoozed occurrence,
+        // so iOS was handed "every Monday at 9:10" for a series asked for at 9.
+        // From the series' alert, the match no longer describes this one fire,
+        // which is then armed as an exact one-shot, and the series' repeating
+        // match is armed beside it as `seriesContinuation`.
+        let seriesFireDate = item.seriesReminderDate ?? fireDate
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
-            fireDate: fireDate
+            fireDate: seriesFireDate
         )
+        seriesContinuation = seriesFireDate == fireDate
+            ? nil
+            : repeatingComponents.map {
+                SeriesContinuation(occurrenceFireDate: seriesFireDate, components: $0)
+            }
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
         createdAt = item.createdAt
+    }
+
+    /// What a displaced occurrence needs to keep its series armed.
+    struct SeriesContinuation: Hashable, Sendable {
+        /// Where the series put this occurrence's alert before the snooze.
+        let occurrenceFireDate: Date
+        /// The series' repeating match, from `occurrenceFireDate`.
+        let components: DateComponents
     }
 
     /// Only daily and single-weekday weekly series, anchored to the
@@ -89,6 +120,34 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             return nil
         }
     }
+}
+
+/// One notification the scheduler will add, decided before anything touches
+/// `UNUserNotificationCenter`, so what is armed can be tested as a value.
+struct PlannedReminderNotification: Equatable {
+    enum Trigger: Equatable {
+        /// A calendar match iOS re-fires on its own.
+        case repeating(DateComponents)
+        /// A countdown, for a fire less than a minute away.
+        case afterInterval(TimeInterval)
+        /// One exact wall-clock moment, pinned to the zone it was set in.
+        case exact(DateComponents)
+
+        var notificationTrigger: UNNotificationTrigger {
+            switch self {
+            case let .repeating(components):
+                return UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            case let .afterInterval(seconds):
+                return UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+            case let .exact(components):
+                return UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            }
+        }
+    }
+
+    let identifier: String
+    let itemIDs: [UUID]
+    let trigger: Trigger
 }
 
 struct ReminderSynchronizationScope: Equatable, Sendable {
@@ -732,7 +791,10 @@ enum ReminderScheduler {
     }
 
     static func cancel(itemID: UUID) {
-        delivery.removeNotifications([notificationIdentifier(for: itemID)])
+        delivery.removeNotifications([
+            notificationIdentifier(for: itemID),
+            seriesNotificationIdentifier(for: itemID)
+        ])
         delivery.cancelAlarm(itemID)
     }
 
@@ -1039,21 +1101,83 @@ enum ReminderScheduler {
             return authorizationStatus == .denied ? .denied : .needsPermission
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = group.title
-        content.body = group.body
-        content.sound = .default
-        content.threadIdentifier = "speak-it-reminders"
-        content.categoryIdentifier = reminderCategoryIdentifier
-        content.userInfo = ["itemIDs": group.itemIDs.map(\.uuidString)]
-        if settings.timeSensitiveSetting == .enabled {
-            content.interruptionLevel = .timeSensitive
+        var identifiers: [String] = []
+        for planned in plannedNotifications(for: group, now: .now) {
+            let content = UNMutableNotificationContent()
+            content.title = planned.group.title
+            content.body = planned.group.body
+            content.sound = .default
+            content.threadIdentifier = "speak-it-reminders"
+            content.categoryIdentifier = reminderCategoryIdentifier
+            content.userInfo = ["itemIDs": planned.group.itemIDs.map(\.uuidString)]
+            if settings.timeSensitiveSetting == .enabled {
+                content.interruptionLevel = .timeSensitive
+            }
+            let notification = UNNotificationRequest(
+                identifier: planned.group.identifier,
+                content: content,
+                trigger: planned.trigger.notificationTrigger
+            )
+            do {
+                try await center.add(notification)
+            } catch {
+                return .failed
+            }
+            identifiers.append(notification.identifier)
         }
+        // A snoozed occurrence is only scheduled when both of its
+        // notifications are: the one-shot without the series is the missed
+        // reminder the second one exists to prevent.
+        let pending = Set(await center.pendingNotificationRequests().map(\.identifier))
+        return identifiers.allSatisfy { pending.contains($0) } ? .scheduled : .failed
+    }
 
-        let secondsUntilFire = group.fireDate.timeIntervalSinceNow
-        let trigger: UNNotificationTrigger
+    /// What `scheduleNotification` adds for a group, as values.
+    ///
+    /// Exposed for tests over requests rather than the private group, and
+    /// grouped exactly the way `scheduleBatch` groups them.
+    static func plannedNotifications(
+        for requests: [ReminderScheduleRequest],
+        now: Date = .now
+    ) -> [PlannedReminderNotification] {
+        notificationGroups(from: requests.filter { $0.fireDate > now && $0.delivery == .notification })
+            .flatMap { plannedNotifications(for: $0, now: now) }
+            .map {
+                PlannedReminderNotification(
+                    identifier: $0.group.identifier,
+                    itemIDs: $0.group.itemIDs,
+                    trigger: $0.trigger
+                )
+            }
+            .sorted { $0.identifier < $1.identifier }
+    }
+
+    private static func plannedNotifications(
+        for group: NotificationGroup,
+        now: Date
+    ) -> [(group: NotificationGroup, trigger: PlannedReminderNotification.Trigger)] {
+        var planned = [(group: group, trigger: trigger(for: group, now: now))]
+        for request in group.requests {
+            guard let continuation = seriesContinuationTrigger(for: request, now: now) else { continue }
+            planned.append((
+                group: NotificationGroup(
+                    identifier: seriesNotificationIdentifier(for: request.itemID),
+                    requests: [request]
+                ),
+                trigger: continuation
+            ))
+        }
+        return planned
+    }
+
+    private static func trigger(
+        for group: NotificationGroup,
+        now: Date
+    ) -> PlannedReminderNotification.Trigger {
+        let secondsUntilFire = group.fireDate.timeIntervalSince(now)
         if secondsUntilFire > 60,
            group.requests.count == 1,
+           group.requests[0].seriesContinuation == nil,
            let repeatingComponents = group.requests[0].repeatingComponents,
            let repeatingNextFire = UNCalendarNotificationTrigger(
                dateMatching: repeatingComponents, repeats: true
@@ -1073,17 +1197,16 @@ enum ReminderScheduler {
             // now, so an occurrence further out — a future-dated series, or a
             // DST-shifted fire time the components no longer describe — would
             // alert on the wrong days. Those schedule as an exact one-shot and
-            // rejoin the resilient path on the next generated occurrence.
-            trigger = UNCalendarNotificationTrigger(dateMatching: repeatingComponents, repeats: true)
+            // rejoin the resilient path on the next generated occurrence. A
+            // snoozed occurrence is never this case: its fire is the snooze,
+            // and the series is armed separately beside it.
+            return .repeating(repeatingComponents)
         } else if secondsUntilFire <= 60 {
             // Relative reminders such as “in 10 seconds” should count down
             // from the moment the thought is saved. A time-interval trigger
             // also avoids missing the requested calendar second while iOS is
             // finishing authorization or registering the request.
-            trigger = UNTimeIntervalNotificationTrigger(
-                timeInterval: max(secondsUntilFire, 1),
-                repeats: false
-            )
+            return .afterInterval(max(secondsUntilFire, 1))
         } else {
             // Deliberately a concrete snapshot, not `autoupdatingCurrent`: this
             // resolves the stored instant into fixed components once, at
@@ -1097,22 +1220,44 @@ enum ReminderScheduler {
                 from: group.fireDate
             )
             components.timeZone = TimeZone.current
-            trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            return .exact(components)
         }
-        let notification = UNNotificationRequest(
-            identifier: group.identifier,
-            content: content,
-            trigger: trigger
+    }
+
+    /// The series' repeating trigger for a snoozed occurrence, or `nil`.
+    ///
+    /// A repeating calendar trigger first fires at the first match after it
+    /// is added. A snooze is pressed on an occurrence's own alert, so that
+    /// occurrence's slot has already passed and the first match is the next
+    /// occurrence. The one case where it has not passed, a snooze pressed
+    /// before the series' alert, would make the repeating trigger fire this
+    /// same occurrence a second time. It is refused, and the one-shot alone
+    /// covers that occurrence until the next pass.
+    private static func seriesContinuationTrigger(
+        for request: ReminderScheduleRequest,
+        now: Date
+    ) -> PlannedReminderNotification.Trigger? {
+        guard let continuation = request.seriesContinuation,
+              let firstMatch = nextMatch(of: continuation.components, after: now),
+              firstMatch.timeIntervalSince(continuation.occurrenceFireDate) >= 60 else { return nil }
+        return .repeating(continuation.components)
+    }
+
+    /// The first moment after `date` that `components` match, read in the zone
+    /// the components carry. Plain calendar arithmetic, so it is the same
+    /// answer on a simulator pinned to another zone.
+    static func nextMatch(of components: DateComponents, after date: Date) -> Date? {
+        var calendar = Calendar.current
+        calendar.timeZone = components.timeZone ?? .current
+        var matching = components
+        matching.timeZone = nil
+        return calendar.nextDate(
+            after: date,
+            matching: matching,
+            matchingPolicy: .nextTime,
+            repeatedTimePolicy: .first,
+            direction: .forward
         )
-        do {
-            try await center.add(notification)
-            let pending = await center.pendingNotificationRequests()
-            return pending.contains(where: { $0.identifier == notification.identifier })
-                ? .scheduled
-                : .failed
-        } catch {
-            return .failed
-        }
     }
 
     private static func scheduleBatch(
@@ -1172,7 +1317,9 @@ enum ReminderScheduler {
         from identifiers: [String],
         scope: ReminderSynchronizationScope
     ) -> [String] {
-        let itemIdentifiers = Set(scope.itemIDs.map { notificationIdentifier(for: $0) })
+        let itemIdentifiers = Set(scope.itemIDs.flatMap {
+            [notificationIdentifier(for: $0), seriesNotificationIdentifier(for: $0)]
+        })
         let sessionPrefixes = Set(scope.captureSessionIDs.map { notificationGroupPrefix(for: $0) })
         return identifiers.filter { identifier in
             (scope.replacesAllSpeakItReminders && isSpeakItReminderIdentifier(identifier))
@@ -1194,6 +1341,17 @@ enum ReminderScheduler {
     /// pending request for an item is what gets removed.
     static func notificationIdentifier(for itemID: UUID) -> String {
         "SpeakIt.reminder.\(itemID.uuidString)"
+    }
+
+    /// The second notification a snoozed recurring occurrence keeps armed,
+    /// the series' own repeating trigger. Derived from the item alone, so
+    /// every path that removes an item's reminder removes this too:
+    /// `cancel(itemID:)`, a scoped pass through
+    /// `notificationIdentifiersToRemove`, and a full reconcile, whose
+    /// `SpeakIt.reminder.` prefix already covers it and which re-adds it only
+    /// while the row is still snoozed.
+    static func seriesNotificationIdentifier(for itemID: UUID) -> String {
+        "SpeakIt.reminder.\(itemID.uuidString).series"
     }
 
     private static func notificationGroupPrefix(for sessionID: UUID) -> String {

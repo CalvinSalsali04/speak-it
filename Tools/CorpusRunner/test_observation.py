@@ -1048,7 +1048,40 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         practice sentence the tutorial test reuses, `"Tomorrow at 9, ask
         Maya about the proposal."`, adds nothing, because three files here
         already carry it. The development-set overlap stayed at 114, checked
-        by regenerating `LANGUAGE_BASELINE.md` rather than assumed. What the test
+        by regenerating `LANGUAGE_BASELINE.md` rather than assumed.
+        4068 -> 4077 on 2026-09-23, from
+        snoozing a recurring reminder no longer retiming its series: three
+        `TemporalFullPathTests` tests, nine literals, enumerated rather than
+        assumed, and all nine are assertion messages --
+        `"Precondition: the series alerts at its due time"` (used twice,
+        counted once), `"Precondition: this does not recur"`, `"a repeating
+        trigger built from the snoozed minute retimes the series on the
+        phone"`, `"a snooze belongs to the occurrence it was pressed on"`,
+        `"a snooze moves the alert, not the occurrence"`, `"only a series
+        has an alert of its own to protect"`, `"the occurrence after a
+        snoozed one fires at the series' own time"`, `"the occurrence after
+        the moved one is back on the series' clock"` and `"tomorrow means
+        tomorrow at the series' time, not at the snoozed minute"`. The three
+        fixtures add nothing, because each was already in this directory:
+        `"Remind me every Monday at 9 am to take the bins out"` and `"Remind
+        me in 20 minutes to switch the laundry"` in
+        `SwiftDataThoughtRepositoryTests`, `"Remind me every day at 8 am to
+        take my meds"` in `ReleaseReadinessTests`. Reused on purpose, so
+        the change adds no sentence to this population. 4077 -> 4083 the
+        same day, when review found that change left a snoozed series with
+        nothing armed after the snooze fired, and the fix arms the series'
+        own repeating trigger beside the one-shot: one new
+        `TemporalFullPathTests` test, one new `SwiftDataThoughtRepositoryTests`
+        test and two added assertions, six literals, enumerated rather than
+        assumed, all of them assertion or failure messages -- `"a snoozed
+        occurrence needs its one-shot and its series"`, `"an occurrence back
+        on its series' alert needs no second trigger"`, `"the one-shot fires
+        at the snooze"`, `"the series must be armed as a repeating
+        trigger"`, `"the series' first match must be the next occurrence,
+        not this one again"` and `"the snoozed fire must be a one-shot"`.
+        The one fixture is reused again, and the identifier test's doc
+        comment keeps its names in backticks, so neither adds anything.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
