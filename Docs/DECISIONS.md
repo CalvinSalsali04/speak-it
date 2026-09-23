@@ -1,5 +1,62 @@
 # Decisions
 
+## 2026-09-23 — Re-reading the words keeps a time set by hand, as it keeps a place
+
+`apply` in `SwiftDataThoughtRepository` is where every re-read lands:
+Organize again, launch recovery of an unfinished capture, the capture save
+itself when the placeholder was already on screen, split, merge and undo. It
+kept a place set in the editor (`locationIntent.isUserEdited`), and its own
+comment said it did so "exactly as a hand-set time does". It did not: the
+due date, reminder date, temporal intent and repeat rule were written from
+the re-read sentence every time, so Organize again moved a reminder the
+person had moved by hand, and a split or merge did the same without asking.
+That contradicted the 2026-08-14 entry below, which promised that no later
+reparse can revert a correction.
+
+The time now follows the place's rule and the place's mark. When the stored
+`temporalIntent.isUserEdited` is true, `apply` keeps the due date, reminder
+date, intent and `RecurrenceStore` rule together; otherwise it writes all
+four from the reading, as before. They are kept or re-read as one family
+because the editor writes them in one save, and a kept 4 PM beside a
+re-read repeat rule would be a reminder nobody asked for. A cleared time is
+kept too: `update(_:with:)` stamps an intent of kind `.none` as the
+person's, and removing a time is as much a decision as setting one.
+
+The mark is `isUserEdited` and nothing wider. `isReviewed` is set by
+`markReviewed` as well, which accepts the system's reading rather than
+replacing it, so a reviewed row whose time the person never touched is
+still re-read. Launch recovery's session-level test in #124
+(`carriesPersonsDecision`) reads `temporalIntent?.isUserEdited` as one of
+its disjuncts; this is the same mark, applied one field family at a time,
+not a third definition. The launch pass that releases legacy place-and-time
+holdouts follows it as well: it still drops the system's named place, and
+no longer swaps a hand-set intent for the reparse.
+
+The Organize again dialog said every hand change would be replaced, which
+was already false for the place. It now says a time or place set by hand
+is kept and other hand changes are replaced. Those other changes (title,
+type, category, priority, person) have no per-field mark and are still
+re-read; see Known issues.
+
+The alert kind is not part of this. The editor cannot set it: it is read
+from the wording each time it is shown or scheduled
+(`ItemPresentation.effectiveReminderDelivery`), so there is no stored
+value for a re-read to overwrite.
+
+When #141 lands: merge takes the surviving row, the first one that is
+neither completed nor archived, instead of the first row, so the mark that
+counts is the survivor's, not the first row's. Merging a done row that
+carries a hand-set time with an open row that does not keeps the open
+survivor's reading: the done row's hand-set time is replaced by the re-read
+of the joined words. The open row is the one the person is still working
+on, so that is the better answer, but it is a different one from this entry
+alone.
+
+With #138, `mayArmPlace` is being changed to read only the location mark,
+and the editor save to stamp a present place it did not change as the
+person's; after that change, a temporal mark kept by a re-read cannot arm a
+place the same re-read proposed.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
