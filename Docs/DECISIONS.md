@@ -1,5 +1,70 @@
 # Decisions
 
+## 2026-09-23 — Replacing an attempt stops its alarm before the queued pass
+
+Finding F3 of the V1 integration rehearsal. `deleteCapture(sessionID:)`, the
+deletion "Try saying it again" runs, stopped the attempt's notifications and
+alarm only through the `ReminderScheduler.synchronize` pass it queues. That
+pass waits behind every earlier one, which can be a pass sitting on a
+permission prompt, and a kill in that window left the replaced attempt's alarm
+armed until the next launch. It now calls `ReminderScheduler.cancel(itemID:)`
+for every row after the store has saved, as #145 does for Delete and the other
+removal paths; the queued pass stays and re-cancels anything an earlier pass
+arms afterwards. `cancel(itemID:)` itself is older than both changes, so this
+needs nothing from #145.
+
+**Hypothesis.** The only thing between a replaced attempt and a silent phone is
+the order of the scheduler's queue. **Falsifier.**
+`testReplacingTheAttemptStopsItsAlarmBeforeAnyQueuedPassRuns` holds the queue
+behind an earlier pass, runs the retry's replacement, and asserts the
+attempt's alarm and notification are gone before the queue moves; without the
+synchronous cancel they are still armed.
+
+It already called `LocationReminderMonitor.shared.stopMonitoring(itemID:)` for
+each row, which stops that row's region at once, and that stays. What it does
+not do is re-plan the region budget, so a place reminder waiting for a free
+slot gets the one this frees only at the next foreground. #135 adds that
+re-plan to the other delete paths (`reconcileLocationReminders(ifTouchingPlaces:)`),
+and it has to be added here when the two meet. **Not covered:** no test
+reaches AlarmKit or CoreLocation; the recorder sees teardown only, and a kill
+between the save and the synchronous cancel is still a window, a narrower one.
+
+## 2026-09-23 — "Try saying it again" replaces the attempt by its identity
+
+The retry used to delete the attempt's rows as the capture screen listed them
+when the attempt saved. "Review what I understood" on the same screen can
+change the attempt after that. Split and Organize again add rows that were not
+on the list, and those rows survived the retry, still in Needs review beside the
+new capture. Merge and Undo delete rows that were on the list, and the retry
+then deleted them again. That second deletion either threw, which showed "the
+earlier attempt is still in Needs review" when it was half gone, or may have
+trapped in SwiftData on a deleted, saved model.
+
+The screen now holds only the attempt's `CaptureSession` id
+(`retryingUnclearSessionID`). Once the retry is durable,
+`CaptureRetryReplacement.retire` calls `ThoughtRepository.deleteCapture(sessionID:)`.
+That call fetches the session fresh and deletes it, and the cascade deletes
+every row the session has at that moment. Exactly this is deleted: the attempt's
+`CaptureSession`, including its original transcript, and all of its
+`CapturedItem` rows, whether or not the screen ever showed them. Their
+recurrence, pending-operation, pin, shopping-group and idea-stage records,
+location monitoring and scheduled notifications are removed too. iCloud
+tombstones are recorded for the session and every row, so another device does
+not bring the attempt back. Nothing else is deleted: no other capture, and not
+the retry, even when a retransmission returns the attempt's own session
+(`CaptureRetryReplacement.replaces` is false then).
+
+Removing an original transcript is allowed here because the person chose to
+replace it by tapping "Try saying it again" and then saying it again. The
+retry's own session keeps its own original words.
+
+The order from 2026-09-23's save entry is unchanged. The retry persists
+first, and the deletion runs after it. If the store refuses the deletion, it
+rolls back, restores the tombstones and throws. No side-store cleanup runs, both
+captures stay, and a screen that is still up says so. An attempt that is already
+gone is a no-op, not a failure. `deleteCapture` is for a replacement the person asked for, and
+nothing else calls it.
+
 ## 2026-09-23 — A save belongs to the capture screen that started it
 
 A save's Task outlives its screen, and it used to publish into whatever was on

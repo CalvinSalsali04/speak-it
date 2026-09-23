@@ -918,7 +918,30 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"a discarded recording was saved"`. The fixture
         `"buy milk and eggs today"` was already counted earlier in this entry.
         The development-set overlap stayed at 114, checked by
-        regenerating `LANGUAGE_BASELINE.md`. What the test
+        regenerating `LANGUAGE_BASELINE.md`. 4135 -> 4162 on 2026-09-23,
+        when "Try saying it again" came to replace the attempt by its
+        session id (`deleteCapture(sessionID:)`) rather than by the rows
+        the screen was shown. Twenty-seven, enumerated: nineteen assertion
+        messages, seven of them preconditions; six fixtures, the attempt and
+        retry sentences and the split part `"Ask about the fee"` (its twin
+        `"Call the bank"` and the attempt `"Buy milk and call the dentist"`
+        were already counted); and two phrases quoted in doc comments, the
+        button title `"Review what I understood"` and the tail of the
+        failure notice, `"still in Needs review"`. 4162 -> 4182 on
+        2026-09-23, when review found the guard that stops a retry deleting
+        its own session tested only in its true direction, and the rows
+        `deleteCapture` reports read by one no-op assertion. Twenty,
+        enumerated: two fixtures, the lowercased echo of the attempt
+        `"something about the bank and the fee thing"` and the thought said
+        again, `"Call the bank about the overdraft fee"`; and eighteen
+        assertion messages, five of them preconditions. The merge of
+        `claude/v1-reliability-nyngoe-stale-save` touched no test file and
+        added none. 4182 -> 4190 on 2026-09-23, when replacing the attempt
+        began stopping its alarm synchronously: one method and eight
+        literals, enumerated rather than assumed. One fixture, the retry
+        `"Set an alarm for 7:30 AM to take my vitamins"` (the attempt, `"Set
+        an alarm for 7 AM to take my pills"`, was already counted), and
+        seven assertion messages, two of them preconditions. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -932,7 +955,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4135)
+        self.assertEqual(len(space), 4190)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
