@@ -71,8 +71,19 @@ queued announcements' allowances running end to end. It also gives up when
 VoiceOver turns off. That allowance is the one place the rule is an assumption
 rather than a guarantee. So is the claim that the real VoiceOver sends the
 finish report with the posted string, which the announcer matches exactly so
-that a report about some other string cannot open the microphone early. Both
-are device checks (audit D-3, D-4 and D-14).
+that a report about some other string cannot open the microphone early. It
+reads that string whether the report carries a `String` or the
+`NSAttributedString` that was posted, because reading only one form would
+silently turn every wait into its full allowance. Both are device checks
+(audit D-3, D-4 and D-14).
+
+**The count has to come back to zero**, because while it is above zero every
+announcement is withheld, for the rest of the process. `SpeechTranscriber`
+gives an unreleased claim back in its `deinit` as well as in
+`stopAudioInput`, so the line is held by the object that took the claim and
+not only by its screens' `.onDisappear`. Each withheld announcement is logged
+with the counts and never the text, and a close with nothing open is a fault
+(an assertion in Debug).
 
 The rule covers what Speak It posts. It cannot stop VoiceOver reading the
 element under the person's finger while they record. Magic Tap (A11Y-6) is the
@@ -82,9 +93,25 @@ Checked by `VoiceOverAnnouncementTests` in `CaptureFeedbackTests.swift`, which
 ask the announcer's decisions directly, and by
 `NothingSpeakItSaysReachesAnOpenMicrophone` in
 `Tools/CorpusRunner/test_observation.py`. The Python test checks the facts
-about other files that the rule depends on: `UIAccessibility.post(` appears
-nowhere else, `SpeechTranscriber.start` has no `await` between the wait and
-`audioEngine.start()`, and `stopAudioInput` reports the close.
+about other files that the rule depends on: neither `UIAccessibility.post(`
+nor SwiftUI's `AccessibilityNotification.Announcement(` appears outside
+`VoiceOverAnnouncer`, even broken across lines, `SpeechTranscriber.start`
+has no `await` between the wait and `audioEngine.start()`, and both
+`stopAudioInput` and `deinit` report the close.
+
+**Merging #134 (`claude/v1-reliability-nyngoe-mic2`) after this.** The two
+conflict in `SpeechTranscriber.start`, around the ownership guard right after
+`audioEngine.start()`, and the resolution is not only textual. #134's comment
+there opens "Nothing between adopting the backend and here suspends"; this
+branch adds an await between the two, so that sentence must become "nothing
+between the wait's own ownership check and here suspends", which is still
+why the guard cannot fail today. And that guard's body must release this
+run's own microphone claim and nothing else: set `holdsMicrophone` false and
+call `announcer.microphoneDidClose()` if it was held, then return. The
+pre-#134 body here (`resetRecognitionResources()`) would tear down a newer
+run's microphone (LIF-7), and #134's bare `return` would strand the count
+and silence VoiceOver for the rest of the process. The guard is dead on both
+branches; the body matters for the await someone adds later.
 
 ## 2026-09-23 — A draft records which session its words were handed to
 
