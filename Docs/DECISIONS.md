@@ -79,6 +79,18 @@ beside the one-shot: the series' own repeating calendar trigger.
   pending. When an add throws, `addAllOrNone` withdraws every request it had
   already added, because a one-shot left armed alone is the missed reminder
   the series trigger exists to prevent. The next pass retries.
+- **An empty plan is `.failed`.** Before this branch every group added
+  exactly one request, so a plan could not be empty. A group made only of
+  fired series can now plan nothing, when `seriesContinuationTrigger`
+  refuses its continuation. The pending check that follows is an
+  `allSatisfy`, which passes over nothing, so without a guard that group
+  would report `.scheduled`. `scheduleNotification` reports `.failed`
+  instead. That is the safer error. `.scheduled` is the one answer a pass
+  must never give falsely: the capture receipt then says the reminder is
+  set, and nothing retries it. A false `.failed` costs a retry and an
+  honest "couldn't be scheduled". No reachable path is known to produce an
+  empty plan, because a fired occurrence's next match is a whole period
+  away. This only decides which way it errs if one does.
 
 **An alerted series stays armed through every pass (DEL-12).** Every
 scheduling pass cancels both identifiers of each item in its scope, then
@@ -98,17 +110,33 @@ escaped were the ones that do not advance:
 
 That is one mechanism, DEL-12, and it covered snoozed and unsnoozed rows
 alike. Every scheduling pass now builds its requests with
-`ReminderScheduleRequest.forScheduling`. For a series iOS can repeat whose
+`ReminderScheduleRequest.forScheduling`. That includes the Shortcuts and
+Siri capture path (`ExternalCaptureWriter.save` in `SaveThoughtIntent.swift`)
+and the permission card on Today, whose Allow button runs
+`requestAccessAndSchedule` over the same requests Today reads its access
+status from. Both were still on `init?(item:)`. For a series iOS can repeat whose
 fire has passed, it returns a request that arms only the series'
 repeating trigger, under the `.series` identifier, until the app rolls the
 row forward. `init?(item:)` keeps its meaning of an alert still ahead,
 which is what Today counts.
 
+What a pass arms is one value, `ReminderScheduler.batchSelection`: alarms
+still ahead, and notification requests that are still ahead or that only
+continue a series. `scheduleBatch` and `plannedNotifications` both select
+through it. The first fix changed `scheduleBatch`'s own filter, which no
+test read, so reverting it left the suite green. A test now reads the
+selection.
+
 **The snooze record is not allowed to fail quietly.** The snooze decides to
 record from `RecurrenceStore` (UserDefaults), while the record lives in the
 row's SwiftData intent blob. A recurring row without a blob, one the launch
 backfill has not reached, is given the backfill's own reconstruction on the
-spot so the record has somewhere to go. Any other failure is a `fault` on
+spot so the record has somewhere to go. That write goes around the
+`temporalIntent` setter, which marks any intent that expresses a time as a
+time trigger. Through the setter, a recurring place reminder reached this
+way became a clock reminder. `backfillTemporalIntentKeepingTrigger` writes
+the blob and its kind, and leaves a place trigger alone. The launch
+backfill still uses the setter, and is unchanged here. Any other failure is a `fault` on
 the `com.calvinwak.SpeakIt` / `Reminders` log with the reason only, and an
 `assertionFailure` in Debug.
 
@@ -120,13 +148,13 @@ so the notification actions reach an alarm item only after it has fallen
 back to a notification. At that point it gets both requests like any other
 notification. See `KNOWN_ISSUES.md`.
 
-Covered by seven tests in `TemporalFullPathTests`. Parsing and the
+Covered by nine tests in `TemporalFullPathTests`. Parsing and the
 repository's date arithmetic run pinned to the fixture zone. Every value
 the scheduler builds is read in the machine's zone. A hosted Mac in UTC
 showed why: under the pin, `Calendar.current` follows the fixture zone
 while `TimeZone.current` stays the machine's. Components built there carry
 Toronto's clock labelled with UTC's zone. On a device the two cannot
-disagree, because the app never sets `NSTimeZone.default`. The seven tests:
+disagree, because the app never sets `NSTimeZone.default`. The nine tests:
 
 - a weekly snooze followed by completion;
 - the scheduler's plan for a snoozed weekly occurrence, which holds the
@@ -134,6 +162,8 @@ disagree, because the app never sets `NSTimeZone.default`. The seven tests:
 - the plan once that one-shot has fired, which is the series trigger alone;
 - the plan for an unsnoozed series whose alert has fired (DEL-12);
 - a snooze on a recurring row with no intent blob;
+- the same on a recurring place reminder, which stays a place reminder;
+- the selection a scheduling pass arms, with a fired series in it;
 - snooze then Tomorrow on a daily series;
 - a one-off reminder, as the unchanged control.
 

@@ -929,6 +929,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the next occurrence, not this one again"` moved into a helper and
         still counts once. One out and one in, enumerated rather than
         assumed: an unchanged count here is a different population.
+        4088 -> 4093 on 2026-09-23, from the second round of that
+        change's grading. Two tests arrived. One snoozes a recurring place
+        reminder that has no intent blob and checks it stays a place
+        reminder: `"Precondition: a place reminder"`, `"Precondition: no
+        intent blob"`, `"the backfill a snooze makes must not turn a place
+        reminder into a clock reminder"`. The other reads what a scheduling
+        pass selects to arm: `"Remind me tomorrow at 9 am to call the
+        dentist"`, `"a series whose alert has fired must still be armed by
+        the pass"`. They also reuse the weekly bins sentence and
+        `"Precondition: the alert has fired"`, which were already here.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -943,7 +953,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4088)
+        self.assertEqual(len(space), 4093)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

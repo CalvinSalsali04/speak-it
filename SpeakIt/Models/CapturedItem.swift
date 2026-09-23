@@ -435,6 +435,28 @@ final class CapturedItem: Identifiable {
         return temporalIntent?.snoozedFromReminderDate ?? reminderDate
     }
 
+    /// Gives a row with no intent blob the intent reconstructed for it, and
+    /// leaves the trigger it already has alone.
+    ///
+    /// The `temporalIntent` setter re-derives the trigger. Any intent whose
+    /// kind is not `.none` becomes a time trigger, so a recurring place
+    /// reminder reached this way ("when I get home, every Monday") would turn
+    /// into a clock reminder. This writes the blob and the kind it
+    /// denormalizes, the way `setSnoozedFromReminderDate` writes its own
+    /// record. It sets a time trigger only on a row that records no trigger
+    /// at all, which is what the setter would have done there. A place
+    /// trigger stays.
+    @discardableResult
+    func backfillTemporalIntentKeepingTrigger(_ intent: TemporalIntent) -> Bool {
+        guard let data = try? JSONEncoder().encode(intent) else { return false }
+        temporalIntentData = data
+        temporalKindRawValue = intent.kind.rawValue
+        if reminderTriggerKindRawValue == nil, intent.kind != .none {
+            reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
+        }
+        return true
+    }
+
     /// Records, or clears with `nil`, the series alert a snooze displaced.
     ///
     /// Writes the encoded intent directly rather than through `temporalIntent`,

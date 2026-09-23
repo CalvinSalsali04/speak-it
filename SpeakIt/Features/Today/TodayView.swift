@@ -387,7 +387,9 @@ struct TodayView: View {
     private var pendingReminderRequests: [ReminderScheduleRequest] {
         allItems
             .filter { !$0.isArchived && !$0.isCompleted }
-            .compactMap(ReminderScheduleRequest.init(item:))
+            // `forScheduling`: these also feed `requestAccessAndSchedule`, and a
+            // series whose alert has fired must stay armed there too (DEL-12).
+            .compactMap { ReminderScheduleRequest.forScheduling($0) }
     }
 
     private var capturesNeedingAttention: [CaptureSession] {

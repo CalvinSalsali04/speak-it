@@ -817,7 +817,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private func recordSnoozeDisplacement(of item: CapturedItem, from seriesReminder: Date) {
         var outcome = item.setSnoozedFromReminderDate(seriesReminder)
         if outcome == .noIntent {
-            item.temporalIntent = reconstructedIntent(for: item)
+            // Not through the `temporalIntent` setter, which would turn a
+            // recurring place reminder into a clock reminder.
+            item.backfillTemporalIntentKeepingTrigger(reconstructedIntent(for: item))
             outcome = item.setSnoozedFromReminderDate(seriesReminder)
         }
         guard !outcome.isWritten else { return }

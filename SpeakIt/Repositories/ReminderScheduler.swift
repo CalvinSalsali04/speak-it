@@ -1084,6 +1084,14 @@ enum ReminderScheduler {
                 trigger: planned.trigger.notificationTrigger
             )
         }
+        // An empty plan is reported as `.failed`, never as `.scheduled`. A
+        // group of fired series only plans nothing when its continuation is
+        // refused, and the pending check below is an `allSatisfy`, which
+        // passes over nothing. `.scheduled` is the one answer a pass must
+        // never give falsely: the caller tells the person the reminder is
+        // set, and nothing retries it. A false `.failed` costs a retry and an
+        // honest "couldn't be scheduled". No reachable path is known to plan
+        // nothing; this decides which way it errs if one ever does.
         guard !notifications.isEmpty else { return .failed }
         let addedAll = await addAllOrNone(
             notifications,
@@ -1130,7 +1138,7 @@ enum ReminderScheduler {
         for requests: [ReminderScheduleRequest],
         now: Date = .now
     ) -> [PlannedReminderNotification] {
-        notificationGroups(from: armableNotificationRequests(requests, now: now))
+        notificationGroups(from: batchSelection(requests, now: now).notifications)
             .flatMap { plannedNotifications(for: $0, now: now) }
             .map {
                 PlannedReminderNotification(
@@ -1168,15 +1176,29 @@ enum ReminderScheduler {
         return planned
     }
 
-    /// The notification-delivered requests a pass arms: every one still
-    /// ahead, and every one whose fire has passed but whose series continues.
-    private static func armableNotificationRequests(
+    /// What a scheduling pass arms, as a value. `scheduleBatch` and
+    /// `plannedNotifications` both select through this, so the selection a
+    /// pass actually makes is the one the tests read.
+    struct BatchSelection: Equatable {
+        /// Alarms still ahead. AlarmKit arms one occurrence at a time, so an
+        /// alarm whose fire has passed has nothing left to arm.
+        let alarms: [ReminderScheduleRequest]
+        /// Notification requests still ahead, and every request that only
+        /// continues a series (`continuesSeriesOnly`). Leaving the second kind
+        /// out is DEL-12: the pass has already cancelled their triggers.
+        let notifications: [ReminderScheduleRequest]
+    }
+
+    static func batchSelection(
         _ requests: [ReminderScheduleRequest],
         now: Date
-    ) -> [ReminderScheduleRequest] {
-        requests.filter {
-            $0.delivery == .notification && ($0.fireDate > now || $0.continuesSeriesOnly)
-        }
+    ) -> BatchSelection {
+        BatchSelection(
+            alarms: requests.filter { $0.delivery == .alarm && $0.fireDate > now },
+            notifications: requests.filter {
+                $0.delivery == .notification && ($0.fireDate > now || $0.continuesSeriesOnly)
+            }
+        )
     }
 
     private static func trigger(
@@ -1274,8 +1296,7 @@ enum ReminderScheduler {
         requestAuthorizationIfNeeded: Bool,
         scope: ReminderSynchronizationScope?
     ) async -> [ReminderSchedulingResult] {
-        let now = Date.now
-        let futureRequests = requests.filter { $0.fireDate > now }
+        let selection = batchSelection(requests, now: .now)
         var resolvedScope = scope ?? ReminderSynchronizationScope(requests: requests)
         resolvedScope.include(requests)
 
@@ -1285,7 +1306,7 @@ enum ReminderScheduler {
         await clearExistingNotifications(scope: resolvedScope)
 
         var results: [ReminderSchedulingResult] = []
-        for request in futureRequests where request.delivery == .alarm {
+        for request in selection.alarms {
             results.append(await schedule(
                 request,
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
@@ -1294,9 +1315,7 @@ enum ReminderScheduler {
         // Includes a series whose alert has fired, which keeps only its
         // repeating trigger. The cancel above removed it for every item in
         // scope, so leaving it out here is what used to disarm the series.
-        for group in notificationGroups(
-            from: armableNotificationRequests(requests, now: now)
-        ) {
+        for group in notificationGroups(from: selection.notifications) {
             results.append(await scheduleNotification(
                 group,
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
