@@ -874,7 +874,50 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. 4068 -> 4087 on 2026-09-23, from
+        not assumed from the wording. 4068 -> 4076 on 2026-09-23, from
+        launch recovery leaving a capture the person has touched alone:
+        three `DurabilityTests` tests, eight literals, enumerated rather
+        than assumed. One is a fixture, the edited title `Call the plumber
+        about the kitchen leak`, and seven are assertion messages
+        interpolating the processing status, each counted once: `left open,
+        it is re-read at every launch`, `recovery must neither delete the
+        edited row nor add rows beside it`, `recovery must still split the
+        capture it never finished`, `recovery reset the review`, `the
+        hand-picked date was reverted`, `the placeholder was left
+        unorganized`, and `the typed title was reverted`. The two-thought
+        sentence and `The original words are never rewritten` were already
+        in `DurabilityTests` and add nothing. Review of the same change
+        moved it 4076 -> 4090 that day, with three more tests (a spoken
+        move and a spoken cancel held rather than acted on an unorganized
+        placeholder, and each mark keeping recovery off alone) and
+        fourteen more literals. Three are fixtures, `Move the plumber to
+        Friday` and the table names `time set by hand` and `place set by
+        hand`. One is the hazard above once more, `book the car service`
+        quoted in two doc comments and counted once. Ten are assertion
+        messages: `A move whose only match is an unorganized placeholder
+        must be held`, the same with `A cancel`, `recovery must still
+        split the capture the move never reached`, the same with `the
+        cancel`, `the held move stays as a review row`, `the held move
+        was lost at relaunch`, `the placeholder was marked as the
+        person's`, `the placeholder was moved`, and two interpolating the
+        mark's name, `recovery re-read a capture the person had marked`
+        and `the row must carry this mark alone`. `Cancel the plumber
+        reminder` was already in `CaptureOperationTests` and adds
+        nothing. 4090 -> 4099 on 2026-09-23, from broad operations leaving
+        out the rows of an unorganized capture: three `DurabilityTests`
+        tests, nine literals, enumerated rather than assumed, and all nine
+        are assertion messages: `A broad cancel must be held for
+        confirmation`, `an unorganized capture was named for deletion`,
+        `everything the confirmed request named is cancelled`, `recovery
+        must still organize the capture the confirmation skipped`, `the
+        finished capture was not cancelled`, `the placeholder was marked
+        done`, `the prompt would count a capture confirming leaves alone`,
+        `the review row is resolved`, and `the unfinished capture and its
+        words were deleted`. `Cancel every reminder`, the two-thought
+        sentence and `recovery must still split the capture the cancel
+        never reached` were already here, and `Buy milk`, quoted in a doc
+        comment, is under twelve characters and never counted.
+        This branch had, on its own parent, 4068 -> 4087 on 2026-09-23, from
         DEL-25 (a confirmed "cancel all my reminders" reaching Memory):
         three tests in `CaptureOperationTests`, nineteen literals,
         enumerated rather than assumed. Six are fixtures: three spoken
@@ -889,7 +932,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         fixture, and is left quoted. One message, `"A broad cancel must be
         held for confirmation"`, is also in #131's `DurabilityTests`, so
         the two branches together add one fewer than their deltas sum to.
-        What the test
+        The two met on 2026-09-23, when #131 was merged into the DEL-25
+        branch so that `heldCandidate` could ask the kind question too:
+        4099 (#131) -> 4124, recounted on the merged tree rather than
+        summed. Twenty-five, enumerated: DEL-25's nineteen less the one
+        message both sides carry is eighteen, and the two confirm-time
+        tests the merge added bring seven assertion messages, all new:
+        `a row edited into a note was deleted`, `confirming an old record
+        reached Memory`, `precondition: both were held`, `precondition:
+        the edited row is a Memory note`, `the number confirmed is not
+        the number acted on` (used twice, counted once), `the prompt
+        counts Memory rows from an old record` and `the prompt counts a
+        row that is now a note`. Typing #131's three placeholders as
+        tasks added a helper and four preconditions and no literal. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -903,7 +958,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4087)
+        self.assertEqual(len(space), 4124)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -732,7 +732,7 @@ check have **not** been run. See `Docs/DECISIONS.md`, 2026-09-11.
 ## A broad request keeps no noun
 
 "Cancel all my reminders", "delete all my tasks" and "delete all my notes"
-reach the same rows: every active action row of any other capture
+reach the same rows: every active action row of any other finished capture
 (`SwiftDataThoughtRepository.broadOperationCandidates`). Memory is never
 reached (DEL-25, 2026-09-23), so "delete all my notes" names nothing, and
 "all my reminders" also reaches tasks that carry no reminder. The rules path

@@ -57,6 +57,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
+                // An unfinished capture's rows are on screen before recovery
+                // reaches them: a `.failed` row waits in Needs review, and an
+                // interrupted placeholder is visible from the first frame
+                // while audio drafts recover. Once the person has put a hand
+                // on one of them, the rows are theirs. Re-reading the words
+                // would write the organizer's answer over their edit, and
+                // could delete the row or add others beside it, so the
+                // session is closed as it stands instead. The transcript is
+                // kept, and `Organize again` is still there to ask for it.
+                if session.items.contains(where: { Self.carriesPersonsDecision($0) }) {
+                    CaptureRecoveryAttemptLedger.finish(session.id)
+                    closeSession(session)
+                    continue
+                }
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
                 // every launch until the app is deleted. The launch is counted
@@ -75,6 +89,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
         resolveCombinedPlaceAndTimeHoldouts()
+    }
+
+    /// Whether a row holds something only the person could have put there.
+    ///
+    /// Every hand on a row leaves one of these marks: `update` and
+    /// `markReviewed` set `isReviewed` (and an edit also stamps `isUserEdited`
+    /// on the intents it wrote), `setCompleted` sets `completedAt`, and
+    /// `setArchived` sets `isArchived`. No automatic path sets any of them on
+    /// a session that is still unfinished: a spoken operation from another
+    /// capture could, through `setCompleted` or `update`, so it holds for
+    /// review instead (see `awaitsOrganization`). `lastModifiedAt` is
+    /// deliberately not used: the organizer and the fallback row stamp it too.
+    private static func carriesPersonsDecision(_ item: CapturedItem) -> Bool {
+        item.isReviewed
+            || item.isCompleted
+            || item.isArchived
+            || item.temporalIntent?.isUserEdited == true
+            || item.locationIntent?.isUserEdited == true
+    }
+
+    /// Whether a row belongs to a capture launch recovery has yet to organize.
+    /// Such a row is the durable placeholder (or an organized row of a save
+    /// that failed), and recovery may still replace it. A single-target
+    /// operation holds on it; a broad one leaves it out of what it names (see
+    /// `broadOperationCandidates`).
+    private static func awaitsOrganization(_ item: CapturedItem) -> Bool {
+        guard let session = item.captureSession else { return false }
+        return session.processingStatus != .complete
     }
 
     private func recoverOrganization(of session: CaptureSession) {
@@ -1217,6 +1259,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         case 1:
             let item = candidates[0]
             let itemID = item.id
+            // A row of a capture that was never organized is a placeholder,
+            // not a commitment: its segment is the whole transcript, so "move
+            // the plumber to Friday" matches "Call the plumber and book the
+            // car service". Acting on it would stamp the marks that launch
+            // recovery reads as the person's hand (and a cancel would delete
+            // the whole capture with its transcript), so the other thought
+            // would never be organized. It is held for the person instead.
+            // Not dropped from the search: as the only match, dropping it
+            // would report nothing found and drop the request, and beside
+            // another match it would make that one look certain.
+            guard !Self.awaitsOrganization(item) else {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: request.operation, candidateIDs: [itemID])
+            }
             let title = item.displayTitle
             do {
                 switch request.operation {
@@ -1324,7 +1380,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func confirmPendingOperation(_ item: CapturedItem) throws {
         guard let record = PendingOperationStore.record(for: item.id) else { return }
         for candidateID in record.candidateIDs {
-            guard let candidate = try findItem(withID: candidateID) else { continue }
+            // Read one at a time, as each earlier delete may have taken a row.
+            guard let candidate = try heldCandidate(candidateID) else { continue }
             switch record.operation {
             case .cancel:
                 LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
@@ -1341,22 +1398,59 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try delete(item)
     }
 
+    func pendingOperationCandidateIDs(for item: CapturedItem) -> [UUID] {
+        guard let record = PendingOperationStore.record(for: item.id) else { return [] }
+        return ((try? heldCandidates(of: record)) ?? []).map(\.id)
+    }
+
     /// What a broad request may act on: every active row on Today's action
-    /// side, and nothing in Memory.
+    /// side, except those of a capture launch recovery has yet to organize.
     ///
-    /// "Cancel all my reminders" and "delete all my tasks" are about
-    /// commitments. The list used to be every active row, so confirming one
-    /// deleted Memory's notes, ideas and people facts with the tasks, and a
-    /// capture's transcript went with its last row. The single-target search
-    /// has never reached Memory (`CaptureTargetMatcher.candidates`); this is
-    /// the same line, drawn by kind rather than by live placement, so a
-    /// knowledge row waiting in Needs review is left out too. The parser keeps
-    /// no noun for a broad request (`target` is nil, so "reminders", "tasks"
-    /// and "notes" all read the same), and nothing narrower than the action
-    /// side can be read from it. The prompt counts the list stored from this,
-    /// and confirmation acts on that list.
+    /// Nothing in Memory. "Cancel all my reminders" and "delete all my tasks"
+    /// are about commitments. The list used to be every active row, so
+    /// confirming one deleted Memory's notes, ideas and people facts with the
+    /// tasks, and a capture's transcript went with its last row. The
+    /// single-target search has never reached Memory
+    /// (`CaptureTargetMatcher.candidates`); this is the same line, drawn by
+    /// kind rather than by live placement, so a knowledge row waiting in Needs
+    /// review is left out too. The parser keeps no noun for a broad request
+    /// (`target` is nil, so "reminders", "tasks" and "notes" all read the
+    /// same), and nothing narrower than the action side can be read from it.
+    ///
+    /// Nothing unorganized. Such a row is a placeholder whose capture still
+    /// holds words nobody has organized, and `delete` removes a capture with
+    /// its last row, so a confirmed "cancel all my reminders" used to delete
+    /// the unfinished capture and its transcript; a confirmed complete stamped
+    /// the mark that makes recovery close it unorganized. Unlike the
+    /// single-target search, dropping the row here makes nothing else look
+    /// certain: a broad request is always held, and nothing it names is
+    /// touched until the person confirms a count that now leaves the row out.
+    ///
+    /// `heldCandidate` asks both questions again at confirmation.
     private static func broadOperationCandidates(in items: [CapturedItem]) -> [CapturedItem] {
-        CaptureTargetMatcher.activeItems(items).filter(\.isActionKind)
+        CaptureTargetMatcher.activeItems(items).filter { $0.isActionKind && !awaitsOrganization($0) }
+    }
+
+    /// The rows a held broad request still names, read again at confirmation.
+    ///
+    /// The list was fixed when the request was held, and a row can stop
+    /// qualifying after that: `Organize again` leaves a session `.failed` when
+    /// its save fails, an edit can turn a task into a note, and a record
+    /// written before candidates excluded unorganized captures or Memory rows
+    /// may still name one. The prompt's count and the confirmation both read
+    /// this, so the number the person confirms is the number acted on. Rows
+    /// deleted since are skipped, as before.
+    private func heldCandidates(
+        of record: PendingOperationStore.StoredPendingOperation
+    ) throws -> [CapturedItem] {
+        try record.candidateIDs.compactMap { try heldCandidate($0) }
+    }
+
+    private func heldCandidate(_ id: UUID) throws -> CapturedItem? {
+        guard let item = try findItem(withID: id),
+              item.isActionKind,
+              !Self.awaitsOrganization(item) else { return nil }
+        return item
     }
 
     /// Declines a held broad cancel or complete. Nothing the request would

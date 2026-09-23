@@ -22,10 +22,10 @@ is drawn by kind rather than by live placement, so a knowledge row waiting in
 Needs review (which is in neither destination) is left out too, and a note
 with a reminder (on Today, by the person's own request) is reached.
 `SwiftDataThoughtRepository.broadOperationCandidates(in:)` applies it. The
-prompt's "Cancel N items?" counts the stored list this produces, and
-confirmation acts on that list, so the number confirmed is the number acted
-on. Cancel and complete read the same list. What confirming does to a row
-(delete for cancel) is unchanged: delete versus archive is the owner's open
+prompt's "Cancel N items?" and the confirmation both read the stored list
+again through `heldCandidates` (below), so the number confirmed is the
+number acted on. Cancel and complete read the same list. What confirming
+does to a row (delete for cancel) is unchanged: delete versus archive is the owner's open
 decision in Q-A, and this is only about reach.
 
 **The noun is not narrowed, because the parser does not keep it.** The rules
@@ -52,18 +52,70 @@ fails if the list goes back to `activeItems` alone. The first also fails if
 the line is drawn with `!belongsInMemory` (the held note) or excludes a note
 with a reminder.
 
-**How it composes with #131.** #131 (captures not yet organized stay out of a
-broad request) introduces a function with the same name at the same place,
-filtering `awaitsOrganization`, and re-reads each held row at confirmation
-(`heldCandidate`). Whichever lands second takes both filters in
-`broadOperationCandidates` and should add `isActionKind` to `heldCandidate`
-as well, so a row edited into a note between hold and confirm is skipped and
-counted out; until then that edge follows the list stored at hold. #131's
-control test `testABroadCancelStillReachesAPlaceholderShapedRowOfAFinishedCapture`
-uses an `.unclear` review row, which this rule leaves out by kind; that test's
-row needs an action type, or its expectation changes, when both are on main.
-A record stored before this change can still name a Memory row until it is
-confirmed or declined.
+**How it composes with #131** (merged into this branch on 2026-09-23, so
+this is stacked on #131). #131 leaves unorganized captures out of the same
+list and reads each held row again at confirmation. `broadOperationCandidates`
+now takes both filters, `isActionKind && !awaitsOrganization`, and
+`heldCandidate` asks both again. So a row edited into a note between hold and
+confirm, or a Memory row named by a record held before this change, is
+neither counted by the prompt (`pendingOperationCandidateIDs`) nor acted on.
+Both read `heldCandidates`, so the number confirmed is still the number acted
+on. `testConfirmingSkipsARowEditedIntoANoteSinceItWasHeld` and
+`testConfirmingARecordHeldBeforeTheScopeSkipsItsMemoryRows` pin this.
+
+#131's three broad tests in `DurabilityTests` wrote their rows as the
+placeholder `beginCapture` writes, `.unclear`. The kind rule leaves such a
+row out on its own, which broke the control test and would have let the
+other two pass with `awaitsOrganization` deleted. Each now types its row as a
+task (`typeAsTask`) and keeps every mark of a placeholder's shape, so the
+control still proves that shape alone does not exclude a finished capture's
+row, and the other two still prove the state check does the excluding.
+
+## 2026-09-23 — A broad cancel or complete leaves out captures not yet organized
+
+A confirmed "cancel every reminder" listed every active row, and the
+placeholder of a capture launch recovery has not organized yet is an active
+row. `delete` removes a capture with its last row, so confirming deleted that
+capture and its original transcript; a confirmed broad complete stamped the
+mark recovery reads as the person's hand and closed the capture unorganized.
+Broad candidates now leave out any row whose session is not `.complete`, the
+same `awaitsOrganization` test the single-target hold uses. The row is dropped
+here rather than holding the whole request, as the single-target path does,
+because a broad request is always held for confirmation and dropping a row
+cannot make another look certain. Confirmation reads each named row again and
+skips one whose capture is unfinished by then (a record written by an earlier
+build, or a capture `Organize again` left `.failed`), and the prompt counts
+that same list, so the number the person confirms is the number acted on. A
+broad request names no reschedule, and the pronoun path ("cancel it") lists
+every active row only to count them in the receipt and never acts on the
+list, so neither changed. When that count reaches zero, because every named
+row belongs to an unfinished capture or has gone, the prompt says "Nothing to
+cancel" (or complete) and offers only a Done button that clears the review
+row, rather than a destructive button promising "cannot be undone" that would
+act on nothing. The count is read once per screen pass, since each read is a
+fetch per held row.
+
+## 2026-09-23 — Launch recovery closes a capture the person has already touched
+
+`recoverUnorganizedCaptures` re-reads every session that is not `.complete`,
+and the rows of those sessions are on screen before it runs: a `.failed`
+capture's row waits in Needs review, and an interrupted placeholder is visible
+while audio drafts recover. A correction made there was written over by the
+next launch, which also reset `isReviewed` and could split the row into new
+ones beside it. Recovery now skips and closes any unfinished session with a
+row that is reviewed, completed, archived, or carries a user-edited temporal
+or location intent, the marks `update`, `markReviewed`, `setCompleted` and
+`setArchived` already leave, so no persisted field was added. Untouched
+sessions are organized exactly as before, and `Organize again` remains the
+explicit way to ask for a re-read that replaces hand edits. The live-capture
+race, where the organizer lands after an edit made during extraction, is not
+covered by this and is tracked as D4(c) in the capture-lifecycle audit.
+A spoken cancel, complete or move from another capture would leave the same
+marks on an unfinished capture's placeholder, whose segment is the whole
+transcript, so when that placeholder is the only match the request is held in
+Needs review instead of acted on. Some person actions leave no mark and so do
+not stop the re-read: deleting one of several rows, pins or other metadata
+kept outside the row, and a snooze or "Tomorrow" from a notification.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

@@ -337,10 +337,11 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertEqual(operation, .cancel)
         XCTAssertEqual(Set(candidateIDs), actions, "a broad cancel named a Memory row")
         let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
-        // The editor's "Cancel N items?" counts this record.
+        // The editor's "Cancel N items?" counts this record, read again.
         let record = try XCTUnwrap(PendingOperationStore.record(for: reviewRow.id))
         XCTAssertEqual(record.candidateIDs.count, actions.count, "the prompt counts rows confirming would not touch")
         XCTAssertEqual(Set(record.candidateIDs), actions)
+        XCTAssertEqual(Set(repository.pendingOperationCandidateIDs(for: reviewRow)), actions)
 
         try repository.confirmPendingOperation(reviewRow)
 
@@ -349,6 +350,63 @@ final class CaptureOperationTests: XCTestCase {
         for kept in ["The spare key is under the blue pot", "A podcast about city parks", "Sarah likes oat milk", "Something about the lease"] {
             XCTAssertTrue(words.contains(kept), "the transcript went with its row: \(kept)")
         }
+    }
+
+    /// The list is fixed when the request is held, and the person can turn a
+    /// task into a note before confirming. Confirmation reads each row again
+    /// (`heldCandidate`), so the note is neither counted nor deleted, and the
+    /// count the prompt shows is the number of rows confirming removes.
+    ///
+    /// Falsifier: a confirm-time check that asks only whether the capture is
+    /// organized counts two and deletes the note.
+    func testConfirmingSkipsARowEditedIntoANoteSinceItWasHeld() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let momID = try await capture("Call Mom on Friday").primaryItem.id
+        let broad = try await capture("Cancel all my reminders")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        let held = try XCTUnwrap(PendingOperationStore.record(for: reviewRow.id)).candidateIDs
+        XCTAssertEqual(Set(held), [milkID, momID], "precondition: both were held")
+
+        // What the editor's type picker leaves behind.
+        let milk = try XCTUnwrap(try allItems().first { $0.id == milkID })
+        milk.itemType = .note
+        try container.mainContext.save()
+        XCTAssertTrue(milk.belongsInMemory, "precondition: the edited row is a Memory note")
+
+        let counted = repository.pendingOperationCandidateIDs(for: reviewRow)
+        XCTAssertEqual(counted, [momID], "the prompt counts a row that is now a note")
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        let remaining = Set(try allItems().map(\.id))
+        XCTAssertTrue(remaining.contains(milkID), "a row edited into a note was deleted")
+        let actedOn = held.filter { !remaining.contains($0) }
+        XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
+    }
+
+    /// A record stored before DEL-25 can name Memory rows, and it waits in
+    /// Needs review until the person answers it. Confirming it now counts
+    /// and cancels only the action row.
+    ///
+    /// Falsifier: a confirm-time check that trusts the stored list counts
+    /// five and deletes the four knowledge rows.
+    func testConfirmingARecordHeldBeforeTheScopeSkipsItsMemoryRows() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let memory = try insertMemoryRows()
+        let broad = try await capture("Cancel all my reminders")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        let legacy = [milkID, memory.note, memory.idea, memory.person, memory.heldNote]
+        PendingOperationStore.set(operation: .cancel, candidateIDs: legacy, for: reviewRow.id)
+
+        let counted = repository.pendingOperationCandidateIDs(for: reviewRow)
+        XCTAssertEqual(counted, [milkID], "the prompt counts Memory rows from an old record")
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        let remaining = Set(try allItems().map(\.id))
+        XCTAssertEqual(remaining, memory.all, "confirming an old record reached Memory")
+        let actedOn = legacy.filter { !remaining.contains($0) }
+        XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
     }
 
     /// "Delete all my notes" keeps no noun either, and reads as the same broad
