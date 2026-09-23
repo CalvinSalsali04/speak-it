@@ -355,6 +355,147 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .notification)
     }
 
+    // MARK: A row the system holds for review arms nothing
+
+    /// `Remind me to check in with Jordan later today`, captured at 10:00, is
+    /// held for review with a guessed 8 PM `reminderDate`
+    /// (`SemanticCorpusDataE`: held for a real time rather than guessed). It
+    /// used to schedule that 8 PM while the Needs review row showed neither a
+    /// time nor a bell. Now the row, the bell, the receipt and the request
+    /// all read `ItemPresentation.mayArm` through `scheduledDelivery`, so all
+    /// four say nothing is set, and the row names the time it would use.
+    ///
+    /// Captured two days out, at 10:00 on this machine's own calendar, so the
+    /// guessed evening is still ahead whenever and wherever this runs; only
+    /// the hold can be what stops the request. No wall clock is asserted.
+    ///
+    /// Falsifier: drop the `mayArm` guard from `scheduledDelivery` and a
+    /// request is built, the row reads as armed, and `withheldTriggerText`
+    /// is `nil`.
+    func testAVagueTimeHeldForReviewArmsNothingAndSaysWhatItWouldDo() throws {
+        let item = try laterTodayCapture()
+        XCTAssertTrue(item.needsClarification, "precondition: a vague time is held for review")
+        let guessed = try XCTUnwrap(item.reminderDate, "precondition: the hold kept a guessed time")
+        XCTAssertGreaterThan(guessed, .now, "precondition: the guess is still ahead")
+        XCTAssertFalse(item.temporalIntent?.isUserEdited == true)
+
+        let shown = presentation(for: item)
+        XCTAssertEqual(shown.destination, .needsReview)
+        XCTAssertFalse(shown.reminderState.isArmed, "a held row must not read as armed")
+        XCTAssertNil(shown.reminderState.alertGlyph)
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "a row the system holds for review must not reach iOS"
+        )
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .none)
+
+        let session = try XCTUnwrap(item.captureSession)
+        XCTAssertEqual(CaptureCreationResult(session: session, items: [item]).reminderCount, 0)
+
+        let timing = try XCTUnwrap(shown.primaryTimingText)
+        XCTAssertEqual(shown.withheldTriggerText, "Reminder not set · \(timing)")
+    }
+
+    /// The shape a Foundation Models candidate under 0.82 confidence is stored
+    /// in (`ThoughtExtractor`'s model validation): the deterministic reading's
+    /// dates and intents are kept, and `needsClarification` is set from the
+    /// confidence alone. That path needs an Apple Intelligence device, so the
+    /// row is built from exactly those fields, with the rules reading of the
+    /// same words supplying the dates, the way the validation does.
+    ///
+    /// Falsifier: decide the hold by re-reading the wording, the way the
+    /// row's delivery kind is read, instead of from the stored flag, and this
+    /// row is scheduled: nothing in its words holds it, only the confidence.
+    func testALowConfidenceModelRowArmsNothing() throws {
+        let text = "Remind me to call mom tomorrow at 5pm"
+        let createdAt = Date.now
+        let reading = ThoughtOrganizer.organize(text, referenceDate: createdAt)
+        XCTAssertFalse(
+            reading.needsClarification,
+            "precondition: the rules alone would not hold this"
+        )
+        let confidence = 0.64
+        let item = CapturedItem(
+            originalTextSegment: text,
+            displayTitle: "Call mom",
+            itemType: reading.itemType,
+            createdAt: createdAt,
+            dueDate: reading.dueDate,
+            reminderDate: reading.reminderDate,
+            processingConfidence: confidence,
+            needsClarification: reading.needsClarification || confidence < 0.82,
+            temporalIntent: reading.temporalIntent,
+            locationIntent: reading.locationIntent
+        )
+        XCTAssertGreaterThan(try XCTUnwrap(item.reminderDate), .now)
+
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertFalse(presentation(for: item).reminderState.isArmed)
+        XCTAssertNotNil(presentation(for: item).withheldTriggerText)
+    }
+
+    /// The person's own hold is not the system's. Turning Needs review on in
+    /// the editor (E19) saves through `update`, which marks the temporal
+    /// intent `isUserEdited`, and a reminder the person saved is theirs: it
+    /// stays armed, the bell stays on, and nothing is described as withheld.
+    ///
+    /// Falsifier: make `mayArm` read `!needsClarification` alone and this
+    /// reminder is silenced by the person's own toggle.
+    func testTurningNeedsReviewOnByHandKeepsTheReminderArmed() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to call mom tomorrow at 5pm",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        defer { try? repository.delete(item) }
+        XCTAssertFalse(item.needsClarification, "precondition: nothing was held")
+
+        try repository.update(item, with: heldByHand(item))
+
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertTrue(item.temporalIntent?.isUserEdited == true)
+        let shown = presentation(for: item)
+        XCTAssertEqual(shown.destination, .needsReview)
+        XCTAssertTrue(shown.reminderState.isArmed, "the person's own hold does not silence them")
+        XCTAssertNil(shown.withheldTriggerText)
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(request.delivery, .notification)
+    }
+
+    private func laterTodayCapture() throws -> CapturedItem {
+        let calendar = Calendar.current
+        let day = try XCTUnwrap(
+            calendar.date(byAdding: .day, value: 2, to: calendar.startOfDay(for: .now))
+        )
+        let createdAt = try XCTUnwrap(
+            calendar.date(bySettingHour: 10, minute: 0, second: 0, of: day)
+        )
+        return try repository.createCapture(
+            text: "Remind me to check in with Jordan later today",
+            source: .inAppText,
+            createdAt: createdAt,
+            schedulesReminder: false
+        )
+    }
+
+    /// The editor's save with every field as it opened, except the Needs
+    /// review toggle turned on.
+    private func heldByHand(_ item: CapturedItem) -> ItemEdits {
+        ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: true,
+            recurrenceRule: RecurrenceStore.rule(for: item.id),
+            dueDateHasTime: !item.isDateOnly
+        )
+    }
+
     // MARK: A place reminder must say so
 
     /// The editor showed "Remind me: off" on an item with a live geofence, and

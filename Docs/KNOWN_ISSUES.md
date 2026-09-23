@@ -28,6 +28,25 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
+## A held row arms nothing, and three edges of that remain
+
+*2026-09-23.* Rows the system holds for review no longer schedule, alarm or
+geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
+
+- **Saving counts as confirming.** A held row saved in the editor with Needs
+  review still on arms what the editor showed, because every editor save marks
+  the intent `isUserEdited` and the manual toggle looks the same in storage.
+  Telling them apart needs a stored marker.
+- **A held series that is not a single native trigger goes stale.** A
+  weekday, interval or ordinal series held for review spawns no successor and
+  is not rolled forward, so it waits in Needs review with a past proposed
+  date. Once confirmed, the next foreground continues the series; the save
+  itself arms nothing, because the date has passed.
+- **Two surfaces still do not show the withheld trigger.** A held shopping row
+  is still not in Needs review (REV-3). It is silent now, but its list row
+  shows the proposed time with no bell and no "not set". A held place row with
+  a live blocker shows the blocker label instead, which is already true.
+
 ## A considered thought and a committed one look the same once stored
 
 `SemanticGap` names one reason per structural question the pipeline asks, and

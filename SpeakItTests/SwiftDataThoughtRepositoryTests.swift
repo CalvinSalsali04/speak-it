@@ -5526,6 +5526,210 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).count, 2)
     }
 
+    // MARK: - A series held for review spawns nothing
+
+    /// A weekday series the system holds for review (its exception, say) went
+    /// overdue without firing, because a held row arms nothing. The
+    /// foreground pass used to hand it a successor with `needsClarification:
+    /// false`: the exception escaped review and a clean, armed copy landed in
+    /// Today beside the held original. No successor is generated while the
+    /// source is held; once the person confirms it, the next pass continues
+    /// the series from it (Docs/DECISIONS.md, 2026-09-23).
+    ///
+    /// Falsifier: remove the `mayArm` guard from `advanceOverdueRecurrences`
+    /// and the first pass inserts an unheld successor.
+    func testAHeldSeriesSpawnsNoSuccessorUntilConfirmed() throws {
+        let (item, rule) = try heldOverdueWeekdaySeries()
+        defer {
+            let items = (try? container.mainContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            items.forEach { RecurrenceStore.remove($0.id) }
+        }
+
+        repository.reconcilePendingReminders()
+
+        let afterHeldPass = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(afterHeldPass.count, 1, "a held series must not spawn a successor")
+        XCTAssertNil(RecurrenceStore.generatedNextItemID(for: item.id))
+        XCTAssertTrue(item.needsClarification, "and the one row stays held")
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            recurrenceRule: rule
+        ))
+        repository.reconcilePendingReminders()
+
+        let nextID = try XCTUnwrap(
+            RecurrenceStore.generatedNextItemID(for: item.id),
+            "once confirmed, the series continues"
+        )
+        let next = try XCTUnwrap(
+            try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == nextID }
+        )
+        XCTAssertFalse(next.needsClarification)
+        XCTAssertNotNil(ReminderScheduleRequest(item: next))
+    }
+
+    /// Completing a held series by hand ends the series rather than handing
+    /// its unconfirmed reading on, for the same reason the foreground pass
+    /// does not (`testAHeldSeriesSpawnsNoSuccessorUntilConfirmed`).
+    ///
+    /// Falsifier: remove the `mayArm` condition from `setCompleted` and an
+    /// unheld, armed successor is inserted.
+    func testCompletingAHeldSeriesGeneratesNoSuccessor() throws {
+        let (item, _) = try heldOverdueWeekdaySeries()
+        defer {
+            let items = (try? container.mainContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            items.forEach { RecurrenceStore.remove($0.id) }
+        }
+
+        try repository.setCompleted(item, completed: true)
+
+        XCTAssertNil(RecurrenceStore.generatedNextItemID(for: item.id))
+        XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).count, 1)
+    }
+
+    /// A hold the person set themselves arms (E19), so their series keeps
+    /// going, and the successor keeps their flag rather than coming back
+    /// clean.
+    ///
+    /// Falsifier: gate successors on `needsClarification` rather than on
+    /// `mayArm` and none is generated; construct it with `false` again and
+    /// the person's flag is dropped.
+    func testASeriesThePersonHoldsKeepsGoingWithTheirFlag() throws {
+        let (item, rule) = try heldOverdueWeekdaySeries()
+        defer {
+            let items = (try? container.mainContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            items.forEach { RecurrenceStore.remove($0.id) }
+        }
+        // The editor's save with Needs review left on: the person's hold.
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: true,
+            recurrenceRule: rule
+        ))
+        XCTAssertTrue(ItemPresentation.mayArm(item), "precondition: a hold the person saved arms")
+
+        try repository.setCompleted(item, completed: true)
+
+        let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: item.id))
+        let next = try XCTUnwrap(
+            try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == nextID }
+        )
+        XCTAssertTrue(next.needsClarification, "the person's own flag follows the series")
+        XCTAssertNotNil(ReminderScheduleRequest(item: next), "and so does their reminder")
+    }
+
+    /// A weekday series (a shape no single native trigger expresses, so it
+    /// is continued by successors) whose occurrence was an hour ago, held for
+    /// review by the system: `needsClarification` with an intent nobody
+    /// edited.
+    private func heldOverdueWeekdaySeries() throws -> (CapturedItem, RecurrenceRule) {
+        let fired = Date.now.addingTimeInterval(-60 * 60)
+        let session = CaptureSession(
+            originalTranscription: "Remind me every weekday at 8 except holidays",
+            createdAt: fired.addingTimeInterval(-24 * 60 * 60),
+            captureSource: .inAppText,
+            processingStatus: .complete
+        )
+        container.mainContext.insert(session)
+        let item = CapturedItem(
+            originalTextSegment: session.originalTranscription,
+            displayTitle: "Weekday check-in",
+            itemType: .task,
+            createdAt: session.createdAt,
+            dueDate: fired,
+            reminderDate: fired,
+            needsClarification: true,
+            captureSession: session
+        )
+        container.mainContext.insert(item)
+        let rule = RecurrenceRule(frequency: .weekly, weekdays: [2, 3, 4, 5, 6], anchor: .scheduledDate)
+        RecurrenceStore.set(rule, for: item.id)
+        try container.mainContext.save()
+        XCTAssertNil(
+            ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fired),
+            "precondition: this shape advances by successors"
+        )
+        XCTAssertFalse(ItemPresentation.mayArm(item), "precondition: the system holds it")
+        return (item, rule)
+    }
+
+    // MARK: - Resolving a held row arms it
+
+    /// Confirming a held `later today` row in the editor is the save that
+    /// arms its reminder: the hold is gone and the request exists as soon as
+    /// `update` returns. `TemporalFullPathTests` follows the same save to the
+    /// notification centre.
+    ///
+    /// Falsifier: have `mayArm` ignore a cleared flag (or `update` fail to
+    /// clear it) and no request exists after the save.
+    func testConfirmingAHeldRowInTheEditorArmsIt() throws {
+        let item = try heldLaterTodayCapture()
+        XCTAssertNil(ReminderScheduleRequest(item: item), "precondition: held, so nothing is armed")
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            dueDateHasTime: !item.isDateOnly
+        ))
+        defer { try? repository.delete(item) }
+
+        XCTAssertFalse(item.needsClarification)
+        XCTAssertNotNil(ReminderScheduleRequest(item: item))
+    }
+
+    /// `markReviewed` clears the hold without the editor, and must release
+    /// the reminder the same way.
+    ///
+    /// Falsifier: make `mayArm` read the edit mark alone and a row cleared
+    /// without an edit stays silent.
+    func testMarkingAHeldRowReviewedArmsIt() throws {
+        let item = try heldLaterTodayCapture()
+        XCTAssertNil(ReminderScheduleRequest(item: item), "precondition: held, so nothing is armed")
+
+        try repository.markReviewed(item)
+        defer { try? repository.delete(item) }
+
+        XCTAssertNotNil(ReminderScheduleRequest(item: item))
+    }
+
+    /// `Remind me to check in with Jordan later today`, two days out at 10:00
+    /// on this machine's calendar, so its guessed evening is still ahead.
+    private func heldLaterTodayCapture() throws -> CapturedItem {
+        let calendar = Calendar.current
+        let day = try XCTUnwrap(
+            calendar.date(byAdding: .day, value: 2, to: calendar.startOfDay(for: .now))
+        )
+        let item = try repository.createCapture(
+            text: "Remind me to check in with Jordan later today",
+            source: .inAppText,
+            createdAt: try XCTUnwrap(calendar.date(bySettingHour: 10, minute: 0, second: 0, of: day)),
+            schedulesReminder: false
+        )
+        XCTAssertTrue(item.needsClarification, "precondition: a vague time is held for review")
+        XCTAssertGreaterThan(try XCTUnwrap(item.reminderDate), .now)
+        return item
+    }
+
     func testRecurringReminderCanUseMultipleWeekdays() {
         let calendar = utcCalendar
         let reference = makeDate(year: 2026, month: 8, day: 9, hour: 12, calendar: calendar)

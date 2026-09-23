@@ -892,7 +892,24 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         fixture, `"Set an alarm for 6:45 and call the accountant
         tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
         the wording asks for no alert"` are reused, and their doc comments
-        quote in backticks. What the test
+        quote in backticks. 4074 -> 4107 on 2026-09-23 again, from rows the
+        system holds for review arming nothing: ten tests across
+        `ItemPresentationTests`, `TemporalFullPathTests`,
+        `LocationReminderTests` and `SwiftDataThoughtRepositoryTests`,
+        thirty-three literals, enumerated by diffing this census against
+        `HEAD` rather than counted from the tests. Six are fixtures or
+        expected output: a transcript, `"Remind me every weekday at 8 except
+        holidays"`; two hand-built titles, `"Take the bins out"` and
+        `"Weekday check-in"`; and three renderings of the withheld trigger,
+        `"Reminder not set · "`, `"Reminder not set · Next time you arrive
+        at Home"` and the interpolated `"Reminder not set · \\(timing)"`,
+        which counts as its source text. Twenty-seven are assertion
+        messages, and five of those appear twice and count once. The other
+        transcripts add nothing, because each is already in this directory:
+        the vague-time and series-exception rows in `SemanticCorpusDataE`
+        and `SemanticCorpusDataD`, `"Remind me to call mom tomorrow at 5pm"`
+        in `ItemPresentationTests`, and both Home transcripts in
+        `LocationReminderTests`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -906,7 +923,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4074)
+        self.assertEqual(len(space), 4107)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

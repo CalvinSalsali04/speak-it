@@ -348,6 +348,27 @@ final class CapturedItem: Identifiable {
         ).blocker
     }
 
+    /// Whether this item's place trigger may be watched and delivered, before
+    /// any device state is asked: it has one, it is still open, it is not a
+    /// combined place-and-time request, and the system is not holding it for
+    /// review (`ItemPresentation.mayArm`, the one rule the time scheduler
+    /// reads too).
+    ///
+    /// Every path to CoreLocation reads this: the reconcile filter that picks
+    /// which items `LocationReminderMonitor.reconcile` is handed requests for,
+    /// and both guards in `handleLocationTrigger`. They used to repeat the
+    /// first three checks each, and none of them asked about review, so a held
+    /// `call them when I get home` was watched and delivered.
+    /// `locationMonitorRequest` itself stays a pure reading of where the place
+    /// resolves, which is what the tests ask of it; it is only
+    /// ever handed to the monitor from behind this predicate.
+    var hasLivePlaceTrigger: Bool {
+        isLocationTriggered
+            && !isArchived && !isCompleted
+            && !constrainsBothPlaceAndTime
+            && ItemPresentation.mayArm(self)
+    }
+
     /// The monitoring request this item wants, when it can have one.
     @MainActor
     func locationMonitorRequest(

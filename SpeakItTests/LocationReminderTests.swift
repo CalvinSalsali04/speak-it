@@ -659,6 +659,116 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertFalse(item.isCompleted)
     }
 
+    // MARK: A row the system holds for review is not watched
+
+    /// A Home reminder the system is holding for review, built in the shape a
+    /// Foundation Models candidate under 0.82 confidence is stored in: the
+    /// rules reading's place kept, `needsClarification` set from the
+    /// confidence alone. Home is set, so nothing on the device is missing and
+    /// only the hold stands between this row and a region. The reconcile
+    /// filter and the crossing handler used to check archived, completed and
+    /// combined and nothing else, so it was watched and delivered.
+    ///
+    /// The reconcile assertion holds whatever this simulator's permission is:
+    /// admitted to the filter, the row would be monitored with Always and
+    /// reported blocked without it, and it must be neither. The crossing
+    /// assertion reads `firedAt`, which is written only after a delivery.
+    ///
+    /// Falsifier: drop `ItemPresentation.mayArm` from
+    /// `CapturedItem.hasLivePlaceTrigger` and the row is accounted for by the
+    /// monitor and the crossing delivers it. Make confirming leave the row
+    /// held (the save not clearing it, or `mayArm` ignoring the save) and the
+    /// last crossing delivers nothing.
+    func testAPlaceRowHeldForReviewIsNeitherWatchedNorDeliveredUntilConfirmed() async throws {
+        setHome()
+        let text = "Remind me to take the bins out when I get home"
+        let reading = ThoughtOrganizer.organize(text)
+        XCTAssertFalse(reading.needsClarification, "precondition: the rules alone would not hold this")
+        XCTAssertEqual(reading.locationIntent?.place, .home)
+        let confidence = 0.64
+        let item = CapturedItem(
+            originalTextSegment: text,
+            displayTitle: "Take the bins out",
+            itemType: .task,
+            processingConfidence: confidence,
+            needsClarification: reading.needsClarification || confidence < 0.82,
+            temporalIntent: reading.temporalIntent,
+            locationIntent: reading.locationIntent
+        )
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        XCTAssertNil(
+            item.locationBlocker(authorization: authorized),
+            "precondition: with Home set, only the hold keeps this from a region"
+        )
+
+        XCTAssertFalse(item.hasLivePlaceTrigger)
+        let reconciliation = repository.reconcileLocationReminders()
+        XCTAssertFalse(reconciliation.monitored.contains(item.id))
+        XCTAssertNil(
+            reconciliation.blocked[item.id],
+            "a held row is not a live reminder waiting on the device"
+        )
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertNil(item.locationIntent?.firedAt, "a crossing must not deliver a held row")
+
+        let shown = ItemPresentation.make(for: item, authorization: authorized)
+        XCTAssertFalse(shown.reminderState.isArmed)
+        XCTAssertEqual(
+            shown.withheldTriggerText,
+            "Reminder not set · Next time you arrive at Home"
+        )
+
+        // Confirmed in the editor: saved with Needs review off.
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false
+        ))
+        XCTAssertTrue(item.hasLivePlaceTrigger)
+        XCTAssertTrue(ItemPresentation.make(for: item, authorization: authorized).reminderState.isArmed)
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertNotNil(item.locationIntent?.firedAt, "once confirmed, the crossing delivers it")
+    }
+
+    /// The person's own hold (E19) is not the system's: turning Needs review
+    /// on in the editor marks the saved intent `isUserEdited`, so the place
+    /// stays watched and a crossing still delivers.
+    ///
+    /// Falsifier: make `mayArm` read `!needsClarification` alone and the
+    /// person's own toggle silences their place reminder.
+    func testAPlaceRowThePersonHoldsIsStillDelivered() async throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertFalse(item.needsClarification, "precondition: nothing was held")
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: true
+        ))
+
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertTrue(item.hasLivePlaceTrigger)
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertNotNil(item.locationIntent?.firedAt, "the person's own hold does not silence them")
+    }
+
     // MARK: Firing exactly once
 
     /// The failure this exists for: a one-shot fires, the app is later

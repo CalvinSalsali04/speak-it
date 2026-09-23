@@ -285,7 +285,7 @@ struct CaptureCreationResult {
         presentations.filter { presentation in
             switch presentation.reminderState {
             case .time, .place: !presentation.requiresReview
-            case .none, .blockedPlace: false
+            case .none, .blockedPlace, .heldPlace: false
             }
         }.count
     }

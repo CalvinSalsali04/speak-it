@@ -382,7 +382,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             //
             // Rolling this row forward is all it needs: the caller re-fetches
             // after this pass, so the request is future-dated again and the
-            // repeating trigger is re-armed on the same run.
+            // repeating trigger is re-armed on the same run. A row held for
+            // review is rolled too: it stays the one held row, still held, and
+            // what it proposes stays the next occurrence rather than a day
+            // that has already gone.
             if ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fireDate) != nil {
                 let carried = carriedIntent(from: item, toOccurrenceOn: nextDate)
                 // Only move a due date the row already had. Giving one to a
@@ -397,6 +400,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 continue
             }
 
+            // No successor is generated while the system holds the source for
+            // review (`ItemPresentation.mayArm`). A successor is a copy of an
+            // unconfirmed reading: generated un-held, it carried "except this
+            // Friday" out of review as a clean armed row in Today; generated
+            // held, it would add one more review row asking the same question
+            // on every foreground after every missed occurrence, because a
+            // held row never fires and so is always overdue. The source stays
+            // the one place the question is asked, and once the person
+            // resolves it the next pass continues the series from it.
+            guard ItemPresentation.mayArm(item) else { continue }
+
             let next = CapturedItem(
                 originalTextSegment: item.originalTextSegment,
                 displayTitle: item.displayTitle,
@@ -408,7 +422,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 priority: item.priority,
                 personName: item.personName,
                 processingConfidence: item.processingConfidence,
-                needsClarification: false,
+                // `true` only for a hold the person set themselves; see
+                // `setCompleted`.
+                needsClarification: item.needsClarification,
                 isReviewed: item.isReviewed,
                 lastModifiedAt: now,
                 temporalIntent: carriedIntent(from: item, toOccurrenceOn: nextDate),
@@ -463,10 +479,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // in the resolver would have quietly reclassified a live task as
         // non-actionable, which is a different and much larger change than
         // "stop watching this place".
+        // A row the system holds for review is excluded the same way: it is
+        // not a live reminder yet, so it is neither watched nor reported
+        // blocked (`hasLivePlaceTrigger`, which reads `ItemPresentation.mayArm`).
         let live = items.filter {
-            !$0.isArchived && !$0.isCompleted
-                && $0.isLocationTriggered && !$0.constrainsBothPlaceAndTime
-                && $0.locationIntent?.isRetired != true
+            $0.hasLivePlaceTrigger && $0.locationIntent?.isRetired != true
         }
         var reconciliation = monitor.reconcile(
             live.compactMap { $0.locationMonitorRequest(authorization: authorization) }
@@ -510,10 +527,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // A combined place-and-time request is checked here as well as in
         // reconciliation, because a region left over from before the constraint
         // was recognised would otherwise still deliver at the wrong time.
+        // A row held for review is refused here too (`hasLivePlaceTrigger`),
+        // because a region registered before the hold was recognised, or
+        // before this build, would otherwise still deliver it.
         guard let item = try? findItem(withID: itemID),
               let intent = item.locationIntent,
-              !item.isArchived, !item.isCompleted,
-              !item.constrainsBothPlaceAndTime else {
+              item.hasLivePlaceTrigger else {
             // Nothing live wants this region. Reconciling removes it.
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
             return
@@ -572,8 +591,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // explicitly withdrawn before it can appear.
         guard let current = try? findItem(withID: itemID),
               var currentIntent = current.locationIntent,
-              !current.isArchived, !current.isCompleted,
-              !current.constrainsBothPlaceAndTime,
+              current.hasLivePlaceTrigger,
               currentIntent.event == event,
               currentIntent.triggerRevision == intent.triggerRevision,
               regionIdentifier == nil || current.locationMonitorRequest(
@@ -1403,6 +1421,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         guard !normalizedTitle.isEmpty else { throw RepositoryError.emptyTitle }
         let previousRecurrences = RecurrenceStore.snapshots()
+        // A row the system held for review arms nothing (`ItemPresentation.mayArm`).
+        // Saving here is the person resolving or confirming it, so whatever
+        // it now may arm has to be armed by this save, not by the next launch.
+        let couldArmBefore = ItemPresentation.mayArm(item)
 
         item.displayTitle = normalizedTitle
         // Only a title the automatic pass would disagree with needs protecting.
@@ -1476,8 +1498,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // Regions are registered from stored intents, so a trigger that was
         // changed or removed has to be re-reconciled or iOS keeps watching the
         // old one. Turning a place reminder off in the editor and still being
-        // notified at that place is exactly the failure this prevents.
-        if locationChanged {
+        // notified at that place is exactly the failure this prevents. The
+        // same holds when the save released a held place row with the place
+        // untouched: nothing else would register its region until the next
+        // foreground.
+        if locationChanged
+            || (item.locationIntent != nil && ItemPresentation.mayArm(item) != couldArmBefore) {
             reconcileLocationReminders()
         }
         if let personName = item.personName {
@@ -1490,7 +1516,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let previousRecurrences = RecurrenceStore.snapshots()
         var deletedGeneratedItemID: UUID?
 
+        // No successor while the system holds the row for review: see
+        // `advanceOverdueRecurrences`, which follows the same rule.
         if completed, !item.isCompleted,
+           ItemPresentation.mayArm(item),
            RecurrenceStore.generatedNextItemID(for: item.id) == nil,
            let rule = RecurrenceStore.rule(for: item.id),
            let session = item.captureSession,
@@ -1509,7 +1538,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 priority: item.priority,
                 personName: item.personName,
                 processingConfidence: item.processingConfidence,
-                needsClarification: false,
+                // Only a row that may arm reaches here, so this is `true` only
+                // when the person turned Needs review on themselves. Their
+                // flag follows the series, with the edited intent that keeps
+                // it armed.
+                needsClarification: item.needsClarification,
                 isReviewed: item.isReviewed,
                 lastModifiedAt: completedAt,
                 temporalIntent: carriedIntent(from: item, toOccurrenceOn: nextDate),
@@ -1568,11 +1601,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
     }
 
+    /// Clears the hold without the editor. Clearing it releases whatever the
+    /// row was withholding (`ItemPresentation.mayArm`), so this reconciles
+    /// the same way `update` does rather than leaving the reminder unarmed
+    /// until the next foreground.
     func markReviewed(_ item: CapturedItem) throws {
         item.isReviewed = true
         item.needsClarification = false
         item.lastModifiedAt = .now
         try persistChanges()
+        synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
+        if item.locationIntent != nil {
+            reconcileLocationReminders()
+        }
     }
 
     func delete(_ item: CapturedItem) throws {

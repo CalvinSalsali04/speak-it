@@ -1,5 +1,64 @@
 # Decisions
 
+## 2026-09-23 — A row the system holds for review arms nothing
+
+Rows held for review could still act. A vague `later today` kept a guessed
+8 PM `reminderDate`; `every Friday at five … except this Friday` kept a weekly
+trigger whose first firing was the excluded Friday; a Foundation Models row
+under 0.82 confidence kept its date and its place. All of them were scheduled
+or geofenced from Needs review while the row showed no time and no bell, and
+a recurring one spawned un-held, armed successors into Today. The owner's exit
+gate lists confident execution of unresolved semantics as a P0 that is never
+waived.
+
+**The default, which Calvin may reverse:** a row the *system* holds for review
+arms nothing (no notification, no alarm, no geofence) until the person
+resolves it. A row whose reminder the *person* set or confirmed keeps arming.
+`ItemPresentation.mayArm` is the one rule: true unless `needsClarification` is
+set and neither the temporal nor the location intent is `isUserEdited`. Every
+save in the editor marks the temporal intent `isUserEdited`, so the manual
+Needs review toggle keeps its reminder armed, and so does any edited reminder.
+The same save is how a hold is resolved, and `update` already reschedules
+after it; it now also re-reconciles regions when the save changed whether a
+place row may arm. `markReviewed` resynchronizes the same way.
+
+It sits beside the delivery rule of the entry below, so everything reads it
+through one of two doors. `scheduledDelivery` returns `.none` for a held row,
+and `ReminderScheduleRequest.init?` returns `nil` for `.none`, so the row's
+bell, the receipt and all five request builders (foreground reconcile,
+per-session sync, the all-reminders sync, Siri, and Today's permission card)
+agree. `CapturedItem.hasLivePlaceTrigger` replaces the checks the reconcile
+filter and both crossing-handler guards each repeated, and reads `mayArm`, so
+a held place is neither watched, nor reported blocked, nor delivered.
+`SemanticState.permitsAction` is still not called: the vague-time and
+series-exception holds are stored `.resolved`, and a confirmed row keeps its
+recorded gap, so it would have missed the first and silenced the second.
+
+The Needs review row now says what it would do once confirmed:
+`Reminder not set · 8:00 PM`, `Alarm not set · …`, or `Reminder not set · Next
+time you arrive at Home`, in muted text under the reason. There are no new
+controls.
+
+A held series spawns **no successor** while the system holds it, from the
+foreground pass or from completion. Inheriting the hold was the alternative,
+and it was rejected: a held row never fires, so it is always overdue, and each
+foreground after each missed occurrence would add another review row asking
+the same question. The source stays the one place the question is asked. A
+series the foreground pass rolls forward in place (daily, or one weekday) still
+rolls, and stays held, so what it proposes is the next occurrence. A person's
+own hold is carried onto the successor, which keeps its edited intent and so
+stays armed.
+
+Consequences to know about. Rows already held and armed on a device are
+withdrawn by the next foreground's reconcile. Saving a held row in the editor
+with Needs review left on arms what the editor showed. The stored data cannot
+tell that apart from the manual toggle, and the time was on screen when the
+person saved. No SemanticCorpus row's expected delivery changes, because the
+corpus reads the parser's `reminderDelivery`, not scheduling. Pinned by
+`ItemPresentationTests`, `TemporalFullPathTests`
+(`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed`),
+`LocationReminderTests` and `SwiftDataThoughtRepositoryTests`.
+
 ## 2026-09-23 — A stored reminder date arms, and one function says so
 
 The row's bell and `ReminderScheduleRequest` answered "is an alert armed"

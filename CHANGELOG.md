@@ -8,6 +8,8 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- A row Speak It holds for review no longer rings, alarms or geofences until
+  you confirm it, and its Needs review row shows the time or place it would use.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.
