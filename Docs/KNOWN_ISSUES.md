@@ -1062,7 +1062,10 @@ A merge or undo that mixes done and open rows now keeps an open row (see
   and dropped at the next foreground reconcile; until then it holds one of
   the region slots. Open PR #135 adds the reconcile to `merge`, not to
   `undoOrganization`.
-- **Merge still discards hand edits** on the rows it joins (REV-8).
+- **Merge still discards hand edits** on the rows it joins (REV-8), except
+  what stays on the surviving row: its pin, idea stage and hand-set place.
+  The survivor may be a later row, so a pin on an earlier, closed row is
+  lost.
 - **The receipt refresh after a review-sheet change is unverified on a
   device.** It replaces the stale rows the capture screen held (LIF-11), but
   no UI test drives Merge or Undo from the receipt, and the crash it removes

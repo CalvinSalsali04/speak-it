@@ -23,7 +23,17 @@ row takes the first row's place in the list.
 - **Why pick a survivor rather than reopen the first row.** Clearing
   `completedAt` in place would bypass `setCompleted`, which owns the link
   from a completed series occurrence to its generated successor. The
-  survivor is already open, so its state needs no write at all.
+  survivor is already open, so its state needs no write at all. It also
+  closes a silent series stop: merging an occurrence with its own generated
+  successor used to delete the successor while the completed row kept
+  pointing at it, so un-completing and re-completing it generated nothing
+  and the series ended without a word. Now the successor survives and the
+  completed row's record, link included, is deleted with it.
+- **The survivor carries more than state.** `apply` rewrites the words,
+  dates and temporal intent, but the surviving row keeps its own pin, idea
+  stage and hand-set place, and the removed rows' pins and stages are
+  deleted. So a pinned done row merged into an unpinned open one comes out
+  unpinned.
 - **Why not refuse a mixed merge.** The audit suggested throwing
   `invalidMerge`. Undo has no sensible refusal (its whole point is to fall
   back to the words), and a refusal would leave the person no way to join
