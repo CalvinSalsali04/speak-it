@@ -1263,6 +1263,44 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.draft(id: kept.id))
     }
 
+    /// Typed, Speak instead, and a kill before the recording holds any audio:
+    /// permission prompts, model preparation and the recognizer's start all
+    /// come before the first buffer lands. The draft intends a recording but
+    /// has none the audio pass can read, so the typed words are the whole
+    /// capture and the text pass is the only one that can save them.
+    ///
+    /// This is why the text pass tells a live recording from a draft it may
+    /// replay by the audio on disk and not by `recoveryAudioFilename`. Every
+    /// in-app voice draft and every Shortcut draft carries that name from
+    /// `begin`, so excluding on it leaves a draft like this one to neither
+    /// pass, kept by the launch prune because it has words, and shown
+    /// nowhere.
+    ///
+    /// Falsifier: add `$0.recoveryAudioFilename == nil` to `recoverable()`
+    /// and no session is saved, the draft is still there after the relaunch,
+    /// and the audio pass does not list it either.
+    func testTypedWordsSurviveAKillBeforeTheRecordingHasAudio() throws {
+        let startedAt = Date().addingTimeInterval(-120)
+        let typed = seedRecoverableDraft("Call Dana", source: .inAppText, startedAt: startedAt)
+        CaptureDraftStore.updateSource(
+            id: typed.id,
+            source: .inAppVoice,
+            typedBeforeSpeaking: "Call Dana",
+            at: startedAt.addingTimeInterval(5)
+        )
+        let speaking = try XCTUnwrap(CaptureDraftStore.draft(id: typed.id))
+        XCTAssertNotNil(speaking.recoveryAudioFilename, "a recording is intended")
+        XCTAssertFalse(CaptureDraftStore.hasRecoveryAudio(for: speaking))
+        XCTAssertTrue(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).isEmpty)
+
+        relaunch()
+
+        XCTAssertEqual(try allSessions().map(\.originalTranscription), ["Call Dana"])
+        XCTAssertNil(CaptureDraftStore.draft(id: typed.id), "The typed words were left to no recovery pass")
+        relaunch()
+        XCTAssertEqual(try allSessions().count, 1)
+    }
+
     /// Today's Delete saves the kept typed words at once, through
     /// `commitKeptTypedWords`, and the launch text pass is the fallback for
     /// the same draft. Whatever happens between the two, the words are
