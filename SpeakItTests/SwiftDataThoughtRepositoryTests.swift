@@ -413,10 +413,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
-    /// A sentence naming a place and a time keeps the time — the constraint
-    /// the person made precise — instead of being parked in review over the
-    /// redundant place. The place name still labels the list.
-    func testPlaceAndTimeCapturePrioritizesTheTime() throws {
+    /// A sentence naming a named place and a time is held for review, the
+    /// way a saved place beside a time is (2026-09-23, DEL-18). Until that
+    /// date the time won and the place was dropped, so the list rang in an
+    /// hour wherever the person was. The place still names the list, and a
+    /// place-triggered list stays whole, as it does without a time.
+    ///
+    /// Falsifier: any row carries a reminder, is out of review, or has lost
+    /// the place it was waiting for.
+    func testNamedPlaceAndTimeCaptureIsHeldForReview() throws {
         let createdAt = Date.now
         try repository.createCapture(
             text: "When I go to Sobeys, remind me to get cheese, eggs, and bread in one hour",
@@ -426,15 +431,14 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
 
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
-        XCTAssertEqual(items.count, 3, "the list still splits, got \(items.map(\.displayTitle))")
+        XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
-            XCTAssertFalse(item.needsClarification, "\(item.displayTitle) must not sit in review")
-            XCTAssertNil(item.locationIntent, "the stated time wins; the place is dropped")
-            let reminder = try XCTUnwrap(item.reminderDate, "\(item.displayTitle) keeps the reminder")
-            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+            XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place is kept as said")
+            XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
+            XCTAssertNil(ReminderScheduleRequest(item: item))
             XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
-            XCTAssertFalse(item.displayTitle.lowercased().contains("hour"))
-            XCTAssertFalse(item.displayTitle.lowercased().contains("sobeys"))
         }
     }
 
@@ -487,9 +491,13 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     }
 
     /// The delay spoken inside the place clause — "when I go to Sobeys in an
-    /// hour, remind me to…" — reads the same as the delay at the end: three
-    /// checkable rows on the Sobeys list, one shared fire moment, no review.
-    func testDelayInsideThePlaceClauseStillSplitsAndKeepsTheReminder() throws {
+    /// hour, remind me to…" — reads the same as the delay at the end: held
+    /// for review with the place kept (2026-09-23, DEL-18). The place name
+    /// ends before "in an hour", because the temporal grammar reads it.
+    ///
+    /// Falsifier: the place is stored as "sobeys in an hour", or any row
+    /// carries a reminder or is out of review.
+    func testDelayInsideThePlaceClauseIsHeldLikeTheDelayAtTheEnd() throws {
         let createdAt = Date.now
         try repository.createCapture(
             text: "When I go to Sobeys in an hour, remind me to get eggs, bread, and cheese",
@@ -499,12 +507,11 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
 
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
-        XCTAssertEqual(items.count, 3, "each product is checkable, got \(items.map(\.displayTitle))")
+        XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
-            XCTAssertNil(item.locationIntent, "the stated time wins; the place names the list")
-            XCTAssertFalse(item.needsClarification, "\(item.displayTitle) must not sit in review")
-            let reminder = try XCTUnwrap(item.reminderDate, "\(item.displayTitle) keeps the reminder")
-            XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+            XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place ends before the delay")
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
             XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
         }
     }
@@ -516,9 +523,18 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// now. This drives it with the shape `IntelligentThoughtExtractor`
     /// produces — one kept-together shopping row whose dates were re-derived
     /// deterministically — and expects the same rows the rules path makes.
-    func testRefinedShoppingListStillSplitsAndNamesTheStore() {
-        let capture = "When I go to Sobeys in an hour, remind me to get eggs, bread, and cheese"
+    ///
+    /// The capture used to be "when I go to Sobeys in an hour…". Since
+    /// 2026-09-23 (DEL-18) that is a named place beside a time: the rules path
+    /// holds it whole for review, and the refinement path copies the place
+    /// onto its row, so it is no longer a timed list on either path. A timed
+    /// list with no place is what this pass splits; the store half is
+    /// `testRefinedPlaceTriggeredListStaysWhole` below.
+    func testRefinedTimedShoppingListStillSplits() {
+        let capture = "Remind me to get eggs, bread, and cheese in one hour"
         let deterministic = ThoughtOrganizer.organize(capture)
+        XCTAssertNil(deterministic.locationIntent, "fixture must be a timed list with no place")
+        XCTAssertNotNil(deterministic.reminderDate, "fixture must be a timed list with no place")
         let refined = [ExtractedThought(
             sourceQuote: capture,
             // The fixture quotes the whole capture verbatim.
@@ -548,7 +564,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             shaped.map { $0.suggestedTitle ?? $0.analysisText },
             ["get eggs", "get bread", "get cheese"]
         )
-        XCTAssertEqual(shaped.map(\.shoppingGroup), ["Sobeys", "Sobeys", "Sobeys"])
+        XCTAssertEqual(shaped.map(\.shoppingGroup), ["Groceries", "Groceries", "Groceries"])
         for row in shaped {
             XCTAssertEqual(row.organization.itemType, .shopping)
             XCTAssertNotNil(row.organization.reminderDate, "every row keeps the shared fire moment")
@@ -595,10 +611,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(shaped.first?.shoppingGroup, "Costco")
     }
 
-    /// Items an older build parked in review for the place-and-time combo are
-    /// released on launch: the reparse restores the timed reading and drops
-    /// the redundant place.
-    func testLaunchReleasesLegacyPlaceAndTimeHoldouts() throws {
+    /// Items an older build parked in review for a named place and a time are
+    /// no longer released on launch. Until 2026-09-23 a launch pass reparsed
+    /// them, dropped the place and restored the clock. A named place beside a
+    /// time is now held at capture on purpose (DEL-18), so the pass is gone
+    /// and the row stays exactly as the person last saw it.
+    ///
+    /// Falsifier: after launch recovery the row has lost its place, carries a
+    /// reminder, or has left review.
+    func testLaunchLeavesANamedPlaceAndTimeHoldInReview() throws {
         let createdAt = Date.now.addingTimeInterval(-120)
         let stuck = CapturedItem(
             originalTextSegment: "When I go to Sobeys, remind me to get bread in one hour",
@@ -625,10 +646,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         // every start.
         repository.recoverUnorganizedCaptures()
 
-        XCTAssertNil(stuck.locationIntent, "the redundant place is dropped on launch")
-        XCTAssertFalse(stuck.needsClarification, "the item leaves review")
-        let reminder = try XCTUnwrap(stuck.reminderDate, "the suppressed reminder is restored")
-        XCTAssertEqual(reminder.timeIntervalSince(createdAt), 3600, accuracy: 90)
+        XCTAssertEqual(stuck.locationIntent?.place, .named("sobeys"), "the place is not dropped on launch")
+        XCTAssertTrue(stuck.needsClarification, "the item stays in review")
+        XCTAssertNil(stuck.reminderDate, "no clock is restored on launch")
+        XCTAssertNil(ReminderScheduleRequest(item: stuck))
     }
 
     /// The parser reads stores from natural phrasings and refuses generics.
@@ -1608,11 +1629,17 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertEqual(result.items.count, 5)
+        // Since 2026-09-23 (DEL-18) a named place beside a day is held for
+        // review with its place, so the list stays whole the way any
+        // place-triggered list does. It used to split into five timed rows
+        // that alerted on the day wherever the person was.
+        XCTAssertEqual(result.items.count, 1)
         XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .shopping })
         XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == "Costco" })
-        XCTAssertTrue(result.items.allSatisfy { !$0.needsReview })
+        XCTAssertTrue(result.items.allSatisfy { $0.needsReview })
         XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate != nil })
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.reminderDate == nil })
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.locationIntent?.place == .named("costco") })
     }
 
     func testMisheardByBecomesBuyForAShoppingList() throws {
@@ -2689,11 +2716,14 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.captureSession?.items.count, 1)
         XCTAssertEqual(item.itemType, .shopping)
         XCTAssertEqual(item.category, .shopping)
-        XCTAssertNil(item.locationIntent, "the stated day outranks the place trigger")
+        // Since 2026-09-23 (DEL-18) the day no longer outranks the place: a
+        // named place beside a day is held for review with both kept.
+        XCTAssertEqual(item.locationIntent?.place, .named("costco"), "the place is kept as said")
         XCTAssertEqual(item.temporalKind, .dateOnly)
         XCTAssertNotNil(item.dueDate)
-        XCTAssertFalse(item.needsClarification, "the capture acts instead of parking in review")
-        XCTAssertNil(item.clarificationRequirement)
+        XCTAssertNil(item.reminderDate, "the day's alert must not ring without the place")
+        XCTAssertTrue(item.needsClarification, "the person chooses a trigger")
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
         XCTAssertEqual(
             ShoppingGroupStore.group(for: item.id), "Costco",
             "the place still names the list"

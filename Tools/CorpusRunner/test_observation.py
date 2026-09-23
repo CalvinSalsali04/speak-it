@@ -886,6 +886,38 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         it. The quoted "tonight" in the new comments is under twelve
         characters and counts nothing. The development-set overlap stayed
         at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        4109 -> 4145 on 2026-09-23, from the review of that change (the
+        place name ending where a time begins, the scheduler refusal, and a
+        named place beside a time held too): forty-eight added and twelve
+        removed, enumerated rather than assumed by diffing this population
+        at both commits. Added: eight `corpusCase` captures in
+        `SemanticCorpusB.location` (`"Remind me to call Mom when I get home
+        Friday"`, `"When I get home Friday, remind me to call Mom"`, `"When
+        I get to work Friday remind me to submit my timesheet"`, `"When I
+        get to work next Monday remind me to submit my timesheet"`, and
+        `"Remind me to water the plants when I get home"` followed by `on
+        the 15th`, `this weekend`, `August 20th` and `the day after
+        tomorrow`); four `note:` arguments, one of them on the Costco row
+        that moved; six test captures (`"Remind me at Costco tomorrow to
+        buy batteries"`, `"Remind me to bring the snacks when I get to
+        Sunday school"`, `"Remind me to buy bread when I get to the Monday
+        market"`, `"Remind me to get eggs, bread, and cheese in one hour"`,
+        `"Remind me to stretch when I get to the gym"`, `"When I go to
+        Sobeys in an hour, remind me to get eggs"`); two expected place
+        names, `"monday market"` and `"sunday school"`; twenty-five
+        assertion messages; and three phrases quoted in doc comments,
+        `"sobeys in an hour"`, `"work next monday"` and `"when I go to
+        Sobeys in an hour…"`, the hazard named above, hit once more. The development-set overlap
+        stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        Removed: the Costco row's old note and eleven assertion messages
+        from the tests that asserted the time won over a named place.
+        Three of the new assertion messages first said "wait", and the
+        `wait` bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed`
+        counts any utterance in this directory that contains the word,
+        assertion messages included: it moved from 58 rows to 60 on prose
+        nobody would say. The messages were reworded to say "held" and
+        "stays" rather than the bullet repinned, because the bullet is about
+        how people say the word and these were never people talking.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -900,7 +932,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4109)
+        self.assertEqual(len(space), 4145)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

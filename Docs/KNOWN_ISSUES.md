@@ -532,6 +532,11 @@ The specifics:
   home tonight" stores both intents and fires on *neither*. It is surfaced in
   Needs review as *"Place and time conditions aren't supported together yet —
   choose one"*, and setting a time in the editor commits to the clock half.
+  Since 2026-09-23 (DEL-18) a named place beside a time is held the same way
+  ("tomorrow when I get to Costco"); before that its time won and the place
+  was dropped. Because a named place is not geocoded, the place half of such
+  a request cannot fire yet: choosing it leaves an inert reminder, and the
+  clock half is the only way out that rings.
 
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
@@ -559,23 +564,30 @@ The specifics:
     Closing this needs either a stored marker that a time was said but not
     resolved, or monitoring that also skips rows that need review. Both are
     changes to the monitoring layer, not to the hold.
-  - **A place spoken before a bare weekday loses the place.** The place
-    terminator in `LocationIntentParser` stops at "tonight", "today",
-    "tomorrow", "this morning" and "on Friday". It does not stop at
-    "Friday", "this weekend", "next week", "the day after tomorrow" (its
-    "after" cuts the name at "home the day"), or a month name. So "when I
-    get home Friday, remind me to call Mom" reads a named place called
-    "home friday". A named place with a time lets the time win, so this
-    arms Friday at 9 AM and drops the place with no question asked. This is
-    the same outcome as DEL-11, reached through the place grammar instead of
-    the temporal branch, so the post-condition cannot see it: the reading
-    carries no watchable place. The corpus rows added for DEL-11 put the day
-    before the place, or use "on Friday", so that they test the hold and not
-    this.
-  - **Rows captured before the fix keep their alert.** No launch pass
-    re-reads them, and `ReminderScheduleRequest` does not consult
-    `constrainsBothPlaceAndTime`. Such a row fires once at its stored time.
-    Its region stays unwatched, as before.
+  - *Resolved the same day.* A place spoken straight before a day ("when I
+    get home Friday", "when I get to work next Monday", "when I get home on
+    the 15th") used to read as a named place called "home friday", so the
+    time won and the place was dropped with no question asked. The place
+    name now ends where the temporal grammar finds a time, and those
+    phrasings sit in the corpus beside the day-first rows (see
+    `DECISIONS.md`, 2026-09-23). A name that still ends in a time the
+    grammar cannot read keeps the whole phrase as a named place.
+  - *Resolved the same day for rows that kept their place.* A row captured
+    before the fix still carries its 9 AM alert, and no launch pass re-reads
+    it, but `ReminderScheduleRequest` now refuses any row that constrains a
+    place and a time until the person has decided (`isReviewed`, or either
+    intent marked `isUserEdited`). Such a row stays silent and unwatched.
+    Nothing moves it into Needs review, though: its stored
+    `needsClarification` is still false, so it sits on Today with its day
+    and no alert, and nothing tells the person that the alert they were
+    given is gone.
+  - **A named place beside a time captured before 2026-09-23 keeps its
+    alert.** Those captures dropped the place at capture ("tomorrow when I
+    get to Costco" stored only the 9 AM alert), and a launch pass released
+    older holds the same way. With no place stored, neither the hold nor the
+    scheduler refusal can see them, so each fires once at its stored time.
+    Only a re-read of the original words would find the place again, and no
+    launch pass does that.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

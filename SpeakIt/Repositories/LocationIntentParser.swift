@@ -23,6 +23,9 @@ enum LocationIntentParser {
         let pattern: String
         let event: LocationEvent
         let repeats: Bool
+        /// True for the one lead whose preposition also introduces a time:
+        /// "remind me at <place>" and "remind me at <time>" are one shape.
+        var objectMayBeATime = false
     }
 
     // Returning to a place is expressed just as often as motion toward it:
@@ -45,12 +48,13 @@ enum LocationIntentParser {
     /// So the object is asked what it is, and a time answers first — reading
     /// "five" as a place would break an ordinary reminder to fix a rarer one.
     ///
-    /// This list is deliberately not the whole clock grammar, and it does not
-    /// need to be: `TemporalIntentParser` reads the time first and drops a
-    /// searchable place whenever a time resolved, so a form this list misses
-    /// ("half five", "seventeen thirty", "sharp 5") becomes a place only if the
-    /// temporal grammar could not read it either. Widening the grammar there is
-    /// what closed register C1; widening this list is not required.
+    /// This list is deliberately not the whole clock grammar. Forms it misses
+    /// ("half five", "seventeen thirty", "sharp 5", "lunch") are asked of the
+    /// temporal grammar itself, in `parse`, before the object is taken as a
+    /// place. Register C1 used to be closed by the timing flow dropping any
+    /// named place once a time resolved. A named place beside a time is now
+    /// held for review instead (2026-09-23, DEL-18), so a clock read as a
+    /// place would be held too, and the grammar has to be asked here.
     private static let clockPhrase = #"^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"#
         + #"|noon|midnight|half\s+past|quarter\s+(?:past|to)"#
         + #"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"#
@@ -85,7 +89,8 @@ enum LocationIntentParser {
         Lead(
             pattern: #"\b(?:remind|tell|ping|alert)\s+(?:me|us)\s+at\s+"#,
             event: .arrive,
-            repeats: false
+            repeats: false,
+            objectMayBeATime: true
         )
     ]
 
@@ -149,7 +154,16 @@ enum LocationIntentParser {
                 return nil
             }
 
-            guard let place = placeReference(in: remainder) else {
+            // Past that list, the temporal grammar decides. "Remind me at
+            // lunch", "at half five", "at twenty to eight" are times, and
+            // reading one as a place would hold an ordinary timed reminder
+            // for review over a place that exists nowhere.
+            let (name, following) = placeName(in: remainder)
+            if lead.objectMayBeATime, readsAsTime("at " + name, followedBy: following) {
+                return nil
+            }
+
+            guard let place = classify(name) else {
                 // A recognised lead with an unreadable place is still a place
                 // request. Returning nil here would send it back to the temporal
                 // parser, which would find no time and ask "what did you mean?"
@@ -266,20 +280,88 @@ enum LocationIntentParser {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func placeReference(in remainder: String) -> PlaceReference? {
-        // Strip the connector, then take the phrase up to whatever ends it.
+    /// The words that name the place, and everything said after them.
+    ///
+    /// Strip the connector, then take the phrase up to whatever ends it. The
+    /// terminator ends a name at punctuation, at the action, and at the time
+    /// words it lists. It cannot end one at every time, because a time can
+    /// follow a place with no word between them: "when I get home Friday",
+    /// "when I get to work next Monday", "when I get home on the 15th". So
+    /// the temporal grammar is asked where a time starts inside the phrase,
+    /// and the name ends there. Before it was asked, those three read as
+    /// places called "home friday", "work next monday" and "home on the 15th".
+    /// None of them is Home or Work, so the time won, the place was dropped,
+    /// and 9 AM was armed with nothing asked (DEL-11, through the grammar).
+    private static func placeName(in remainder: String) -> (name: String, following: String) {
         let stripped = remainder.replacingOccurrences(
             of: connector,
             with: "",
             options: [.regularExpression]
         )
-        guard let endRange = stripped.range(
-            of: placeTerminator,
-            options: [.regularExpression]
-        ) else {
-            return classify(stripped)
+        let phraseEnd = stripped.range(of: placeTerminator, options: [.regularExpression])?
+            .lowerBound ?? stripped.endIndex
+        let phrase = String(stripped[..<phraseEnd])
+        let following = String(stripped[phraseEnd...])
+        guard let timeStart = trailingTimeStart(in: phrase, followedBy: following) else {
+            return (phrase, following)
         }
-        return classify(String(stripped[..<endRange.lowerBound]))
+        return (String(phrase[..<timeStart]), String(phrase[timeStart...]) + following)
+    }
+
+    /// Where a time begins that runs from some word of `phrase` to its end,
+    /// or `nil` when none does.
+    ///
+    /// The earliest such word wins, so "next Monday" is cut before "next" and
+    /// not before "Monday". The first word is never a candidate: something has
+    /// to be left to name the place. Neither is a cut that would leave only an
+    /// article, because "the" is not a place: "the weekend" is a time.
+    private static func trailingTimeStart(
+        in phrase: String,
+        followedBy following: String
+    ) -> String.Index? {
+        let words = wordRanges(in: phrase)
+        guard words.count > 1 else { return nil }
+        for word in words.dropFirst() {
+            let head = phrase[..<word.lowerBound].trimmingCharacters(in: .whitespaces)
+            if head.range(of: #"^(?:the|a|an|my)$"#, options: [.regularExpression]) != nil {
+                continue
+            }
+            if readsAsTime(String(phrase[word.lowerBound...]), followedBy: following) {
+                return word.lowerBound
+            }
+        }
+        return nil
+    }
+
+    /// True when `words` state a time that runs to their last word, in the
+    /// sentence they are part of.
+    ///
+    /// Two questions, both put to the temporal grammar. Do these words change
+    /// what the sentence says about time? And does their last word? The second
+    /// is what keeps a place that merely *contains* a time word a place: in
+    /// "the Monday market", "Monday" is a day, but "market" adds nothing to it,
+    /// so the time does not run to the end and nothing is cut. `following` is
+    /// read with them because a time can need its context: "at twenty" is
+    /// nothing, and "at twenty to eight" is 7:40.
+    private static func readsAsTime(_ words: String, followedBy following: String) -> Bool {
+        guard let reading = ThoughtOrganizer.statedTime(in: words + following),
+              reading != ThoughtOrganizer.statedTime(in: following) else { return false }
+        let lastWord = wordRanges(in: words).last?.lowerBound ?? words.startIndex
+        return reading != ThoughtOrganizer.statedTime(in: String(words[..<lastWord]) + following)
+    }
+
+    private static func wordRanges(in text: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var searchStart = text.startIndex
+        while let range = text.range(
+            of: #"\S+"#,
+            options: [.regularExpression],
+            range: searchStart..<text.endIndex
+        ) {
+            ranges.append(range)
+            searchStart = range.upperBound
+        }
+        return ranges
     }
 
     private static func classify(_ rawPlace: String) -> PlaceReference? {
