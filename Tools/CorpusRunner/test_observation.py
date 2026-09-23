@@ -1156,7 +1156,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         assertion message in a suite about screens and recognizer callbacks,
         so no parser behaviour is behind either number, and the doc comments
         written for them prefer backticks to quotation marks for the reason
-        the entry above hit the hard way. What the test
+        the entry above hit the hard way. 4115 -> 4119 on 2026-09-23, when
+        the saving flag's lowering moved into `CaptureSaveInFlight` and one
+        test walks every way out of persistence. Four, enumerated: three
+        assertion messages and the ending `"threw a cancellation"` (named `"was cancelled"` in the first draft), which counts
+        because it has a space in it; `"returned"` and `"threw"` do not.
+        The rewritten test double added none. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1272,7 +1277,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #116 into the V1 candidate: measured from the merged tree, not
         taken from either side (4272 on the candidate, 4115 on #116,
         4068 at their merge base; #116 adds 47 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4319 -> 4323 on
+        2026-09-23, merging #119 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4319 on the
+        candidate, 4119 on #119, 4115 at their merge base; #119 adds 4
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1282,7 +1292,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4319)
+        self.assertEqual(len(space), 4323)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
