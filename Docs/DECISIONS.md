@@ -95,7 +95,15 @@ reason changed; the voice reschedule is the caller that newly marks one. The
 cost is that a place saved once is never re-read again (Organize again, split,
 merge, undo), which with #143 makes "an editor save confirms the row's time
 and place; re-reads never change them" the rule. It is a product-level choice
-and a reversible default, listed for the owner's decision batch. A row saved
+and a reversible default, listed for the owner's decision batch. The freeze is
+also what makes the place half sound against #143, not only its cost: the two
+are one fact seen from either side. A later change that lets a re-read replace
+a marked place must drop the mark with it, or a guessed place is watched on a
+confirmation the person gave to a different one. Because
+`ItemEdits.locationIntent` defaults to `.unchanged`, any `update(_:with:)` call
+that names no place now marks the row's present place as the person's, and
+`apply` keeps it from then on. A test that edits a row carrying a system place
+will see that place marked and kept. A row saved
 before this build through a path that left its place unchanged holds that
 place until it is saved again, which is the safe direction.
 The same save is how a hold is resolved, and `update` already reschedules
