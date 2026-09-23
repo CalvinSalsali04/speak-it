@@ -2155,10 +2155,12 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
     failed if that stopped being true.
 
     Two facts, then. Each pass has one caller, in the launch task. And the
-    launch task does not suspend above the prune in a shipping build, except
-    for the one `Task.yield()` it has always had, which the capture screen
-    cannot use: it has to be presented, and its own `.task` sleeps 180 ms
-    before it begins a draft. `#if DEBUG` lines are left out, because the
+    launch task does not suspend above either pass in a shipping build except
+    where it always has: the one `Task.yield()` above the prune, which the
+    capture screen cannot use (it has to be presented, and its own `.task`
+    sleeps 180 ms before it begins a draft), and, above the text pass only,
+    `recoverInterruptedAudioDrafts()`, whose length is the text pass's 12 s
+    margin in Known Issues. `#if DEBUG` lines are left out, because the
     example loaders there await before the prune on purpose and Known Issues
     says so; their `#else` branches are shipping code and are kept.
 
@@ -2171,8 +2173,9 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
     SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
     HOME = pathlib.Path("SpeakIt") / "App" / "RootView.swift"
     PASSES = ("recoverInterruptedCaptureDraft", "pruneEmptyTextDrafts")
-    #: The one suspension above the prune that the argument above allows.
-    ALLOWED = ["await Task.yield()"]
+    #: The suspensions above each pass that the argument above allows.
+    ALLOWED_ABOVE_PRUNE = ["await Task.yield()"]
+    ALLOWED_ABOVE_TEXT_PASS = ["await Task.yield()", "await recoverInterruptedAudioDrafts()"]
 
     @staticmethod
     def code(line):
@@ -2184,14 +2187,30 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
         return (self.ROOT / self.HOME).read_text(
             encoding="utf-8", errors="replace").splitlines()
 
+    #: The launch work either sits in `body`'s `.task` closure or, since the
+    #: merged V1 fixes made `body` too long to type-check, in a method whose
+    #: only caller is that `.task`.
+    LAUNCH_METHOD = "performLaunchWork"
+
     def launch_task(self, lines):
-        """(first, last) line indices of the `.task` that holds the
-        once-per-process maintenance guard, braces included."""
+        """(first, last) line indices of the `.task` closure, or the
+        `.task`-only method, that holds the once-per-process maintenance
+        guard, braces included."""
         guards = [i for i, line in enumerate(lines)
                   if "guard !hasPerformedMaintenance" in self.code(line)]
         self.assertEqual(len(guards), 1, "expected one maintenance guard")
+        method = f"private func {self.LAUNCH_METHOD}() async {{"
         first = next(i for i in range(guards[0], -1, -1)
-                     if self.code(lines[i]).strip() == ".task {")
+                     if self.code(lines[i]).strip() in (".task {", method))
+        if self.code(lines[first]).strip() == method:
+            use = re.compile(r"\b" + self.LAUNCH_METHOD + r"\b")
+            callers = [self.code(line).strip() for i, line in enumerate(lines)
+                       if i != first and use.search(self.code(line))]
+            self.assertEqual(
+                callers, [f".task {{ await {self.LAUNCH_METHOD}() }}"],
+                f"`{self.LAUNCH_METHOD}` must be called only by the root "
+                "view's `.task`; any other caller can run the launch passes "
+                "while a capture is being recorded.")
         indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
         last = next(i for i in range(first + 1, len(lines))
                     if lines[i].rstrip() == indent + "}")
@@ -2243,24 +2262,43 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
                 f"`{name}` is called at RootView.swift:{number}, outside the "
                 "launch task, where a capture may already be under way.")
 
-    def test_nothing_suspends_above_the_prune_in_a_shipping_build(self):
+    def suspensions_above(self, call):
+        """Every shipping `await` in the launch task above the one line
+        that calls `call`."""
         lines = self.root_view()
         first, last = self.launch_task(lines)
-        prune = [i for i in range(first, last)
-                 if "CaptureDraftStore.pruneEmptyTextDrafts()" in self.code(lines[i])]
-        self.assertEqual(len(prune), 1)
-        above = self.shipping(lines[first:prune[0]])
-        suspending = [self.code(line).strip() for line in above
-                      if re.search(r"\bawait\b", self.code(line))]
+        found = [i for i in range(first, last) if call in self.code(lines[i])]
+        self.assertEqual(len(found), 1, f"expected one `{call}` in the launch task")
+        above = self.shipping(lines[first:found[0]])
+        return [self.code(line).strip() for line in above
+                if re.search(r"\bawait\b", self.code(line))]
+
+    def test_nothing_suspends_above_the_prune_in_a_shipping_build(self):
         self.assertEqual(
-            suspending, self.ALLOWED,
+            self.suspensions_above("CaptureDraftStore.pruneEmptyTextDrafts()"),
+            self.ALLOWED_ABOVE_PRUNE,
             "the launch task suspends before `pruneEmptyTextDrafts()`, so the "
             "capture screen can begin a recording first and the prune can "
             "delete it before its first buffer lands. Move the new work below "
             "the launch passes.")
 
+    def test_nothing_new_suspends_above_the_text_pass_in_a_shipping_build(self):
+        """The window between the prune and the text pass already holds the
+        audio pass, the one unbounded suspension in the task; a second one
+        there eats the same 12 s margin. The allowed list is compared exactly,
+        so moving the text pass above the audio pass, which is safer, also
+        fails here: whoever does it updates `ALLOWED_ABOVE_TEXT_PASS` to say
+        so. That is a false alarm by design, not a catch."""
+        self.assertEqual(
+            self.suspensions_above("repository?.recoverInterruptedCaptureDraft()"),
+            self.ALLOWED_ABOVE_TEXT_PASS,
+            "the launch task gained a suspension before "
+            "`recoverInterruptedCaptureDraft()`, so a recording begun meanwhile "
+            "that carries typed words can be committed by the text pass as if "
+            "it had been interrupted. Move the new work below the launch passes.")
+
     def test_there_is_something_to_check(self):
-        """The two tests above already refuse an empty answer: a renamed pass
+        """The tests above already refuse an empty answer: a renamed pass
         has no call site to count, and a filter that blanked the whole task
         would find no `Task.yield()`. This pins the rest of what they assume:
         that the region they read is a real launch task whose maintenance
