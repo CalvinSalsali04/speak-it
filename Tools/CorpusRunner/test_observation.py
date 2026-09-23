@@ -909,7 +909,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"the replaced attempt stayed in Needs review beside its retry"` and
         `"a clarification retry spent a second free capture"`. The event
         names the order test logs are single words under twelve characters
-        and add none. The development-set overlap stayed at 114, checked by
+        and add none. Then 4132 -> 4135, when audio recovery that finishes
+        after its screen has gone came to leave its words on the draft
+        (`CaptureRecoveryHandoff`) rather than saving through that screen.
+        Three, enumerated, all failure messages of closures that must not
+        run: `"recovered words were sent to typing"`,
+        `"a failed recovery started a save"` and
+        `"a discarded recording was saved"`. The fixture
+        `"buy milk and eggs today"` was already counted earlier in this entry.
+        The development-set overlap stayed at 114, checked by
         regenerating `LANGUAGE_BASELINE.md`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -924,7 +932,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4132)
+        self.assertEqual(len(space), 4135)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

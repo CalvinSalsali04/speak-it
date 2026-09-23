@@ -462,6 +462,53 @@ enum CaptureSaveSettlement {
     }
 }
 
+/// Where audio recovery's result goes once transcription finishes.
+///
+/// `CaptureView.recoverActiveAudio` transcribes the protected recording in a
+/// Task that can take 25 seconds and is not cancelled with the screen. It used
+/// to call `save` whatever had happened meanwhile, so a recovery that
+/// finished after the screen had gone ran `save` against that screen's
+/// `@State`, the same read `CapturePresentation` exists to avoid, and could
+/// publish into the next capture.
+///
+/// While the screen that started recovery is still up, the result goes back
+/// to it: recovered words to `save`, a failure to typing. Once it has ended,
+/// nothing reaches the screen. Recovered words stay on the draft beside the
+/// recording, for Today's recovery; a failure is recorded on the draft. The
+/// draft is written either way, and a draft the person discarded is not
+/// brought back.
+@MainActor
+enum CaptureRecoveryHandoff {
+    enum Outcome: Equatable {
+        case returnedToScreen
+        case leftForToday
+    }
+
+    @discardableResult
+    static func finish(
+        _ recovery: Result<String, Error>,
+        draftID: UUID,
+        owner: CapturePresentation,
+        save: (String) -> Void,
+        continueByTyping: () -> Void
+    ) -> Outcome {
+        switch recovery {
+        case .success(let recoveredText):
+            guard !owner.hasEnded else {
+                CaptureDraftStore.keepRecoveredWords(id: draftID, transcript: recoveredText)
+                return .leftForToday
+            }
+            save(recoveredText)
+            return .returnedToScreen
+        case .failure(let error):
+            CaptureDraftStore.markFailed(id: draftID, error: error)
+            guard !owner.hasEnded else { return .leftForToday }
+            continueByTyping()
+            return .returnedToScreen
+        }
+    }
+}
+
 /// What the close dialog's Save & Close does with the words on screen.
 enum CaptureCloseRequest: Equatable {
     /// Start a save of what is on screen, and close when it finishes.
@@ -1415,25 +1462,41 @@ struct CaptureView: View {
         transcriber.resetAfterFailure()
         CaptureDraftStore.markProcessing(id: draft.id)
 
+        // Held here rather than read back from `@State` after the `await`:
+        // the screen may be gone by the time transcription finishes. Only
+        // `owner` is needed, because a screen that has not ended is still
+        // installed and `save` reads its own state reliably.
+        let owner = presentation
         Task { @MainActor in
+            let recovery: Result<String, Error>
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
-                isRecoveringAudio = false
-                save(recoveredText, source: .inAppVoice)
+                recovery = .success(recoveredText)
             } catch {
-                isRecoveringAudio = false
-                // Save & Close during recovery waited for the save recovery was
-                // going to start. There is none now, so the close is withdrawn
-                // rather than left armed for whatever the person saves next.
-                // The screen stays open on the notice below: the recording is
-                // kept for recovery, and closing would hide that nothing was
-                // saved.
-                closesAfterSave = false
-                CaptureDraftStore.markFailed(id: draft.id, error: error)
-                continueByTyping(
-                    notice: "Your recording is safe. Type this thought now, or recover it later from Today."
-                )
+                recovery = .failure(error)
             }
+            CaptureRecoveryHandoff.finish(
+                recovery,
+                draftID: draft.id,
+                owner: owner,
+                save: { recoveredText in
+                    isRecoveringAudio = false
+                    save(recoveredText, source: .inAppVoice)
+                },
+                continueByTyping: {
+                    isRecoveringAudio = false
+                    // Save & Close during recovery waited for the save
+                    // recovery was going to start. There is none now, so the
+                    // close is withdrawn rather than left armed for whatever
+                    // the person saves next. The screen stays open on the
+                    // notice below: the recording is kept for recovery, and
+                    // closing would hide that nothing was saved.
+                    closesAfterSave = false
+                    continueByTyping(
+                        notice: "Your recording is safe. Type this thought now, or recover it later from Today."
+                    )
+                }
+            )
         }
     }
 

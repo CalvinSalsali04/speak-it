@@ -706,6 +706,137 @@ final class CaptureFeedbackTests: XCTestCase {
         )
     }
 
+    // MARK: - Audio recovery that outlives its screen
+
+    /// Recovery transcribes for up to 25 seconds in a Task the screen does not
+    /// cancel. When it finishes after the screen has gone, the words must not
+    /// be saved through that screen's `save`, which reads its `@State` and
+    /// publishes, and must not be lost: they stay on the draft, beside the
+    /// recording, which Today then offers to recover.
+    ///
+    /// The draft store here is the shipping `CaptureDraftStore`, with a real
+    /// recording file on disk.
+    ///
+    /// Falsifier: drop the `hasEnded` guard from the success arm of
+    /// `CaptureRecoveryHandoff.finish` and the words go to `save` instead.
+    func testRecoveryThatFinishesAfterItsScreenEndedLeavesTheWordsForToday() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let owner = CapturePresentation()
+        owner.end()
+        var saved: [String] = []
+        var typed = 0
+
+        let outcome = CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: owner,
+            save: { saved.append($0) },
+            continueByTyping: { typed += 1 }
+        )
+
+        XCTAssertEqual(outcome, .leftForToday)
+        XCTAssertEqual(saved, [])
+        XCTAssertEqual(typed, 0)
+        let kept = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        XCTAssertEqual(kept.transcript, "buy milk and eggs today")
+        XCTAssertEqual(kept.recoveryStatus, .capturing)
+        XCTAssertTrue(CaptureDraftStore.hasRecoveryAudio(for: kept))
+        XCTAssertEqual(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id), [draft.id])
+    }
+
+    /// Control: on a screen that is still up, recovered words are saved there
+    /// and the draft is left for that save to clear.
+    func testRecoveryOnItsOwnScreenStillSavesThere() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        var saved: [String] = []
+
+        let outcome = CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: CapturePresentation(),
+            save: { saved.append($0) },
+            continueByTyping: { XCTFail("recovered words were sent to typing") }
+        )
+
+        XCTAssertEqual(outcome, .returnedToScreen)
+        XCTAssertEqual(saved, ["buy milk and eggs today"])
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.recoveryStatus, .processing)
+    }
+
+    /// A failed recovery is recorded on the draft either way, and only a
+    /// screen that is still up is switched to typing.
+    ///
+    /// Falsifier: drop the `hasEnded` guard from the failure arm and the ended
+    /// screen is switched to typing.
+    func testFailedRecoveryTouchesOnlyAScreenThatIsStillUp() throws {
+        struct RecognizerGaveUp: Error {}
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let ended = CapturePresentation()
+        ended.end()
+        var typed = 0
+
+        let late = CaptureRecoveryHandoff.finish(
+            .failure(RecognizerGaveUp()),
+            draftID: draft.id,
+            owner: ended,
+            save: { _ in XCTFail("a failed recovery started a save") },
+            continueByTyping: { typed += 1 }
+        )
+        XCTAssertEqual(late, .leftForToday)
+        XCTAssertEqual(typed, 0)
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.recoveryStatus, .failed)
+        XCTAssertTrue(CaptureDraftStore.hasRecoveryAudio(for: draft))
+
+        let live = CaptureRecoveryHandoff.finish(
+            .failure(RecognizerGaveUp()),
+            draftID: draft.id,
+            owner: CapturePresentation(),
+            save: { _ in XCTFail("a failed recovery started a save") },
+            continueByTyping: { typed += 1 }
+        )
+        XCTAssertEqual(live, .returnedToScreen)
+        XCTAssertEqual(typed, 1)
+    }
+
+    /// Discard clears the draft while recovery is still running. The late
+    /// result must not bring it back.
+    ///
+    /// Falsifier: let `keepRecoveredWords` insert a draft it did not find.
+    func testRecoveryThatFinishesAfterDiscardDoesNotBringTheDraftBack() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+        let draft = try recordingDraft()
+        let owner = CapturePresentation()
+        owner.end()
+        CaptureDraftStore.clear(id: draft.id)
+
+        CaptureRecoveryHandoff.finish(
+            .success("buy milk and eggs today"),
+            draftID: draft.id,
+            owner: owner,
+            save: { _ in XCTFail("a discarded recording was saved") },
+            continueByTyping: {}
+        )
+
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id))
+    }
+
+    /// A voice draft with a protected recording on disk, marked as being
+    /// recovered, as `recoverActiveAudio` leaves it.
+    private func recordingDraft() throws -> CaptureDraftStore.Draft {
+        let draft = CaptureDraftStore.begin(source: .inAppVoice)
+        let audioURL = try XCTUnwrap(CaptureDraftStore.prepareAudioURL(for: draft))
+        try Data(repeating: 0x1, count: 1_024).write(to: audioURL, options: .atomic)
+        CaptureDraftStore.markProcessing(id: draft.id)
+        return draft
+    }
+
     /// The finalization window, driven through a real transcriber. Save &
     /// Close landed after the recognizer's first final result and before its
     /// last one, saved the partial wording, and then finalization saved the

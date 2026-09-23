@@ -20,7 +20,14 @@ reading a possibly torn-down screen's `@State`. A late save whose retry cleanup
 fails tells nobody: both versions stay in Needs review, and nothing is written
 to the gone screen. If audio recovery fails after Save & Close, the close is
 withdrawn and the screen stays open on the "your recording is safe" notice,
-rather than staying armed for the next save.
+rather than staying armed for the next save. Audio recovery is held to the
+same rule (`CaptureRecoveryHandoff`): its transcription can outlast the screen,
+and if it does, it no longer calls that screen's `save`. Recovered words stay
+on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`), so
+Today offers them and the next launch recovers them; a failure is recorded on
+the draft; neither touches the gone screen. A clarification retry recovered
+this way arrives as a new capture, and the unclear attempt it was replacing
+stays in Needs review.
 
 What reaches a save that outlives its screen: Discard from the close dialog
 when the dialog was opened while listening and the recognizer finished behind
