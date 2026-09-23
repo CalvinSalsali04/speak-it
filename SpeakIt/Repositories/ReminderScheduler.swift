@@ -49,7 +49,9 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// ordering stays keyed by item ID so it remains stable across launches.
     let createdAt: Date
 
-    /// A request for an alert still ahead, or `nil` once it has fired.
+    /// A request for an alert still ahead, or `nil` once it has fired, except
+    /// for an alarm AlarmKit repeats, whose next ring is still ahead (see
+    /// `nextRingOfFiredAlarm`).
     ///
     /// This is the definition of "still ahead", and nothing more. No
     /// production code calls it. Every scheduling pass, and Today's pending
@@ -78,22 +80,48 @@ struct ReminderScheduleRequest: Hashable, Sendable {
 
     @MainActor
     private init?(item: CapturedItem, now: Date, continuingPastFire: Bool) {
-        guard let fireDate = item.reminderDate else { return nil }
+        guard let storedFireDate = item.reminderDate else { return nil }
         // The series' own alert, not a snoozed one. Taken from a snoozed fire
         // date, the repeating match's first fire *was* the snoozed occurrence,
         // so iOS was handed "every Monday at 9:10" for a series asked for at 9.
         // From the series' alert, the match no longer describes this one fire,
         // which is then armed as an exact one-shot, and the series' repeating
         // match is armed beside it as `seriesContinuation`.
-        let seriesFireDate = item.seriesReminderDate ?? fireDate
+        let seriesFireDate = item.seriesReminderDate ?? storedFireDate
         let seriesComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
             fireDate: seriesFireDate
         )
-        let fireHasPassed = fireDate <= now
+        // The series' own alert, like `seriesComponents` above, never a
+        // snoozed one. Read from a snoozed fire date, the repetition's first
+        // ring is the snooze itself, so `alarmSchedule` would hand AlarmKit a
+        // repeating "every Monday at 9:10" for a series asked for at 9. Read
+        // from the series' alert, its first ring is not this fire, and the
+        // snoozed occurrence stays a `.fixed` one-shot at the snooze.
+        let repetition = Self.alarmRepetition(
+            rule: item.temporalIntent?.recurrence,
+            fireDate: seriesFireDate
+        )
+        // F2: a relative alarm is still scheduled for its next match after it
+        // rings, so a fired occurrence of a series AlarmKit repeats is not spent.
+        // Its request is for that next ring, the alarm AlarmKit already holds.
+        let storedFireHasPassed = storedFireDate <= now
+        let nextRing: Date? = storedFireHasPassed && repetition != nil
+            ? Self.nextRingOfFiredAlarm(
+                delivery: ItemPresentation.scheduledDelivery(for: item),
+                repetition: repetition,
+                continuedBySuccessor: RecurrenceStore.generatedNextItemID(for: item.id) != nil,
+                now: now
+            )
+            : nil
+        let fireDate = nextRing ?? storedFireDate
+        let fireHasPassed = storedFireHasPassed && nextRing == nil
         if fireHasPassed {
             guard continuingPastFire, seriesComponents != nil else { return nil }
         }
+        // A snooze moved this occurrence off the series' alert, and it has not
+        // rung yet. A request rolled to its next ring is displaced by nothing.
+        let displaced = nextRing == nil && seriesFireDate != storedFireDate
         // The same function the row's bell reads, so what a row says is armed
         // and what iOS is handed cannot disagree. It is memoized underneath:
         // Today rebuilds these requests on every render pass to keep its
@@ -122,21 +150,12 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         delivery = scheduledDelivery
         repeatingComponents = seriesComponents
         continuesSeriesOnly = fireHasPassed
-        seriesContinuation = fireHasPassed || seriesFireDate != fireDate
+        seriesContinuation = fireHasPassed || displaced
             ? seriesComponents.map {
                 SeriesContinuation(occurrenceFireDate: seriesFireDate, components: $0)
             }
             : nil
-        // The series' own alert, like `seriesComponents` above, never a
-        // snoozed one. Read from a snoozed fire date, the repetition's first
-        // ring is the snooze itself, so `alarmSchedule` would hand AlarmKit a
-        // repeating "every Monday at 9:10" for a series asked for at 9. Read
-        // from the series' alert, its first ring is not this fire, and the
-        // snoozed occurrence stays a `.fixed` one-shot at the snooze.
-        alarmRepetition = Self.alarmRepetition(
-            rule: item.temporalIntent?.recurrence,
-            fireDate: seriesFireDate
-        )
+        alarmRepetition = repetition
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
@@ -243,6 +262,36 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             weekdayNumbers: weekdayNumbers,
             weekdays: weekdays
         )
+    }
+
+    /// When a recurring alarm whose stored occurrence has already rung rings
+    /// next, or `nil` when that occurrence was the row's last alert.
+    ///
+    /// A one-shot alarm is spent once it rings, and so is a notification this
+    /// branch does not reach. A relative AlarmKit alarm is not: it stays
+    /// scheduled for its next weekday match, so the row it belongs to is still
+    /// armed until the foreground pass (`advanceOverdueRecurrences`) rolls it
+    /// forward. Its request is built for that match, which is the alarm
+    /// AlarmKit already holds, so a pass that cancels and re-arms the row
+    /// re-arms the same repetition instead of leaving nothing.
+    ///
+    /// Not when the series has moved on to a successor row
+    /// (`continuedBySuccessor`, a `RecurrenceStore` link): that row owns the
+    /// next occurrence under its own alarm ID, and arming this one as well
+    /// would ring twice. The same answer holds if the fired alarm was a
+    /// `.fixed` one-shot, because the series' next occurrence is still this
+    /// match; re-arming it is what the foreground pass would do.
+    static func nextRingOfFiredAlarm(
+        delivery: ReminderDelivery,
+        repetition: ReminderAlarmRepetition?,
+        continuedBySuccessor: Bool,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard delivery == .alarm,
+              let repetition,
+              !continuedBySuccessor else { return nil }
+        return repetition.nextOccurrence(after: now, calendar: calendar)
     }
 }
 
@@ -1482,8 +1531,10 @@ enum ReminderScheduler {
     /// `plannedNotifications` both select through this, so the selection a
     /// pass actually makes is the one the tests read.
     struct BatchSelection: Equatable {
-        /// Alarms still ahead. AlarmKit arms one occurrence at a time, so an
-        /// alarm whose fire has passed has nothing left to arm.
+        /// Alarms still ahead. A repeating alarm whose occurrence has rung
+        /// counts: its request is built for its next ring
+        /// (`nextRingOfFiredAlarm`). Any other alarm whose fire has passed has
+        /// nothing left to arm.
         let alarms: [ReminderScheduleRequest]
         /// Notification requests still ahead, and every request that only
         /// continues a series (`continuesSeriesOnly`). Leaving the second kind

@@ -1608,6 +1608,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         recorded"` and `"a snooze must not write a record over intent data
         it cannot read"`. It reuses the weekly bins sentence, `"not an
         intent"` and `"Precondition: data that will not decode"`.
+        4078 -> 4093 on 2026-09-23, from a
+        repeating alarm that has rung staying armed: three
+        `TemporalFullPathTests` methods and fifteen literals, all assertion
+        messages, enumerated rather than assumed. Their two captures, `"Set
+        an alarm every day at 6:30 AM"` and `"Alarm at 7 every weekday"`,
+        were already in this directory and add nothing. The sixteenth,
+        making 4094, is `"Every weekday"` quoted in a doc comment. It was
+        briefly rewritten into backticks to leave 4093 and then put back,
+        for the reason the 4068 entry gives: the count is a tripwire, not a
+        target.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1800,6 +1810,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         in the second merge rehearsal: measured from the merged tree,
         not taken from either side (4700 on the candidate, 4104 on #129,
         4100 at their merge base; #129 adds 4 and removes 0, 0 of its
+        additions were already on the candidate). 4704 -> 4720 on
+        2026-09-23, re-merging #133 at `316e828` into the V1 candidate
+        in the second merge rehearsal: measured from the merged tree,
+        not taken from either side (4704 on the candidate, 4094 on #133,
+        4078 at their merge base; #133 adds 16 and removes 0, 0 of its
         additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -1810,7 +1825,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4704)
+        self.assertEqual(len(space), 4720)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
