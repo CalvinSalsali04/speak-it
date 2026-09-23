@@ -532,6 +532,25 @@ The specifics:
   home tonight" stores both intents and fires on *neither*. It is surfaced in
   Needs review as *"Place and time conditions aren't supported together yet —
   choose one"*, and setting a time in the editor commits to the clock half.
+  A due date turned on in the editor for a place reminder combines them the
+  same way (2026-09-23): the place stops being watched, the row shows the date
+  rather than the pin, and the editor says *Off while a date is set* until the
+  date is turned off again.
+
+  So there are two routes into this held state — a place and a date in the
+  same capture, and a date turned on in the editor for a live place reminder —
+  and both show the place reminder as off while a date is set. They differ
+  elsewhere. A capture like "when I get home tonight" is also marked
+  `needsClarification` and waits in Needs review; the editor one keeps its
+  review state and stays an ordinary dated row. And only the place half is
+  held: the clock scheduler does not read `constrainsBothPlaceAndTime`, so an
+  item that carries a `reminderDate` still rings at that time. "When I get home
+  tonight" stores a due date and no `reminderDate`, so nothing rings; `Remind
+  me` turned on in the editor stores one, and the row shows that reminder armed
+  because iOS is holding it. These describe that sentence, not every capture:
+  a place beside a bare day ("when I get home tomorrow") takes an early return
+  in `ThoughtOrganizer` that skips the hold, stores a 9 AM `reminderDate` and
+  is not sent to review (DEL-11, fixed on its own branch).
 
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the

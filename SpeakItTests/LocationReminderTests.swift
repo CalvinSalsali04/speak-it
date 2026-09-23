@@ -1808,4 +1808,210 @@ final class LocationReminderTests: XCTestCase {
             "a place-only reminder with a configured Home is still monitorable"
         )
     }
+
+    // MARK: A date added in the editor holds the place, and says so
+
+    /// Turning on `Has a due date` for a live place reminder saves the place
+    /// (`.update`, because the item already had one) beside a user-edited date.
+    /// That is `constrainsBothPlaceAndTime`, so the reconciler drops the region
+    /// and `handleLocationTrigger` refuses a crossing. The row used to keep its
+    /// pin and `isArmed` anyway: a reminder that looked armed while iOS held
+    /// nothing for it. Now every view agrees nothing is watching the place,
+    /// and turning the date off brings the reminder back, because the place
+    /// was held rather than deleted.
+    ///
+    /// Falsifier: take back the `!item.constrainsBothPlaceAndTime` condition
+    /// in `ItemPresentation.reminderState` and the presentation assertions
+    /// after the first edit fail (`isArmed` true, a pin, timing `Home`), while
+    /// every assertion about the monitor still passes.
+    func testADueDateOnAPlaceReminderIsNotPresentedAsAnArmedPlace() async throws {
+        var deliveryCount = 0
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in
+                deliveryCount += 1
+                return .scheduled
+            },
+            requestsReminderAuthorization: false
+        )
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(item.locationIntent)
+        XCTAssertTrue(
+            ItemPresentation.make(for: item, authorization: authorized).reminderState.isArmed,
+            "precondition: a place reminder with Home set is armed"
+        )
+
+        // What the editor's Save sends once `Has a due date` is on and a day is
+        // picked. It opened with `Has a time` on, because the item had no date.
+        let friday = Date.now.addingTimeInterval(3 * 86_400)
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: friday,
+                reminderDate: nil,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: nil,
+                locationIntent: .update(place),
+                dueDateHasTime: true
+            )
+        )
+
+        // The monitor's view, and the clock scheduler's.
+        XCTAssertTrue(item.constrainsBothPlaceAndTime, "the predicate the reconciler excludes on")
+        XCTAssertNil(ReminderScheduleRequest(item: item), "a due date alone schedules no alert")
+        await repository.handleLocationTrigger(
+            itemID: item.id,
+            event: .arrive,
+            triggerRevision: place.triggerRevision
+        )
+        XCTAssertEqual(deliveryCount, 0, "a crossing is refused while the date is set")
+        XCTAssertNotNil(item.locationIntent, "the place is held, not deleted")
+
+        // The row's view has to be the same answer.
+        let dated = ItemPresentation.make(for: item, authorization: authorized)
+        let monitored = !item.constrainsBothPlaceAndTime
+            && item.locationMonitorRequest(authorization: authorized) != nil
+        let scheduled = ReminderScheduleRequest(item: item) != nil
+        XCTAssertEqual(
+            dated.reminderState.isArmed,
+            monitored || scheduled,
+            "what the row claims must be what iOS is holding"
+        )
+        XCTAssertFalse(dated.reminderState.isArmed)
+        XCTAssertNil(dated.reminderState.locationIntent, "no pin for a place nothing watches")
+        XCTAssertNotEqual(dated.primaryTimingText, "Home")
+
+        // Turning the date off again is the way back, and it must work.
+        let heldPlace = try XCTUnwrap(item.locationIntent)
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: nil,
+                reminderDate: nil,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: nil,
+                locationIntent: .update(heldPlace),
+                dueDateHasTime: true
+            )
+        )
+        XCTAssertFalse(item.constrainsBothPlaceAndTime)
+        let undated = ItemPresentation.make(for: item, authorization: authorized)
+        XCTAssertTrue(undated.reminderState.isArmed)
+        XCTAssertEqual(undated.primaryTimingText, "Home")
+        await repository.handleLocationTrigger(
+            itemID: item.id,
+            event: .arrive,
+            triggerRevision: item.locationIntent?.triggerRevision
+        )
+        XCTAssertEqual(deliveryCount, 1, "the held place delivers once the date is gone")
+    }
+
+    /// The sibling of the test above: `Remind me` turned on instead of `Has a
+    /// due date`. The saved item is held in the same way
+    /// (`constrainsBothPlaceAndTime`, so no region), but it also carries a
+    /// `reminderDate`, and the clock scheduler does not read the held state:
+    /// `reconcilePendingReminders()` hands every live item to
+    /// `ReminderScheduleRequest(item:)`, whose only guard is a future
+    /// `reminderDate`. So iOS is holding a notification for this item, and the
+    /// row must show exactly that one: the same date, the same delivery, armed,
+    /// and no pin.
+    ///
+    /// Why this fails with #125 alone and passes with #122 merged under it.
+    /// #125 sends a held item to the date branch of `reminderState`, but on its
+    /// own that branch still took delivery from the wording, and this wording
+    /// has no alert word in it (the reminder was set by hand), so the row read
+    /// `.time(date, delivery: .none)`: not armed, no bell, while the request
+    /// below exists and is `.notification`. #122's
+    /// `ItemPresentation.scheduledDelivery(for:)` is what makes a stored
+    /// `reminderDate` arm, and the row and the scheduler both read it. The test
+    /// above cannot see this, because a due date alone schedules nothing and
+    /// `.none` is then the truthful answer on either branch.
+    ///
+    /// Falsifier, in either direction: make `scheduledDelivery` return the
+    /// wording's `.none` again, and the row claims less than the scheduler
+    /// holds; or exclude held items in `ReminderScheduleRequest(item:)` (the
+    /// tidy-up the `CapturedItem.constrainsBothPlaceAndTime` docstring used to
+    /// invite), and the row claims a bell nothing schedules. Either way the
+    /// equality below fails.
+    func testAReminderOnAHeldPlaceIsShownAsTheTimeTheSchedulerArms() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(item.locationIntent)
+        XCTAssertEqual(
+            ItemPresentation.effectiveReminderDelivery(for: item),
+            ReminderDelivery.none,
+            "precondition: the wording names no alert of its own"
+        )
+
+        // What the editor's Save sends with `Remind me` on and `Has a due date`
+        // off: `editedDueDate` falls back to the reminder, and an explicit
+        // reminder always carries a clock time.
+        let evening = Date.now.addingTimeInterval(3 * 86_400)
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: evening,
+                reminderDate: evening,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: nil,
+                locationIntent: .update(place),
+                dueDateHasTime: true
+            )
+        )
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertNotNil(item.locationIntent)
+
+        // The clock scheduler's view: held or not, a future reminder date is
+        // handed to iOS.
+        let request = try XCTUnwrap(
+            ReminderScheduleRequest(item: item),
+            "a held item's reminder date is still scheduled"
+        )
+        XCTAssertEqual(request.delivery, ReminderDelivery.notification)
+
+        // The row's view has to be the same answer, on both halves.
+        let state = ItemPresentation.make(for: item, authorization: authorized).reminderState
+        let monitored = !item.constrainsBothPlaceAndTime
+            && item.locationMonitorRequest(authorization: authorized) != nil
+        let scheduled = ReminderScheduleRequest(item: item) != nil
+        XCTAssertEqual(
+            state.isArmed,
+            monitored || scheduled,
+            "the row must show the reminder iOS is holding for a held place"
+        )
+        XCTAssertTrue(state.isArmed)
+        XCTAssertNil(state.locationIntent)
+        guard case let .time(date, _, delivery) = state else {
+            return XCTFail("a held item with a reminder is shown by its time, got \(state)")
+        }
+        XCTAssertEqual(date, request.fireDate, "the row's time is the time that fires")
+        XCTAssertEqual(delivery, request.delivery, "the row's bell is the alert that fires")
+        XCTAssertEqual(state.alertGlyph, request.delivery)
+    }
 }
