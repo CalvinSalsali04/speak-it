@@ -1899,7 +1899,29 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #132 with #135): `deleteCapture` re-plans the region budget, and
         the region-freeing test gains a step for it. Two in (`Remind me
         to bring the umbrella every time I get home`, `replacing an
-        attempt`), none out: 4773 + 2 - 0 = 4775.
+        attempt`), none out: 4773 + 2 - 0 = 4775. 4775 -> 4797 on
+        2026-09-23, from DEL-23 (the launch and foreground reconcile
+        leaves a ringing alarm alone): four `DurabilityTests` tests and one
+        `TemporalFullPathTests` decision test. Twenty-two in, all assertion
+        messages, enumerated rather than assumed: `a completed row's alarm
+        must not outlive the pass`, `a held row's alarm must not outlive
+        the pass`, `a one-shot five minutes after its ring`, `a one-shot
+        that rang before the window`, `a one-shot that rang eight days
+        ago`, `a removed row's alarm must not outlive the pass`, `a row
+        that arms nothing`, `a row with no fire`, `a series AlarmKit
+        repeats rang this morning without the app`, `a series whose first
+        ring is tomorrow`, `a snooze that fired half a minute ago`, `an
+        alarm still ahead`, `an alarm that rang before the window is
+        cancelled as before`, `nor stop the series beside it`, `opening
+        the app must not silence a snooze that is ringing`, `opening the
+        app must not silence an alarm that is ringing`, `precondition: a
+        series`, `precondition: an alarm`, `precondition: an alarm once
+        released`, `precondition: held`, `precondition: nothing re-arms
+        it`, `precondition: the snooze displaced the occurrence`. None
+        out. The fixtures add nothing: `Set an alarm for 7 AM to take my
+        pills` and `Set an alarm every day at 6:30 AM` were already here,
+        `a notification` already was too, and `Alarm` is under twelve
+        characters: 4775 + 22 - 0 = 4797.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1909,7 +1931,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4775)
+        self.assertEqual(len(space), 4797)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -1,5 +1,92 @@
 # Decisions
 
+## 2026-09-23 — Opening the app leaves a ringing alarm alone
+
+Finding DEL-23, raised by reading by the #145 grader. `reconcilePendingReminders`
+runs at launch, at every foreground, and after an iCloud snapshot is applied.
+It scoped its teardown on every row in the store. `scheduleBatch` called
+`cancel(itemID:)` for each row, which issues `stop` and `cancel` on the item ID
+and on F1's snooze ID. It then re-armed only the requests still ahead, and
+`schedule` cancels both IDs again before it arms. By reading, the pass did
+this to three kinds of live alarm:
+
+- **A one-shot ringing now** (its fire has just passed, and the row is not
+  completed). It makes no request, so it was stopped and never put back.
+- **A snoozed occurrence ringing under its snooze ID.** The row is rolled
+  forward or given its next ring, so the series was re-armed under the item
+  ID (or, for a rule only a successor row can continue, on that row). The
+  snooze was stopped and not put back.
+- **A repeating series whose occurrence is ringing.** It was re-armed for its
+  next ring, and today's ring was stopped.
+
+The orphan sweep (#127) was never involved. It reaches only IDs that name no
+row, and the live sink already leaves out alarms that are `.alerting`. The
+TodayView permission button (`requestAccessAndSchedule`) scopes on its own
+requests. So it reached the second and third kinds but not the first, and it
+shows only while access is not ready.
+
+**The design.** Before `advanceOverdueRecurrences` rolls anything forward, the
+reconcile reads which rows' alarms may be ringing, using
+`ReminderScheduler.alarmMayBeAlerting(_:now:)`. A row qualifies when all three
+hold:
+
+- it is not completed or archived;
+- `ItemPresentation.scheduledDelivery` is `.alarm`, so it is not held and not
+  disarmed;
+- a ring falls within `alertingWindow` (30 minutes) before now. A ring is its
+  stored fire (a one-shot, or the snooze), or a match of the series AlarmKit
+  repeats (`alarmRepetition`) at or after the series' own alert.
+
+Those IDs go in the new `ReminderSynchronizationScope.alarmsLeftAlone`.
+`scheduleBatch` removes their notifications but not their alarms. `schedule`
+leaves their alarm as it is wherever it would have armed one (iOS 26, alarms
+authorized), and arms a notification fallback as before. Every other row is
+unchanged, and so is every other pass. Nothing is asked of AlarmKit, because
+the row decides, so every case can be tested with the existing recorder.
+
+The window is a guess. Nothing here knows how long an unattended AlarmKit
+alarm alerts. If the window is too short, an alarm still ringing after it is
+silenced, as before. If it is too long, the pass is slower to do two things to
+a row that has just rung, until the first pass after the window:
+
+- re-arm the next occurrence of a series armed `.fixed` under its item ID;
+- cancel the weekly alarm of a row whose series moved to a successor in the
+  same pass.
+
+**Hypothesis.** The reconcile silences a live alarm only through the item-ID and
+snooze-ID teardown it issues for rows in its scope, in `scheduleBatch` and in
+`schedule`. The orphan sweep never reaches a row that exists. So a row that
+may be ringing and is left out of both AlarmKit calls keeps its alarm, and no
+other row changes.
+**Falsifier.** Two tests in `DurabilityTests`:
+`testAReconcileJustAfterAOneShotRingsLeavesItsAlarmAlone` and
+`testASnoozeThatIsRingingSurvivesAReconcile`. An alarm is seeded for a one-shot
+that fired 30 s ago, and a snooze ID for a snooze that fired 30 s ago. Both
+must still be there after the reconcile drains. If either is gone with the fix
+in place, some other path reaches it, and the hypothesis is wrong. Build the
+scope with `alarmsLeftAlone: []`, and both tests fail.
+`testAReconcileStillCancelsTheAlarmOfARowCompletedOrDeletedJustAfterItRang` and
+`testAReconcileStillCancelsTheAlarmOfAHeldRowThatJustRang` pin the other side.
+`TemporalFullPathTests.testOnlyAnAlarmThatRangWithinTheWindowMayBeAlerting`
+pins the decision, including a series that rang this morning without the app.
+
+**Not covered.**
+- No device has shown that `stop` reaches an alerting alarm (D17). If it does
+  not, DEL-23 never happened on a device, and this change only defers some
+  re-arms.
+- The window's length. D17 also measures how long an unattended alarm alerts.
+- Other passes still stop every alarm in their scope, a sibling row's ringing
+  one included. These are the per-capture passes (an edit, a snooze, a
+  completion or a delete inside one capture) and the whole-store pass that
+  loading sample data runs. Each follows something the person did, and none
+  is changed here.
+- A row whose alarm has already fallen back to a notification, on iOS 26 with
+  alarms authorized (an AlarmKit `schedule` that threw). While the row is left
+  alone, the pass removes its notification and adds nothing back until the
+  first pass after the window.
+- The deferrals above are in `KNOWN_ISSUES.md`, "Opening the app leaves a
+  ringing alarm alone, for a guessed window".
+
 ## 2026-09-23 — A snoozed repeating alarm keeps its series under the item ID
 
 Finding F1 of the V1 integration rehearsal, a merge line for #129 with #133,
@@ -51,7 +138,8 @@ the sweep and the cancel. These replace rehearsal 1's
   when that cancel succeeds; if it fails, the row can carry an AlarmKit
   series and the notification fallback at once.
 - A pass that runs while either alarm is alerting still silences it through
-  `cancel(itemID:)`.
+  `cancel(itemID:)`. The launch and foreground reconcile no longer does, within
+  its window; see "Opening the app leaves a ringing alarm alone" above.
 - `schedule` cancels both IDs before arming, so a snooze recorded in an
   earlier state cannot survive a re-arm. Any future path that arms an
   AlarmKit alarm without going through `schedule` must do the same, or a
@@ -271,7 +359,8 @@ test's old row asks for a request.
 relative alarm under the same ID is harmless on a device is unconfirmed, as is
 every other device check in KNOWN_ISSUES. A pass that runs while the alarm is
 alerting still calls `stop(id:)` through `cancel(itemID:)` and silences it; that
-predates this change. A fired repeating *notification* is still dropped by a
+predates this change. (Since DEL-23 the launch and foreground reconcile leaves
+such a row alone; see "Opening the app leaves a ringing alarm alone".) A fired repeating *notification* is still dropped by a
 scoped pass on this branch; #129 fixes that one (`forScheduling`). When the two
 meet, #129 rewrites this initializer and moves every pass to `forScheduling`,
 so this rule moved with it in the candidate into #129's private initializer, ahead of its

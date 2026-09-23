@@ -383,21 +383,30 @@ struct ReminderSynchronizationScope: Equatable, Sendable {
     var itemIDs: Set<UUID>
     var captureSessionIDs: Set<UUID>
     var replacesAllSpeakItReminders: Bool
+    /// Items whose AlarmKit alarms this pass neither stops, cancels nor
+    /// re-arms, under the item ID or the snooze ID. Their notifications are
+    /// still removed and re-added like any other item's. Only the foreground
+    /// reconcile sets it, to the rows whose alarm may be ringing
+    /// (`ReminderScheduler.alarmMayBeAlerting`, DEL-23).
+    var alarmsLeftAlone: Set<UUID>
 
     init(
         itemIDs: Set<UUID> = [],
         captureSessionIDs: Set<UUID> = [],
-        replacesAllSpeakItReminders: Bool = false
+        replacesAllSpeakItReminders: Bool = false,
+        alarmsLeftAlone: Set<UUID> = []
     ) {
         self.itemIDs = itemIDs
         self.captureSessionIDs = captureSessionIDs
         self.replacesAllSpeakItReminders = replacesAllSpeakItReminders
+        self.alarmsLeftAlone = alarmsLeftAlone
     }
 
     init(requests: [ReminderScheduleRequest]) {
         itemIDs = Set(requests.map(\.itemID))
         captureSessionIDs = Set(requests.compactMap(\.captureSessionID))
         replacesAllSpeakItReminders = false
+        alarmsLeftAlone = []
     }
 
     mutating func include(_ requests: [ReminderScheduleRequest]) {
@@ -1020,12 +1029,83 @@ enum ReminderScheduler {
     }
 
     static func cancel(itemID: UUID) {
+        removeNotifications(for: itemID)
+        delivery.cancelAlarm(itemID)
+        delivery.cancelAlarm(snoozeAlarmID(for: itemID))
+    }
+
+    /// The notification half of `cancel(itemID:)`, for an item whose alarm a
+    /// pass leaves alone (`ReminderSynchronizationScope.alarmsLeftAlone`).
+    private static func removeNotifications(for itemID: UUID) {
         delivery.removeNotifications([
             notificationIdentifier(for: itemID),
             seriesNotificationIdentifier(for: itemID)
         ])
-        delivery.cancelAlarm(itemID)
-        delivery.cancelAlarm(snoozeAlarmID(for: itemID))
+    }
+
+    /// How long after a ring the foreground reconcile treats that row's alarm
+    /// as possibly still alerting. A guess: nothing here knows how long an
+    /// unattended AlarmKit alarm alerts, and device check D17 measures it.
+    /// Longer only delays the re-arm or cancel of a row that has just rung,
+    /// until the first reconcile after the window.
+    static let alertingWindow: TimeInterval = 30 * 60
+
+    /// Whether this row's AlarmKit alarm may be ringing at `now`, read from
+    /// the row alone (DEL-23).
+    ///
+    /// Every reconcile used to stop and cancel every row's alarm, under the
+    /// item ID and the snooze ID, before re-arming the rows still ahead. So
+    /// opening the app while an alarm rang silenced it: a one-shot whose fire
+    /// had just passed (no request, never put back), a snoozed occurrence
+    /// under its snooze ID (the series is re-armed, the snooze is not), and a
+    /// repeating series (re-armed for its next ring, today's silenced).
+    ///
+    /// It asks nothing of AlarmKit. A ring is the row's stored fire, which is
+    /// the snooze for a snoozed occurrence, or a match of a series AlarmKit
+    /// repeats, from the series' own alert on, since a relative alarm rings
+    /// whether or not the app ran. Either within `alertingWindow` before
+    /// `now`. Read before `advanceOverdueRecurrences` rolls a rung series
+    /// forward, which erases the ring from the row.
+    ///
+    /// Only for a row that arms an alarm: a completed, archived, held or
+    /// disarmed row, or one delivered as a notification, answers `false` and
+    /// is cancelled as before, and so is a row that is gone (the orphan
+    /// sweep).
+    @MainActor
+    static func alarmMayBeAlerting(_ item: CapturedItem, now: Date) -> Bool {
+        guard !item.isArchived, !item.isCompleted else { return false }
+        let seriesFireDate = item.seriesReminderDate
+        return alarmMayBeAlerting(
+            delivery: ItemPresentation.scheduledDelivery(for: item),
+            fireDate: item.reminderDate,
+            seriesFireDate: seriesFireDate,
+            repetition: seriesFireDate.flatMap {
+                ReminderScheduleRequest.alarmRepetition(
+                    rule: item.temporalIntent?.recurrence,
+                    fireDate: $0
+                )
+            },
+            now: now
+        )
+    }
+
+    /// The decision behind `alarmMayBeAlerting(_:now:)`, with no store in it.
+    static func alarmMayBeAlerting(
+        delivery: ReminderDelivery,
+        fireDate: Date?,
+        seriesFireDate: Date?,
+        repetition: ReminderAlarmRepetition?,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard delivery == .alarm, let fireDate else { return false }
+        let windowStart = now.addingTimeInterval(-alertingWindow)
+        if fireDate > windowStart, fireDate <= now { return true }
+        guard let repetition,
+              let seriesFireDate,
+              let ring = repetition.nextOccurrence(after: windowStart, calendar: calendar)
+        else { return false }
+        return ring >= seriesFireDate && ring <= now
     }
 
     /// The AlarmKit ID of a snoozed occurrence's one-shot, which rings beside
@@ -1366,20 +1446,36 @@ enum ReminderScheduler {
 
     private static func schedule(
         _ request: ReminderScheduleRequest,
-        requestAuthorizationIfNeeded: Bool
+        requestAuthorizationIfNeeded: Bool,
+        leavingAlarmAlone: Bool = false
     ) async -> ReminderSchedulingResult {
         guard request.fireDate > .now else {
-            cancel(itemID: request.itemID)
+            if leavingAlarmAlone {
+                removeNotifications(for: request.itemID)
+            } else {
+                cancel(itemID: request.itemID)
+            }
             return .failed
         }
 
-        cancel(itemID: request.itemID)
+        if leavingAlarmAlone {
+            removeNotifications(for: request.itemID)
+        } else {
+            cancel(itemID: request.itemID)
+        }
 
         if request.delivery == .alarm, #available(iOS 26.0, *) {
             let manager = AlarmManager.shared
             var authorization = manager.authorizationState
             if authorization == .notDetermined, requestAuthorizationIfNeeded {
                 authorization = (try? await manager.requestAuthorization()) ?? .notDetermined
+            }
+
+            // DEL-23: the alarm AlarmKit holds for this row may be ringing,
+            // and re-arming it starts with a stop. It is left as it is; the
+            // first reconcile after `alertingWindow` re-arms it.
+            if authorization == .authorized, leavingAlarmAlone {
+                return .scheduled
             }
 
             if authorization == .authorized {
@@ -1744,7 +1840,11 @@ enum ReminderScheduler {
         resolvedScope.include(requests)
 
         for itemID in resolvedScope.itemIDs {
-            cancel(itemID: itemID)
+            if resolvedScope.alarmsLeftAlone.contains(itemID) {
+                removeNotifications(for: itemID)
+            } else {
+                cancel(itemID: itemID)
+            }
         }
         await clearExistingNotifications(scope: resolvedScope)
 
@@ -1752,7 +1852,8 @@ enum ReminderScheduler {
         for request in selection.alarms {
             results.append(await schedule(
                 request,
-                requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
+                requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
+                leavingAlarmAlone: resolvedScope.alarmsLeftAlone.contains(request.itemID)
             ))
         }
         // Includes a series whose alert has fired, which keeps only its

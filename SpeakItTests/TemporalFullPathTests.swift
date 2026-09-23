@@ -2339,6 +2339,66 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
+    /// DEL-23's decision on its own, in the fixture zone: which rows the
+    /// foreground reconcile leaves alone because their alarm may be ringing.
+    /// A ring is the stored fire (a one-shot, or the snooze of a snoozed
+    /// occurrence) or a match of a series AlarmKit repeats since the series'
+    /// own alert, within `alertingWindow` before now.
+    ///
+    /// Falsifier: drop the repetition branch of
+    /// `ReminderScheduler.alarmMayBeAlerting(delivery:...)`, and the series
+    /// that rang this morning without the app is not protected; drop its
+    /// `ring >= seriesFireDate` clause, and a series whose first ring is
+    /// tomorrow is.
+    func testOnlyAnAlarmThatRangWithinTheWindowMayBeAlerting() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 6, minute: 35, calendar: calendar)
+            let rang = makeDate(year: 2026, month: 8, day: 3, hour: 6, minute: 30, calendar: calendar)
+            let eightDaysAgo = makeDate(year: 2026, month: 7, day: 26, hour: 6, minute: 30, calendar: calendar)
+            let tomorrow = makeDate(year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar)
+            let daily = ReminderScheduleRequest.alarmRepetition(
+                rule: RecurrenceRule(frequency: .daily),
+                fireDate: rang,
+                calendar: calendar
+            )
+            func mayBeAlerting(
+                _ delivery: ReminderDelivery = .alarm,
+                fire: Date?,
+                series: Date? = nil,
+                _ repetition: ReminderAlarmRepetition? = nil
+            ) -> Bool {
+                ReminderScheduler.alarmMayBeAlerting(
+                    delivery: delivery,
+                    fireDate: fire,
+                    seriesFireDate: series ?? fire,
+                    repetition: repetition,
+                    now: now,
+                    calendar: calendar
+                )
+            }
+
+            XCTAssertTrue(mayBeAlerting(fire: rang), "a one-shot five minutes after its ring")
+            XCTAssertTrue(
+                mayBeAlerting(fire: now.addingTimeInterval(-30), series: rang, daily),
+                "a snooze that fired half a minute ago"
+            )
+            XCTAssertTrue(
+                mayBeAlerting(fire: eightDaysAgo, daily),
+                "a series AlarmKit repeats rang this morning without the app"
+            )
+            XCTAssertFalse(
+                mayBeAlerting(fire: now.addingTimeInterval(-ReminderScheduler.alertingWindow - 60)),
+                "a one-shot that rang before the window"
+            )
+            XCTAssertFalse(mayBeAlerting(fire: eightDaysAgo), "a one-shot that rang eight days ago")
+            XCTAssertFalse(mayBeAlerting(fire: tomorrow, daily), "a series whose first ring is tomorrow")
+            XCTAssertFalse(mayBeAlerting(fire: now.addingTimeInterval(60)), "an alarm still ahead")
+            XCTAssertFalse(mayBeAlerting(.notification, fire: rang), "a notification")
+            XCTAssertFalse(mayBeAlerting(.none, fire: rang), "a row that arms nothing")
+            XCTAssertFalse(mayBeAlerting(fire: nil), "a row with no fire")
+        }
+    }
+
     // MARK: Permission and background state
 
     /// Notification permission is environment, not meaning. Losing it must

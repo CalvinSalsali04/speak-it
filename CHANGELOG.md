@@ -7,6 +7,13 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- The pass that runs at every launch and foreground no longer stops or
+  cancels the alarm of a row that rang in the last 30 minutes. It used to stop
+  and cancel every alarm before re-arming the ones still ahead. So by reading,
+  opening the app silenced an alarm ringing at that moment, or a snoozed
+  alarm ringing under its own ID, and did not put it back. Completed, held,
+  removed and disarmed rows are still cancelled. Whether a ringing alarm now
+  keeps ringing has not been observed on an iPhone (device check D17).
 - With VoiceOver on, Speak It says what happened: the save result
   ("Remembered", "Can you clarify?"), that a recording stopped because nothing
   was heard, that voice failed or recovery is running, a capture recovered on

@@ -826,6 +826,169 @@ final class DurabilityTests: XCTestCase {
         )
     }
 
+    // MARK: DEL-23, opening the app while an alarm rings
+
+    /// A finished capture's row with an alarm at `reminderDate`, inserted
+    /// directly so the fire can sit just behind the clock.
+    private func insertAlarmRow(
+        reminderDate: Date,
+        needsClarification: Bool = false,
+        completedAt: Date? = nil
+    ) throws -> CapturedItem {
+        let session = CaptureSession(
+            originalTranscription: "Set an alarm for 7 AM to take my pills",
+            captureSource: .inAppText,
+            processingStatus: .complete
+        )
+        let item = CapturedItem(
+            originalTextSegment: session.originalTranscription,
+            displayTitle: "Alarm",
+            itemType: .task,
+            reminderDate: reminderDate,
+            completedAt: completedAt,
+            needsClarification: needsClarification,
+            captureSession: session
+        )
+        container.mainContext.insert(session)
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        return item
+    }
+
+    /// Every reconcile used to stop and cancel every row's alarm before
+    /// re-arming the rows still ahead, and a one-shot whose fire has passed
+    /// is not ahead: opening the app while it rang silenced it for good. A
+    /// row that rang before the alerting window is still cancelled, which is
+    /// how the pass goes on healing.
+    ///
+    /// Falsifier: build the scope in `reconcilePendingReminders` with
+    /// `alarmsLeftAlone: []`, and the ringing alarm is cancelled.
+    func testAReconcileJustAfterAOneShotRingsLeavesItsAlarmAlone() async throws {
+        let now = Date.now
+        let ringing = try insertAlarmRow(reminderDate: now.addingTimeInterval(-30))
+        let rungLongAgo = try insertAlarmRow(
+            reminderDate: now.addingTimeInterval(-ReminderScheduler.alertingWindow - 60 * 60)
+        )
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: ringing), .alarm, "precondition: an alarm")
+        XCTAssertNil(ReminderScheduleRequest.forScheduling(ringing), "precondition: nothing re-arms it")
+        delivery.seedAlarm(ringing.id)
+        delivery.seedAlarm(rungLongAgo.id)
+
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(ringing.id),
+            "opening the app must not silence an alarm that is ringing"
+        )
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(rungLongAgo.id),
+            "an alarm that rang before the window is cancelled as before"
+        )
+    }
+
+    /// A snoozed occurrence of a series rings under its own ID (F1). Once the
+    /// snooze has fired, the reconcile rolls the series forward and re-arms
+    /// it, and it used to cancel both IDs first, so the ringing snooze went
+    /// silent and nothing put it back.
+    ///
+    /// Falsifier: build the scope with `alarmsLeftAlone: []`, or read the set
+    /// after `advanceOverdueRecurrences`, and the snooze ID is cancelled.
+    func testASnoozeThatIsRingingSurvivesAReconcile() async throws {
+        let created = try await capture(
+            "Set an alarm every day at 6:30 AM",
+            createdAt: Date.now.addingTimeInterval(-8 * 24 * 60 * 60)
+        )
+        let item = created.primaryItem
+        XCTAssertNotNil(RecurrenceStore.rule(for: item.id), "precondition: a series")
+        try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
+        await drainScheduler()
+        XCTAssertNotNil(
+            item.temporalIntent?.snoozedFromReminderDate,
+            "precondition: the snooze displaced the occurrence"
+        )
+        // The snooze has just fired: it rings under the snooze ID, beside the
+        // series under the item ID.
+        item.reminderDate = Date.now.addingTimeInterval(-30)
+        try container.mainContext.save()
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .alarm, "precondition: an alarm")
+        let snoozeID = ReminderScheduler.snoozeAlarmID(for: item.id)
+        delivery.seedAlarm(item.id)
+        delivery.seedAlarm(snoozeID)
+
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(snoozeID),
+            "opening the app must not silence a snooze that is ringing"
+        )
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(item.id),
+            "nor stop the series beside it"
+        )
+    }
+
+    /// The alarm left alone is only one whose row still arms it. A row
+    /// completed, or removed, just after its alarm rang is torn down by the
+    /// same pass: the completed row by the scope, the removed one by the
+    /// orphan sweep.
+    ///
+    /// Falsifier: drop the `isCompleted` clause from
+    /// `ReminderScheduler.alarmMayBeAlerting(_:now:)`, and the completed row
+    /// keeps its alarm.
+    func testAReconcileStillCancelsTheAlarmOfARowCompletedOrDeletedJustAfterItRang() async throws {
+        let justRang = Date.now.addingTimeInterval(-30)
+        let completed = try insertAlarmRow(reminderDate: justRang, completedAt: .now)
+        let deleted = try insertAlarmRow(reminderDate: justRang)
+        let deletedID = deleted.id
+        container.mainContext.delete(deleted)
+        try container.mainContext.save()
+        delivery.seedAlarm(completed.id)
+        delivery.seedAlarm(deletedID)
+
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(completed.id),
+            "a completed row's alarm must not outlive the pass"
+        )
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(deletedID),
+            "a removed row's alarm must not outlive the pass"
+        )
+    }
+
+    /// A row the system holds for review arms nothing (#138), whenever its
+    /// stored fire is, so a hold that lands just after the alarm rang still
+    /// cancels it.
+    ///
+    /// Falsifier: read `ItemPresentation.effectiveReminderDelivery` in place
+    /// of `scheduledDelivery` in `ReminderScheduler.alarmMayBeAlerting(_:now:)`,
+    /// and the held row keeps its alarm.
+    func testAReconcileStillCancelsTheAlarmOfAHeldRowThatJustRang() async throws {
+        let held = try insertAlarmRow(
+            reminderDate: Date.now.addingTimeInterval(-30),
+            needsClarification: true
+        )
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: held), ReminderDelivery.none, "precondition: held")
+        XCTAssertEqual(
+            ItemPresentation.effectiveReminderDelivery(for: held),
+            .alarm,
+            "precondition: an alarm once released"
+        )
+        delivery.seedAlarm(held.id)
+
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(held.id),
+            "a held row's alarm must not outlive the pass"
+        )
+    }
+
     func testCompletedItemDoesNotKeepAReminderArmedAcrossRelaunch() async throws {
         let created = try await capture("Remind me to call the bank on Friday at 9am")
         let item = created.primaryItem
