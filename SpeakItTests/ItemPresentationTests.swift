@@ -152,6 +152,89 @@ final class ItemPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: What the row calls armed is what iOS is handed
+
+    /// The row's bell and the scheduler used to answer `is an alert armed`
+    /// from two different rules. The scheduler arms any future
+    /// `reminderDate`; the row re-read the wording, found no alert word in
+    /// `Call the accountant tomorrow`, and showed no bell. A reminder turned
+    /// on in the editor, or a voice move of an item that had no date, writes
+    /// `reminderDate` without touching the wording, so iOS held a
+    /// notification the person was told did not exist. The date is assigned
+    /// directly here because that is all the editor's save does to it
+    /// (`item.reminderDate = edits.reminderDate`), and doing it without the
+    /// repository keeps this test off the notification center.
+    ///
+    /// Falsifier: derive the row's delivery from the wording alone again (the
+    /// old `reminderDelivery(for:)`, which returned
+    /// `effectiveReminderDelivery` unmapped) and `isArmed` is false while a
+    /// request exists.
+    func testAHandSetReminderReadsAsArmedWithTheKindThatWillFire() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNil(item.reminderDate, "precondition: the wording asks for no alert")
+
+        item.reminderDate = Date.now.addingTimeInterval(30 * 24 * 60 * 60)
+
+        let state = presentation(for: item).reminderState
+        let request = try XCTUnwrap(
+            ReminderScheduleRequest(item: item),
+            "a future reminder date is scheduled whatever the wording says"
+        )
+        XCTAssertTrue(state.isArmed, "the row must not deny an alert iOS is holding")
+        XCTAssertEqual(state.alertGlyph, request.delivery)
+        XCTAssertEqual(request.delivery, .notification)
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), request.delivery)
+    }
+
+    /// The other kind must survive the same single rule: wording that asked
+    /// for an alarm is an alarm on the row and in the request alike.
+    ///
+    /// Falsifier: map every armed delivery to `.notification` in
+    /// `scheduledDelivery`, or have the request stop reading it, and the two
+    /// sides disagree or both lose the alarm.
+    func testAnAlarmIsAnAlarmOnTheRowAndInTheRequest() throws {
+        let item = try repository.createCapture(
+            text: "Set an alarm for 6:45 tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotNil(item.reminderDate, "precondition: the alarm was given a moment")
+
+        let state = presentation(for: item).reminderState
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(state.isArmed)
+        XCTAssertEqual(state.alertGlyph, .alarm)
+        XCTAssertEqual(request.delivery, .alarm)
+    }
+
+    /// A date is not an alert. With a due date and no reminder date, nothing
+    /// is scheduled, so nothing may be shown as armed either.
+    ///
+    /// Falsifier: arm on `reminderDate ?? dueDate` in `scheduledDelivery` and
+    /// this row grows a bell with no request behind it.
+    func testADueDateAloneIsNeitherArmedNorScheduled() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotNil(item.dueDate, "precondition: the day was heard")
+        XCTAssertNil(item.reminderDate)
+
+        let state = presentation(for: item).reminderState
+        XCTAssertFalse(state.isArmed)
+        XCTAssertNil(state.alertGlyph)
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .none)
+    }
+
     // MARK: A place reminder must say so
 
     /// The editor showed "Remind me: off" on an item with a live geofence, and

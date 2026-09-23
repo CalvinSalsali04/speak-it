@@ -874,7 +874,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4073 on 2026-09-23, from
+        the row's bell and the scheduler reading one delivery function:
+        three tests in `ItemPresentationTests`, five literals, all
+        assertion messages — `"precondition: the wording asks for no
+        alert"`, `"a future reminder date is scheduled whatever the
+        wording says"`, `"the row must not deny an alert iOS is
+        holding"`, `"precondition: the alarm was given a moment"` and
+        `"precondition: the day was heard"`. Both fixtures add nothing,
+        `"Call the accountant tomorrow"` being in `DurabilityTests` and
+        `"Set an alarm for 6:45 tomorrow"` in `SemanticCorpusDataC`, and
+        a phrase the doc comment first quoted was put in backticks
+        instead. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +899,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4073)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-09-23 — A stored reminder date arms, and one function says so
+
+The row's bell and `ReminderScheduleRequest` answered "is an alert armed"
+from two rules: the scheduler arms any future `reminderDate`, while the row
+re-read the wording and showed no bell when it found no alert word. A
+reminder turned on in the editor, or a voice move of an item that had no
+date, writes `reminderDate` without changing the wording, so iOS held a
+notification the person was told did not exist. `ItemPresentation.scheduledDelivery(for:)`
+is now the only answer: `.none` without a `reminderDate`, otherwise `.alarm`
+when the wording asked for one and `.notification` for everything else. The
+row, the capture receipt and the scheduler all read it, and what gets
+scheduled is unchanged. A past `reminderDate` still reads as armed on the row
+though no request is made for it, and delivery still depends on a
+time-zone-sensitive re-parse; both are left as they were.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

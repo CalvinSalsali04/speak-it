@@ -160,7 +160,7 @@ struct ItemPresentation: Equatable, Sendable {
             return .place(locationIntent)
         }
         if let date = item.reminderDate ?? item.dueDate {
-            return .time(date, isDateOnly: item.isDateOnly, delivery: reminderDelivery(for: item))
+            return .time(date, isDateOnly: item.isDateOnly, delivery: scheduledDelivery(for: item))
         }
         return .none
     }
@@ -183,9 +183,20 @@ struct ItemPresentation: Equatable, Sendable {
     nonisolated(unsafe) private static var deliveryCache:
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
 
-    private static func reminderDelivery(for item: CapturedItem) -> ReminderDelivery {
+    /// The alert kind that will fire for a timed item, and the only answer to
+    /// that question: the row's bell, the receipt's label and
+    /// `ReminderScheduleRequest` all read it. A stored `reminderDate` is what
+    /// schedules, so it is what arms; the wording only chooses between an
+    /// alarm and a notification. A date set by hand in the editor, or by
+    /// voice-moving an item that had none, carries wording with no alert word
+    /// in it, and reading that wording as `.none` hid a notification iOS was
+    /// holding (Docs/DECISIONS.md, 2026-09-23).
+    ///
+    /// Whether the date is still ahead is deliberately not asked here: a past
+    /// `reminderDate` produces no request but still reads as armed on the row.
+    static func scheduledDelivery(for item: CapturedItem) -> ReminderDelivery {
         guard item.reminderDate != nil else { return .none }
-        return effectiveReminderDelivery(for: item)
+        return effectiveReminderDelivery(for: item) == .alarm ? .alarm : .notification
     }
 
     /// The alert kind the original wording asked for: the segment's own
