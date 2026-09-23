@@ -874,7 +874,30 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4073 on 2026-09-23, from
+        cancelling an item's alarm synchronously instead of only in the
+        queued scheduler pass: seven literals in, two out, net five, and
+        all nine are assertion messages, enumerated rather than assumed.
+        The two that went out were reworded rather than deleted, which
+        moves this count exactly like adding and deleting does: `"The
+        cancelled reminder's pending notification must be removed"` and
+        `"A cancelled alarm must be cancelled in AlarmKit, not just
+        deleted from the store"`. The seven that came in are their
+        rewordings, `"The cancelled reminder's pending notification must
+        be removed before any queued pass runs"` and `"A cancelled alarm
+        must be cancelled in AlarmKit before any queued pass runs"`; the
+        two post-drain checks in `CaptureOperationTests`, `"After the
+        queued pass the cancelled reminder must still be gone"` and
+        `"After the queued pass the cancelled alarm must still be
+        gone"`; the two neighbour checks, `"The queued pass must not
+        reach past the cancelled reminder"` and `"The queued pass must
+        not cancel an alarm it was not asked about"`; and `"Relaunch must
+        cancel an alarm that no row asks for"` in `DurabilityTests`. The
+        new relaunch test's fixture, `"Set an alarm for 7 AM to take my
+        pills"`, adds nothing because `CaptureOperationTests` already had
+        it, and every phrase in the new doc comments is in backticks. The
+        development-set overlap stayed at 114, checked by regenerating
+        `LANGUAGE_BASELINE.md`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +911,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4073)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

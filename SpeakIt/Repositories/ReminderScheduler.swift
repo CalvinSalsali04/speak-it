@@ -412,6 +412,12 @@ struct ReminderDeliverySink: Sendable {
     /// only observe teardown that was already targeted by id, which is the half
     /// that was never in doubt.
     var pendingIdentifiers: @Sendable () async -> [String]
+    /// The alarm twin of `pendingIdentifiers`: every AlarmKit alarm this app
+    /// currently has registered. Relaunch reconciliation needs it for the same
+    /// reason — an alarm whose row was deleted in the window before its
+    /// teardown ran has no row left to name it, so the only way to find it is
+    /// to list what is armed and cancel what nothing asks for.
+    var armedAlarmIDs: @Sendable () -> [UUID]
 
     static let live = ReminderDeliverySink(
         removeNotifications: { identifiers in
@@ -432,6 +438,14 @@ struct ReminderDeliverySink: Sendable {
         },
         pendingIdentifiers: {
             await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier)
+        },
+        armedAlarmIDs: {
+            if #available(iOS 26.0, *) {
+                // Unreadable means sweep nothing: missing an orphan is the old
+                // behaviour, and cancelling a wanted alarm would be worse.
+                return ((try? AlarmManager.shared.alarms) ?? []).map(\.id)
+            }
+            return []
         }
     )
 }
@@ -1059,6 +1073,9 @@ enum ReminderScheduler {
         for itemID in resolvedScope.itemIDs {
             cancel(itemID: itemID)
         }
+        if resolvedScope.replacesAllSpeakItReminders {
+            cancelOrphanedAlarms(keeping: resolvedScope.itemIDs)
+        }
         await clearExistingNotifications(scope: resolvedScope)
 
         var results: [ReminderSchedulingResult] = []
@@ -1077,6 +1094,20 @@ enum ReminderScheduler {
             ))
         }
         return results
+    }
+
+    /// Cancels every armed alarm whose item is outside `itemIDs`.
+    ///
+    /// Only a whole-library pass may call this, because only then does
+    /// `itemIDs` name every row that could still want an alarm. The ones inside
+    /// it were already cancelled by the caller and are re-armed later in the
+    /// same pass when their row still asks to ring. Anything else belongs to a row that is
+    /// gone, done or archived, such as one deleted while its teardown was
+    /// still queued, which is what a kill in that window used to leave armed.
+    private static func cancelOrphanedAlarms(keeping itemIDs: Set<UUID>) {
+        for alarmID in delivery.armedAlarmIDs() where !itemIDs.contains(alarmID) {
+            delivery.cancelAlarm(alarmID)
+        }
     }
 
     private static func notificationGroups(

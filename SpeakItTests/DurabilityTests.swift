@@ -29,20 +29,33 @@ final class DurabilityTests: XCTestCase {
 
     /// The two systems a reminder actually lives in, so a test can prove the
     /// notification and the alarm are gone rather than only that the row is.
+    ///
+    /// Locked because the queued scheduler pass writes here off the main
+    /// actor while the test reads.
     private final class RecordingDelivery: @unchecked Sendable {
-        private(set) var pendingNotifications: Set<String> = []
-        private(set) var scheduledAlarms: Set<UUID> = []
+        private let lock = NSLock()
+        private var notifications: Set<String> = []
+        private var alarms: Set<UUID> = []
 
-        func seedNotification(_ identifier: String) { pendingNotifications.insert(identifier) }
-        func seedAlarm(_ id: UUID) { scheduledAlarms.insert(id) }
+        var pendingNotifications: Set<String> { lock.withLock { notifications } }
+        var scheduledAlarms: Set<UUID> { lock.withLock { alarms } }
+
+        func seedNotification(_ identifier: String) {
+            lock.withLock { _ = notifications.insert(identifier) }
+        }
+
+        func seedAlarm(_ id: UUID) {
+            lock.withLock { _ = alarms.insert(id) }
+        }
 
         var sink: ReminderDeliverySink {
             ReminderDeliverySink(
                 removeNotifications: { [self] identifiers in
-                    identifiers.forEach { pendingNotifications.remove($0) }
+                    lock.withLock { identifiers.forEach { notifications.remove($0) } }
                 },
-                cancelAlarm: { [self] id in scheduledAlarms.remove(id) },
-                pendingIdentifiers: { [self] in Array(pendingNotifications) }
+                cancelAlarm: { [self] id in lock.withLock { _ = alarms.remove(id) } },
+                pendingIdentifiers: { [self] in lock.withLock { Array(notifications) } },
+                armedAlarmIDs: { [self] in lock.withLock { Array(alarms) } }
             )
         }
     }
@@ -333,6 +346,29 @@ final class DurabilityTests: XCTestCase {
         XCTAssertFalse(
             delivery.pendingNotifications.contains(identifier),
             "Relaunch must reconcile away a reminder with no row"
+        )
+    }
+
+    /// The alarm twin of the test above. Relaunch used to reconcile
+    /// notification identifiers only, so an alarm whose row was deleted
+    /// before its queued teardown ran stayed armed for good. Falsifier: remove
+    /// the `cancelOrphanedAlarms` call from `ReminderScheduler.scheduleBatch`
+    /// and the orphan is still armed after relaunch.
+    func testRelaunchDisarmsAnAlarmWhoseRowIsAlreadyGone() async throws {
+        let created = try await capture("Set an alarm for 7 AM to take my pills")
+        let itemID = created.primaryItem.id
+        await drainScheduler()
+
+        // Kill between save and teardown, as in the notification case.
+        container.mainContext.delete(created.primaryItem)
+        try container.mainContext.save()
+        delivery.seedAlarm(itemID)
+
+        await relaunchAndDrain()
+
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(itemID),
+            "Relaunch must cancel an alarm that no row asks for"
         )
     }
 

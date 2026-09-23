@@ -1356,12 +1356,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// a fallback item for any session that is not `.complete`, so a retraction
     /// left open would reappear at the next launch.
     private func discardCaptureItems(for session: CaptureSession, preserving itemIDs: Set<UUID> = []) {
+        var discardedIDs: [UUID] = []
         for item in session.items where !itemIDs.contains(item.id) {
+            discardedIDs.append(item.id)
             RecurrenceStore.remove(item.id)
             LocationReminderMonitor.shared.stopMonitoring(itemID: item.id)
             modelContext.delete(item)
         }
         closeSession(session)
+        // No scheduling pass follows a discard, so nothing else would stop
+        // delivery for these rows.
+        discardedIDs.forEach(ReminderScheduler.cancel(itemID:))
     }
 
     private func holdOperation(
@@ -1539,6 +1544,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             throw error
         }
         if let deletedGeneratedItemID {
+            // The removed occurrence is no longer in the session, so the
+            // session-scoped pass below cannot name it; only this can.
+            ReminderScheduler.cancel(itemID: deletedGeneratedItemID)
             MemoryPinStore.removeMetadata(for: [deletedGeneratedItemID])
             ShoppingGroupStore.removeMetadata(for: [deletedGeneratedItemID])
             IdeaStageStore.removeMetadata(for: [deletedGeneratedItemID])
@@ -1594,6 +1602,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 deletedSessionIDs: deletesSession ? sessionID.map { [$0] } ?? [] : []
             )
         }
+        // Delivery stops here, synchronously, not only in the queued pass
+        // below. That pass waits behind every earlier one, which can include a
+        // pass sitting on a permission prompt, and a kill in that window used
+        // to leave a cancelled alarm armed. The queued pass stays: it
+        // re-cancels anything an earlier pass arms after this line.
+        recurrenceIDs.forEach(ReminderScheduler.cancel(itemID:))
         recurrenceIDs.forEach(RecurrenceStore.remove)
         MemoryPinStore.removeMetadata(for: recurrenceIDs)
         ShoppingGroupStore.removeMetadata(for: recurrenceIDs)
@@ -2413,6 +2427,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             modelContext.delete(session)
         }
         try persistChanges()
+        // A row another device deleted stops ringing now rather than when the
+        // queued whole-library reconcile below reaches it.
+        removedItemIDs.forEach(ReminderScheduler.cancel(itemID:))
 
         if let recurrenceRecords = snapshot.recurrenceRecords {
             RecurrenceStore.replace(with: recurrenceRecords, for: cloudItemIDs)
