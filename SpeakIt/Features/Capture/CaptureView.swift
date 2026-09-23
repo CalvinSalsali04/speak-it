@@ -1498,8 +1498,12 @@ struct CaptureView: View {
                     // notice below: the recording is kept for recovery, and
                     // closing would hide that nothing was saved.
                     closesAfterSave = false
+                    // `transcribe` stored whatever this pass read on the draft.
+                    // Re-read it: `draft` is the copy from before the pass.
+                    let keptWords = CaptureDraftStore.draft(id: draft.id)?.transcript ?? ""
                     continueByTyping(
-                        notice: "Your recording is safe. Type this thought now, or recover it later from Today."
+                        notice: "Your recording is safe. Type this thought now, or recover it later from Today.",
+                        keptWords: keptWords
                     )
                 }
             )
@@ -1569,9 +1573,18 @@ struct CaptureView: View {
         }
     }
 
-    private func continueByTyping(notice: String) {
-        let partialTranscript = tutorialAwareVoiceTranscript
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    /// `keptWords` are words a failed recovery pass stored on the draft. They
+    /// replace the live transcript only when they carry on from it; see
+    /// `CaptureAudioRecovery.wordsToOffer` for the rule. No test reaches this
+    /// view method, so dropping `keptWords:` from the caller in
+    /// `recoverActiveAudio` would leave every test green and bring back a
+    /// write nothing reads. Keep it when merging or refactoring that catch.
+    private func continueByTyping(notice: String, keptWords: String = "") {
+        let repairedKeptWords = tutorialMission?.repairVoiceTranscript(keptWords) ?? keptWords
+        let partialTranscript = CaptureAudioRecovery.wordsToOffer(
+            live: tutorialAwareVoiceTranscript,
+            kept: repairedKeptWords
+        )
         if !partialTranscript.isEmpty {
             typedText = partialTranscript
         }

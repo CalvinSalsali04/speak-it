@@ -1190,7 +1190,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"a discarded recording was saved"`. The fixture
         `"buy milk and eggs today"` was already counted earlier in this entry.
         The development-set overlap stayed at 114, checked by
-        regenerating `LANGUAGE_BASELINE.md`. What the test
+        regenerating `LANGUAGE_BASELINE.md`. 4068 -> 4075 on 2026-09-23, from
+        audio recovery no longer calling a pass that stopped partway the
+        whole recording: six tests across `CaptureRecoveryEscapeTests` and
+        `DurabilityTests`, seven literals, enumerated by diffing
+        `swift_literals` before and after rather than assumed. Five are
+        fixtures (`" buy milk and call "`, padded on purpose to exercise the
+        trim, `"buy milk and call"`, `"buy milk and call the"`, `"buy milk
+        and call mom"`, `"Renew the parking permit and"`) and two are
+        assertion messages (`"Another attempt has to stay on offer"` and
+        `"Reported as the whole recording: \\(text)"`, which counts with its
+        interpolation). `"buy milk"` and `"   "` add nothing: both are under
+        the twelve-character minimum. 4075 -> 4076 the same day, from the
+        capture screen offering the words a failed pass kept: two more tests
+        in `CaptureRecoveryEscapeTests` add one fixture, `"Buy milk, and call
+        the plumber"`, capitalised and punctuated on purpose to exercise the
+        comparison; every other literal they use was already counted.
+        4076 -> 4077 the same day, from `"buy milkshake"`, the fixture
+        pinning that the kept words must carry on by whole words.
+        The doc comments use backticks, and the development-set overlap
+        stayed at 114. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1319,7 +1338,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the V1 candidate: measured from the merged tree, not taken from
         either side (4325 on the candidate, 4135 on #126, 4119 at their
         merge base; #126 adds 16 and removes 0, 0 of its additions were
-        already on the candidate).
+        already on the candidate). 4341 -> 4350 on 2026-09-23, merging
+        #123 into the V1 candidate: measured from the merged tree, not
+        taken from either side (4341 on the candidate, 4077 on #123,
+        4068 at their merge base; #123 adds 9 and removes 0, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1329,7 +1352,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4341)
+        self.assertEqual(len(space), 4350)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
