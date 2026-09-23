@@ -63,6 +63,23 @@ enum PlaceReference: Codable, Equatable, Sendable {
         case .currentLocation, .named: false
         }
     }
+
+    /// True when Speak It can watch this place from the words alone: Home,
+    /// Work, or the spot the person was standing on. Only these places hold a
+    /// time beside them for review. A named place cannot be geofenced until it
+    /// is searched for, so a time beside one is the only trigger available
+    /// and the time wins.
+    ///
+    /// `TemporalIntentParser.parse` (which decides whether the place is kept)
+    /// and `OrganizedThought.holdingPlaceAndTime()` (which enforces the hold)
+    /// both read this one property, so they cannot drift apart about which
+    /// places hold.
+    var isEnforceable: Bool {
+        switch self {
+        case .home, .work, .currentLocation: true
+        case .named: false
+        }
+    }
 }
 
 /// A place resolved to something CoreLocation can monitor.

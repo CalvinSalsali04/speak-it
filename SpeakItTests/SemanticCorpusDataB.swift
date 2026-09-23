@@ -277,6 +277,87 @@ enum SemanticCorpusB {
         corpusCase(.location, "Remind me at five to call Mom", count: 1,
                    remind: [CorpusDate(month: 8, day: 3, hour: 17)], place: [nil],
                    note: "\"At\" introduces a time here. A location rule that cannot tell these apart breaks every timed reminder."),
+
+        // A saved place beside a bare day (2026-09-23, DEL-11). Home, Work and
+        // here can be watched, so a time beside one is held for review, with
+        // no clock reminder, no matter which temporal branch read the time.
+        // The date-only branch returned before the hold, so "remind me … when
+        // I get home tomorrow" armed 9 AM, watched no region and asked
+        // nothing. Each row names a different temporal form or a different
+        // place opener. The day is asserted as well, because the hold keeps
+        // what was said and drops only what would fire. Falsifier: any row
+        // here with a reminder date, a notification delivery, or no review
+        // means some return still skips the hold.
+        corpusCase(.location, "Remind me to water the plants when I get home tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The DEL-11 shape. Before the hold became a post-condition this armed 9 AM tomorrow and asked nothing."),
+        corpusCase(.location, "Remind me to water the plants the day after tomorrow when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 5, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants today when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Captured at 10 AM, so the unheld reading fell back to the 8 PM alert. That is the same misfire as \"tonight\" by another road."),
+        corpusCase(.location, "Remind me to water the plants on Friday when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants this weekend when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 8, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants on August 20th when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 20, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "When I leave work tomorrow remind me to pick up the dry cleaning", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .leave, place: .work)], review: [true],
+                   note: "Leaving, not arriving, and fronted rather than trailing. The hold does not depend on which event or where the place sits."),
+        corpusCase(.location, "When I get to work on Friday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true]),
+        corpusCase(.location, "Remind me at the office tomorrow to book the meeting room", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true],
+                   note: "The bare \"remind me at\" opener. \"The office\" is Work, so it holds like Home does."),
+        corpusCase(.location, "Remind me to check the meter tomorrow when I get back here", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .currentLocation)], review: [true],
+                   note: "\"Here\" is watchable too, so it is held like Home and Work."),
+        corpusCase(.location, "Remind me every Friday to check the mailbox when I get home", count: 1,
+                   delivery: [.none], kind: [.calendarRecurrence], remind: [nil],
+                   recurs: [CorpusRecurrence(frequency: .weekly, interval: 1, weekdays: [6])],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The recurrence rescue in organize re-armed a reminder the parse had held, and dropped the review. The series is kept as spoken; nothing fires until a trigger is picked."),
+
+        // Controls for the rows above. The same place alone, the same time
+        // alone, the named place whose time wins, and the forms that were
+        // already held. The hold must not move any of them.
+        corpusCase(.location, "Remind me to water the plants when I get home", count: 1,
+                   delivery: [.none], kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [false],
+                   note: "A place alone is a place reminder, not a hold. Sending it to review would be the over-questioning the location work exists to avoid."),
+        corpusCase(.location, "Remind me to water the plants tomorrow", count: 1,
+                   delivery: [.notification], kind: [.dateOnly],
+                   remind: [CorpusDate(month: 8, day: 4, hour: nil)], place: [nil], review: [false],
+                   note: "A day alone still alerts on that day. The hold reads the place, and there is none."),
+        corpusCase(.location, "Remind me to buy paper towels tomorrow when I get to Costco", count: 1,
+                   delivery: [.notification], remind: [CorpusDate(month: 8, day: 4, hour: nil)], place: [nil],
+                   note: "A named place cannot be watched from its name, so the time wins as before and nothing is held."),
+        corpusCase(.location, "Remind me to water the plants when I get home tonight", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Held before this change, by the parse's final return. The post-condition gives it the same fields again."),
+        corpusCase(.location, "Remind me to water the plants tomorrow morning when I get home", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "A day with a part of the day resolves to a clock, so it never took the date-only branch and was already held."),
+        corpusCase(.location, "Water the plants tomorrow when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "No reminder was asked for, so the date-only branch never ran and this was already held. The pair with the first row above is the asymmetry the defect was."),
+        corpusCase(.location, "Remind me to water the plants next week when I get home", count: 1,
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "A week is not a day, so this asks and fires no clock. The region half is still watched, because the stored reading carries no time: see Docs/KNOWN_ISSUES.md."),
     ]
 
     static let all: [CorpusCase] = temporalAmbiguity + nonTimeNumbers + people + recurrence + location

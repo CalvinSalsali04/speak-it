@@ -874,7 +874,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4109 on 2026-09-23, from
+        DEL-11, a saved place beside a bare day: forty-one literals,
+        enumerated rather than assumed. Nineteen are captures: eighteen
+        `corpusCase` rows added to `SemanticCorpusB.location`, plus the one
+        `LocationReminderTests` capture, `"Remind me to call Mom when I get
+        home tomorrow"`, which its three new tests share and which counts
+        once. Thirteen are `note:` arguments on those rows and nine are
+        assertion messages. One of the nine interpolates a place and a
+        temporal kind, and it counts once however many iterations print
+        it. The quoted "tonight" in the new comments is under twelve
+        characters and counts nothing. The development-set overlap stayed
+        at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +900,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4109)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -1769,6 +1769,137 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
     }
 
+    // MARK: A saved place beside a bare day is held too (DEL-11)
+    //
+    // The three "tonight" tests above pass because "tonight" resolves to a
+    // clock and reaches the parse's final return, the only place the hold used
+    // to be applied. A bare day took the date-only branch, which returned
+    // earlier. These three tests make the same assertions for "tomorrow".
+
+    /// The clock half must not fire for a bare day either.
+    ///
+    /// Falsifier: if any return path can still skip the hold, this capture
+    /// keeps the 9 AM reminder the date-only branch computes for tomorrow, and
+    /// `ReminderScheduleRequest` schedules it. That is what shipped before the
+    /// hold became a post-condition on `ThoughtOrganizer.organize`.
+    func testSavedPlaceBesideABareDaySchedulesNoClockReminder() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home, "the place is still understood")
+        XCTAssertEqual(item.temporalKind, .dateOnly, "the day the person named is kept, not thrown away")
+        XCTAssertNil(
+            item.reminderDate,
+            "a bare day beside a saved place must not carry a clock reminder"
+        )
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "no time notification may be scheduled for a place beside a day"
+        )
+    }
+
+    /// The place half stays unwatched, as it does for "tonight".
+    ///
+    /// Falsifier: if the stored reading lost its day (temporal kind `.none`),
+    /// the reconciler would watch Home and deliver on an arrival today, which
+    /// is the day the person ruled out.
+    func testSavedPlaceBesideABareDayIsExcludedFromMonitoring() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertTrue(
+            item.constrainsBothPlaceAndTime,
+            "the reconciler excludes exactly this, so the flag is the contract"
+        )
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+    }
+
+    /// Held for review, and named as a combined request.
+    ///
+    /// Falsifier: before the fix the date-only branch returned
+    /// `needsClarification: vagueTime`, which is false here, so nothing was
+    /// asked. The row sat on Today looking settled while its alert was armed.
+    func testSavedPlaceBesideABareDayGoesToReview() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    /// The hold is a post-condition on a finished reading, not a step in one
+    /// branch, so it is checked here on values the parser never produced.
+    ///
+    /// Falsifier: if the hold read how a reading was reached (which branch,
+    /// which temporal form) and not just its fields, one of the saved-place
+    /// cases would keep its reminder. If it read too little, the named place
+    /// or the place-only case would lose a reminder or gain a question that
+    /// the product contract says it must not.
+    func testPlaceAndTimeHoldReadsOnlyTheFinishedReading() {
+        let fire = Date(timeIntervalSince1970: 1_800_000_000)
+        func reading(_ place: PlaceReference?, _ kind: TemporalKind) -> OrganizedThought {
+            OrganizedThought(
+                itemType: .task,
+                category: .general,
+                priority: .normal,
+                personName: nil,
+                dueDate: fire,
+                reminderDate: fire,
+                reminderDelivery: .notification,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: TemporalIntent(kind: kind),
+                locationIntent: place.map { LocationIntent(event: .arrive, place: $0) }
+            )
+        }
+
+        for place in [PlaceReference.home, .work, .currentLocation] {
+            for kind in [TemporalKind.dateOnly, .exactDateTime, .relativeDuration,
+                         .calendarRecurrence, .durationRecurrence] {
+                let held = reading(place, kind).holdingPlaceAndTime()
+                XCTAssertNil(held.reminderDate, "\(place) beside \(kind) must not keep a clock")
+                XCTAssertEqual(held.reminderDelivery, .none)
+                XCTAssertTrue(held.needsClarification)
+                XCTAssertEqual(held.dueDate, fire, "the day or time that was said is kept")
+                XCTAssertEqual(held.temporalIntent.kind, kind)
+                XCTAssertEqual(held.locationIntent?.place, place)
+                XCTAssertEqual(held.holdingPlaceAndTime(), held, "holding twice changes nothing")
+            }
+        }
+
+        let named = reading(.named("costco"), .dateOnly)
+        XCTAssertEqual(named.holdingPlaceAndTime(), named, "a named place with a time keeps its time")
+        let placeOnly = reading(.home, TemporalKind.none)
+        XCTAssertEqual(placeOnly.holdingPlaceAndTime(), placeOnly, "no time was said, so nothing is held")
+        let timeOnly = reading(nil, .dateOnly)
+        XCTAssertEqual(timeOnly.holdingPlaceAndTime(), timeOnly, "no place was said, so nothing is held")
+    }
+
     /// The hold is only for places Speak It could actually enforce. A named
     /// business cannot be geofenced at all, so its stated time is the one
     /// trigger available and the capture acts on it instead of parking in

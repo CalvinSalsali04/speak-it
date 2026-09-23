@@ -541,6 +541,41 @@ The specifics:
   Preferring the place instead was also wrong — it fires on a 2pm arrival that
   "tonight" explicitly ruled out. Neither half alone is what was asked for, so
   the request waits rather than being silently halved.
+
+  *2026-09-23 (DEL-11).* Until this date the hold only covered a time that
+  resolved to a clock. "Remind me to call Mom when I get home tomorrow" armed
+  9 AM tomorrow and asked nothing, and so did every other bare day: a
+  weekday, "this weekend", a month and day, "today". A repeating time was
+  re-armed as well. The hold now runs as a post-condition on every reading
+  that leaves `ThoughtOrganizer.organize` (see `DECISIONS.md`, 2026-09-23).
+  Three things are still open:
+
+  - **A saved place beside an ambiguous time still watches the region.**
+    "Remind me to water the plants next week when I get home" asks for the
+    time and arms no clock. But an ambiguous resolution stores temporal
+    kind `.none`, so `constrainsBothPlaceAndTime` is false and the
+    reconciler watches Home. An arrival today would deliver the reminder.
+    The same applies to "4/5" and to a clock in the spring-forward gap.
+    Closing this needs either a stored marker that a time was said but not
+    resolved, or monitoring that also skips rows that need review. Both are
+    changes to the monitoring layer, not to the hold.
+  - **A place spoken before a bare weekday loses the place.** The place
+    terminator in `LocationIntentParser` stops at "tonight", "today",
+    "tomorrow", "this morning" and "on Friday". It does not stop at
+    "Friday", "this weekend", "next week", "the day after tomorrow" (its
+    "after" cuts the name at "home the day"), or a month name. So "when I
+    get home Friday, remind me to call Mom" reads a named place called
+    "home friday". A named place with a time lets the time win, so this
+    arms Friday at 9 AM and drops the place with no question asked. This is
+    the same outcome as DEL-11, reached through the place grammar instead of
+    the temporal branch, so the post-condition cannot see it: the reading
+    carries no watchable place. The corpus rows added for DEL-11 put the day
+    before the place, or use "on Friday", so that they test the hold and not
+    this.
+  - **Rows captured before the fix keep their alert.** No launch pass
+    re-reads them, and `ReminderScheduleRequest` does not consult
+    `constrainsBothPlaceAndTime`. Such a row fires once at its stored time.
+    Its region stays unwatched, as before.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

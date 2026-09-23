@@ -51,6 +51,58 @@ struct OrganizedThought: Equatable, Sendable {
     }
 }
 
+extension OrganizedThought {
+    /// True when this reading names a place Speak It can watch (Home, Work,
+    /// here) and also any time at all: a day, a weekday, a date, a part of
+    /// the day, a clock, or a repeat.
+    ///
+    /// Only the finished value is read, not how it was reached. That is why it
+    /// can be a post-condition: whichever branch produced the reading, a place
+    /// beside a time looks the same here. It is the parse-time twin of
+    /// `CapturedItem.constrainsBothPlaceAndTime`, which excludes the same items
+    /// from region monitoring, narrowed to the places the parser keeps beside
+    /// a time. (A named place with a time loses its location intent in
+    /// `TemporalIntentParser.parse`, so it never reaches this check with one.)
+    var holdsPlaceAndTime: Bool {
+        guard locationIntent?.place.isEnforceable == true else { return false }
+        return temporalIntent.kind != .none
+    }
+
+    /// The place-and-time hold, applied as a post-condition on a finished
+    /// reading.
+    ///
+    /// "When I get home tomorrow" constrains two triggers, and Speak It can
+    /// enforce only one of them at a time. Keeping the time fires at 9 AM
+    /// whether or not the person is home. Keeping the place fires on an
+    /// arrival today. So neither fires: no clock reminder, no delivery, and a
+    /// review question. The region half is already withheld by
+    /// `CapturedItem.constrainsBothPlaceAndTime`.
+    ///
+    /// These are exactly the semantics the "tonight" form always had from the
+    /// final return of `TemporalIntentParser.parse`. The day, the place, the
+    /// intent, the recurrence and the semantic state are all kept as spoken,
+    /// so review can offer either half back. Only the three fields that would
+    /// execute or stay silent change. A reading that is not a place beside a
+    /// time is returned unchanged.
+    func holdingPlaceAndTime() -> OrganizedThought {
+        guard holdsPlaceAndTime else { return self }
+        return OrganizedThought(
+            itemType: itemType,
+            category: category,
+            priority: priority,
+            personName: personName,
+            dueDate: dueDate,
+            reminderDate: nil,
+            reminderDelivery: .none,
+            recurrenceRule: recurrenceRule,
+            needsClarification: true,
+            temporalIntent: temporalIntent,
+            locationIntent: locationIntent,
+            state: state
+        )
+    }
+}
+
 /// People ask for the same thing two ways: the verb form ("remind me to call
 /// Ana") and the noun form ("give me a reminder to call Ana", "set a reminder
 /// for 5pm"). Only the verb form used to be recognized, so every noun-form
@@ -806,11 +858,41 @@ enum ThoughtOrganizer {
         return timing.intent.kind == .none || timing.needsClarification
     }
 
+    /// Reads one capture into what Speak It will store and schedule.
+    ///
+    /// **Every reading leaves through `OrganizedThought.holdingPlaceAndTime()`.**
+    /// A saved place beside any time is held for review with no clock
+    /// reminder, and that rule is enforced here, after all the other rules
+    /// have run, instead of inside any one branch. It used to be computed in
+    /// the middle of `TemporalIntentParser.parse` and consumed only by that
+    /// function's last return. The date-only branch returned before reaching
+    /// it, so "remind me to call Mom when I get home tomorrow" armed 9 AM and
+    /// asked nothing. The recurrence rescue further down this file re-armed a
+    /// held reading too. The hold reads only the finished value, so a return
+    /// added later above this line cannot skip it. See Docs/DECISIONS.md,
+    /// 2026-09-23.
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
         calendar: Calendar = .autoupdatingCurrent,
         contentScopeIsMemory: Bool = false
+    ) -> OrganizedThought {
+        organizeBeforeHolds(
+            text,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            contentScopeIsMemory: contentScopeIsMemory
+        ).holdingPlaceAndTime()
+    }
+
+    /// Everything `organize` decides except the place-and-time hold. Private
+    /// on purpose: its output may still carry a clock reminder beside a saved
+    /// place, and no caller is allowed to see that.
+    private static func organizeBeforeHolds(
+        _ text: String,
+        referenceDate: Date,
+        calendar: Calendar,
+        contentScopeIsMemory: Bool
     ) -> OrganizedThought {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()
@@ -2322,10 +2404,13 @@ private enum TemporalIntentParser {
         // in one hour" acts on the hour, and the name still labels the
         // shopping list. The place words survive on the untouched transcript
         // either way.
-        let placeIsEnforceable: Bool = switch parsedLocation?.place {
-        case .home, .work, .currentLocation: true
-        case .named, nil: false
-        }
+        //
+        // This decides only whether the place is *kept*. The hold itself (no
+        // clock reminder, and a review question) is applied to every reading
+        // that leaves `ThoughtOrganizer.organize`, by
+        // `OrganizedThought.holdingPlaceAndTime()`. The date-only branch
+        // below returns early, and it used to skip the hold.
+        let placeIsEnforceable = parsedLocation?.place.isEnforceable ?? false
         let combinesPlaceAndTime = placeIsEnforceable && resolution.intent.kind != .none
         let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
             ? parsedLocation
@@ -2374,7 +2459,10 @@ private enum TemporalIntentParser {
 
         let reminderHasPassed = resolvedReminder.map { $0 <= referenceDate } ?? false
         // Dropped for a combined request too, so no notification is scheduled
-        // against a clock the person also constrained by place.
+        // against a clock the person also constrained by place. This line only
+        // covers the final return. The guarantee is
+        // `OrganizedThought.holdingPlaceAndTime()`, which also covers the
+        // date-only early returns below.
         let reminderDate = (reminderHasPassed || combinesPlaceAndTime) ? nil : resolvedReminder
 
         let vagueTime = containsAny(semanticText, [" later", "soon", "sometime", "when i can", "eventually"])

@@ -1,5 +1,124 @@
 # Decisions
 
+## 2026-09-23 — A saved place beside a time is held after organizing, not in one branch of it
+
+**DEL-11, exit-gate P0: an unresolved condition executing unconditionally.**
+Before this change, "Remind me to call Mom when I get home tomorrow" stored
+place Home, `temporalKind .dateOnly`, a 9 AM `reminderDate` and
+`needsClarification false`. `CapturedItem.constrainsBothPlaceAndTime` kept
+the region unwatched, a notification was armed for 9 AM tomorrow, and nothing
+was asked. "…when I get home tonight" was held correctly, and three
+`LocationReminderTests` say so.
+
+**Cause.** The hold was a local `let` in `TemporalIntentParser.parse`
+(`reminderDate = (… || combinesPlaceAndTime) ? nil : …`, and the matching
+`needsClarification` disjunct), and only the function's last `return`
+consumed it. The date-only branch returns earlier, twice, and neither return
+reads `combinesPlaceAndTime`. "Tonight" resolves to a clock, skips that
+branch and reaches the last return, which is why it worked.
+
+**Hypothesis.** The hold is lost whenever a reading reaches storage by any
+return other than that last one. The family is therefore every such return,
+not the word "tomorrow". **Falsifier.** After the fix, any capture that has a
+saved place (Home, Work or here) and a non-`none` temporal kind, but still
+comes out of `organize` with a reminder date, a delivery, or no review
+question. The reverse also counts: if a place alone, a time alone, or a named
+place with a time changes, the hold is reading more than it should.
+
+### The family: every return that could skip the hold
+
+In `TemporalIntentParser.parse` (only `organize` and `hasUnresolvedCondition`
+call it, because `ParsedTiming` is file-private):
+
+| Return | Temporal forms that reach it | Read `combinesPlaceAndTime`? | Before this change |
+| --- | --- | --- | --- |
+| Date-only branch, alert found (`reminderDate: alert`) | "tomorrow", "the day after tomorrow", "today" (9 AM, or 8 PM once 9 AM has passed), a weekday ("on Friday", "next Friday"), "this weekend", month-day ("August 20th", "the 15th"), an unambiguous numeric date, "end of month", "by end of day", "within two weeks" | No | **Armed a clock and asked nothing** |
+| Date-only branch, day too late for any alert (`reminderDate: nil`, `needsClarification: vagueTime`) | The same forms, once the stated day has no default hour left, e.g. "today" after 8 PM | No | Fired nothing, asked nothing, and watched no region. The reminder was silently lost |
+| Final return | Day plus part of day ("tomorrow morning", "Friday afternoon", "tonight", "this evening"), day plus clock, a bare clock, "in two days", "in an hour" | Yes | Held |
+| Final return, ambiguous resolution | "next week", "4/5", a clock that falls in the spring-forward gap | Not needed: the intent is `.none` and `isAmbiguous` asks | Clock half held. **Region half watched**: see `KNOWN_ISSUES.md` |
+| Any return, no reminder asked for | "Call Mom tomorrow when I get home" | The date-only branch needs `wantsReminder`, so this always reached the final return | Held |
+
+In `ThoughtOrganizer.organize`, the only caller whose output is stored:
+
+| Path | Re-read the hold? | Before this change |
+| --- | --- | --- |
+| Type-promotion reparse | Calls `parse` again, so the same returns as above | Same as above |
+| Due/reminder clause split (`DueAndReminderClauses`) | No. It rebuilds `ParsedTiming` from `reminderPass.reminderDate` | A reminder clause that took the date-only branch, or a place held only in the due clause, came back armed |
+| Recurrence rescue (`wantsRecurringReminder`) | No. It re-arms `reminderDate = recurringDate` whenever `timing.delivery == .none`, and `needsClarification` is ANDed with `recurringDate == nil` | **Re-armed any held reading that repeats** ("every Friday … when I get home", "every morning when I get to work") and dropped its review |
+| Knowledge reset, Memory scope, unresolved constraint, unfinished thought, unsettled time, unsupported condition, ambiguous follow-up target | Each passes `locationIntent: nil` and `reminderDate: nil` | Nothing to hold |
+
+The `unsupportedCondition` net in `organize` cannot catch any of these.
+`unsupportedCondition` requires `locationIntent == nil`, and a saved place
+beside a time always keeps its location intent.
+
+### The decision
+
+**The hold is a post-condition on the finished reading.** `organize` is now a
+single expression, `organizeBeforeHolds(...).holdingPlaceAndTime()`. The old
+body is private under the new name. `OrganizedThought.holdingPlaceAndTime()`
+reads only the value's own fields: a place that `PlaceReference.isEnforceable`
+says can be watched, and `temporalIntent.kind != .none`. When both hold it sets
+`reminderDate` to nil, `reminderDelivery` to `.none` and `needsClarification`
+to true, and it keeps everything else as said: due date, intent, place,
+recurrence and state. These are exactly the fields the "tonight" form always
+had. The hold does not depend on which branch produced a reading, so a return
+added to `parse` or `organize` later cannot skip it.
+`TemporalIntentParser.parse` and the hold both read `isEnforceable`, so they
+cannot disagree about which places hold.
+
+`parse` still drops the reminder on its own final return. That line is now
+redundant for safety. It stays because type promotion in `organize` reads
+`timing.delivery`, and removing it would make held "tonight" captures that
+were typed as notes become tasks. That would be a second change.
+
+Rejected alternatives:
+
+- **Patching the date-only branch.** It closes the two returns in the finding
+  and leaves the split and the recurrence rescue open. The next early return
+  would reopen the family.
+- **Holding inside `OrganizedThought.init`.** That would make the rule
+  impossible to bypass. But an initializer that rewrites its arguments
+  surprises every construction site in `ThoughtExtractor`, the repository
+  and the Foundation Models bridge. Each of those copies
+  `organize`'s output or builds one without a place, so the organize boundary
+  covers them already.
+- **Refusing the clock in `ReminderScheduleRequest`.** That stops the
+  notification but still asks nothing, so the person never learns that the
+  request was not understood.
+
+### What could move, and what cannot
+
+Could move: the 18 rows added to `SemanticCorpusB.location` and the four
+tests added to `LocationReminderTests`. Any capture that pairs Home, Work or
+here with a date-only day or a recurrence now asks instead of alerting. No
+existing corpus row or test does that. A search of `SpeakItTests` for the
+five `LocationIntentParser` leads beside every temporal form found only
+places beside a clock ("tonight", "after 6"), and those were already held.
+
+Cannot move: the conditional-intent fixture (72/72,
+`Tools/CorpusRunner/devsets/conditional-intent-10k.jsonl`, scored by
+`conditional-intent-score.py`) and the cancellation-scope fixture (187/187,
+`cancellation-scope-10k.jsonl`, scored by `cancellation-scope-score.py`).
+The hold changes a reading only when `locationIntent` is non-nil, and that
+needs one of `LocationIntentParser`'s five lead patterns in the text. None of
+the 72 or 187 utterances contains any lead: a scan with the parser's own
+patterns found 0 of 259. Separately, every conditional-intent row passes
+only as `unsupportedCondition`, which requires `locationIntent == nil`. The
+cancellation scorer reads item presence, titles and scoped operations. The
+hold changes none of those.
+
+Not fixed here, because each is a different layer. Both are in
+`KNOWN_ISSUES.md`:
+
+- A saved place beside an *ambiguous* time ("next week") asks, but its
+  region is still watched.
+- `LocationIntentParser`'s place terminator does not stop at a bare weekday,
+  "this weekend", "the day after", or a month name. So "when I get home
+  Friday" reads as a named place called "home friday", the time wins, and
+  the place is dropped.
+
+Rows stored before this change keep the reminder they were given.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
