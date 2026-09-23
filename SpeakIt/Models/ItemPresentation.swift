@@ -253,17 +253,24 @@ struct ItemPresentation: Equatable, Sendable {
     /// location monitor's reconcile filter and both crossing-handler guards)
     /// and by `.heldPlace` here.
     ///
-    /// Either mark counts, unlike `mayArmTime`. The location mark is the
-    /// person's own place, and it is the one that survives a reorganize. The
-    /// temporal mark means the last write was an editor save of the whole row,
-    /// place included: the save does not mark an unchanged place, so without
-    /// it turning Needs review on by hand would silence the person's own place
-    /// reminder. A reorganize rewrites the temporal intent, so that mark
-    /// cannot outlive a re-read the person has not seen.
+    /// Only the location mark counts, as only the temporal mark counts for
+    /// `mayArmTime`: each trigger is released by the person's confirmation of
+    /// that trigger and nothing else. Every save in the editor marks a place
+    /// it leaves present `isUserEdited`, the same way it marks the time, so
+    /// a person who turns Needs review on by hand keeps their place reminder
+    /// (E19). `apply` keeps a hand-set place with its mark and re-reads any
+    /// other, so the mark always belongs to the place it sits on.
+    ///
+    /// The time's mark is not read here, because it can sit beside a place
+    /// nobody confirmed. The person clears the time and removes the parsed
+    /// place in the editor, which marks the empty time; Organize again, once a
+    /// re-read keeps a hand-set time with its mark, re-reads the place and the
+    /// hold. Reading the time's mark would then watch that re-read place on a
+    /// row held for review. (Beside a time that is set, a place is a combined
+    /// request, which is never watched whatever this returns.)
     static func mayArmPlace(_ item: CapturedItem) -> Bool {
         guard item.needsClarification else { return true }
         return item.locationIntent?.isUserEdited == true
-            || item.temporalIntent?.isUserEdited == true
     }
 
     /// The alert kind that will fire for a timed item, and the only answer to

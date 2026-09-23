@@ -928,7 +928,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         its list"`, `"the held entry is still on the list"` and `"a held
         proposal creates no morning"`, and one is removed, `"the held list
         is the silent one"`, whose claim is no longer true. Every fixture
-        was already here. What the test
+        was already here. 4121 -> 4129 the same day, from the place half
+        of the hold reading only the place's mark: two tests in
+        `LocationReminderTests` add eight literals, enumerated by diffing
+        this census. Seven are assertion messages, `"the save confirmed the
+        place it showed"`, `"confirming is not a new trigger"`, `"the saved
+        place is delivered"`, `"precondition: the time carries the mark"`,
+        `"precondition: the place does not"`, `"precondition: a place
+        alone"` and `"a place nobody confirmed is not delivered"`; the
+        eighth is a KNOWN_ISSUES heading a doc comment quotes, `"Saving
+        counts as confirming"`. The transcript, the title and
+        `"precondition: the system holds it"` were already here. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -942,7 +952,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4121)
+        self.assertEqual(len(space), 4129)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
