@@ -464,7 +464,18 @@ private final class BackgroundCaptureCoordinator {
 
         do {
             await CaptureActivityManager.showOrganizing(normalized)
-            let result = try await ExternalCaptureWriter.save(normalized, createdAt: createdAt)
+            // The writer records the handoff on this draft before it commits,
+            // so a kill between the commit and the clear below is released at
+            // the next launch instead of re-transcribed into a second session.
+            // This coordinator is compiled out; the shipped hardware route is
+            // `BeginListeningIntent` into `CaptureView.save`, which hands off
+            // the same way. Kept correct so reviving it cannot bring the
+            // duplicate back.
+            let result = try await ExternalCaptureWriter.save(
+                normalized,
+                createdAt: createdAt,
+                handingOff: draftID
+            )
             CaptureDraftStore.clear(id: draftID)
             activeDraftID = nil
             captureStartedAt = nil
@@ -590,7 +601,16 @@ private enum ExternalCaptureWriter {
         let needsInterpretationConfirmation: Bool
     }
 
-    static func save(_ thought: String, createdAt: Date = .now) async throws -> Result {
+    /// `draftID` is the checkpoint holding these words, when there is one. It
+    /// carries the handoff, so the caller must clear it only after this
+    /// returns. The shipped caller, `SaveThoughtIntent.perform`, saves a
+    /// thought passed in by Shortcuts or Siri, has no draft, and passes nil;
+    /// only the compiled-out `BackgroundCaptureCoordinator` passes one.
+    static func save(
+        _ thought: String,
+        createdAt: Date = .now,
+        handingOff draftID: UUID? = nil
+    ) async throws -> Result {
         guard PersistenceController.initializationError == nil else {
             throw RepositoryError.storageUnavailable
         }
@@ -611,14 +631,26 @@ private enum ExternalCaptureWriter {
         let repository = SwiftDataThoughtRepository(
             modelContext: PersistenceController.shared.mainContext
         )
-        let capture = try await repository.createCaptureResult(
-            text: thought,
-            source: isTutorialTest ? .tutorial : .shortcut,
-            createdAt: createdAt,
-            // The outside-the-app path awaits and verifies one schedule below.
-            // Avoid a second asynchronous scheduler racing the verified request.
-            schedulesReminders: false
-        )
+        // Handed off even when the draft is `.shortcut` and the session is
+        // `.tutorial`: source-scoped dedupe can never match that pair, so
+        // without the handoff a killed practice save would always come back as
+        // a real capture. The clamped words are the ones handed to the session.
+        let capture = try await CaptureDraftStore.handOff(
+            draftID: draftID,
+            transcript: thought
+        ) { sessionID in
+            try await repository.createCaptureResult(
+                text: thought,
+                source: isTutorialTest ? .tutorial : .shortcut,
+                createdAt: createdAt,
+                // The outside-the-app path awaits and verifies one schedule
+                // below. Avoid a second asynchronous scheduler racing the
+                // verified request.
+                schedulesReminders: false,
+                performance: nil,
+                sessionID: sessionID
+            )
+        }
         if capture.createdNewCapture, !isTutorialTest {
             SubscriptionStore.recordBackgroundCapture(now: createdAt)
         }

@@ -812,6 +812,26 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.draft(id: draft.id)?.handedOffSessionID)
     }
 
+    /// The same rule for late audio recovery, which writes its words onto the
+    /// draft directly rather than through `update`. Both branches are in this
+    /// tree, so the rule has to hold for both writers.
+    ///
+    /// Falsifier: drop the withdrawal from `leaveRecoveredWordsForToday` and a
+    /// stale handoff whose session did commit makes the next launch release
+    /// the draft and its recording, taking the newer words with it.
+    func testLeavingDifferentRecoveredWordsWithdrawsTheHandoff() throws {
+        let (draft, sessionID) = seedHandedOffDraft(
+            "Text Jordan the gate code",
+            source: .inAppVoice
+        )
+
+        CaptureDraftStore.leaveRecoveredWordsForToday(id: draft.id, transcript: "Text  Jordan the gate code ")
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.handedOffSessionID, sessionID)
+
+        CaptureDraftStore.leaveRecoveredWordsForToday(id: draft.id, transcript: "Text Jordan the new gate code")
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id)?.handedOffSessionID)
+    }
+
     /// `CaptureSession.id` is unique, and SwiftData turns a second insert with
     /// the same unique value into an update. A reused handoff ID must never
     /// become a way to rewrite a person's original words.
@@ -843,6 +863,157 @@ final class DurabilityTests: XCTestCase {
         let sessions = try allSessions()
         XCTAssertEqual(sessions.count, 1)
         XCTAssertEqual(sessions.first?.originalTranscription, "Water the tomatoes tonight")
+    }
+
+    // MARK: - 4c. The saves that hand off through `CaptureDraftStore.handOff`
+
+    /// Today's typed recovery and the Save Thought intent's writer both save
+    /// through `handOff`, and both are private to a view or to the intent's
+    /// file, so this is the lowest seam either has. The commit closure is where the repository call sits in
+    /// production; it reads the draft first, which is the moment a kill would
+    /// have to find the handoff already written.
+    private func commitThroughHandOff(
+        draftID: UUID,
+        words: String,
+        source: CaptureSource
+    ) async throws -> (result: CaptureCreationResult, sessionID: UUID) {
+        var committedID: UUID?
+        let result = try await CaptureDraftStore.handOff(
+            draftID: draftID,
+            transcript: words
+        ) { (sessionID: UUID) async throws -> CaptureCreationResult in
+            let before = CaptureDraftStore.draft(id: draftID)
+            XCTAssertEqual(
+                before?.handedOffSessionID,
+                sessionID,
+                "The draft must carry the handoff before the commit starts"
+            )
+            XCTAssertEqual(before?.transcript, words)
+            committedID = sessionID
+            return try await repository.createCaptureResult(
+                text: words,
+                source: source,
+                createdAt: before?.startedAt ?? .now,
+                schedulesReminders: false,
+                performance: nil,
+                sessionID: sessionID
+            )
+        }
+        return (result, try XCTUnwrap(committedID))
+    }
+
+    /// F1, the practice case. `ExternalCaptureWriter` commits a practice
+    /// capture as `.tutorial` from a `.shortcut` draft, and source-scoped
+    /// dedupe can never match that pair. Killed between the commit and
+    /// `CaptureDraftStore.clear`, the next launch's audio pass would
+    /// re-transcribe the recording into a second, real capture. The one caller
+    /// that passes the writer a draft is compiled out today (the shipped
+    /// hardware route is `CaptureView.save`, pinned by
+    /// `testAKilledPracticeSaveIsNotReplayedAsARealCapture`); this pins the
+    /// helper that route would use, with the mismatched sources.
+    ///
+    /// Falsifier: drop the `recordHandoff` call from `handOff`, or move it
+    /// after `commit`, and the in-closure assertion fails and the draft
+    /// survives the relaunch with its recording, listed for the audio pass.
+    /// Making the release compare the draft's source with the session's would
+    /// fail the same way.
+    func testAKilledIntentPracticeSaveIsReleasedDespiteItsDifferentSource() async throws {
+        let startedAt = Date().addingTimeInterval(-120)
+        let draft = CaptureDraftStore.begin(at: startedAt)
+        XCTAssertEqual(draft.captureSource, .shortcut)
+        let audioURL = try writeRecording(for: draft)
+        let words = "Tomorrow at 9, ask Maya about the proposal."
+        CaptureDraftStore.update(id: draft.id, transcript: words, at: startedAt)
+
+        let (result, sessionID) = try await commitThroughHandOff(
+            draftID: draft.id,
+            words: words,
+            source: .tutorial
+        )
+        XCTAssertEqual(result.session.id, sessionID)
+        XCTAssertEqual(result.session.captureSource, .tutorial)
+        // Killed here: the intent's `CaptureDraftStore.clear(id:)` never ran.
+        XCTAssertNotNil(CaptureDraftStore.draft(id: draft.id))
+
+        relaunch()
+
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id), "A committed handoff releases its draft")
+        XCTAssertTrue(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1, "A committed practice save must not be replayed")
+        XCTAssertEqual(sessions.first?.id, sessionID)
+        XCTAssertEqual(sessions.first?.captureSource, .tutorial)
+    }
+
+    /// F2. Today's typed recovery saves the person's own retyping of a
+    /// recording that did not transcribe well, then deletes the recording. A
+    /// kill between the two left the recording for the audio pass, whose
+    /// re-transcription is by the premise of that screen different from the
+    /// typed words, so dedupe would not have caught it.
+    ///
+    /// Falsifier: drop the `recordHandoff` call from `handOff` (or save the
+    /// typed words with the five-argument `createCaptureResult` again) and the
+    /// voice draft is still listed with its recording after the relaunch.
+    func testAKilledTypedRecoveryIsNotLeftForTheAudioPassToReplay() async throws {
+        let startedAt = Date().addingTimeInterval(-600)
+        let draft = CaptureDraftStore.begin(source: .inAppVoice, at: startedAt)
+        let audioURL = try writeRecording(for: draft)
+        CaptureDraftStore.markFailed(id: draft.id, message: "No speech detected")
+        let typed = "Pick up the dry cleaning on Thursday"
+
+        let (_, sessionID) = try await commitThroughHandOff(
+            draftID: draft.id,
+            words: typed,
+            source: .inAppText
+        )
+        // Killed here: `CaptureDraftStore.deleteRecording(id:)` never ran.
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [draft.id],
+            "The seeded recording must be one the audio pass would replay"
+        )
+
+        relaunch()
+
+        XCTAssertTrue(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.id, sessionID)
+        XCTAssertEqual(sessions.first?.originalTranscription, typed)
+    }
+
+    /// The control for both. A commit that throws before anything reaches the
+    /// store leaves the handoff naming a session that does not exist, so the
+    /// release keeps the draft, its words and its recording, and the error
+    /// reaches the caller, which is what lets typed recovery say nothing was
+    /// removed.
+    ///
+    /// Falsifier: have `handOff` swallow the error, or clear the draft itself,
+    /// and the words that never reached the store are gone.
+    func testAHandOffWhoseCommitThrowsKeepsTheDraftForReplay() async throws {
+        let draft = CaptureDraftStore.begin(source: .inAppVoice)
+        let audioURL = try writeRecording(for: draft)
+        let typed = "Pick up the dry cleaning on Thursday"
+
+        do {
+            _ = try await CaptureDraftStore.handOff(
+                draftID: draft.id,
+                transcript: typed
+            ) { (_: UUID) async throws -> CaptureCreationResult in
+                throw RepositoryError.storageUnavailable
+            }
+            XCTFail("The commit's error must reach the caller")
+        } catch {}
+
+        repository.releaseHandedOffCaptureDrafts()
+
+        let kept = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        XCTAssertNotNil(kept.handedOffSessionID)
+        XCTAssertEqual(kept.transcript, typed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertTrue(try allSessions().isEmpty)
     }
 
     // MARK: - 5. Device clock destruction

@@ -438,7 +438,10 @@ struct RootView: View {
             CaptureDraftStore.pruneResolvedTombstones()
             // Before either replay path runs: a draft whose words already
             // reached a committed session must not be replayed into another,
-            // and the audio pass would otherwise re-transcribe it first.
+            // and the audio pass would otherwise re-transcribe it first. This
+            // line is the audio pass's only protection; the release inside
+            // `recoverInterruptedCaptureDraft` covers the text pass alone.
+            // Keep it above `recoverInterruptedAudioDrafts()`.
             repository?.releaseHandedOffCaptureDrafts()
             await recoverInterruptedAudioDrafts()
             repository?.recoverUnorganizedCaptures()
@@ -1346,11 +1349,22 @@ struct RootView: View {
             }
 
             do {
+                // The payload's own ID is the session's: the share extension
+                // mints it once and it names the inbox file. A kill between this
+                // commit and the removal below leaves a file whose session is
+                // already in the store, and the next import gets that session
+                // back unchanged (`createdNewCapture` false, so nothing is
+                // charged or counted twice) and removes the file. Dedupe
+                // usually caught this before, because a replay carries the
+                // payload's own `createdAt`, text and source; the ID makes it
+                // exact instead of depending on the fingerprint and the window.
                 let result = try await repository.createCaptureResult(
                     text: text,
                     source: .shareSheet,
                     createdAt: pending.payload.createdAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: pending.payload.id
                 )
                 SharedCaptureInbox.remove(at: pending.url)
                 if result.createdNewCapture {

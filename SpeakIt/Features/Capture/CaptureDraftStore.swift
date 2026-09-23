@@ -128,6 +128,33 @@ enum CaptureDraftStore {
         persist(drafts)
     }
 
+    /// The whole handoff, for a save that commits in one call: name the
+    /// session, record that name on the draft with the words, and only then
+    /// commit under it. The caller clears the draft after this returns, as
+    /// before; a kill between the two is what the handoff exists for.
+    ///
+    /// `CaptureView.save` and the two audio recoveries write the same three
+    /// steps inline, because their commit is wrapped in work this cannot
+    /// express. Today's typed recovery and the Save Thought intent's writer go
+    /// through here, so the order is written once and tested once. With no
+    /// draft there is nothing to hand off and the commit runs under a fresh ID.
+    ///
+    /// The draft's source does not matter and is not compared: a typed
+    /// recovery commits as `.inAppText` from a voice draft, and a practice
+    /// capture commits as `.tutorial` from whatever its draft was. The release
+    /// looks the session up by ID alone.
+    static func handOff<T>(
+        draftID: UUID?,
+        transcript: String,
+        commit: (_ sessionID: UUID) async throws -> T
+    ) async rethrows -> T {
+        let sessionID = UUID()
+        if let draftID {
+            recordHandoff(id: draftID, transcript: transcript, sessionID: sessionID)
+        }
+        return try await commit(sessionID)
+    }
+
     /// Every draft that recorded a handoff, whether or not it committed.
     /// Deciding which ones did needs the store, so that is the repository's.
     static func handedOffDrafts() -> [Draft] {
@@ -175,6 +202,11 @@ enum CaptureDraftStore {
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !normalized.isEmpty {
+            if normalized != drafts[index].transcript {
+                // The same rule as `update`: a handoff vouches only for the
+                // words it was recorded with, and these were never handed on.
+                drafts[index].handedOffSessionID = nil
+            }
             drafts[index].transcript = normalized
         }
         drafts[index].recoveryStatusRawValue = RecoveryStatus.capturing.rawValue

@@ -1941,12 +1941,23 @@ struct CaptureHistoryView: View {
         }
 
         do {
-            _ = try await repository.createCaptureResult(
-                text: typed,
-                source: .inAppText,
-                createdAt: draft.startedAt,
-                schedulesReminders: true
-            )
+            // Handed off like the recovery above. Here a replay would almost
+            // never be caught by dedupe: the person is typing because the
+            // recording's words came out wrong, so re-transcribing it at the
+            // next launch gives different words from these.
+            _ = try await CaptureDraftStore.handOff(
+                draftID: draft.id,
+                transcript: typed
+            ) { sessionID in
+                try await repository.createCaptureResult(
+                    text: typed,
+                    source: .inAppText,
+                    createdAt: draft.startedAt,
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
+                )
+            }
             CaptureDraftStore.deleteRecording(id: draft.id)
             typingSelection = nil
             reloadDrafts()

@@ -1654,7 +1654,18 @@ struct CaptureView: View {
 
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
-        guard let thisSave = presentation.beginSave() else { return }
+        guard let thisSave = presentation.beginSave() else {
+            // Refused because another save of this screen is running. Only
+            // checkpoint the words: a handoff here would overwrite the running
+            // save's with a session that is never committed, and a kill after
+            // that save commits would replay its words into a second session.
+            // Different words withdraw the running handoff (see `update`), so
+            // a kill replays them, which keeps the thought.
+            if let activeDraftID {
+                CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+            }
+            return
+        }
         // Held here rather than read back from `@State` after the `await`: the
         // screen may be gone by then, and a torn-down view's `@State` is not a
         // reliable thing to read. The retry source matters most of the three:

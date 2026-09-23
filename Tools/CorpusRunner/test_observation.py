@@ -947,7 +947,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         because the two branches' test literals share none; that is the
         merged tree measured, not the two figures added. The
         development-set overlap stayed at 114, checked
-        by regenerating `LANGUAGE_BASELINE.md` rather than assumed. What the test
+        by regenerating `LANGUAGE_BASELINE.md` rather than assumed.
+        4153 -> 4156 on 2026-09-23, when the Save Thought intent and
+        Today's typed recovery came to hand off through
+        `CaptureDraftStore.handOff`, and late audio recovery came to
+        withdraw a handoff as `update` does: four test methods in
+        `DurabilityTests.swift` and three literals, enumerated. One is a
+        fixture, `"Pick up the dry cleaning on Thursday"`, the typed words,
+        used twice. Two are assertion messages, `"The draft must carry the
+        handoff before the commit starts"` and `"The commit's error must
+        reach the caller"`. The rest add nothing: the practice sentence,
+        `"No speech detected"`, the gate-code fixtures the withdrawal
+        test reuses and the reused assertion messages are already
+        counted. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -961,7 +973,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4153)
+        self.assertEqual(len(space), 4156)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

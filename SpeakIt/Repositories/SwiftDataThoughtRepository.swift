@@ -241,9 +241,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// case it exists for.
     func recoverInterruptedCaptureDraft() {
         // A checkpoint whose words already reached a committed session is not
-        // interrupted; replaying it is how one thought became two. `RootView`
-        // releases these before the audio pass as well, and doing it here too
-        // keeps this entry point correct without relying on its caller.
+        // interrupted; replaying it is how one thought became two. Releasing
+        // here protects this text pass whoever calls it. It does nothing for
+        // the audio pass, which runs earlier and re-transcribes any draft with
+        // a recording: that pass is protected only by `RootView` calling
+        // `releaseHandedOffCaptureDrafts()` before
+        // `recoverInterruptedAudioDrafts()`, so that ordering is load-bearing
+        // and this call does not make it redundant.
         releaseHandedOffCaptureDrafts()
         while let draft = CaptureDraftStore.recoverable() {
             // Same guard as `recoverUnorganizedCaptures`: a checkpoint whose
@@ -288,21 +292,28 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     /// Releases every draft whose words provably reached the store.
     ///
-    /// `CaptureView.save` records the session ID on the draft before it
-    /// commits that session, and clears the draft only after persistence
-    /// returns. A kill between the two used to leave both behind, and launch
-    /// recovery replayed the draft into a second session: always for a
+    /// A save of a draft's words records the session ID on the draft before
+    /// it commits that session, and clears the draft only after persistence
+    /// returns (`CaptureView.save`, the two audio recoveries, and
+    /// `CaptureDraftStore.handOff` for Today's typed recovery and the Save
+    /// Thought intent's writer). A kill between the two used to leave both behind, and
+    /// launch recovery replayed the draft into a second session: always for a
     /// practice capture, whose session is `.tutorial` while its draft is not,
     /// and for a voice capture whenever re-transcribing the recording came out
     /// in different words. A committed session is finished by
     /// `recoverUnorganizedCaptures`, so the draft has nothing left to protect.
     ///
     /// Proof is the session itself, read from the store. A handoff whose
-    /// session is absent — killed before the commit, or the commit failed — is
-    /// left exactly as it was and replayed, because a duplicate is recoverable
-    /// and a lost thought is not. The recording is deleted only on the release
-    /// path, which is the same point a normal save deletes it: after the words
-    /// are durable.
+    /// session is not found is left exactly as it was and replayed, because a
+    /// duplicate is recoverable and a lost thought is not. There are three ways
+    /// not to find it: killed before the commit, the commit failed, or the
+    /// lookup itself threw. The `try?` folds the third into the first two on
+    /// purpose, so it conflates "the store failed" with "no such session" in
+    /// the direction that keeps the words. Whatever replaces the `try?` must
+    /// never treat a failed read as proof of a commit.
+    ///
+    /// The recording is deleted only on the release path, which is the same
+    /// point a normal save deletes it: after the words are durable.
     func releaseHandedOffCaptureDrafts() {
         for draft in CaptureDraftStore.handedOffDrafts() {
             guard let sessionID = draft.handedOffSessionID,
