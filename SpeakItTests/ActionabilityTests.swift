@@ -1190,4 +1190,48 @@ extension ActionabilityTests {
         XCTAssertEqual(ActionabilityReader.read("Sarah said I should call Mike but I already did"), .knowledge)
     }
 
+    /// The report verbs the codebase already read as reports: "reminded me"
+    /// (`isReportedSpeech`) and the message verbs
+    /// (`CaptureOperationDetector.reportVerb`). Without them in the advice
+    /// frame these kept the confident, dated task case 4 exists to hold.
+    func testAdviceReportedByReminderOrMessageIsHeldWithNothingArmed() {
+        for text in [
+            "Sarah reminded me I should call Mike",
+            "Sarah texted me that I should call Mike tomorrow at 3",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .advised, text)
+            let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(item.state, .underspecified(.reportedSpeech), text)
+            XCTAssertTrue(item.needsClarification, text)
+            XCTAssertFalse(item.itemType.isActionable, text)
+            XCTAssertNil(item.dueDate, text)
+            XCTAssertNil(item.reminderDate, text)
+            XCTAssertEqual(item.reminderDelivery, .none, text)
+            XCTAssertNil(item.recurrenceRule, text)
+            XCTAssertNil(item.locationIntent, text)
+
+            let items = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertTrue(items.contains { $0.organization.state == .underspecified(.reportedSpeech) }, text)
+            for row in items {
+                XCTAssertNil(row.organization.dueDate, text)
+                XCTAssertNil(row.organization.reminderDate, text)
+                XCTAssertEqual(row.organization.reminderDelivery, .none, text)
+                XCTAssertNil(row.organization.recurrenceRule, text)
+            }
+        }
+    }
+
+    /// The control for the test above. A bare infinitive after "reminded me"
+    /// is an instruction handed to the person, case 3, and stays the errand
+    /// it was: adding the verb to the advice frame must not reach it.
+    func testReminderToDoSomethingStaysAnErrand() {
+        let text = "Sarah reminded me to call Mike"
+        XCTAssertEqual(ActionabilityReader.read(text), .actionable)
+        let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertTrue(item.itemType.isActionable)
+        XCTAssertNotEqual(item.state, .underspecified(.reportedSpeech))
+    }
+
 }

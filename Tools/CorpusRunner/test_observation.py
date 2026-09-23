@@ -887,7 +887,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         ruling, so the edit counts once each way rather than not at all.
         This time the overlap moved, 114 -> 115: "Sarah told me to call
         Mike" is `routed.tsv` row AO04 verbatim, found by regenerating
-        `LANGUAGE_BASELINE.md` rather than by reading. What the test
+        `LANGUAGE_BASELINE.md` rather than by reading. 4102 -> 4105 on
+        2026-09-23, from the grade of #151 (F1) adding the reminder and
+        message verbs to the advice frame: three utterances in two
+        `ActionabilityTests` methods, `"Sarah reminded me I should call
+        Mike"`, `"Sarah texted me that I should call Mike tomorrow at
+        3"` and the case-3 control `"Sarah reminded me to call Mike"`,
+        enumerated with the census helper, none out. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -901,7 +907,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4102)
+        self.assertEqual(len(space), 4105)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

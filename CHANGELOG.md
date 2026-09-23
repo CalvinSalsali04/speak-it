@@ -15,6 +15,9 @@ Entries before September 2026 were reconstructed from the commit history and
   me to call Mike") and what you commit to yourself ("…, so I need to call him
   today") are still errands. This is case 4 of the 2026-09-16 reported-speech
   ruling.
+- Advice passed on by a reminder or a message ("Sarah reminded me I should
+  call Mike", "Sarah texted me that I should call Mike tomorrow at 3") is held
+  for review the same way. "Sarah reminded me to call Mike" is still an errand.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

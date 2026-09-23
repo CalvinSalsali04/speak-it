@@ -562,11 +562,24 @@ enum ActionabilityReader {
     /// Verbs that report what somebody said, thought or advised and can take
     /// a finite clause behind them. A closed class like
     /// `ClauseScope.reportingVerb`, and kept apart from it on purpose: that
-    /// list also holds `asked`, `wants` and `reminded`, whose complement is an
+    /// list also holds `asked` and `wants`, whose complement is an
     /// instruction to the person (case 3, "Sarah asked me to call Mike"), and
     /// `promised`, whose subject is the one committing.
+    ///
+    /// `reminded`, `texted`, `emailed`, `messaged` and `wrote` are here
+    /// because the codebase already reads them as reports (`isReportedSpeech`
+    /// has "reminded me", `CaptureOperationDetector.reportVerb` the three
+    /// message verbs), and without them "Sarah reminded me I should call
+    /// Mike" and "Sarah texted me that I should call Mike tomorrow at 3" kept
+    /// the confident, dated task this family exists to hold. "Reminded me to
+    /// call Mike" stays case 3: every shape below needs `I`/`we` and an
+    /// advisory modal after the verb, and a bare infinitive has neither.
+    /// Only the past forms: "texts", "emails" and "messages" are nouns as
+    /// often as verbs ("check the emails I should reply to"), and the
+    /// imperatives "remind", "text" and "email" ask for something rather than
+    /// report it.
     private static let adviceFrameVerb =
-        #"(?:said|says|say|saying|told|tells|tell|telling|mentioned|mentions|thinks|think|thought|reckons|reckon|reckoned|figures|figured|feels|feel|felt|believes|believe|believed|insists|insisted|warned|warns|suggested|suggests|suggest|recommended|recommends|recommend|advised|advises|advise)"#
+        #"(?:said|says|say|saying|told|tells|tell|telling|mentioned|mentions|thinks|think|thought|reckons|reckon|reckoned|figures|figured|feels|feel|felt|believes|believe|believed|insists|insisted|warned|warns|suggested|suggests|suggest|recommended|recommends|recommend|advised|advises|advise|reminded|texted|emailed|messaged|wrote)"#
 
     /// Verbs whose meaning already is advice, so no modal is needed behind
     /// them: "Sarah suggested I call Mike", "the doctor advised me to book a

@@ -3176,6 +3176,21 @@ asserting Today. No sealed set was read. (b) and (c) are pinned by the new
 `ActionabilityTests` minimal pairs and seven `SemanticCorpusQ` rows. Only a
 Mac run can check them against the engine.
 
+**Widened the same day (grade of #151, F1).** The advice frame first listed
+only verbs of saying, thinking and advising, so "Sarah reminded me I should
+call Mike" and "Sarah texted me that I should call Mike tomorrow at 3" kept the
+confident, dated task. `reminded`, `texted`, `emailed`, `messaged` and `wrote`
+are now frame verbs: the codebase already read the first four as reports
+(`isReportedSpeech`, `CaptureOperationDetector.reportVerb`), and `wrote` is the
+same act on paper. Only past forms, because "texts", "emails" and "messages"
+are nouns as often as verbs and the imperatives ask rather than report. Case 3
+cannot enter: every shape still needs `I`/`we` plus an advisory modal after
+the verb, so "Sarah reminded me to call Mike" is the errand it was, and a test
+pins it. The walk was re-run with the widened rule against `main` (`fbb6f90`):
+11,516 readable pairs and the same 9,608 JSONL strings, and it still frames
+and fires on exactly one sentence, "Priya said I should call the landlord".
+At the widened head the only other hits are this entry's own test literals.
+
 **Change.** `Actionability.advised` is a new reading. `read` returns it after
 the discharged and outstanding families and ahead of the reported-obligation
 rule. `belongsOnToday` answers yes, so clause splitting and person resolution
