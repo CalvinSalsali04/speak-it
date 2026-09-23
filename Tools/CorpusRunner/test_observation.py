@@ -950,6 +950,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         sentence saying the place they pin (bed, meeting) is a false place a
         later fix should move, so two literals were replaced by two and the
         count did not change.
+        4159 -> 4167 on 2026-09-23, from keeping the store list on a
+        shopping row held only by DEL-18's place-and-time hold: eight added,
+        none removed, found by diffing this population at both commits. One
+        test, `testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`,
+        brought its capture (`"When I get to Costco tomorrow, buy milk"`),
+        a trip fixture's quote and title (`"go to Costco"`, `"Go to
+        Costco"`) and five assertion messages (`"fixture: the hold puts the
+        row in review"`, `"the hold alone keeps the store's list"`, `"a row
+        in review for another reason names no list"`, `"the hold beside
+        another question names no list"`, `"the dated trip keeps its
+        reminder beside a held list"`). Its `"buy milk"` and `"Buy milk"`
+        were already in the population.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -964,7 +976,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4159)
+        self.assertEqual(len(space), 4167)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

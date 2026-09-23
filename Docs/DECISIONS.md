@@ -70,6 +70,33 @@ comes out of `organize` with a reminder date, a delivery or no review
 question; or any "remind me at <clock>" that the international-clock rows
 read as a time and that now parses as a place.
 
+**A held shopping row keeps its store list.** Hosted CI (run 35858682400)
+failed the four tests that pin "the place still names the list": the two
+Sobeys captures and both "When I go to Costco today…" forms held correctly
+and got no list. `holdingPlaceAndTime()` sets `needsClarification`, the
+rules extractor copies it into `needsReview`, and
+`RuleBasedThoughtExtractor.assigningShoppingGroups` named only shopping rows
+with `!needsReview`. That filter has been there since the shopping-list pass
+was added on 2026-08-22, with no recorded reason. Its effect is that a row
+whose meaning is in question is not filed on a store's list. Before DEL-18
+these rows were not in review, so the filter never met them.
+
+The hold asks which trigger to keep, not what the words meant, so it is the
+one reason for review that now keeps the list. `OrganizedThought` records
+`clarificationBesidesPlaceAndTime`: whether review is asked for any other
+reason. `TemporalIntentParser.parse` and `organize` state it beside
+`needsClarification`, which is unchanged. The refinement path adds model
+confidence below 0.82 to it. Every other constructor defaults it to
+`needsClarification`, so a reading that does not know its reasons keeps the
+old behaviour. The shopping pass names a row in review only when
+`isHeldOnlyForPlaceAndTime` is true. A held row still lends no fire moment to
+the trip-clause fold, because it rings at no time.
+`SwiftDataThoughtRepositoryTests.testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`
+pins this. **Falsifier:** a shopping row in review for another reason, with
+or without the hold beside it, that is named for the store. The other
+falsifier is a dated "go to Costco" task folded away beside a held row. The
+four CI tests are the other direction.
+
 **Not covered.** Rows captured before this change stored no place, so neither
 the hold nor the scheduler refusal can see them (see `KNOWN_ISSUES.md`).
 

@@ -536,7 +536,10 @@ The specifics:
   ("tomorrow when I get to Costco"); before that its time won and the place
   was dropped. Because a named place is not geocoded, the place half of such
   a request cannot fire yet: choosing it leaves an inert reminder, and the
-  clock half is the only way out that rings.
+  clock half is the only way out that rings. A held shopping list keeps its
+  store's name only when the hold is its only question. If it also has
+  another one, such as an ambiguous date, a vague "later" or low model
+  confidence, it gets no store list, and resolving review does not add one.
 
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
