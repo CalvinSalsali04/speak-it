@@ -319,6 +319,30 @@ its first run for reasons unrelated to it.
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
 
+## A draft with a recording is recovered from the recording alone
+
+*2026-09-23.* One capture screen keeps one draft across "Speak instead" and
+"Type instead", and since the D6 fix (see Decisions, "A draft's recording
+follows how it is being captured now") any draft that has been spoken into
+carries a protected recording, whichever way it began. Recovery reads such a
+draft from its recording only; its checkpointed text is not saved beside it.
+That is the same outcome as a live voice save, which saves the spoken words
+and empties the editor, but it means:
+
+- Words typed before "Speak instead" are dropped if the recording is
+  recovered. Before the fix, a kill before the first spoken words were
+  checkpointed replayed the typed words instead and lost the spoken ones.
+- Words typed or edited after "Type instead" on a spoken draft are dropped if
+  the app dies before they are saved, and the recording's words are saved in
+  their place. This was already true of drafts that began as speech
+  (`testAudioRecoveryTakesPriorityOverAPartialTranscript`).
+- Today's "Type it" sheet for a recording that could not be recovered starts
+  empty; it does not offer the text the draft still holds.
+
+Keeping both would need the draft's text and its recording to be recovered
+separately and then told apart from a duplicate, which is the same missing
+provenance as the voice-draft-edited-during-save gap in Decisions.
+
 ## The app cannot set what customers are charged
 
 September 8 pricing follow-up: launch percentage claims now require the actual USD 14.99 product price, enabled flag and sale window. Other currencies show localized prices without an unverified discount. The future standard price and preservation of existing subscriber prices still need App Store Connect verification; the paywall no longer promises an indefinite rate.

@@ -1016,6 +1016,136 @@ final class DurabilityTests: XCTestCase {
         XCTAssertTrue(try allSessions().isEmpty)
     }
 
+    // MARK: - 4d. A voice capture that began as typing
+
+    /// Audit D6 (a). The person types a few words, taps "Speak instead" and
+    /// speaks. The capture screen keeps its typed draft: `ensureDraft` calls
+    /// `updateSource(.inAppVoice)` on it, and `startVoiceCapture` then asks
+    /// that draft for its recording file. A call or a kill ends the recording
+    /// before any spoken words are checkpointed.
+    ///
+    /// Falsifier: stop `updateSource` giving the draft a recording file.
+    /// `prepareAudioURL` returns nil, as it did before this fix, so the
+    /// recognizer records nothing to protect, the screen falls back to typing,
+    /// and the spoken words are gone; `writeRecording` fails here on that nil.
+    func testAVoiceCaptureStartedFromATypedDraftIsRecoveredFromItsRecording() throws {
+        let startedAt = Date().addingTimeInterval(-120)
+        let typed = seedRecoverableDraft("Call Dana", source: .inAppText, startedAt: startedAt)
+        XCTAssertNil(CaptureDraftStore.audioURL(for: typed))
+
+        CaptureDraftStore.updateSource(
+            id: typed.id,
+            source: .inAppVoice,
+            at: startedAt.addingTimeInterval(5)
+        )
+        let speaking = try XCTUnwrap(CaptureDraftStore.draft(id: typed.id))
+        let audioURL = try writeRecording(for: speaking)
+        // The deterministic name, so `deleteRecording` removes it by name too.
+        XCTAssertEqual(audioURL.lastPathComponent, "\(typed.id.uuidString).caf")
+        // What the screen's `hasRecoverableActiveAudio` reads when the
+        // recognizer fails: recovery, not the typing fallback.
+        XCTAssertTrue(CaptureDraftStore.hasRecoveryAudio(for: speaking))
+
+        relaunch()
+
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [typed.id],
+            "Today and the launch audio pass must offer the recording"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertTrue(
+            try allSessions().isEmpty,
+            "The text pass must leave a draft with a recording to the audio pass, or one thought is saved twice"
+        )
+    }
+
+    /// Audit D6 (b). A typed save that asks for clarification, then "Try
+    /// saying it again". The save clears its draft and empties the editor, and
+    /// the empty editor's checkpoint used to begin a new typed draft 220 ms
+    /// later. The retry reused that draft: no recording, and the save's time
+    /// as the retry's start.
+    ///
+    /// Falsifier: let `shouldCheckpoint` begin a draft for empty text (return
+    /// true for `("", false)`) and the first assertion fails. Revert
+    /// `updateSource` and the retry that does land on an empty typed draft has
+    /// no recording file, so `writeRecording` fails on the nil URL.
+    func testTryingAgainAfterATypedSaveRecordsIntoAProtectedDraft() throws {
+        XCTAssertFalse(CaptureDraftStore.shouldCheckpoint("", hasActiveDraft: false))
+        XCTAssertFalse(CaptureDraftStore.shouldCheckpoint(" \n ", hasActiveDraft: false))
+
+        // With no draft left behind, the retry's `ensureDraft` begins a voice one.
+        let retry = CaptureDraftStore.begin(source: .inAppVoice)
+        let retryURL = try writeRecording(for: retry)
+
+        // And a retry that does reuse an empty typed draft is protected alike.
+        let reused = CaptureDraftStore.begin(source: .inAppText)
+        CaptureDraftStore.updateSource(id: reused.id, source: .inAppVoice)
+        let reusedURL = try writeRecording(
+            for: try XCTUnwrap(CaptureDraftStore.draft(id: reused.id))
+        )
+
+        relaunch()
+
+        XCTAssertEqual(
+            Set(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id)),
+            [retry.id, reused.id],
+            "An empty transcript beside a recording is still a capture to recover"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: retryURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: reusedURL.path))
+    }
+
+    /// The unchanged side. A draft that is only ever typed gets no recording
+    /// file, however often its source is set, and a relaunch replays its words
+    /// once. Typing still checkpoints: words with no draft begin one, and
+    /// emptying an existing draft still writes the empty text to it.
+    ///
+    /// Falsifier: drop the `recordsProtectedAudio` condition from
+    /// `updateSource`, giving every source change a file, and the typed draft
+    /// gains a recording name. Make `shouldCheckpoint` refuse empty text for an
+    /// existing draft and erased words would stay on the draft.
+    func testATypedOnlyDraftStaysTextOnlyAndIsReplayedOnce() throws {
+        XCTAssertTrue(CaptureDraftStore.shouldCheckpoint("Pick", hasActiveDraft: false))
+        XCTAssertTrue(CaptureDraftStore.shouldCheckpoint("", hasActiveDraft: true))
+
+        let typed = seedRecoverableDraft("Pick up the dry cleaning", source: .inAppText)
+        CaptureDraftStore.updateSource(id: typed.id, source: .inAppText, at: typed.startedAt)
+        let stored = try XCTUnwrap(CaptureDraftStore.draft(id: typed.id))
+        XCTAssertNil(CaptureDraftStore.audioURL(for: stored))
+        XCTAssertNil(try CaptureDraftStore.prepareAudioURL(for: stored))
+
+        relaunch()
+
+        XCTAssertEqual(try allSessions().map(\.originalTranscription), ["Pick up the dry cleaning"])
+        XCTAssertNil(CaptureDraftStore.draft(id: typed.id))
+        XCTAssertTrue(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).isEmpty)
+
+        relaunch()
+        XCTAssertEqual(try allSessions().count, 1, "Recovery must not run twice on the same words")
+    }
+
+    /// "Type instead" in the middle of a recording sets the draft's source to
+    /// typing. The recording it already made stays protected.
+    ///
+    /// Falsifier: have `updateSource` clear the file name when the source
+    /// becomes `.inAppText` and the recording is no longer listed, though the
+    /// file is still on disk and may hold the only copy of the words.
+    func testSwitchingASpokenDraftToTypingKeepsItsRecording() throws {
+        let draft = CaptureDraftStore.begin(source: .inAppVoice)
+        let audioURL = try writeRecording(for: draft)
+
+        CaptureDraftStore.updateSource(id: draft.id, source: .inAppText)
+
+        let typing = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        XCTAssertEqual(CaptureDraftStore.audioURL(for: typing), audioURL)
+        relaunch()
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [draft.id]
+        )
+    }
+
     // MARK: - 5. Device clock destruction
 
     /// Moves the process into `identifier`'s time zone, the way stepping off a

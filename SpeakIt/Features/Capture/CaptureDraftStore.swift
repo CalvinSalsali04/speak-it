@@ -76,9 +76,9 @@ enum CaptureDraftStore {
             updatedAt: date,
             transcript: "",
             captureSourceRawValue: source.rawValue,
-            recoveryAudioFilename: source == .inAppText
-                ? nil
-                : "\(id.uuidString).caf",
+            recoveryAudioFilename: recordsProtectedAudio(for: source)
+                ? protectedAudioFilename(for: id)
+                : nil,
             recoveryStatusRawValue: RecoveryStatus.capturing.rawValue,
             recoveryFailureMessage: nil,
             recoveryFailureKindRawValue: nil,
@@ -88,6 +88,29 @@ enum CaptureDraftStore {
         drafts.append(draft)
         persist(drafts, notifiesRecoveryChange: true)
         return draft
+    }
+
+    /// Whether a draft captured this way records into a protected file. Every
+    /// source can be spoken except in-app typing.
+    ///
+    /// It is asked when a draft begins and again whenever its source changes,
+    /// because the capture screen keeps one draft across "Speak instead" and
+    /// "Type instead". Asking only at `begin` left a draft that began as typing
+    /// with no recording when the person then spoke, so an interruption fell
+    /// back to typing and the spoken words were lost (audit D6).
+    nonisolated static func recordsProtectedAudio(for source: CaptureSource) -> Bool {
+        source != .inAppText
+    }
+
+    /// Whether the capture screen should write a checkpoint of `text`. Words
+    /// always checkpoint. Empty text only ever updates a draft that exists,
+    /// where it can mean the person erased what they typed or a recording that
+    /// has no words yet, and never begins one. The screen empties its editor
+    /// after every typed save, and the draft begun for that empty text was the
+    /// one a "Try saying it again" then reused: typed, so unprotected, and dated
+    /// from the save rather than from the recording (audit D6).
+    nonisolated static func shouldCheckpoint(_ text: String, hasActiveDraft: Bool) -> Bool {
+        hasActiveDraft || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func update(id: UUID, transcript: String, at date: Date = .now) {
@@ -177,11 +200,19 @@ enum CaptureDraftStore {
         persist(retained, notifiesRecoveryChange: true)
     }
 
-    static func updateSource(id: UUID, source: CaptureSource) {
+    /// Changes how the draft is being captured. Moving to a source that
+    /// records gives a draft with no recording its protected file, so a voice
+    /// capture that reuses a typed draft is protected exactly like one that
+    /// began as speech. Moving back to typing never takes the file away: a
+    /// recording made before the switch can hold the only copy of spoken words.
+    static func updateSource(id: UUID, source: CaptureSource, at date: Date = .now) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
         drafts[index].captureSourceRawValue = source.rawValue
-        drafts[index].updatedAt = .now
+        if drafts[index].recoveryAudioFilename == nil, recordsProtectedAudio(for: source) {
+            drafts[index].recoveryAudioFilename = protectedAudioFilename(for: id)
+        }
+        drafts[index].updatedAt = date
         persist(drafts)
     }
 
@@ -415,7 +446,14 @@ enum CaptureDraftStore {
     }
 
     private static func derivedAudioURL(for id: UUID) -> URL {
-        recoveryDirectoryURL.appendingPathComponent("\(id.uuidString).caf", isDirectory: false)
+        recoveryDirectoryURL.appendingPathComponent(protectedAudioFilename(for: id), isDirectory: false)
+    }
+
+    /// The one name a draft's recording can have. `deleteRecording` removes
+    /// the file by this name as well as by the draft's record, so every way a
+    /// draft gains a recording has to use it.
+    private nonisolated static func protectedAudioFilename(for id: UUID) -> String {
+        "\(id.uuidString).caf"
     }
 
     private static var recoveryDirectoryURL: URL {

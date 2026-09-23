@@ -122,6 +122,56 @@ be replayed at all is a separate decision. The relaunch-after-lock timing
 that feeds this (no background-task assertion during a save, audit S4) needs
 a device.
 
+## 2026-09-23 — A draft's recording follows how it is being captured now
+
+A voice capture that reused a typed draft had no protected recording. Whether
+a draft may record was decided once, in `CaptureDraftStore.begin`, from the
+source it began with, and `updateSource` never revisited it. The capture
+screen keeps one draft across "Speak instead" and "Type instead", so speaking
+into a draft that began as typing asked `prepareAudioURL` for a file the draft
+did not have, got nil, and the recognizer recorded nothing to protect. A call
+or a failed recognizer then fell back to typing instead of "Recovering your
+words…", and a kill kept only the last partial transcript checkpointed, or
+nothing spoken at all if it came before the first.
+The same happened after every typed save that asked for clarification: the
+save emptied the editor, the empty editor's checkpoint began a fresh typed
+draft 220 ms later, and "Try saying it again" recorded into it, dated from the
+save rather than from the recording. (Audit `v1/audits/capture-lifecycle.md`,
+D6.)
+
+- **Protection is asked again whenever the source changes.**
+  `CaptureDraftStore.recordsProtectedAudio(for:)` is the one rule (every source
+  except in-app typing), and `begin` and `updateSource` both ask it. Moving a
+  draft to a source that records gives it its file, under the same
+  deterministic name `deleteRecording` removes by. A draft that began as
+  typing and is then spoken into is protected exactly like one that began as
+  speech, and the in-screen failure, the launch audio pass and Today's
+  recovery treat it the same way.
+- **Moving back to typing never removes a recording.** One made before "Type
+  instead" can hold the only copy of spoken words.
+- **An empty checkpoint never begins a draft.**
+  `CaptureDraftStore.shouldCheckpoint(_:hasActiveDraft:)`: words always
+  checkpoint, and empty text only updates a draft that already exists. After
+  a typed save there is no draft until the retry begins its own, as a voice
+  draft, dated from the recording. The screen also no longer leaves an empty
+  draft behind after every typed save.
+
+A draft that holds both typed words and a recording is recovered from the
+recording, which was already the rule for a voice draft edited after "Type
+instead" (`testAudioRecoveryTakesPriorityOverAPartialTranscript`). It now
+reaches drafts that began as typing; see Known Issues. Rejected: beginning a
+second, voice-only draft for the recording and keeping the typed one. Both
+would be replayed after a kill, as two captures of one thought, and the typed
+one after a successful voice save as well, unless every save learned to
+retire a sibling draft.
+
+Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
+take a call; expect "Recovering your words…", not the typing fallback. Then a
+typed save that asks for clarification, Try saying it again, speak, and
+interrupt the same way; expect recovery. Force-quitting instead of taking the
+call, the next launch should save the spoken words from the recording, or list
+the recording on Today if recognition fails.
+
 ## 2026-09-23 — A save belongs to the capture screen that started it
 
 A save's Task outlives its screen, and it used to publish into whatever was on

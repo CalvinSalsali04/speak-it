@@ -959,7 +959,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         reach the caller"`. The rest add nothing: the practice sentence,
         `"No speech detected"`, the gate-code fixtures the withdrawal
         test reuses and the reused assertion messages are already
-        counted. What the test
+        counted. 4156 -> 4161 on 2026-09-23, when a voice capture that
+        reuses a typed draft came to get a protected recording (audit D6):
+        four test methods in `DurabilityTests.swift` and five literals,
+        enumerated. Three are assertion messages, `"Today and the launch
+        audio pass must offer the recording"`, `"The text pass must leave a
+        draft with a recording to the audio pass, or one thought is saved
+        twice"` and `"An empty transcript beside a recording is still a
+        capture to recover"`. Two are button titles quoted in the tests' doc
+        comments, `"Speak instead"` and `"Type instead"`, which the
+        extractor reads like any other line. The typed fixture `"Pick up the
+        dry cleaning"` is already counted, and `"Call Dana"` is under the
+        twelve-character floor. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -973,7 +984,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4156)
+        self.assertEqual(len(space), 4161)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

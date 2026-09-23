@@ -2123,6 +2123,12 @@ struct CaptureView: View {
     }
 
     private func checkpoint(_ text: String, source: CaptureSource) {
+        // Emptying the editor after a typed save must not begin a draft. One
+        // begun there outlived the save, and "Try saying it again" recorded
+        // into it and dated the retry from it (audit D6).
+        guard CaptureDraftStore.shouldCheckpoint(text, hasActiveDraft: activeDraftID != nil) else {
+            return
+        }
         ensureDraft(source: source)
         guard let activeDraftID else { return }
         CaptureDraftStore.update(id: activeDraftID, transcript: text)
@@ -2149,6 +2155,9 @@ struct CaptureView: View {
     }
 
     private func ensureDraft(source: CaptureSource) {
+        // Reusing the draft goes through `updateSource`, which is what gives a
+        // draft that began as typing its protected recording before a voice
+        // capture starts in it.
         if let activeDraftID {
             CaptureDraftStore.updateSource(id: activeDraftID, source: source)
             return

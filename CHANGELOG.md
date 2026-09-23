@@ -24,6 +24,13 @@ Entries before September 2026 were reconstructed from the commit history and
 - A capture receipt no longer counts a plain dated task as a reminder. "Buy
   milk tomorrow" arms nothing, but it was announced as a reminder *and* as an
   action, so the parts could add up to more than the number of things saved.
+- Speaking after typing is protected like any other recording. A voice
+  capture that reused a typed draft (after "Speak instead", or "Try saying it
+  again" after a typed save that asked for clarification) had no protected
+  recording, so a call or a failed recognizer fell back to typing instead of
+  recovering the words, and a kill could lose them. The retry is also dated
+  from the recording, not from the save before it, and a typed save no longer
+  leaves an empty draft behind.
 
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark
