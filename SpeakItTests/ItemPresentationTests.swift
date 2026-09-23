@@ -292,15 +292,30 @@ final class ItemPresentationTests: XCTestCase {
             itemType: .task,
             reminderDate: Date.now.addingTimeInterval(24 * 60 * 60)
         )
+        // Linked from the item's side only: `items` is the inverse, and on
+        // models never inserted into a context passing both can list the
+        // item twice. Everything below reads `item.captureSession`.
         let session = CaptureSession(
-            originalTranscription: "Set an alarm for 6:45 and call the accountant tomorrow",
-            items: [accountant]
+            originalTranscription: "Set an alarm for 6:45 and call the accountant tomorrow"
         )
         accountant.captureSession = session
         XCTAssertEqual(
-            ThoughtOrganizer.organize(accountant.originalTextSegment).reminderDelivery,
+            ThoughtOrganizer.organize(
+                accountant.originalTextSegment,
+                referenceDate: accountant.createdAt
+            ).reminderDelivery,
             .none,
             "precondition: the wording asks for no alert"
+        )
+        // The other half of the fixture: the transcript the delivery falls
+        // back to must ask for an alarm. Without this, a fixture that stopped
+        // parsing would fail below as if the delivery rule were wrong.
+        XCTAssertEqual(
+            ThoughtOrganizer.organize(
+                session.originalTranscription,
+                referenceDate: accountant.createdAt
+            ).reminderDelivery,
+            .alarm
         )
 
         let request = try XCTUnwrap(ReminderScheduleRequest(item: accountant))
