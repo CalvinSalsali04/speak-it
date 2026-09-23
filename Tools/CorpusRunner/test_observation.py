@@ -980,7 +980,33 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         was typed and what was said, in that order"` and `"The recognizer's
         failure must reach the caller"`. `"No speech detected"` and `"Email
         Sam"` add nothing: the first is already counted and the second is
-        under the floor. What the test
+        under the floor. 4166 -> 4182 on 2026-09-23, when review of #144
+        found Type instead keeping a finished run's words, erased typed
+        words coming back with the recording, and Today's save of kept
+        typed words untested: three test methods added and one rewritten,
+        across `CaptureFeedbackTests.swift` and `DurabilityTests.swift`, and
+        sixteen literals, enumerated. Twelve are assertion messages:
+        `"this no longer reproduces the idle state that kept its words"`,
+        `"a finished run has no Live Activity to end"`, `"the spoken words
+        were saved a second time after the editor that already held them"`,
+        `"The recording is still a capture to recover after the editor is
+        emptied"`, `"Erased words were still set aside for recovery"`,
+        `"Recovering the recording brought back the words the person
+        erased"`, `"Deleting the recording saved words the person had
+        erased"`, `"a recording is intended"`, `"The typed words were left
+        to no recovery pass"`, `"The launch must release a kept draft whose
+        words reached a committed session"`, `"The text pass never replayed
+        the kept draft"` and `"Today's save and the launch fallback stored
+        the kept words twice"`. Three are fixtures: `"about the invoice"`,
+        the spoken words, and the two readings VoiceOver is given for the
+        voice screen, `"Typed: Call Dana"` and `"Typed: Call Dana. about the
+        invoice"`. The sixteenth is the doc-comment hazard again: a
+        falsifier quotes the words that used to come back, `"Call Dana about
+        the invoice"`. `"buy milk"`, `"and eggs"`, `"and bread"` and
+        `"Typed:"` are under the floor, and the button titles the doc
+        comments quote were already counted. The development-set overlap
+        stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -994,7 +1020,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4166)
+        self.assertEqual(len(space), 4182)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
