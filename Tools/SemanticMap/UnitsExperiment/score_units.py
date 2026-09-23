@@ -246,6 +246,14 @@ def classify(gold, units, cap=None, representable=True):
     return "wrong-boundaries", sorted(flags)
 
 
+def boundary_hits(gold, units):
+    """For each gold boundary in order, 1 when some proposed cut falls inside it."""
+    gaps = gold.gaps()
+    nonempty = [u for u in units if u]
+    cuts = [(max(a), min(b)) for a, b in zip(nonempty, nonempty[1:])]
+    return [int(any(left in gap or any(p in gap for p in range(left, right)) for left, right in cuts)) for gap in gaps]
+
+
 def boundary_counts(gold, units):
     """(matched proposed boundaries, proposed boundaries, matched gold boundaries, gold boundaries)."""
     if units is None:
@@ -545,6 +553,8 @@ def degenerate(arm, units, lines):
             return "all continues"
         if len(lines) >= 2 and len(units) == len(lines):
             return "all starts"
+        if len(lines) >= 4 and all(len(u) and sum(1 for f, l in lines if f in u) == 2 for u in units[:-1]):
+            return "alternating"
         return None
     if len(units) == 1:
         return "one thought"
@@ -584,10 +594,13 @@ def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids,
         for arm in arms:
             print(f"  {arm:12} {exact_line(source, arm, multi)}")
     print()
-    print("EVERY CLASS, view `any` (captures per primary class; the constant one-unit arm beside both candidates)")
+    print("EVERY CLASS, view `any`: captures by primary class / captures carrying the class at all")
+    print("(an answer can carry several: an over-split that also drops an atom is primarily dropped)")
     print("class".ljust(18) + "".join(a.rjust(12) for a in arms))
     for cls in CLASSES:
-        print(cls.ljust(18) + "".join(str(sum(1 for r in table if arm in r and r[arm][0] == cls)).rjust(12) for arm in arms))
+        print(cls.ljust(18) + "".join(
+            f"{sum(1 for r in table if arm in r and r[arm][0] == cls)}/{sum(1 for r in table if arm in r and cls in r[arm][1])}".rjust(12)
+            for arm in arms))
     if reference_ids:
         print()
         print(f"EXACT ON THE {len(reference_ids)} DIAGNOSTIC CAPTURES (the only ones the recorded arms cover), view `any`")
@@ -653,6 +666,27 @@ def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids,
             one_word += sum(1 for u in (r[arm][2] or []) if len(u) == 1)
         print(f"  {arm:8} " + (", ".join(f"{k} {v} (on multi {on_multi[k]})" for k, v in sorted(shapes.items()))
                                or "no degenerate shape") + f"; one-atom units {one_word}")
+    print()
+    print("WHERE INSIDE THE CAPTURE ANSWERS GO WRONG (report only): for non-exact, well-formed answers, the")
+    print("index of the first unit that departs from gold; and gold boundary recall by boundary index.")
+    for arm in model:
+        first = Counter()
+        hits, totals = Counter(), Counter()
+        for r in table:
+            if arm not in r or r[arm][2] is None:
+                continue
+            gold, units = r[arm][3], r[arm][2]
+            if r[arm][0] != "exact":
+                content = [u & gold.content for u in units if u & gold.content]
+                index = next((k for k, u in enumerate(gold.units) if k >= len(content) or content[k] != u),
+                             len(gold.units))
+                first[min(index, 5)] += 1
+            for g, hit in enumerate(boundary_hits(gold, units)):
+                totals[min(g, 5)] += 1
+                hits[min(g, 5)] += hit
+        label = lambda k: f"{k + 1}" if k < 5 else "6+"
+        print(f"  {arm:8} first departing unit: " + (", ".join(f"unit {label(k)} {v}" for k, v in sorted(first.items())) or "none"))
+        print(f"  {arm:8} boundary recall: " + ", ".join(f"boundary {label(k)} {hits[k]}/{totals[k]}" for k in sorted(totals)))
     print()
     print("MALFORMED OR REFUSED BY POSITION (run order, and which arm went first)")
     for arm in model:

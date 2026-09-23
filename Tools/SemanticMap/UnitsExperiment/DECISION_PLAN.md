@@ -16,27 +16,37 @@ The constant "one unit" answer sits beside both candidates. It is 16/30 exact un
 **Run validity comes first.** The run is RUN INVALID, and no decision is made, if any of these hold:
 - A capture has no record in either arm.
 - A capture has two records in one arm (an unrecorded retry).
+- A record names an unknown arm or capture.
 - A prompt fingerprint differs from `df4c6e25` (ranges) or `71e026b5` (labels).
-- A job was skipped for any reason other than a one-line capture.
+- A job was skipped for any reason other than a one-line capture, or a capture with several lines was skipped as one line.
+- A generation failed for a reason that is not the model's own answer. Only these count as the model's answer: `guardrailViolation`, `refusal`, `decodingFailure`, `exceededContextWindowSize`, and the harness's `decode`. They are scored as malformed or refused. Any other name, such as rate limiting, concurrent requests, missing assets or `schemaConstruction`, invalidates the run. These names come from memory and were **not checked against Apple's documentation**. A wrong or missing name fails safe: the run is marked invalid, and no answer is scored.
 
-A candidate **qualifies** only if it passes all six gates, all on view `any` unless marked:
+A candidate **qualifies** only if it passes every gate below, each on view `any` unless marked:
 
 | Gate | Threshold | Why |
 |---|---|---|
 | Material gain | at least 4 more exact captures than the one-unit answer, in **both** views | "Materially improves" must be a margin over the answer that needs no model; 4 of 30 is a real difference on this set |
 | Multi-unit recovery | exact on at least half of the 14 captures whose gold has two or more units in every reading | The one-unit answer gets 0 of these. Winning on single-unit captures alone would repeat the whole-list illusion |
-| Silent wrong cuts | 3 or fewer captures classed over-split, absorbed or wrong-boundaries | Downstream code cannot detect these. Malformed, capacity, dropped and filler-only can be detected and sent to the current path |
-| Guarded families | zero silent wrong cuts in reported speech, message content, or deliberation that ends in a decision | A cut there separates content from its carrier or a decision from its negation. That is the exit gate's P0 shape |
+| Silent wrong cuts | 3 or fewer captures that carry an over-split, absorbed, wrong-boundaries or filler-only flag, counted by flag and not by primary class | Downstream code cannot detect these. Filler-only is included because nothing at runtime knows which atoms are filler. Malformed, capacity and dropped can be detected: uncovered atoms are computable. Counting by flag stops a cut hiding behind a dropped atom (grader round 8, F1) |
+| Guarded families | zero silent wrong cuts, by flag, in reported speech, message content, or deliberation that ends in a decision | A cut there separates content from its carrier or a decision from its negation. That is the exit gate's P0 shape |
 | Broken single units | 2 or fewer captures the one-unit answer gets exact and the candidate does not | Splitting one coherent thought is the rules' own failure; a candidate must not reintroduce it |
-| Representability | candidate 2 only: 29/30 or better. The precheck measured 30/30 | Calvin's condition for candidate 2 |
+| Beats every-line | more exact than "every clause line starts", in both views | The second constant baseline, checked explicitly rather than by implication |
+| Representability | candidate 2 only: 29/30 or better in both views. `decide.py` recomputes it with the precheck; it measured 30/30 | Calvin's condition for candidate 2 |
+
+**Which gates carry the evidence:**
+- **Material gain under `any` never binds on its own.** One-unit is exact on exactly the 16 non-multi captures, so that gain equals multi-unit exact minus broken singles, which is at least 5 whenever those two gates pass. It is kept only so the number is shown.
+- **The own-view gain is independent:** 18 captures are multi-unit under `own`.
+- **The multi-unit gate carries the statistical weight:** 7 of 14 against 0 is sign-test p ≤ 0.016.
+- **The silent-cut, guarded-family and broken-single limits are safety budgets,** not statistics.
 
 **Outcome:**
 - **Neither qualifies:** C, neither.
 - **Exactly one qualifies:** it wins, and the other failed a named gate.
 - **Both qualify:**
   - One wins outright if it leads by at least 3 exact captures in both views.
-  - Otherwise candidate 1 wins if candidate 2 made more silent wrong cuts.
-  - Otherwise candidate 2 wins. Its cuts can only fall on deterministic clause edges and it has no thought cap. That is the "simplifies" in Calvin's condition for candidate 2.
+  - Otherwise the decision line reads **NO CLEAR WINNER**, and the outcome is A by Calvin's stated conditions. Candidate 1's condition holds: it materially improves on the baseline and its remaining failures are within the safety budgets. Candidate 2's does not: it did not materially outperform candidate 1, and "simplifies" is not measured by this experiment.
+  - This replaces an earlier default to candidate 2, changed after grader round 8 (F2) and before any output existed.
+  - **The margin is not symmetric.** Ranges tops out at 29/30 because CAP25 is a capacity failure under the experiment's cap of 20, and §2 removes that cap in production. So an outright B needs labels to beat ranges by 3 even though ranges starts one capture behind on a limit that production would not have.
 
 There is no fourth outcome and no merged candidate.
 
@@ -60,7 +70,8 @@ There is no fourth outcome and no merged candidate.
 - The app rebuilds each unit's text as the exact slice of the transcript.
 - Each slice goes through the existing deterministic reading (`ThoughtOrganizer.organize`), exactly as a rules segment does today.
 - Any content atom that no unit covers is carried whole into one review row, never dropped.
-- If any invariant fails, the capture takes today's path: ordered, in bounds, no overlap, no filler-only unit, no one-word unit.
+- If any invariant fails, the capture takes today's path: ordered, in bounds, no overlap, no one-word unit.
+- A unit with no content cannot be recognised at runtime, because nothing there knows which atoms are filler. The experiment therefore counts filler-only as a silent failure rather than assuming a check exists.
 
 ## 3. After outcome B: candidate 2, labels, wins
 
