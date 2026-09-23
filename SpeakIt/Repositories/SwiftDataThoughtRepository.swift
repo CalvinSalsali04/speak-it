@@ -638,9 +638,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                         // `break` in the catch below is not its twin: it sits
                         // outside the `switch`, so as an unlabeled `break` it
                         // leaves the whole loop (inside the `switch` it would
-                        // only end the `switch`). A store that cannot be read
-                        // or written stops the drain, and every remaining tap
-                        // is retried at the next one.
+                        // only end the `switch`). The model store failing to
+                        // answer a read or a write stops the drain, and every
+                        // remaining tap is retried at the next one.
                         continue
                     }
                     try performReminderAction(
