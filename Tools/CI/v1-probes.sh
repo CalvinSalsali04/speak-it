@@ -29,8 +29,14 @@
 #                    answer is #151's isolated effect whatever lands on the
 #                    candidate later; what the candidate does with reported
 #                    speech is 151-held, run at the tree. A verdict, and FAIL
-#                    before any probe runs if AFTER_151's first parent is not
-#                    BEFORE_151 or AFTER_151 is not in this tree's history
+#                    before any probe runs if either commit is missing,
+#                    AFTER_151's first parent is not BEFORE_151, or AFTER_151
+#                    is not in this tree's history
+#   candidate-controls  the same control sentences through the probe already
+#                    built at this tree, against the AFTER_151 answers: every
+#                    control reads at the candidate as it did at #151's merge,
+#                    so nothing merged since has started holding (or otherwise
+#                    changed) an ordinary sentence. A verdict; no extra build
 #   136-conditional  Tools/CorpusRunner/devsets/conditional-intent-score.sh (72 rows)
 #   136-cancellation Tools/CorpusRunner/devsets/cancellation-scope-score.sh (187 rows)
 #   136-timing       #136's R1 timing: one long unpunctuated capture, 200 times,
@@ -183,12 +189,16 @@ sys.exit(1 if bad else 0)
 PY
 
 cat > "$SCRATCH/unchanged.py" <<'PY'
-# #151: every capture's rows are identical at #151's merge and before it.
+# Every capture's rows are identical in two answer files. By default the two
+# sides are #151's merge and its first parent; argv[3] and argv[4] rename them
+# (the candidate-controls step compares the candidate with #151's merge).
 import json, sys
 before = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8")]
 after = [json.loads(l) for l in open(sys.argv[2], encoding="utf-8")]
+before_name = sys.argv[3] if len(sys.argv) > 3 else "before #151"
+after_name = sys.argv[4] if len(sys.argv) > 4 else "with #151"
 if len(before) != len(after):
-    sys.exit(f"{len(before)} answers before #151 but {len(after)} at its merge")
+    sys.exit(f"{len(before)} answers {before_name} but {len(after)} {after_name}")
 bad = 0
 for b, a in zip(before, after):
     if b["text"] != a["text"]:
@@ -197,9 +207,9 @@ for b, a in zip(before, after):
     bad += not same
     print(f"{'SAME' if same else 'CHANGED'}\t{a['text']}")
     if not same:
-        print(f"  before #151: {json.dumps(b, sort_keys=True)}")
-        print(f"  with #151:   {json.dumps(a, sort_keys=True)}")
-print(f"# {len(after) - bad}/{len(after)} unchanged by #151")
+        print(f"  {before_name}: {json.dumps(b, sort_keys=True)}")
+        print(f"  {after_name}: {json.dumps(a, sort_keys=True)}")
+print(f"# {len(after) - bad}/{len(after)} the same {after_name} as {before_name}")
 sys.exit(1 if bad else 0)
 PY
 
@@ -362,7 +372,13 @@ fi
 # Both sides are fixed commits, never the tree, so a later merge into the
 # candidate cannot be charged to #151.
 AFTER_PARENT="$(git -C "$TREE" rev-parse --verify --quiet "$AFTER_151^1" || echo none)"
-if [ "$AFTER_PARENT" != "$BEFORE_151" ]; then
+MISSING=""
+for pinned in "$AFTER_151" "$BEFORE_151"; do
+  git -C "$TREE" cat-file -e "$pinned^{commit}" 2>/dev/null || MISSING="$MISSING ${pinned:0:7}"
+done
+if [ -n "$MISSING" ]; then
+  record 151-unchanged FAIL "the commit is missing from this repository:$MISSING (AFTER_151 ${AFTER_151:0:7}, BEFORE_151 ${BEFORE_151:0:7}); fetch origin, or fix the constants in Tools/CI/v1-probes.sh"
+elif [ "$AFTER_PARENT" != "$BEFORE_151" ]; then
   record 151-unchanged FAIL "AFTER_151 ${AFTER_151:0:7}'s first parent is ${AFTER_PARENT:0:7}, not BEFORE_151 ${BEFORE_151:0:7}: the pair is not one merge and its first parent, so it would not isolate #151. Fix the constants in Tools/CI/v1-probes.sh"
 elif ! git -C "$TREE" merge-base --is-ancestor "$AFTER_151" HEAD 2>/dev/null; then
   record 151-unchanged FAIL "AFTER_151 ${AFTER_151:0:7} is not in the tree's history: the candidate being qualified does not contain this #151 merge, so its effect measured there says nothing about this tree"
@@ -390,6 +406,26 @@ else
   else
     record 151-unchanged FAIL "a probe failed; see 151-unchanged.err"
   fi
+fi
+
+# --- candidate-controls ------------------------------------------------------
+# The control sentences at the candidate, against #151's merge: the
+# over-holding check at the commit being qualified, with the probe built above.
+if [ -z "$PROBE" ]; then
+  record candidate-controls FAIL "no probe"
+elif [ ! -s "$OUT/151-unchanged.jsonl" ]; then
+  record candidate-controls FAIL "no answers from #151's merge to compare with; see the 151-unchanged line"
+elif "$PROBE" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/candidate-controls.jsonl" 2> "$OUT/candidate-controls.err"; then
+  if python3 "$SCRATCH/unchanged.py" "$OUT/151-unchanged.jsonl" "$OUT/candidate-controls.jsonl" \
+      "at #151's merge ${AFTER_151:0:7}" "at the candidate $(git -C "$TREE" rev-parse --short HEAD)" \
+      > "$OUT/candidate-controls.txt" 2>> "$OUT/candidate-controls.err"; then
+    record candidate-controls PASS "$(tail -n 1 "$OUT/candidate-controls.txt" | sed 's/^# //')"
+  else
+    record candidate-controls FAIL "$(tail -n 1 "$OUT/candidate-controls.txt" 2>/dev/null | sed 's/^# //'); see candidate-controls.txt"
+  fi
+  [ -s "$OUT/candidate-controls.err" ] || rm -f "$OUT/candidate-controls.err"
+else
+  record candidate-controls FAIL "the probe failed; see candidate-controls.err"
 fi
 
 # --- 136-conditional, 136-cancellation ---------------------------------------
