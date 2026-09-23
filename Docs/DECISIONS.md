@@ -16,21 +16,38 @@ function was already what `ItemPresentation`, `requiresReview` and the editor
 read, so every surface and count follows without a second channel: the item
 goes to Needs review as `Too many place reminders` or `Couldn’t watch this
 place`, like any other blocked place. `locationMonitorRequest` does not read it,
-or a reminder once over budget could never be planned again. The property is
-`Observable` by hand, for that one property, because a refusal arrives on the
-delegate with no SwiftData change and nothing else would redraw the row.
+or a reminder once over budget could never be planned again. The monitor is
+`Observable` by hand for the two values a row reads from it, this map and
+`authorization`, because both change with no SwiftData change (a refusal on
+the delegate, access changed in Settings) and nothing else would redraw the
+row.
 
 The budget is shared, so one item's mutation moves another's answer. Capturing
-in the app, completing, archiving, deleting, editing a place reminder (including
-a date that holds it), retiring a fired one-shot and a Siri or Shortcut capture
-now reconcile straight after saving, instead of leaving the region and the row
-as they were until the next foreground. Before this, a place reminder captured
+in the app, splitting, merging, completing, archiving, deleting, editing a place
+reminder (including a date that holds it), retiring a fired one-shot and a Siri
+or Shortcut capture now reconcile straight after saving, instead of leaving the
+region and the row as they were until the next foreground. Four paths still
+wait for the next foreground or launch: the iCloud snapshot restore,
+`resolveCombinedPlaceAndTimeHoldouts` at launch (which only removes places),
+`undoOrganization`, and a tutorial capture. Before this, a place reminder captured
 in the app was not registered at all until the app next came to the foreground.
 A verdict keyed by region identifier describes only the request it was made
 for, so an edit or a moved Home reads as watched until the reconcile that
 follows it says otherwise; treating an unplanned request as blocked instead
 would show every place reminder as broken between launch and the first
 reconcile.
+
+That puts `reconcileLocationReminders` on the capture path, synchronously on the
+main actor, because the receipt needs its answer. It used to fetch every item
+and filter in memory; it now fetches in the store only live rows whose
+`locationIntentData` is set. Not `reminderTriggerKindRawValue`, although that
+column exists to avoid decoding the blob: the `temporalIntent` setter writes
+`time` over `location` and later clears it, so a place set by hand, then a
+date moved by voice, then a reorganize with no time leaves a live place
+reminder whose column is nil, and a predicate on it would never plan that
+reminder (`testALivePlaceWithNoTriggerKindIsStillPlanned`). The remaining cost
+is one resolve per live place reminder plus the plan, which the 18-slot budget
+keeps small in practice.
 
 ## 2026-09-23 — A date beside a place is shown as holding the place, not as a place reminder
 

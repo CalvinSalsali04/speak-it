@@ -444,9 +444,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Returns what is monitored and, for everything that is not, why. Nothing
     /// is ever deleted or disabled here: a blocked reminder keeps its meaning
     /// and simply reports what it is waiting for.
+    ///
+    /// Runs synchronously on the main actor, on every foreground and after
+    /// every mutation that touches a place, including an in-app capture, where
+    /// the receipt needs the answer before it is shown. So the fetch is scoped
+    /// in the store to live rows that carry a place, rather than materialising
+    /// every item to filter here.
+    ///
+    /// Scoped on `locationIntentData`, not on `reminderTriggerKindRawValue`,
+    /// although the second exists to save decoding a blob. It is not an exact
+    /// mirror of "has a place": the `temporalIntent` setter writes `time` over
+    /// `location` whenever a timed intent is stored after the place, and
+    /// clears the column when a later untimed one replaces it. A place set by
+    /// hand, then a date moved by voice (`.unchanged` place), then a
+    /// reorganize whose sentence has no time leaves a live place reminder with
+    /// a nil trigger kind, and a predicate on that column would never plan it
+    /// (`testALivePlaceWithNoTriggerKindIsStillPlanned`). The blob column is
+    /// the definition: the `locationIntent` setter writes it exactly when a
+    /// place is stored.
     @discardableResult
     func reconcileLocationReminders() -> LocationMonitorReconciliation {
-        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else {
+        let descriptor = FetchDescriptor<CapturedItem>(
+            predicate: #Predicate { item in
+                item.locationIntentData != nil &&
+                    item.isArchived == false &&
+                    item.completedAt == nil
+            }
+        )
+        guard let items = try? modelContext.fetch(descriptor) else {
             return LocationMonitorReconciliation()
         }
         let monitor = LocationReminderMonitor.shared
@@ -1675,7 +1700,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             )
         }
 
+        // Read before `apply` rewrites the item: the re-parse can take its
+        // place away, which frees a slot.
+        let hadPlaceReminder = item.locationIntent != nil
         apply(candidates[0], to: item, createdAt: item.createdAt, reviewed: true)
+        var created: [CapturedItem] = []
         for (offset, candidate) in candidates.dropFirst().enumerated() {
             let newItem = makeItem(
                 from: candidate,
@@ -1684,6 +1713,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 reviewed: true
             )
             modelContext.insert(newItem)
+            created.append(newItem)
         }
         session.processingStatus = .complete
         session.processingError = nil
@@ -1694,6 +1724,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             throw error
         }
         synchronizeReminders(for: session, requestAuthorizationIfNeeded: true)
+        // Each part is parsed like a capture, so a part can be a new place
+        // reminder, and it is watched now rather than at the next foreground.
+        reconcileLocationReminders(
+            ifTouchingPlaces: hadPlaceReminder
+                || item.locationIntent != nil
+                || created.contains(where: { $0.locationIntent != nil })
+        )
     }
 
     func merge(_ items: [CapturedItem]) throws {
@@ -1710,6 +1747,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let target = uniqueItems[0]
         let previousRecurrences = RecurrenceStore.snapshots()
         let removed = Array(uniqueItems.dropFirst())
+        // Read before the removed items are deleted and the target re-parsed.
+        let hadPlaceReminder = uniqueItems.contains(where: { $0.locationIntent != nil })
         let sourceText = uniqueItems.map(\.originalTextSegment).joined(separator: " and ")
         let title = uniqueItems.map(\.displayTitle).joined(separator: " & ")
         let organization = ThoughtOrganizer.organize(
@@ -1747,6 +1786,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         ShoppingGroupStore.removeMetadata(for: removedIDs)
         IdeaStageStore.removeMetadata(for: removedIDs)
         synchronizeReminders(for: session, requestAuthorizationIfNeeded: true)
+        // A merged-away place reminder frees its slot, and the merged
+        // sentence can carry a place of its own.
+        reconcileLocationReminders(
+            ifTouchingPlaces: hadPlaceReminder || target.locationIntent != nil
+        )
     }
 
     func undoOrganization(_ session: CaptureSession) throws {
@@ -1918,7 +1962,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 // The place twin of the line above. Without it a place
                 // reminder captured in the app was not watched until the next
                 // foreground, and the receipt could not know whether it had
-                // taken the last slot.
+                // taken the last slot. Inside this branch on purpose, although
+                // the flag is named for scheduling: every caller that turns it
+                // off is a tutorial capture, a DEBUG sample loader, the
+                // shopping list, or `SaveThoughtIntent`, which reconciles
+                // places itself straight after its save returns.
                 reconcileLocationReminders(
                     ifTouchingPlaces: hadPlaceReminder
                         || organized.contains(where: { $0.locationIntent != nil })

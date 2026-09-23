@@ -938,9 +938,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         first read `not wait for a foreground`, and a new row for `wait`
         moved the pinned motivating figures above, so it was reworded rather
         than the figures re-pinned: they argue from the corpus as it was,
-        and an assertion message is not evidence about `wait`. The badge-in and garbage
-        sentences were already in this file and add nothing, and every
-        phrase the doc comments quote is in backticks. What the test
+        and an assertion message is not evidence about `wait`. The badge-in
+        and garbage sentences were already in this file and add nothing, and
+        every phrase the doc comments quote is in backticks. 4104 -> 4113 the
+        same day, from that change's review: three more
+        `LocationReminderTests` methods (a split that makes a place reminder,
+        a firing one-shot handing its slot on, and a live place whose
+        trigger-kind column is nil still being planned), nine literals, all
+        assertion messages, enumerated by diffing the set against the
+        committed head. Their fixtures add nothing: `"Call the dentist"` is
+        in eight other files already, and the bins, garbage and badge-in sentences
+        were in this one. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -954,7 +962,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4104)
+        self.assertEqual(len(space), 4113)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

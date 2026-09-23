@@ -1427,6 +1427,14 @@ final class LocationReminderTests: XCTestCase {
     /// location access is, because two reminders never exceed the budget, so
     /// no reconcile the repository makes can turn the waiting one away for it.
     ///
+    /// What the repository half can and cannot tell apart: it proves each
+    /// mutation *reconciled*, since without the call the recorded verdict
+    /// survives, but not that the reconcile planned anything. A test process
+    /// has no location access, so the reconcile it triggers is given no
+    /// requests and records an empty map, and a mutation that recorded an
+    /// empty map by any other means would pass too. Whether a freed slot goes
+    /// to the right reminder is the plan half above, and on a device.
+    ///
     /// Falsifiers: make `LocationReminderMonitor.record` merge instead of
     /// replace, and the plan half fails; remove the
     /// `reconcileLocationReminders(ifTouchingPlaces:)` call from any one of
@@ -1525,6 +1533,163 @@ final class LocationReminderTests: XCTestCase {
             waiting.locationBlocker(authorization: authorized),
             .monitoringLimitReached,
             "capturing a place reminder must re-plan the region budget"
+        )
+    }
+
+    /// Splitting parses each part like a capture, so a part can be a new place
+    /// reminder, from an item that had none. It has to be planned when the
+    /// split is saved, not at the next foreground.
+    ///
+    /// Proves the call and its guard, not the plan, for the reason
+    /// `testFreeingARegionHandsItsSlotToTheWaitingReminderAndItsRow` gives.
+    ///
+    /// Falsifier: remove the `reconcileLocationReminders(ifTouchingPlaces:)`
+    /// call from `split`, or guard it on the original item alone, and the
+    /// recorded verdict survives the split.
+    func testSplittingOutAPlaceReminderRePlansTheRegionBudget() throws {
+        setHome()
+        let watched = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let waiting = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let (plan, requests) = try planPastTheBudget(watched: watched, waiting: waiting)
+        let plain = try repository.createCapture(
+            text: "Call the dentist",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNil(plain.locationIntent)
+
+        LocationReminderMonitor.shared.record(plan, for: requests)
+        try repository.split(
+            plain,
+            into: ["Call the dentist", "Remind me to take the bins out when I get home"]
+        )
+
+        let session = try XCTUnwrap(plain.captureSession)
+        XCTAssertTrue(
+            session.items.contains(where: { $0.locationIntent != nil }),
+            "precondition: the split made a place reminder"
+        )
+        XCTAssertNotEqual(
+            waiting.locationBlocker(authorization: authorized),
+            .monitoringLimitReached,
+            "splitting out a place reminder must re-plan the region budget"
+        )
+    }
+
+    /// A one-shot that fires gives its region back, and this runs with nobody
+    /// watching: iOS wakes the app for the crossing, the notification goes
+    /// out, and the app may be suspended again before anyone opens it. So the
+    /// slot has to be handed on in the same pass, or the reminder the budget
+    /// turned away stays unwatched until the next time the app is opened.
+    ///
+    /// Proves the reconcile ran, not what it planned, for the same reason.
+    ///
+    /// Falsifier: remove the `reconcileLocationReminders()` after the
+    /// one-shot's `stopMonitoring` in `handleLocationTrigger`, and the
+    /// recorded verdict survives the retirement.
+    func testARetiringOneShotRePlansTheRegionBudget() async throws {
+        setHome()
+        let watched = try repository.createCapture(
+            text: "Remind me to badge in every time I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let waiting = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let (plan, requests) = try planPastTheBudget(watched: watched, waiting: waiting)
+        let firing = try repository.createCapture(
+            text: "Remind me to take the bins out when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(firing.locationIntent)
+        XCTAssertFalse(place.repeats)
+
+        LocationReminderMonitor.shared.record(plan, for: requests)
+        await repository.handleLocationTrigger(
+            itemID: firing.id,
+            event: place.event,
+            triggerRevision: place.triggerRevision
+        )
+
+        XCTAssertEqual(firing.locationIntent?.isRetired, true, "precondition: the one-shot fired")
+        XCTAssertNotEqual(
+            waiting.locationBlocker(authorization: authorized),
+            .monitoringLimitReached,
+            "a retired one-shot must hand its slot on in the same pass"
+        )
+    }
+
+    /// `reconcileLocationReminders` fetches only rows that store a place, and
+    /// the column it filters on has to be the one that means that.
+    /// `reminderTriggerKindRawValue` looks like it, and is not: the
+    /// `temporalIntent` setter writes `time` over `location` when a timed
+    /// intent is stored after the place, and clears it when an untimed one
+    /// replaces that. This is the sequence that leaves a live place reminder
+    /// with no trigger kind: a place set in the editor, a date moved by voice
+    /// (which leaves the place `.unchanged`), then a reorganize whose sentence
+    /// carries no time.
+    ///
+    /// Asserted through what reconcile accounts for, which is every row it
+    /// fetched, monitored or blocked, whatever this simulator's access is.
+    ///
+    /// Falsifier: scope the fetch in `reconcileLocationReminders` on
+    /// `reminderTriggerKindRawValue == "location"`, and this reminder is never
+    /// fetched, so it is neither monitored nor blocked.
+    func testALivePlaceWithNoTriggerKindIsStillPlanned() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        let place = try XCTUnwrap(item.locationIntent)
+        func edit(dueDate: Date?, location: LocationIntentEdit) throws {
+            try repository.update(item, with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: dueDate,
+                reminderDate: nil,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: item.needsClarification,
+                recurrenceRule: nil,
+                locationIntent: location,
+                dueDateHasTime: true
+            ))
+        }
+        try edit(dueDate: nil, location: .update(place))
+        try edit(dueDate: Date.now.addingTimeInterval(3 * 86_400), location: .unchanged)
+        XCTAssertEqual(item.reminderTriggerKind, .time, "precondition: the date wrote over the place")
+        try repository.reorganize(try XCTUnwrap(item.captureSession))
+
+        XCTAssertNotNil(item.locationIntent, "precondition: a hand-set place survives a reorganize")
+        XCTAssertFalse(item.constrainsBothPlaceAndTime, "precondition: the reorganize took the time away")
+        XCTAssertNil(item.reminderTriggerKindRawValue, "precondition: the column no longer says location")
+
+        let reconciliation = repository.reconcileLocationReminders()
+        XCTAssertTrue(
+            reconciliation.monitored.contains(item.id) || reconciliation.blocked[item.id] != nil,
+            "a live place reminder is planned whatever its trigger-kind column says"
         )
     }
 

@@ -49,11 +49,14 @@ struct LocationMonitorReconciliation: Equatable, Sendable {
 /// item that cannot be monitored is *reported* as blocked rather than deleted or
 /// disabled. The reminder still means what it meant.
 ///
-/// `Observable` for one property only, `unwatchedRegions`, written by hand
-/// rather than with the macro so nothing else here becomes a dependency of the
-/// views that read it. A region can stop being watched with no SwiftData change
-/// at all (iOS refuses it later, on the delegate), so a row reading a stored
-/// item would otherwise keep its last answer.
+/// `Observable`, written by hand rather than with the macro, for the two
+/// values a row reads from here: `authorization` and `unwatchedRegions`. Both
+/// change with no SwiftData change at all (access granted or revoked in
+/// Settings, a region refused later on the delegate), so a row that read them
+/// would otherwise keep its last answer until something else redrew it. The
+/// rest of the state (the manager, the recorded failures, the region-event
+/// handler) is not something a view reads, and the macro would have made it
+/// tracked anyway.
 @MainActor
 final class LocationReminderMonitor: NSObject, Observable {
     /// iOS monitors at most 20 regions per app, and that budget is shared with
@@ -76,7 +79,11 @@ final class LocationReminderMonitor: NSObject, Observable {
 
     /// Every request the last reconcile was given and did not watch, keyed by
     /// region identifier, with the reason: `.monitoringLimitReached` past the
-    /// budget, `.monitoringFailed` for a region iOS refused.
+    /// budget, `.monitoringFailed` for a region iOS refused. A plan made
+    /// without location access blocks every request with the permission
+    /// blocker instead, which can land here too; it is never what a surface
+    /// shows, because `locationBlocker` asks the resolver first and the
+    /// resolver reports the same missing access.
     ///
     /// This is the monitor's own answer to "is iOS watching this reminder",
     /// and `CapturedItem.locationBlocker(authorization:)` is the one place that
@@ -147,7 +154,8 @@ final class LocationReminderMonitor: NSObject, Observable {
     /// snapshot, refreshed by `locationManagerDidChangeAuthorization`, never
     /// persisted with a thought.
     var authorization: LocationAuthorization {
-        cachedAuthorization
+        observationRegistrar.access(self, keyPath: \.authorization)
+        return cachedAuthorization
     }
 
     private static func authorizationSnapshot(
@@ -170,10 +178,16 @@ final class LocationReminderMonitor: NSObject, Observable {
     }
 
     private func refreshAuthorization() {
-        cachedAuthorization = Self.authorizationSnapshot(
+        let refreshed = Self.authorizationSnapshot(
             from: manager,
             isRegionMonitoringAvailable: isRegionMonitoringAvailable
         )
+        // A delegate callback that leaves the snapshot as it was must not
+        // redraw every row that reads it.
+        guard refreshed != cachedAuthorization else { return }
+        observationRegistrar.withMutation(of: self, keyPath: \.authorization) {
+            cachedAuthorization = refreshed
+        }
     }
 
     /// Whether the Always prompt has already been shown once.
@@ -317,12 +331,20 @@ final class LocationReminderMonitor: NSObject, Observable {
     /// Why iOS is not watching this request, or `nil` when the last reconcile
     /// watched it or never saw it.
     ///
-    /// "Never saw it" reads as watched on purpose. A request appears between a
-    /// save and the reconcile that follows it, and every mutation that adds or
-    /// frees a place reconciles straight after saving, so that gap is not one a
-    /// person can see. The alternative, treating every unplanned request as
-    /// blocked, would show each place reminder as broken for the moment between
-    /// launch and the first reconcile.
+    /// "Never saw it" reads as watched on purpose. The alternative, treating
+    /// every unplanned request as blocked, would show each place reminder as
+    /// broken between launch and the first reconcile.
+    ///
+    /// That is only safe while the gap stays short, so the paths that add or
+    /// free a place reconcile straight after saving: capture in the app or from
+    /// Siri and Shortcuts, split, merge, complete, archive, delete, any edit of
+    /// a place reminder, and a one-shot retiring after it fires. Four are
+    /// known not to, and for them the next foreground or launch is the
+    /// repair: the iCloud snapshot restore,
+    /// `resolveCombinedPlaceAndTimeHoldouts` at launch (it only removes
+    /// places, so it can free a slot but never shows an unwatched one as
+    /// armed), `undoOrganization`, and a tutorial capture, which is saved with
+    /// `schedulesReminders` off.
     func monitoringBlocker(for request: LocationMonitorRequest) -> LocationReminderBlocker? {
         unwatchedRegions[Self.regionIdentifier(for: request)]
     }
