@@ -17,7 +17,7 @@ Both failures happened on 2026-09-14, hours apart, on different material:
     twelve stems carry all 48 rows with one frame taking 65%. Read off the
     census table, `plus 48 0.9%` is an attested form with eight sources behind
     it. It is one blueprint.
-  * `wait` appears in 58 over 18 sources, and a third of them are one frame,
+  * `wait` appears in 60 over 18 sources, and a third of them are one frame,
     `I was going to ask— wait, ...`. A detector keyed on the phrase would
     fire on captures that are one sentence with the nouns changed.
 
@@ -53,6 +53,14 @@ worth handling, or whether people say it. It is a shape, and a shape with a
 mark on it is still a shape: the mark below says a population is concentrated
 by these two mechanical measures, never that evidence is weak. That judgement
 belongs to a person reading why the rows are alike.
+
+WHAT IT COUNTS AS AN UTTERANCE. Every multi-word string literal in the test
+files, assertion messages and skip reasons included, because that is the
+population the census walks. So a test message that happens to contain a
+form moves that form's figures: `wait` went from 58 rows over 30 stems to 60
+over 32 on 2026-09-23 when three assertion messages about a reminder that
+waits for the person were added. Test prose is not speech, but rewording it
+to hold a figure still is worse than moving the figure and saying why.
 """
 import collections
 import re

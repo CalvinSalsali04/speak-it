@@ -21,6 +21,18 @@ struct OrganizedThought: Equatable, Sendable {
     /// not. `needsClarification` says *that* something is unclear; this says
     /// *what*, in a form a rule can branch on and a person can be shown.
     let state: SemanticState
+    /// Whether review is asked for some reason other than the place-and-time
+    /// hold: an ambiguous date, a vague time, an unsupported exception, a
+    /// missing person, low model confidence.
+    ///
+    /// `needsClarification` cannot say this, because the hold sets it too.
+    /// The one reader is the shopping pass, which names a store list for a
+    /// row held only by the hold and for no other row in review (see
+    /// `isHeldOnlyForPlaceAndTime`). It defaults to `needsClarification`, so a
+    /// reading built anywhere that does not know its reasons counts every
+    /// question as another reason. Only `ThoughtOrganizer.organize` and the
+    /// refinement path's validation state it.
+    let clarificationBesidesPlaceAndTime: Bool
 
     init(
         itemType: ItemType,
@@ -34,7 +46,8 @@ struct OrganizedThought: Equatable, Sendable {
         needsClarification: Bool,
         temporalIntent: TemporalIntent = .none,
         locationIntent: LocationIntent? = nil,
-        state: SemanticState = .resolved
+        state: SemanticState = .resolved,
+        clarificationBesidesPlaceAndTime: Bool? = nil
     ) {
         self.itemType = itemType
         self.category = category
@@ -48,6 +61,69 @@ struct OrganizedThought: Equatable, Sendable {
         self.temporalIntent = temporalIntent
         self.locationIntent = locationIntent
         self.state = state
+        self.clarificationBesidesPlaceAndTime = clarificationBesidesPlaceAndTime ?? needsClarification
+    }
+}
+
+extension OrganizedThought {
+    /// True when this reading names a place (Home, Work, here, or a place by
+    /// its name) and also any time at all: a day, a weekday, a date, a part of
+    /// the day, a clock, or a repeat.
+    ///
+    /// Only the finished value is read, not how it was reached. That is why it
+    /// can be a post-condition: whichever branch produced the reading, a place
+    /// beside a time looks the same here. It is the parse-time twin of
+    /// `CapturedItem.constrainsBothPlaceAndTime`, which excludes the same items
+    /// from region monitoring and, unless the person has decided, from
+    /// scheduling. A lead whose place could not be read (`.named("")`) names
+    /// nothing to wait for, so it is not held; see `PlaceReference.namesAPlace`.
+    var holdsPlaceAndTime: Bool {
+        guard locationIntent?.place.namesAPlace == true else { return false }
+        return temporalIntent.kind != .none
+    }
+
+    /// True when the place-and-time hold is the only reason this reading is
+    /// in review. Such a row is waiting for the person to pick a trigger, not
+    /// for its content to be understood, so the store it names still names
+    /// its shopping list, as it does for the same list with only a place.
+    var isHeldOnlyForPlaceAndTime: Bool {
+        holdsPlaceAndTime && needsClarification && !clarificationBesidesPlaceAndTime
+    }
+
+    /// The place-and-time hold, applied as a post-condition on a finished
+    /// reading.
+    ///
+    /// "When I get home tomorrow" constrains two triggers, and Speak It can
+    /// enforce only one of them at a time. Keeping the time fires at 9 AM
+    /// whether or not the person is home. Keeping the place fires on an
+    /// arrival today. So neither fires: no clock reminder, no delivery, and a
+    /// review question. The region half is already withheld by
+    /// `CapturedItem.constrainsBothPlaceAndTime`.
+    ///
+    /// These are exactly the semantics the "tonight" form always had from the
+    /// final return of `TemporalIntentParser.parse`. The day, the place, the
+    /// intent, the recurrence and the semantic state are all kept as spoken,
+    /// so review can offer either half back. Only the three fields that would
+    /// execute or stay silent change, and `clarificationBesidesPlaceAndTime`
+    /// is carried over as it was, so the hold never counts as another reason.
+    /// A reading that is not a place beside a time is returned unchanged.
+    func holdingPlaceAndTime() -> OrganizedThought {
+        guard holdsPlaceAndTime else { return self }
+        return OrganizedThought(
+            itemType: itemType,
+            category: category,
+            priority: priority,
+            personName: personName,
+            dueDate: dueDate,
+            reminderDate: nil,
+            reminderDelivery: .none,
+            recurrenceRule: recurrenceRule,
+            needsClarification: true,
+            temporalIntent: temporalIntent,
+            locationIntent: locationIntent,
+            state: state,
+            clarificationBesidesPlaceAndTime: clarificationBesidesPlaceAndTime
+        )
     }
 }
 
@@ -749,6 +825,35 @@ enum ThoughtOrganizer {
         TemporalIntentParser.namesAMonthAndDay(in: text)
     }
 
+    /// What some words say about time, reduced to the fields two readings can
+    /// be compared on. `nil` when they say nothing about time at all.
+    ///
+    /// For the place grammar, which has to know where a place name stops and a
+    /// time starts. "When I get home Friday" names Home and then a day, and
+    /// only the temporal grammar can say that "Friday" is the day and "home"
+    /// is not. The place grammar's own list of time words stopped at "on
+    /// Friday", so the name swallowed the day and became a place called "home
+    /// friday". Asking the resolver `organize` itself uses means the two
+    /// cannot fall out of step again. See Docs/DECISIONS.md, 2026-09-23.
+    ///
+    /// Read against a fixed reference instant in UTC with bare clocks allowed,
+    /// because callers compare the *shape* of two readings and never use the
+    /// date they land on.
+    static func statedTime(in text: String) -> StatedTime? {
+        TemporalIntentParser.statedTime(in: text)
+    }
+
+    /// See `statedTime(in:)`.
+    struct StatedTime: Equatable, Sendable {
+        let kind: TemporalKind
+        let day: CalendarDay?
+        let time: WallClockTime?
+        let relativeSeconds: Double?
+        let timeZoneIdentifier: String?
+        /// Understood as a time, but not as one moment ("next week", "4/5").
+        let isAmbiguous: Bool
+    }
+
     /// Whether the sentence opens on an acquisition verb whose object is the
     /// person the resolver found: "get Sam from the airport", "pick up Mom".
     private static func transportsAPerson(_ person: String, in text: String) -> Bool {
@@ -806,11 +911,41 @@ enum ThoughtOrganizer {
         return timing.intent.kind == .none || timing.needsClarification
     }
 
+    /// Reads one capture into what Speak It will store and schedule.
+    ///
+    /// **Every reading leaves through `OrganizedThought.holdingPlaceAndTime()`.**
+    /// A place beside any time, saved or named, is held for review with no
+    /// clock reminder, and that rule is enforced here, after all the other rules
+    /// have run, instead of inside any one branch. It used to be computed in
+    /// the middle of `TemporalIntentParser.parse` and consumed only by that
+    /// function's last return. The date-only branch returned before reaching
+    /// it, so "remind me to call Mom when I get home tomorrow" armed 9 AM and
+    /// asked nothing. The recurrence rescue further down this file re-armed a
+    /// held reading too. The hold reads only the finished value, so a return
+    /// added later above this line cannot skip it. See Docs/DECISIONS.md,
+    /// 2026-09-23.
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
         calendar: Calendar = .autoupdatingCurrent,
         contentScopeIsMemory: Bool = false
+    ) -> OrganizedThought {
+        organizeBeforeHolds(
+            text,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            contentScopeIsMemory: contentScopeIsMemory
+        ).holdingPlaceAndTime()
+    }
+
+    /// Everything `organize` decides except the place-and-time hold. Private
+    /// on purpose: its output may still carry a clock reminder beside a saved
+    /// place, and no caller is allowed to see that.
+    private static func organizeBeforeHolds(
+        _ text: String,
+        referenceDate: Date,
+        calendar: Calendar,
+        contentScopeIsMemory: Bool
     ) -> OrganizedThought {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()
@@ -932,6 +1067,8 @@ enum ThoughtOrganizer {
                     reminderDate: reminder,
                     delivery: reminderPass.delivery == .none ? .notification : reminderPass.delivery,
                     needsClarification: duePass.needsClarification || reminderPass.needsClarification,
+                    clarificationBesidesPlaceAndTime: duePass.clarificationBesidesPlaceAndTime
+                        || reminderPass.clarificationBesidesPlaceAndTime,
                     // The intent describes the deadline, which is what the item
                     // is actually about; the reminder is how it gets announced.
                     intent: duePass.intent,
@@ -944,8 +1081,8 @@ enum ThoughtOrganizer {
         if actionability == .knowledge {
             timing = ParsedTiming(
                 dueDate: nil, reminderDate: nil, delivery: .none,
-                needsClarification: false, intent: timing.intent,
-                locationIntent: nil, wantsReminder: false
+                needsClarification: false, clarificationBesidesPlaceAndTime: false,
+                intent: timing.intent, locationIntent: nil, wantsReminder: false
             )
         }
 
@@ -1100,6 +1237,14 @@ enum ThoughtOrganizer {
             )
         }
 
+        // Everything besides the timing that asks for review. Kept apart so
+        // the reasons other than the place-and-time hold can be stated on
+        // their own; `needsClarification` is exactly what it was.
+        let otherQuestions = missingFollowUpTarget
+            || TemporalIntentParser.carriesUnsupportedException(
+                in: lowercase,
+                recurrence: recurrenceRule
+            )
         return OrganizedThought(
             itemType: type,
             category: category,
@@ -1110,13 +1255,11 @@ enum ThoughtOrganizer {
             reminderDelivery: reminderDelivery,
             recurrenceRule: recurrenceRule,
             needsClarification: (timing.needsClarification && recurringDate == nil)
-                || missingFollowUpTarget
-                || TemporalIntentParser.carriesUnsupportedException(
-                    in: lowercase,
-                    recurrence: recurrenceRule
-                ),
+                || otherQuestions,
             temporalIntent: resolvedIntent,
-            locationIntent: timing.locationIntent
+            locationIntent: timing.locationIntent,
+            clarificationBesidesPlaceAndTime: (timing.clarificationBesidesPlaceAndTime && recurringDate == nil)
+                || otherQuestions
         )
     }
 
@@ -2022,6 +2165,11 @@ private struct ParsedTiming: Equatable {
     let reminderDate: Date?
     let delivery: ReminderDelivery
     let needsClarification: Bool
+    /// `needsClarification` without the parser's own place-and-time disjunct.
+    /// Differs from it only on the final return of `TemporalIntentParser.parse`
+    /// for a place beside a time; see
+    /// `OrganizedThought.clarificationBesidesPlaceAndTime`.
+    let clarificationBesidesPlaceAndTime: Bool
     let intent: TemporalIntent
     /// Set when the wording named a place rather than (or as well as) a time.
     var locationIntent: LocationIntent?
@@ -2316,17 +2464,22 @@ private enum TemporalIntentParser {
         // the time win here; on-device QA produced exactly the 8pm-but-not-home
         // misfire this rule exists to prevent.)
         //
-        // A *named* place is different in kind: it cannot be geofenced at all,
-        // so the stated time is the only trigger Speak It could ever enforce.
-        // There the time wins — "when I go to Sobeys, remind me to get cheese
-        // in one hour" acts on the hour, and the name still labels the
-        // shopping list. The place words survive on the untouched transcript
-        // either way.
-        let placeIsEnforceable: Bool = switch parsedLocation?.place {
-        case .home, .work, .currentLocation: true
-        case .named, nil: false
-        }
-        let combinesPlaceAndTime = placeIsEnforceable && resolution.intent.kind != .none
+        // A *named* place is held the same way (2026-09-23, DEL-18). It cannot
+        // be geofenced until it is searched for, and until then the time used
+        // to win: "tomorrow when I get to Costco" armed 9 AM tomorrow and
+        // dropped the place. That is the arrival condition executing
+        // unconditionally, the same failure the saved-place rule exists to
+        // prevent, so the person is asked instead. A lead whose place could
+        // not be read at all ("when I get there") still lets the time win,
+        // because it names nothing to wait for.
+        //
+        // This decides only whether the place is *kept*. The hold itself (no
+        // clock reminder, and a review question) is applied to every reading
+        // that leaves `ThoughtOrganizer.organize`, by
+        // `OrganizedThought.holdingPlaceAndTime()`. The date-only branch
+        // below returns early, and it used to skip the hold.
+        let placeIsHeld = parsedLocation?.place.namesAPlace ?? false
+        let combinesPlaceAndTime = placeIsHeld && resolution.intent.kind != .none
         let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
             ? parsedLocation
             : nil
@@ -2343,9 +2496,12 @@ private enum TemporalIntentParser {
             ConditionalIntentScope.isTemporalAdjunct($0.condition)
                 && conditionResolution?.intent.kind != TemporalKind.none
         } ?? false
-        // Named places cannot be geofenced, but an explicit time beside one is
-        // an existing supported fallback: the time wins. `locationIntent` is
-        // nil in that branch, so retain the parsed place as its evidence.
+        // A place lead whose place could not be read, beside an explicit time,
+        // lets the time win, and `locationIntent` is nil in that branch. The
+        // parsed lead is retained here as evidence that the condition was a
+        // place, so it is not also reported as an unsupported condition. A
+        // named place with a name is kept as `locationIntent` and never
+        // reaches this.
         let namedPlaceWithExplicitTime: Bool = if case .named? = parsedLocation?.place {
             resolution.intent.kind != .none
         } else {
@@ -2374,7 +2530,10 @@ private enum TemporalIntentParser {
 
         let reminderHasPassed = resolvedReminder.map { $0 <= referenceDate } ?? false
         // Dropped for a combined request too, so no notification is scheduled
-        // against a clock the person also constrained by place.
+        // against a clock the person also constrained by place. This line only
+        // covers the final return. The guarantee is
+        // `OrganizedThought.holdingPlaceAndTime()`, which also covers the
+        // date-only early returns below.
         let reminderDate = (reminderHasPassed || combinesPlaceAndTime) ? nil : resolvedReminder
 
         let vagueTime = containsAny(semanticText, [" later", "soon", "sometime", "when i can", "eventually"])
@@ -2392,11 +2551,11 @@ private enum TemporalIntentParser {
         } else {
             false
         }
-        let needsClarification = resolution.isAmbiguous
+        let clarificationBesidesPlaceAndTime = resolution.isAmbiguous
             || locationPlaceUnreadable
-            || combinesPlaceAndTime
             || unsupportedCondition
             || (locationIntent == nil && wantsReminder && (reminderDate == nil || vagueTime))
+        let needsClarification = clarificationBesidesPlaceAndTime || combinesPlaceAndTime
 
         // A date-only day whose reminder was requested still needs a moment to
         // fire at. That moment belongs to the notification, not to the intent,
@@ -2450,6 +2609,7 @@ private enum TemporalIntentParser {
                     reminderDate: alert,
                     delivery: delivery,
                     needsClarification: vagueTime,
+                    clarificationBesidesPlaceAndTime: vagueTime,
                     intent: intent,
                     locationIntent: locationIntent,
                     wantsReminder: wantsReminder
@@ -2464,6 +2624,7 @@ private enum TemporalIntentParser {
                     reminderDate: nil,
                     delivery: .none,
                     needsClarification: vagueTime,
+                    clarificationBesidesPlaceAndTime: vagueTime,
                     intent: intent,
                     locationIntent: locationIntent,
                     wantsReminder: wantsReminder
@@ -2476,6 +2637,7 @@ private enum TemporalIntentParser {
             reminderDate: reminderDate,
             delivery: reminderDate == nil ? .none : delivery,
             needsClarification: needsClarification,
+            clarificationBesidesPlaceAndTime: clarificationBesidesPlaceAndTime,
             intent: intent,
             locationIntent: locationIntent,
             wantsReminder: wantsReminder
@@ -3615,6 +3777,35 @@ private enum TemporalIntentParser {
     static func namesAMonthAndDay(in text: String) -> Bool {
         monthAndDay(in: text, referenceDate: Date(), calendar: .current) != nil
     }
+
+    /// The readers `organize` resolves with, as a comparable value. See
+    /// `ThoughtOrganizer.statedTime(in:)`.
+    static func statedTime(in text: String) -> ThoughtOrganizer.StatedTime? {
+        let resolution = timingResolution(
+            in: text.lowercased(),
+            referenceDate: statedTimeReference,
+            calendar: statedTimeCalendar,
+            allowsBareClock: true
+        )
+        guard resolution.isAmbiguous || resolution.intent.kind != .none else { return nil }
+        return ThoughtOrganizer.StatedTime(
+            kind: resolution.intent.kind,
+            day: resolution.intent.day,
+            time: resolution.intent.time,
+            relativeSeconds: resolution.intent.relativeSeconds,
+            timeZoneIdentifier: resolution.intent.timeZoneIdentifier,
+            isAmbiguous: resolution.isAmbiguous
+        )
+    }
+
+    private static let statedTimeReference = Date(timeIntervalSinceReferenceDate: 0)
+
+    private static let statedTimeCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }()
 
     /// The spoken clock forms, read together. See `ThoughtOrganizer.statesAClock`.
     static func statesASpokenClock(in text: String) -> Bool {
