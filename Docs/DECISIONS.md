@@ -1,5 +1,205 @@
 # Decisions
 
+## 2026-09-23 — A snooze moves one occurrence, and the series keeps its own time
+
+Finding D10 in the delivery-integrity audit: snoozing a recurring reminder
+retimed the whole series. "Every Monday at 9", snoozed ten minutes, became
+"every Monday at 9:10" from then on. There were three causes, and all three
+read the alert from `reminderDate`, the one field the notification actions
+overwrite:
+
+- **The next occurrence's offset.** `setCompleted` and
+  `advanceOverdueRecurrences` carried `reminderDate − dueDate` forward. Once
+  a snooze had moved `reminderDate`, that difference was the snooze.
+- **The native repeating trigger.** `ReminderScheduleRequest` took its
+  hour and minute from the fire date. For a snoozed occurrence, a trigger
+  repeating at the snoozed minute has that snooze as its first fire, so the
+  first-fire check passed and iOS repeated the series at 9:10.
+- **Tomorrow.** It took its clock from `reminderDate`, so a snoozed
+  occurrence sent to tomorrow landed on the snoozed minute and moved the
+  due date there too.
+
+The series' due time was never lost. `dueDate` is not touched by a snooze,
+and the intent's wall clock is not either. Only the alert *offset* has no
+home other than `reminderDate`. A captured series always alerts at its due
+time, but an item edited to alert 15 minutes early does not, and nothing
+else stores that offset. So a snooze now records the alert it displaced
+before it moves `reminderDate`. The record is
+`TemporalIntent.snoozedFromReminderDate`, and `CapturedItem.seriesReminderDate`
+reads it back, or `reminderDate` when there is no record. The offset, the
+anchor for a series with no due date, and the repeating trigger's clock all
+come from that value. Tomorrow re-anchors a recurring occurrence on
+tomorrow at the series' own alert and keeps the offset. `carriedIntent`
+clears the record on the next occurrence, and any edit writes a new intent
+without it.
+
+**Why the intent and not a new column or the recurrence sidecar.** The
+intent is stored as one encoded blob (`temporalIntentData`) precisely so its
+shape can change without another schema version. Its decoder already
+tolerates fields that are missing, so there is no SwiftData model change and
+no migration. The blob also travels with the row in backups, and rolls back
+with it when a save fails. `RecurrenceStore` does neither for a new field.
+The record is set only on items that recur, so a one-off reminder snoozes
+and moves to tomorrow exactly as before.
+
+**A snoozed occurrence arms two notifications.** The first build of this
+change armed a snoozed occurrence as an exact one-shot and nothing else,
+because a repeating match at the series' clock does not describe the snooze.
+Once the one-shot fired, nothing was armed for the series until the app next
+ran. Someone who snoozed and did not open Speak It would miss the next
+occurrences completely, which is worse than the drift this entry set out to
+fix. So a displaced occurrence now carries `seriesContinuation` on its
+`ReminderScheduleRequest`, and `scheduleNotification` adds a second request
+beside the one-shot: the series' own repeating calendar trigger.
+
+- **First fire.** A repeating calendar trigger first fires at the first
+  match after it is added. That is what the existing native-series path
+  already relies on when it compares `nextTriggerDate()` with the
+  occurrence. A snooze is pressed on the occurrence's own alert, so that
+  slot has passed and the first match is the next occurrence.
+  `seriesContinuationTrigger` refuses the one case where it would not be:
+  a first match within a minute of the displaced alert.
+- **Identifier.** `SpeakIt.reminder.<item>.series`
+  (`seriesNotificationIdentifier(for:)`) is derived from the item alone.
+  `cancel(itemID:)` removes it next to the item's own identifier, which
+  covers completion, archive and delete. A scoped pass removes it through
+  `notificationIdentifiersToRemove`. A full reconcile removes it with every
+  other `SpeakIt.reminder.` prefix, and re-adds it only while the row is
+  still displaced. Every pass removes before it adds, and a
+  `UNNotificationRequest` added under an existing identifier replaces it, so
+  there is at most one.
+- **Done on a later occurrence.** The series notification carries the
+  item's id, so Done, 10 min and Tomorrow act on the row. Done completes the
+  row and generates the next occurrence, whose own trigger replaces both.
+- **Tomorrow never collides with it.** On a daily series, tomorrow at the
+  series' clock is exactly the continuation's next match. The `.tomorrow`
+  action clears the record, so the occurrence is back on its series' alert,
+  no continuation is armed, and one notification rings.
+- **Both or neither.** `.scheduled` is reported only when both requests are
+  pending. When an add throws, `addAllOrNone` withdraws every request it had
+  already added, because a one-shot left armed alone is the missed reminder
+  the series trigger exists to prevent. The next pass retries.
+- **An empty plan is `.failed`.** Before this branch every group added
+  exactly one request, so a plan could not be empty. A group made only of
+  fired series can now plan nothing, when `seriesContinuationTrigger`
+  refuses its continuation. The pending check that follows is an
+  `allSatisfy`, which passes over nothing, so without a guard that group
+  would report `.scheduled`. `scheduleNotification` reports `.failed`
+  instead. That is the safer error. `.scheduled` is the one answer a pass
+  must never give falsely: the capture receipt then says the reminder is
+  set, and nothing retries it. A false `.failed` costs a retry and an
+  honest "couldn't be scheduled". No reachable path is known to produce an
+  empty plan, because a fired occurrence's next match is a whole period
+  away. This only decides which way it errs if one does.
+
+**An alerted series stays armed through every pass (DEL-12).** Every
+scheduling pass cancels both identifiers of each item in its scope, then
+adds only the requests it built. `init?(item:)` returns nil once the fire
+date has passed. So a series whose alert had fired, snoozed or not, was
+disarmed by any pass that included it, and nothing re-armed it until the
+next foreground. The foreground reconcile itself was never the problem:
+`reconcilePendingReminders` runs `advanceOverdueRecurrences` before it
+builds a request. Its in-place branch covers every row that can carry a
+continuation, because it applies whenever `repeatingComponents` is non-nil,
+so the row is rolled onto its next occurrence first. The paths that
+escaped were the ones that do not advance:
+
+- `synchronizeReminders(for:)`, reached from a notification action, an
+  edit, or a completion on another item in the same capture;
+- `synchronizeAllReminders`, reached from loading sample data.
+
+That is one mechanism, DEL-12, and it covered snoozed and unsnoozed rows
+alike. Every scheduling pass now builds its requests with
+`ReminderScheduleRequest.forScheduling`. For a series iOS can repeat whose
+fire has passed, it returns a request that arms only the series'
+repeating trigger, under the `.series` identifier, until the app rolls the
+row forward. The passes include the Shortcuts and Siri capture path
+(`ExternalCaptureWriter.save` in `SaveThoughtIntent.swift`) and the
+permission card on Today, whose Allow button runs `requestAccessAndSchedule`
+over the same requests Today reads its access status from. Both were still
+on `init?(item:)`. That leaves `init?(item:)` with no production caller. It
+stays as the definition of an alert still ahead, which `forScheduling` is
+described against and tests assert on.
+
+What a pass arms is one value, `ReminderScheduler.batchSelection`: alarms
+still ahead, and notification requests that are still ahead or that only
+continue a series. `scheduleBatch` and `plannedNotifications` both select
+through it. The first fix changed `scheduleBatch`'s own filter, which no
+test read, so reverting it left the suite green. A test now reads the
+selection.
+
+**The snooze record is not allowed to fail quietly.** The snooze decides to
+record from `RecurrenceStore` (UserDefaults), while the record lives in the
+row's SwiftData intent blob. A recurring row without a blob, one the launch
+backfill has not reached, is given the backfill's own reconstruction on the
+spot so the record has somewhere to go. That write goes around the
+`temporalIntent` setter, which marks any intent that expresses a time as a
+time trigger. Through the setter, a recurring place reminder reached this
+way became a clock reminder. `backfillTemporalIntentKeepingTrigger` writes
+the blob and its kind, and leaves a place trigger alone. The launch
+backfill now writes through it too. There the setter was safe only by a
+coincidence of schema versions: the trigger column arrived one version
+after the intent, so a row with no intent data had no trigger to flip.
+The helper makes it hold by construction. Any other failure of the snooze
+record is a `fault` on the `com.calvinwak.SpeakIt` / `Reminders` log with
+the reason only, and an `assertionFailure` in Debug.
+
+**Unreadable intent data is kept, not replaced.** `temporalIntent` reads nil
+for two rows: one with no intent data, and one whose data will not decode.
+The launch backfill used to reconstruct both, which replaced unreadable
+data for good. It now fills in only the first. It keeps unreadable data and
+logs a `fault` with the row count only, as a snooze does with
+`unreadableIntent`, which refuses to overwrite it too. Data that will not
+decode is most plausibly a shape a newer build wrote, read after a
+downgrade, and the newer build can still read it. The cost is real but
+bounded. Such a row still schedules from its resolved `reminderDate`. But
+the native repeating trigger takes its rule from the intent, so a recurring
+row is armed one occurrence at a time and rolls forward only when the app
+runs, from the rule `RecurrenceStore` still holds. It is worse than a series
+iOS cannot repeat, which still has a readable intent. With no intent there
+is no wall-clock anchor either, so each occurrence derives from the previous
+resolved instant and a daylight-saving change moves its clock time for good.
+And a snooze of it records nothing: it reports `unreadableIntent`, logs a
+`fault` without stopping a Debug build, and the snoozed time carries
+forward, because there is no intent to hold the series time. The launch
+backfill counts rows it could not encode in the same `fault`. Editing the
+row writes a fresh intent. No path is known to produce such a row.
+
+**Alarms are not covered.** An `.alarm` item is armed through AlarmKit with
+`.fixed(fireDate)`, a one-shot for every occurrence, snoozed or not. A
+recurring alarm has never repeated without the app running, and this change
+does not start doing so. Speak It's alarm alert offers Stop and no snooze,
+so the notification actions reach an alarm item only after it has fallen
+back to a notification. At that point it gets both requests like any other
+notification. See `KNOWN_ISSUES.md`.
+
+Covered by eleven tests in `TemporalFullPathTests`. Parsing and the
+repository's date arithmetic run pinned to the fixture zone. Every value
+the scheduler builds is read in the machine's zone. A hosted Mac in UTC
+showed why: under the pin, `Calendar.current` follows the fixture zone
+while `TimeZone.current` stays the machine's. Components built there carry
+Toronto's clock labelled with UTC's zone. On a device the two cannot
+disagree, because the app never sets `NSTimeZone.default`. The eleven tests:
+
+- a weekly snooze followed by completion;
+- the scheduler's plan for a snoozed weekly occurrence, which holds the
+  one-shot at the snooze and the series trigger at the next occurrence;
+- the plan once that one-shot has fired, which is the series trigger alone;
+- the plan for an unsnoozed series whose alert has fired (DEL-12);
+- a snooze on a recurring row with no intent blob;
+- the same on a recurring place reminder, which stays a place reminder;
+- the selection a scheduling pass arms, with a fired series in it;
+- the same pass run against the notification center, which catches a
+  `scheduleBatch` that stops selecting through `batchSelection`;
+- the launch backfill, which keeps a place trigger and keeps unreadable
+  intent data;
+- snooze then Tomorrow on a daily series;
+- a one-off reminder, as the unchanged control.
+
+Two tests in `SwiftDataThoughtRepositoryTests` cover the rest: the series
+identifier is removed with its item, and a failed add withdraws what was
+already added.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

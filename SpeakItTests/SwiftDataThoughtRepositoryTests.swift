@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftData
+import UserNotifications
 import XCTest
 @testable import SpeakIt
 
@@ -5596,6 +5597,96 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             Set(ReminderScheduler.notificationIdentifiersToRemove(from: identifiers, scope: scope)),
             Set(identifiers.prefix(2))
         )
+    }
+
+    /// Collects what the scheduler asks the notification center to remove.
+    private final class RemovedIdentifiers: @unchecked Sendable {
+        var values: [String] = []
+    }
+
+    /// The second notification a snoozed recurring occurrence keeps armed, the
+    /// series' own repeating trigger, must go wherever the item's reminder
+    /// goes: an item-scoped pass, a full reconcile, and `cancel(itemID:)`,
+    /// which completion, archive and delete all call.
+    ///
+    /// Falsifier: an identifier the removal paths do not derive from the item
+    /// outlives it, so a completed or deleted series would keep ringing every
+    /// week. On b74d002 there is no such identifier at all, and this does not
+    /// compile. Dropping the series identifier from `cancel(itemID:)` or from
+    /// `notificationIdentifiersToRemove` fails the first or last assertion.
+    func testSeriesNotificationIsRemovedWithItsItem() {
+        let itemID = UUID()
+        let otherID = UUID()
+        let series = ReminderScheduler.seriesNotificationIdentifier(for: itemID)
+        let otherSeries = ReminderScheduler.seriesNotificationIdentifier(for: otherID)
+        XCTAssertNotEqual(series, ReminderScheduler.notificationIdentifier(for: itemID))
+
+        XCTAssertEqual(
+            ReminderScheduler.notificationIdentifiersToRemove(
+                from: [series, otherSeries],
+                scope: ReminderSynchronizationScope(itemIDs: [itemID])
+            ),
+            [series]
+        )
+        XCTAssertEqual(
+            Set(ReminderScheduler.notificationIdentifiersToRemove(
+                from: [series, otherSeries],
+                scope: ReminderSynchronizationScope(replacesAllSpeakItReminders: true)
+            )),
+            [series, otherSeries]
+        )
+
+        let removed = RemovedIdentifiers()
+        let previous = ReminderScheduler.delivery
+        defer { ReminderScheduler.delivery = previous }
+        ReminderScheduler.delivery = ReminderDeliverySink(
+            removeNotifications: { removed.values.append(contentsOf: $0) },
+            cancelAlarm: { _ in },
+            pendingIdentifiers: { [] }
+        )
+        ReminderScheduler.cancel(itemID: itemID)
+        XCTAssertEqual(
+            Set(removed.values),
+            [ReminderScheduler.notificationIdentifier(for: itemID), series]
+        )
+    }
+
+    /// When one add of a group's requests throws, none of the group may stay
+    /// armed: a snoozed one-shot without its series trigger is the missed
+    /// reminder the series trigger exists to prevent.
+    ///
+    /// Falsifier: on 3b10701 a throwing add returned `.failed` and left every
+    /// request before it pending, so the one-shot stayed armed alone. Take the
+    /// rollback out of `addAllOrNone` and the removed set is empty.
+    /// `addAllOrNone` is new, so on 3b10701 this does not compile.
+    func testAFailedAddWithdrawsTheRequestsAlreadyAdded() async {
+        let content = UNMutableNotificationContent()
+        let oneShot = UNNotificationRequest(identifier: "one-shot", content: content, trigger: nil)
+        let series = UNNotificationRequest(identifier: "series", content: content, trigger: nil)
+        struct AddFailed: Error {}
+
+        let added = RemovedIdentifiers()
+        let removed = RemovedIdentifiers()
+        let armed = await ReminderScheduler.addAllOrNone(
+            [oneShot, series],
+            add: { request in
+                if request.identifier == "series" { throw AddFailed() }
+                added.values.append(request.identifier)
+            },
+            remove: { removed.values.append(contentsOf: $0) }
+        )
+        XCTAssertFalse(armed)
+        XCTAssertEqual(added.values, ["one-shot"])
+        XCTAssertEqual(Set(removed.values), ["one-shot", "series"])
+
+        let untouched = RemovedIdentifiers()
+        let armedBoth = await ReminderScheduler.addAllOrNone(
+            [oneShot, series],
+            add: { _ in },
+            remove: { untouched.values.append(contentsOf: $0) }
+        )
+        XCTAssertTrue(armedBoth)
+        XCTAssertEqual(untouched.values, [])
     }
 
     func testSharedTodaySnapshotRoundTripsAtomically() throws {

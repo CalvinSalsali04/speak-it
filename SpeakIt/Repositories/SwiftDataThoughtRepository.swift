@@ -1,10 +1,14 @@
 import CoreLocation
 import Foundation
+import os
 import SwiftData
 import WidgetKit
 
 @MainActor
 final class SwiftDataThoughtRepository: ThoughtRepository {
+    /// Content-free diagnostics for reminder bookkeeping. Messages name a
+    /// state, never an item's words, and nothing here reaches analytics.
+    private static let reminderLog = Logger(subsystem: "com.calvinwak.SpeakIt", category: "Reminders")
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
     private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
 
@@ -165,8 +169,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try? modelContext.save()
     }
 
-    /// Gives rows written before schema version 2 the temporal intent they were
-    /// never able to store.
+    /// Gives a row with no stored intent the temporal intent it was never able
+    /// to store: a row written before schema version 2.
     ///
     /// The recovery is only possible because Speak It never discards what a
     /// person actually said: reparsing `originalTextSegment` against the item's
@@ -178,15 +182,41 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     ///
     /// Resolved dates are never rewritten here. A person's existing reminders
     /// must not move because the app learned to describe them better.
+    ///
+    /// `temporalIntent` is nil for two different rows: one with no intent data,
+    /// and one whose data is there but will not decode. Only the first is
+    /// backfilled. Data that will not decode may be a shape a newer build
+    /// wrote, and replacing it would destroy it for good, so it is kept as it
+    /// is and reported, the way a snooze reports `unreadableIntent`. The
+    /// intent is written with `backfillTemporalIntentKeepingTrigger`, never
+    /// through the setter, so a row's trigger is not re-derived: a place
+    /// reminder stays one. The setter was safe here too, but only because the
+    /// trigger column arrived a schema version after the intent, so a row
+    /// with no intent data had no trigger to flip. This makes it hold by
+    /// construction.
     private func backfillTemporalIntents() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         var changed = false
+        var unreadable = 0
+        var unencodable = 0
 
-        // Only rows that have no intent at all. A user-edited one is never
+        // Only rows with no readable intent. A user-edited one is never
         // revisited, and neither is one already reconstructed.
         for item in items where item.temporalIntent == nil {
-            item.temporalIntent = reconstructedIntent(for: item)
-            changed = true
+            guard item.temporalIntentData == nil else {
+                unreadable += 1
+                continue
+            }
+            if item.backfillTemporalIntentKeepingTrigger(reconstructedIntent(for: item)) {
+                changed = true
+            } else {
+                unencodable += 1
+            }
+        }
+        if unreadable > 0 || unencodable > 0 {
+            Self.reminderLog.fault(
+                "Launch backfill left rows without an intent: unreadable \(unreadable, privacy: .public), unencodable \(unencodable, privacy: .public)"
+            )
         }
 
         guard changed else { return }
@@ -287,7 +317,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let refreshedItems = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         let requests = refreshedItems
             .filter { !$0.isArchived && !$0.isCompleted }
-            .compactMap(ReminderScheduleRequest.init(item:))
+            .compactMap { ReminderScheduleRequest.forScheduling($0) }
 
         ReminderScheduler.synchronize(
             requests,
@@ -366,9 +396,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                   let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: now)
             else { continue }
 
-            let reminderOffset = item.reminderDate.flatMap { reminder in
-                item.dueDate.map { reminder.timeIntervalSince($0) }
-            } ?? 0
+            let reminderOffset = seriesReminderOffset(of: item)
 
             // A rule `repeatingComponents` *can* express is armed as a single
             // native repeating trigger, so it is one row that keeps recurring
@@ -753,6 +781,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         case .snoozeTenMinutes:
             let date = Date.now.addingTimeInterval(10 * 60)
             for item in items where !item.isCompleted {
+                // A snooze moves this occurrence, never the series. Before the
+                // alert is displaced, a recurring item records where its series
+                // put it, and a second snooze keeps that first record rather
+                // than taking the already-snoozed time as the series' own.
+                if RecurrenceStore.rule(for: item.id) != nil,
+                   let seriesReminder = item.seriesReminderDate {
+                    recordSnoozeDisplacement(of: item, from: seriesReminder)
+                }
                 item.reminderDate = date
                 item.lastModifiedAt = .now
             }
@@ -764,17 +800,63 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 return
             }
             for item in items where !item.isCompleted {
-                let sourceDate = item.reminderDate ?? item.dueDate
+                let recurs = RecurrenceStore.rule(for: item.id) != nil
+                // A recurring occurrence moves to tomorrow at its series' own
+                // alert, not at a snoozed one: "every day at 8", snoozed and
+                // then sent to tomorrow, is due tomorrow at 8, not 8:10.
+                let ownReminder = recurs ? item.seriesReminderDate : item.reminderDate
+                let sourceDate = ownReminder ?? item.dueDate
                 let hour = sourceDate.map { calendar.component(.hour, from: $0) } ?? 9
                 let minute = sourceDate.map { calendar.component(.minute, from: $0) } ?? 0
                 let date = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
                 item.reminderDate = date
-                if item.dueDate != nil { item.dueDate = date }
+                if let dueDate = item.dueDate {
+                    if recurs, let ownReminder {
+                        // Keep the series' distance between alert and due
+                        // date, so the occurrence after this one is carried
+                        // forward from the clock the series repeats at.
+                        item.dueDate = date.addingTimeInterval(dueDate.timeIntervalSince(ownReminder))
+                    } else {
+                        item.dueDate = date
+                    }
+                }
+                // The occurrence now sits on its series' own alert again, so
+                // there is no displacement left to remember.
+                if recurs { item.setSnoozedFromReminderDate(nil) }
                 item.lastModifiedAt = .now
             }
             try persistChanges()
             rescheduleReminders(touching: items)
         }
+    }
+
+    /// Records the series alert a snooze is about to displace, and refuses to
+    /// fail quietly.
+    ///
+    /// The snooze decides to record from `RecurrenceStore`, which lives in
+    /// UserDefaults, while the record lives in the row's intent blob. A
+    /// recurring row with no intent is one the launch backfill has not reached
+    /// yet. It gets the backfill's own reconstruction here, so the record has
+    /// somewhere to go and the next occurrence is computed from the series
+    /// rather than from the snoozed time. Any other failure is logged, with
+    /// the reason only, and stops a Debug build, except `unreadableIntent`:
+    /// the launch backfill keeps undecodable data on purpose, so a row in
+    /// that state is one the app chose to leave, and a Debug trap on the
+    /// person's snooze of it would be hostile. It is logged the same way.
+    private func recordSnoozeDisplacement(of item: CapturedItem, from seriesReminder: Date) {
+        var outcome = item.setSnoozedFromReminderDate(seriesReminder)
+        if outcome == .noIntent {
+            // Not through the `temporalIntent` setter, which would turn a
+            // recurring place reminder into a clock reminder.
+            item.backfillTemporalIntentKeepingTrigger(reconstructedIntent(for: item))
+            outcome = item.setSnoozedFromReminderDate(seriesReminder)
+        }
+        guard !outcome.isWritten else { return }
+        Self.reminderLog.fault(
+            "Recurring snooze recorded no series alert: \(outcome.rawValue, privacy: .public)"
+        )
+        guard outcome != .unreadableIntent else { return }
+        assertionFailure("Recurring snooze recorded no series alert: \(outcome.rawValue)")
     }
 
     /// Reschedules only the captures a notification action actually touched.
@@ -1495,9 +1577,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
            let rule = RecurrenceStore.rule(for: item.id),
            let session = item.captureSession,
            let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: completedAt) {
-            let reminderOffset = item.reminderDate.flatMap { reminder in
-                item.dueDate.map { reminder.timeIntervalSince($0) }
-            } ?? 0
+            let reminderOffset = seriesReminderOffset(of: item)
             let next = CapturedItem(
                 originalTextSegment: item.originalTextSegment,
                 displayTitle: item.displayTitle,
@@ -2471,7 +2551,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let session else { return }
         let requests = session.items
             .filter { !$0.isArchived && !$0.isCompleted }
-            .compactMap(ReminderScheduleRequest.init(item:))
+            .compactMap { ReminderScheduleRequest.forScheduling($0) }
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
@@ -2493,7 +2573,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.reminderDate != nil && item.isArchived == false && item.completedAt == nil
             }
         )
-        let requests = (try? modelContext.fetch(descriptor))?.compactMap(ReminderScheduleRequest.init(item:)) ?? []
+        let requests = (try? modelContext.fetch(descriptor))?.compactMap { ReminderScheduleRequest.forScheduling($0) } ?? []
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
@@ -2533,6 +2613,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         toOccurrenceOn nextDate: Date
     ) -> TemporalIntent? {
         guard var intent = item.temporalIntent else { return nil }
+        // A snooze belonged to the occurrence being left behind.
+        intent.snoozedFromReminderDate = nil
         // The day is read in the intent's own calendar, so a series pinned to a
         // named zone ("every day at 9 AM Toronto time") keeps advancing by
         // Toronto days rather than by the travelling device's days.
@@ -2541,6 +2623,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             calendar: intent.calendar(default: .autoupdatingCurrent)
         )
         return intent
+    }
+
+    /// How far a series puts its alert from its due date, which every next
+    /// occurrence keeps.
+    ///
+    /// Read from `seriesReminderDate`, not `reminderDate`. A snoozed
+    /// `reminderDate` minus the due date is the snooze, and carrying that
+    /// forward turned "every day at 8", snoozed ten minutes, into "every day
+    /// at 8:10" for every occurrence after it.
+    private func seriesReminderOffset(of item: CapturedItem) -> TimeInterval {
+        guard let reminder = item.seriesReminderDate, let due = item.dueDate else { return 0 }
+        return reminder.timeIntervalSince(due)
     }
 
     private func nextRecurrenceDate(
@@ -2556,7 +2650,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             : nil
 
         var next = rule.nextDate(
-            scheduledDate: item.dueDate ?? item.reminderDate,
+            // A reminder-only series has no due date to anchor on; its anchor
+            // is its own alert, never a snoozed one.
+            scheduledDate: item.dueDate ?? item.seriesReminderDate,
             completedAt: completedAt,
             preferredWallClock: preferredWallClock
         )
