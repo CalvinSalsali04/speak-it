@@ -10,8 +10,11 @@ capture waited was set by how quickly the model call noticed it had been
 cancelled, which nothing here controls. The V1 performance audit found this
 by reading (`/mnt/project-files/v1/audits/performance.md`, item 2). It fits
 the earlier measurement on the owner's Mac, where the refinement ran past its
-budget on 17 of 21 complex captures, although that run did not separate the
-model's time from the wait.
+budget on 17 of 21 complex captures. That run timed the model's own answer
+with no budget applied (every answer of two or more items took over two
+seconds), so this change sets how long a capture waits, not what it gets:
+an answer that arrives after the budget was dropped before and still is
+(`/mnt/project-files/v1/audits/fm-budget-effect.md`).
 
 `BudgetedWork.firstResult(within:_:)` replaces the group. The model call and
 the timer run as two unstructured tasks, the first to settle resumes the
