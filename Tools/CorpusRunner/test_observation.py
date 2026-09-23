@@ -918,7 +918,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"a discarded recording was saved"`. The fixture
         `"buy milk and eggs today"` was already counted earlier in this entry.
         The development-set overlap stayed at 114, checked by
-        regenerating `LANGUAGE_BASELINE.md`. What the test
+        regenerating `LANGUAGE_BASELINE.md`.
+        4068 -> 4073 on 2026-09-23, from
+        the row's bell and the scheduler reading one delivery function:
+        three tests in `ItemPresentationTests`, five literals, all
+        assertion messages — `"precondition: the wording asks for no
+        alert"`, `"a future reminder date is scheduled whatever the
+        wording says"`, `"the row must not deny an alert iOS is
+        holding"`, `"precondition: the alarm was given a moment"` and
+        `"precondition: the day was heard"`. Both fixtures add nothing,
+        `"Call the accountant tomorrow"` being in `DurabilityTests` and
+        `"Set an alarm for 6:45 tomorrow"` in `SemanticCorpusDataC`, and
+        a phrase the doc comment first quoted was put in backticks
+        instead. 4073 -> 4074 the same day, from the review of that change:
+        three more tests in `ItemPresentationTests` (the receipt counting a
+        hand-set reminder once, its kind label matching the scheduler's
+        delivery, and a past reminder date armed with no request) add one
+        fixture, `"Set an alarm for 6:45 and call the accountant
+        tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
+        the wording asks for no alert"` are reused, and their doc comments
+        quote in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —

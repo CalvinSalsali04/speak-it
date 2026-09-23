@@ -60,9 +60,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// perfectly healthy while nothing was monitoring it.
     enum ReminderState: Equatable, Sendable {
         case none
-        /// `delivery` is `.none` for a date the person never asked to be
-        /// reminded about — "buy milk tomorrow" carries a date but nothing
-        /// will alert on it. Carrying delivery here, rather than inferring
+        /// `delivery` is `.none` when the date is a due date with no
+        /// `reminderDate` beside it — "buy milk tomorrow" carries a date but
+        /// nothing will alert on it. The wording does not decide that: any
+        /// stored `reminderDate` makes delivery `.alarm` or `.notification`
+        /// (`ItemPresentation.scheduledDelivery`), and the wording only picks
+        /// between those two. Carrying delivery here, rather than inferring
         /// "has a date" as "will alert", is what lets a surface tell those two
         /// rows apart. See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1.
         case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
@@ -193,7 +196,7 @@ struct ItemPresentation: Equatable, Sendable {
             return .place(locationIntent)
         }
         if let date = item.reminderDate ?? item.dueDate {
-            return .time(date, isDateOnly: item.isDateOnly, delivery: reminderDelivery(for: item))
+            return .time(date, isDateOnly: item.isDateOnly, delivery: scheduledDelivery(for: item))
         }
         return .none
     }
@@ -216,9 +219,20 @@ struct ItemPresentation: Equatable, Sendable {
     nonisolated(unsafe) private static var deliveryCache:
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
 
-    private static func reminderDelivery(for item: CapturedItem) -> ReminderDelivery {
+    /// The alert kind that will fire for a timed item, and the only answer to
+    /// that question: the row's bell, the receipt's label and
+    /// `ReminderScheduleRequest` all read it. A stored `reminderDate` is what
+    /// schedules, so it is what arms; the wording only chooses between an
+    /// alarm and a notification. A date set by hand in the editor, or by
+    /// voice-moving an item that had none, carries wording with no alert word
+    /// in it, and reading that wording as `.none` hid a notification iOS was
+    /// holding (Docs/DECISIONS.md, 2026-09-23).
+    ///
+    /// Whether the date is still ahead is deliberately not asked here: a past
+    /// `reminderDate` produces no request but still reads as armed on the row.
+    static func scheduledDelivery(for item: CapturedItem) -> ReminderDelivery {
         guard item.reminderDate != nil else { return .none }
-        return effectiveReminderDelivery(for: item)
+        return effectiveReminderDelivery(for: item) == .alarm ? .alarm : .notification
     }
 
     /// The alert kind the original wording asked for: the segment's own
