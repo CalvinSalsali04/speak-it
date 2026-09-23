@@ -509,6 +509,29 @@ final class SpeechTranscriber: ObservableObject {
         transcript = ""
     }
 
+    /// "Type instead", after the screen has moved the words into its editor.
+    /// Stops a run that is starting or listening, settles any other state,
+    /// and forgets the words in every one of them. Returns whether a run was
+    /// cancelled, so the caller can end its Live Activity.
+    ///
+    /// The words are forgotten even when the transcriber is already `.idle`:
+    /// a finished run leaves its final words there for the save it hands them
+    /// to, and a save that returned early leaves them behind. Kept, the next
+    /// Save & Close read them again and added them after the editor, which
+    /// already held them. Every branch leaves no run open, so
+    /// `releaseTranscript` never declines here.
+    @discardableResult
+    func stopForTyping() -> Bool {
+        let wasStartingOrListening = state == .requestingPermission || isListening
+        if wasStartingOrListening {
+            cancel()
+        } else if state != .idle {
+            resetAfterFailure()
+        }
+        releaseTranscript()
+        return wasStartingOrListening
+    }
+
     private func markAudioInputReady(startID: UUID) {
         guard state == .requestingPermission, activeStartID == startID else { return }
         audioInputReadyTimeout?.cancel()

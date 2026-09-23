@@ -1549,15 +1549,11 @@ struct CaptureView: View {
         // `startVoiceCapture` may still be waiting on its launch delay or on a
         // permission prompt. Cancelling here invalidates the transcriber's
         // active start ID, so either path cannot begin listening behind the
-        // typing interface after the person has already changed modes.
-        let wasStartingOrListening = transcriber.state == .requestingPermission
-            || transcriber.isListening
-        if wasStartingOrListening {
-            transcriber.cancel()
+        // typing interface after the person has already changed modes. The
+        // words are in the editor now, so the transcriber forgets them in
+        // every state, `.idle` included.
+        if transcriber.stopForTyping() {
             Task { await CaptureActivityManager.cancelListening() }
-        } else if transcriber.state != .idle {
-            transcriber.resetAfterFailure()
-            transcriber.releaseTranscript()
         }
 
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {

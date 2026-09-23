@@ -324,6 +324,49 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertEqual(transcriber.state, .listening)
     }
 
+    // MARK: - Type instead after the words have moved to the editor
+
+    /// Type instead folds the spoken words into the editor and then asks the
+    /// transcriber to forget them. A finished recording whose save returned
+    /// early leaves the transcriber `.idle` with its final words still held,
+    /// and that is the state the forgetting used to skip: the next Save &
+    /// Close joined those words after an editor that already held them.
+    ///
+    /// Falsifier: move `releaseTranscript()` in `stopForTyping` back inside
+    /// the `else if state != .idle` branch and the `.idle` half fails, on the
+    /// joined words as well as on the empty transcript.
+    func testTypeInsteadForgetsTheSpokenWordsInEveryState() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let typed = "buy milk"
+
+        // A finished run: the final result closes it and hands its words on.
+        let finished = transcriber.beginRunWithoutAudioForTesting()
+        finished.deliverTranscript("and eggs", false)
+        let spoken = transcriber.transcript
+        finished.deliverTranscript(spoken, true)
+        finished.deliverTranscript(spoken, true)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(transcriber.transcript, spoken, "this no longer reproduces the idle state that kept its words")
+
+        let editor = CaptureDraftStore.joined(typedBeforeSpeaking: typed, spoken: spoken)
+        XCTAssertFalse(transcriber.stopForTyping(), "a finished run has no Live Activity to end")
+        XCTAssertEqual(transcriber.transcript, "")
+        XCTAssertEqual(
+            CaptureDraftStore.joined(typedBeforeSpeaking: editor, spoken: transcriber.transcript),
+            editor,
+            "the spoken words were saved a second time after the editor that already held them"
+        )
+
+        // A run still listening: cancelled, and its words forgotten likewise.
+        let listening = transcriber.beginRunWithoutAudioForTesting()
+        listening.deliverTranscript("and bread", false)
+        XCTAssertTrue(transcriber.stopForTyping())
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(transcriber.transcript, "")
+    }
+
     // MARK: - The voice screen for as long as the save runs
 
     /// The cause, reproduced rather than assumed. `completeFinalization`
