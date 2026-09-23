@@ -447,17 +447,19 @@ final class CaptureFeedbackTests: XCTestCase {
 
     /// The lifecycle invariant itself, on the function `CaptureView.save`
     /// lowers its flag through: up for as long as persistence runs, and down
-    /// exactly once however persistence ends.
+    /// exactly once however persistence ends. It has two exits, a return and a
+    /// throw; the third row is the throw a cancelled store call surfaces as,
+    /// not a cancelled Task.
     ///
     /// Falsifier: replace the `defer` with a `lower()` after the `await` and the
-    /// thrown and cancelled rows fail, which is the orb left on "Saving" with
+    /// two throwing rows fail, which is the orb left on "Saving" with
     /// every control refused.
     func testTheSavingFlagComesDownOnEveryWayOutOfPersistence() async {
         struct StoreRefused: Error {}
         let endings: [(name: String, persist: () async throws -> Int)] = [
             ("returned", { 1 }),
             ("threw", { throw StoreRefused() }),
-            ("was cancelled", { throw CancellationError() })
+            ("threw a cancellation", { throw CancellationError() })
         ]
 
         for ending in endings {

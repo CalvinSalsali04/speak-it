@@ -892,7 +892,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the entry above hit the hard way. 4115 -> 4119 on 2026-09-23, when
         the saving flag's lowering moved into `CaptureSaveInFlight` and one
         test walks every way out of persistence. Four, enumerated: three
-        assertion messages and the ending `"was cancelled"`, which counts
+        assertion messages and the ending `"threw a cancellation"` (named `"was cancelled"` in the first draft), which counts
         because it has a space in it; `"returned"` and `"threw"` do not.
         The rewritten test double added none. What the test
         is actually

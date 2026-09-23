@@ -312,9 +312,11 @@ enum CaptureVoiceStatus: Equatable {
 ///
 /// The persistence call is the save's only suspension point, so lowering the
 /// flag when it returns is the same frame as lowering it after the synchronous
-/// bookkeeping that follows. The `defer` makes that true on every exit,
-/// including a throw and cancellation, and the tests run this function rather
-/// than a copy of it.
+/// bookkeeping that follows. That holds only while the bookkeeping stays
+/// synchronous, which the comment at the call site guards. The function has two
+/// exits, a return and a throw (a cancelled persistence arrives as a thrown
+/// `CancellationError`), and the `defer` lowers the flag on both. The tests run
+/// this function rather than a copy of it.
 enum CaptureSaveInFlight {
     @MainActor
     static func persisting<Value>(
@@ -1424,6 +1426,10 @@ struct CaptureView: View {
                         performance: performance
                     )
                 }
+                // `isSaving` is already down here. Nothing between this line
+                // and `savedResult = result` may suspend: an `await` added in
+                // this span would show the orb idle while the save is still
+                // finishing (see `CaptureSaveInFlight`).
                 let retrySource = retryingUnclearResult
                 let replacesRetrySource = retrySource.map {
                     result.createdNewCapture && $0.session.id != result.session.id
