@@ -1264,12 +1264,23 @@ final class DurabilityTests: XCTestCase {
     }
 
     /// A recording with nothing typed before it is deleted outright, as
-    /// before, and speaking again after erasing the editor does not bring
-    /// back words set aside by an earlier switch.
+    /// before. Words typed before speaking and then erased stay erased, both
+    /// when the person erases the editor and stops there, and when they
+    /// speak again afterwards.
     ///
-    /// Falsifier: keep a draft for every deleted recording and this one
-    /// returns one; set `typedBeforeSpeaking` only when the editor has words
-    /// and the erased "Call Dana" comes back.
+    /// Erase and stop is the sequence that used to bring them back: type
+    /// "Call Dana", Speak instead, speak, Type instead, select all, delete,
+    /// leave. The editor's empty checkpoint does not discard a draft that has
+    /// a recording, so the draft survives, and recovering the recording read
+    /// the set-aside words back in front of it.
+    ///
+    /// Falsifier: stop `update` clearing `typedBeforeSpeaking` when it
+    /// empties the transcript, and the erase-and-stop half fails: the
+    /// recovered words are "Call Dana about the invoice", and deleting the
+    /// recording keeps "Call Dana" to be saved as a thought. Keep a draft for every
+    /// deleted recording and the first half returns one. Set
+    /// `typedBeforeSpeaking` only when the editor has words and the
+    /// speak-again half gets "Call Dana" back.
     func testOnlyTypedWordsAreKeptAndErasedOnesStayErased() throws {
         let spoken = CaptureDraftStore.begin(source: .inAppVoice)
         _ = try writeRecording(for: spoken)
@@ -1277,14 +1288,36 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.deleteRecordingKeepingTypedWords(id: spoken.id))
         XCTAssertNil(CaptureDraftStore.current())
 
-        let draft = CaptureDraftStore.begin(source: .inAppText)
-        CaptureDraftStore.update(id: draft.id, transcript: "Call Dana")
-        CaptureDraftStore.updateSource(id: draft.id, source: .inAppVoice, typedBeforeSpeaking: "Call Dana")
+        // Type, Speak instead, speak, Type instead, erase everything, stop.
+        let (draft, audioURL) = try seedTypedThenSpokenDraft(typed: "Call Dana", spokenSoFar: "about the")
+        XCTAssertEqual(draft.typedBeforeSpeaking, "Call Dana")
         CaptureDraftStore.updateSource(id: draft.id, source: .inAppText)
         CaptureDraftStore.update(id: draft.id, transcript: "")
-        CaptureDraftStore.updateSource(id: draft.id, source: .inAppVoice, typedBeforeSpeaking: "")
 
-        let respoken = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        relaunch()
+        let erased = try XCTUnwrap(
+            CaptureDraftStore.draft(id: draft.id),
+            "The recording is still a capture to recover after the editor is emptied"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertNil(erased.typedBeforeSpeaking, "Erased words were still set aside for recovery")
+        XCTAssertEqual(
+            CaptureDraftStore.words(for: erased, spoken: "about the invoice"),
+            "about the invoice",
+            "Recovering the recording brought back the words the person erased"
+        )
+        XCTAssertEqual(CaptureRecoveryPresentation.typeInsteadStartingText(for: erased), "")
+        XCTAssertFalse(CaptureRecoveryPresentation.keepsTypedWordsOnDelete(erased))
+        XCTAssertNil(CaptureDraftStore.deleteRecordingKeepingTypedWords(id: draft.id))
+        relaunch()
+        XCTAssertTrue(try allSessions().isEmpty, "Deleting the recording saved words the person had erased")
+
+        // Erase and speak again at once, before the editor's empty
+        // checkpoint lands: the switch itself sets nothing aside.
+        let (again, _) = try seedTypedThenSpokenDraft(typed: "Call Dana", spokenSoFar: "about the")
+        CaptureDraftStore.updateSource(id: again.id, source: .inAppText)
+        CaptureDraftStore.updateSource(id: again.id, source: .inAppVoice, typedBeforeSpeaking: "")
+        let respoken = try XCTUnwrap(CaptureDraftStore.draft(id: again.id))
         XCTAssertNil(respoken.typedBeforeSpeaking)
         XCTAssertEqual(CaptureDraftStore.words(for: respoken, spoken: "Email Sam"), "Email Sam")
     }

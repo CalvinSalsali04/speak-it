@@ -158,6 +158,13 @@ enum CaptureDraftStore {
             // else. New words have not reached any session yet.
             drafts[index].handedOffSessionID = nil
         }
+        if normalized.isEmpty {
+            // The screen checkpoints what was typed with what was said after
+            // it, so an empty checkpoint means the person erased the editor.
+            // Nothing typed is left to keep ahead of the recording, and
+            // recovering it must not bring the erased words back.
+            drafts[index].typedBeforeSpeaking = nil
+        }
         drafts[index].transcript = normalized
         drafts[index].updatedAt = date
         persist(drafts)
