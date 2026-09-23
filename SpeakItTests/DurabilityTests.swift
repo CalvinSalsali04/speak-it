@@ -231,6 +231,113 @@ final class DurabilityTests: XCTestCase {
         XCTAssertEqual(try allItems().count, 1)
     }
 
+    // MARK: - 1b. A person's hand outranks launch recovery
+
+    /// Two thoughts in one sentence, so a recovery that re-reads the words
+    /// produces two rows where the placeholder was one. That makes both an
+    /// overwrite and a duplicate visible.
+    private let twoThoughts = "Call the plumber and book the car service"
+
+    private func rows(inSession sessionID: UUID) throws -> [CapturedItem] {
+        try allItems()
+            .filter { $0.captureSession?.id == sessionID }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func storedSession(_ sessionID: UUID) throws -> CaptureSession {
+        try XCTUnwrap(try allSessions().first { $0.id == sessionID })
+    }
+
+    /// The placeholder of an interrupted capture is on screen from the first
+    /// frame, and launch recovery only reaches it after the audio drafts are
+    /// recovered; a `.failed` capture's row waits in Needs review for as long
+    /// as it takes. Either way the person can correct the row, through the
+    /// editor's own `update`, before a later launch re-reads the words. That
+    /// launch used to write the organizer's answer over the correction.
+    func testAHandEditOnAnUnfinishedCaptureSurvivesRelaunch() throws {
+        let dueDate = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 45, to: .now))
+
+        for status in [ProcessingStatus.pending, .organizing, .failed] {
+            let sessionID = try killAfterRawPersistence(twoThoughts, status: status)
+            let placeholder = try XCTUnwrap(try rows(inSession: sessionID).first)
+            var edits = ItemEdits(
+                title: "Call the plumber about the kitchen leak",
+                itemType: .task,
+                category: .personal,
+                dueDate: dueDate,
+                reminderDate: nil,
+                priority: .high,
+                personName: nil,
+                needsClarification: false
+            )
+            edits.locationIntent = .unchanged
+            try repository.update(placeholder, with: edits)
+            let editedID = placeholder.id
+            let editedTitle = placeholder.displayTitle
+
+            relaunch()
+
+            let after = try rows(inSession: sessionID)
+            XCTAssertEqual(
+                after.map(\.id), [editedID],
+                "\(status): recovery must neither delete the edited row nor add rows beside it"
+            )
+            let row = try XCTUnwrap(after.first)
+            XCTAssertEqual(row.displayTitle, editedTitle, "\(status): the typed title was reverted")
+            XCTAssertEqual(row.itemType, .task, "\(status)")
+            XCTAssertEqual(row.category, .personal, "\(status)")
+            XCTAssertEqual(row.priority, .high, "\(status)")
+            XCTAssertEqual(row.dueDate, dueDate, "\(status): the hand-picked date was reverted")
+            XCTAssertNil(row.reminderDate, "\(status)")
+            XCTAssertFalse(row.needsClarification, "\(status)")
+            XCTAssertTrue(row.isReviewed, "\(status): recovery reset the review")
+            XCTAssertEqual(row.temporalIntent?.isUserEdited, true, "\(status)")
+
+            let session = try storedSession(sessionID)
+            XCTAssertEqual(session.processingStatus, .complete, "\(status): left open, it is re-read at every launch")
+            XCTAssertEqual(session.originalTranscription, twoThoughts, "The original words are never rewritten")
+        }
+    }
+
+    /// Marking a row reviewed changes no field, but it is still the person's
+    /// decision about that row, and recovery must not undo it.
+    func testAReviewedRowOnAFailedCaptureIsNotReReadAtRelaunch() throws {
+        let sessionID = try killAfterRawPersistence(twoThoughts, status: .failed)
+        let placeholder = try XCTUnwrap(try rows(inSession: sessionID).first)
+        let placeholderTitle = placeholder.displayTitle
+        try repository.markReviewed(placeholder)
+
+        relaunch()
+
+        let after = try rows(inSession: sessionID)
+        XCTAssertEqual(after.map(\.id), [placeholder.id])
+        XCTAssertEqual(after.first?.displayTitle, placeholderTitle)
+        XCTAssertEqual(after.first?.itemType, .unclear)
+        XCTAssertEqual(after.first?.isReviewed, true)
+        XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete)
+    }
+
+    /// The control for the two tests above: the same words in the same states,
+    /// with nobody's hand on the row, are still organized at launch. Without
+    /// it those tests would also pass for a fix that stopped recovering.
+    func testAnUntouchedUnfinishedCaptureIsStillOrganizedAtRelaunch() throws {
+        for status in [ProcessingStatus.pending, .organizing, .failed] {
+            let sessionID = try killAfterRawPersistence(twoThoughts, status: status)
+            let placeholderTitle = try XCTUnwrap(try rows(inSession: sessionID).first).displayTitle
+
+            relaunch()
+
+            let after = try rows(inSession: sessionID)
+            XCTAssertEqual(after.count, 2, "\(status): recovery must still split the capture it never finished")
+            XCTAssertFalse(
+                after.contains { $0.displayTitle == placeholderTitle },
+                "\(status): the placeholder was left unorganized"
+            )
+            XCTAssertFalse(after.contains { $0.isReviewed }, "\(status)")
+            XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete, "\(status)")
+        }
+    }
+
     /// Recovery re-reads the words with the rules-only extractor while the live
     /// path uses the full one. If those two disagree about whether a sentence is
     /// an operation, a kill turns "cancel the dentist reminder" into a task

@@ -57,6 +57,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
+                // An unfinished capture's rows are on screen before recovery
+                // reaches them: a `.failed` row waits in Needs review, and an
+                // interrupted placeholder is visible from the first frame
+                // while audio drafts recover. Once the person has put a hand
+                // on one of them, the rows are theirs. Re-reading the words
+                // would write the organizer's answer over their edit, and
+                // could delete the row or add others beside it, so the
+                // session is closed as it stands instead. The transcript is
+                // kept, and `Organize again` is still there to ask for it.
+                if session.items.contains(where: { Self.carriesPersonsDecision($0) }) {
+                    CaptureRecoveryAttemptLedger.finish(session.id)
+                    closeSession(session)
+                    continue
+                }
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
                 // every launch until the app is deleted. The launch is counted
@@ -75,6 +89,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
         resolveCombinedPlaceAndTimeHoldouts()
+    }
+
+    /// Whether a row holds something only the person could have put there.
+    ///
+    /// Every hand on a row leaves one of these marks: `update` and
+    /// `markReviewed` set `isReviewed` (and an edit also stamps `isUserEdited`
+    /// on the intents it wrote), `setCompleted` sets `completedAt`, and
+    /// `setArchived` sets `isArchived`. No automatic path sets any of them on
+    /// a session that is still unfinished. `lastModifiedAt` is deliberately
+    /// not used: the organizer and the fallback row stamp it too.
+    private static func carriesPersonsDecision(_ item: CapturedItem) -> Bool {
+        item.isReviewed
+            || item.isCompleted
+            || item.isArchived
+            || item.temporalIntent?.isUserEdited == true
+            || item.locationIntent?.isUserEdited == true
     }
 
     private func recoverOrganization(of session: CaptureSession) {
