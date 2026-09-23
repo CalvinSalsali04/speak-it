@@ -985,6 +985,13 @@ enum RuleBasedThoughtExtractor {
     /// products. Without a store, the products vote once, as one capture, for
     /// Groceries or the fallback group.
     ///
+    /// A row in review gets no list, with one exception: a row held only by
+    /// the place-and-time hold (`OrganizedThought.isHeldOnlyForPlaceAndTime`).
+    /// That row asks which trigger to keep, not what the words meant, so
+    /// "when I go to Sobeys, remind me to get cheese in one hour" stays on the
+    /// Sobeys list, as the same list with no time does. A held row fires
+    /// nothing, so it never carries a trip clause's fire moment below.
+    ///
     /// The trip clause is only dropped when the list already says everything
     /// it says: no place trigger, no recurrence, nothing needing review, and
     /// any fire moment it carries also lives on the shopping rows — "remind me
@@ -996,7 +1003,8 @@ enum RuleBasedThoughtExtractor {
         capture: String
     ) -> [ExtractedThought] {
         let shoppingIndices = items.indices.filter {
-            items[$0].organization.itemType == .shopping && !items[$0].needsReview
+            items[$0].organization.itemType == .shopping
+                && (!items[$0].needsReview || items[$0].organization.isHeldOnlyForPlaceAndTime)
         }
         guard !shoppingIndices.isEmpty else { return items }
 
@@ -1011,7 +1019,8 @@ enum RuleBasedThoughtExtractor {
         }
 
         if let store {
-            let rowFireMoments = shoppingIndices.flatMap { index -> [Date] in
+            let firingRows = shoppingIndices.filter { !items[$0].needsReview }
+            let rowFireMoments = firingRows.flatMap { index -> [Date] in
                 let organization = items[index].organization
                 return [organization.reminderDate, organization.dueDate].compactMap { $0 }
             }
@@ -3372,7 +3381,11 @@ enum IntelligentThoughtExtractor {
                 needsClarification: deterministic.needsClarification || confidence < 0.82,
                 temporalIntent: deterministic.temporalIntent,
                 locationIntent: kind.isActionable ? deterministic.locationIntent : nil,
-                state: deterministic.state
+                state: deterministic.state,
+                // Low confidence is a reason of its own, so a doubtful row
+                // held for a place and a time names no store list.
+                clarificationBesidesPlaceAndTime: deterministic.clarificationBesidesPlaceAndTime
+                    || confidence < 0.82
             )
             let title = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
             output.append(ExtractedThought(

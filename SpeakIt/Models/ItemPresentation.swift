@@ -318,7 +318,16 @@ struct ItemPresentation: Equatable, Sendable {
     /// series-exception holds are stored as `.resolved`, and a row the person
     /// confirmed keeps its recorded gap, so it would miss the first and
     /// silence the second.
+    ///
+    /// A clock beside a place the person has not chosen between arms nothing
+    /// either, held for review or not (`CapturedItem.awaitsPlaceOrTimeChoice`).
+    /// Capture gives such a row no reminder date; this covers the rows that
+    /// carry one anyway, such as "…when I get home tomorrow" stored before
+    /// that hold, which would otherwise ring at 9 AM wherever the person is.
+    /// Read here rather than in `ReminderScheduleRequest` alone, so the row's
+    /// bell and the receipt say the same as the scheduler.
     static func mayArmTime(_ item: CapturedItem) -> Bool {
+        if item.awaitsPlaceOrTimeChoice { return false }
         guard item.needsClarification else { return true }
         return item.temporalIntent?.isUserEdited == true
     }

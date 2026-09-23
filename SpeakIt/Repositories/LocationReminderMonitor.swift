@@ -338,13 +338,10 @@ final class LocationReminderMonitor: NSObject, Observable {
     /// That is only safe while the gap stays short, so the paths that add or
     /// free a place reconcile straight after saving: capture in the app or from
     /// Siri and Shortcuts, split, merge, complete, archive, delete, any edit of
-    /// a place reminder, and a one-shot retiring after it fires. Four are
+    /// a place reminder, and a one-shot retiring after it fires. Three are
     /// known not to, and for them the next foreground or launch is the
-    /// repair: the iCloud snapshot restore,
-    /// `resolveCombinedPlaceAndTimeHoldouts` at launch (it only removes
-    /// places, so it can free a slot but never shows an unwatched one as
-    /// armed), `undoOrganization`, and a tutorial capture, which is saved with
-    /// `schedulesReminders` off.
+    /// repair: the iCloud snapshot restore, `undoOrganization`, and a
+    /// tutorial capture, which is saved with `schedulesReminders` off.
     func monitoringBlocker(for request: LocationMonitorRequest) -> LocationReminderBlocker? {
         unwatchedRegions[Self.regionIdentifier(for: request)]
     }

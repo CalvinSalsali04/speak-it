@@ -397,10 +397,10 @@ The budget is shared, so one item's mutation moves another's answer. Capturing
 in the app, splitting, merging, completing, archiving, deleting, editing a place
 reminder (including a date that holds it), retiring a fired one-shot and a Siri
 or Shortcut capture now reconcile straight after saving, instead of leaving the
-region and the row as they were until the next foreground. Four paths still
+region and the row as they were until the next foreground. Three paths still
 wait for the next foreground or launch: the iCloud snapshot restore,
-`resolveCombinedPlaceAndTimeHoldouts` at launch (which only removes places),
-`undoOrganization`, and a tutorial capture. Before this, a place reminder captured
+`undoOrganization`, and a tutorial capture. (A fourth,
+`resolveCombinedPlaceAndTimeHoldouts` at launch, was removed with DEL-18.) Before this, a place reminder captured
 in the app was not registered at all until the app next came to the foreground.
 A verdict keyed by region identifier describes only the request it was made
 for, so an edit or a moved Home reads as watched until the reconcile that
@@ -1631,9 +1631,10 @@ replacing it, so a reviewed row whose time the person never touched is
 still re-read. Launch recovery's session-level test in #124
 (`carriesPersonsDecision`) reads `temporalIntent?.isUserEdited` as one of
 its disjuncts; this is the same mark, applied one field family at a time,
-not a third definition. The launch pass that releases legacy place-and-time
-holdouts follows it as well: it still drops the system's named place, and
-no longer swaps a hand-set intent for the reparse.
+not a third definition. The launch pass that released legacy place-and-time
+holdouts followed it as well until DEL-18 removed that pass (merged into the V1
+candidate after this change): launch now touches neither the held place nor a
+hand-set time.
 
 The Organize again dialog said every hand change would be replaced, which
 was already false for the place. It now says a time or place set by hand
@@ -1659,6 +1660,326 @@ With #138, `mayArmPlace` is being changed to read only the location mark,
 and the editor save to stamp a present place it did not change as the
 person's; after that change, a temporal mark kept by a re-read cannot arm a
 place the same re-read proposed.
+
+## 2026-09-23 — A named place beside a time is held too (DEL-18)
+
+**Replaces the earlier recorded design.** Since Build 12 a *named* place
+beside a time let the time win: "Remind me to buy paper towels tomorrow when
+I get to Costco" stored a 9 AM alert for tomorrow and dropped the place, and
+"When I go to Sobeys, remind me to get cheese in one hour" rang in an hour.
+The reasons recorded for that, in code and in `TEST_CASES.md` rather than in
+this file, were that a named business cannot be geofenced until it is
+searched for, so the time is the only half Speak It could enforce, and that
+holding the capture in review "over the redundant place read as a bug". A
+launch pass, `resolveCombinedPlaceAndTimeHoldouts`, released holds older
+builds had made the same way. It is the exit gate's "condition executing
+unconditionally" family all the same: the person said *when I get to
+Costco*, and the alert rang wherever they were.
+
+**The decision (program lead, 2026-09-23).** A named place beside a time is
+held for review exactly as a saved one is. The reading keeps the named
+place, the day or time and the recurrence, arms no clock, and asks with
+`ClarificationRequirement.combinedTimeAndPlace`. `PlaceReference.namesAPlace`
+replaces `isEnforceable` as the one property `TemporalIntentParser.parse` and
+`OrganizedThought.holdingPlaceAndTime()` both read. It is false only for
+`.named("")`, a place lead whose place could not be read ("when I get
+there"), which still lets the time win because it names nothing to wait
+for. The launch pass is removed, since it would re-arm every such hold on
+each start. The scheduler refusal (next entry) applies to these rows too. **This is
+a reversible default pending the owner's word.** Reverting it means
+restoring `isEnforceable` in those two places and the launch pass; the
+at-lead oracle below should stay either way.
+
+**What it needed.** Register C1 ("remind me at half five" read as a place)
+had been closed by the time-wins rule: a clock the place grammar mistook for
+a place was dropped once the time resolved (see the international-clock
+entry). Holding named places would have held those clocks too. So the "remind
+me at" lead now asks the temporal grammar, through
+`ThoughtOrganizer.statedTime(in:)`, whether its object is a time: whether
+saying "at <object>" changes what the sentence says about time, and whether
+the object's last word does. "At lunch", "at half five", "at twenty to
+eight", "at sharp 5", "at zero nine hundred" are times; "at Costco", "at the
+pharmacy", "at the office tomorrow" are places. The oracle that the
+international-clock entry removed as costing nothing now carries load, and
+`LocationReminderTests.testRemindMeAtAClockIsATimeAndRemindMeAtAPlaceIsAPlace`
+pins both directions.
+
+**What moved.** In the gating corpus, one row:
+`SemanticCorpusB.location` "Remind me to buy paper towels tomorrow when I
+get to Costco", from a 9 AM notification on 8/4 with no place to held (no
+reminder, place Costco, review). In the tests, every capture that pinned the
+time winning: the Sobeys timed list (now one held row on the Sobeys list,
+not three timed rows), the delay inside the place clause, "When I go to
+Costco today…" in both its forms, the launch-release test (now: launch
+leaves the hold alone), and the pure hold test's named-place case. The
+refined-path shopping test now uses a timed list with no place, because the
+Sobeys capture is no longer a timed list on either path. A place-triggered
+list stays one row, as it always has, so a held timed list at a named store
+no longer splits.
+
+The shift is wider than shopping. Any place lead followed by a noun and a
+time now holds: "when I go to bed tonight" names a place called "bed", and
+"when I'm in a meeting tomorrow" one called "meeting". Both used to arm the
+time (8 PM tonight, 9 AM tomorrow) and are now held for review. Two rows in
+`SemanticCorpusB.location` make that visible ("Remind me to take my pills
+when I go to bed tonight", "Remind me to mute my phone when I'm in a
+meeting tomorrow"), so these common sentences are in front of the owner
+before the word on this default is given.
+
+**Falsifier.** Any capture that names a place by name beside a time and
+comes out of `organize` with a reminder date, a delivery or no review
+question; or any "remind me at <clock>" that the international-clock rows
+read as a time and that now parses as a place.
+
+**A held shopping row keeps its store list.** Hosted CI (run 35858682400)
+failed the four tests that pin "the place still names the list": the two
+Sobeys captures and both "When I go to Costco today…" forms held correctly
+and got no list. `holdingPlaceAndTime()` sets `needsClarification`, the
+rules extractor copies it into `needsReview`, and
+`RuleBasedThoughtExtractor.assigningShoppingGroups` named only shopping rows
+with `!needsReview`. That filter has been there since the shopping-list pass
+was added on 2026-08-22, with no recorded reason. Its effect is that a row
+whose meaning is in question is not filed on a store's list. Before DEL-18
+these rows were not in review, so the filter never met them.
+
+The hold asks which trigger to keep, not what the words meant, so it is the
+one reason for review that now keeps the list. `OrganizedThought` records
+`clarificationBesidesPlaceAndTime`: whether review is asked for any other
+reason. `TemporalIntentParser.parse` and `organize` state it beside
+`needsClarification`, which is unchanged. The refinement path adds model
+confidence below 0.82 to it. Every other constructor defaults it to
+`needsClarification`, so a reading that does not know its reasons keeps the
+old behaviour, which errs toward no list and never toward a wrong one. The
+default is safe only because the field's one reader, the shopping pass, runs
+before any site that copies a reading (the pronoun copy runs after it); a
+later reader placed after a copy would see the default. The shopping pass names a row in review only when
+`isHeldOnlyForPlaceAndTime` is true. A held row still lends no fire moment to
+the trip-clause fold, because it rings at no time.
+`SwiftDataThoughtRepositoryTests.testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`
+pins this. **Falsifier:** a shopping row in review for another reason, with
+or without the hold beside it, that is named for the store. The other
+falsifier is a dated "go to Costco" task folded away beside a held row. The
+four CI tests are the other direction.
+
+**Not covered.** Rows captured before this change stored no place, so neither
+the hold nor the scheduler refusal can see them (see `KNOWN_ISSUES.md`).
+
+## 2026-09-23 — The scheduler refuses a place beside a time the person has not chosen between
+
+The capture-time hold (below) gives a new "…when I get home tomorrow" no
+reminder date. It does nothing for a row that already has one.
+`ReminderScheduleRequest.init?(item:)` asked only whether a future
+`reminderDate` existed, so every such row stored on a TestFlight phone before
+the hold would ring once at 9 AM, wherever the person was.
+
+**The decision.** `ReminderScheduleRequest` now also refuses a row for which
+`CapturedItem.awaitsPlaceOrTimeChoice` is true: the row constrains both a
+place and a time (`constrainsBothPlaceAndTime`), and nothing shows the
+person confirmed the time: neither `isReviewed` nor `isUserEdited` on the
+temporal intent. The editor's way out is setting a time. That goes through
+`SwiftDataThoughtRepository.update`, which sets `isReviewed` and stamps the
+temporal intent `isUserEdited`, so a row the person resolved still arms.
+
+The location intent's `isUserEdited` does not release the time. The first
+version of this refusal read it, as launch recovery does. #138 settled that
+only a review or the temporal mark confirms a time, because a reorganize
+(`apply`) rewrites the temporal intent and keeps a hand-set place with its
+mark, so a place the person confirmed would release a clock they never saw.
+This refusal follows the same rule (round two of the review, R2).
+
+**Merge instruction, for whichever of #136 and #138 merges second.** #138
+makes `ItemPresentation.scheduledDelivery` read the stored `reminderDate`,
+gated only by `ItemPresentation.mayArmTime`, and makes
+`ReminderScheduleRequest.init?` read `scheduledDelivery`, so that what a row
+shows as armed and what iOS is handed are one function. This refusal is a
+second gate beside it. Merged as they stand, a stored, unreviewed "…when I
+get home tomorrow" row would show a notification bell while its request is
+refused. The second merge must:
+
+1. Move `awaitsPlaceOrTimeChoice` into `ItemPresentation.mayArmTime`, as a
+   `return false` when it holds, so the bell, the receipt and the request
+   refuse together, and drop the separate `guard` in
+   `ReminderScheduleRequest.init?`.
+2. Add one assertion to `testSchedulerRefusesAStoredPlaceAndTimeRowUntilThePersonDecides`
+   (or its successor): the refused row's `ItemPresentation.scheduledDelivery`
+   is `.none`, and becomes `.notification` once `isReviewed` is set.
+
+The release rule is already the same on both branches: `isReviewed`, or the
+temporal intent's `isUserEdited`.
+
+This is a second layer, not the fix the entry below rejected. The capture
+hold still asks the question. The refusal covers stored rows and any
+producer outside `organize`, and asks nothing, which is why it cannot be
+the only layer.
+
+**Falsifier.** A stored place-and-time row, unreviewed and unedited, with a
+future reminder date, that produces a `ReminderScheduleRequest`; the same
+row with only its place marked as set by hand, that produces one; or the
+same row, reviewed or with its time set by hand, that does not. Both are in
+`LocationReminderTests`, with dates built in the machine's zone, and so is
+the editor path through `update`.
+
+## 2026-09-23 — The place name ends where the temporal grammar finds a time
+
+**DEL-11, reached through the place grammar.** "Remind me to call Mom when I
+get home Friday" read a place called "home friday". `placeTerminator` in
+`LocationIntentParser` ends a name at the time words it lists ("tonight",
+"tomorrow", "on Friday", "at 6", "after"), and a bare weekday, "next
+Monday", "this weekend", "the 15th" and a month name were not among them.
+"Home friday" is not Home, so it was a named place, the time won, the place
+was dropped, and 9 AM Friday was armed with nothing asked. The hold that
+runs after `organize` could not see it, because the reading no longer
+carried a watchable place. The DEL-11 corpus rows had been worded "on
+Friday" or day-first so that they tested the hold and not this.
+
+**The decision.** The name is no longer ended by a longer list. After the
+terminator, `LocationIntentParser.placeName(in:)` asks the temporal grammar
+where a time begins inside the phrase, through
+`ThoughtOrganizer.statedTime(in:)`, which reads with the same resolver
+`organize` uses. It cuts at the earliest word from which the rest of the
+phrase is a time that runs to its last word, read together with whatever
+follows the phrase. "Runs to its last word" is what keeps a place that only
+contains a day a place: in "the Monday market", "market" adds nothing to
+"Monday". A cut that would leave only an article is refused, because "the"
+is not a place. This is #130's G2 lesson again: a second list falls behind
+the resolver, so the list asks the resolver.
+
+**Falsifier.** A saved place said straight before a day that the temporal
+grammar reads, where the stored place is not Home or Work, or where the row
+arms anything. The rows are in `SemanticCorpusB.location`, beside the
+day-first rows the rewording produced, and in
+`LocationReminderTests.testATimeRightAfterThePlaceEndsThePlaceName`. The
+other direction is `testAPlaceNameThatContainsATimeWordKeepsItsName`.
+
+**What could move.** Only a place phrase of two or more words whose tail the
+grammar reads as a time. In the test corpus that was one capture, "When I go
+to Sobeys in an hour, remind me…", whose place becomes "sobeys" instead of
+"sobeys in an hour". Its reading did not change here, because a named place
+beside a time was still dropped.
+
+## 2026-09-23 — A saved place beside a time is held after organizing, not in one branch of it
+
+**DEL-11, exit-gate P0: an unresolved condition executing unconditionally.**
+Before this change, "Remind me to call Mom when I get home tomorrow" stored
+place Home, `temporalKind .dateOnly`, a 9 AM `reminderDate` and
+`needsClarification false`. `CapturedItem.constrainsBothPlaceAndTime` kept
+the region unwatched, a notification was armed for 9 AM tomorrow, and nothing
+was asked. "…when I get home tonight" was held correctly, and three
+`LocationReminderTests` say so.
+
+**Cause.** The hold was a local `let` in `TemporalIntentParser.parse`
+(`reminderDate = (… || combinesPlaceAndTime) ? nil : …`, and the matching
+`needsClarification` disjunct), and only the function's last `return`
+consumed it. The date-only branch returns earlier, twice, and neither return
+reads `combinesPlaceAndTime`. "Tonight" resolves to a clock, skips that
+branch and reaches the last return, which is why it worked.
+
+**Hypothesis.** The hold is lost whenever a reading reaches storage by any
+return other than that last one. The family is therefore every such return,
+not the word "tomorrow". **Falsifier.** After the fix, any capture that has a
+saved place (Home, Work or here) and a non-`none` temporal kind, but still
+comes out of `organize` with a reminder date, a delivery, or no review
+question. The reverse also counts: if a place alone, a time alone, or a named
+place with a time changes, the hold is reading more than it should. *The
+named-place clause was withdrawn later the same day, when a named place
+beside a time was held on purpose; see DEL-18 above.*
+
+### The family: every return that could skip the hold
+
+In `TemporalIntentParser.parse` (only `organize` and `hasUnresolvedCondition`
+call it, because `ParsedTiming` is file-private):
+
+| Return | Temporal forms that reach it | Read `combinesPlaceAndTime`? | Before this change |
+| --- | --- | --- | --- |
+| Date-only branch, alert found (`reminderDate: alert`) | "tomorrow", "the day after tomorrow", "today" (9 AM, or 8 PM once 9 AM has passed), a weekday ("on Friday", "next Friday"), "this weekend", month-day ("August 20th", "the 15th"), an unambiguous numeric date, "end of month", "by end of day", "within two weeks" | No | **Armed a clock and asked nothing** |
+| Date-only branch, day too late for any alert (`reminderDate: nil`, `needsClarification: vagueTime`) | The same forms, once the stated day has no default hour left, e.g. "today" after 8 PM | No | Fired nothing, asked nothing, and watched no region. The reminder was silently lost |
+| Final return | Day plus part of day ("tomorrow morning", "Friday afternoon", "tonight", "this evening"), day plus clock, a bare clock, "in two days", "in an hour" | Yes | Held |
+| Final return, ambiguous resolution | "next week", "4/5", a clock that falls in the spring-forward gap | Not needed: the intent is `.none` and `isAmbiguous` asks | Clock half held. **Region half watched**: see `KNOWN_ISSUES.md` |
+| Any return, no reminder asked for | "Call Mom tomorrow when I get home" | The date-only branch needs `wantsReminder`, so this always reached the final return | Held |
+
+In `ThoughtOrganizer.organize`, the only caller whose output is stored:
+
+| Path | Re-read the hold? | Before this change |
+| --- | --- | --- |
+| Type-promotion reparse | Calls `parse` again, so the same returns as above | Same as above |
+| Due/reminder clause split (`DueAndReminderClauses`) | No. It rebuilds `ParsedTiming` from `reminderPass.reminderDate` | A reminder clause that took the date-only branch, or a place held only in the due clause, came back armed |
+| Recurrence rescue (`wantsRecurringReminder`) | No. It re-arms `reminderDate = recurringDate` whenever `timing.delivery == .none`, and `needsClarification` is ANDed with `recurringDate == nil` | **Re-armed any held reading that repeats** ("every Friday … when I get home", "every morning when I get to work") and dropped its review |
+| Knowledge reset, Memory scope, unresolved constraint, unfinished thought, unsettled time, unsupported condition, ambiguous follow-up target | Each passes `locationIntent: nil` and `reminderDate: nil` | Nothing to hold |
+
+The `unsupportedCondition` net in `organize` cannot catch any of these.
+`unsupportedCondition` requires `locationIntent == nil`, and a saved place
+beside a time always keeps its location intent.
+
+### The decision
+
+**The hold is a post-condition on the finished reading.** `organize` is now a
+single expression, `organizeBeforeHolds(...).holdingPlaceAndTime()`. The old
+body is private under the new name. `OrganizedThought.holdingPlaceAndTime()`
+reads only the value's own fields: a place that `PlaceReference.isEnforceable`
+says can be watched, and `temporalIntent.kind != .none`. When both hold it sets
+`reminderDate` to nil, `reminderDelivery` to `.none` and `needsClarification`
+to true, and it keeps everything else as said: due date, intent, place,
+recurrence and state. These are exactly the fields the "tonight" form always
+had. The hold does not depend on which branch produced a reading, so a return
+added to `parse` or `organize` later cannot skip it.
+`TemporalIntentParser.parse` and the hold both read `isEnforceable`, so they
+cannot disagree about which places hold.
+
+`parse` still drops the reminder on its own final return. That line is now
+redundant for safety. It stays because type promotion in `organize` reads
+`timing.delivery`, and removing it would make held "tonight" captures that
+were typed as notes become tasks. That would be a second change.
+
+Rejected alternatives:
+
+- **Patching the date-only branch.** It closes the two returns in the finding
+  and leaves the split and the recurrence rescue open. The next early return
+  would reopen the family.
+- **Holding inside `OrganizedThought.init`.** That would make the rule
+  impossible to bypass. But an initializer that rewrites its arguments
+  surprises every construction site in `ThoughtExtractor`, the repository
+  and the Foundation Models bridge. Each of those copies
+  `organize`'s output or builds one without a place, so the organize boundary
+  covers them already.
+- **Refusing the clock in `ReminderScheduleRequest`.** That stops the
+  notification but still asks nothing, so the person never learns that the
+  request was not understood. *Added later the same day as a second layer,
+  not instead of the hold; see "The scheduler refuses a place beside a time"
+  above.*
+
+### What could move, and what cannot
+
+Could move: the 18 rows added to `SemanticCorpusB.location` and the four
+tests added to `LocationReminderTests`. Any capture that pairs Home, Work or
+here with a date-only day or a recurrence now asks instead of alerting. No
+existing corpus row or test does that. A search of `SpeakItTests` for the
+five `LocationIntentParser` leads beside every temporal form found only
+places beside a clock ("tonight", "after 6"), and those were already held.
+
+Cannot move: the conditional-intent fixture (72/72,
+`Tools/CorpusRunner/devsets/conditional-intent-10k.jsonl`, scored by
+`conditional-intent-score.py`) and the cancellation-scope fixture (187/187,
+`cancellation-scope-10k.jsonl`, scored by `cancellation-scope-score.py`).
+The hold changes a reading only when `locationIntent` is non-nil, and that
+needs one of `LocationIntentParser`'s five lead patterns in the text. None of
+the 72 or 187 utterances contains any lead: a scan with the parser's own
+patterns found 0 of 259. Separately, every conditional-intent row passes
+only as `unsupportedCondition`, which requires `locationIntent == nil`. The
+cancellation scorer reads item presence, titles and scoped operations. The
+hold changes none of those.
+
+Not fixed here, because each is a different layer. Both are in
+`KNOWN_ISSUES.md`:
+
+- A saved place beside an *ambiguous* time ("next week") asks, but its
+  region is still watched.
+- `LocationIntentParser`'s place terminator does not stop at a bare weekday,
+  "this weekend", "the day after", or a month name. So "when I get home
+  Friday" reads as a named place called "home friday", the time wins, and
+  the place is dropped. *Closed later the same day; see "The place name ends
+  where the temporal grammar finds a time" above.*
+
+Rows stored before this change keep the reminder they were given.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

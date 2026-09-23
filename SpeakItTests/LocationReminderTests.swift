@@ -2596,12 +2596,407 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
     }
 
-    /// The hold is only for places Speak It could actually enforce. A named
-    /// business cannot be geofenced at all, so its stated time is the one
-    /// trigger available and the capture acts on it instead of parking in
-    /// review — "when I go to Sobeys … in one hour" fires in an hour, and the
-    /// store still names the shopping list.
-    func testNamedPlaceWithATimeActsOnTheTimeInsteadOfReview() throws {
+    // MARK: A saved place beside a bare day is held too (DEL-11)
+    //
+    // The three "tonight" tests above pass because "tonight" resolves to a
+    // clock and reaches the parse's final return, the only place the hold used
+    // to be applied. A bare day took the date-only branch, which returned
+    // earlier. These three tests make the same assertions for "tomorrow".
+
+    /// The clock half must not fire for a bare day either.
+    ///
+    /// Falsifier: if any return path can still skip the hold, this capture
+    /// keeps the 9 AM reminder the date-only branch computes for tomorrow, and
+    /// `ReminderScheduleRequest` schedules it. That is what shipped before the
+    /// hold became a post-condition on `ThoughtOrganizer.organize`.
+    func testSavedPlaceBesideABareDaySchedulesNoClockReminder() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home, "the place is still understood")
+        XCTAssertEqual(item.temporalKind, .dateOnly, "the day the person named is kept, not thrown away")
+        XCTAssertNil(
+            item.reminderDate,
+            "a bare day beside a saved place must not carry a clock reminder"
+        )
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "no time notification may be scheduled for a place beside a day"
+        )
+    }
+
+    /// The place half stays unwatched, as it does for "tonight".
+    ///
+    /// Runs the reconciler itself. Its answer depends on this process's live
+    /// location permission, so a control capture with the same saved place and
+    /// no day is reconciled beside it: whatever the permission, a live place
+    /// reminder is either monitored or given a blocker, and only an excluded
+    /// one is neither. The control proves the reconciler would have accounted
+    /// for Home here; the combined row being absent from both proves the
+    /// filter removed it.
+    ///
+    /// Falsifier: if the stored reading lost its day (temporal kind `.none`),
+    /// or the reconciler stopped filtering on `constrainsBothPlaceAndTime`, the
+    /// combined row would be monitored or blocked exactly like the control, and
+    /// with permission granted Home would deliver on an arrival today, which is
+    /// the day the person ruled out.
+    func testSavedPlaceBesideABareDayIsExcludedFromMonitoring() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let control = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: false
+        )
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+        XCTAssertFalse(control.constrainsBothPlaceAndTime, "fixture: the control names no time")
+        XCTAssertTrue(
+            item.constrainsBothPlaceAndTime,
+            "the reconciler excludes exactly this, so the flag is the contract"
+        )
+
+        let reconciliation = repository.reconcileLocationReminders()
+
+        XCTAssertTrue(
+            reconciliation.monitored.contains(control.id) || reconciliation.blocked[control.id] != nil,
+            "the reconciler accounts for a live Home reminder under this permission"
+        )
+        XCTAssertFalse(
+            reconciliation.monitored.contains(item.id),
+            "a saved place beside a bare day must not be watched"
+        )
+        XCTAssertNil(
+            reconciliation.blocked[item.id],
+            "an excluded row is neither watched nor blocked: it waits in review"
+        )
+    }
+
+    /// Held for review, and named as a combined request.
+    ///
+    /// Falsifier: before the fix the date-only branch returned
+    /// `needsClarification: vagueTime`, which is false here, so nothing was
+    /// asked. The row sat on Today looking settled while its alert was armed.
+    func testSavedPlaceBesideABareDayGoesToReview() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    /// A time said straight after the place, with no word between them, ends
+    /// the place name where the temporal grammar says the time begins.
+    ///
+    /// Falsifier: before the name asked the temporal grammar, each of these
+    /// read a place called "home friday", "work next monday", "home on the
+    /// 15th" and so on. None of those is Home or Work, so the time won, the
+    /// place was dropped, and the day's alert was armed with nothing asked:
+    /// DEL-11 again, through the place grammar instead of the temporal branch.
+    func testATimeRightAfterThePlaceEndsThePlaceName() {
+        let cases: [(String, PlaceReference)] = [
+            ("Remind me to call Mom when I get home Friday", .home),
+            ("When I get home Friday, remind me to call Mom", .home),
+            ("When I get to work next Monday remind me to submit my timesheet", .work),
+            ("Remind me to water the plants when I get home on the 15th", .home),
+            ("Remind me to water the plants when I get home this weekend", .home),
+            ("Remind me to water the plants when I get home August 20th", .home),
+            ("Remind me to water the plants when I get home the day after tomorrow", .home),
+            ("When I go to Sobeys in an hour, remind me to get eggs", .named("sobeys")),
+        ]
+        for (text, place) in cases {
+            XCTAssertEqual(LocationIntentParser.parse(text)?.place, place, text)
+        }
+    }
+
+    /// The other direction: a place whose name merely contains a time word
+    /// keeps its whole name, because the time does not run to its last word.
+    ///
+    /// Falsifier: a boundary that cut at the first word the temporal grammar
+    /// can read, without asking whether the time runs to the end of the name,
+    /// would leave these as places called "the" and "sunday".
+    func testAPlaceNameThatContainsATimeWordKeepsItsName() {
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to buy bread when I get to the Monday market")?.place,
+            .named("monday market")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to bring the snacks when I get to Sunday school")?.place,
+            .named("sunday school")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to stretch when I get to the gym")?.place,
+            .named("gym")
+        )
+    }
+
+    /// Names that end in a number or in a weekday: what the cut does to them
+    /// today, pinned as it is rather than as it should be.
+    ///
+    /// A number alone is not a time. The bare-hour clock needs a preposition
+    /// in front of it, so "gate 5" and "room 204" keep their numbers. A
+    /// plural weekday is not a time to the temporal grammar either, so "TGI
+    /// Fridays" keeps its name. A name that ends in a singular weekday is cut:
+    /// "Ruby Tuesday" leaves "ruby". Nothing in the words tells that name
+    /// from "Costco Tuesday", which is a place and a day. The sentence-level
+    /// parse reads the Tuesday either way, so only the place shown in review
+    /// is wrong (see Docs/KNOWN_ISSUES.md).
+    ///
+    /// Falsifier: "gate 5" or "room 204" losing its number means the cut now
+    /// reads a bare number as a clock. "Ruby Tuesday" keeping its name, or
+    /// "TGI Fridays" losing its plural, means the rule changed and the known
+    /// issue needs revisiting.
+    func testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem() {
+        let cases: [(String, PlaceReference)] = [
+            ("Remind me to get a coffee when I get to gate 5", .named("gate 5")),
+            ("Remind me to drop off the forms when I get to room 204", .named("room 204")),
+            ("Remind me to grab a table when I get to TGI Fridays", .named("tgi fridays")),
+            ("Remind me to grab napkins when I get to Ruby Tuesday", .named("ruby")),
+        ]
+        for (text, place) in cases {
+            XCTAssertEqual(LocationIntentParser.parse(text)?.place, place, text)
+        }
+    }
+
+    /// The natural phrasing, end to end: held exactly like "…when I get home
+    /// tomorrow", with the day kept and nothing armed.
+    ///
+    /// Falsifier: the stored place is anything but Home, or the row carries a
+    /// reminder date that `ReminderScheduleRequest` would schedule for 9 AM
+    /// Friday.
+    func testSavedPlaceBeforeABareWeekdayIsHeldForReview() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home Friday",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home, "the place ends before the day")
+        XCTAssertEqual(item.temporalKind, .dateOnly, "the day is kept as said")
+        XCTAssertNil(item.reminderDate, "a day beside a saved place carries no clock")
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    // MARK: The scheduler refuses a place beside a time (second layer)
+
+    /// A row stored before the hold still carries the 9 AM clock it was given.
+    /// No launch pass re-reads it, so the scheduler must refuse it until the
+    /// person has decided.
+    ///
+    /// Every date here is built in the machine's zone, never under a fixture
+    /// zone pin, because `ReminderScheduleRequest` compares against the real
+    /// clock the notification centre would use.
+    ///
+    /// Falsifier: `ReminderScheduleRequest` asks only whether a future
+    /// `reminderDate` exists. Then the unreviewed row produces a request, and
+    /// on a phone it rings at 9 AM tomorrow whether or not the person is home.
+    func testSchedulerRefusesAStoredPlaceAndTimeRowUntilThePersonDecides() throws {
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let fire = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        let row = CapturedItem(
+            originalTextSegment: "Remind me to call Mom when I get home tomorrow",
+            displayTitle: "Call Mom",
+            itemType: .personFollowUp,
+            createdAt: .now,
+            dueDate: Calendar.current.startOfDay(for: tomorrow),
+            reminderDate: fire,
+            needsClarification: false,
+            isReviewed: false,
+            temporalIntent: TemporalIntent(kind: .dateOnly),
+            locationIntent: LocationIntent(event: .arrive, place: .home)
+        )
+        container.mainContext.insert(row)
+        try container.mainContext.save()
+        XCTAssertTrue(row.constrainsBothPlaceAndTime, "fixture must be the stored DEL-11 shape")
+
+        XCTAssertNil(
+            ReminderScheduleRequest(item: row),
+            "an unreviewed place-and-time row must not ring at its stored clock"
+        )
+        XCTAssertEqual(
+            ItemPresentation.scheduledDelivery(for: row),
+            .none,
+            "the row's bell reads the same refusal as the scheduler"
+        )
+
+        row.isReviewed = true
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: row),
+            "once the person has reviewed the row, its clock is theirs"
+        )
+        XCTAssertNotEqual(ItemPresentation.scheduledDelivery(for: row), .none)
+    }
+
+    /// Only the time marked as set by hand counts as the person deciding. A
+    /// place marked by hand does not: a reorganize keeps a hand-set place with
+    /// its mark and rewrites the time, so that mark says nothing about the
+    /// clock.
+    ///
+    /// Falsifier: the row with only its place marked produces a request, so a
+    /// confirmed place releases a guessed clock.
+    func testSchedulerAcceptsAPlaceAndTimeRowOnlyWhenThePersonEditedTheTime() throws {
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let fire = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        func row(temporalEdited: Bool, locationEdited: Bool) -> CapturedItem {
+            let item = CapturedItem(
+                originalTextSegment: "Remind me to call Mom when I get home tomorrow",
+                displayTitle: "Call Mom",
+                itemType: .personFollowUp,
+                reminderDate: fire,
+                temporalIntent: TemporalIntent(kind: .dateOnly, isUserEdited: temporalEdited),
+                locationIntent: LocationIntent(event: .arrive, place: .home, isUserEdited: locationEdited)
+            )
+            container.mainContext.insert(item)
+            return item
+        }
+
+        XCTAssertNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: false)))
+        XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: true, locationEdited: false)))
+        XCTAssertNil(
+            ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)),
+            "a place set by hand does not confirm the time beside it"
+        )
+    }
+
+    /// The editor's way out still arms. Setting a time on a held row goes
+    /// through `update`, which marks the row reviewed and the time as set by
+    /// hand, so the refusal above lets it through.
+    ///
+    /// Falsifier: the refusal read a mark that `update` does not set, and a
+    /// person who resolved the question by choosing the clock never hears it.
+    func testChoosingTheClockInTheEditorStillArmsTheReminder() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        XCTAssertNil(ReminderScheduleRequest(item: item), "held at capture")
+
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let chosen = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: item.dueDate,
+                reminderDate: chosen,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: false,
+                recurrenceRule: RecurrenceStore.rule(for: item.id),
+                locationIntent: .unchanged,
+                dueDateHasTime: false
+            )
+        )
+
+        XCTAssertTrue(item.isReviewed)
+        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+        XCTAssertTrue(item.constrainsBothPlaceAndTime, "the place is still there, only the clock was chosen")
+        XCTAssertEqual(ReminderScheduleRequest(item: item)?.fireDate, chosen)
+    }
+
+    /// The hold is a post-condition on a finished reading, not a step in one
+    /// branch, so it is checked here on values the parser never produced.
+    ///
+    /// Falsifier: if the hold read how a reading was reached (which branch,
+    /// which temporal form) and not just its fields, one of the place cases
+    /// would keep its reminder. If it read too much, the place-only, time-only
+    /// or unreadable-place case would lose a reminder or gain a question that
+    /// the product contract says it must not. A named place is held since
+    /// 2026-09-23 (DEL-18); before that it kept its time.
+    func testPlaceAndTimeHoldReadsOnlyTheFinishedReading() {
+        let fire = Date(timeIntervalSince1970: 1_800_000_000)
+        func reading(_ place: PlaceReference?, _ kind: TemporalKind) -> OrganizedThought {
+            OrganizedThought(
+                itemType: .task,
+                category: .general,
+                priority: .normal,
+                personName: nil,
+                dueDate: fire,
+                reminderDate: fire,
+                reminderDelivery: .notification,
+                recurrenceRule: nil,
+                needsClarification: false,
+                temporalIntent: TemporalIntent(kind: kind),
+                locationIntent: place.map { LocationIntent(event: .arrive, place: $0) }
+            )
+        }
+
+        for place in [PlaceReference.home, .work, .currentLocation, .named("costco")] {
+            for kind in [TemporalKind.dateOnly, .exactDateTime, .relativeDuration,
+                         .calendarRecurrence, .durationRecurrence] {
+                let held = reading(place, kind).holdingPlaceAndTime()
+                XCTAssertNil(held.reminderDate, "\(place) beside \(kind) must not keep a clock")
+                XCTAssertEqual(held.reminderDelivery, .none)
+                XCTAssertTrue(held.needsClarification)
+                XCTAssertEqual(held.dueDate, fire, "the day or time that was said is kept")
+                XCTAssertEqual(held.temporalIntent.kind, kind)
+                XCTAssertEqual(held.locationIntent?.place, place)
+                XCTAssertEqual(held.holdingPlaceAndTime(), held, "holding twice changes nothing")
+            }
+        }
+
+        let unreadable = reading(.named(""), .dateOnly)
+        XCTAssertEqual(
+            unreadable.holdingPlaceAndTime(), unreadable,
+            "a place lead with no readable place names nothing to wait for"
+        )
+        let placeOnly = reading(.home, TemporalKind.none)
+        XCTAssertEqual(placeOnly.holdingPlaceAndTime(), placeOnly, "no time was said, so nothing is held")
+        let timeOnly = reading(nil, .dateOnly)
+        XCTAssertEqual(timeOnly.holdingPlaceAndTime(), timeOnly, "no place was said, so nothing is held")
+    }
+
+    /// A named place beside a time is held like a saved one (2026-09-23,
+    /// DEL-18). It cannot be geofenced from its name, and until that date the
+    /// time won: "when I go to Sobeys … in one hour" rang in an hour wherever
+    /// the person was, and the place was dropped. That is the arrival
+    /// condition executing unconditionally, so the person is asked instead.
+    ///
+    /// Falsifier: the stored row has lost its place, carries a reminder date
+    /// the scheduler would arm, or is not in review.
+    func testNamedPlaceWithATimeIsHeldForReview() throws {
         let item = try repository.createCapture(
             text: "When I go to Sobeys, remind me to get cheese in one hour",
             source: .inAppText,
@@ -2609,10 +3004,50 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertNil(item.locationIntent, "an unenforceable place is not kept as a trigger")
-        XCTAssertFalse(item.needsClarification)
-        XCTAssertNotNil(item.reminderDate, "the stated hour becomes the real trigger")
-        XCTAssertFalse(item.constrainsBothPlaceAndTime)
+        XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place is kept as said")
+        XCTAssertNil(item.reminderDate, "the hour must not fire without the place")
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    /// "Remind me at <time>" is still a time when the clock is one the place
+    /// grammar's own list does not know. Since a named place beside a time is
+    /// held, reading one of these as a place would put an ordinary timed
+    /// reminder in review, so the temporal grammar is asked first.
+    ///
+    /// Falsifier: any of the first group parses as a place. The second group
+    /// is the other direction: a place said after "at", with or without a
+    /// time elsewhere, is still a place.
+    func testRemindMeAtAClockIsATimeAndRemindMeAtAPlaceIsAPlace() {
+        for text in [
+            "Remind me at lunch to call the bank",
+            "Remind me at half five to take the bins out",
+            "Remind me at half five tomorrow to call mum",
+            "Remind me at twenty to eight to take my pills",
+            "Remind me at seventeen thirty to call the bank",
+            "Remind me at zero nine hundred to call the bank",
+            "Remind me at sharp 5 to call the bank",
+        ] {
+            XCTAssertNil(LocationIntentParser.parse(text), text)
+        }
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at Costco to buy batteries")?.place,
+            .named("costco")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at Costco tomorrow to buy batteries")?.place,
+            .named("costco")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at the pharmacy to pick up the prescription")?.place,
+            .named("pharmacy")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at the office tomorrow to book the meeting room")?.place,
+            .work
+        )
     }
 
     /// The guard must not catch plain place reminders. "When I get home" names

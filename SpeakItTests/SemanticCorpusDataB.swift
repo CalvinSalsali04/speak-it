@@ -277,6 +277,164 @@ enum SemanticCorpusB {
         corpusCase(.location, "Remind me at five to call Mom", count: 1,
                    remind: [CorpusDate(month: 8, day: 3, hour: 17)], place: [nil],
                    note: "\"At\" introduces a time here. A location rule that cannot tell these apart breaks every timed reminder."),
+
+        // A saved place beside a bare day (2026-09-23, DEL-11). Home, Work and
+        // here can be watched, so a time beside one is held for review, with
+        // no clock reminder, no matter which temporal branch read the time.
+        // The date-only branch returned before the hold, so "remind me … when
+        // I get home tomorrow" armed 9 AM, watched no region and asked
+        // nothing. Each row names a different temporal form or a different
+        // place opener. The day is asserted as well, because the hold keeps
+        // what was said and drops only what would fire. Falsifier: any row
+        // here with a reminder date, a notification delivery, or no review
+        // means some return still skips the hold.
+        corpusCase(.location, "Remind me to water the plants when I get home tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The DEL-11 shape. Before the hold became a post-condition this armed 9 AM tomorrow and asked nothing."),
+        corpusCase(.location, "Remind me to water the plants the day after tomorrow when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 5, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants today when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Captured at 10 AM, so the unheld reading fell back to the 8 PM alert. That is the same misfire as \"tonight\" by another road."),
+        corpusCase(.location, "Remind me to water the plants on Friday when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants this weekend when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 8, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants on August 20th when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 20, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "When I leave work tomorrow remind me to pick up the dry cleaning", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .leave, place: .work)], review: [true],
+                   note: "Leaving, not arriving, and fronted rather than trailing. The hold does not depend on which event or where the place sits."),
+        corpusCase(.location, "When I get to work on Friday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true]),
+        corpusCase(.location, "Remind me at the office tomorrow to book the meeting room", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true],
+                   note: "The bare \"remind me at\" opener. \"The office\" is Work, so it holds like Home does."),
+        corpusCase(.location, "Remind me to check the meter tomorrow when I get back here", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .currentLocation)], review: [true],
+                   note: "\"Here\" is watchable too, so it is held like Home and Work."),
+        corpusCase(.location, "Remind me every Friday to check the mailbox when I get home", count: 1,
+                   delivery: [.none], kind: [.calendarRecurrence], remind: [nil],
+                   recurs: [CorpusRecurrence(frequency: .weekly, interval: 1, weekdays: [6])],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The recurrence rescue in organize re-armed a reminder the parse had held, and dropped the review. The series is kept as spoken; nothing fires until a trigger is picked."),
+
+        // The place said first and the day straight after it, with no word
+        // between them (2026-09-23, DEL-11 through the place grammar). The
+        // rows above put the day first, or say "on Friday", so that they test
+        // the hold alone. These are the natural phrasings that rewording
+        // stepped around, kept beside it. The place name used to run on into
+        // the day, "home friday", which is no saved place, so the time won and
+        // the day's alert was armed with nothing asked. The name now ends
+        // where the temporal grammar finds a time. Falsifier: any row here
+        // with a reminder date, a notification delivery, no review, or a
+        // place that is not Home or Work.
+        corpusCase(.location, "Remind me to call Mom when I get home Friday", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Read as a place called \"home friday\" until the place name asked the temporal grammar where the time begins."),
+        corpusCase(.location, "When I get home Friday, remind me to call Mom", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "When I get to work Friday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true],
+                   note: "The phrasing the \"on Friday\" row above was reworded from."),
+        corpusCase(.location, "When I get to work next Monday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home on the 15th", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 15, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home this weekend", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 8, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home August 20th", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 20, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home the day after tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 5, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The terminator's \"after\" cut this name at \"home the day\". The grammar reads the day with what follows it."),
+
+        // Names that end in a number or a weekday (2026-09-23, round two of
+        // DEL-11). Pinned as the grammar reads them now. A number alone is
+        // not a clock, so a numbered place keeps its number. A name ending in
+        // a singular weekday is cut there, which is the known issue: the day
+        // was read as a time before the cut too, so the row is held either
+        // way and only the place name shown is wrong. Falsifier: "gate 5"
+        // losing its number, or any of these arming a reminder.
+        corpusCase(.location, "Remind me to get a coffee when I get to gate 5", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("gate 5"))],
+                   note: "A bare number needs \"at\" or the like in front of it to be a clock, so the gate keeps its number."),
+        corpusCase(.location, "Remind me to grab napkins when I get to Ruby Tuesday", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("ruby"))], review: [true],
+                   note: "Known issue: the name is cut at the weekday. Nothing in the words tells it from a place and a day, and the Tuesday was read as the day before the cut as well."),
+        corpusCase(.location, "Remind me to grab a table when I get to TGI Fridays", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("tgi fridays"))],
+                   note: "A plural weekday is a repeat only after \"every\" or \"weekly\", and never a single day, so the name is kept whole."),
+
+        // Controls for the rows above. The same place alone, the same time
+        // alone, and the forms that were already held. The hold must not move
+        // any of them. The named-place row among them did move, on purpose:
+        // see its note.
+        corpusCase(.location, "Remind me to water the plants when I get home", count: 1,
+                   delivery: [.none], kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [false],
+                   note: "A place alone is a place reminder, not a hold. Sending it to review would be the over-questioning the location work exists to avoid."),
+        corpusCase(.location, "Remind me to water the plants tomorrow", count: 1,
+                   delivery: [.notification], kind: [.dateOnly],
+                   remind: [CorpusDate(month: 8, day: 4, hour: nil)], place: [nil], review: [false],
+                   note: "A day alone still alerts on that day. The hold reads the place, and there is none."),
+        corpusCase(.location, "Remind me to buy paper towels tomorrow when I get to Costco", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("costco"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). Was notification at 9 AM on 8/4 with the place dropped: the arrival condition executed unconditionally. A named place beside a time is now held like a saved one."),
+        corpusCase(.location, "Remind me to water the plants when I get home tonight", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Held before this change, by the parse's final return. The post-condition gives it the same fields again."),
+        corpusCase(.location, "Remind me to water the plants tomorrow morning when I get home", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "A day with a part of the day resolves to a clock, so it never took the date-only branch and was already held."),
+        corpusCase(.location, "Water the plants tomorrow when I get home", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "No reminder was asked for, so the date-only branch never ran and this was already held. The pair with the first row above is the asymmetry the defect was."),
+        corpusCase(.location, "Remind me to water the plants next week when I get home", count: 1,
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "A week is not a day, so this asks and fires no clock. The region half is still watched, because the stored reading carries no time: see Docs/KNOWN_ISSUES.md."),
+
+        // What DEL-18 moves beyond shopping (2026-09-23, round two). A place
+        // lead ("go to", "I'm in") followed by anything and then a time now
+        // names a place beside a time, so the whole sentence is held for
+        // review where the time used to win and arm. Both of these are common, and both are held on
+        // purpose: the arrival condition would otherwise execute
+        // unconditionally. They are here so the shift is visible in the
+        // corpus, not only in the decision. Falsifier: either row arming a
+        // reminder, or losing its place.
+        corpusCase(.location, "Remind me to take my pills when I go to bed tonight", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("bed"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 8 PM tonight was armed, with the place dropped. Held now: going to bed is the condition, and 8 PM is a guess at it. The place named bed is a false place, an activity read as somewhere to go; a fix for that moves this row on purpose."),
+        corpusCase(.location, "Remind me to mute my phone when I'm in a meeting tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("meeting"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 9 AM tomorrow was armed, with the place dropped. The meeting is the condition, and 9 AM is a guess at it. The place named meeting is a false place, an event read as somewhere to go; a fix for that moves this row on purpose."),
     ]
 
     static let all: [CorpusCase] = temporalAmbiguity + nonTimeNumbers + people + recurrence + location

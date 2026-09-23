@@ -106,6 +106,9 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         // made. This is the only gate between a held row and iOS: every
         // builder (foreground reconcile, per-session sync, the all-reminders
         // sync, Siri, and Today's permission card) goes through this init.
+        // It also covers a clock beside a place the person has not chosen
+        // between (`CapturedItem.awaitsPlaceOrTimeChoice`, read by `mayArmTime`),
+        // so such a row neither rings at its stored clock nor shows a bell.
         let scheduledDelivery = ItemPresentation.scheduledDelivery(for: item)
         guard scheduledDelivery != .none else { return nil }
         let originalText = item.originalTextSegment

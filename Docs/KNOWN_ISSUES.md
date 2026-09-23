@@ -454,10 +454,10 @@ the row's own words did not state. The reasoning is in `DECISIONS.md`
   repair) keeps only what its own quote states, for the same reason.
 - **Paths outside the two engines are not held.** Splitting or merging by
   hand re-reads the parts through `ThoughtOrganizer.organize` without the
-  policy, which is the person acting on their own words. The launch pass
-  `resolveCombinedPlaceAndTimeHoldouts` re-derives a reminder from a row's
-  own `originalTextSegment`. Neither can borrow a prefix, but both read
-  blind.
+  policy, which is the person acting on their own words. It cannot borrow a
+  prefix, but it reads blind. (The launch pass
+  `resolveCombinedPlaceAndTimeHoldouts`, which also re-derived a reminder
+  from a row's own words, was removed with DEL-18.)
 - **Nothing tells the person why, beyond the row.** There is no global
   notice, no Settings or diagnostics row, and nothing in analytics. The
   refinement model's outcome is still collapsed into one `nil`. Those are
@@ -1013,6 +1013,15 @@ The specifics:
   in `ThoughtOrganizer` that skips the hold, stores a 9 AM `reminderDate` and
   is not sent to review (DEL-11, fixed on its own branch).
 
+  Since 2026-09-23 (DEL-18) a named place beside a time is held the same way
+  ("tomorrow when I get to Costco"); before that its time won and the place
+  was dropped. Because a named place is not geocoded, the place half of such
+  a request cannot fire yet: choosing it leaves an inert reminder, and the
+  clock half is the only way out that rings. A held shopping list keeps its
+  store's name only when the hold is its only question. If it also has
+  another one, such as an ambiguous date, a vague "later" or low model
+  confidence, it gets no store list, and resolving review does not add one.
+
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
   person would have been told at 8pm whether or not they were home, and told
@@ -1046,6 +1055,58 @@ The specifics:
   remove is re-planned at the next foreground or launch. And
   the Today widget reads the stored `belongsInToday`, which knows nothing of any
   place blocker, so it can list a reminder that Today shows in Needs review.
+
+  *2026-09-23 (DEL-11).* Until this date the hold only covered a time that
+  resolved to a clock. "Remind me to call Mom when I get home tomorrow" armed
+  9 AM tomorrow and asked nothing, and so did every other bare day: a
+  weekday, "this weekend", a month and day, "today". A repeating time was
+  re-armed as well. The hold now runs as a post-condition on every reading
+  that leaves `ThoughtOrganizer.organize` (see `DECISIONS.md`, 2026-09-23).
+  Three things are still open:
+
+  - **A saved place beside an ambiguous time still watches the region.**
+    "Remind me to water the plants next week when I get home" asks for the
+    time and arms no clock. But an ambiguous resolution stores temporal
+    kind `.none`, so `constrainsBothPlaceAndTime` is false and the
+    reconciler watches Home. An arrival today would deliver the reminder.
+    The same applies to "4/5" and to a clock in the spring-forward gap.
+    Closing this needs either a stored marker that a time was said but not
+    resolved, or monitoring that also skips rows that need review. Both are
+    changes to the monitoring layer, not to the hold.
+  - *Resolved the same day.* A place spoken straight before a day ("when I
+    get home Friday", "when I get to work next Monday", "when I get home on
+    the 15th") used to read as a named place called "home friday", so the
+    time won and the place was dropped with no question asked. The place
+    name now ends where the temporal grammar finds a time, and those
+    phrasings sit in the corpus beside the day-first rows (see
+    `DECISIONS.md`, 2026-09-23). A name that still ends in a time the
+    grammar cannot read keeps the whole phrase as a named place.
+  - **A place name that ends in a weekday loses the weekday.** "When I get
+    to Ruby Tuesday" names a place called "ruby". The name ends where the
+    temporal grammar finds a time, and nothing in the words tells "Ruby
+    Tuesday" from "Costco Tuesday", a place and then a day. The time is still
+    read, and was read before the cut too, so the request is held for review
+    either way and nothing is armed. Only the place name shown in review is
+    cut. A number is not cut ("gate 5", "room 204"), and neither is a plural
+    weekday ("TGI Fridays"). The corpus rows and
+    `testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem` pin all
+    four as they read now.
+  - *Resolved the same day for rows that kept their place.* A row captured
+    before the fix still carries its 9 AM alert, and no launch pass re-reads
+    it, but `ReminderScheduleRequest` now refuses any row that constrains a
+    place and a time until the person has decided (`isReviewed`, or the
+    temporal intent marked `isUserEdited`). Such a row stays silent and unwatched.
+    Nothing moves it into Needs review, though: its stored
+    `needsClarification` is still false, so it sits on Today with its day
+    and no alert, and nothing tells the person that the alert they were
+    given is gone.
+  - **A named place beside a time captured before 2026-09-23 keeps its
+    alert.** Those captures dropped the place at capture ("tomorrow when I
+    get to Costco" stored only the 9 AM alert), and a launch pass released
+    older holds the same way. With no place stored, neither the hold nor the
+    scheduler refusal can see them, so each fires once at its stored time.
+    Only a re-read of the original words would find the place again, and no
+    launch pass does that.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.
