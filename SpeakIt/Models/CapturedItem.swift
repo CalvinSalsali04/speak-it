@@ -351,8 +351,8 @@ final class CapturedItem: Identifiable {
     /// Whether this item's place trigger may be watched and delivered, before
     /// any device state is asked: it has one, it is still open, it is not a
     /// combined place-and-time request, and the system is not holding it for
-    /// review (`ItemPresentation.mayArm`, the one rule the time scheduler
-    /// reads too).
+    /// review (`ItemPresentation.mayArmPlace`, the place half of the rule
+    /// whose time half the clock scheduler reads).
     ///
     /// Every path to CoreLocation reads this: the reconcile filter that picks
     /// which items `LocationReminderMonitor.reconcile` is handed requests for,
@@ -366,7 +366,7 @@ final class CapturedItem: Identifiable {
         isLocationTriggered
             && !isArchived && !isCompleted
             && !constrainsBothPlaceAndTime
-            && ItemPresentation.mayArm(self)
+            && ItemPresentation.mayArmPlace(self)
     }
 
     /// The monitoring request this item wants, when it can have one.

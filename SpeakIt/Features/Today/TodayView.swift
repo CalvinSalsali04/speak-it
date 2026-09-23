@@ -1005,9 +1005,9 @@ struct TodayView: View {
             VStack(spacing: 0) {
                 ForEach(needsReview) { item in
                     // What this row would arm once confirmed, and that it is
-                    // not armed yet. A held row fires nothing
-                    // (`ItemPresentation.mayArm`), so a proposed 8 PM must not
-                    // be missing from the row, and must not read as set.
+                    // not armed yet. A held row fires nothing (`ItemPresentation`'s
+                    // `mayArmTime` and `mayArmPlace`), so a proposed 8 PM must
+                    // not be missing from the row, and must not read as set.
                     let withheld = ItemPresentation.make(
                         for: item,
                         authorization: locationAuthorization

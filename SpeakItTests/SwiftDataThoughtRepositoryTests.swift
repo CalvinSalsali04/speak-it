@@ -5536,7 +5536,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// source is held; once the person confirms it, the next pass continues
     /// the series from it (Docs/DECISIONS.md, 2026-09-23).
     ///
-    /// Falsifier: remove the `mayArm` guard from `advanceOverdueRecurrences`
+    /// Falsifier: remove the `mayArmTime` guard from `advanceOverdueRecurrences`
     /// and the first pass inserts an unheld successor.
     func testAHeldSeriesSpawnsNoSuccessorUntilConfirmed() throws {
         let (item, rule) = try heldOverdueWeekdaySeries()
@@ -5580,7 +5580,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// its unconfirmed reading on, for the same reason the foreground pass
     /// does not (`testAHeldSeriesSpawnsNoSuccessorUntilConfirmed`).
     ///
-    /// Falsifier: remove the `mayArm` condition from `setCompleted` and an
+    /// Falsifier: remove the `mayArmTime` condition from `setCompleted` and an
     /// unheld, armed successor is inserted.
     func testCompletingAHeldSeriesGeneratesNoSuccessor() throws {
         let (item, _) = try heldOverdueWeekdaySeries()
@@ -5600,7 +5600,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// clean.
     ///
     /// Falsifier: gate successors on `needsClarification` rather than on
-    /// `mayArm` and none is generated; construct it with `false` again and
+    /// `mayArmTime` and none is generated; construct it with `false` again and
     /// the person's flag is dropped.
     func testASeriesThePersonHoldsKeepsGoingWithTheirFlag() throws {
         let (item, rule) = try heldOverdueWeekdaySeries()
@@ -5620,7 +5620,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             needsClarification: true,
             recurrenceRule: rule
         ))
-        XCTAssertTrue(ItemPresentation.mayArm(item), "precondition: a hold the person saved arms")
+        XCTAssertTrue(ItemPresentation.mayArmTime(item), "precondition: a hold the person saved arms")
 
         try repository.setCompleted(item, completed: true)
 
@@ -5663,7 +5663,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fired),
             "precondition: this shape advances by successors"
         )
-        XCTAssertFalse(ItemPresentation.mayArm(item), "precondition: the system holds it")
+        XCTAssertFalse(ItemPresentation.mayArmTime(item), "precondition: the system holds it")
         return (item, rule)
     }
 
@@ -5674,7 +5674,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// `update` returns. `TemporalFullPathTests` follows the same save to the
     /// notification centre.
     ///
-    /// Falsifier: have `mayArm` ignore a cleared flag (or `update` fail to
+    /// Falsifier: have `mayArmTime` ignore a cleared flag (or `update` fail to
     /// clear it) and no request exists after the save.
     func testConfirmingAHeldRowInTheEditorArmsIt() throws {
         let item = try heldLaterTodayCapture()
@@ -5700,7 +5700,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// `markReviewed` clears the hold without the editor, and must release
     /// the reminder the same way.
     ///
-    /// Falsifier: make `mayArm` read the edit mark alone and a row cleared
+    /// Falsifier: make `mayArmTime` read the edit mark alone and a row cleared
     /// without an edit stays silent.
     func testMarkingAHeldRowReviewedArmsIt() throws {
         let item = try heldLaterTodayCapture()
@@ -5710,6 +5710,66 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         defer { try? repository.delete(item) }
 
         XCTAssertNotNil(ReminderScheduleRequest(item: item))
+    }
+
+    /// A hand-set place must not release the system's hold on a guessed time.
+    /// The person edits the row, which marks both intents; organizing the
+    /// capture again re-reads `later today` into a guessed evening held for
+    /// review. `apply` rewrites the temporal intent, wiping its mark, and
+    /// keeps the hand-set place with its mark. The clock must stay unarmed
+    /// while the place half keeps the person's confirmation.
+    ///
+    /// The region is withheld here as well, by a different rule: a place with
+    /// a time beside it is a combined request, which the monitor never
+    /// watches. This test pins the two halves of the hold rule, not the region.
+    ///
+    /// Falsifier: let either mark release the time (the single OR rule this
+    /// branch first shipped) and the guessed evening is scheduled.
+    func testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing() throws {
+        let item = try heldLaterTodayCapture()
+        let session = try XCTUnwrap(item.captureSession)
+        let home = try XCTUnwrap(
+            LocationIntentParser.parse("Remind me to take out the garbage when I get home")
+        )
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            locationIntent: .update(home),
+            dueDateHasTime: !item.isDateOnly
+        ))
+        defer { try? repository.delete(item) }
+        XCTAssertTrue(item.temporalIntent?.isUserEdited == true, "precondition: the save marked the time")
+        XCTAssertTrue(item.locationIntent?.isUserEdited == true, "precondition: and the place")
+
+        try repository.reorganize(session)
+
+        XCTAssertTrue(item.needsClarification, "precondition: the re-read holds its guess")
+        XCTAssertGreaterThan(try XCTUnwrap(item.reminderDate), .now)
+        XCTAssertFalse(
+            item.temporalIntent?.isUserEdited == true,
+            "precondition: the re-read wiped the time's mark"
+        )
+        XCTAssertTrue(
+            item.locationIntent?.isUserEdited == true,
+            "precondition: and kept the hand-set place"
+        )
+
+        XCTAssertFalse(ItemPresentation.mayArmTime(item))
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .none)
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "a confirmed place must not release a guessed time"
+        )
+        XCTAssertTrue(
+            ItemPresentation.mayArmPlace(item),
+            "the place keeps the person's confirmation"
+        )
     }
 
     /// `Remind me to check in with Jordan later today`, two days out at 10:00

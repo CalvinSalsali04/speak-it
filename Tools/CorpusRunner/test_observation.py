@@ -909,7 +909,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the vague-time and series-exception rows in `SemanticCorpusDataE`
         and `SemanticCorpusDataD`, `"Remind me to call mom tomorrow at 5pm"`
         in `ItemPresentationTests`, and both Home transcripts in
-        `LocationReminderTests`. 4107 -> 4126 on 2026-09-23 again, from
+        `LocationReminderTests`. 4107 -> 4117 the same day, from the review
+        of that change: three more tests, one each in
+        `SwiftDataThoughtRepositoryTests` (a hand-set place not releasing a
+        guessed time), `MorningBriefTests` (a held row keeping the brief's
+        lead) and `DurabilityTests` (a whole-store pass cancelling a held
+        row's alarm), add ten literals, all assertion messages. Every
+        fixture they use was already here: `"Remind me to take out the
+        garbage when I get home"`, `"Set an alarm for 6:45 tomorrow"`,
+        `"Pick up the keys"` and `"Private words"`, and so were two of the
+        messages, `"precondition: the system holds it"` and `"the counts
+        are unchanged by the order"`.
+        4117 -> 4136 on 2026-09-23 again, from
         Needs review listing what the receipt says it does (REV-3): three
         new tests and one rewritten in `ItemPresentationTests`, nineteen
         literals, enumerated by diffing this census against `HEAD`. Five are
@@ -935,7 +946,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4126)
+        self.assertEqual(len(space), 4136)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
