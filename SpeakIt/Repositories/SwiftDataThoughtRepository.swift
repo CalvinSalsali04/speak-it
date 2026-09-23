@@ -1,10 +1,14 @@
 import CoreLocation
 import Foundation
+import os
 import SwiftData
 import WidgetKit
 
 @MainActor
 final class SwiftDataThoughtRepository: ThoughtRepository {
+    /// Content-free diagnostics for reminder bookkeeping. Messages name a
+    /// state, never an item's words, and nothing here reaches analytics.
+    private static let reminderLog = Logger(subsystem: "com.calvinwak.SpeakIt", category: "Reminders")
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
     private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
 
@@ -46,6 +50,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
+    /// Content-free diagnostics for the capture path. Messages name a state,
+    /// never a transcript, and nothing here reaches analytics.
+    private static let captureLog = Logger(subsystem: "com.calvinwak.SpeakIt", category: "Capture")
+
     func recoverUnorganizedCaptures() {
         let completeRawValue = ProcessingStatus.complete.rawValue
         let descriptor = FetchDescriptor<CaptureSession>(
@@ -55,7 +63,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             sortBy: [SortDescriptor(\CaptureSession.createdAt, order: .forward)]
         )
 
-        if let sessions = try? modelContext.fetch(descriptor) {
+        // A failed fetch is not "nothing to recover". Skipping recovery
+        // removes nothing: every unfinished session keeps its words and its
+        // placeholder row, and the next launch tries again. It is logged so
+        // a predicate the store stopped translating does not hide there.
+        let unfinished: [CaptureSession]?
+        do {
+            unfinished = try modelContext.fetch(descriptor)
+        } catch {
+            Self.captureLog.fault("Capture recovery could not fetch unfinished sessions")
+            unfinished = nil
+        }
+        if let sessions = unfinished {
             for session in sessions {
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
@@ -629,7 +648,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // Taken *after* the download, for the same reason as the merge
             // below: a capture saved while the download was in flight must be
             // in the file this uploads.
-            let local = makeICloudSnapshot()
+            guard let local = readICloudSnapshot() else { return Self.unreadableLibrary }
             // `.missing` answers a local-filesystem question, not a cloud one:
             // it is `fileExists` on a container whose metadata sync is
             // asynchronous, so a library this device has simply not been told
@@ -670,7 +689,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // apply treated it as a row the cloud had removed. This runs on
             // every launch and every foreground, and speaking a thought while
             // it ran was enough to lose it.
-            let local = makeICloudSnapshot()
+            guard let local = readICloudSnapshot() else { return Self.unreadableLibrary }
             let wasUpToDate = local.hasSameContent(as: cloud)
             // Nothing below can change anything when the two sides already
             // match, and this runs on every launch and every foreground — so
@@ -705,7 +724,16 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
         )
         let now = Date.now
-        guard let candidates = try? modelContext.fetch(descriptor) else { return }
+        // On a failed fetch the snapshot already published stays as it is: a
+        // stale Today on the widget, never an empty one written from a store
+        // that could not be read.
+        let candidates: [CapturedItem]
+        do {
+            candidates = try modelContext.fetch(descriptor)
+        } catch {
+            Self.reminderLog.fault("Today snapshot could not fetch its rows; kept the last one")
+            return
+        }
         var count = 0
         var first: [CapturedItem] = []
         for item in candidates where item.belongsInToday && item.isWithinTodayHorizon(relativeTo: now) {
@@ -1164,7 +1192,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             return .retracted
         }
 
-        let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+        // A failed fetch is not "nothing matches". Read as empty, it would
+        // reach `.notFound`, and the caller would file "cancel my dentist" as
+        // a new task while the dentist reminder stayed armed. Held for review
+        // instead, the way an operation that could not be applied is held.
+        let existing: [CapturedItem]
+        do {
+            existing = try modelContext.fetch(FetchDescriptor<CapturedItem>())
+        } catch {
+            Self.captureLog.fault("A spoken operation could not read the store; held for review")
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: request.operation, candidateIDs: [])
+        }
         let searchable = existing.filter { $0.captureSession?.id != session.id }
 
         // Broad destructive requests are never executed, at any confidence.
@@ -2263,13 +2302,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
-    private func makeICloudSnapshot() -> ICloudLibrarySnapshot {
+    private static let unreadableLibrary = ICloudSyncResult.failed(
+        "Speak It couldn’t read this iPhone’s library. Nothing was synced or changed."
+    )
+
+    /// The local snapshot, or nil, logged, when the store cannot be read. The
+    /// sync stops there rather than merging and applying from nothing.
+    private func readICloudSnapshot() -> ICloudLibrarySnapshot? {
+        do {
+            return try makeICloudSnapshot()
+        } catch {
+            Self.captureLog.fault("iCloud sync could not read the local library; nothing was merged")
+            return nil
+        }
+    }
+
+    /// Throws when the store cannot be read. An empty snapshot built from a
+    /// failed fetch would merge as "this iPhone has nothing", and
+    /// `applyICloudSnapshot` then deletes every local row the cloud copy does
+    /// not hold, which is everything captured since the last upload.
+    private func makeICloudSnapshot() throws -> ICloudLibrarySnapshot {
         // Practice is local, temporary UI state. Never upload it, even if the
         // user enables iCloud while the tutorial is still open.
-        let sessions = ((try? modelContext.fetch(FetchDescriptor<CaptureSession>())) ?? [])
+        let sessions = try modelContext.fetch(FetchDescriptor<CaptureSession>())
             .filter { $0.captureSource != .tutorial }
         let syncedSessionIDs = Set(sessions.map(\.id))
-        let items = ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
+        let items = try modelContext.fetch(FetchDescriptor<CapturedItem>())
             .filter { item in
                 guard let sessionID = item.captureSession?.id else { return false }
                 return syncedSessionIDs.contains(sessionID)
@@ -2487,13 +2545,29 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
     }
 
+    /// Replaces every pending Speak It notification with one per live timed
+    /// row. The scope sets `replacesAllSpeakItReminders`, so the pass first
+    /// removes every pending `SpeakIt.reminder.` and `SpeakIt.session.`
+    /// request and then adds only what this fetch returned.
+    ///
+    /// That is why a failed fetch must stop the pass rather than read as an
+    /// empty list: an empty list here removes every time reminder on the
+    /// phone and arms none. On failure what iOS already holds is kept, and
+    /// rows this pass would have added wait for the next reconcile.
     private func synchronizeAllReminders(requestAuthorizationIfNeeded: Bool) {
         let descriptor = FetchDescriptor<CapturedItem>(
             predicate: #Predicate { item in
                 item.reminderDate != nil && item.isArchived == false && item.completedAt == nil
             }
         )
-        let requests = (try? modelContext.fetch(descriptor))?.compactMap(ReminderScheduleRequest.init(item:)) ?? []
+        let items: [CapturedItem]
+        do {
+            items = try modelContext.fetch(descriptor)
+        } catch {
+            Self.reminderLog.fault("Full reminder sync could not fetch its rows; kept what is scheduled")
+            return
+        }
+        let requests = items.compactMap(ReminderScheduleRequest.init(item:))
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
@@ -2600,8 +2674,23 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         descriptor.fetchLimit = 8
 
+        // Failing safe here means saving the capture. This lookup only decides
+        // whether an identical capture from the last few seconds already
+        // exists, and a thrown error would abort the capture before anything
+        // is written, so a person's words could be lost to a lookup that
+        // guards against a double tap. A Siri, Shortcut or Share capture has
+        // no draft to fall back on. Treating the failure as "no duplicate" at
+        // worst stores the same words twice, which the person can delete;
+        // words never stored cannot be recovered. The failure is logged.
+        let recent: [CaptureSession]
+        do {
+            recent = try modelContext.fetch(descriptor)
+        } catch {
+            Self.captureLog.fault("Capture deduplication could not fetch recent sessions; saving anyway")
+            return nil
+        }
         let fingerprint = text.captureFingerprint
-        return try modelContext.fetch(descriptor).lazy.compactMap { session in
+        return recent.lazy.compactMap { session in
             guard session.originalTranscription.captureFingerprint == fingerprint else { return nil }
             let items = self.orderedItems(in: session)
             guard !items.isEmpty else { return nil }
