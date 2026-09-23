@@ -3129,3 +3129,84 @@ that row.
 **No cost-ledger row is owed.** Nothing here changes an executable line of the
 engine — the skips are test-side, and INC58 is a development row whose answer
 the next language dispatch reports — so no sealed measure can move.
+
+## 2026-09-23 — Reported advice is held for review, not read as the speaker's own
+
+**Ruling.** Calvin, 2026-09-16 (thread "Prototype the Foundation Models path",
+section 6): reported speech has five cases. (1) A reported fact is a report.
+(2) A reported third-party obligation is not the person's task. (3) An explicit
+directive to the person ("Sarah asked me to call Mike") may be an errand, with
+attribution kept. (4) A weak or reported recommendation ("Sarah said I should
+call Mike") keeps its reported modality and is treated conservatively, as
+reported and reviewable, not a confident obligation. (5) A self-commitment
+after reported context ("…, so I need to call him today") is an errand.
+Attribution says whose words these are; grammar and meaning say whether the
+person owes anything. This entry covers case 4 on the rules path only.
+`InterpretationPolicy.swift:137` is unchanged, as ruled.
+
+**Defect (SEM-2).** `ActionabilityReader.read` sent case 4 to Today as a
+confident task. `isReportedSpeech && carriesOwnObligation` (then
+`Actionability.swift:326`, `:482`) read the first-person "I should" inside the
+report as the speaker's own, and a cognitive frame ("Sarah thinks I should")
+reached the same answer through the bare `obligationLead`. With a time the
+row was dated. With a repeat or an alarm verb it repeated or asked for one.
+
+**Hypothesis.** The obligation layer never asked the modality question. It
+asked whether a first-person obligation word appeared, and advisory modality
+(`should`, `ought to`, `might want to`, `'d better`, or an advising verb such
+as `suggested`, `advised me to`) inside a third party's report is the same
+words as the speaker's own resolution. The family is the conjunction of three
+closed-class facts: a verb of saying, thinking or advising whose subject is not
+the speaker (or "according to X", or a passive "I was told"); `I`/`we` with an
+advisory modal; and an advised action `actionVerb` names. The boundaries:
+case 3 is a bare infinitive after `me`/`us` ("told me to", "asked me to") with
+no modal; case 5 is anything in the person's own voice outside the report that
+commits them (a first-person obligation or future, "let's", a reminder or alarm
+request, "make sure I").
+
+**Falsifier, stated before the change.** (a) The new rule fires on any readable
+sentence that is not case 4. (b) It fires on a speaker's own resolution ("I
+think I should call the dentist", "I've always said I should…"). (c) A case 1,
+2, 3 or 5 sentence changes reading. For (a), a Python mirror of the rule, whose
+patterns are read out of the Swift source, was run over every readable
+utterance (`observation.readable_pairs()`, 11,516 pairs on 2026-09-23) and every string in
+the two 10k development JSONL files. It fires on exactly one sentence, "Priya
+said I should call the landlord", which is case 4 and was a corpus row
+asserting Today. No sealed set was read. (b) and (c) are pinned by the new
+`ActionabilityTests` minimal pairs and seven `SemanticCorpusQ` rows. Only a
+Mac run can check them against the engine.
+
+**Change.** `Actionability.advised` is a new reading. `read` returns it after
+the discharged and outstanding families and ahead of the reported-obligation
+rule. `belongsOnToday` answers yes, so clause splitting and person resolution
+see the words as they did before. `ThoughtOrganizer.organize` then holds the
+row. `itemType` becomes `.unclear` when the type was actionable, so a shopping
+reading cannot slip onto a list. The state is `.underspecified(.reportedSpeech)`,
+the gap the review vocabulary already had ("Someone else's words", "This quotes
+someone else — confirm it is yours to do"). No due date, reminder, delivery,
+recurrence, place or temporal intent is set, whatever time the advice names.
+Nothing is added to the schema or to the list of destinations.
+
+**Left out on purpose, each a question rather than an oversight.**
+- A reported strong modal ("Sarah said I need to call Mike") keeps its
+  actionable reading. It reports an obligation, not a recommendation, and the
+  ruling does not say whether a reported obligation on the person is case 3 or
+  case 4. `SemanticCorpusD`'s "Remember Catherine said I need to call Alex
+  Friday" still pins it as an errand.
+- Advice with no errand in it ("my doctor says I should cut back on coffee")
+  stays the Memory note it was. It asks the same `actionVerb` question
+  `carriesOwnObligation` asks.
+- Gerunds ("Sarah suggested calling Mike") and subjectless frames ("said I
+  should call Mike") are not matched and keep their old reading.
+- When segmentation cuts "Sarah said I should call Mike, so I need to call him
+  today" into two rows, the report half is held and the commitment half is the
+  errand. Over the whole capture the reader sees case 5 and does not hold.
+- On Apple Intelligence devices a held row now invites the refinement pass
+  (`RefinementPolicy.shouldRefine`). `RefinementGuard` checks behavioural
+  fields only for resolved rules rows, so a model that splits the frame from
+  the action could return a confident task. That is the pre-change behaviour,
+  not a new harm, and it is the Foundation Models thread's to close.
+
+**Sealed measures.** Not measured: no parser runs here and no sealed set was
+read. The next Mac `language-metrics.sh` run decides whether a ledger row is
+owed.

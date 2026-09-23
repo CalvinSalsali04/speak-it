@@ -2622,8 +2622,10 @@ enum RuleBasedThoughtExtractor {
         // today" reads as an event purely because of the date word, and taking
         // that reading at face value turned the condition into a phantom event
         // row while its shopping list drifted off to the "Other" list.
+        // `advised` names an errand as plainly as `actionable` does; it only
+        // differs in whose it is, which is not a question a condition asks.
         let reading = ActionabilityReader.read(text)
-        guard reading != .actionable, reading != .outstanding else { return nil }
+        guard reading != .actionable, reading != .outstanding, reading != .advised else { return nil }
         guard text.range(
             of: #"(?i)^(?:(?:when|whenever|once|as\s+soon\s+as|next\s+time|every\s+time)\b|(?:after|before|until|till|while)\s+(?:i|we)\b).+$"#,
             options: .regularExpression

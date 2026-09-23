@@ -1044,4 +1044,150 @@ extension ActionabilityTests {
         XCTAssertTrue(result.items.allSatisfy { $0.organization.personName == nil })
     }
 
+    // MARK: Reported speech, the five cases (Calvin's ruling, 2026-09-16)
+    //
+    // Attribution says whose words these are; grammar and meaning say whether
+    // the person owes anything. Case 4 used to be read as case 5: "Sarah said
+    // I should call Mike" arrived on Today as a confident task, because the
+    // first-person "I should" inside the report was read as the speaker's own.
+    //
+    // No test here abstains when NLTagger is blind. `isReportedAdvice` is
+    // lexical and asks the tagger nothing. Case 3 goes through `ClauseScope`,
+    // whose subject test asks only that no token be a verb, which by reading
+    // a blind tagger answers yes to; the existing case-3 assertion in
+    // `testPastModalReflectionDoesNotCreatePresentCommitment` runs unguarded
+    // too.
+
+    /// Case 4: advice somebody else gave. The words are kept, the row goes to
+    /// Needs review as somebody else's words, and nothing is dated, repeated
+    /// or armed, whatever time, repeat or alarm the advice names.
+    func testReportedAdviceIsHeldForReviewWithNothingArmed() {
+        for text in [
+            "Sarah said I should call Mike",
+            "Sarah said I should call Mike tomorrow at 3",
+            "Sarah told me I should call Mike",
+            "Sarah thinks I ought to call Mike",
+            "Sarah told me I might want to call Mike",
+            "My doctor says I should book a follow-up",
+            "My doctor says I should exercise every day",
+            "Sarah said I should set an alarm for 7",
+            "Sarah said we should book the venue",
+            "Sarah said I'd better call Mike",
+            "Sarah suggested I call Mike",
+            "Sarah advised me to call Mike",
+            "According to Sarah, I should call Mike",
+            "I was told I should renew my passport",
+            "Remember Catherine said I should call Alex Friday",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .advised, text)
+            let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(item.state, .underspecified(.reportedSpeech), text)
+            XCTAssertTrue(item.needsClarification, text)
+            XCTAssertFalse(item.itemType.isActionable, text)
+            XCTAssertNil(item.dueDate, text)
+            XCTAssertNil(item.reminderDate, text)
+            XCTAssertEqual(item.reminderDelivery, .none, text)
+            XCTAssertNil(item.recurrenceRule, text)
+            XCTAssertNil(item.locationIntent, text)
+        }
+    }
+
+    /// The case-4 sentence with a time, through the whole rules pipeline:
+    /// one row, the person's words intact, reviewable, and no instant on it.
+    func testReportedAdviceWithATimeIsOneReviewRowWithNoInstant() throws {
+        let text = "Sarah said I should call Mike tomorrow at 3"
+        let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+        XCTAssertTrue(result.operations.isEmpty)
+        XCTAssertEqual(result.items.count, 1)
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.rawQuote, text)
+        XCTAssertTrue(item.needsReview)
+        XCTAssertEqual(item.organization.state, .underspecified(.reportedSpeech))
+        XCTAssertNil(item.organization.dueDate)
+        XCTAssertNil(item.organization.reminderDate)
+        XCTAssertEqual(item.organization.reminderDelivery, .none)
+    }
+
+    /// The boundary with case 3 is the modal. A bare infinitive after "me" is
+    /// an instruction handed to the person and stays an errand with its time;
+    /// the same verb with "I should" behind it is advice.
+    func testAnInstructionToThePersonIsAnErrandAndAdviceIsNot() {
+        let pairs: [(instruction: String, advice: String)] = [
+            ("Sarah told me to call Mike", "Sarah told me I should call Mike"),
+            ("Sarah asked me to call Mike", "Sarah said I should call Mike"),
+        ]
+        for pair in pairs {
+            XCTAssertEqual(ActionabilityReader.read(pair.instruction), .actionable, pair.instruction)
+            XCTAssertEqual(ActionabilityReader.read(pair.advice), .advised, pair.advice)
+        }
+        let instruction = ThoughtOrganizer.organize(
+            "Sarah asked me to call Mike tomorrow at 3", referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertTrue(instruction.itemType.isActionable)
+        XCTAssertNotEqual(instruction.state, .underspecified(.reportedSpeech))
+        XCTAssertNotNil(instruction.dueDate)
+    }
+
+    /// Cases 1 and 2 stay reports: knowledge, not reviewable, nothing dated,
+    /// even when the reported words name a time or somebody else's "should".
+    func testReportedFactsAndOtherPeoplesObligationsStayReports() {
+        for text in [
+            "Sarah said the meeting is off",
+            "Sarah said Mike needs to call the bank",
+            "Sarah said Mike should call the bank tomorrow at 3",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .knowledge, text)
+            let item = ThoughtOrganizer.organize(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertFalse(item.itemType.isActionable, text)
+            XCTAssertFalse(item.needsClarification, text)
+            XCTAssertNil(item.dueDate, text)
+            XCTAssertNil(item.reminderDate, text)
+        }
+    }
+
+    /// Case 5: when the person's own words take the advice on, it is their
+    /// errand. Read over the whole capture; the rules pipeline may still cut
+    /// the report from the commitment, so what it must keep is an errand
+    /// carrying the day the person committed to.
+    func testTakingTheAdviceOnMakesItTheirErrand() {
+        for text in [
+            "Sarah asked me to call Mike, so I need to call him today",
+            "Sarah said I should call Mike, so I need to call him today",
+            "Sarah said I should call Mike and I will",
+            "Sarah said I should call Mike, remind me tomorrow at 9",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .actionable, text)
+        }
+        for text in [
+            "Sarah asked me to call Mike, so I need to call him today",
+            "Sarah said I should call Mike, so I need to call him today",
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(
+                text, referenceDate: referenceDate, calendar: calendar
+            ).items
+            let errand = items.first { item in
+                item.organization.itemType.isActionable
+                    && item.organization.state != .underspecified(.reportedSpeech)
+                    && item.organization.dueDate.map {
+                        calendar.isDate($0, inSameDayAs: referenceDate)
+                    } == true
+            }
+            XCTAssertNotNil(errand, "the commitment must survive as an errand due today: \(text)")
+        }
+    }
+
+    /// Where the family ends. The speaker's own resolution is not a report;
+    /// asking for advice is a question; a reported "need to" is outside case
+    /// 4 and keeps its reading until that is ruled on; advice with no errand
+    /// in it stays the note it was.
+    func testReportedAdviceStopsAtItsBoundary() {
+        XCTAssertEqual(ActionabilityReader.read("I think I should call the dentist"), .actionable)
+        XCTAssertEqual(ActionabilityReader.read("I've always said I should call Mike"), .actionable)
+        XCTAssertEqual(ActionabilityReader.read("Maybe I should text Sarah tonight"), .actionable)
+        XCTAssertEqual(ActionabilityReader.read("Do you think I should call Mike"), .knowledge)
+        XCTAssertEqual(ActionabilityReader.read("Sarah said I need to call Mike"), .actionable)
+        XCTAssertEqual(ActionabilityReader.read("My doctor says I should cut back on coffee"), .knowledge)
+        XCTAssertEqual(ActionabilityReader.read("Sarah said I should call Mike but I already did"), .knowledge)
+    }
+
 }

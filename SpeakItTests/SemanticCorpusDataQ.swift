@@ -145,6 +145,22 @@ enum SemanticCorpusQ {
         corpusCase(.actionOwnership, "Sarah told Mike to call me",
                    count: 1, route: [.memory],
                    note: "Same shape, different indirect object, and it is not the user's errand."),
+
+        // Reported advice, case 4 of Calvin's 2026-09-16 ruling. The modal is
+        // what separates it from the instruction above: somebody else's
+        // "should" is kept as theirs and held for review, and nothing it names
+        // is dated or armed.
+        corpusCase(.actionOwnership, "Sarah said I should call Mike",
+                   count: 1, due: [nil], remind: [nil], review: [true],
+                   note: "Was a confident task on Today: the \"I should\" inside the report was read as the speaker's own."),
+        corpusCase(.actionOwnership, "Sarah said I should call Mike tomorrow at 3",
+                   count: 1, delivery: [.none], due: [nil], remind: [nil], review: [true],
+                   note: "The time is part of the advice. Nothing may be armed from a row the person has not taken on."),
+        corpusCase(.actionOwnership, "My doctor says I should book a follow-up",
+                   count: 1, due: [nil], remind: [nil], review: [true]),
+        corpusCase(.actionOwnership, "Sarah told me I might want to call Mike",
+                   count: 1, due: [nil], remind: [nil], review: [true],
+                   note: "Was a Memory note. Advice addressed to the person is theirs to accept or file, so it is asked about."),
     ]
 
     // MARK: - Family 50 guards
@@ -171,6 +187,18 @@ enum SemanticCorpusQ {
                    count: 1, route: [.today]),
         corpusCase(.actionOwnership, "The car has to be serviced",
                    count: 1, route: [.today]),
+
+        // The four reported-speech cases that must not move with case 4.
+        // Case 1, a reported fact, and case 2, somebody else's obligation,
+        // even with a time in it.
+        corpusCase(.actionOwnership, "Sarah said Mike should call the bank tomorrow at 3",
+                   count: 1, route: [.memory], due: [nil], remind: [nil], review: [false]),
+        // Case 3, an instruction handed to the person, keeps its time.
+        corpusCase(.actionOwnership, "Sarah asked me to call Mike tomorrow at 3",
+                   count: 1, route: [.today], review: [false]),
+        // The speaker's own resolution is not a report.
+        corpusCase(.actionOwnership, "I think I should call the dentist",
+                   count: 1, route: [.today], review: [false]),
     ]
 
     // MARK: - Family 51: a time that was never settled on

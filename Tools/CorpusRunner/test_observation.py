@@ -874,7 +874,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4102 on 2026-09-23, from
+        holding reported advice for review (case 4 of Calvin's
+        2026-09-16 reported-speech ruling): thirty-five literals in and
+        one out, enumerated with the census helper rather than predicted.
+        Thirty are utterances in six `ActionabilityTests` methods and
+        seven new `SemanticCorpusQ` rows, four are `note:` arguments, and
+        one is an assertion message. The one out is the old `note:` on
+        the `SemanticCorpusD` row "Priya said I should call the
+        landlord", which the ruling changed from a Today task to a review
+        row; its replacement note carries the old sentence plus the
+        ruling, so the edit counts once each way rather than not at all.
+        This time the overlap moved, 114 -> 115: "Sarah told me to call
+        Mike" is `routed.tsv` row AO04 verbatim, found by regenerating
+        `LANGUAGE_BASELINE.md` rather than by reading. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +901,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4102)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

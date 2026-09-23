@@ -666,6 +666,28 @@ still cannot be decided mechanically here, so the check does not try — it hand
 a new subject to a person, which is the smallest thing that makes an
 unrecomputable claim fail out loud.
 
+## Reported advice: what case 4 does not yet cover
+
+Since 2026-09-23 the rules path holds reported advice for review ("Sarah said I
+should call Mike", Calvin's 2026-09-16 ruling, case 4). The reading is
+`Actionability.advised`, and the row carries the `reportedSpeech` gap with no
+date and nothing armed. Four edges ship open. Each is written up with its
+reason in `Docs/DECISIONS.md` under the same date.
+
+- **Reported strong modals keep their errand.** "Sarah said I need to call
+  Mike" is still a confident task. Whether a reported obligation on the person
+  is case 3 or case 4 has not been ruled on.
+- **Gerunds and subjectless frames are not read.** "Sarah suggested calling
+  Mike" and a dictated "said I should call Mike" keep their old reading.
+- **A split capture keeps a review row beside the errand.** When "Sarah said I
+  should call Mike, so I need to call him today" is cut in two, the report half
+  is held for review and the commitment half is the errand.
+- **The refinement pass can undo the hold on Apple Intelligence devices.** A
+  held row makes `RefinementPolicy.shouldRefine` true. `RefinementGuard`
+  compares behavioural fields only for resolved rows, so a model that returns
+  the action without its frame produces a confident task. That was the
+  behaviour before the change. The fix belongs to the Foundation Models thread.
+
 ## Removal requests: one defect closed, one decision open
 
 *The old heading here — "delete and remove are not operation verbs" — was
