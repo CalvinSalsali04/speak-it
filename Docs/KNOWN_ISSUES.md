@@ -427,6 +427,32 @@ the row's own words did not state. The reasoning is in `DECISIONS.md`
   simulator. Only tests that bind `LinguisticHealth.$override` see the
   policy.
 
+## Deleting one row leaves its place region until the next crossing or foreground
+
+*2026-09-23, traced by reading; V1 ledger DEL-14.* `delete(_ item:)`
+(`SwiftDataThoughtRepository.swift`, the editor's Delete) removes the row but
+does not call `LocationReminderMonitor.shared.stopMonitoring(itemID:)` or
+`PendingOperationStore.remove(_:)`; `deleteCapture` and
+`deleteTutorialCaptures` call both. `ReminderScheduler.synchronize` does not
+stop monitoring either.
+
+- **The region** stays registered until whichever comes first: the next
+  `reconcileLocationReminders` pass (launch, every return to the foreground, a
+  permission change or a refused region, from `RootView`), which stops any
+  `SpeakIt.place.` region no live row asks for; or the first crossing, where
+  `handleLocationTrigger` finds no row, stops the region itself and delivers
+  nothing. The cost is at most one background wake. No reminder fires for the
+  deleted row, and the region budget is unaffected because `reconcile` stops
+  orphans before it registers anything.
+- **The pending-operation record**, if the row had one, stays in the app-group
+  defaults and is never pruned. Every reader (`CapturedItem`,
+  `ItemEditorView`, `confirmPendingOperation`, `dismissPendingOperation`) looks
+  it up by a live row's id, so nothing reads it again.
+
+Left as is because nothing the person sees is wrong. When the delete paths are
+made consistent, add both calls to `delete(_:)` after `persistChanges`; do not
+remove them from `deleteCapture`.
+
 ## Physical-device voice validation
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.

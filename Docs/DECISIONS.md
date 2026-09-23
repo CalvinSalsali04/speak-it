@@ -1005,6 +1005,42 @@ be replayed at all is a separate decision. The relaunch-after-lock timing
 that feeds this (no background-task assertion during a save, audit S4) needs
 a device.
 
+## 2026-09-23 — "Try saying it again" replaces the attempt by its identity
+
+The retry used to delete the attempt's rows as the capture screen listed them
+when the attempt saved. "Review what I understood" on the same screen can
+change the attempt after that. Split and Organize again add rows that were not
+on the list, and those rows survived the retry, still in Needs review beside the
+new capture. Merge and Undo delete rows that were on the list, and the retry
+then deleted them again. That second deletion either threw, which showed "the
+earlier attempt is still in Needs review" when it was half gone, or may have
+trapped in SwiftData on a deleted, saved model.
+
+The screen now holds only the attempt's `CaptureSession` id
+(`retryingUnclearSessionID`). Once the retry is durable,
+`CaptureRetryReplacement.retire` calls `ThoughtRepository.deleteCapture(sessionID:)`.
+That call fetches the session fresh and deletes it, and the cascade deletes
+every row the session has at that moment. Exactly this is deleted: the attempt's
+`CaptureSession`, including its original transcript, and all of its
+`CapturedItem` rows, whether or not the screen ever showed them. Their
+recurrence, pending-operation, pin, shopping-group and idea-stage records,
+location monitoring and scheduled notifications are removed too. iCloud
+tombstones are recorded for the session and every row, so another device does
+not bring the attempt back. Nothing else is deleted: no other capture, and not
+the retry, even when a retransmission returns the attempt's own session
+(`CaptureRetryReplacement.replaces` is false then).
+
+Removing an original transcript is allowed here because the person chose to
+replace it by tapping "Try saying it again" and then saying it again. The
+retry's own session keeps its own original words.
+
+The order from 2026-09-23's save entry is unchanged. The retry persists
+first, and the deletion runs after it. If the store refuses the deletion, it
+rolls back, restores the tombstones and throws. No side-store cleanup runs, both
+captures stay, and a screen that is still up says so. An attempt that is already
+gone is a no-op, not a failure. `deleteCapture` is for a replacement the person asked for, and
+nothing else calls it.
+
 ## 2026-09-23 — A save belongs to the capture screen that started it
 
 A save's Task outlives its screen, and it used to publish into whatever was on

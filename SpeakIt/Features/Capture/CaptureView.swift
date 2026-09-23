@@ -462,6 +462,39 @@ enum CaptureSaveSettlement {
     }
 }
 
+/// What "Try saying it again" replaces, and how it goes.
+///
+/// The retry replaces one capture, named by its session's id, and never a list
+/// of rows. The screen used to keep the whole `CaptureCreationResult` it
+/// showed and delete its `items` after the retry saved. That list was taken
+/// when the result appeared, and "Review what I understood" on the same screen
+/// can change the capture after that: Split and Organize again add rows the
+/// list never had, which survived the retry beside the new capture, and Merge
+/// and Undo delete rows the list still had, which the retry then deleted a
+/// second time. Deleting by identity, at deletion time, removes what the
+/// capture has then, whatever that is.
+@MainActor
+enum CaptureRetryReplacement {
+    /// Whether a save replaces the attempt. Only a newly stored capture does:
+    /// an operation on existing content stores nothing new, and a
+    /// retransmission of the same words hands back the attempt's own session,
+    /// which must not delete itself.
+    static func replaces(attempt: UUID?, with result: CaptureCreationResult) -> Bool {
+        guard let attempt else { return false }
+        return result.createdNewCapture && attempt != result.session.id
+    }
+
+    /// Deletes the attempt as it is now: its session, its original transcript,
+    /// and every row it has. Runs only after the retry is durable; if it
+    /// throws, both captures stay. Returns how many rows went, which the view
+    /// has no use for and the tests pin: a count that differs from the rows
+    /// the attempt has at deletion time means the wrong set was deleted.
+    @discardableResult
+    static func retire(attempt: UUID, in repository: any ThoughtRepository) throws -> Int {
+        try repository.deleteCapture(sessionID: attempt)
+    }
+}
+
 /// Where audio recovery's result goes once transcription finishes.
 ///
 /// `CaptureView.recoverActiveAudio` transcribes the protected recording in a
@@ -581,9 +614,11 @@ struct CaptureView: View {
     @State private var savedConfirmationSymbol = "checkmark"
     @State private var savedConfirmationDetail = "Memory"
     @State private var savedResult: CaptureCreationResult?
-    /// The safe, already-persisted attempt that a new voice capture will
-    /// replace only after the retry itself saves successfully.
-    @State private var retryingUnclearResult: CaptureCreationResult?
+    /// The session id of the safe, already-persisted attempt that a new voice
+    /// capture will replace only after the retry itself saves successfully.
+    /// An id rather than the result shown on screen: see
+    /// `CaptureRetryReplacement`.
+    @State private var retryingUnclearSessionID: UUID?
     @State private var showsCaptureReview = false
     @State private var showsCloseOptions = false
     @State private var closesAfterSave = false
@@ -1647,7 +1682,7 @@ struct CaptureView: View {
         // invited the person to "try saying it again" on their tenth capture
         // and then refused the retry it had just asked for.
         guard tutorialMission != nil
-                || retryingUnclearResult != nil
+                || retryingUnclearSessionID != nil
                 || subscriptionStore.canCreateCapture
         else {
             isTextFocused = false
@@ -1689,10 +1724,12 @@ struct CaptureView: View {
         // screen may be gone by then, and a torn-down view's `@State` is not a
         // reliable thing to read. The retry source matters most of the three:
         // read as `nil` from a dead screen, it charged a clarification retry
-        // and left the attempt it replaced in Needs review beside it.
+        // and left the attempt it replaced in Needs review beside it. It is
+        // the attempt's identity, not its rows: which rows it has is read at
+        // deletion time (see `CaptureRetryReplacement`).
         let owner = presentation
         let savingDraftID = activeDraftID
-        let savingRetrySource = retryingUnclearResult
+        let savingRetrySessionID = retryingUnclearSessionID
         // Name the session before it exists and write that name onto the draft
         // first. A kill after the commit then leaves a draft a relaunch can
         // recognise as already saved, instead of replaying it into a second
@@ -1734,9 +1771,10 @@ struct CaptureView: View {
                 // finishing (see `CaptureSaveInFlight`), and would let a second
                 // `save` of this screen claim the slot and store the same words
                 // again (see `CapturePresentation`).
-                let replacesRetrySource = savingRetrySource.map {
-                    result.createdNewCapture && $0.session.id != result.session.id
-                } ?? false
+                let replacesRetrySource = CaptureRetryReplacement.replaces(
+                    attempt: savingRetrySessionID,
+                    with: result
+                )
                 // The durable effects, then the one question of whether this
                 // screen still hears about them. The thought is durable, so the
                 // charge, the retry cleanup and the draft happen whatever
@@ -1765,10 +1803,11 @@ struct CaptureView: View {
                         ))
                     },
                     deleteRetrySource: {
-                        guard let savingRetrySource else { return }
-                        for item in savingRetrySource.items {
-                            try repository.delete(item)
-                        }
+                        guard let savingRetrySessionID else { return }
+                        try CaptureRetryReplacement.retire(
+                            attempt: savingRetrySessionID,
+                            in: repository
+                        )
                     },
                     publishes: { owner.publishes(thisSave) },
                     clearDraftOfEndedScreen: {
@@ -1782,7 +1821,7 @@ struct CaptureView: View {
                 // where the person will find them; nothing is written to this
                 // screen's `@State`, which nobody is looking at.
                 guard settled.publishes else { return }
-                retryingUnclearResult = nil
+                retryingUnclearSessionID = nil
                 if settled.retrySourceSurvived {
                     errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
                 }
@@ -2063,7 +2102,7 @@ struct CaptureView: View {
         guard let savedResult else { return }
 
         confirmationDismissTask?.cancel()
-        retryingUnclearResult = savedResult
+        retryingUnclearSessionID = savedResult.session.id
         transcriber.cancel()
         typedText = ""
         captureNotice = nil
@@ -2077,7 +2116,7 @@ struct CaptureView: View {
 
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(260))
-            guard retryingUnclearResult != nil, !showsSavedConfirmation else { return }
+            guard retryingUnclearSessionID != nil, !showsSavedConfirmation else { return }
             await startVoiceCapture()
         }
     }
