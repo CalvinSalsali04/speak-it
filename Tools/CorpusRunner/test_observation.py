@@ -928,27 +928,42 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         its list"`, `"the held entry is still on the list"` and `"a held
         proposal creates no morning"`, and one is removed, `"the held list
         is the silent one"`, whose claim is no longer true. Every fixture
-        was already here. 4121 -> 4129 the same day, from the place half
-        of the hold reading only the place's mark: two tests in
-        `LocationReminderTests` add eight literals, enumerated by diffing
-        this census. Seven are assertion messages, `"the save confirmed the
-        place it showed"`, `"confirming is not a new trigger"`, `"the saved
-        place is delivered"`, `"precondition: the time carries the mark"`,
-        `"precondition: the place does not"`, `"precondition: a place
-        alone"` and `"a place nobody confirmed is not delivered"`; the
-        eighth is a KNOWN_ISSUES heading a doc comment quotes, `"Saving
-        counts as confirming"`. The transcript, the title and
-        `"precondition: the system holds it"` were already here. 4129 ->
-        4132 the same day, from a save that leaves the place out no longer
-        confirming it: one test in `LocationReminderTests` adds three
-        assertion messages, `"precondition: a place was read"`,
-        `"precondition: nobody confirmed it"` and `"a place the save never
-        named is not confirmed"`, and none is removed. 4132 -> 4134 the
-        same day, from pinning that the editor sends every place it shows
-        back as an edit: one test in `LocationReminderTests` adds two
+        was already here.
+        4121 -> 4140 on 2026-09-23 again, from
+        Needs review listing what the receipt says it does (REV-3): three
+        new tests and one rewritten in `ItemPresentationTests`, nineteen
+        literals, enumerated by diffing this census against `HEAD`. Five are
+        fixtures: a transcript, `"Buy milk and eggs later, and call the
+        plumber"`; a segment, `"Buy eggs later"`; a hand-built title,
+        `"Call the plumber"`, which is its segment too; and the title edit,
+        `"Dish soap thing"` to `"Buy dish soap"`. Fourteen are assertion
+        messages, one of them the interpolated per-sentence message of the
+        single-item receipt loop, and one `"got \\(result.receiptContext)"`.
+        The transcripts that loop captures add nothing, because each is
+        already in this directory, and the doc comments quote in backticks.
+        4140 -> 4148 the same day, from merging the place half of the hold
+        reading only the place's mark (4121 -> 4129 on its own branch): two
+        tests in `LocationReminderTests` add eight literals, none of them
+        already on this branch, counted by diffing this census before and
+        after the merge. Seven are assertion messages, `"the save confirmed
+        the place it showed"`, `"confirming is not a new trigger"`, `"the
+        saved place is delivered"`, `"precondition: the time carries the
+        mark"`, `"precondition: the place does not"`, `"precondition: a place
+        alone"` and `"a place nobody confirmed is not delivered"`; the eighth
+        is a KNOWN_ISSUES heading a doc comment quotes, `"Saving counts as
+        confirming"`. The transcript, the title and `"precondition: the
+        system holds it"` were already here. 4148 -> 4151 the same day,
+        from merging a save that leaves the place out no longer confirming it
+        (4129 -> 4132 on its own branch): one test in
+        `LocationReminderTests` adds three assertion messages,
+        `"precondition: a place was read"`, `"precondition: nobody confirmed
+        it"` and `"a place the save never named is not confirmed"`, none of
+        them already on this branch, and none is removed. 4151 -> 4153 the
+        same day, from merging the pin that the editor sends every place it
+        shows back as an edit (4132 -> 4134 on its own branch): two
         assertion messages, `"a place the editor showed comes back as an
-        edit"` and `"the editor cannot add a place"`, and none is removed.
-        What the test
+        edit"` and `"the editor cannot add a place"`, none of them already on
+        this branch, and none is removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -962,7 +977,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4134)
+        self.assertEqual(len(space), 4153)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

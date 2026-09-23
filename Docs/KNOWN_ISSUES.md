@@ -49,12 +49,6 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
   is not rolled forward, so it waits in Needs review with a past proposed
   date. Once confirmed, the next foreground continues the series; the save
   itself arms nothing, because the date has passed.
-- **Two surfaces still do not show the withheld trigger.** A held shopping row
-  is still not in Needs review (REV-3). It is silent now, but its row in the
-  checklist shows the proposed time with no bell and no "not set". It no
-  longer times its list, so the list's Today card and the morning brief do
-  not read that time (Docs/DECISIONS.md, 2026-09-23). A held place row with
-  a live blocker shows the blocker label instead, which is already true.
 - **A restore can hold a reading it never saw, and arms only a place
   confirmed here.** `applyICloudSnapshot` writes `needsClarification` from
   the snapshot even when the snapshot carries no intents, so the hold lands on

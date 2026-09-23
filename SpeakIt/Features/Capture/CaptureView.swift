@@ -844,6 +844,7 @@ struct CaptureView: View {
                             .contentShape(Rectangle())
                     }
                         .buttonStyle(.speakIt)
+                        .accessibilityIdentifier("capture.receiptDone")
                 }
                 .padding(.top, 8)
                 .frame(maxWidth: 330)
