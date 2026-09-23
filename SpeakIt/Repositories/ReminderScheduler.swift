@@ -32,6 +32,13 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// so it arms `seriesContinuation` and nothing else. Only `forScheduling`
     /// builds one.
     let continuesSeriesOnly: Bool
+    /// The series an AlarmKit alarm can repeat on its own, or `nil` for a
+    /// rule AlarmKit cannot express. Wider than `repeatingComponents`,
+    /// because one relative alarm takes a set of weekdays where one
+    /// notification trigger takes a single match: "every weekday at 6:30" is
+    /// one repeating alarm but not one repeating notification. See
+    /// `alarmRepetition(rule:fireDate:calendar:)`.
+    let alarmRepetition: ReminderAlarmRepetition?
     /// The named list a shopping row belongs to ("Sobeys"), or `nil` for
     /// everything else. A coalesced notification whose rows all share one
     /// list is titled by that list, so the alert reads the way the person
@@ -110,6 +117,16 @@ struct ReminderScheduleRequest: Hashable, Sendable {
                 SeriesContinuation(occurrenceFireDate: seriesFireDate, components: $0)
             }
             : nil
+        // The series' own alert, like `seriesComponents` above, never a
+        // snoozed one. Read from a snoozed fire date, the repetition's first
+        // ring is the snooze itself, so `alarmSchedule` would hand AlarmKit a
+        // repeating "every Monday at 9:10" for a series asked for at 9. Read
+        // from the series' alert, its first ring is not this fire, and the
+        // snoozed occurrence stays a `.fixed` one-shot at the snooze.
+        alarmRepetition = Self.alarmRepetition(
+            rule: item.temporalIntent?.recurrence,
+            fireDate: seriesFireDate
+        )
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
@@ -158,6 +175,114 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             return nil
         }
     }
+
+    /// The part of a recurrence rule an AlarmKit relative schedule can carry.
+    ///
+    /// `Alarm.Schedule.Relative` is an hour and a minute on the device's
+    /// current clock, plus `Recurrence.never` or `.weekly([Locale.Weekday])`.
+    /// That is every series whose occurrences are "this time of day, on these
+    /// days of the week, every week":
+    ///
+    /// - daily, every day → all seven weekdays;
+    /// - weekly on named days ("every Monday", "every weekday", "every
+    ///   weekend") → those days;
+    /// - weekly with no day named ("every week") → the fire date's weekday,
+    ///   which is where `RecurrenceRule.nextDate` puts every later occurrence.
+    ///
+    /// Everything else returns `nil` and stays a one-shot `.fixed` alarm that
+    /// the foreground self-healing pass re-arms: an `interval` above 1 ("every
+    /// other Tuesday", "every 2 days"), monthly and yearly rules, ordinal
+    /// weekdays ("the first Monday every month"), elapsed-time rules ("every 3
+    /// hours"), and completion-anchored rules, whose next date does not exist
+    /// until the person completes this one.
+    static func alarmRepetition(
+        rule: RecurrenceRule?,
+        fireDate: Date,
+        calendar: Calendar = .current
+    ) -> ReminderAlarmRepetition? {
+        guard let rule,
+              rule.anchor == .scheduledDate,
+              rule.interval == 1,
+              !rule.repeatsByElapsedTime,
+              rule.ordinalWeekday == nil else { return nil }
+
+        let clock = calendar.dateComponents([.hour, .minute, .weekday], from: fireDate)
+        guard let hour = clock.hour, let minute = clock.minute else { return nil }
+
+        let weekdayNumbers: [Int]
+        switch rule.frequency {
+        case .daily:
+            weekdayNumbers = Array(1...7)
+        case .weekly:
+            if !rule.weekdays.isEmpty {
+                weekdayNumbers = rule.weekdays
+            } else if let weekday = clock.weekday {
+                weekdayNumbers = [weekday]
+            } else {
+                return nil
+            }
+        case .monthly, .yearly:
+            return nil
+        }
+
+        let weekdays = weekdayNumbers.compactMap(ReminderAlarmRepetition.weekday(number:))
+        guard !weekdays.isEmpty, weekdays.count == weekdayNumbers.count else { return nil }
+        return ReminderAlarmRepetition(
+            hour: hour,
+            minute: minute,
+            weekdayNumbers: weekdayNumbers,
+            weekdays: weekdays
+        )
+    }
+}
+
+/// "This time of day, on these days of the week, every week": the only kind of
+/// series an AlarmKit alarm repeats by itself. Holds no AlarmKit type, so the
+/// decision can be made and tested on any OS.
+struct ReminderAlarmRepetition: Hashable, Sendable {
+    let hour: Int
+    let minute: Int
+    /// `Calendar` weekday numbers, 1 being Sunday, in the rule's order.
+    let weekdayNumbers: [Int]
+    /// The same days in the type `Alarm.Schedule.Relative.Recurrence.weekly`
+    /// takes.
+    let weekdays: [Locale.Weekday]
+
+    /// `Calendar`'s weekday numbering, where 1 is Sunday, to `Locale.Weekday`.
+    /// Fixed by Gregorian numbering, not by the locale's first day of the week.
+    static func weekday(number: Int) -> Locale.Weekday? {
+        switch number {
+        case 1: return .sunday
+        case 2: return .monday
+        case 3: return .tuesday
+        case 4: return .wednesday
+        case 5: return .thursday
+        case 6: return .friday
+        case 7: return .saturday
+        default: return nil
+        }
+    }
+
+    /// The first instant after `now` this repetition rings at, read in
+    /// `calendar`.
+    func nextOccurrence(after now: Date, calendar: Calendar) -> Date? {
+        weekdayNumbers.compactMap { weekday in
+            calendar.nextDate(
+                after: now,
+                matching: DateComponents(hour: hour, minute: minute, second: 0, weekday: weekday),
+                matchingPolicy: .nextTime,
+                direction: .forward
+            )
+        }.min()
+    }
+}
+
+/// What `ReminderScheduler` asks AlarmKit to ring: `.fixed(date)` once, or a
+/// relative schedule that repeats weekly on `weekdays` with no app run in
+/// between.
+enum ReminderAlarmSchedule: Equatable, Sendable {
+    case fixed(Date)
+    case weekly(hour: Int, minute: Int, weekdays: [Locale.Weekday])
 }
 
 /// One notification the scheduler will add, decided before anything touches
@@ -877,6 +1002,85 @@ enum ReminderScheduler {
         scheduled.filter { !accountedFor.contains($0) }
     }
 
+    /// The AlarmKit schedule for an alarm request, decided with no AlarmKit in
+    /// it. See `alarmSchedule(repeating:fireDate:now:calendar:)`.
+    static func alarmSchedule(
+        for request: ReminderScheduleRequest,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> ReminderAlarmSchedule {
+        alarmSchedule(
+            repeating: request.alarmRepetition,
+            fireDate: request.fireDate,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    /// The same decision from the rule a request is built from, so a test can
+    /// reach it without a store.
+    static func alarmSchedule(
+        rule: RecurrenceRule?,
+        fireDate: Date,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> ReminderAlarmSchedule {
+        alarmSchedule(
+            repeating: ReminderScheduleRequest.alarmRepetition(
+                rule: rule,
+                fireDate: fireDate,
+                calendar: calendar
+            ),
+            fireDate: fireDate,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    /// A repeating alarm when the series is one AlarmKit can repeat and its
+    /// next ring *is* this occurrence; the one-shot `.fixed(fireDate)`
+    /// otherwise.
+    ///
+    /// A one-shot alarm for a recurring item rang once and armed nothing for
+    /// the next occurrence until the app ran again, so "wake me up every
+    /// weekday at 6:30" missed Tuesday whenever Monday's alarm was the last
+    /// thing that happened. A relative schedule rings again by itself.
+    ///
+    /// It rings from now on, though, not from `fireDate`, so it is used only
+    /// when its first ring lands within a minute of `fireDate`, the same rule
+    /// the repeating notification trigger follows. A series whose next
+    /// occurrence is further out (created for next month, or rolled past a
+    /// day by completing early) stays a one-shot, and rejoins the repeating
+    /// path when the foreground pass re-arms its next occurrence.
+    ///
+    /// So does an occurrence a minute away or less, and the reason is not the
+    /// race itself, which both branches share: the two branches lose it
+    /// differently. A `.fixed` alarm whose moment passes while AlarmKit is
+    /// still registering it just does not fire, and the foreground pass
+    /// re-arms the series. A `.relative` one has no date to miss: it rings at
+    /// the next match instead, tomorrow or next week, while the row still
+    /// claims today, and nothing notices until the app next runs. The
+    /// `> 60` clause keeps that failure on the `.fixed` side. Do not delete it
+    /// on the grounds that `.fixed` is exposed to the same race.
+    static func alarmSchedule(
+        repeating repetition: ReminderAlarmRepetition?,
+        fireDate: Date,
+        now: Date,
+        calendar: Calendar
+    ) -> ReminderAlarmSchedule {
+        guard let repetition,
+              fireDate.timeIntervalSince(now) > 60,
+              let firstRing = repetition.nextOccurrence(after: now, calendar: calendar),
+              abs(firstRing.timeIntervalSince(fireDate)) < 60 else {
+            return .fixed(fireDate)
+        }
+        return .weekly(
+            hour: repetition.hour,
+            minute: repetition.minute,
+            weekdays: repetition.weekdays
+        )
+    }
+
     static func cancel(captureSessionID: UUID) {
         Task {
             let prefix = notificationGroupPrefix(for: captureSessionID)
@@ -1072,10 +1276,25 @@ enum ReminderScheduler {
                         metadata: SpeakItAlarmMetadata(itemID: request.itemID),
                         tintColor: .black
                     )
+                    // A series AlarmKit can repeat rings again by itself; see
+                    // `alarmSchedule(repeating:fireDate:now:calendar:)`.
+                    let alarmKitSchedule: Alarm.Schedule
+                    switch alarmSchedule(for: request) {
+                    case let .fixed(date):
+                        alarmKitSchedule = .fixed(date)
+                    case let .weekly(hour, minute, weekdays):
+                        alarmKitSchedule = .relative(Alarm.Schedule.Relative(
+                            time: Alarm.Schedule.Relative.Time(hour: hour, minute: minute),
+                            repeats: .weekly(weekdays)
+                        ))
+                    }
                     let configuration = AlarmManager.AlarmConfiguration.alarm(
-                        schedule: .fixed(request.fireDate),
+                        schedule: alarmKitSchedule,
                         attributes: attributes
                     )
+                    // The alarm ID stays the item ID for a repeating alarm too:
+                    // `cancel(itemID:)` and the orphan sweep both find an
+                    // alarm by the row it belongs to.
                     _ = try await manager.schedule(id: request.itemID, configuration: configuration)
                     return .scheduled
                 } catch {

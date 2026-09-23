@@ -162,6 +162,105 @@ Needs review instead of acted on. Some person actions leave no mark and so do
 not stop the re-read: deleting one of several rows, pins or other metadata
 kept outside the row, and a snooze or "Tomorrow" from a notification.
 
+## 2026-09-23 — A recurring alarm repeats in AlarmKit, not in the app
+
+Finding DEL-13 of the v1 delivery-integrity audit. `ReminderScheduler.schedule`
+built every AlarmKit alarm as `.fixed(request.fireDate)`, a one-shot. A
+recurring item delivered as an alarm ("wake me up every weekday at 6:30 with an
+alarm") therefore rang once, and nothing was armed for the next occurrence
+until the app ran again: the foreground self-healing pass
+(`reconcilePendingReminders` → `advanceOverdueRecurrences`, from `RootView` on
+launch and on every foreground) rolls the row forward or generates its
+successor and re-arms it. A person who is woken by the alarm, stops it and does
+not open Speak It misses the next morning's alarm. Notifications had already
+solved this for the shapes one `UNCalendarNotificationTrigger` can repeat
+(`repeatingComponents`: daily, or weekly on one day); alarms had not.
+
+**What AlarmKit can repeat.** `Alarm.Schedule` has two cases: `.fixed(Date)`,
+documented as a one-shot at an absolute time, and `.relative(Relative)`, an
+hour and a minute "relative to the device's current timezone" with
+`repeats: Recurrence`, whose cases are `.never` and `.weekly([Locale.Weekday])`
+(checked against developer.apple.com on 2026-09-23). So the one repeating
+shape is "this time of day, on these days of the week, every week". Speak It's
+`RecurrenceRule` maps onto it as follows, in
+`ReminderScheduleRequest.alarmRepetition(rule:fireDate:calendar:)`:
+
+| rule | AlarmKit |
+|---|---|
+| daily, `interval` 1 | `.weekly` on all seven days |
+| weekly, `interval` 1, named days ("every Monday", "every weekday", "every weekend") | `.weekly` on those days |
+| weekly, `interval` 1, no day named ("every week") | `.weekly` on the fire date's weekday |
+| `interval` above 1 ("every other Tuesday", "every 2 days") | one-shot |
+| monthly, yearly, ordinal weekday ("first Monday every month") | one-shot |
+| elapsed time ("every 3 hours") | one-shot |
+| completion-anchored ("a week after I do it") | one-shot |
+
+This is wider than `repeatingComponents`, which stays as it was: one relative
+alarm carries a set of weekdays where one notification trigger carries one
+match, so "every weekday" repeats as an alarm but not as a notification.
+
+**It is used only when its first ring is this occurrence.** A relative
+schedule rings at the next matching time from now; it has no start date. The
+decision, `ReminderScheduler.alarmSchedule(repeating:fireDate:now:calendar:)`,
+returns `.weekly` only when that next match is within a minute of the item's
+`fireDate` and the fire date is more than a minute away, the same test the
+repeating notification trigger applies. Otherwise it returns
+`.fixed(fireDate)` and the series rejoins the repeating path when the
+foreground pass re-arms its next occurrence. That covers a series that starts
+later than its next weekday match, an occurrence rolled a day ahead because it
+was completed before it rang, and an occurrence a minute away or less. That
+last clause is not about the registration race as such, which `.fixed` runs
+too: a `.fixed` alarm whose moment passes mid-registration just does not fire
+and the foreground pass re-arms it, while a `.relative` one rings at the next
+match instead, tomorrow or next week, with the row still claiming today. It
+does not cover daylight saving: the hour and minute are read from the
+occurrence's own fire date, so an occurrence the resolver moved out of a
+skipped hour repeats at the moved time until the next foreground re-arms it
+(see KNOWN_ISSUES).
+
+**The alarm ID stays the item ID.** `cancel(itemID:)` and the orphan sweep from
+the entry below both find an alarm by its row, and a repeating alarm has to be
+reachable the same way, so completing, archiving or deleting the row cancels
+the whole series. A multi-weekday series that the foreground pass continues by
+generating a successor row cancels the old row's alarm in the same scoped pass
+that arms the successor's.
+
+**A relative alarm follows the device's time zone.** That is AlarmKit's
+definition of `.relative`, and it matches the documented default for recurring
+reminders ("every day at 9 AM" follows the device across travel; see
+KNOWN_ISSUES, "Temporal intent is stored"). The one-shot path keeps `.fixed`,
+which does not move with the zone. The row is an absolute instant that moves
+only when the app runs, so after travel the alarm and the row disagree until
+then; KNOWN_ISSUES ("Some recurring alarms still ring once per app run") says
+by how much and for how long.
+
+The decision is a pure function of the rule, the fire date, now and a calendar,
+with no AlarmKit type in it (`ReminderAlarmSchedule`,
+`ReminderAlarmRepetition`), so `TemporalFullPathTests` covers it in the
+fixture zone. One of those tests builds a real item and its
+`ReminderScheduleRequest` and asks `alarmSchedule(for:)`, the overload
+`schedule` calls, because the others recompute the repetition from the rule and
+would stay green if the initializer stopped storing it. That test pins the
+zone only for the parse and builds the request in the machine's zone, as
+`CLAUDE.md` requires, with its expected hour and minute read on the machine's
+clock. Only the translation to
+`Alarm.Schedule` in `ReminderScheduler.schedule` touches AlarmKit, and no test
+reaches it.
+
+**It raises the cost of an orphan.** An alarm whose row is gone used to ring
+once; a repeating one rings on every matching day until the app is next
+opened. The orphan sweep in the entry below is what ends it, so that sweep is
+now load-bearing rather than tidy. A repeating alarm for a row that still
+exists is never swept, because the sweep protects every row in the store, not
+only the rows that should ring.
+
+**Follow-up, not done here.** A snoozed occurrence (PR #129, not in this
+branch's base) must decide what happens to a repeating alarm: snoozing one
+occurrence must not replace the series with a one-shot, nor leave the series
+ringing on top of the snooze. When #129 and this change meet, the snooze path
+needs its own alarm ID or an explicit rule for re-arming the series after the
+snooze fires.
+
 ## 2026-09-23 — An alarm with no row is cancelled, and every row that exists protects its alarm
 
 Finding D3 of the v1 delivery-integrity audit. Notifications heal on every
@@ -212,10 +311,17 @@ The seam is `ReminderDeliverySink.scheduledAlarmIDs`, next to the
 repository initializer argument. The decision itself is
 `ReminderScheduler.orphanedAlarmIDs(scheduled:accountedFor:)`, a pure function.
 Apple's documentation for `AlarmManager.alarms` says an alarm is deleted from
-the daemon's store as soon as it fires and stops, so the list is live state
-rather than a log. Unconfirmed until it runs on an iPhone: that an alarm this
-build schedules is listed as `.scheduled`, and that `cancel(id:)` on a listed
-orphan removes it without side effects on the app's other alarms.
+the daemon's store as soon as it fires and stops, and its next sentence, on
+telling whether a **one-shot** alarm has fired, shows whose behaviour that is:
+a one-shot alarm's entry is live state rather than a log. A repeating alarm
+has to stay in the store after it rings and is stopped, `.scheduled` for its
+next occurrence, or the entry above ("A recurring alarm repeats in AlarmKit,
+not in the app") does not work at all; its device checks in KNOWN_ISSUES are
+where that gets confirmed. The sweep is unaffected either way, because what
+protects an alarm is its row existing, not the alarm's history. Unconfirmed
+until it runs on an iPhone: that an alarm this build schedules is listed as
+`.scheduled`, and that `cancel(id:)` on a listed orphan removes it without side
+effects on the app's other alarms.
 
 ## 2026-09-23 — Removing an item stops its delivery before anything is queued
 

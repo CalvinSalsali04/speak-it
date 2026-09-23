@@ -1051,6 +1051,32 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         cancel it"`. One message was false once Today stopped reading
         `init?(item:)`: `"Today still counts only alerts ahead"` went, and
         `"an alert that has fired is no longer still ahead"` came.
+        4069 -> 4076 on
+        2026-09-23, from repeating AlarmKit alarms: six
+        `TemporalFullPathTests` methods and seven literals, enumerated
+        rather than assumed. Five are the names an inexpressible-rule test
+        gives its cases (`"first Monday every month"`, `"every other
+        Tuesday"`, `"every 2 days"`, `"every 3 hours"`, `"a day after
+        completion"`) and two are assertion messages. Two more case names,
+        `"every month"` and `"every year"`, add nothing because they are
+        under twelve characters. The first draft quoted phrases in its doc
+        comments and measured 4078, one of the two extras being
+        `", every Tuesday for "`: a quotation opened on one line and
+        closed on the next pairs with the wrong mark and counts the prose
+        between two quotes as a literal. Those comments use backticks now.
+        4076 -> 4078 on 2026-09-23, from that change's review: one
+        `TemporalFullPathTests` method that builds a real request, because
+        the six above never reached the overload production calls. Three
+        literals in, one out, enumerated rather than assumed. In: the
+        capture `"Set an alarm every day at 6:30 AM"`, new to this
+        directory, and two assertion messages, `"production asks
+        alarmSchedule only for an alarm"` and `"a relative alarm registered
+        too late rings at the next match, not today"`. Out: `"an occurrence
+        under a minute away could pass while AlarmKit registers it"`, the
+        message the second one replaced because the reason it gave applied
+        to the one-shot branch just as much. A reworded message is a fall
+        and a rise, not a zero, and it only nets to zero when both sides
+        clear twelve characters.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1111,7 +1137,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         candidate: measured from the merged tree, not taken from either
         side (4160 on the candidate, 4100 on #129, 4068 at their merge
         base; #129 adds 32 and removes 0, 0 of its additions were
-        already on the candidate).
+        already on the candidate). 4192 -> 4206 on 2026-09-23, merging
+        #133 into the V1 candidate: measured from the merged tree, not
+        taken from either side (4192 on the candidate, 4078 on #133,
+        4069 at their merge base; #133 adds 9 and removes 0, 0 of its
+        additions were already on the candidate). The merge resolution
+        itself adds 5 (`a daily series is one AlarmKit can repeat`, `the
+        repetition must keep the series' hour`, `the repetition must
+        keep the series' minute`, `the snooze landed on the series' own
+        minute, so the two readings agree`, `the snoozed occurrence
+        rings once, at the snooze`).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1121,7 +1156,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4192)
+        self.assertEqual(len(space), 4206)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
