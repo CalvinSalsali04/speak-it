@@ -317,6 +317,49 @@ final class DurabilityTests: XCTestCase {
         XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete)
     }
 
+    /// Each mark is enough on its own. The row carries exactly one of them,
+    /// so taking any single term out of `carriesPersonsDecision` fails here.
+    /// Completing and archiving go through the repository, which leaves only
+    /// its own mark on a placeholder. An edit through `update` always marks
+    /// the row reviewed as well, so the two intent flags are written alone.
+    func testEachMarkOfAPersonsHandKeepsRecoveryOffOnItsOwn() throws {
+        let marks: [(name: String, leave: (CapturedItem) throws -> Void)] = [
+            ("reviewed", { try self.repository.markReviewed($0) }),
+            ("completed", { try self.repository.setCompleted($0, completed: true) }),
+            ("archived", { try self.repository.setArchived($0, archived: true) }),
+            ("time set by hand", { row in
+                row.temporalIntent = TemporalIntent(kind: .none, isUserEdited: true)
+                try self.container.mainContext.save()
+            }),
+            ("place set by hand", { row in
+                row.locationIntent = LocationIntent(event: .arrive, place: .home, isUserEdited: true)
+                try self.container.mainContext.save()
+            }),
+        ]
+
+        for (name, leave) in marks {
+            let sessionID = try killAfterRawPersistence(twoThoughts, status: .failed)
+            let placeholder = try XCTUnwrap(try rows(inSession: sessionID).first)
+            try leave(placeholder)
+            let carried = [
+                placeholder.isReviewed,
+                placeholder.isCompleted,
+                placeholder.isArchived,
+                placeholder.temporalIntent?.isUserEdited == true,
+                placeholder.locationIntent?.isUserEdited == true,
+            ].filter { $0 }.count
+            XCTAssertEqual(carried, 1, "\(name): the row must carry this mark alone")
+
+            relaunch()
+
+            XCTAssertEqual(
+                try rows(inSession: sessionID).map(\.id), [placeholder.id],
+                "\(name): recovery re-read a capture the person had marked"
+            )
+            XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete, "\(name)")
+        }
+    }
+
     /// The control for the two tests above: the same words in the same states,
     /// with nobody's hand on the row, are still organized at launch. Without
     /// it those tests would also pass for a fix that stopped recovering.
@@ -336,6 +379,62 @@ final class DurabilityTests: XCTestCase {
             XCTAssertFalse(after.contains { $0.isReviewed }, "\(status)")
             XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete, "\(status)")
         }
+    }
+
+    /// A spoken operation from a later capture used to reach the placeholder
+    /// of an unfinished one, whose segment is the whole transcript. The move
+    /// went through `update`, which marks the row reviewed and its time as set
+    /// by hand, so the next launch closed the capture as the person's and
+    /// "book the car service" was never organized. The move is held for the
+    /// person instead, and the capture is still organized at relaunch.
+    func testASpokenMoveDoesNotReachThePlaceholderOfAnUnfinishedCapture() async throws {
+        let sessionID = try killAfterRawPersistence(twoThoughts)
+        let placeholderID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+
+        let move = try await capture("Move the plumber to Friday")
+
+        guard case let .ambiguous(operation, candidateIDs) = try XCTUnwrap(move.operationOutcome) else {
+            return XCTFail("A move whose only match is an unorganized placeholder must be held")
+        }
+        XCTAssertEqual(operation, .reschedule)
+        XCTAssertEqual(candidateIDs, [placeholderID])
+        XCTAssertFalse(move.items.isEmpty, "the held move stays as a review row")
+        let untouched = try rows(inSession: sessionID)
+        XCTAssertEqual(untouched.map(\.id), [placeholderID])
+        XCTAssertEqual(untouched.first?.isReviewed, false, "the placeholder was marked as the person's")
+        XCTAssertNil(untouched.first?.reminderDate, "the placeholder was moved")
+
+        relaunch()
+
+        let after = try rows(inSession: sessionID)
+        XCTAssertEqual(after.count, 2, "recovery must still split the capture the move never reached")
+        XCTAssertFalse(after.contains { $0.isReviewed })
+        XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete)
+        XCTAssertFalse(try rows(inSession: move.session.id).isEmpty, "the held move was lost at relaunch")
+    }
+
+    /// The same reach with a cancel lost more than the organizing: `delete`
+    /// removes a capture along with its last row, so the unfinished capture
+    /// went, transcript and all, with "book the car service" in it.
+    func testASpokenCancelDoesNotDeleteAnUnfinishedCapture() async throws {
+        let sessionID = try killAfterRawPersistence(twoThoughts, status: .failed)
+
+        let cancel = try await capture("Cancel the plumber reminder")
+
+        guard case .ambiguous = try XCTUnwrap(cancel.operationOutcome) else {
+            return XCTFail("A cancel whose only match is an unorganized placeholder must be held")
+        }
+        XCTAssertEqual(
+            try storedSession(sessionID).originalTranscription, twoThoughts,
+            "The original words are never rewritten"
+        )
+
+        relaunch()
+
+        XCTAssertEqual(
+            try rows(inSession: sessionID).count, 2,
+            "recovery must still split the capture the cancel never reached"
+        )
     }
 
     /// Recovery re-reads the words with the rules-only extractor while the live

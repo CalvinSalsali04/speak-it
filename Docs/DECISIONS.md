@@ -15,6 +15,12 @@ sessions are organized exactly as before, and `Organize again` remains the
 explicit way to ask for a re-read that replaces hand edits. The live-capture
 race, where the organizer lands after an edit made during extraction, is not
 covered by this and is tracked as D4(c) in the capture-lifecycle audit.
+A spoken cancel, complete or move from another capture would leave the same
+marks on an unfinished capture's placeholder, whose segment is the whole
+transcript, so when that placeholder is the only match the request is held in
+Needs review instead of acted on. Some person actions leave no mark and so do
+not stop the re-read: deleting one of several rows, pins or other metadata
+kept outside the row, and a snooze or "Tomorrow" from a notification.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
