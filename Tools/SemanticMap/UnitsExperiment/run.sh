@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OUT="${1:-$ROOT/output/units-experiment-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 status=0
 step() { echo "== $1"; }
 pass() { echo "PASS $1" | tee -a "$OUT/steps.txt"; }
