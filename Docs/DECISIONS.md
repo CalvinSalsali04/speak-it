@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-09-23 — Launch recovery closes a capture the person has already touched
+
+`recoverUnorganizedCaptures` re-reads every session that is not `.complete`,
+and the rows of those sessions are on screen before it runs: a `.failed`
+capture's row waits in Needs review, and an interrupted placeholder is visible
+while audio drafts recover. A correction made there was written over by the
+next launch, which also reset `isReviewed` and could split the row into new
+ones beside it. Recovery now skips and closes any unfinished session with a
+row that is reviewed, completed, archived, or carries a user-edited temporal
+or location intent, the marks `update`, `markReviewed`, `setCompleted` and
+`setArchived` already leave, so no persisted field was added. Untouched
+sessions are organized exactly as before, and `Organize again` remains the
+explicit way to ask for a re-read that replaces hand edits. The live-capture
+race, where the organizer lands after an edit made during extraction, is not
+covered by this and is tracked as D4(c) in the capture-lifecycle audit.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
