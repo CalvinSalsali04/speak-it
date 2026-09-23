@@ -1856,7 +1856,7 @@ final class LocationReminderTests: XCTestCase {
         )
         XCTAssertNil(
             reconciliation.blocked[item.id],
-            "an excluded row is neither watched nor blocked: it stays in review"
+            "an excluded row is neither watched nor blocked: it waits in review"
         )
     }
 
@@ -2147,7 +2147,7 @@ final class LocationReminderTests: XCTestCase {
         let unreadable = reading(.named(""), .dateOnly)
         XCTAssertEqual(
             unreadable.holdingPlaceAndTime(), unreadable,
-            "a place lead with no readable place names no place to hold for"
+            "a place lead with no readable place names nothing to wait for"
         )
         let placeOnly = reading(.home, TemporalKind.none)
         XCTAssertEqual(placeOnly.holdingPlaceAndTime(), placeOnly, "no time was said, so nothing is held")

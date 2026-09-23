@@ -433,7 +433,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let items = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
         XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
-            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) must wait for the person")
             XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
             XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place is kept as said")
             XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
@@ -510,7 +510,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(items.count, 1, "a place-triggered list stays whole, got \(items.map(\.displayTitle))")
         for item in items {
             XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place ends before the delay")
-            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) is held for the person to decide")
+            XCTAssertTrue(item.needsClarification, "\(item.displayTitle) must wait for the person")
             XCTAssertNil(item.reminderDate, "\(item.displayTitle) must not ring without the place")
             XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Sobeys")
         }

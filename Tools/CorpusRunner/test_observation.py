@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (60, 18, 32, 32)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -911,13 +911,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
         Removed: the Costco row's old note and eleven assertion messages
         from the tests that asserted the time won over a named place.
-        Three of the new assertion messages first said "wait", and the
-        `wait` bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed`
-        counts any utterance in this directory that contains the word,
-        assertion messages included: it moved from 58 rows to 60 on prose
-        nobody would say. The messages were reworded to say "held" and
-        "stays" rather than the bullet repinned, because the bullet is about
-        how people say the word and these were never people talking.
+        Three of the new assertion messages said "wait", and the `wait`
+        bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed` counts
+        any utterance in this directory that contains the word, assertion
+        messages included: it moved from 58 rows to 60 on prose nobody
+        would say. The messages were first reworded to say "held" and
+        "stays" rather than the bullet repinned. Review called that what it
+        is, test prose edited to keep a figure, so on 2026-09-23 the three
+        messages were restored word for word and the bullet repinned from
+        (58, 18, 30, 33) to (60, 18, 32, 32), in `MOTIVATING` and in the
+        `observation.py` docstring. That this census reads assertion
+        messages as utterances is a defect in the instrument, left visible
+        rather than hidden. The count here does not move: three literals
+        out, the same three back.
         4145 -> 4154 on 2026-09-23, from the second review of that change
         (names that end in a number or a weekday): nine added, none
         removed, enumerated by diffing this population at both commits.
