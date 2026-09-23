@@ -950,6 +950,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         cancel it"`. One message was false once Today stopped reading
         `init?(item:)`: `"Today still counts only alerts ahead"` went, and
         `"an alert that has fired is no longer still ahead"` came.
+        4100 -> 4104 on 2026-09-23, from the fifth round of that change's
+        grading: a snooze of a recurring row whose intent data will not
+        decode had no test. Four in, none out, all assertion messages --
+        `"Precondition: the backfill kept the bytes"`, `"Precondition: the
+        row recurs"`, `"a snooze of this row must report it unreadable, not
+        recorded"` and `"a snooze must not write a record over intent data
+        it cannot read"`. It reuses the weekly bins sentence, `"not an
+        intent"` and `"Precondition: data that will not decode"`.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -964,7 +972,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4100)
+        self.assertEqual(len(space), 4104)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
