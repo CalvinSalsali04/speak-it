@@ -8,6 +8,21 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- Advice somebody else gave you ("Sarah said I should call Mike tomorrow at
+  3", "my doctor thinks I ought to book a follow-up") is now a Needs review row
+  marked "Someone else's words", with no date and nothing armed. It used to be a
+  confident task on Today, often dated. What people ask you to do ("Sarah asked
+  me to call Mike") and what you commit to yourself ("…, so I need to call him
+  today") are still errands. This is case 4 of the 2026-09-16 reported-speech
+  ruling.
+- Advice passed on by a reminder or a message ("Sarah reminded me I should
+  call Mike", "Sarah texted me that I should call Mike tomorrow at 3") is held
+  for review the same way. "Sarah reminded me to call Mike" is still an errand.
+- On iPhones with Apple Intelligence, the on-device model can no longer turn
+  held advice back into a dated task by splitting "Sarah said" off from the
+  rest. A refinement that would date, remind, repeat, place or confidently
+  action a row held as someone else's words is discarded, and the held row is
+  kept.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

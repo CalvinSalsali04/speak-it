@@ -37,11 +37,29 @@ enum Actionability: String, Equatable, Sendable {
     /// No signal in either direction. Deliberately not the same as `knowledge`:
     /// an absent signal must never *demote* a type that was read some other way.
     case ambiguous
+    /// Something somebody else advised the person to do: "Sarah said I should
+    /// call Mike", "my doctor thinks I ought to book a follow-up". The action is
+    /// named and addressed to the person, and whether they took it on was never
+    /// said. Case 4 of Calvin's 2026-09-16 reported-speech ruling: the reported
+    /// modality is kept and the row is reviewable, never a confident
+    /// obligation. See `Docs/DECISIONS.md`, 2026-09-23.
+    ///
+    /// Distinct from `actionable` because the difference is not in the words,
+    /// which name an errand either way, but in who is committing to them.
+    /// `ThoughtOrganizer.organize` is the reader that acts on it: the row is
+    /// held for review with nothing dated or armed.
+    case advised
 
     /// Whether Today is the right surface.
+    ///
+    /// `advised` answers yes because its review row lives in Today's Needs
+    /// review section, and because every caller that only asks whether the
+    /// words name something to do — clause splitting, person resolution —
+    /// must read it exactly as it read the same words before case 4 had a
+    /// name.
     var belongsOnToday: Bool {
         switch self {
-        case .actionable, .outstanding, .event: true
+        case .actionable, .outstanding, .event, .advised: true
         case .knowledge, .ambiguous: false
         }
     }
@@ -318,6 +336,16 @@ enum ActionabilityReader {
 
         if isUnfulfilledObligation(value) || isAbandonedIntention(value) { return .outstanding }
 
+        // Advice is not an obligation because of who it was addressed to.
+        // "Sarah said I should call Mike" names an errand and says whose
+        // opinion it is; nothing in it says the person agreed. The rule below
+        // this one read the first-person "I should" inside the report as the
+        // speaker's own and put a confident task on Today. Read here, ahead of
+        // it, so the advisory modality decides before the word list does —
+        // and after the outstanding and discharged families, because "Sarah
+        // said I should call Mike but I already did" is settled either way.
+        if isReportedAdvice(value) { return .advised }
+
         // An obligation does not stop being one because of how it was learned.
         // "Remember Catherine said I need to call Alex Friday" is knowledge in
         // its framing and a phone call in its content, and filing only the
@@ -484,6 +512,199 @@ enum ActionabilityReader {
             // "I told Sarah I'd drop off the dish on Sunday": a promise the
             // person made is theirs to keep, whoever it was made to.
             || matches(text, #"\bi\s+(?:told|promised)\s+\S+(?:\s+\S+)?\s+(?:i['’]d|i\s+would|i['’]ll|i\s+will)\s+\#(actionVerb)\b"#)
+    }
+
+    // MARK: Reported advice (Calvin's ruling of 2026-09-16, case 4)
+
+    /// Weak deontic modality: what somebody recommends, as opposed to what is
+    /// owed. The strong forms (`need to`, `have to`, `must`, `gotta`) are
+    /// deliberately absent. "Sarah said I need to rebook the flights" reports
+    /// an obligation, and whether a reported obligation is the person's is a
+    /// question the ruling did not settle (see `Docs/DECISIONS.md`,
+    /// 2026-09-23). A closed class: English does not coin modals.
+    private static let advisoryModal =
+        #"(?:should|ought\s+to|oughta|(?:might|may|could)\s+(?:want|need)\s+to|(?:might|may|could)\s+wanna|had\s+better|better)"#
+
+    /// Adverbs that can sit between a subject and its modal, or a modal and
+    /// its verb, without changing who is acting.
+    private static let clauseAdverb =
+        #"(?:really|probably|definitely|maybe|perhaps|just|also|actually|seriously|honestly|still|always|even|literally|basically)"#
+
+    /// The same adverbs as words, for walking back from a reporting verb to
+    /// its subject.
+    private static let clauseAdverbWords: Set<String> = [
+        "really", "probably", "definitely", "maybe", "perhaps", "just", "also",
+        "actually", "seriously", "honestly", "still", "always", "even",
+        "literally", "basically", "apparently", "clearly", "never", "once",
+    ]
+
+    /// Auxiliaries between a subject and a reporting verb: "Sarah has been
+    /// saying", "everyone keeps telling me", "I was told".
+    private static let reportAuxiliary: Set<String> = [
+        "am", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did",
+        "will", "would", "can", "could", "may", "might", "must", "should",
+        "get", "gets", "got", "getting", "keep", "keeps", "kept",
+    ]
+
+    /// The auxiliaries that make "told" passive, so the teller is somebody
+    /// other than the subject: "I was told", "I've been advised".
+    private static let passiveAuxiliary: Set<String> = [
+        "am", "is", "are", "was", "were", "be", "been", "being",
+        "get", "gets", "got", "getting",
+    ]
+
+    /// Participles that stay somebody else's words in the passive.
+    private static let passiveAdviceParticiple: Set<String> = [
+        "told", "advised", "warned", "encouraged", "urged",
+    ]
+
+    /// Verbs that report what somebody said, thought or advised and can take
+    /// a finite clause behind them. A closed class like
+    /// `ClauseScope.reportingVerb`, and kept apart from it on purpose: that
+    /// list also holds `asked` and `wants`, whose complement is an
+    /// instruction to the person (case 3, "Sarah asked me to call Mike"), and
+    /// `promised`, whose subject is the one committing.
+    ///
+    /// `reminded`, `texted`, `emailed`, `messaged` and `wrote` are here
+    /// because the codebase already reads them as reports (`isReportedSpeech`
+    /// has "reminded me", `CaptureOperationDetector.reportVerb` the three
+    /// message verbs), and without them "Sarah reminded me I should call
+    /// Mike" and "Sarah texted me that I should call Mike tomorrow at 3" kept
+    /// the confident, dated task this family exists to hold. "Reminded me to
+    /// call Mike" stays case 3: every shape below needs `I`/`we` and an
+    /// advisory modal after the verb, and a bare infinitive has neither.
+    /// Only the past forms: "texts", "emails" and "messages" are nouns as
+    /// often as verbs ("check the emails I should reply to"), and the
+    /// imperatives "remind", "text" and "email" ask for something rather than
+    /// report it.
+    private static let adviceFrameVerb =
+        #"(?:said|says|say|saying|told|tells|tell|telling|mentioned|mentions|thinks|think|thought|reckons|reckon|reckoned|figures|figured|feels|feel|felt|believes|believe|believed|insists|insisted|warned|warns|suggested|suggests|suggest|recommended|recommends|recommend|advised|advises|advise|reminded|texted|emailed|messaged|wrote)"#
+
+    /// Verbs whose meaning already is advice, so no modal is needed behind
+    /// them: "Sarah suggested I call Mike", "the doctor advised me to book a
+    /// follow-up".
+    private static let adviceVerb =
+        #"(?:suggested|suggests|suggest|recommended|recommends|recommend|advised|advises|advise|urged|urges|encouraged|encourages)"#
+
+    /// The shapes reported advice takes. Each stops in front of the advised
+    /// action, so what is left when the frames are taken out is the action
+    /// and whatever the person said in their own voice around it. Group 1,
+    /// where a shape has one, is the verb whose subject has to be somebody
+    /// other than the speaker; "according to" carries the adviser inside it.
+    private static let reportedAdviceShapes: [String] = [
+        // "Sarah said (that) I should call", "Mike told me we ought to book",
+        // "my doctor thinks I might want to book".
+        #"\b(\#(adviceFrameVerb))(?:\s+(?:me|us))?(?:\s+to\s+(?:me|us))?\s*,?\s+(?:that\s+)?(?:(?:maybe|perhaps|probably)\s+)?(?:i|we)(?:['’]d\s+better|(?:\s+\#(clauseAdverb))*\s+\#(advisoryModal))(?:\s+\#(clauseAdverb))*\s+(?=\#(actionVerb)\b)"#,
+        // "Sarah suggested I call Mike", "the doctor advised me to book".
+        #"\b(\#(adviceVerb))\s+(?:(?:me|us)\s+to|(?:that\s+)?(?:i|we))(?:\s+\#(clauseAdverb))*\s+(?=\#(actionVerb)\b)"#,
+        // "According to Sarah, I should call Mike."
+        #"\baccording\s+to\s+(?!(?:me|us|myself|ourselves)\b)(?:[\p{L}'’-]+\s+){0,2}[\p{L}'’-]+\s*,?\s+(?:that\s+)?(?:i|we)(?:['’]d\s+better|(?:\s+\#(clauseAdverb))*\s+\#(advisoryModal))(?:\s+\#(clauseAdverb))*\s+(?=\#(actionVerb)\b)"#,
+    ]
+
+    /// Case 4 of Calvin's 2026-09-16 ruling: somebody else advised the person
+    /// to do something, and the person has not said they will.
+    ///
+    /// Three questions, each a closed class, and all three must agree:
+    ///
+    /// - **Whose words?** A verb of saying, thinking or advising whose subject
+    ///   is not the speaker. "I think I should call the dentist" is the
+    ///   person's own resolution and stays theirs; "I was told I should" is
+    ///   somebody else's advice with the adviser left unnamed.
+    /// - **What modality?** Advice (`should`, `ought to`, `might want to`,
+    ///   `'d better`, or an advising verb such as `suggested`), never a bare
+    ///   infinitive. "Sarah told me to call Mike" is an instruction handed to
+    ///   the person (case 3) and "Sarah told me I should call Mike" is advice;
+    ///   the modal is the whole difference.
+    /// - **Did they take it on?** Anything the person says in their own voice
+    ///   outside the report that commits them, such as "so I need to call him
+    ///   today", "and I will" or "remind me tomorrow", is case 5 and the
+    ///   errand is theirs.
+    ///
+    /// The advised action must be one `actionVerb` names, the same test
+    /// `carriesOwnObligation` applies. "My doctor says I should cut back on
+    /// coffee" is advice with no errand in it, and stays the Memory note it
+    /// already was.
+    ///
+    /// Purely lexical: no tagger reading is consulted, so the answer does not
+    /// depend on whether NLTagger's model is present.
+    private static func isReportedAdvice(_ text: String) -> Bool {
+        // "Do you think I should call Mike" asks for advice rather than
+        // reporting it, and the open-question family owns it.
+        guard !isOpenQuestion(text),
+              !matches(text, #"^\s*(?:what|why|how|when|where|who|which)\b"#) else { return false }
+        let whole = NSRange(text.startIndex..., in: text)
+        var frames: [Range<String.Index>] = []
+        for shape in reportedAdviceShapes {
+            guard let regex = NSRegularExpression.speakItCached(shape, options: [.caseInsensitive]) else {
+                continue
+            }
+            for match in regex.matches(in: text, range: whole) {
+                guard let frame = Range(match.range, in: text) else { continue }
+                if match.numberOfRanges > 1, let verb = Range(match.range(at: 1), in: text) {
+                    guard advisedBySomebodyElse(before: text[..<verb.lowerBound], verb: text[verb]) else {
+                        continue
+                    }
+                }
+                frames.append(frame)
+            }
+        }
+        guard !frames.isEmpty else { return false }
+
+        // What the person said in their own voice: the sentence with every
+        // report taken out. A report runs from its verb to the end of the
+        // advised clause, so the advised action itself is not the person's
+        // own words either — "Sarah said I should set an alarm for 7" asks
+        // for no alarm. The clause ends at the first punctuation mark or
+        // coordinator, which is where "so I need to call him today" and "and
+        // I will" begin.
+        var ownWords = ""
+        var cursor = text.startIndex
+        for frame in frames.sorted(by: { $0.lowerBound < $1.lowerBound }) where frame.lowerBound >= cursor {
+            ownWords.append(contentsOf: text[cursor..<frame.lowerBound])
+            ownWords.append(" ")
+            cursor = text[frame.upperBound...].range(
+                of: #"[,;.!?]|\b(?:so|and|but|then|because|cause|since)\b"#,
+                options: [.regularExpression, .caseInsensitive]
+            )?.lowerBound ?? text.endIndex
+        }
+        ownWords.append(contentsOf: text[cursor...])
+        return !takesAdviceOn(ownWords)
+    }
+
+    /// Whether the subject of a reporting verb is somebody other than the
+    /// speaker. `head` is everything in front of the verb.
+    ///
+    /// Walks back over adverbs and auxiliaries to the subject. A first-person
+    /// subject is the speaker reporting themselves ("I think", "I've always
+    /// said"), except in the passive of a telling verb ("I was told", "I've
+    /// been advised"), where the teller is unnamed and is not the speaker. No
+    /// subject at all is not evidence of anybody's words, so it declines.
+    private static func advisedBySomebodyElse(before head: Substring, verb: Substring) -> Bool {
+        var words = head.split(whereSeparator: { $0.isWhitespace })
+            .map { $0.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?\"“”")) }
+            .filter { !$0.isEmpty }
+        var passive = false
+        while let last = words.last, clauseAdverbWords.contains(last) || reportAuxiliary.contains(last) {
+            if passiveAuxiliary.contains(last) { passive = true }
+            words.removeLast()
+        }
+        guard let subject = words.last else { return false }
+        guard matches(subject, #"^(?:i|we)(?:['’](?:m|re|ve|d|ll))?$"#) else { return true }
+        if matches(subject, #"['’](?:m|re)$"#) { passive = true }
+        return passive && passiveAdviceParticiple.contains(verb.lowercased())
+    }
+
+    /// Case 5: the person's own words, outside every report, take the advice
+    /// on. "Sarah said I should call Mike, so I need to call him today" is an
+    /// errand, and so is "… and I will" or "… remind me tomorrow".
+    private static func takesAdviceOn(_ ownWords: String) -> Bool {
+        matches(ownWords, #"\b(?:i|we)(?:\s+\#(clauseAdverb))*\s+(?:gotta|need\s+to|needa|have\s+to|hafta|got\s+to|must|should|ought\s+to|oughta|will|shall|(?:am|are)\s+(?:going\s+to|gonna)|want\s+to|wanna|better|had\s+better|plan\s+to|intend\s+to)\b"#)
+            || matches(ownWords, #"\b(?:i|we)['’](?:ll|ve\s+got\s+to|m\s+(?:going\s+to|gonna)|re\s+(?:going\s+to|gonna)|d\s+better)\b"#)
+            || matches(ownWords, #"\blet['’]?s\b"#)
+            || ReminderPhrasing.requestsReminder(ownWords)
+            || matches(ownWords, #"\bset\s+an?\s+(?:alarm|timer)\b|\bwake\s+me\b"#)
+            || isEmphaticRemember(ownWords)
     }
 
     /// The obligation inside reported speech, when the speech carries one:
