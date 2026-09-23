@@ -874,7 +874,25 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4077 on 2026-09-23, from
+        snoozing a recurring reminder no longer retiming its series: three
+        `TemporalFullPathTests` tests, nine literals, enumerated rather than
+        assumed, and all nine are assertion messages --
+        `"Precondition: the series alerts at its due time"` (used twice,
+        counted once), `"Precondition: this does not recur"`, `"a repeating
+        trigger built from the snoozed minute retimes the series on the
+        phone"`, `"a snooze belongs to the occurrence it was pressed on"`,
+        `"a snooze moves the alert, not the occurrence"`, `"only a series
+        has an alert of its own to protect"`, `"the occurrence after a
+        snoozed one fires at the series' own time"`, `"the occurrence after
+        the moved one is back on the series' clock"` and `"tomorrow means
+        tomorrow at the series' time, not at the snoozed minute"`. The three
+        fixtures add nothing, because each was already in this directory:
+        `"Remind me every Monday at 9 am to take the bins out"` and `"Remind
+        me in 20 minutes to switch the laundry"` in
+        `SwiftDataThoughtRepositoryTests`, `"Remind me every day at 8 am to
+        take my meds"` in `ReleaseReadinessTests`. Reused on purpose, so
+        the change adds no sentence to this population. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +906,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4077)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

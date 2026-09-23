@@ -43,9 +43,15 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         )
         self.fireDate = fireDate
         delivery = wordedDelivery == .alarm ? .alarm : .notification
+        // The series' own alert, not a snoozed one. Taken from a snoozed fire
+        // date, the repeating match's first fire *was* the snoozed occurrence,
+        // so iOS was handed "every Monday at 9:10" for a series asked for at 9.
+        // From the series' alert, the match no longer describes this one fire,
+        // which is then armed as an exact one-shot like any other occurrence
+        // the components cannot describe.
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
-            fireDate: fireDate
+            fireDate: item.seriesReminderDate ?? fireDate
         )
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)

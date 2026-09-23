@@ -1,5 +1,57 @@
 # Decisions
 
+## 2026-09-23 — A snooze moves one occurrence, and the series keeps its own time
+
+Finding D10 in the delivery-integrity audit: snoozing a recurring reminder
+retimed the whole series. "Every Monday at 9", snoozed ten minutes, became
+"every Monday at 9:10" from then on. There were three causes, and all three
+read the alert from `reminderDate`, the one field the notification actions
+overwrite:
+
+- **The next occurrence's offset.** `setCompleted` and
+  `advanceOverdueRecurrences` carried `reminderDate − dueDate` forward. Once
+  a snooze had moved `reminderDate`, that difference was the snooze.
+- **The native repeating trigger.** `ReminderScheduleRequest` took its
+  hour and minute from the fire date. For a snoozed occurrence, a trigger
+  repeating at the snoozed minute has that snooze as its first fire, so the
+  first-fire check passed and iOS repeated the series at 9:10.
+- **Tomorrow.** It took its clock from `reminderDate`, so a snoozed
+  occurrence sent to tomorrow landed on the snoozed minute and moved the
+  due date there too.
+
+The series' due time was never lost. `dueDate` is not touched by a snooze,
+and the intent's wall clock is not either. Only the alert *offset* has no
+home other than `reminderDate`. A captured series always alerts at its due
+time, but an item edited to alert 15 minutes early does not, and nothing
+else stores that offset. So a snooze now records the alert it displaced
+before it moves `reminderDate`. The record is
+`TemporalIntent.snoozedFromReminderDate`, and `CapturedItem.seriesReminderDate`
+reads it back, or `reminderDate` when there is no record. The offset, the
+anchor for a series with no due date, and the repeating trigger's clock all
+come from that value. Tomorrow re-anchors a recurring occurrence on
+tomorrow at the series' own alert and keeps the offset. `carriedIntent`
+clears the record on the next occurrence, and any edit writes a new intent
+without it.
+
+**Why the intent and not a new column or the recurrence sidecar.** The
+intent is stored as one encoded blob (`temporalIntentData`) precisely so its
+shape can change without another schema version. Its decoder already
+tolerates fields that are missing, so there is no SwiftData model change and
+no migration. The blob also travels with the row in backups, and rolls back
+with it when a save fails. `RecurrenceStore` does neither for a new field.
+The record is set only on items that recur, so a one-off reminder snoozes
+and moves to tomorrow exactly as before.
+
+**What it costs.** A snoozed occurrence of a daily or single-weekday series
+is now armed as an exact one-shot, because the repeating match no longer
+describes it. Until the app next runs and rolls the row forward, nothing is
+armed for the occurrences after the snooze. Before this change, iOS kept
+firing them, at the wrong minute. See `KNOWN_ISSUES.md`.
+
+Covered by three tests in `TemporalFullPathTests`, pinned to the fixture
+zone: a weekly snooze followed by completion, snooze then Tomorrow on a
+daily series, and a one-off reminder as the unchanged control.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

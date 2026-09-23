@@ -407,6 +407,32 @@ final class CapturedItem: Identifiable {
     /// every type that can carry a deadline is already `isActionable`.
     var isTimeCommitted: Bool { reminderDate != nil }
 
+    /// The alert this occurrence has in its series, which a snooze does not
+    /// move: `reminderDate` itself unless a snooze has displaced it, in which
+    /// case the instant it was displaced from. Every step that carries a
+    /// recurring series forward — the next occurrence's offset from its due
+    /// date, and the clock a native repeating trigger matches — reads this
+    /// rather than `reminderDate`, so moving one occurrence cannot retime the
+    /// rest. See `TemporalIntent.snoozedFromReminderDate`.
+    var seriesReminderDate: Date? {
+        guard reminderDate != nil else { return nil }
+        return temporalIntent?.snoozedFromReminderDate ?? reminderDate
+    }
+
+    /// Records, or clears with `nil`, the series alert a snooze displaced.
+    ///
+    /// Writes the encoded intent directly rather than through `temporalIntent`,
+    /// whose setter also re-derives the denormalized kind and trigger. Neither
+    /// changes here, and re-deriving the trigger would turn a place reminder
+    /// that also carries a time intent into a time reminder.
+    func setSnoozedFromReminderDate(_ date: Date?) {
+        guard var intent = temporalIntent,
+              intent.snoozedFromReminderDate != date else { return }
+        intent.snoozedFromReminderDate = date
+        guard let data = try? JSONEncoder().encode(intent) else { return }
+        temporalIntentData = data
+    }
+
     /// Today is for action. Written as the exact complement of `belongsInMemory`
     /// so no live item can ever fall out of both destinations.
     var belongsInToday: Bool {

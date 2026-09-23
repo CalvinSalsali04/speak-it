@@ -366,9 +366,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                   let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: now)
             else { continue }
 
-            let reminderOffset = item.reminderDate.flatMap { reminder in
-                item.dueDate.map { reminder.timeIntervalSince($0) }
-            } ?? 0
+            let reminderOffset = seriesReminderOffset(of: item)
 
             // A rule `repeatingComponents` *can* express is armed as a single
             // native repeating trigger, so it is one row that keeps recurring
@@ -753,6 +751,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         case .snoozeTenMinutes:
             let date = Date.now.addingTimeInterval(10 * 60)
             for item in items where !item.isCompleted {
+                // A snooze moves this occurrence, never the series. Before the
+                // alert is displaced, a recurring item records where its series
+                // put it, and a second snooze keeps that first record rather
+                // than taking the already-snoozed time as the series' own.
+                if RecurrenceStore.rule(for: item.id) != nil,
+                   let seriesReminder = item.seriesReminderDate {
+                    item.setSnoozedFromReminderDate(seriesReminder)
+                }
                 item.reminderDate = date
                 item.lastModifiedAt = .now
             }
@@ -764,12 +770,29 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 return
             }
             for item in items where !item.isCompleted {
-                let sourceDate = item.reminderDate ?? item.dueDate
+                let recurs = RecurrenceStore.rule(for: item.id) != nil
+                // A recurring occurrence moves to tomorrow at its series' own
+                // alert, not at a snoozed one: "every day at 8", snoozed and
+                // then sent to tomorrow, is due tomorrow at 8, not 8:10.
+                let ownReminder = recurs ? item.seriesReminderDate : item.reminderDate
+                let sourceDate = ownReminder ?? item.dueDate
                 let hour = sourceDate.map { calendar.component(.hour, from: $0) } ?? 9
                 let minute = sourceDate.map { calendar.component(.minute, from: $0) } ?? 0
                 let date = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
                 item.reminderDate = date
-                if item.dueDate != nil { item.dueDate = date }
+                if let dueDate = item.dueDate {
+                    if recurs, let ownReminder {
+                        // Keep the series' distance between alert and due
+                        // date, so the occurrence after this one is carried
+                        // forward from the clock the series repeats at.
+                        item.dueDate = date.addingTimeInterval(dueDate.timeIntervalSince(ownReminder))
+                    } else {
+                        item.dueDate = date
+                    }
+                }
+                // The occurrence now sits on its series' own alert again, so
+                // there is no displacement left to remember.
+                if recurs { item.setSnoozedFromReminderDate(nil) }
                 item.lastModifiedAt = .now
             }
             try persistChanges()
@@ -1495,9 +1518,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
            let rule = RecurrenceStore.rule(for: item.id),
            let session = item.captureSession,
            let nextDate = nextRecurrenceDate(for: item, rule: rule, completedAt: completedAt) {
-            let reminderOffset = item.reminderDate.flatMap { reminder in
-                item.dueDate.map { reminder.timeIntervalSince($0) }
-            } ?? 0
+            let reminderOffset = seriesReminderOffset(of: item)
             let next = CapturedItem(
                 originalTextSegment: item.originalTextSegment,
                 displayTitle: item.displayTitle,
@@ -2533,6 +2554,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         toOccurrenceOn nextDate: Date
     ) -> TemporalIntent? {
         guard var intent = item.temporalIntent else { return nil }
+        // A snooze belonged to the occurrence being left behind.
+        intent.snoozedFromReminderDate = nil
         // The day is read in the intent's own calendar, so a series pinned to a
         // named zone ("every day at 9 AM Toronto time") keeps advancing by
         // Toronto days rather than by the travelling device's days.
@@ -2541,6 +2564,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             calendar: intent.calendar(default: .autoupdatingCurrent)
         )
         return intent
+    }
+
+    /// How far a series puts its alert from its due date, which every next
+    /// occurrence keeps.
+    ///
+    /// Read from `seriesReminderDate`, not `reminderDate`. A snoozed
+    /// `reminderDate` minus the due date is the snooze, and carrying that
+    /// forward turned "every day at 8", snoozed ten minutes, into "every day
+    /// at 8:10" for every occurrence after it.
+    private func seriesReminderOffset(of item: CapturedItem) -> TimeInterval {
+        guard let reminder = item.seriesReminderDate, let due = item.dueDate else { return 0 }
+        return reminder.timeIntervalSince(due)
     }
 
     private func nextRecurrenceDate(
@@ -2556,7 +2591,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             : nil
 
         var next = rule.nextDate(
-            scheduledDate: item.dueDate ?? item.reminderDate,
+            // A reminder-only series has no due date to anchor on; its anchor
+            // is its own alert, never a snoozed one.
+            scheduledDate: item.dueDate ?? item.seriesReminderDate,
             completedAt: completedAt,
             preferredWallClock: preferredWallClock
         )
