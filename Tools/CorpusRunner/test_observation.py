@@ -2024,6 +2024,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         pills` and `Set an alarm every day at 6:30 AM` were already here,
         `a notification` already was too, and `Alarm` is under twelve
         characters: 4778 + 22 - 0 = 4800, measured from the tree after merging the candidate at `026a78a` into #153 (DEL-23 was written at 4775 -> 4797).
+        4882 -> 4886 on 2026-09-23, a candidate commit fixing the hosted
+        f6c5bd2 failures (an intent the build cannot read is not erased
+        by the roll-forward or a restore): one `TemporalFullPathTests`
+        test. Four in, all assertion messages, enumerated by diffing
+        `swift_literals` before and after (`a readable intent still
+        replaces the bytes`, `carrying nothing erased the bytes`, `no
+        bytes: nil goes through the setter as before`, `precondition:
+        bytes that will not decode`). None out. Its fixture, `Take the
+        bins out`, was already here: 4882 + 4 - 0 = 4886.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2033,7 +2042,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4882)
+        self.assertEqual(len(space), 4886)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

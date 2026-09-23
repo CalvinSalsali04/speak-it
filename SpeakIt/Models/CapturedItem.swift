@@ -209,6 +209,33 @@ final class CapturedItem: Identifiable {
         }
     }
 
+    /// True when the row holds intent bytes this build cannot decode. The
+    /// launch backfill keeps such bytes as they are (`backfillTemporalIntents`),
+    /// and nothing that only carries the intent forward may drop them.
+    var hasUnreadableTemporalIntent: Bool {
+        temporalIntentData != nil && temporalIntent == nil
+    }
+
+    /// Writes an intent derived from the row's own, for a pass that carries
+    /// the intent forward rather than replacing it (the roll-forward of an
+    /// overdue series, a restore that brings the row back). Returns whether
+    /// it wrote.
+    ///
+    /// A `nil` from such a pass means "there was nothing readable to carry",
+    /// not "the person cleared the time", so it never goes through the setter
+    /// over bytes that will not decode: the setter would write `nil` over
+    /// them, clear the kind they denormalize and drop a time trigger. Those
+    /// bytes are kept as the launch backfill keeps them. Every other value,
+    /// including `nil` on a row with no bytes or a readable intent, is written
+    /// through the setter exactly as before. An explicit clear, such as the
+    /// editor's, uses the setter directly.
+    @discardableResult
+    func carryTemporalIntent(_ intent: TemporalIntent?) -> Bool {
+        if intent == nil, hasUnreadableTemporalIntent { return false }
+        temporalIntent = intent
+        return true
+    }
+
     /// What the person said about *where*, or `nil` when they named no place.
     var locationIntent: LocationIntent? {
         get {

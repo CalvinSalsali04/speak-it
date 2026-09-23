@@ -593,7 +593,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 // is on a pass whose whole job is to keep it firing.
                 if item.dueDate != nil { item.dueDate = nextDate }
                 item.reminderDate = nextDate.addingTimeInterval(reminderOffset)
-                item.temporalIntent = carried
+                // `carried` is nil when the row's intent bytes will not
+                // decode, and writing that through the setter erased the
+                // bytes the launch backfill had just kept, on every relaunch
+                // after the occurrence fired. Nothing readable means nothing
+                // to move forward, so the bytes stay.
+                item.carryTemporalIntent(carried)
                 item.lastModifiedAt = now
                 advancedAny = true
                 continue
@@ -3134,7 +3139,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // intent. An older device that cannot express one must not erase
             // what this device already knows.
             if let semantics = value.portableSemantics {
-                item.temporalIntent = semantics.temporalIntent
+                // A snapshot's nil intent is what `makeICloudSnapshot` writes
+                // for a row whose bytes did not decode (nothing in the app
+                // clears an intent to nil: the organizer and the editor always
+                // write one). Applied to that same row coming back, it erased
+                // the bytes the launch backfill keeps.
+                item.carryTemporalIntent(semantics.temporalIntent)
                 item.locationIntent = semantics.locationIntent
                 item.semanticStateRawValue = semantics.semanticStateRawValue
                 item.semanticGapRawValue = semantics.semanticGapRawValue

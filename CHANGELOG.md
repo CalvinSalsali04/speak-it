@@ -7,6 +7,10 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- Opening the app no longer erases a repeating reminder's saved timing
+  details when this version cannot read them. The launch pass that moves an
+  overdue series to its next occurrence wrote over them, and so did a restore
+  from iCloud. Both now leave them as the launch check already did.
 - The pass that runs at every launch and foreground no longer stops or
   cancels the alarm of a row that rang in the last 30 minutes. It used to stop
   and cancel every alarm before re-arming the ones still ahead. So by reading,

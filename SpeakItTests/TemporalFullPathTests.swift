@@ -1273,6 +1273,44 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
+    /// The rule the two passes that carry an intent forward write through,
+    /// the roll-forward of an overdue series and a restore: carrying nothing
+    /// from bytes that will not decode leaves the bytes, their kind and the
+    /// time trigger as they were. Carrying nothing onto a row with no bytes,
+    /// and carrying a readable intent, still write through the setter.
+    ///
+    /// The test above reaches the roll-forward through a relaunch; this one
+    /// pins the rule for the restore too, which no test drives end to end.
+    ///
+    /// Falsifier: make `carryTemporalIntent` assign unconditionally, which is
+    /// what the roll-forward's `item.temporalIntent = carried` did, and the
+    /// bytes are gone. No clock is read.
+    func testCarryingNothingKeepsIntentBytesThatWillNotDecode() {
+        let unreadable = Data("not an intent".utf8)
+        let kept = CapturedItem(originalTextSegment: "Take the bins out", displayTitle: "Take the bins out")
+        kept.temporalIntentData = unreadable
+        kept.temporalKindRawValue = TemporalKind.calendarRecurrence.rawValue
+        kept.reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
+        XCTAssertTrue(kept.hasUnreadableTemporalIntent, "precondition: bytes that will not decode")
+
+        XCTAssertFalse(kept.carryTemporalIntent(nil))
+        XCTAssertEqual(kept.temporalIntentData, unreadable, "carrying nothing erased the bytes")
+        XCTAssertEqual(kept.temporalKindRawValue, TemporalKind.calendarRecurrence.rawValue)
+        XCTAssertEqual(kept.reminderTriggerKind, .time)
+
+        let readable = TemporalIntent(kind: .dateOnly)
+        XCTAssertTrue(kept.carryTemporalIntent(readable))
+        XCTAssertEqual(kept.temporalIntent, readable, "a readable intent still replaces the bytes")
+        XCTAssertFalse(kept.hasUnreadableTemporalIntent)
+
+        let bare = CapturedItem(originalTextSegment: "Take the bins out", displayTitle: "Take the bins out")
+        bare.reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
+        XCTAssertFalse(bare.hasUnreadableTemporalIntent)
+        XCTAssertTrue(bare.carryTemporalIntent(nil), "no bytes: nil goes through the setter as before")
+        XCTAssertNil(bare.temporalIntentData)
+        XCTAssertNil(bare.reminderTriggerKind)
+    }
+
     /// What a scheduling pass selects to arm, read from the value
     /// `scheduleBatch` itself acts on: a series whose alert has fired is still
     /// armed as a notification, and nothing in it is taken for an alarm.

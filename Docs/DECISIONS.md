@@ -1,5 +1,47 @@
 # Decisions
 
+## 2026-09-23 — Carrying an intent forward never erases bytes it could not read
+
+Found by the hosted run on f6c5bd2 (run 35927571971). #129's
+`testSnoozeOnARecurringRowWithUnreadableIntentDataRecordsNothing` failed at
+its first precondition: the intent bytes were gone after a relaunch. The
+launch backfill (`backfillTemporalIntents`) keeps a blob that will not decode
+as it is, and counts it. `reconcilePendingReminders` then ran
+`advanceOverdueRecurrences`. For a series `repeatingComponents` can express,
+that pass rolled the fired row forward with `item.temporalIntent = carried`.
+`carriedIntent` returns `nil` when the intent will not decode, and the setter
+wrote `nil` over the bytes, cleared the kind and dropped a time trigger. So
+every relaunch after such a row's occurrence fired destroyed data the backfill
+had just chosen to keep. The code is main-era, and #129's test was the first
+to reach it.
+
+A restore did the same. `makeICloudSnapshot` exports `item.temporalIntent`,
+which is `nil` for such a row, inside the portable semantics.
+`applyICloudSnapshot` wrote that `nil` back through the setter when the same
+row came home. Nothing in the app clears an intent to `nil` on purpose: the
+organizer's reading and the editor's save always carry one. The other writes
+were checked. `apply` writes the organizer's non-optional reading, or keeps a
+hand-set intent, which is only ever a readable one. The editor writes
+`TemporalIntent.userEdited`. The legacy snapshot branch writes only a
+non-`nil` intent. A successor row is new, so it has no bytes to lose.
+
+**The design.** `CapturedItem.carryTemporalIntent(_:)` is used by the two
+passes that carry an intent forward, the roll-forward and the restore. A
+`nil` never goes through the setter onto bytes that will not decode. Every
+other value, including `nil` on a row with no bytes, is written as before.
+The roll-forward still moves the row's dates. It cannot move a day it cannot
+read, so the bytes stay as they were.
+
+- Hypothesis: the relaunch erased the bytes in the roll-forward's setter call.
+  #129's test then passes as written. Its other three failing lines (the
+  snooze outcome, the bytes after the snooze, and `temporalIntent` staying
+  `nil`) follow from the first. With no bytes, `recordSnoozeDisplacement`
+  saw `.noIntent`, reconstructed an intent and recorded the snooze in it.
+- Falsifier: the test still fails at the bytes precondition on a Mac run.
+  That would mean some other pass writes the blob during `relaunch()`.
+  Separately, making `carryTemporalIntent` assign unconditionally fails
+  `testCarryingNothingKeepsIntentBytesThatWillNotDecode`.
+
 ## 2026-09-23 — Opening the app leaves a ringing alarm alone
 
 Finding DEL-23, raised by reading by the #145 grader. `reconcilePendingReminders`
