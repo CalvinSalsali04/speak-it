@@ -2939,6 +2939,45 @@ enum BudgetedWork {
             race.settle(nil)
         }
     }
+
+    /// The same race, admitting one piece of work at a time. The budget
+    /// stops the capture waiting, not the work, so an abandoned call can
+    /// still be running when the next capture arrives; that capture gets
+    /// `nil` at once instead of starting a second call beside it. The token
+    /// is released when the work itself ends, not when the race does.
+    static func firstResult<T: Sendable>(
+        within budget: Duration,
+        oneAtATime token: InFlightToken,
+        _ work: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        // Checked before the claim: once claimed, the work must run, because
+        // only the work releases the token.
+        guard !Task.isCancelled, token.claim() else { return nil }
+        return await firstResult(within: budget) {
+            defer { token.release() }
+            return await work()
+        }
+    }
+}
+
+/// Admits one holder at a time; `claim` answers at once and never waits.
+final class InFlightToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var held = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if held { return false }
+        held = true
+        return true
+    }
+
+    func release() {
+        lock.lock()
+        held = false
+        lock.unlock()
+    }
 }
 
 /// The first `settle` wins. Either the continuation or the outcome can arrive
@@ -3039,10 +3078,14 @@ enum IntelligentThoughtExtractor {
         RefinementPolicy.shouldRefine(transcript, fallback: fallback)
     }
 
+    /// Nothing else serialises model calls: `extract` builds a new
+    /// `LanguageModelSession` each time.
+    private static let modelInFlight = InFlightToken()
+
     static func extractWithinBudget(
         _ transcript: String, referenceDate: Date, calendar: Calendar
     ) async -> [ExtractedThought]? {
-        await BudgetedWork.firstResult(within: .seconds(2)) {
+        await BudgetedWork.firstResult(within: .seconds(2), oneAtATime: modelInFlight) {
             await extract(transcript, referenceDate: referenceDate, calendar: calendar)
         }
     }

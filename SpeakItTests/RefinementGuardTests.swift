@@ -277,7 +277,9 @@ enum IntelligentThoughtExtractorExposure {
 /// The refinement budget caps how long a capture waits for the model. The
 /// model call is stood in for by work that ignores cancellation, which is the
 /// case the task group this replaced could not bound: it waited for every
-/// child, so a model that kept going held the capture past the budget.
+/// child, so a model that kept going held the capture past the budget. Two of
+/// these fail under that task group (the budget and the cancelled capture
+/// ending the wait); the rest pin the behaviour around them.
 final class BudgetedWorkTests: XCTestCase {
 
     /// Work that pays no attention to cancellation and answers after `delay`.
@@ -342,7 +344,7 @@ final class BudgetedWorkTests: XCTestCase {
     }
 
     func testTheWorkThatLostIsCancelled() async {
-        let recorder = CancellationRecorder()
+        let recorder = EventRecorder()
         let result = await BudgetedWork.firstResult(within: .milliseconds(100)) { () async -> Int? in
             do {
                 try await Task.sleep(for: .seconds(30))
@@ -354,19 +356,66 @@ final class BudgetedWorkTests: XCTestCase {
         }
         XCTAssertNil(result)
         var polls = 0
-        while !(await recorder.wasCancelled), polls < 40 {
+        while !(await recorder.happened), polls < 40 {
             polls += 1
             try? await Task.sleep(for: .milliseconds(50))
         }
-        let cancelled = await recorder.wasCancelled
+        let cancelled = await recorder.happened
         XCTAssertTrue(cancelled, "The work past the budget was left running uncancelled")
+    }
+
+    /// The budget stops the wait, not the work, so an abandoned call can
+    /// still be running when the next capture asks. It gets nothing at once
+    /// rather than a second call beside the first, and the token comes back
+    /// when the abandoned work ends.
+    func testASecondCallIsRefusedWhileAnAbandonedOneStillRuns() async {
+        let token = InFlightToken()
+        let first = await BudgetedWork.firstResult(within: .milliseconds(100), oneAtATime: token) {
+            await BudgetedWorkTests.stubborn(1, after: 1.5)
+        }
+        XCTAssertNil(first)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        let second = await BudgetedWork.firstResult(within: .seconds(5), oneAtATime: token) { () async -> Int? in 2 }
+        XCTAssertNil(second, "A second call started while the abandoned one still ran")
+        XCTAssertLessThan(
+            clock.now - start, .seconds(1),
+            "A refused call waited instead of answering at once"
+        )
+
+        var third: Int?
+        var polls = 0
+        while third == nil, polls < 80 {
+            polls += 1
+            try? await Task.sleep(for: .milliseconds(50))
+            third = await BudgetedWork.firstResult(within: .seconds(1), oneAtATime: token) { () async -> Int? in 3 }
+        }
+        XCTAssertEqual(third, 3, "The token never came back after the abandoned work ended")
+    }
+
+    func testACancelledCaptureNeverStartsTheWork() async {
+        let token = InFlightToken()
+        let recorder = EventRecorder()
+        let waiting = Task { () async -> Int? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await BudgetedWork.firstResult(within: .seconds(10), oneAtATime: token) { () async -> Int? in
+                await recorder.record()
+                return 1
+            }
+        }
+        let result = await waiting.value
+        XCTAssertNil(result)
+        let started = await recorder.happened
+        XCTAssertFalse(started, "A capture cancelled before the call still started it")
+        XCTAssertTrue(token.claim(), "A capture that never ran the work kept the token")
     }
 }
 
-private actor CancellationRecorder {
-    private(set) var wasCancelled = false
+private actor EventRecorder {
+    private(set) var happened = false
 
     func record() {
-        wasCancelled = true
+        happened = true
     }
 }

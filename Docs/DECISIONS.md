@@ -23,17 +23,26 @@ stops waiting at once.
 scheduling slack, whatever the model call does with cancellation.
 **Falsifier:** `BudgetedWorkTests`, whose stand-in work ignores cancellation
 and answers after five seconds. Under the task group the first and fourth
-tests wait the full five seconds and fail; here they must return within two.
+tests wait the full five seconds and fail; here they must return within two. The
+two token tests pin the cap and the cancelled capture.
 On a device, a `SemanticParsing` signpost interval well above 2.1 seconds on
 a capture that was sent for refinement falsifies it.
 
 **What this does not change.** The budget is still two seconds, the capture
 still keeps the rules reading when the model is late, and the refinement gate
-(Needs Review, 1,500 characters) is untouched. A late model call now keeps
-running in the background until it notices the cancellation, so a capture
-made right after it can find the model still busy. That costs that capture
-its refinement at worst, never its words, because the rules reading is
-always kept.
+(Needs Review, 1,500 characters) is untouched.
+
+**One call at a time, now on purpose.** The old wait capped model calls at
+one in flight by accident: the capture could not return until the call did.
+With the wait bounded, a late call keeps running until it notices its
+cancellation, and nothing else serialises calls (`extract` builds a new
+`LanguageModelSession` each time), so quick captures could each leave one
+running. `InFlightToken` restores the cap: while an abandoned call runs, the
+next capture skips refinement at once and keeps the rules reading. The token
+is released when the call itself ends. That costs a capture its refinement
+at worst, never its words. A capture already cancelled when it reaches the
+refinement no longer starts a call at all. The grade of this change found
+both (`/mnt/project-files/v1/pr146-fm-budget-grade.md`, F1 and F2).
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
