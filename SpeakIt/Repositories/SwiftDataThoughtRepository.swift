@@ -458,7 +458,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     func reconcilePendingReminders() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
-        advanceOverdueRecurrences(items: items, now: .now)
+        let now = Date.now
+        // DEL-23: a row whose alarm may be ringing now keeps it through this
+        // pass, neither stopped nor re-armed. Read before the rows are rolled
+        // forward, which erases the ring from them. Completed, archived, held
+        // and disarmed rows are never in this set, so their alarms still go.
+        let alarmsMayBeAlerting = Set(
+            items.filter { ReminderScheduler.alarmMayBeAlerting($0, now: now) }.map(\.id)
+        )
+        advanceOverdueRecurrences(items: items, now: now)
         guard let refreshedItems = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         let requests = refreshedItems
             .filter { !$0.isArchived && !$0.isCompleted }
@@ -470,7 +478,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             scope: ReminderSynchronizationScope(
                 itemIDs: Set(refreshedItems.map(\.id)),
                 captureSessionIDs: Set(refreshedItems.compactMap { $0.captureSession?.id }),
-                replacesAllSpeakItReminders: true
+                replacesAllSpeakItReminders: true,
+                alarmsLeftAlone: alarmsMayBeAlerting
             )
         )
         // The pass above reaches an alarm only through a row it can name, so an

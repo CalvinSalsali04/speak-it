@@ -1915,7 +1915,29 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         hazard above once more (`VoiceOver is on`, `stopped after partial
         words`, `timed out having read nothing`), none out: 4775 + 3 - 0
         = 4778. The tests' fixture, `buy milk and call`, was already in
-        `DurabilityTests`, and every expected value is a snake_case label.
+        `DurabilityTests`, and every expected value is a snake_case label. 4778 -> 4800 on
+        2026-09-23, from DEL-23 (the launch and foreground reconcile
+        leaves a ringing alarm alone): four `DurabilityTests` tests and one
+        `TemporalFullPathTests` decision test. Twenty-two in, all assertion
+        messages, enumerated rather than assumed: `a completed row's alarm
+        must not outlive the pass`, `a held row's alarm must not outlive
+        the pass`, `a one-shot five minutes after its ring`, `a one-shot
+        that rang before the window`, `a one-shot that rang eight days
+        ago`, `a removed row's alarm must not outlive the pass`, `a row
+        that arms nothing`, `a row with no fire`, `a series AlarmKit
+        repeats rang this morning without the app`, `a series whose first
+        ring is tomorrow`, `a snooze that fired half a minute ago`, `an
+        alarm still ahead`, `an alarm that rang before the window is
+        cancelled as before`, `nor stop the series beside it`, `opening
+        the app must not silence a snooze that is ringing`, `opening the
+        app must not silence an alarm that is ringing`, `precondition: a
+        series`, `precondition: an alarm`, `precondition: an alarm once
+        released`, `precondition: held`, `precondition: nothing re-arms
+        it`, `precondition: the snooze displaced the occurrence`. None
+        out. The fixtures add nothing: `Set an alarm for 7 AM to take my
+        pills` and `Set an alarm every day at 6:30 AM` were already here,
+        `a notification` already was too, and `Alarm` is under twelve
+        characters: 4778 + 22 - 0 = 4800, measured from the tree after merging the candidate at `026a78a` into #153 (DEL-23 was written at 4775 -> 4797).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1925,7 +1947,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4778)
+        self.assertEqual(len(space), 4800)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

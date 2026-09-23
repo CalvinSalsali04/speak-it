@@ -661,6 +661,39 @@ the same date. Three things are left, and none is verified on a device.
   item stays disarmed and nothing else was torn down, not that nothing was
   armed.
 
+## Opening the app leaves a ringing alarm alone, for a guessed window
+
+*2026-09-23, DEL-23; see `DECISIONS.md`.* The launch and foreground reconcile
+no longer stops or cancels the alarm of a live row that rang in the last 30
+minutes (`ReminderScheduler.alertingWindow`). This covers a one-shot, a
+snoozed occurrence under its snooze ID, and a repeating series. Completed,
+archived, held, disarmed and removed rows are cancelled as before. No part of
+this has run on an iPhone:
+
+- **Device check D17.** Nobody has observed whether `AlarmManager.stop`
+  reaches an alerting alarm. Nor has anybody observed that an alarm ringing
+  when Speak It is opened keeps ringing now, or how long an unattended
+  AlarmKit alarm alerts. The 30 minutes is a guess. An alarm still ringing
+  after the window is silenced by the next launch or foreground, as it was
+  before this change.
+- **A row that has just rung waits one window for its re-arm or cancel.**
+  While a row is left alone, the pass arms nothing for it. Two cases matter.
+  - A series armed as a one-shot `.fixed` alarm under its item ID. That
+    happens when its first occurrence was later than the next weekday match,
+    when a snooze's series was refused, or when the alarm was armed a minute
+    or less before its ring. It gets its next occurrence only at the first
+    launch or foreground after the window. If Speak It is opened while it
+    rings and not again before the next occurrence, that occurrence does not
+    ring.
+  - A series continued on a successor row in that same pass ("every weekday
+    at 7"). The old row's weekly alarm is cancelled only after the window. If
+    Speak It is not opened again before the next weekday, both alarms ring
+    at 7.
+- **Only the reconcile changed.** The passes that follow a person's action
+  inside one capture still stop every alarm of that capture, a sibling's
+  ringing one included: an edit, a snooze, a completion or a delete. So does
+  loading the sample captures.
+
 ## Today rows have no swipe-to-complete
 
 Today's sections are a `LazyVStack`, not a `List`, so the swipe action was a custom `DragGesture`. Layered over scrolling content it won the touch outright and vertical swipes that started on a row did not scroll, so it was removed. Completion is unchanged through the circle on each row and through the editor. Memory and the completed log are `List`-based and keep their native swipe actions. Bringing the shortcut back to Today needs a native implementation, not another gesture.
