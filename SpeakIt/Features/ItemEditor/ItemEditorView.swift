@@ -515,6 +515,12 @@ struct ItemEditorView: View {
             ) { _ in
                 refreshLocationBlocker()
             }
+            // The monitor's own verdicts: a region iOS refused while this
+            // screen is open, or a slot freed or taken elsewhere. Neither
+            // changes the item, so nothing else here would re-read it.
+            .onChange(of: LocationReminderMonitor.shared.unwatchedRegions) { _, _ in
+                refreshLocationBlocker()
+            }
             // Supplying the missing input is the whole point of opening a flagged
             // item, so it clears the flag rather than leaving the person to find
             // the toggle themselves. One-directional and visible: undoing the

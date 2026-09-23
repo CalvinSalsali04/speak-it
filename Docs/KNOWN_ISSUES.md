@@ -957,6 +957,20 @@ The specifics:
   Tapping a stale row on the widget is dropped when the app next drains the
   queue, if Today holds that row for review, so the tap looks done on the
   widget and the row comes back in Needs review.
+
+- **A place reminder the monitor has not planned yet reads as watched.**
+  Since 2026-09-23 a reminder past the 18-region budget, or one whose region
+  iOS refused, is shown as blocked (*Too many place reminders*, *Couldn’t
+  watch this place*) rather than armed, and capturing, splitting, merging,
+  completing, archiving, deleting or editing a place reminder re-plans the
+  budget at once. Three gaps
+  remain. A refusal arrives on the delegate some time after `startMonitoring`,
+  so a region iOS is about to refuse reads as watched until then. Undo, a
+  tutorial capture, an iCloud restore and the launch-time pass over old
+  place-and-time rows do not reconcile, so a place reminder they add or
+  remove is re-planned at the next foreground or launch. And
+  the Today widget reads the stored `belongsInToday`, which knows nothing of any
+  place blocker, so it can list a reminder that Today shows in Needs review.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

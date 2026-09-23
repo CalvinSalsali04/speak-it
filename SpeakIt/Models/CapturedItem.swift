@@ -368,17 +368,35 @@ final class CapturedItem: Identifiable {
     /// device state that must not be cached on the item — see
     /// `LocationAuthorization`. The caller queries it once per reconcile and
     /// passes the same answer to every item.
+    ///
+    /// **The one answer to "is this place reminder actually being watched".**
+    /// Two halves, asked in order. The resolver says whether a request can be
+    /// made at all: a place to resolve and permission to watch it. The monitor
+    /// then says whether the request it was given is being watched: the 19th
+    /// request past the region budget, and a region iOS refused, resolve
+    /// exactly like a watched one and are not. Reading only the resolver is
+    /// what showed those two as "Next time you arrive at Home" with no region
+    /// behind them. `ItemPresentation`, `requiresReview` and so every Today
+    /// section, badge and receipt count, and the editor all come through here.
+    ///
+    /// `locationMonitorRequest(authorization:)` deliberately does not read the
+    /// monitor: the request is what the monitor plans from, so a request
+    /// withheld for being over budget could never be admitted again.
     @MainActor
     func locationBlocker(
         authorization: LocationAuthorization
     ) -> LocationReminderBlocker? {
         guard let locationIntent else { return nil }
-        return LocationReminderResolver.resolve(
+        let resolution = LocationReminderResolver.resolve(
             locationIntent,
             itemID: id,
             title: displayTitle,
             authorization: authorization
-        ).blocker
+        )
+        if let blocker = resolution.blocker { return blocker }
+        return resolution.request.flatMap {
+            LocationReminderMonitor.shared.monitoringBlocker(for: $0)
+        }
     }
 
     /// The monitoring request this item wants, when it can have one.
