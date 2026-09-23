@@ -6643,6 +6643,13 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// Written for #143 against that pass, which it taught to keep a hand-set
     /// time while releasing the system's place; rewritten when the pass was
     /// removed, so what it guards is launch touching neither half.
+    /// That makes it a guard on the *absence* of a re-reading pass, not on the
+    /// behaviour of one: the deleted pass's subject no longer reaches this row,
+    /// the launch passes that do run over it (`polishPersistedDisplayTitles`,
+    /// and `backfillTemporalIntents`, which skips an intent that decodes)
+    /// leave both halves as they are, and #136's
+    /// `holdUnaskedPlaceAndTimeRowsForReview` does not select it, since it is
+    /// already held and reviewed.
     ///
     /// Falsifier: bring back a launch pass that re-reads the wording, and the
     /// hand-set intent is swapped for the one-hour reading, or the place is
