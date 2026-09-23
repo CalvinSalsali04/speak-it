@@ -509,10 +509,11 @@ final class SpeechTranscriber: ObservableObject {
         transcript = ""
     }
 
-    /// "Type instead", after the screen has moved the words into its editor.
-    /// Stops a run that is starting or listening, settles any other state,
-    /// and forgets the words in every one of them. Returns whether a run was
-    /// cancelled, so the caller can end its Live Activity.
+    /// "Type instead", or the typing fallback after voice fails, once the
+    /// screen has moved the words into its editor. Stops a run that is
+    /// starting or listening, settles any other state, and forgets the words
+    /// in every one of them. Returns whether a run was cancelled, so the
+    /// caller can end its Live Activity.
     ///
     /// The words are forgotten even when the transcriber is already `.idle`:
     /// a finished run leaves its final words there for the save it hands them

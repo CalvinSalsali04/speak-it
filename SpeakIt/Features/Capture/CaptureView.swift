@@ -1629,10 +1629,15 @@ struct CaptureView: View {
                 spoken: partialTranscript
             )
         }
-        transcriber.resetAfterFailure()
-        // Those words are in the editor now. Left on the transcriber, a later
-        // "Type instead" or Save & Close would read them and add them again.
-        transcriber.releaseTranscript()
+        // Those words are in the editor now, so the transcriber settles and
+        // forgets them exactly as for "Type instead"; `stopForTyping` owns
+        // that decision. The callers reach here in `.failed` or
+        // `.unavailable`, where it resets as before, or in `.idle` after
+        // audio recovery gave up, where `recoverActiveAudio` has already
+        // reset it.
+        if transcriber.stopForTyping() {
+            Task { await CaptureActivityManager.cancelListening() }
+        }
         captureNotice = notice
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {

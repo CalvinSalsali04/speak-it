@@ -232,8 +232,8 @@ what was said, in one `CaptureSession`, whichever path saves them.
   joined, add them twice. "Type instead" first skipped this when the
   transcriber was already idle, which is where a finished run whose save
   returned early leaves its final words. `SpeechTranscriber.stopForTyping`
-  now makes the whole decision and releases in every state; no branch leaves
-  a run open, so the release never declines.
+  now makes the whole decision for both ways to typing and releases in every
+  state; no branch leaves a run open, so the release never declines.
 
 Rejected: beginning a second, voice-only draft for the recording beside the
 typed one. Both would be replayed after a kill, as two captures of one

@@ -1006,6 +1006,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Typed:"` are under the floor, and the button titles the doc
         comments quote were already counted. The development-set overlap
         stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        4182 -> 4184 the same day, when the typing fallback after a voice
+        failure came to call `stopForTyping` as "Type instead" does: a
+        `.failed` half added to `testTypeInsteadForgetsTheSpokenWordsInEveryState`,
+        and two literals, both assertion messages, `"this no longer
+        reproduces the failed state the typing fallback reads"` and `"a
+        failed run has no Live Activity left to end"`. The error domain is
+        one word and adds nothing.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1020,7 +1027,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4182)
+        self.assertEqual(len(space), 4184)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

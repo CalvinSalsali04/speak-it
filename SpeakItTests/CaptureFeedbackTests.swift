@@ -361,6 +361,11 @@ final class CaptureFeedbackTests: XCTestCase {
     /// Falsifier: move `releaseTranscript()` in `stopForTyping` back inside
     /// the `else if state != .idle` branch and the `.idle` half fails, on the
     /// joined words as well as on the empty transcript.
+    ///
+    /// The typing fallback after a voice failure goes through the same call,
+    /// from `.failed`, where the run is still open. Falsifier: delete the
+    /// `else if state != .idle` branch and the `.failed` half fails, because
+    /// nothing closes the run or settles the state.
     func testTypeInsteadForgetsTheSpokenWordsInEveryState() {
         let transcriber = SpeechTranscriber(reportsAudioLevel: false)
         let typed = "buy milk"
@@ -391,6 +396,19 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertEqual(transcriber.state, .idle)
         XCTAssertNil(transcriber.activeRunIDForTesting)
         XCTAssertEqual(transcriber.transcript, "")
+
+        // A run that failed before any words: the typing fallback's state.
+        let failed = transcriber.beginRunWithoutAudioForTesting()
+        failed.deliverError(
+            NSError(domain: "SFSpeechRecognitionErrorDomain", code: 216, userInfo: nil)
+        )
+        guard case .failed = transcriber.state else {
+            return XCTFail("this no longer reproduces the failed state the typing fallback reads")
+        }
+        XCTAssertNotNil(transcriber.activeRunIDForTesting)
+        XCTAssertFalse(transcriber.stopForTyping(), "a failed run has no Live Activity left to end")
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
     }
 
     // MARK: - The voice screen for as long as the save runs
