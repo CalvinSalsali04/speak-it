@@ -5,6 +5,16 @@
 #   ./Tools/CI/v1-qualification.sh                  # every row of the manifest
 #   ./Tools/CI/v1-qualification.sh --only pr117     # one row, by label, plus baseline
 #   ./Tools/CI/v1-qualification.sh --dry-run        # print the plan, run nothing
+#   ./Tools/CI/v1-qualification.sh --check-pins     # is every pin its branch's tip? run nothing else
+#
+# Run --check-pins before the Mac session. Each row names the branch its pin is
+# meant to be the tip of; the check fetches origin and exits 1 when any pin is
+# behind that tip, off that branch, or unresolvable (or when the fetch fails,
+# since it would then be checking stale refs), 0 only when every pin is its
+# branch's tip. A full run makes the same check, records it in each row's
+# identity.txt with every branch containing the pin, and puts a STALE PIN line
+# in SUMMARY.md for each row whose pin is not its branch's tip, so evidence
+# about a commit a branch has moved past says so itself.
 #
 # Each row is checked out into its own fresh worktree at the exact commit the
 # manifest pins, so the checkout this script runs from is never touched and a
@@ -72,6 +82,7 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 MANIFEST="$HERE/v1-qualification.tsv"
 ONLY=""
 DRY_RUN=0
+CHECK_PINS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)
@@ -81,19 +92,20 @@ while [ $# -gt 0 ]; do
       fi
       ONLY="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --check-pins) CHECK_PINS=1; shift ;;
     *) echo "v1-qualification.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
 
-# Rows: label, commit, focused classes, suite, release, extra.
+# Rows: label, commit, branch, focused classes, suite, release, extra.
 ROWS=()
 LABELS=""
 HAS_BASELINE=0
 while IFS= read -r line; do
   case "$line" in ''|'#'*) continue ;; esac
   fields="$(printf '%s' "$line" | awk -F'\t' '{print NF}')"
-  if [ "$fields" != "6" ]; then
-    echo "v1-qualification.sh: manifest row has $fields tab-separated fields, not 6: $line" >&2
+  if [ "$fields" != "7" ]; then
+    echo "v1-qualification.sh: manifest row has $fields tab-separated fields, not 7: $line" >&2
     exit 2
   fi
   label="$(printf '%s' "$line" | cut -f1)"
@@ -113,6 +125,77 @@ fi
 if [ -n "$ONLY" ] && ! printf '%s\n' "$LABELS" | tr ' ' '\n' | grep -qxF -- "$ONLY"; then
   echo "v1-qualification.sh: no manifest row is labelled '$ONLY'. Labels:$LABELS" >&2
   exit 2
+fi
+
+# --- Pins against their branches ------------------------------------------
+fetch_origin() {
+  git fetch --quiet origin
+}
+
+# Prints "STATE TIP BEHIND" for a pin and the branch it is meant to be the tip
+# of. STATE is one of:
+#   TIP         the pin is the branch's tip
+#   STALE       the branch contains the pin and has moved BEHIND commits past it
+#   OFF-BRANCH  the branch no longer contains the pin (rewritten, or the wrong
+#               branch is named)
+#   NO-BRANCH   origin has no such branch
+#   NO-COMMIT   the pin does not resolve to a commit here
+# TIP and BEHIND are "-" where they do not apply.
+pin_state() {
+  local commit="$1" branch="$2" full tip
+  if ! full="$(git rev-parse --quiet --verify "$commit^{commit}" 2>/dev/null)"; then
+    echo "NO-COMMIT - -"; return
+  fi
+  if ! tip="$(git rev-parse --quiet --verify "refs/remotes/origin/$branch^{commit}" 2>/dev/null)"; then
+    echo "NO-BRANCH - -"; return
+  fi
+  if [ "$full" = "$tip" ]; then
+    echo "TIP $tip 0"
+  elif git merge-base --is-ancestor "$full" "$tip"; then
+    echo "STALE $tip $(git rev-list --count "$full..$tip")"
+  else
+    echo "OFF-BRANCH $tip -"
+  fi
+}
+
+# One sentence about a row's pin, loud unless the pin is its branch's tip.
+pin_sentence() {
+  local label="$1" commit="$2" branch="$3" state="$4" tip="$5" behind="$6"
+  local short="${commit:0:7}"
+  case "$state" in
+    TIP) echo "$label: \`$short\` is the tip of origin/$branch." ;;
+    STALE) echo "**STALE PIN: $label pins \`$short\`, $behind commit(s) behind the tip of origin/$branch (\`${tip:0:7}\`).** This row's evidence is about a commit its branch has moved past." ;;
+    OFF-BRANCH) echo "**STALE PIN: $label pins \`$short\`, which origin/$branch (tip \`${tip:0:7}\`) no longer contains.** The branch was rewritten or the manifest names the wrong one." ;;
+    NO-BRANCH) echo "**STALE PIN: $label names origin/$branch, which does not exist.** Nothing says whether \`$short\` is current." ;;
+    *) echo "**STALE PIN: $label pins \`$short\`, which does not resolve to a commit here.**" ;;
+  esac
+}
+
+if [ "$CHECK_PINS" = "1" ]; then
+  fetched=1
+  if ! fetch_origin; then
+    fetched=0
+    echo "v1-qualification.sh: git fetch origin failed; the lines below compare with local refs that may be stale" >&2
+  fi
+  stale=0
+  for row in "${ROWS[@]}"; do
+    label="$(printf '%s' "$row" | cut -f1)"
+    commit="$(printf '%s' "$row" | cut -f2)"
+    branch="$(printf '%s' "$row" | cut -f3)"
+    read -r state tip behind <<< "$(pin_state "$commit" "$branch")"
+    [ "$state" = "TIP" ] || stale=$((stale + 1))
+    printf '%-10s %s\n' "$state" "$(pin_sentence "$label" "$commit" "$branch" "$state" "$tip" "$behind" | tr -d '*')"
+  done
+  if [ "$stale" != "0" ]; then
+    echo "v1-qualification.sh: $stale pin(s) are not their branch's tip; repin Tools/CI/v1-qualification.tsv (and the handoff's commit list) before the run" >&2
+    exit 1
+  fi
+  if [ "$fetched" = "0" ]; then
+    echo "v1-qualification.sh: every pin matched, but only against refs the failed fetch did not refresh; not vouching for them" >&2
+    exit 1
+  fi
+  echo "Every pin is its branch's tip."
+  exit 0
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -167,7 +250,10 @@ for failure in failures:
         sys.exit(f"a testFailures entry is not an object: {failure!r}")
     ident = failure.get(KEY)
     if not isinstance(ident, str) or not ident:
-        print(f"a failure has no {KEY} (testName {failure.get('testName')!r}); "
+        # The keys it does have, so if a new xcresulttool names the field
+        # differently the evidence already holds the fact the fix needs.
+        print(f"a failure has no {KEY} (testName {failure.get('testName')!r}; "
+              f"its keys are {sorted(failure.keys())}); "
               "refusing to diff on bare method names", file=sys.stderr)
         sys.exit(3)
     names.add(ident)
@@ -277,7 +363,9 @@ PY
   echo "| macOS | $(sw_vers -productVersion 2>/dev/null) ($(uname -m)) |"
 } > "$SUMMARY"
 
-if ! git fetch --quiet origin; then
+FETCHED=1
+if ! fetch_origin; then
+  FETCHED=0
   echo "v1-qualification.sh: git fetch failed; rows whose commit is missing will FAIL" >&2
 fi
 
@@ -287,6 +375,29 @@ SIMULATOR="$("$HERE/simulator-id.sh")" || {
 }
 export SPEAKIT_SIMULATOR_ID="$SIMULATOR"
 echo "| simulator | $(xcrun simctl list devices | grep "$SIMULATOR" | sed 's/^ *//' | head -1) |" >> "$SUMMARY"
+echo >> "$SUMMARY"
+
+# Each pin against the branch the manifest says it is the tip of, measured
+# after the fetch above and before anything runs, so a branch that moves
+# during the run does not change the answer.
+STALE_PINS=""
+{
+  echo "## Pins"
+  echo
+  [ "$FETCHED" = "1" ] || echo "**git fetch origin failed: these compare with local refs that may themselves be stale.**"
+  [ "$FETCHED" = "1" ] || echo
+} >> "$SUMMARY"
+for row in "${ROWS[@]}"; do
+  label="$(printf '%s' "$row" | cut -f1)"
+  commit="$(printf '%s' "$row" | cut -f2)"
+  branch="$(printf '%s' "$row" | cut -f3)"
+  read -r state tip behind <<< "$(pin_state "$commit" "$branch")"
+  if [ "$state" != "TIP" ]; then
+    STALE_PINS="$STALE_PINS $label"
+    echo "v1-qualification.sh: $(pin_sentence "$label" "$commit" "$branch" "$state" "$tip" "$behind" | tr -d '*\`')" >&2
+  fi
+  echo "- $(pin_sentence "$label" "$commit" "$branch" "$state" "$tip" "$behind")" >> "$SUMMARY"
+done
 echo >> "$SUMMARY"
 
 # Runs one stage. Arguments: row dir, stage name, then the command.
@@ -316,6 +427,7 @@ not_run() {
 # The compile, run inside a row's tree. Inline rather than Tools/CI/compile.sh
 # because the commits being qualified may predate that script, and running
 # this checkout's copy would compile this checkout instead of the row.
+# shellcheck disable=SC2329  # invoked indirectly, as run_stage's command
 compile_here() {
   xcodebuild build-for-testing -quiet \
     -project SpeakIt.xcodeproj -scheme SpeakIt \
@@ -343,7 +455,7 @@ read_bundle() {
   local status=0
   python3 "$PY/extract.py" "$dir/$stem-summary.json" "$dir/$stem" 2> "$dir/$stem-extract.err" || status=$?
   if [ "$status" = "3" ]; then
-    echo "the summary has no testIdentifierString on a failure, so failures cannot be told apart by class; see $stem-extract.err" > "$dir/$stem.notmeasured"
+    echo "the summary has no testIdentifierString on a failure, so failures cannot be told apart by class ($(tail -n 1 "$dir/$stem-extract.err")); see $stem-extract.err" > "$dir/$stem.notmeasured"
   elif [ "$status" != "0" ]; then
     echo "reading the summary failed (python exit $status): $(tail -n 1 "$dir/$stem-extract.err"); see $stem-extract.err" > "$dir/$stem.notmeasured"
   else
@@ -405,26 +517,50 @@ echo "|---|---|---|---|---|---|---|---|" >> "$SUMMARY"
 for row in "${ROWS[@]}"; do
   label="$(printf '%s' "$row" | cut -f1)"
   commit="$(printf '%s' "$row" | cut -f2)"
-  focused="$(printf '%s' "$row" | cut -f3)"
-  suite="$(printf '%s' "$row" | cut -f4)"
-  release="$(printf '%s' "$row" | cut -f5)"
-  extra="$(printf '%s' "$row" | cut -f6)"
+  branch="$(printf '%s' "$row" | cut -f3)"
+  focused="$(printf '%s' "$row" | cut -f4)"
+  suite="$(printf '%s' "$row" | cut -f5)"
+  release="$(printf '%s' "$row" | cut -f6)"
+  extra="$(printf '%s' "$row" | cut -f7)"
   dir="$EVIDENCE/$label"
   tree="$EVIDENCE_ROOT/trees/$label-$STAMP"
   mkdir -p "$dir"
   echo "row $label at $commit"
 
+  # The pin against its branch, and every branch that contains it with how far
+  # each has moved past it, written before the checkout so a row that fails
+  # to check out still says what it was pinned to.
+  read -r pin_st pin_tip pin_behind <<< "$(pin_state "$commit" "$branch")"
+  commit_cell="\`$commit\`"
+  case "$pin_st" in
+    TIP) ;;
+    STALE) commit_cell="$commit_cell **STALE: $pin_behind behind origin/$branch**" ;;
+    *) commit_cell="$commit_cell **STALE: $pin_st for origin/$branch**" ;;
+  esac
+  {
+    echo "pin $commit"
+    echo "branch origin/$branch"
+    echo "branch tip $pin_tip"
+    echo "pin state $pin_st"
+    echo "commits the branch tip has beyond the pin $pin_behind"
+    echo "containing branches (git branch -r --contains), each with the commits it has beyond the pin:"
+    git branch -r --contains "$commit" 2>/dev/null | sed 's/^[* ]*//' | grep -v ' -> ' \
+      | while IFS= read -r containing; do
+          echo "  $containing $(git rev-list --count "$commit..$containing" 2>/dev/null || echo '?')"
+        done
+  } > "$dir/identity.txt"
+
   if ! git worktree add --quiet --detach "$tree" "$commit" > "$dir/checkout.log" 2>&1; then
     echo "commit $commit could not be checked out; see $label/checkout.log" > "$dir/checkout.failed"
     why="NOT RUN (checkout failed)"
-    echo "| $label | \`$commit\` | FAIL (commit not checkoutable; see checkout.log) | $why | $why | $why | $why | $why |" >> "$SUMMARY"
+    echo "| $label | $commit_cell | FAIL (commit not checkoutable; see checkout.log) | $why | $why | $why | $why | $why |" >> "$SUMMARY"
     continue
   fi
   (
     cd "$tree" || exit 1
     echo "commit $(git rev-parse HEAD)"
     echo "clean $([ -z "$(git status --porcelain)" ] && echo yes || echo NO)"
-  ) > "$dir/identity.txt"
+  ) >> "$dir/identity.txt"
   python3 "$PY/declared.py" "$tree" > "$dir/declared-tests.txt" 2> "$dir/declared-tests.err" \
     || rm -f "$dir/declared-tests.txt"
   [ -s "$dir/declared-tests.err" ] || rm -f "$dir/declared-tests.err"
@@ -494,7 +630,7 @@ for row in "${ROWS[@]}"; do
     cp -R "$tree/output" "$dir/tree-output"
   fi
 
-  echo "| $label | \`$commit\` | $compile_r | $gate_r | $focused_r | $suite_r | $release_r | $extra_r |" >> "$SUMMARY"
+  echo "| $label | $commit_cell | $compile_r | $gate_r | $focused_r | $suite_r | $release_r | $extra_r |" >> "$SUMMARY"
   git worktree remove --force "$tree" > /dev/null 2>&1 || true
 done
 
@@ -689,6 +825,12 @@ EXIT=0
   echo "## Exit status $EXIT"
   echo
   echo "Failed stages:${FAILED_STAGES:- none}"
+  echo
+  if [ -n "$STALE_PINS" ]; then
+    echo "**Stale pins:$STALE_PINS.** Those rows qualified a commit that is not their branch's tip; see Pins above."
+  else
+    echo "Every pin was its branch's tip when the run started."
+  fi
   echo
   if [ "$UNMEASURED" = "1" ]; then
     echo "At least one comparison is NOT MEASURED or INCOMPLETE; those rows carry no verdict."
