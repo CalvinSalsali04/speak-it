@@ -874,7 +874,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4076 on 2026-09-23, from the
+        test that a date added in the editor holds a place reminder rather
+        than leaving it shown as armed: one `LocationReminderTests` method,
+        eight literals, enumerated rather than assumed, and all eight are
+        assertion messages (`"precondition: a place reminder with Home set
+        is armed"`, `"the predicate the reconciler excludes on"`, `"a due
+        date alone schedules no alert"`, `"a crossing is refused while the
+        date is set"`, `"the place is held, not deleted"`, `"what the row
+        claims must be what iOS is holding"`, `"no pin for a place nothing
+        watches"`, `"the held place delivers once the date is gone"`). Its
+        one fixture, `"Remind me to take the bins out when I get home"`,
+        was already in this file and adds nothing, and its doc comment puts
+        every phrase in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +900,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4076)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

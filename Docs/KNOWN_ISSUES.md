@@ -532,6 +532,10 @@ The specifics:
   home tonight" stores both intents and fires on *neither*. It is surfaced in
   Needs review as *"Place and time conditions aren't supported together yet —
   choose one"*, and setting a time in the editor commits to the clock half.
+  A due date turned on in the editor for a place reminder combines them the
+  same way (2026-09-23): the place stops being watched, the row shows the date
+  rather than the pin, and the editor says *Off while a date is set* until the
+  date is turned off again.
 
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
