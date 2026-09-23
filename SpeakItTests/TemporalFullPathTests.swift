@@ -688,6 +688,95 @@ final class TemporalFullPathTests: XCTestCase {
         )
     }
 
+    /// `Every Friday at five remind me to submit the report, except this
+    /// Friday` is held for its exception (`SemanticCorpusDataD`: dropping it
+    /// fires on the one day the person excluded) and keeps a Friday
+    /// `reminderDate` and a weekly rule. That shape is a native repeating
+    /// trigger, so it used to be armed from Needs review, and its first
+    /// firing was the excluded Friday. Nothing may be pending for it until the
+    /// person confirms it, and the save that confirms it must arm it then.
+    ///
+    /// Parsed with the device pinned, so the Friday is Toronto's; scheduled
+    /// and read back in the machine's own zone, which is where
+    /// `UNCalendarNotificationTrigger` reads its components. Captured on a
+    /// Monday at least a week out, so the Friday is ahead on any date this
+    /// runs.
+    ///
+    /// Falsifier: drop the `scheduledDelivery != .none` guard from
+    /// `ReminderScheduleRequest.init?(item:)` and a weekly request is pending
+    /// before the row is confirmed. Remove the `synchronizeReminders` call
+    /// from `update` and none is pending after it.
+    func testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed() async throws {
+        try await requireNotificationAuthorization()
+        try withFixtureClock { calendar in
+            var monday = try XCTUnwrap(
+                calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: .now))
+            )
+            while calendar.component(.weekday, from: monday) != 2 {
+                monday = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: monday))
+            }
+            let createdAt = try XCTUnwrap(
+                calendar.date(bySettingHour: 10, minute: 0, second: 0, of: monday)
+            )
+            let item = try repository.createCapture(
+                text: "Every Friday at five remind me to submit the report, except this Friday",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertTrue(item.needsClarification, "precondition: the exception holds the row")
+            let fire = try XCTUnwrap(item.reminderDate, "precondition: the series kept its Friday")
+            XCTAssertEqual(calendar.component(.weekday, from: fire), 6)
+            XCTAssertEqual(RecurrenceStore.rule(for: item.id)?.weekdays, [6])
+            self.scheduledCheck = (item.id, fire)
+        }
+
+        let (itemID, fire) = try XCTUnwrap(scheduledCheck)
+        let item = try loadItem(withID: itemID)
+        defer { try? repository.delete(item) }
+        let rule = RecurrenceStore.rule(for: itemID)
+        XCTAssertNotNil(
+            ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fire),
+            "precondition: unheld, this is a native weekly trigger"
+        )
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(
+            ItemPresentation.make(
+                for: item,
+                authorization: LocationReminderMonitor.shared.authorization
+            ).withheldTriggerText?.hasPrefix("Reminder not set · "),
+            true,
+            "the review row names the Friday it would use and says it is not set"
+        )
+
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+        let held = await pendingRequests(for: itemID)
+        XCTAssertTrue(held.isEmpty, "nothing may fire on the Friday the person excluded")
+
+        // The editor's save, every field as it opened but the Needs review
+        // toggle, which is how the person confirms the series.
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false,
+            recurrenceRule: rule,
+            dueDateHasTime: !item.isDateOnly
+        ))
+        await drainScheduler()
+        let armed = await pendingRequests(for: itemID)
+        XCTAssertEqual(armed.count, 1, "confirming the row arms it on that save")
+        XCTAssertEqual(
+            (armed.first?.trigger as? UNCalendarNotificationTrigger)?.repeats,
+            true
+        )
+    }
+
     /// Completing a recurring item late must schedule the next occurrence in the
     /// future, never in the past where iOS would silently drop it.
     func testRecurringItemCompletedLateSchedulesAFutureOccurrence() throws {

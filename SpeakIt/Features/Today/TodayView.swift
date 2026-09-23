@@ -345,7 +345,10 @@ struct TodayView: View {
     private typealias ShoppingGroupSummary = ShoppingListProjection.GroupSummary
 
     private var shoppingGroupSummaries: [ShoppingGroupSummary] {
-        ShoppingListProjection.groupSummaries(in: allItems)
+        ShoppingListProjection.groupSummaries(
+            in: allItems,
+            authorization: locationAuthorization
+        )
     }
 
     private func shoppingGroups(
@@ -1004,6 +1007,14 @@ struct TodayView: View {
 
             VStack(spacing: 0) {
                 ForEach(needsReview) { item in
+                    // What this row would arm once confirmed, and that it is
+                    // not armed yet. A held row fires nothing (`ItemPresentation`'s
+                    // `mayArmTime` and `mayArmPlace`), so a proposed 8 PM must
+                    // not be missing from the row, and must not read as set.
+                    let withheld = ItemPresentation.make(
+                        for: item,
+                        authorization: locationAuthorization
+                    ).withheldTriggerText
                     Button {
                         selectedItem = item
                     } label: {
@@ -1019,6 +1030,12 @@ struct TodayView: View {
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(Color.speakWarning)
                                     .multilineTextAlignment(.leading)
+                                if let withheld {
+                                    Text(withheld)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.speakMuted)
+                                        .multilineTextAlignment(.leading)
+                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -1030,7 +1047,11 @@ struct TodayView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.speakIt)
-                    .accessibilityLabel("\(item.displayTitle). \(reviewRequirementLabel(item))")
+                    .accessibilityLabel(
+                        [item.displayTitle, reviewRequirementLabel(item), withheld]
+                            .compactMap { $0 }
+                            .joined(separator: ". ")
+                    )
                     .accessibilityHint("Opens this item so you can supply what is missing")
                     Divider().overlay(Color.speakDivider)
                 }

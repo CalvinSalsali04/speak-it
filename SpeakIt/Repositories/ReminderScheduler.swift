@@ -29,14 +29,21 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     @MainActor
     init?(item: CapturedItem) {
         guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
-        let originalText = item.originalTextSegment
         // The same function the row's bell reads, so what a row says is armed
         // and what iOS is handed cannot disagree. It is memoized underneath:
         // Today rebuilds these requests on every render pass to keep its
         // scheduling signature live, which made two fresh `ThoughtOrganizer`
         // parses per reminder item here the single largest cost of scrolling
         // that screen.
+        //
+        // `.none` with a `reminderDate` present means the system is holding
+        // the row for review (`ItemPresentation.mayArmTime`), so no request is
+        // made. This is the only gate between a held row and iOS: every
+        // builder (foreground reconcile, per-session sync, the all-reminders
+        // sync, Siri, and Today's permission card) goes through this init.
         let scheduledDelivery = ItemPresentation.scheduledDelivery(for: item)
+        guard scheduledDelivery != .none else { return nil }
+        let originalText = item.originalTextSegment
 
         itemID = item.id
         captureSessionID = item.captureSession?.id
@@ -835,10 +842,11 @@ enum ReminderScheduler {
             }
             return "Place reminder · \(trigger)"
 
-        case .blockedPlace:
-            // Unreachable in practice: a blocked place reminder requires review
-            // and is handled above. Kept explicit so a future change to the
-            // blocker rules cannot silently fall through to a timing string.
+        case .blockedPlace, .heldPlace:
+            // Unreachable in practice: a blocked or held place reminder
+            // requires review and is handled above. Kept explicit so a future
+            // change to the review rules cannot silently fall through to a
+            // timing string.
             return presentation.destination.announcement
 
         case let .time(date, _, _):

@@ -1,5 +1,118 @@
 # Decisions
 
+## 2026-09-23 — A row the system holds for review arms nothing
+
+Rows held for review could still act. A vague `later today` kept a guessed
+8 PM `reminderDate`; `every Friday at five … except this Friday` kept a weekly
+trigger whose first firing was the excluded Friday; a Foundation Models row
+under 0.82 confidence kept its date and its place. All of them were scheduled
+or geofenced from Needs review while the row showed no time and no bell, and
+a recurring one spawned un-held, armed successors into Today. The owner's exit
+gate lists confident execution of unresolved semantics as a P0 that is never
+waived.
+
+**The default, which Calvin may reverse:** a row the *system* holds for review
+arms nothing (no notification, no alarm, no geofence) until the person
+resolves it. A row whose reminder the *person* set or confirmed keeps arming.
+The rule has one half per trigger, both in `ItemPresentation`:
+
+- `mayArmTime`, which is true unless `needsClarification` is set and the
+  temporal intent is not `isUserEdited`;
+- `mayArmPlace`, which is true unless `needsClarification` is set and the
+  location intent is not `isUserEdited`.
+
+Each trigger is released only by the person's confirmation of that trigger.
+Every save in the editor marks the temporal intent `isUserEdited`, and the
+editor sends every place it shows back as an edit
+(`LocationIntentEdit.fromEditor`, pinned by
+`testTheEditorSendsEveryPlaceItShowsBackAsAnEdit`), which marks the place the same way. So
+the manual Needs review toggle keeps its reminder and its place armed, and so
+does any edited reminder. A single rule that read either mark let a confirmed
+place release a guessed time, because a reorganize (`apply`) rewrites the
+temporal intent, wiping its mark, and keeps a hand-set place with its mark.
+The place half first read either mark too, on the belief that a save left an
+unchanged place unmarked; the editor never did. Reading the time's mark rested
+on no re-read keeping it, and #143 keeps a hand-set time with its mark: a
+person who cleared the time and removed the parsed place, then chose Organize
+again, would get the place re-read under a re-imposed hold and watched through
+the time's mark. So the place half reads its own mark alone. A caller that
+leaves the place `.unchanged`, which in the app is only the voice reschedule,
+does not mark it: that caller never showed the place, and a mark would exempt
+a combined place-and-time row from the launch pass that resolves it, for good.
+The cost is that a place saved once in the editor is never re-read again
+(Organize again, split, merge, undo), which with #143 makes "an editor save
+confirms the row's time and place; re-reads never change them" the rule. It
+is a product-level choice and a reversible default, listed for the owner's
+decision batch. The freeze is also what keeps a mark bound to the place it was
+given for, not only a cost: the two are one fact seen from either side. What
+makes the place half sound against #143 is separate: `mayArmPlace` reads only
+the location mark, so #143's changes to the time mark cannot reach it. A later
+change that lets a re-read replace a marked place must drop the mark with it,
+or a guessed place is watched on a confirmation the person gave to a
+different one.
+The same save is how a hold is resolved, and `update` already reschedules
+after it; it now also re-reconciles regions when the save changed whether a
+place row may arm. `markReviewed` resynchronizes the same way.
+
+It sits beside the delivery rule of the entry below, so everything reads it
+through one of two doors. `scheduledDelivery` reads `mayArmTime` and returns
+`.none` for a held row,
+and `ReminderScheduleRequest.init?` returns `nil` for `.none`, so the row's
+bell, the receipt and all five request builders (foreground reconcile,
+per-session sync, the all-reminders sync, Siri, and Today's permission card)
+agree. `CapturedItem.hasLivePlaceTrigger` replaces the checks the reconcile
+filter and both crossing-handler guards each repeated, and reads
+`mayArmPlace`, so a held place is neither watched, nor reported blocked, nor
+delivered. Nothing held is timed by its proposal either. A held task was
+already out of the morning brief, because `belongsInToday(authorization:)`
+excludes `requiresReview`. A held shopping row still timed its list, so the
+brief counted and named the list as due, and could schedule a morning that
+would otherwise be silent, from a date nobody confirmed. Now
+`ShoppingListProjection.groupSummaries(in:authorization:)` times a list only
+by entries where `requiresReview(authorization:)` is false. It is the same
+predicate as the task's, and a held entry still counts toward the list's
+size. The Today list card reads the same summaries, so it no longer sits under
+Due now or Coming up, or shows a time, because of a held entry. The brief's
+build sites still pass `reminderDate` through `mayArmTime`, which no row that
+reaches them can fail today. The alternative was listing held rows in the
+brief as "to review", which would be a new line for tasks too.
+`synchronizeAllReminders` now scopes its cancellation on the rows it fetched,
+as the other two passes do, so an alarm armed before a hold is cancelled on
+that pass as well.
+`SemanticState.permitsAction` is still not called: the vague-time and
+series-exception holds are stored `.resolved`, and a confirmed row keeps its
+recorded gap, so it would have missed the first and silenced the second.
+
+The Needs review row now says what it would do once confirmed:
+`Reminder not set · 8:00 PM`, `Alarm not set · …`, or `Reminder not set · Next
+time you arrive at Home`, in muted text under the reason. There are no new
+controls.
+
+A held series spawns **no successor** while the system holds it, from the
+foreground pass or from completion. Inheriting the hold was the alternative,
+and it was rejected: a held row never fires, so it is always overdue, and each
+foreground after each missed occurrence would add another review row asking
+the same question. The source stays the one place the question is asked. A
+series the foreground pass rolls forward in place (daily, or one weekday) still
+rolls, and stays held, so what it proposes is the next occurrence. A person's
+own hold is carried onto the successor, which keeps its edited intent and so
+stays armed.
+
+Consequences to know about. Rows already held and armed on a device are
+withdrawn by the next foreground's reconcile. Saving a held row in the editor
+with Needs review left on arms what the editor showed. The stored data cannot
+tell that apart from the manual toggle, and the time was on screen when the
+person saved. No SemanticCorpus row's expected delivery changes, because the
+corpus reads the parser's `reminderDelivery`, not scheduling. Pinned by
+`ItemPresentationTests`, `TemporalFullPathTests`
+(`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed`),
+`LocationReminderTests` (`testSavingAHeldPlaceRowInTheEditorArmsThePlace`,
+`testTheTimesMarkDoesNotReleaseAPlaceNobodyConfirmed`,
+`testASaveThatLeavesThePlaceOutDoesNotConfirmIt`),
+`SwiftDataThoughtRepositoryTests`
+(`testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing`),
+`MorningBriefTests` and `DurabilityTests`.
+
 ## 2026-09-23 — A stored reminder date arms, and one function says so
 
 The row's bell and `ReminderScheduleRequest` answered "is an alert armed"
