@@ -55,9 +55,14 @@ cut-off or lost capture cannot be matched to a `finalized_by` other than
 path has to be found. If `grace_timeout` and `recognizer_final` never differ
 in how often testers report cut-offs, the grace timer is not the loss.
 
-**Not covered.** Siri, Shortcuts, Back Tap and Share captures send no
-analytics today, so `max_duration` is recorded by the transcriber but is not
-emitted until that path sends `speech_capture_quality`. Recovery retried from
+**Not covered.** Siri, Shortcuts and Back Tap captures send no analytics
+today, so `max_duration` is recorded by the transcriber but is not emitted
+until that path sends `speech_capture_quality`. Share imports and launch
+audio recovery send `capture_saved`, and they get the same swap as the
+in-app capture: a session that ends `.failed` sends `capture_failed` with
+`organization` instead. The founder dashboard's saved count and its
+activated and habitual lifecycle states read `capture_saved`, so all three
+now leave out captures whose organization failed. Recovery retried from
 the Today card and the Shortcuts path is not instrumented; neither are
 checkpoint replay, unorganized-session recovery, quarantine, or the
 recovery's duration, which the audit also proposed. A storage failure after

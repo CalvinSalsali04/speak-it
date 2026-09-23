@@ -1356,12 +1356,19 @@ struct RootView: View {
                     if result.consumesFreeCapture {
                         subscriptionStore.recordSuccessfulCapture()
                     }
-                    SpeakItAnalytics.track(.captureSaved(
-                        source: .shareSheet,
-                        itemCount: result.itemCount,
-                        needsReviewCount: result.needsReviewCount,
-                        plan: subscriptionStore.hasProAccess ? .pro : .free
-                    ))
+                    // The words are durable either way. A capture whose
+                    // organization failed is reported under that stage, as
+                    // the in-app capture does, not counted as saved.
+                    if result.session.processingStatus == .failed {
+                        SpeakItAnalytics.track(.captureFailed(source: .shareSheet, category: "organization"))
+                    } else {
+                        SpeakItAnalytics.track(.captureSaved(
+                            source: .shareSheet,
+                            itemCount: result.itemCount,
+                            needsReviewCount: result.needsReviewCount,
+                            plan: subscriptionStore.hasProAccess ? .pro : .free
+                        ))
+                    }
                     importedCount += 1
                 }
             } catch {
@@ -1429,12 +1436,19 @@ struct RootView: View {
                     if result.consumesFreeCapture {
                         subscriptionStore.recordSuccessfulCapture()
                     }
-                    SpeakItAnalytics.track(.captureSaved(
-                        source: .recovery,
-                        itemCount: result.itemCount,
-                        needsReviewCount: result.needsReviewCount,
-                        plan: subscriptionStore.hasProAccess ? .pro : .free
-                    ))
+                    // The words are durable either way. A capture whose
+                    // organization failed is reported under that stage, as
+                    // the in-app capture does, not counted as saved.
+                    if result.session.processingStatus == .failed {
+                        SpeakItAnalytics.track(.captureFailed(source: .recovery, category: "organization"))
+                    } else {
+                        SpeakItAnalytics.track(.captureSaved(
+                            source: .recovery,
+                            itemCount: result.itemCount,
+                            needsReviewCount: result.needsReviewCount,
+                            plan: subscriptionStore.hasProAccess ? .pro : .free
+                        ))
+                    }
                     recoveredCount += 1
                 }
             } catch {

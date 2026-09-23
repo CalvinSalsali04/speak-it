@@ -289,7 +289,7 @@ final class ReleaseReadinessTests: XCTestCase {
         XCTAssertEqual(failure.properties["error_category"] as? String, "storage")
         XCTAssertTrue(SpeakItAnalyticsEvent.allowedPropertyKeys.isSuperset(of: [
             "capture_total_ms", "semantic_parsing_ms", "persistence_ms", "error_category",
-            "finalized_by", "stop_trigger", "outcome", "failure_kind"
+            "finalized_by", "stop_trigger", "path", "outcome", "failure_kind"
         ]))
         let recovery = SpeakItAnalyticsEvent.captureRecovery(
             path: .liveAudio,
