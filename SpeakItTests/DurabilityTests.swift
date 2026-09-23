@@ -42,7 +42,8 @@ final class DurabilityTests: XCTestCase {
                     identifiers.forEach { pendingNotifications.remove($0) }
                 },
                 cancelAlarm: { [self] id in scheduledAlarms.remove(id) },
-                pendingIdentifiers: { [self] in Array(pendingNotifications) }
+                pendingIdentifiers: { [self] in Array(pendingNotifications) },
+                scheduledAlarmIDs: { [self] in Array(scheduledAlarms) }
             )
         }
     }
@@ -539,6 +540,95 @@ final class DurabilityTests: XCTestCase {
         XCTAssertFalse(
             delivery.pendingNotifications.contains(identifier),
             "Relaunch must reconcile away a reminder with no row"
+        )
+    }
+
+    /// The same kill window for an AlarmKit alarm, which the notification
+    /// prefix sweep never reached: its ID is the item ID, and a row that is
+    /// gone is in no reconcile scope.
+    ///
+    /// Falsifier: delete the `cancelOrphanedAlarms` call from
+    /// `reconcilePendingReminders`, or have the sink stop reporting
+    /// `scheduledAlarmIDs`, and the seeded alarm survives the relaunch.
+    func testRelaunchDisarmsAnAlarmWhoseRowIsAlreadyGone() async throws {
+        let created = try await capture("Set an alarm for 7 AM to take my pills")
+        let itemID = created.primaryItem.id
+
+        container.mainContext.delete(created.primaryItem)
+        try container.mainContext.save()
+        delivery.seedAlarm(itemID)
+
+        await relaunchAndDrain()
+
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(itemID),
+            "Relaunch must cancel an alarm whose row is gone"
+        )
+    }
+
+    /// The sweep decides only for alarms with no row. An alarm whose row still
+    /// exists is left exactly where it is, next to an orphan that is cancelled
+    /// in the same pass.
+    ///
+    /// Falsifier: make `orphanedAlarmIDs` return `scheduled` unfiltered, and
+    /// the live row's alarm is cancelled along with the orphan.
+    func testTheOrphanSweepKeepsTheAlarmOfARowThatStillExists() async throws {
+        let created = try await capture("Set an alarm for 7 AM to take my pills")
+        let liveID = created.primaryItem.id
+        let orphanID = UUID()
+        delivery.seedAlarm(liveID)
+        delivery.seedAlarm(orphanID)
+
+        let store: ModelContainer = container
+        ReminderScheduler.cancelOrphanedAlarms(accountedFor: {
+            let rows = (try? store.mainContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            return Set(rows.map(\.id))
+        })
+        await drainScheduler()
+
+        XCTAssertTrue(delivery.scheduledAlarms.contains(liveID))
+        XCTAssertFalse(delivery.scheduledAlarms.contains(orphanID))
+    }
+
+    /// Rows that cannot be read are not an empty library. If they were, one
+    /// failed fetch would cancel every alarm the person has.
+    ///
+    /// Falsifier: replace the `let rowIDs = await accountedFor()` guard with
+    /// `accountedFor() ?? []`, and both seeded alarms are cancelled.
+    func testTheOrphanSweepCancelsNothingWhenTheRowsCannotBeRead() async throws {
+        let first = UUID()
+        let second = UUID()
+        delivery.seedAlarm(first)
+        delivery.seedAlarm(second)
+
+        ReminderScheduler.cancelOrphanedAlarms(accountedFor: { nil })
+        await drainScheduler()
+
+        XCTAssertEqual(delivery.scheduledAlarms, [first, second])
+    }
+
+    /// The pure decision: every listed alarm that no row accounts for, in the
+    /// order AlarmKit listed them, and nothing else. A row with no alarm adds
+    /// nothing to the answer.
+    ///
+    /// Falsifier: invert the `contains` test, or return `scheduled`, and the
+    /// result names the accounted-for alarm.
+    func testOrphanedAlarmsAreTheScheduledOnesNoRowAccountsFor() {
+        let orphanA = UUID()
+        let kept = UUID()
+        let orphanB = UUID()
+        let rowWithoutAlarm = UUID()
+
+        XCTAssertEqual(
+            ReminderScheduler.orphanedAlarmIDs(
+                scheduled: [orphanA, kept, orphanB],
+                accountedFor: [kept, rowWithoutAlarm]
+            ),
+            [orphanA, orphanB]
+        )
+        XCTAssertEqual(
+            ReminderScheduler.orphanedAlarmIDs(scheduled: [], accountedFor: [kept]),
+            []
         )
     }
 

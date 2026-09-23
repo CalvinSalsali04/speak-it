@@ -129,6 +129,61 @@ Needs review instead of acted on. Some person actions leave no mark and so do
 not stop the re-read: deleting one of several rows, pins or other metadata
 kept outside the row, and a snooze or "Tomorrow" from a notification.
 
+## 2026-09-23 — An alarm with no row is cancelled, and every row that exists protects its alarm
+
+Finding D3 of the v1 delivery-integrity audit. Notifications heal on every
+launch and foreground: `reconcilePendingReminders` sets
+`replacesAllSpeakItReminders`, and the prefix sweep removes every
+`SpeakIt.reminder.` and `SpeakIt.session.` request before re-adding what the
+rows ask for. AlarmKit alarms had no such sweep. An alarm was cancelled only by
+an item ID in some scope, and the reconcile scope is built from the rows that
+still exist, so an alarm whose row was already gone was never cancelled. Two
+paths reach that state deterministically. `applyICloudSnapshot` deletes the
+rows another device removed and then reconciles only the survivors. `delete`
+saves the removal first and tears the alarm down from the scheduler's queue,
+so a kill in between leaves a full-screen alarm for a thought the person
+deleted.
+
+**The fix sweeps what AlarmKit reports rather than tracking what Speak It
+scheduled.** `AlarmManager.alarms` (iOS 26.0, `get throws`) lists the alarms
+that belong to the calling app, and it shipped with AlarmKit itself, so there
+is no OS on which Speak It can hold an alarm it cannot read back. Below iOS 26
+the alarm path falls back to a `SpeakIt.reminder.` notification, which the
+prefix sweep already covers. A ledger of scheduled IDs in `UserDefaults` was
+considered and not built: it would add a second record that can disagree with
+the daemon, and it could not heal an alarm scheduled by a build that predates
+it. `ReminderScheduler.schedule` is the only place the app creates an AlarmKit
+alarm, and it uses the item ID as the alarm ID, so every listed alarm is a
+reminder alarm. **A future feature that schedules an AlarmKit alarm that is not
+keyed to an item must teach `orphanedAlarmIDs` to leave it alone**, or the next
+foreground cancels it.
+
+**Every row that exists protects its alarm, not only the rows that should
+ring.** Whether an existing row's alarm should ring is already decided by the
+scoped pass, which cancels and re-arms every in-scope ID. The sweep decides only
+for IDs that name no row, so the two can never disagree about a live item. The
+rows are read on the main actor after the alarm list is read, not captured when
+the pass is queued, so a row saved while the pass waited in the scheduler's
+queue still protects its alarm. A failed fetch cancels nothing. A fetch that
+succeeds with zero rows is authoritative, though: a store that opens empty
+cancels every listed alarm, which is the intended reading of "no row names it"
+and the one remaining path by which the sweep deletes alarms silently. Every
+alarm except one that is alerting is swept: an alerting alarm is already in
+front of the person, while a scheduled one, or a counting-down or paused one if
+a countdown is ever added, will still alert with no row behind it. The
+state filter lives in `ReminderDeliverySink.live`, the side every test
+replaces, so no test covers it.
+
+The seam is `ReminderDeliverySink.scheduledAlarmIDs`, next to the
+`cancelAlarm` and `pendingIdentifiers` it pairs with, rather than another
+repository initializer argument. The decision itself is
+`ReminderScheduler.orphanedAlarmIDs(scheduled:accountedFor:)`, a pure function.
+Apple's documentation for `AlarmManager.alarms` says an alarm is deleted from
+the daemon's store as soon as it fires and stops, so the list is live state
+rather than a log. Unconfirmed until it runs on an iPhone: that an alarm this
+build schedules is listed as `.scheduled`, and that `cancel(id:)` on a listed
+orphan removes it without side effects on the app's other alarms.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

@@ -1016,7 +1016,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         mark's name, `recovery re-read a capture the person had marked`
         and `the row must carry this mark alone`. `Cancel the plumber
         reminder` was already in `CaptureOperationTests` and adds
-        nothing. What the test
+        nothing.
+        4068 -> 4069 on 2026-09-23, from
+        the AlarmKit orphan sweep: four `DurabilityTests` methods and one
+        literal, enumerated rather than assumed, the assertion message
+        `"Relaunch must cancel an alarm whose row is gone"`. The capture
+        they share, `"Set an alarm for 7 AM to take my pills"`, was
+        already in `CaptureOperationTests` and adds nothing, and every
+        phrase their doc comments quote is in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
