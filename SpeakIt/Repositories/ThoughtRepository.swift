@@ -399,6 +399,9 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func markReviewed(_ item: CapturedItem) throws
     func delete(_ item: CapturedItem) throws
     func confirmPendingOperation(_ item: CapturedItem) throws
+    /// The items confirming this held broad request would act on now. The
+    /// confirmation prompt counts these, so it names what will happen.
+    func pendingOperationCandidateIDs(for item: CapturedItem) -> [UUID]
     func dismissPendingOperation(_ item: CapturedItem) throws
     func split(_ item: CapturedItem, into parts: [String]) throws
     func merge(_ items: [CapturedItem]) throws

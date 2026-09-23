@@ -599,13 +599,15 @@ struct ItemEditorView: View {
     private func pendingOperationConfirmationView(
         _ pending: PendingOperationStore.StoredPendingOperation
     ) -> some View {
+        // Counted once per body pass: each count is one fetch per held ID.
+        let count = pendingOperationCount(pending)
         NavigationStack {
             VStack(spacing: 20) {
                 Spacer()
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 36))
                     .foregroundStyle(Color.speakWarning)
-                Text(pendingOperationTitle(pending))
+                Text(pendingOperationTitle(pending, count: count))
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
                 Text(item.displayTitle)
@@ -614,16 +616,20 @@ struct ItemEditorView: View {
                     .multilineTextAlignment(.center)
                 Spacer()
 
-                Button(role: .destructive) {
-                    showsPendingOperationConfirmation = true
-                } label: {
-                    Text(pendingOperationActionLabel(pending))
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 54)
+                // With nothing left to act on, a destructive button would
+                // only remove the review row while promising "cannot be undone".
+                if count > 0 {
+                    Button(role: .destructive) {
+                        showsPendingOperationConfirmation = true
+                    } label: {
+                        Text(pendingOperationActionLabel(pending))
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                    }
+                    .buttonStyle(.speakIt)
                 }
-                .buttonStyle(.speakIt)
 
-                Button("Never mind") {
+                Button(count > 0 ? "Never mind" : "Done") {
                     perform(dismissAfterward: true) {
                         try repository?.dismissPendingOperation(item)
                     }
@@ -641,7 +647,7 @@ struct ItemEditorView: View {
                 }
             }
             .confirmationDialog(
-                pendingOperationTitle(pending),
+                pendingOperationTitle(pending, count: count),
                 isPresented: $showsPendingOperationConfirmation,
                 titleVisibility: .visible
             ) {
@@ -658,14 +664,24 @@ struct ItemEditorView: View {
         }
     }
 
-    private func pendingOperationTitle(
+    /// Counted from what confirming would act on now, not from the list
+    /// fixed when the request was held: a capture that is not organized is
+    /// left out, and the person must be told the number that happens.
+    private func pendingOperationCount(
         _ pending: PendingOperationStore.StoredPendingOperation
+    ) -> Int {
+        repository?.pendingOperationCandidateIDs(for: item).count
+            ?? pending.candidateIDs.count
+    }
+
+    private func pendingOperationTitle(
+        _ pending: PendingOperationStore.StoredPendingOperation,
+        count: Int
     ) -> String {
-        let count = pending.candidateIDs.count
         let subject = count == 1 ? "1 item" : "\(count) items"
         switch pending.operation {
-        case .cancel: return "Cancel \(subject)?"
-        case .complete: return "Mark \(subject) complete?"
+        case .cancel: return count == 0 ? "Nothing to cancel" : "Cancel \(subject)?"
+        case .complete: return count == 0 ? "Nothing to complete" : "Mark \(subject) complete?"
         case .reschedule, .create, .retract: return "Confirm this?"
         }
     }
