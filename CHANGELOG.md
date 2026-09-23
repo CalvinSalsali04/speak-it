@@ -8,6 +8,13 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- A place reminder iOS is not watching no longer looks armed. Past the limit of
+  18 places, or when iOS refuses a place, the reminder now waits in Needs review
+  as Too many place reminders or Couldn’t watch this place instead of saying
+  Next time you arrive. Finishing, archiving or deleting a place reminder hands
+  its slot to the next one straight away, and a place reminder captured in the
+  app or with Siri is watched as soon as it is saved rather than the next time
+  Speak It is opened.
 - Adding a due date to a place reminder no longer leaves it looking armed. The
   date pauses the place, as place-and-time combinations always have, but the
   row kept its pin and the editor said Active. The row now shows the date, the

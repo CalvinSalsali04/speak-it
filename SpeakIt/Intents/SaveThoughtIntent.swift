@@ -639,6 +639,13 @@ private enum ExternalCaptureWriter {
                 needsInterpretationConfirmation: capture.needsInterpretationConfirmation
             )
         }
+        // The place twin of the scheduling below. Without it a place reminder
+        // saved from Siri or a Shortcut had no region until the app was next
+        // opened, while the confirmation already called it a place reminder,
+        // and could not know whether it had been turned away by the budget.
+        if capture.items.contains(where: { $0.locationIntent != nil }) {
+            repository.reconcileLocationReminders()
+        }
         let requests = capture.items.compactMap(ReminderScheduleRequest.init(item:))
         if !requests.isEmpty {
             let schedulingResults = await ReminderScheduler.synchronizeAndVerify(

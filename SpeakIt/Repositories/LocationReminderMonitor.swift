@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import Observation
 import UserNotifications
 
 /// One location reminder, reduced to what monitoring actually needs.
@@ -47,8 +48,17 @@ struct LocationMonitorReconciliation: Equatable, Sendable {
 /// Permission is never persisted. It is read here, at reconcile time, and an
 /// item that cannot be monitored is *reported* as blocked rather than deleted or
 /// disabled. The reminder still means what it meant.
+///
+/// `Observable`, written by hand rather than with the macro, for the two
+/// values a row reads from here: `authorization` and `unwatchedRegions`. Both
+/// change with no SwiftData change at all (access granted or revoked in
+/// Settings, a region refused later on the delegate), so a row that read them
+/// would otherwise keep its last answer until something else redrew it. The
+/// rest of the state (the manager, the recorded failures, the region-event
+/// handler) is not something a view reads, and the macro would have made it
+/// tracked anyway.
 @MainActor
-final class LocationReminderMonitor: NSObject {
+final class LocationReminderMonitor: NSObject, Observable {
     /// iOS monitors at most 20 regions per app, and that budget is shared with
     /// anything else the app might register. Staying under it deliberately
     /// leaves headroom rather than discovering the limit by failing.
@@ -64,7 +74,46 @@ final class LocationReminderMonitor: NSObject {
     /// Authorization changes arrive through the delegate below. Keeping the
     /// latest snapshot makes presentation reads cheap while remaining current.
     private var cachedAuthorization: LocationAuthorization
-    private var lastReconciliation = LocationMonitorReconciliation()
+    private let observationRegistrar = ObservationRegistrar()
+    private var storedUnwatchedRegions: [String: LocationReminderBlocker] = [:]
+
+    /// Every request the last reconcile was given and did not watch, keyed by
+    /// region identifier, with the reason: `.monitoringLimitReached` past the
+    /// budget, `.monitoringFailed` for a region iOS refused. A plan made
+    /// without location access blocks every request with the permission
+    /// blocker instead, which can land here too; it is never what a surface
+    /// shows, because `locationBlocker` asks the resolver first and the
+    /// resolver reports the same missing access.
+    ///
+    /// This is the monitor's own answer to "is iOS watching this reminder",
+    /// and `CapturedItem.locationBlocker(authorization:)` is the one place that
+    /// reads it, so the row, the editor, the receipt and every review count
+    /// follow the monitor rather than the resolver alone. The resolver only
+    /// knows whether a request *can* be made; two requests past the budget
+    /// resolve exactly like the eighteen before them.
+    ///
+    /// Keyed by region identifier rather than item, so a verdict applies only
+    /// to the request it was made for. The identifier carries the trigger
+    /// revision and the place's geometry, so an edit or a moved Home is never
+    /// described by a verdict about the old region. Replaced, never merged, on
+    /// every reconcile: freeing a slot must lift the verdict on the reminder
+    /// that takes it. Deliberately not persisted, like everything the monitor
+    /// decides; the next reconcile rebuilds it.
+    private(set) var unwatchedRegions: [String: LocationReminderBlocker] {
+        get {
+            observationRegistrar.access(self, keyPath: \.unwatchedRegions)
+            return storedUnwatchedRegions
+        }
+        set {
+            // Only a real change invalidates. Reconcile runs after every
+            // mutation that touches a place, and an unconditional write would
+            // redraw every row that reads a place each time.
+            guard newValue != storedUnwatchedRegions else { return }
+            observationRegistrar.withMutation(of: self, keyPath: \.unwatchedRegions) {
+                storedUnwatchedRegions = newValue
+            }
+        }
+    }
 
     /// Regions iOS accepted and then refused, keyed by region identifier.
     ///
@@ -73,7 +122,8 @@ final class LocationReminderMonitor: NSObject {
     /// `monitoringDidFailFor`. Without this set, the reconciliation that
     /// registered the region has already reported it as monitored and the person
     /// is looking at a reminder iOS is not watching. Remembering the refusal is
-    /// what lets the *next* pass tell the truth about it.
+    /// what lets the *next* pass tell the truth about it, and that pass tells it
+    /// through `unwatchedRegions`, which is what the presentation reads.
     ///
     /// Deliberately not persisted. A registration failure is a fact about this
     /// run of the app, and the natural retry is the next launch.
@@ -104,7 +154,8 @@ final class LocationReminderMonitor: NSObject {
     /// snapshot, refreshed by `locationManagerDidChangeAuthorization`, never
     /// persisted with a thought.
     var authorization: LocationAuthorization {
-        cachedAuthorization
+        observationRegistrar.access(self, keyPath: \.authorization)
+        return cachedAuthorization
     }
 
     private static func authorizationSnapshot(
@@ -127,10 +178,16 @@ final class LocationReminderMonitor: NSObject {
     }
 
     private func refreshAuthorization() {
-        cachedAuthorization = Self.authorizationSnapshot(
+        let refreshed = Self.authorizationSnapshot(
             from: manager,
             isRegionMonitoringAvailable: isRegionMonitoringAvailable
         )
+        // A delegate callback that leaves the snapshot as it was must not
+        // redraw every row that reads it.
+        guard refreshed != cachedAuthorization else { return }
+        observationRegistrar.withMutation(of: self, keyPath: \.authorization) {
+            cachedAuthorization = refreshed
+        }
     }
 
     /// Whether the Always prompt has already been shown once.
@@ -267,8 +324,46 @@ final class LocationReminderMonitor: NSObject {
             manager.startMonitoring(for: region)
         }
 
-        lastReconciliation = result
+        record(result, for: requests)
         return result
+    }
+
+    /// Why iOS is not watching this request, or `nil` when the last reconcile
+    /// watched it or never saw it.
+    ///
+    /// "Never saw it" reads as watched on purpose. The alternative, treating
+    /// every unplanned request as blocked, would show each place reminder as
+    /// broken between launch and the first reconcile.
+    ///
+    /// That is only safe while the gap stays short, so the paths that add or
+    /// free a place reconcile straight after saving: capture in the app or from
+    /// Siri and Shortcuts, split, merge, complete, archive, delete, any edit of
+    /// a place reminder, and a one-shot retiring after it fires. Four are
+    /// known not to, and for them the next foreground or launch is the
+    /// repair: the iCloud snapshot restore,
+    /// `resolveCombinedPlaceAndTimeHoldouts` at launch (it only removes
+    /// places, so it can free a slot but never shows an unwatched one as
+    /// armed), `undoOrganization`, and a tutorial capture, which is saved with
+    /// `schedulesReminders` off.
+    func monitoringBlocker(for request: LocationMonitorRequest) -> LocationReminderBlocker? {
+        unwatchedRegions[Self.regionIdentifier(for: request)]
+    }
+
+    /// Stores what a reconcile decided, replacing the previous answer.
+    ///
+    /// Separate from `reconcile` so a test can record a plan made under an
+    /// authorization it chose, without CoreLocation. Production only reaches it
+    /// through `reconcile`.
+    func record(
+        _ result: LocationMonitorReconciliation,
+        for requests: [LocationMonitorRequest]
+    ) {
+        var unwatched: [String: LocationReminderBlocker] = [:]
+        for request in requests {
+            guard let blocker = result.blocked[request.itemID] else { continue }
+            unwatched[Self.regionIdentifier(for: request)] = blocker
+        }
+        unwatchedRegions = unwatched
     }
 
     /// Which reminders may be watched, and why each of the rest may not.
