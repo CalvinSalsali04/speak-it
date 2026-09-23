@@ -56,6 +56,15 @@ Sobeys capture is no longer a timed list on either path. A place-triggered
 list stays one row, as it always has, so a held timed list at a named store
 no longer splits.
 
+The shift is wider than shopping. Any place lead followed by a noun and a
+time now holds: "when I go to bed tonight" names a place called "bed", and
+"when I'm in a meeting tomorrow" one called "meeting". Both used to arm the
+time (8 PM tonight, 9 AM tomorrow) and are now held for review. Two rows in
+`SemanticCorpusB.location` make that visible ("Remind me to take my pills
+when I go to bed tonight", "Remind me to mute my phone when I'm in a
+meeting tomorrow"), so these common sentences are in front of the owner
+before the word on this default is given.
+
 **Falsifier.** Any capture that names a place by name beside a time and
 comes out of `organize` with a reminder date, a delivery or no review
 question; or any "remind me at <clock>" that the international-clock rows

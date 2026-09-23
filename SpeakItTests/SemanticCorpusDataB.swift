@@ -418,6 +418,23 @@ enum SemanticCorpusB {
         corpusCase(.location, "Remind me to water the plants next week when I get home", count: 1,
                    remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
                    note: "A week is not a day, so this asks and fires no clock. The region half is still watched, because the stored reading carries no time: see Docs/KNOWN_ISSUES.md."),
+
+        // What DEL-18 moves beyond shopping (2026-09-23, round two). A place
+        // lead ("go to", "I'm in") followed by anything and then a time now
+        // names a place beside a time, so the whole sentence is held for
+        // review where the time used to win and arm. Both of these are common, and both are held on
+        // purpose: the arrival condition would otherwise execute
+        // unconditionally. They are here so the shift is visible in the
+        // corpus, not only in the decision. Falsifier: either row arming a
+        // reminder, or losing its place.
+        corpusCase(.location, "Remind me to take my pills when I go to bed tonight", count: 1,
+                   delivery: [.none], kind: [.exactDateTime], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("bed"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 8 PM tonight was armed, with the place dropped. Held now: going to bed is the condition, and 8 PM is a guess at it."),
+        corpusCase(.location, "Remind me to mute my phone when I'm in a meeting tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("meeting"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 9 AM tomorrow was armed, with the place dropped. The meeting is the condition, and 9 AM is a guess at it."),
     ]
 
     static let all: [CorpusCase] = temporalAmbiguity + nonTimeNumbers + people + recurrence + location

@@ -934,6 +934,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         it): one assertion message added, `"a place set by hand does not
         confirm the time beside it"`, none removed, found by diffing this
         population at both commits. The overlap stayed at 114.
+        4155 -> 4159 on 2026-09-23, from making DEL-18's shift visible:
+        four added, none removed, found by diffing this population at both
+        commits. Two `corpusCase` captures in `SemanticCorpusB.location`
+        (`"Remind me to take my pills when I go to bed tonight"`, `"Remind me
+        to mute my phone when I'm in a meeting tomorrow"`) and their two
+        `note:` arguments. The overlap stayed at 114.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -948,7 +954,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4155)
+        self.assertEqual(len(space), 4159)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
