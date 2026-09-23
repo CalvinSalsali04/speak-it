@@ -94,6 +94,9 @@ enum DecisionReason: String, Codable, CaseIterable, Sendable {
     case correctedRowStillExecutes
     case withdrawnRowStillExecutes
     case correctedRowStillOwed
+    /// One row carries both sides of the relation and still executes, with
+    /// no sign the parser applied the change inside it.
+    case spanningRowStillExecutes
     case conditionAlreadyHeld
     case conditionSupportedByRules
     case conditionModelOnly
@@ -104,14 +107,25 @@ enum DecisionReason: String, Codable, CaseIterable, Sendable {
     // entity
     case personConfirmed
     case personRejectedByBoth
-    case personRejectedOnTie
+    /// The model says not a person; the deterministic reading cannot say
+    /// either way. #117 keeps an unfamiliar name a person, so this abstains.
+    case personRejectedOnlyByModel
     case personKeptByRules
+    /// The model said `unknown`, which is no evidence either way.
+    case modelAbstained
     case modelOnlyPerson
     case entityNotOnARow
     case entityRemovalDisabled
     // final
     case executionOutsideRulesReading
-    case structuralGuaranteeHeld
+    /// Every date, reminder, place and recurrence on the result already
+    /// existed in the rules reading. That is all it says: a split can put an
+    /// existing instant on a second row, which `executingRowsAdded` counts.
+    case noNewInstantHeld
+    /// The result has more executing rows than the rules reading. Recorded
+    /// with `count`, never silently: a split that puts the same instant on
+    /// two rows passes the no-new-instant check and schedules twice.
+    case executingRowsAdded
 }
 
 enum DecisionEffect: String, Codable, Sendable {
@@ -133,6 +147,7 @@ struct ArbitrationDecision: Codable, Equatable, Sendable {
     var relation: UnitRelationKind?
     var refusal: JobRefusal?
     var job: String?
+    var count: Int?
 }
 
 /// Every behaviour switch, so the harness can report what each rule costs and
@@ -244,14 +259,22 @@ enum Arbiter {
         }
 
         let items = rows.map(\.item)
-        // The structural guarantee: nothing executable that the rules did not
-        // already produce. A violation is a bug in this file, and the only
-        // safe response to a bug here is the rules reading, whole.
+        // The structural guarantee: no instant, place or recurrence that the
+        // rules did not already produce. It is a set check, so it cannot see
+        // an existing instant copied onto a second row; that is counted below.
+        // A violation is a bug in this file, and the only safe response to a
+        // bug here is the rules reading, whole.
         if !executablesAreSubset(items, of: rules.items) {
             decisions.append(decision(.finalInvariant, .modelConflictsSafety, .executionOutsideRulesReading, .fellBackToRules))
             return with(unchanged, decisions)
         }
-        decisions.append(decision(.finalInvariant, .agree, .structuralGuaranteeHeld, .none))
+        decisions.append(decision(.finalInvariant, .agree, .noNewInstantHeld, .none))
+        let added = executingRowsAdded(items, over: rules.items)
+        if added > 0 {
+            var note = decision(.finalInvariant, .unresolved, .executingRowsAdded, .none)
+            note.count = added
+            decisions.append(note)
+        }
         return ArbitrationResult(
             items: items,
             operations: rules.operations,
@@ -509,14 +532,25 @@ enum Arbiter {
             case .replaces, .cancels:
                 // Rows about the earlier thought that are not also about the
                 // later one: those are what the correction or withdrawal took
-                // back, if the model is right.
+                // back, if the model is right. A row carrying both sides is
+                // exposed too, unless the parser repaired it (a correction it
+                // already applied in place); it is never called agreement
+                // while it still executes.
+                let spanning = rows.indices.filter {
+                    rows[$0].span.overlaps(target) && rows[$0].span.overlaps(source)
+                        && !(relation.kind == .replaces && rows[$0].item.wasRepaired)
+                }
                 let affected = rows.indices.filter { rows[$0].span.overlaps(target) && !rows[$0].span.overlaps(source) }
+                    + spanning
                 let resolved: DecisionReason = relation.kind == .replaces ? .correctionAlreadyResolved : .withdrawalAlreadyResolved
                 if affected.isEmpty {
                     note.verdict = .agree
                     note.reason = resolved
                 } else if affected.contains(where: { isExecutable(rows[$0].item) }) {
-                    note.reason = relation.kind == .replaces ? .correctedRowStillExecutes : .withdrawnRowStillExecutes
+                    let spanningExecutes = spanning.contains { isExecutable(rows[$0].item) }
+                    note.reason = spanningExecutes
+                        ? .spanningRowStillExecutes
+                        : (relation.kind == .replaces ? .correctedRowStillExecutes : .withdrawnRowStillExecutes)
                     if policy.withdrawOn.contains(relation.kind) {
                         for index in affected { rows[index].item = withdrawn(rows[index].item) }
                         note.effect = .withdrewExecution
@@ -533,9 +567,14 @@ enum Arbiter {
                 }
 
             case .isConditionFor:
-                let affected = rows.indices.filter { rows[$0].span.overlaps(target) && !rows[$0].span.overlaps(source) }
-                let held = affected.allSatisfy { !isExecutable(rows[$0].item) || rows[$0].item.organization.state.kind != .resolved }
-                if affected.isEmpty || held {
+                // The governed rows, including one that carries its own
+                // condition: a row holding "if X, do Y" that executes with a
+                // resolved state has run the condition's action unconditionally.
+                let affected = rows.indices.filter { rows[$0].span.overlaps(target) }
+                let unheld = affected.filter {
+                    isExecutable(rows[$0].item) && rows[$0].item.organization.state.kind == .resolved
+                }
+                if unheld.isEmpty {
                     note.verdict = .agree
                     note.reason = .conditionAlreadyHeld
                 } else {
@@ -544,18 +583,22 @@ enum Arbiter {
                     let supported = AtomSpan(first: first, last: last)
                         .flatMap { Atoms.slice(transcript, atoms, $0) }
                         .map { ConditionalIntentScope.dependency(in: $0) != nil } ?? false
-                    note.reason = supported ? .conditionSupportedByRules : .conditionModelOnly
+                    let spanningExecutes = unheld.contains { rows[$0].span.overlaps(source) }
+                    note.reason = spanningExecutes
+                        ? .spanningRowStillExecutes
+                        : (supported ? .conditionSupportedByRules : .conditionModelOnly)
                     if policy.withdrawOn.contains(.isConditionFor) {
-                        for index in affected where isExecutable(rows[index].item) {
-                            rows[index].item = withdrawn(rows[index].item)
-                        }
+                        for index in unheld { rows[index].item = withdrawn(rows[index].item) }
                         note.effect = .withdrewExecution
                     }
                 }
 
             case .isMessageContentOf:
                 // The content's own rows, where they are not part of the row
-                // that carries the message.
+                // that carries the message. A row spanning both is the message
+                // row itself ("text Sam that I'll be late at six"): its
+                // reminder is to send the message, which is the user's action,
+                // so it is left alone and is not evidence either way.
                 let affected = rows.indices.filter { rows[$0].span.overlaps(source) && !rows[$0].span.overlaps(target) }
                 if affected.isEmpty || !affected.contains(where: { isExecutable(rows[$0].item) }) {
                     note.verdict = .agree
@@ -611,26 +654,39 @@ enum Arbiter {
                     decisions.append(decision(.entity, .agree, .personConfirmed, .none))
                     continue
                 }
-                let deterministic = PersonMentionResolver.entityKind(in: rows[index].item.sourceQuote)
+                // `unknown` is the model declining to say, not a vote.
+                guard entity.kind != .unknown else {
+                    decisions.append(decision(.entity, .unresolved, .modelAbstained, .none))
+                    continue
+                }
+                let deterministic = deterministicKind(of: rows[index].item)
                 if deterministic == .person {
                     decisions.append(decision(.entity, .rulesStronger, .personKeptByRules, .keptRules))
+                    continue
+                }
+                // #117 keeps an unfamiliar name a person. Only a positive
+                // non-person reading on both sides removes one.
+                guard deterministic != .unknown else {
+                    decisions.append(decision(.entity, .unresolved, .personRejectedOnlyByModel, .keptRules))
                     continue
                 }
                 guard policy.removeUnconfirmedPersons else {
                     decisions.append(decision(.entity, .unresolved, .entityRemovalDisabled, .none))
                     continue
                 }
-                let bothReject = deterministic != .unknown
                 rows[index].item = withoutPerson(rows[index].item)
-                decisions.append(decision(
-                    .entity,
-                    bothReject ? .agree : .modelAddsStructure,
-                    bothReject ? .personRejectedByBoth : .personRejectedOnTie,
-                    .clearedPerson
-                ))
+                decisions.append(decision(.entity, .agree, .personRejectedByBoth, .clearedPerson))
             }
         }
         return rows
+    }
+
+    /// The deterministic entity reading of a row, or `unknown` when the row
+    /// names more than one candidate: `entityKind(in:)` reads the row, not a
+    /// name, so with two names it could be describing the other one.
+    static func deterministicKind(of item: ExtractedThought) -> EntityKind {
+        guard PersonMentionResolver.mentions(in: item.sourceQuote).count <= 1 else { return .unknown }
+        return PersonMentionResolver.entityKind(in: item.sourceQuote)
     }
 
     // MARK: Row edits, every one of them capability-removing
@@ -713,6 +769,12 @@ enum Arbiter {
             if let rule = organization.recurrenceRule, !recurrences.contains(rule) { return false }
             return true
         }
+    }
+
+    /// How many more rows execute than in the rules reading. The set check
+    /// above cannot see an existing instant copied onto a second row.
+    static func executingRowsAdded(_ items: [ExtractedThought], over rules: [ExtractedThought]) -> Int {
+        max(0, items.filter(isExecutable).count - rules.filter(isExecutable).count)
     }
 
     // MARK: Plumbing

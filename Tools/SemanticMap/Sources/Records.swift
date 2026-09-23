@@ -58,6 +58,9 @@ struct CensusRecord: Codable, Equatable, Sendable {
     var commit: String
     var features: ComplexityFeatures
     var policy: RoutePolicyReason
+    /// See `ProductionTrace.fallbackPolicy`: the gate an unmatched operation's
+    /// re-extraction would meet. Nil when there is no operation.
+    var fallbackPolicy: RoutePolicyReason?
     var shouldRefine: Bool
     var policyDrift: Bool
     var rulesDigest: String

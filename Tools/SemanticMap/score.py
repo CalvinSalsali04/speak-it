@@ -7,6 +7,9 @@ pasted into a thread or a pull request whatever set produced it.
     score.py trace   runs.jsonl
     score.py router  census.jsonl --labels set.tsv --report rules.report
     score.py whole   labels.jsonl --report arm.report [--runs runs.jsonl] [--ids]
+    score.py select  census.jsonl --labels set.tsv --report rules.report --out diag.in --groups groups.json
+    score.py diagnostic --groups groups.json --labels set.tsv --rules rules.report
+                     --map map.report --map-records map.jsonl --asked asked.report --asked-records asked.jsonl
     score.py selftest
 
 census  PHASE 1, no model. How production routes every capture: which exit the
@@ -25,6 +28,14 @@ whole   PHASE 5. Whole-capture correctness against the fresh-slice label schema
         in `LABELS.md`, per category A-J, per family and per length bucket,
         with every sub-measure beside it. With `--runs`, the invocation,
         accepted-contribution and fallback rates for the map arm too.
+select  The smallest diagnostic model input: every rules failure production
+        does not send to the model, every confident-on-complex capture, and
+        one matched rules-correct complex control per failure (its C/R twin
+        where there is one, else the nearest in atoms). Prints ids and counts.
+diagnostic  Reads that run back per group: model availability, each job's
+        outcome, the arbiter's contribution, failures improved and correct
+        captures damaged (map arm and production's own model as if asked),
+        grounding rejections, latency and the final fallback.
 
 Length buckets are in ATOMS (whitespace words of the original transcript),
 which every machine can compute. Model tokens are reported beside them from
@@ -119,7 +130,11 @@ def load_five_column(path):
 # reads means what it means there. `selftest` runs that scorer on a fixture and
 # checks the aggregates agree.
 
-HEADER = re.compile(r'── "(.*?)"')
+# Greedy to the end of the header line: a capture containing a double quote
+# is otherwise cut at it and never joins its label. `heldout/score.py` still
+# uses the non-greedy form; no held-out or development row contains one today,
+# and `selftest` pins both the quote case here and agreement on the rest.
+HEADER = re.compile(r'── "(.*)"[ \t]*$', re.M)
 
 
 def parse_report(path):
@@ -379,11 +394,15 @@ def trace(args):
     fell_back = sum(1 for d in decisions if d["reason"] == "executionOutsideRulesReading")
     if fell_back:
         print(f"  STRUCTURAL GUARANTEE FIRED on {fell_back} capture(s): an arbiter bug. Stop here.")
+    doubled = [d.get("count") or 0 for d in decisions if d["reason"] == "executingRowsAdded"]
+    if doubled:
+        print(f"  EXECUTING ROWS ADDED on {len(doubled)} capture(s), {sum(doubled)} row(s): an existing instant"
+              " now schedules more than once (S2).")
     return 0
 
 
 def latency_table(name, pairs):
-    rows = defaultdict(lambda: {"ms": [], "prompt": [], "n": 0})
+    rows = defaultdict(lambda: {"ms": [], "prompt": [], "response": [], "n": 0})
     for atoms, job in pairs:
         if job.get("latencyMilliseconds") is None:
             continue
@@ -392,10 +411,13 @@ def latency_table(name, pairs):
         cell["ms"].append(job["latencyMilliseconds"])
         if job.get("promptTokens") is not None:
             cell["prompt"].append(job["promptTokens"])
+        if job.get("responseTokens") is not None:
+            cell["response"].append(job["responseTokens"])
     if not rows:
         return
     print(f"  {name} latency and prompt tokens by atoms bucket")
-    print(f"    {'atoms':<10}{'n':>5}{'p50 ms':>9}{'p90 ms':>9}{'max ms':>9}{'>2000':>7}{'tok p50':>9}{'tok max':>9}")
+    print(f"    {'atoms':<10}{'n':>5}{'p50 ms':>9}{'p90 ms':>9}{'max ms':>9}{'>2000':>7}{'tok p50':>9}{'tok max':>9}"
+          f"{'out p50':>9}")
     for bucket_name in bucket_order():
         cell = rows.get(bucket_name)
         if not cell:
@@ -403,7 +425,8 @@ def latency_table(name, pairs):
         print(f"    {bucket_name:<10}{cell['n']:>5}{fmt(percentile(cell['ms'], .5)):>9}"
               f"{fmt(percentile(cell['ms'], .9)):>9}{fmt(max(cell['ms'])):>9}"
               f"{sum(ms > 2000 for ms in cell['ms']):>7}"
-              f"{fmt(percentile(cell['prompt'], .5)):>9}{fmt(max(cell['prompt']) if cell['prompt'] else None):>9}")
+              f"{fmt(percentile(cell['prompt'], .5)):>9}{fmt(max(cell['prompt']) if cell['prompt'] else None):>9}"
+              f"{fmt(percentile(cell['response'], .5)):>9}")
 
 
 # ------------------------------------------------------------------- router
@@ -652,6 +675,282 @@ def whole(args):
     return 0
 
 
+# ------------------------------------------------------------------- select
+
+def complex_shape(features):
+    """A capture a router would call complex on structure alone, whatever the
+    rules flagged: the shape of `confident_on_complex` without its confidence
+    half, widened by three or more rows. Used only to draw controls."""
+    return features["clauses"] >= 3 or features["atoms"] >= 40 or features["rulesItems"] >= 3
+
+
+def twin_of(capture_id):
+    """The rambling set's pairing convention: RBnnC is the clean twin of
+    RBnnR. Any other id has no twin."""
+    match = re.fullmatch(r"(.*\d)([CR])", capture_id)
+    if not match:
+        return None
+    return match.group(1) + ("R" if match.group(2) == "C" else "C")
+
+
+def sha256(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def select(args):
+    census_path = args[0]
+    labels_path = args[args.index("--labels") + 1]
+    report_path = args[args.index("--report") + 1]
+    out_path = args[args.index("--out") + 1]
+    groups_path = args[args.index("--groups") + 1]
+    records = {r.get("id"): r for r in read_jsonl(census_path) if r.get("id")}
+    labels = load_five_column(labels_path)
+    report = parse_report(report_path)
+    rows = []
+    for label in labels:
+        record = records.get(label["id"])
+        got = report.get(label["utterance"])
+        if record is None or got is None:
+            continue
+        rows.append((label, record, failed(coarse_verdict(label, got))))
+    if not rows:
+        print("no labelled capture found in both the census and the report")
+        return 1
+
+    groups = OrderedDict()
+
+    def add(label, group):
+        groups.setdefault(label["id"], {"label": label, "groups": []})["groups"].append(group)
+
+    for label, record, fail in rows:
+        # Hidden: production never asks the model, by the policy and, for an
+        # operation capture, by the gate its not-found re-extraction meets.
+        reaches = record["policy"] == "eligible" or record.get("fallbackPolicy") == "eligible"
+        if fail and not reaches:
+            add(label, "hidden")
+    for label, record, fail in rows:
+        if confident_on_complex(record["features"]):
+            add(label, "confidentOnComplex")
+
+    by_id = {label["id"]: (label, record, fail) for label, record, fail in rows}
+    failing = [i for i in groups if by_id[i][2]]
+    already_correct = [i for i in groups if not by_id[i][2]]
+    wanted = max(0, len(failing) - len(already_correct))
+    pool = {label["id"] for label, record, fail in rows
+            if not fail and complex_shape(record["features"]) and label["id"] not in groups}
+    controls = []
+    for capture_id in sorted(failing):
+        if len(controls) >= wanted:
+            break
+        twin = twin_of(capture_id)
+        if twin in pool:
+            controls.append((twin, capture_id, "twin"))
+            pool.discard(twin)
+    matched = {m for _, m, _ in controls}
+    for capture_id in sorted(failing):
+        if len(controls) >= wanted or not pool:
+            break
+        if capture_id in matched:
+            continue
+        atoms = by_id[capture_id][1]["features"]["atoms"]
+        nearest = min(pool, key=lambda i: (abs(by_id[i][1]["features"]["atoms"] - atoms), i))
+        controls.append((nearest, capture_id, "nearest"))
+        pool.discard(nearest)
+    for control, _, _ in controls:
+        add(by_id[control][0], "control")
+
+    with open(out_path, "w", encoding="utf-8") as handle:
+        for capture_id, entry in groups.items():
+            handle.write(f"{capture_id}\t{entry['label']['utterance']}\n")
+    Path(groups_path).write_text(json.dumps({
+        "sources": {"census": sha256(census_path), "labels": sha256(labels_path), "report": sha256(report_path)},
+        "groups": {capture_id: entry["groups"] for capture_id, entry in groups.items()},
+        "controls": [{"control": c, "matches": m, "how": h} for c, m, h in controls],
+    }, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+    print(f"DIAGNOSTIC SELECTION — {len(groups)} captures from {len(rows)} labelled")
+    print("=" * 78)
+    for group in ("hidden", "confidentOnComplex", "control"):
+        ids = [i for i, e in groups.items() if group in e["groups"]]
+        print(f"  {group:<20}{len(ids):>4}  {' '.join(ids)}")
+    both = [i for i, e in groups.items() if len(e["groups"]) > 1]
+    print(f"  {'in two groups':<20}{len(both):>4}  {' '.join(both)}")
+    hidden = [by_id[i][1] for i, e in groups.items() if "hidden" in e["groups"]]
+    print("  hidden by: " + ", ".join(f"{k} {v}" for k, v in Counter(r["policy"] for r in hidden).most_common()))
+    print(f"  controls: {sum(h == 'twin' for _, _, h in controls)} twin, "
+          f"{sum(h == 'nearest' for _, _, h in controls)} nearest in atoms, wanted {wanted}")
+    if len(controls) < wanted:
+        print(f"  SHORT by {wanted - len(controls)}: not enough rules-correct complex captures left to match")
+    print(f"  wrote {out_path} and {groups_path}")
+    print("  Selection used the rules reading and the labels only; no model output chose a row.")
+    return 0
+
+
+# --------------------------------------------------------------- diagnostic
+
+SKIPS_UNAVAILABLE = {"modelUnavailable", "osTooOld", "frameworkMissing", "localeUnsupported"}
+
+
+def diagnostic(args):
+    def arg(flag):
+        return args[args.index(flag) + 1]
+
+    meta = json.loads(Path(arg("--groups")).read_text(encoding="utf-8"))
+    labels = {l["id"]: l for l in load_five_column(arg("--labels"))}
+    reports = {name: parse_report(arg(f"--{name}")) for name in ("rules", "map", "asked")}
+    map_records = {r["id"]: r for r in read_jsonl(arg("--map-records")) if r.get("id")}
+    asked_records = {r["id"]: r for r in read_jsonl(arg("--asked-records")) if r.get("id")}
+
+    captures = []
+    for capture_id, groups in meta["groups"].items():
+        label = labels.get(capture_id)
+        record = map_records.get(capture_id)
+        asked = asked_records.get(capture_id)
+        if label is None or record is None or asked is None:
+            print(f"  {capture_id}: missing from the labels or the run; not scored")
+            continue
+        verdicts = {arm: coarse_verdict(label, reports[arm].get(label["utterance"])) for arm in reports}
+        captures.append({"id": capture_id, "groups": groups, "record": record, "asked": asked["production"],
+                         "verdicts": verdicts, "fail": {arm: failed(v) for arm, v in verdicts.items()},
+                         "unscored": [arm for arm, v in verdicts.items() if v["produced"] is None]})
+
+    print(f"DIAGNOSTIC RUN — {len(captures)} captures")
+    commits = Counter(c["record"]["settings"]["commit"] for c in captures)
+    print("  run commit(s): " + ", ".join(f"{k} x{v}" for k, v in commits.items())
+          + ("   SHADOW OFF: the asked arm has no answers" if not all(c["record"]["settings"]["shadow"] for c in captures) else ""))
+    missing = [c["id"] for c in captures if c["unscored"]]
+    if missing:
+        print(f"  NOT IN A REPORT, so not scored on that arm: {' '.join(missing)}")
+    print("  DEVELOPMENT EVIDENCE on rows chosen from a development set. Not product accuracy,")
+    print("  and not a router: a router is chosen on the fresh slice.")
+    print("=" * 78)
+
+    def section(title, group):
+        n = len(group)
+        print(f"\n{title} — {n} captures")
+        print("-" * 78)
+        if not n:
+            return
+        records = [c["record"] for c in group]
+        maps = [r["map"] for r in records if r.get("map")]
+        unavailable = Counter()
+        for c in group:
+            skip = c["asked"].get("availability")
+            if skip:
+                unavailable[f"production:{skip}"] += 1
+            for job in ("unitsJob", "relationsJob", "entitiesJob"):
+                j = (c["record"].get("map") or {}).get(job) or {}
+                if j.get("skip") in SKIPS_UNAVAILABLE:
+                    unavailable[f"{job[:-3]}:{j['skip']}"] += 1
+        print(f"  model available        {n - len({c['id'] for c in group if c['asked'].get('availability')})}/{n}"
+              + (f"   unavailable: {', '.join(f'{k} {v}' for k, v in unavailable.items())}" if unavailable else ""))
+        for job in ("unitsJob", "relationsJob", "entitiesJob"):
+            jobs = [m[job] for m in maps]
+            outcomes = Counter(j["outcome"] for j in jobs)
+            refusals = Counter(j["refusal"] for j in jobs if j.get("refusal"))
+            skips = Counter(j["skip"] for j in jobs if j.get("skip"))
+            line = f"  {job[:-3] + ' job':<22} " + ", ".join(f"{k} {v}" for k, v in outcomes.most_common())
+            if refusals:
+                line += "   refused: " + ", ".join(f"{k} {v}" for k, v in refusals.most_common())
+            if skips:
+                line += "   skipped: " + ", ".join(f"{k} {v}" for k, v in skips.most_common())
+            print(line)
+
+        decisions = [d for r in records for d in r.get("decisions", [])]
+        effects = Counter(d["effect"] for d in decisions if d["effect"] not in ("none", "keptRules"))
+        changed = sum(1 for r in records if r.get("mapChangedOutput"))
+        print(f"  arbiter contribution   output changed on {changed}/{n}"
+              + (f"; effects: {', '.join(f'{k} {v}' for k, v in effects.most_common())}" if effects else "; no effect"))
+        proposals = Counter((d["topic"], d["reason"]) for d in decisions if d["topic"] in ("split", "merge", "relation", "entity"))
+        if proposals:
+            print("  arbiter reasons        " + ", ".join(f"{t}/{r} {v}" for (t, r), v in proposals.most_common()))
+
+        for arm, name in (("map", "semantic map"), ("asked", "production model, as if asked")):
+            was_wrong = [c for c in group if c["fail"]["rules"]]
+            was_right = [c for c in group if not c["fail"]["rules"]]
+            improved = [c["id"] for c in was_wrong if not c["fail"][arm]]
+            damaged = [c["id"] for c in was_right if c["fail"][arm]]
+            print(f"  {name:<34} improved {len(improved)}/{len(was_wrong)} previously wrong"
+                  f"   damaged {len(damaged)}/{len(was_right)} previously correct")
+            if improved:
+                print(f"    improved: {' '.join(improved)}")
+            if damaged:
+                print(f"    DAMAGED:  {' '.join(damaged)}")
+            unsafe = sum(1 for c in group if c["verdicts"][arm]["unsafe"])
+            rules_unsafe = sum(1 for c in group if c["verdicts"]["rules"]["unsafe"])
+            if unsafe or rules_unsafe:
+                print(f"    unsafe on Ambiguous: rules {rules_unsafe}, {arm} {unsafe}")
+
+        job_refusals = sum(1 for d in decisions if d["reason"] == "jobRefused")
+        cut_conflicts = Counter(d["reason"] for d in decisions
+                                if d["topic"] == "split" and d["verdict"] == "modelConflictsSafety")
+        validation = Counter(c["asked"]["validation"] for c in group if c["asked"].get("validation"))
+        guard = sum(1 for c in group if c["asked"].get("unbudgeted") == "guardRejected")
+        print(f"  grounding rejection    map jobs refused {job_refusals}"
+              + (f"; cuts refused for safety: {', '.join(f'{k} {v}' for k, v in cut_conflicts.items())}" if cut_conflicts else "")
+              + f"; production validation {sum(validation.values())}"
+              + (f" ({', '.join(f'{k} {v}' for k, v in validation.most_common())})" if validation else "")
+              + f", guard {guard}")
+        added = sum(d.get("count") or 0 for d in decisions if d["reason"] == "executingRowsAdded")
+        broke = sum(1 for d in decisions if d["reason"] == "executionOutsideRulesReading")
+        if added or broke:
+            print(f"  EXECUTION: {added} executing row(s) added by splits; structural guarantee fired {broke}")
+
+        totals = []
+        for m in maps:
+            parts = [m[j].get("latencyMilliseconds") for j in ("unitsJob", "relationsJob", "entitiesJob")]
+            if any(p is not None for p in parts):
+                totals.append(sum(p or 0 for p in parts))
+        production_ms = [c["asked"]["latencyMilliseconds"] for c in group if c["asked"].get("latencyMilliseconds") is not None]
+        print(f"  latency ms             map (three jobs) p50 {fmt(percentile(totals, .5))} p90 {fmt(percentile(totals, .9))}"
+              f" max {fmt(max(totals) if totals else None)};   production p50 {fmt(percentile(production_ms, .5))}"
+              f" p90 {fmt(percentile(production_ms, .9))} over 2 s {sum(ms > 2000 for ms in production_ms)}")
+        for job in ("unitsJob", "relationsJob", "entitiesJob"):
+            ms = [m[job]["latencyMilliseconds"] for m in maps if m[job].get("latencyMilliseconds") is not None]
+            out = [m[job]["responseTokens"] for m in maps if m[job].get("responseTokens") is not None]
+            if ms:
+                print(f"    {job[:-3]:<10} p50 {fmt(percentile(ms, .5))} max {max(ms)}"
+                      f"   output tokens p50 {fmt(percentile(out, .5))}")
+
+        kept = [c for c in group if not c["record"].get("mapChangedOutput")]
+        why = Counter()
+        for c in kept:
+            reasons = {d["reason"] for d in c["record"].get("decisions", [])}
+            if "noMap" in reasons:
+                why["no map"] += 1
+            elif "operationOwnedByRules" in reasons:
+                why["operation, rules own it"] += 1
+            elif "executionOutsideRulesReading" in reasons:
+                why["structural guarantee"] += 1
+            elif "rowsNotLocatable" in reasons:
+                why["rows not locatable"] += 1
+            elif "unitsNotAccepted" in reasons and not any(r in reasons for r in ("messageContentExecutes", "withdrawnRowStillExecutes")):
+                why["units not accepted"] += 1
+            elif "boundariesAgree" in reasons:
+                why["model agreed with the rules"] += 1
+            else:
+                why["proposals refused or inert"] += 1
+        print(f"  final fallback         map kept the rules reading on {len(kept)}/{n}"
+              + (f": {', '.join(f'{k} {v}' for k, v in why.most_common())}" if why else ""))
+        outcomes = Counter(c["asked"].get("outcome") for c in group)
+        print("  production as asked    " + ", ".join(f"{k} {v}" for k, v in outcomes.most_common()))
+
+    for group in ("hidden", "confidentOnComplex", "control"):
+        section(group.upper(), [c for c in captures if group in c["groups"]])
+    section("ALL SELECTED (each capture once)", captures)
+
+    print("\nPER CAPTURE (ids only; F = the coarse scorer fails it; measures failed in brackets)")
+    for c in captures:
+        def mark(arm):
+            v = c["verdicts"][arm]
+            bad = [k for k in ("produced", "destination", "count") if v[k] is False] + (["unsafe"] if v["unsafe"] else [])
+            return ("F[" + ",".join(bad) + "]") if bad else "ok"
+        print(f"  {c['id']:<10}{'+'.join(c['groups']):<32} rules {mark('rules'):<22} map {mark('map'):<22}"
+              f" asked {mark('asked')}")
+    return 0
+
+
 # ----------------------------------------------------------------- selftest
 
 def selftest(_args):
@@ -711,6 +1010,10 @@ def selftest(_args):
         expect(len(seen) == 3, "three capture blocks are parsed")
         expect(len(seen["call the vet and buy milk"]["rows"]) == 2, "two rows under the first header")
         expect(seen["call the vet and buy milk"]["rows"][0]["quote"] == "call the vet", "a quote line is read")
+        quoted = Path(scratch) / "quoted.report"
+        quoted.write_text('── "text Sam "running late" at six"\n   item 1 of 1:\n     row title:  Text Sam\n', encoding="utf-8")
+        expect(list(parse_report(quoted)) == ['text Sam "running late" at six'],
+               "a capture containing a double quote keeps its whole header")
         expect(seen["call the vet and buy milk"]["rows"][1]["quote"] == "Buy milk", "no quote line falls back to the title")
         third = seen["sam said the lease ends friday"]["rows"][0]
         expect(third["remind"] and third["person"] == "Sam" and third["review"], "remind, person and review are read")
@@ -784,6 +1087,73 @@ def selftest(_args):
                                  capture_output=True, text=True).stdout
         expect("noRowNeedsReview" in printed and "vet" not in printed, "census prints reasons and no text")
 
+        # Selection: T2 fails and production never asks (an operation with no
+        # re-extraction); T1 is the rules-correct complex control, nearest in
+        # atoms. Nothing chose a row but the rules reading and the labels.
+        census_rows.append(dict(id="T2", commit="x", features=dict(feature, atoms=4, clauses=1),
+                                policy="operationPresent", shouldRefine=False, policyDrift=False, rulesDigest="0"))
+        census_rows[0]["features"]["rulesItems"] = 3
+        records.write_text("\n".join(json.dumps(r) for r in census_rows) + "\n", encoding="utf-8")
+        diag_in, groups_path = Path(scratch) / "diag.in", Path(scratch) / "groups.json"
+        printed = subprocess.run([sys.executable, __file__, "select", str(records), "--labels", str(labels_path),
+                                  "--report", str(report_path), "--out", str(diag_in), "--groups", str(groups_path)],
+                                 capture_output=True, text=True).stdout
+        groups = json.loads(groups_path.read_text(encoding="utf-8"))["groups"]
+        expect(groups == {"T2": ["hidden"], "T1": ["control"]}, f"select picks the hidden failure and one control: {groups}")
+        expect(diag_in.read_text(encoding="utf-8").splitlines()[0] == "T2\tmaybe cancel it idk",
+               "select writes id<TAB>capture for the run")
+        for utterance in ("vet", "milk", "lease", "cancel it"):
+            expect(utterance not in printed, "select prints no capture text")
+        expect(twin_of("RB07R") == "RB07C" and twin_of("RB07C") == "RB07R" and twin_of("T2") is None,
+               "twins are the rambling set's C/R pairs only")
+
+        # The diagnostic scorer over a two-capture run: the map arm turns the
+        # hidden failure into no operation (improved on unsafe) and damages the
+        # control by losing a row.
+        def job(outcome, ms, refusal=None):
+            return dict(outcome=outcome, latencyMilliseconds=ms, responseTokens=12, refusal=refusal)
+        settings = dict(commit="x", shadow=True)
+        run_records = [
+            dict(id="T2", utterance="maybe cancel it idk", settings=settings, mapChangedOutput=True,
+                 map=dict(unitsJob=job("accepted", 900), relationsJob=job("refused", 700, "selfRelation"),
+                          entitiesJob=job("accepted", 600)),
+                 decisions=[dict(topic="job", verdict="modelViolatesGrounding", reason="jobRefused", effect="none"),
+                            dict(topic="relation", verdict="unresolved", reason="withdrawnRowStillExecutes",
+                                 effect="withdrewExecution")],
+                 production=dict(outcome="notInvoked")),
+            dict(id="T1", utterance="call the vet and buy milk", settings=settings, mapChangedOutput=True,
+                 map=dict(unitsJob=job("accepted", 800), relationsJob=job("accepted", 500),
+                          entitiesJob=job("accepted", 400)),
+                 decisions=[dict(topic="merge", verdict="modelAddsStructure", reason="mergedMemory", effect="mergedRows")],
+                 production=dict(outcome="accepted", latencyMilliseconds=2500, validation="ungroundedQuote",
+                                 unbudgeted="validationRejected")),
+        ]
+        map_records = Path(scratch) / "map.jsonl"
+        map_records.write_text("\n".join(json.dumps(r) for r in run_records) + "\n", encoding="utf-8")
+        map_report = Path(scratch) / "map.report"
+        map_report.write_text("\n".join([
+            '── "call the vet and buy milk"', "   item 1 of 1:", "     row title:  Call the vet and buy milk",
+            "     route:      Today   type: task   category: general   priority: 1",
+            "     due:        nil", "     remind:     nil   delivery: none", "",
+            '── "maybe cancel it idk"', "   item 1 of 1:", "     row title:  Maybe cancel it",
+            "     route:      Memory   type: note   category: general   priority: 1",
+            "     due:        nil", "     remind:     nil   delivery: none", "",
+        ]), encoding="utf-8")
+        printed = subprocess.run([sys.executable, __file__, "diagnostic", "--groups", str(groups_path),
+                                  "--labels", str(labels_path), "--rules", str(report_path), "--map", str(map_report),
+                                  "--map-records", str(map_records), "--asked", str(report_path),
+                                  "--asked-records", str(map_records)], capture_output=True, text=True)
+        out = printed.stdout
+        expect(printed.returncode == 0, f"diagnostic runs: {printed.stderr[-300:]}")
+        expect("semantic map                       improved 1/1 previously wrong   damaged 0/0" in out,
+               "the hidden failure the map fixed is counted as improved")
+        expect("DAMAGED:  T1" in out, "a control the map breaks is named as damaged")
+        expect("refused: selfRelation 1" in out and "map jobs refused 1" in out, "a refused job is a grounding rejection")
+        expect("production validation 1 (ungroundedQuote 1)" in out, "production's validation rejection is reported")
+        expect("over 2 s 1" in out, "production latency past the budget is counted")
+        for utterance in ("vet", "milk", "lease", "cancel it"):
+            expect(utterance not in out, "diagnostic prints no capture text")
+
     expect(confident_on_complex(dict(rulesNeedsReview=0, rulesUnresolvedState=0, clauses=3, atoms=5)),
            "three clauses with nothing flagged is confident-on-complex")
     expect(not confident_on_complex(dict(rulesNeedsReview=1, rulesUnresolvedState=0, clauses=3, atoms=50)),
@@ -798,7 +1168,8 @@ def selftest(_args):
     return 0
 
 
-COMMANDS = {"census": census, "trace": trace, "router": router, "whole": whole, "selftest": selftest}
+COMMANDS = {"census": census, "trace": trace, "router": router, "whole": whole, "select": select,
+            "diagnostic": diagnostic, "selftest": selftest}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:

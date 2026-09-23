@@ -14,7 +14,7 @@ import FoundationModels
 //   semantic-map --census <utterances.txt> [--out census.jsonl]
 //   semantic-map --rules-report <utterances.txt>
 //   semantic-map --run <utterances.txt> --out runs.jsonl [--shadow] [--no-jobs] [--atom-format lines|inline]
-//   semantic-map --replay runs.jsonl --arm rules|production|map [--policy NAME] [--records-out r.jsonl]
+//   semantic-map --replay runs.jsonl --arm rules|production|asked|map [--policy NAME] [--records-out r.jsonl]
 //
 // `--census` needs no model: it is the rules reading, the features and
 // production's routing decision for every capture, content-free. `--run` is
@@ -33,7 +33,7 @@ usage: semantic-map --availability
        semantic-map --census <utterances.txt> [--out census.jsonl]
        semantic-map --rules-report <utterances.txt>
        semantic-map --run <utterances.txt> --out <runs.jsonl> [--shadow] [--no-jobs] [--atom-format lines|inline]
-       semantic-map --replay <runs.jsonl> --arm rules|production|map [--policy standard|observe|no-splits|no-merges|no-withdrawals|no-entities] [--records-out <records.jsonl>]
+       semantic-map --replay <runs.jsonl> --arm rules|production|asked|map [--policy standard|observe|no-splits|no-merges|no-withdrawals|no-entities] [--records-out <records.jsonl>]
 """
 
 var arguments = Array(CommandLine.arguments.dropFirst())
@@ -127,6 +127,9 @@ func census(_ paths: [String]) {
             commit: buildCommit,
             features: ComplexityReader.read(input.text, rules: rules, referenceDate: referenceDate, calendar: calendar),
             policy: decision.reason,
+            fallbackPolicy: ProductionRoute.fallbackPolicy(
+                input.text, rules: rules, referenceDate: referenceDate, calendar: calendar
+            ),
             shouldRefine: decision.shouldRefine,
             policyDrift: decision.drift,
             rulesDigest: RulesDigest.of(rules.items, rules.operations)
@@ -243,8 +246,8 @@ func run(_ paths: [String]) async {
 // MARK: - Replay (deterministic)
 
 func replay(_ path: String) {
-    guard let arm, ["rules", "production", "map"].contains(arm) else {
-        FileHandle.standardError.write(Data("semantic-map: --replay needs --arm rules|production|map\n".utf8))
+    guard let arm, ["rules", "production", "asked", "map"].contains(arm) else {
+        FileHandle.standardError.write(Data("semantic-map: --replay needs --arm rules|production|asked|map\n".utf8))
         exit(2)
     }
     let chosen = policy(named: policyName)
@@ -257,9 +260,15 @@ func replay(_ path: String) {
         switch arm {
         case "rules":
             printRows(utterance: record.utterance, items: rules.items, operations: rules.operations)
-        case "production":
+        case "production", "asked":
+            // `asked` is production's model answer as if the policy had sent
+            // the capture, with production's validation, guard and budget: the
+            // arm that says what today's refinement would do with a capture
+            // the router hides. It needs a `--shadow` run; without one there
+            // is no answer and it prints the rules reading.
             let judged = ProductionRoute.rejudge(
                 record.production, transcript: record.utterance, rules: rules,
+                treatAsEligible: arm == "asked",
                 referenceDate: referenceDate, calendar: calendar
             )
             record.production = judged.0

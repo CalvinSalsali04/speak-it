@@ -224,15 +224,6 @@ enum SemanticJobs {
     ) async -> Raw? {
         let model = SystemLanguageModel.default
         record.contextSize = model.contextSize
-        if #available(iOS 26.4, macOS 26.4, *) {
-            // Counted by Apple's tokenizer, never estimated from characters.
-            // The instructions are counted as prompt text: the framework's own
-            // instruction framing adds a constant, which is recorded as the
-            // difference between runs rather than guessed here.
-            record.promptTokens = try? await model.tokenCount(for: prompt)
-            record.instructionTokens = try? await model.tokenCount(for: instructions)
-            record.schemaTokens = try? await model.tokenCount(for: schema)
-        }
         let session = LanguageModelSession(model: model, instructions: instructions)
         let clock = ContinuousClock()
         let started = clock.now
@@ -243,13 +234,45 @@ enum SemanticJobs {
                 options: GenerationOptions(sampling: .greedy)
             )
             record.latencyMilliseconds = milliseconds(clock.now - started)
+            let counts = await countTokens(
+                prompt: prompt, instructions: instructions, schema: schema, response: response.content.jsonString
+            )
+            record.promptTokens = counts.prompt
+            record.instructionTokens = counts.instructions
+            record.schemaTokens = counts.schema
+            record.responseTokens = counts.response
             return try decode(response.content)
         } catch {
-            record.latencyMilliseconds = milliseconds(clock.now - started)
+            record.latencyMilliseconds = record.latencyMilliseconds ?? milliseconds(clock.now - started)
             record.outcome = .generationFailed
             record.generationError = caseName(of: error)
+            if record.promptTokens == nil {
+                let counts = await countTokens(prompt: prompt, instructions: instructions, schema: schema, response: nil)
+                record.promptTokens = counts.prompt
+                record.instructionTokens = counts.instructions
+                record.schemaTokens = counts.schema
+            }
             return nil
         }
+    }
+
+    /// Apple's own token counts for one generation, never estimated from
+    /// characters, and taken AFTER the timed call so the counting cannot warm
+    /// the model inside the window being measured. Instructions are counted
+    /// through the `Instructions` overload rather than as prompt text. The
+    /// response is counted as the generated JSON, which is what occupied the
+    /// context. Nil before 26.4, where the API does not exist.
+    static func countTokens(
+        prompt: String, instructions: String, schema: GenerationSchema, response: String?
+    ) async -> (prompt: Int?, instructions: Int?, schema: Int?, response: Int?) {
+        guard #available(iOS 26.4, macOS 26.4, *) else { return (nil, nil, nil, nil) }
+        let model = SystemLanguageModel.default
+        let promptCount = try? await model.tokenCount(for: prompt)
+        let instructionCount = try? await model.tokenCount(for: Instructions { instructions })
+        let schemaCount = try? await model.tokenCount(for: schema)
+        var responseCount: Int?
+        if let response { responseCount = try? await model.tokenCount(for: response) }
+        return (promptCount, instructionCount, schemaCount, responseCount)
     }
 
     static func milliseconds(_ duration: Duration) -> Int {

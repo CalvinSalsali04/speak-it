@@ -114,7 +114,7 @@ struct RawEntitiesProposal: Codable, Equatable, Sendable {
 /// the rule that fired. The `framework*` cases would mean Apple generated a
 /// value outside a bound its own schema declared; they are kept apart because
 /// that is a finding about the framework, not about the model's judgement.
-enum JobRefusal: String, Codable, Equatable, Sendable {
+enum JobRefusal: String, Codable, Equatable, Sendable, Error {
     // units
     case frameworkSplitOutOfBounds
     case splitAfterFinalAtom
@@ -241,6 +241,8 @@ struct JobRecord: Codable, Equatable, Sendable {
     var promptTokens: Int?
     var instructionTokens: Int?
     var schemaTokens: Int?
+    /// The generated answer, counted as the JSON it arrived as.
+    var responseTokens: Int?
     var contextSize: Int?
     var rawUnits: RawUnitsProposal?
     var rawRelations: RawRelationsProposal?

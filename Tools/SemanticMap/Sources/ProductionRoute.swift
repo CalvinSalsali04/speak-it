@@ -113,7 +113,16 @@ struct ProductionTrace: Codable, Equatable, Sendable {
     var promptTokens: Int?
     var instructionTokens: Int?
     var schemaTokens: Int?
+    /// The generated answer, counted as the JSON it arrived as.
+    var responseTokens: Int?
     var contextSize: Int?
+    /// Set only when the rules reading carries an operation and rows: the
+    /// policy production would apply if that operation's target were not
+    /// found, when it re-extracts with operations off and so can still reach
+    /// the model (`SwiftDataThoughtRepository`'s `.notFound` fallback). The
+    /// probe has no store, so this is the policy of that exit, not a claim
+    /// that it was taken.
+    var fallbackPolicy: RoutePolicyReason?
     /// The model's structured answer exactly as generated, as JSON. Local debug
     /// evidence on the machine that ran it: it contains capture text and is
     /// never analytics. `--replay` rebuilds production's `ModelExtraction`
@@ -151,6 +160,22 @@ enum ProductionRoute {
         return (reason, shouldRefine, drift)
     }
 
+    /// The policy of production's other route to the model: an operation
+    /// whose target is not found, with rows beside it, is re-extracted with
+    /// operations off, and that reading goes through the same gate.
+    static func fallbackPolicy(
+        _ transcript: String,
+        rules: (items: [ExtractedThought], operations: [CaptureOperationRequest]),
+        referenceDate: Date,
+        calendar: Calendar
+    ) -> RoutePolicyReason? {
+        guard !rules.operations.isEmpty, !rules.items.isEmpty else { return nil }
+        let reading = ThoughtExtractionEngine.extractWithRules(
+            transcript, referenceDate: referenceDate, calendar: calendar, permitsOperations: false
+        )
+        return policy(transcript, rules: (reading.items, reading.operations)).reason
+    }
+
     static func trace(
         _ transcript: String,
         rules: (items: [ExtractedThought], operations: [CaptureOperationRequest]),
@@ -173,6 +198,7 @@ enum ProductionRoute {
             validatorDrift: nil,
             modelItems: nil,
             rulesItems: rules.items.count,
+            fallbackPolicy: fallbackPolicy(transcript, rules: rules, referenceDate: referenceDate, calendar: calendar),
             instructionsFingerprint: SemanticJobPrompts.fingerprint(of: ProductionRefinementPrompt.instructions)
         )
         let eligible = decision.reason == .eligible
@@ -194,13 +220,6 @@ enum ProductionRoute {
                 return (trace, rules.items, rules.operations)
             }
             let prompt = productionPromptPrefix + transcript
-            if #available(iOS 26.4, macOS 26.4, *) {
-                trace.promptTokens = try? await model.tokenCount(for: prompt)
-                trace.instructionTokens = try? await model.tokenCount(for: ProductionRefinementPrompt.instructions)
-                trace.schemaTokens = try? await model.tokenCount(
-                    for: ProductionRefinementMirror.ModelExtraction.generationSchema
-                )
-            }
             let session = LanguageModelSession(model: model, instructions: ProductionRefinementPrompt.instructions)
             let clock = ContinuousClock()
             let started = clock.now
@@ -212,6 +231,16 @@ enum ProductionRoute {
                 )
                 trace.latencyMilliseconds = SemanticJobs.milliseconds(clock.now - started)
                 trace.rawResponse = response.rawContent.jsonString
+                // Counted after the timed window, never inside it.
+                let counts = await SemanticJobs.countTokens(
+                    prompt: prompt, instructions: ProductionRefinementPrompt.instructions,
+                    schema: ProductionRefinementMirror.ModelExtraction.generationSchema,
+                    response: response.rawContent.jsonString
+                )
+                trace.promptTokens = counts.prompt
+                trace.instructionTokens = counts.instructions
+                trace.schemaTokens = counts.schema
+                trace.responseTokens = counts.response
                 let judged = judge(
                     response.rawContent, transcript: transcript, rules: rules,
                     referenceDate: referenceDate, calendar: calendar, into: &trace
@@ -222,6 +251,14 @@ enum ProductionRoute {
                 trace.latencyMilliseconds = SemanticJobs.milliseconds(clock.now - started)
                 trace.generationError = SemanticJobs.caseName(of: error)
                 trace.unbudgeted = .generationFailed
+                let counts = await SemanticJobs.countTokens(
+                    prompt: prompt, instructions: ProductionRefinementPrompt.instructions,
+                    schema: ProductionRefinementMirror.ModelExtraction.generationSchema,
+                    response: nil
+                )
+                trace.promptTokens = counts.prompt
+                trace.instructionTokens = counts.instructions
+                trace.schemaTokens = counts.schema
                 let timedOut = (trace.latencyMilliseconds ?? 0) > productionBudgetMilliseconds
                 trace.outcome = eligible ? (timedOut ? .budgetExpired : .generationFailed) : .notInvoked
                 return (trace, rules.items, rules.operations)
@@ -246,11 +283,14 @@ enum ProductionRoute {
         _ recorded: ProductionTrace,
         transcript: String,
         rules: (items: [ExtractedThought], operations: [CaptureOperationRequest]),
+        treatAsEligible: Bool = false,
         referenceDate: Date,
         calendar: Calendar
     ) -> (ProductionTrace, final: [ExtractedThought], operations: [CaptureOperationRequest]) {
         var trace = recorded
-        let eligible = recorded.policy == .eligible
+        // An operation capture never reaches the model in production, and a
+        // shadow run never asks about one, so it stays out of `asked` too.
+        let eligible = recorded.policy == .eligible || (treatAsEligible && rules.operations.isEmpty)
         guard let raw = recorded.rawResponse else { return (trace, rules.items, rules.operations) }
 #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *),

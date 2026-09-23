@@ -24,12 +24,13 @@ enum SelfCheck {
         reminder: Date? = nil,
         person: String? = nil,
         review: Bool = false,
-        state: SemanticState = .resolved
+        state: SemanticState = .resolved,
+        repaired: Bool = false
     ) -> ExtractedThought {
         ExtractedThought(
             sourceQuote: quote,
             rawQuote: quote,
-            wasRepaired: false,
+            wasRepaired: repaired,
             analysisText: quote,
             suggestedTitle: nil,
             organization: OrganizedThought(
@@ -258,9 +259,9 @@ enum SelfCheck {
         expect(added.decisions.contains { $0.reason == .modelOnlyPerson && $0.verdict == .unresolved },
                "a person only the model saw is unresolved, not accepted")
 
-        // A non-person reading of the rules' person: whatever the deterministic
-        // resolver says, the result either keeps the rules or clears the
-        // person, and never moves anything else.
+        // A non-person reading of the rules' person. The expected result is
+        // computed from the deterministic reading of the same row, so the
+        // fixture is determinate whatever #117's resolver says about it.
         let bank = "call TD Bank about the fee"
         let bankRow = [thought(bank, type: .personFollowUp, reminder: reminder, person: "TD Bank")]
         let organization = Arbiter.arbitrate(
@@ -270,23 +271,175 @@ enum SelfCheck {
         )
         let after = organization.items.first?.organization
         expect(after?.reminderDate == reminder, "clearing a person keeps the reminder")
-        expect(after?.personName == nil || after?.personName == "TD Bank", "a person is kept or cleared, never replaced")
-        if after?.personName == nil {
-            expect(after?.itemType != .personFollowUp, "a cleared person no longer types the row as a follow-up")
+        switch Arbiter.deterministicKind(of: bankRow[0]) {
+        case .person:
+            expect(after?.personName == "TD Bank" && organization.decisions.contains { $0.reason == .personKeptByRules },
+                   "a deterministic person outranks the model")
+        case .unknown:
+            expect(after?.personName == "TD Bank"
+                   && organization.decisions.contains { $0.reason == .personRejectedOnlyByModel && $0.verdict == .unresolved },
+                   "the model alone never removes a person #117 keeps")
+        default:
+            expect(after?.personName == nil && after?.itemType != .personFollowUp
+                   && organization.decisions.contains { $0.reason == .personRejectedByBoth },
+                   "a person both readings reject is cleared, and the row is no longer a follow-up")
         }
+
+        // `unknown` from the model is an abstention, never a vote against.
+        let abstained = Arbiter.arbitrate(
+            transcript: bank, rules: (bankRow, []),
+            map: map(atoms: 6, units: nil, entities: [EntityEvidence(span: span(1, 2), kind: .unknown)]),
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(abstained.items == bankRow, "a model unknown changes nothing")
+        expect(abstained.decisions.contains { $0.reason == .modelAbstained && $0.verdict == .unresolved },
+               "and is recorded as an abstention")
+
+        // A row naming two candidates has no single deterministic kind.
+        let pair = thought("ask Priya and Marcus about TD Bank", type: .personFollowUp, person: "Priya")
+        if PersonMentionResolver.mentions(in: pair.sourceQuote).count > 1 {
+            expect(Arbiter.deterministicKind(of: pair) == .unknown, "two names on a row make the rules reading abstain")
+        }
+
+        // Fixtures about one row carrying both sides of a relation turn
+        // splitting off, so what they test is the relation handler and not
+        // whatever the parser makes of the pieces.
+        var noSplits = ArbitrationPolicy.standard
+        noSplits.acceptSplits = false
+
+        // A withdrawal inside one row: the rules kept "never mind" in the
+        // same row as the reminder. The row is exposed, not agreed with.
+        let oneRow = [thought(withdrawal, type: .task, reminder: reminder)]
+        let oneRowWithdrawn = Arbiter.arbitrate(
+            transcript: withdrawal, rules: (oneRow, []), map: withdrawMap,
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(oneRowWithdrawn.items.first?.organization.reminderDate == nil
+               && oneRowWithdrawn.items.first?.needsReview == true,
+               "a row carrying both the reminder and its withdrawal loses the reminder")
+        expect(oneRowWithdrawn.decisions.contains { $0.reason == .spanningRowStillExecutes && $0.effect == .withdrewExecution },
+               "and says the spanning row still executed")
+        expect(!oneRowWithdrawn.decisions.contains { $0.topic == .relation && $0.verdict == .agree },
+               "a relation is never agreed with while a spanning row executes")
+
+        // A correction the parser already applied in place is agreed with.
+        let corrected = "remind me at three no at four to call the bank"
+        let repairedRow = [thought(corrected, type: .task, reminder: reminder, repaired: true)]
+        let repairedResult = Arbiter.arbitrate(
+            transcript: corrected, rules: (repairedRow, []),
+            map: map(atoms: 11, units: [span(0, 3), span(4, 10)], relations: [UnitRelation(kind: .replaces, from: 1, to: 0)]),
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(repairedResult.items.first?.organization.reminderDate == reminder,
+               "a repaired correction keeps its reminder")
+        expect(repairedResult.decisions.contains { $0.reason == .correctionAlreadyResolved && $0.verdict == .agree },
+               "and is recorded as already resolved")
+
+        // A condition that executes unconditionally: as its own row, and
+        // inside one row with its action.
+        let conditional = "if it rains bring the chairs in at five"
+        let conditionMap = map(
+            atoms: 9, units: [span(0, 2), span(3, 8)],
+            relations: [UnitRelation(kind: .isConditionFor, from: 0, to: 1)]
+        )
+        let conditionRows = [thought("if it rains"), thought("bring the chairs in at five", type: .task, reminder: reminder)]
+        let heldApart = Arbiter.arbitrate(
+            transcript: conditional, rules: (conditionRows, []), map: conditionMap,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(heldApart.items.last?.organization.reminderDate == nil, "the governed row loses its unconditional reminder")
+        expect(heldApart.decisions.contains {
+            ($0.reason == .conditionSupportedByRules || $0.reason == .conditionModelOnly) && $0.effect == .withdrewExecution
+        }, "and the withdrawal says whether the rules saw the condition too")
+        let conditionRow = [thought(conditional, type: .task, reminder: reminder)]
+        let heldTogether = Arbiter.arbitrate(
+            transcript: conditional, rules: (conditionRow, []), map: conditionMap,
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(heldTogether.items.first?.organization.reminderDate == nil
+               && heldTogether.decisions.contains { $0.reason == .spanningRowStillExecutes },
+               "a row holding its own condition and a resolved reminder is withdrawn")
+        let unsupported = SemanticState.unsupported(.unsupportedCondition)
+        let alreadyHeld = [thought(conditional, type: .task, reminder: reminder, review: true, state: unsupported)]
+        let heldByRules = Arbiter.arbitrate(
+            transcript: conditional, rules: (alreadyHeld, []), map: conditionMap,
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(heldByRules.items == alreadyHeld && heldByRules.decisions.contains { $0.reason == .conditionAlreadyHeld },
+               "a condition the rules already hold is agreed with and left alone")
+
+        // Message content: its own executing row is withdrawn; the message
+        // row that carries it keeps the reminder to send it.
+        let message = "text Sam that I will be late at six"
+        let messageMap = map(
+            atoms: 9, units: [span(0, 1), span(2, 8)],
+            relations: [UnitRelation(kind: .isMessageContentOf, from: 1, to: 0)]
+        )
+        let contentRows = [thought("text Sam", type: .task), thought("that I will be late at six", type: .task, reminder: reminder)]
+        let contentWithdrawn = Arbiter.arbitrate(
+            transcript: message, rules: (contentRows, []), map: messageMap,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(contentWithdrawn.items.last?.organization.reminderDate == nil
+               && contentWithdrawn.decisions.contains { $0.reason == .messageContentExecutes },
+               "a message's contents never schedule on their own row")
+        let messageRow = [thought(message, type: .task, reminder: reminder)]
+        let messageKept = Arbiter.arbitrate(
+            transcript: message, rules: (messageRow, []), map: messageMap,
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(messageKept.items == messageRow && messageKept.decisions.contains { $0.reason == .messageContentAlreadyInside },
+               "the message row keeps its reminder to send the message")
+
+        // An accepted split, the arbiter's main power. Both pieces are plain
+        // parser input; a refusal here means splitting is inert.
+        let joined = "buy milk call the dentist"
+        let joinedRow = [thought(joined, type: .task)]
+        let splitResult = Arbiter.arbitrate(
+            transcript: joined, rules: (joinedRow, []), map: map(atoms: 5, units: [span(0, 1), span(2, 4)]),
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(splitResult.decisions.contains { $0.reason == .splitAccepted } && splitResult.items.count >= 2,
+               "a cut between two plain intentions is accepted: \(splitResult.decisions.map(\.reason.rawValue))")
+
+        // Carried context is the transcript's own words, and only where the
+        // map says one thought gives context to another.
+        let dated = "tomorrow at nine call the vet email the landlord"
+        let datedAtoms = Atoms.atomize(dated)
+        let datedUnits = [span(0, 5), span(6, 8)]
+        let context = Arbiter.carriedContext(
+            into: span(6, 8), units: datedUnits, relations: [UnitRelation(kind: .givesContextTo, from: 0, to: 1)],
+            transcript: dated, atoms: datedAtoms
+        )
+        expect(context.map { dated.lowercased().contains($0.lowercased()) } ?? true,
+               "carried context is words from the capture")
+        expect(Arbiter.carriedContext(into: span(6, 8), units: datedUnits, relations: [], transcript: dated, atoms: datedAtoms) == nil,
+               "no relation, no carried context")
 
         // The structural guarantee, directly.
         expect(Arbiter.executablesAreSubset(rows, of: rows), "the rules reading is a subset of itself")
         let invented = [thought("call the bank", type: .task, reminder: reminder.addingTimeInterval(60))]
         expect(!Arbiter.executablesAreSubset(invented, of: rows), "a reminder the rules never produced is caught")
+        let copied = [thought("call the bank", type: .task, reminder: reminder), thought("at three", type: .task, reminder: reminder)]
+        expect(Arbiter.executablesAreSubset(copied, of: rows) && Arbiter.executingRowsAdded(copied, over: rows) == 1,
+               "an existing instant on a second row passes the set check and is counted instead")
 
         // Every path above: nothing executable outside the rules reading.
         for (result, source) in [(withdrawn, rows), (quotedCut, quotedRow), (danglingCut, danglingRow),
-                                 (merged, twoRows), (organization, bankRow)] {
-            expect(Arbiter.executablesAreSubset(result.items, of: source), "arbitration created nothing executable")
-            expect(result.decisions.last?.reason == .structuralGuaranteeHeld
+                                 (merged, twoRows), (organization, bankRow), (abstained, bankRow),
+                                 (oneRowWithdrawn, oneRow), (repairedResult, repairedRow), (heldApart, conditionRows),
+                                 (heldTogether, conditionRow), (heldByRules, alreadyHeld),
+                                 (contentWithdrawn, contentRows), (messageKept, messageRow), (splitResult, joinedRow)] {
+            expect(Arbiter.executablesAreSubset(result.items, of: source), "arbitration created no new instant")
+            expect(Arbiter.executingRowsAdded(result.items, over: source) == 0, "arbitration added no executing row")
+            expect(result.decisions.contains { $0.reason == .noNewInstantHeld }
                    || result.decisions.contains { $0.reason == .operationOwnedByRules },
-                   "every arbitrated capture ends with the guarantee checked")
+                   "every arbitrated capture has the guarantee checked")
         }
     }
 
@@ -310,6 +463,15 @@ enum SelfCheck {
         let operation = CaptureOperationRequest(operation: .cancel, target: nil, sourceQuote: "cancel it", needsReview: true)
         expect(ProductionRoute.policy("cancel it", rules: ([], [operation])).reason == .operationPresent,
                "an operation returns before the policy")
+        expect(ProductionRoute.fallbackPolicy(
+            "buy milk", rules: ([thought("buy milk")], []), referenceDate: referenceDate, calendar: calendar
+        ) == nil, "no operation, no fallback exit")
+        expect(ProductionRoute.fallbackPolicy(
+            "cancel it", rules: ([], [operation]), referenceDate: referenceDate, calendar: calendar
+        ) == nil, "an operation with no rows discards on not-found and never re-extracts")
+        expect(ProductionRoute.fallbackPolicy(
+            "buy milk", rules: ([thought("buy milk")], [operation]), referenceDate: referenceDate, calendar: calendar
+        ) != nil, "an operation beside rows records the gate its re-extraction would meet")
 
         var trace = ProductionTrace(
             characters: 10, policy: .eligible, shouldRefine: true, policyDrift: false, availability: nil,

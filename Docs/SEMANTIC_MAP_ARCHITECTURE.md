@@ -54,8 +54,17 @@ records the exit. It does not re-implement them:
   recorded as `budgetExpired` together with what validation and the guard
   would have done with it (`unbudgeted`);
 - token counts come from `SystemLanguageModel.tokenCount(for:)` (26.4+) for
-  the prompt, the instructions and the schema, beside `contextSize`. They are
-  never estimated from characters; before 26.4 the fields are empty.
+  the prompt, the instructions (through the `Instructions` overload, not as
+  prompt text), the schema and the generated answer, beside `contextSize`.
+  They are taken after the timed call, so counting cannot warm the model
+  inside the window being measured. They are never estimated from
+  characters; before 26.4 the fields are empty;
+- production has a second route to the model: when a capture's operation
+  finds no target and rows sit beside it,
+  `SwiftDataThoughtRepository.swift:1111-1116` re-extracts with operations
+  off, and that reading meets the same gate. The probe has no store, so it
+  records the gate that re-extraction would meet (`fallbackPolicy`) rather
+  than claiming the exit was taken.
 
 `--census` runs the deterministic half on any Mac with no model: every
 capture's policy exit, and 27 content-free complexity features. The
@@ -159,9 +168,29 @@ What the map may change, exhaustively:
 
 Never: create an operation, a reminder, a date, a place trigger, a name or any
 text. A capture with an operation is not arbitrated. A final check confirms
-every executable value in the output already existed in the rules output and
-falls back to the rules reading whole if not; that is a structural guarantee,
-reported as one, and a firing means an arbiter bug.
+no instant, place or recurrence in the output is new, and falls back to the
+rules reading whole if one is; that is a structural guarantee, reported as
+one (`noNewInstantHeld`), and a firing means an arbiter bug. It is a set
+check and says no more than that: a split can put an existing instant on a
+second row, which would schedule it twice, so the number of executing rows
+added is recorded beside it (`executingRowsAdded`) and reported by the
+scorers rather than folded into the guarantee.
+
+Two rules about evidence the grader of #118 sharpened:
+
+- A relation is never recorded as agreement while a row carrying both of its
+  sides still executes. For `replaces` and `cancels` that row is withdrawn
+  unless the parser repaired it (the correction was applied in place); for
+  `isConditionFor` a row holding its own condition that executes with a
+  resolved state is withdrawn (`spanningRowStillExecutes`). For
+  `isMessageContentOf` a row spanning both is the message row itself, whose
+  reminder is to send the message, so it is left alone.
+- A person is cleared only when the model gives a positive non-person kind
+  and `PersonMentionResolver.entityKind(in:)` also gives one. The model's
+  `unknown` is an abstention (`modelAbstained`), and a deterministic
+  `unknown`, or a row naming more than one candidate, keeps the person
+  (`personRejectedOnlyByModel`): #117 keeps an unfamiliar name a person, and
+  one model vote does not overrule it.
 
 `unresolved` is never hidden. Where evidence disagrees and neither side is
 decisive, the capture keeps the rules reading and the decision log says so;
@@ -184,10 +213,63 @@ Written before any device run. Each names the result that kills it.
 | M2. The relations job finds withdrawals and corrections the rules still execute | on inspection of raw records, `withdrawnRowStillExecutes` / `correctedRowStillExecutes` mostly fire where nothing was withdrawn |
 | M3. The entity job types contextually | one kind is at least 90% of at least 20 answers (`score.py trace` prints DEGENERATE), the `temporalRole`/`locationRole` precedent; or cleared persons are mostly real people |
 | M4. Factoring fixes Phase B's refusal rate | a job's refusal rate on `rambling` is near Phase B's 59/85 |
-| S1. No arbitration outcome creates execution | `executionOutsideRulesReading` ever fires, or an unsafe count on the map arm exceeds the rules arm |
+| M5. The model finds coherent long thoughts the parser split | `merge/mergedMemory` stays at zero while `mergeNotClean` or `mergeWouldHideAction` fire, i.e. the merge power is inert; category D shows no gain on the fresh slice |
+| S1. No arbitration outcome creates a new instant | `executionOutsideRulesReading` ever fires, or an unsafe count on the map arm exceeds the rules arm |
+| S2. No arbitration outcome schedules an existing instant twice | `executingRowsAdded` fires on any capture |
 
 Development sets are for killing claims, not for supporting them. Only the
 fresh slice supports one.
+
+## Census on `rambling` (Calvin's Mac, 2026-09-22)
+
+Calvin ran `./Tools/SemanticMap/census-devsets.sh` at `1f2e4bc` with the
+`JobRefusal` fix applied locally, and reported for `rambling`: 85 captures,
+20 rules failures; production's policy asks the model about 6 captures, and
+4 of them are among the 20 failures. The other 16 are never sent: 14 because no row
+needs review, 2 because only unsupported rows do. P1 is therefore not
+falsified on this set.
+
+| signal | fires | failures when it fires | failures caught |
+| --- | --- | --- | --- |
+| confidentOnComplex | 10 | 8 (80%, lift 3.40) | 8/20 |
+| mixedTodayMemory | 19 | 11 | 11/20 |
+| clauses>=3 | 13 | 9 | 9/20 |
+| rulesItems>=3 | 12 | 8 | 8/20 |
+| atoms>=25 | 22 | 10 | 10/20 |
+| disfluency | 24 | 4 | weak |
+
+Development evidence only, from a set this work has read: it says the
+current router hides most rules failures from the model, not which router
+would be right. No router is chosen from it and production routing is not
+changed.
+
+## The diagnostic run (next, on Calvin's Mac)
+
+The smallest run that answers one question: given the captures the router
+hides, does the grounded map recover useful structure without damaging
+complex captures the rules already get right?
+`./Tools/SemanticMap/diagnostic.sh` selects, from the rules reading and the
+labels alone (`score.py select`), every rules failure production never sends
+to the model, every `confidentOnComplex` capture, and one rules-correct
+complex control per failure (its C/R twin where there is one, else the
+nearest in atoms), deduplicated. On the census above that is about 16
+failures, 2 correct `confidentOnComplex` captures and 14 controls. Each gets
+production's model in shadow and the three jobs; `score.py diagnostic` then
+reports per group: model availability, each job's outcome, the arbiter's
+contribution, failures improved and correct captures damaged (for the map
+and for production's own model as if the router had asked), grounding
+rejections, latency and the final fallback, with ids only.
+
+What each outcome decides:
+
+- Improved on hidden failures, nothing damaged among controls: the design is
+  worth a fresh slice; the next step is the freeze and an independent author.
+- Improved, and controls damaged: the damaging power is named by the
+  arbiter reasons on the damaged ids, and is switched off with `--replay
+  --policy` before anything else is run. No new generation is needed.
+- Nothing improved, with jobs accepted: the map is inert on these failures
+  (M1, M2, M5), and the failures' layer is the parser, not routing.
+- Jobs mostly refused: M4, and the job prompts are the finding.
 
 ## Phase 5: the fresh slice
 
@@ -199,7 +281,7 @@ evidence; neither was found in the repository, any branch, any pull request or
 the project files, so they come in only if Calvin supplies them.
 
 **Freeze commit:** not yet. The architecture freezes after the first device
-run has been read, because M1–M4 may kill a job, and a slice written against a
+run has been read, because M1–M5 may kill a power, and a slice written against a
 design that then changes has been spent.
 
 ## Phase 6: speech evidence
@@ -274,16 +356,12 @@ measured", and each says what measures it.
 ./Tools/SemanticMap/build/semantic-map --availability     # model, context size, token counting
 ./Tools/SemanticMap/census-devsets.sh > census.txt        # no model: P1 on the development sets
 
-# One development run with the model: the rambling set, production asked about every capture.
-grep -v '^#' Tools/CorpusRunner/devsets/rambling.tsv | awk -F'\t' '$1!="id" && NF>=5 {print $1"\t"$2}' > rambling.in
-./Tools/SemanticMap/build/semantic-map --run rambling.in --out runs.jsonl --shadow
-python3 Tools/SemanticMap/score.py trace runs.jsonl > trace.txt     # P2, P3, M2-M4, S1
-for arm in rules production map; do
-  ./Tools/SemanticMap/build/semantic-map --replay runs.jsonl --arm $arm > $arm.report
-  python3 Tools/CorpusRunner/heldout/score.py Tools/CorpusRunner/devsets/rambling.tsv $arm.report > $arm.score
-done
+# The diagnostic run: the rows the router hides, plus matched controls, on rambling only.
+./Tools/SemanticMap/diagnostic.sh                        # writes output/semantic-map-diagnostic/<time>/
 ```
 
-Send back `census.txt`, `trace.txt`, the three `.score` files and
-`runs.jsonl`. The run file holds development-set text only, and is what lets
-every later change to the deterministic half be re-scored without the model.
+Send back `selection.txt` and `diagnostic.txt` from that folder (ids and
+counts only), and `runs.jsonl` if the per-capture raw outputs should be read
+here. The run file holds development-set text only, and is what lets every
+later change to the deterministic half be re-scored without the model. The
+full 85-capture run is not the next step.
