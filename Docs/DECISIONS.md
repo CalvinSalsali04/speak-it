@@ -260,6 +260,122 @@ the stated clock when the row has one (seconds zero, as the snap does) and
 from the previous instant otherwise, so a row with no intent behaves exactly
 as before. Found by the grade of #133, where it first appeared as a wrinkle of
 repeating alarms; it predates them and moves notifications too.
+## 2026-09-23 — A single spoken cancel holds on a knowledge row instead of deleting it (DEL-26)
+
+Found in review of #150 (DEL-25). The single-target search refuses rows in
+Memory (`CaptureTargetMatcher.candidates` asks `belongsInMemory`), and
+`belongsInMemory` is false for a row that needs clarification. So a
+knowledge row held in Needs review is still searched: the `.unclear` safety
+row the extractor writes for reported speech or a point it cannot identify,
+or a note waiting on a question. As the one match of "stop reminding me
+about the landlord" it went straight to `delete`, and `delete` removes the
+capture and its original transcript with its last row. The same harm as
+DEL-25, on the sibling path.
+
+**Producible from speech, by reading.** Tier 1 of the cancel patterns takes
+any object phrase: `stop reminding me about X`, `never mind X`, `forget
+about X`, `don't remind me about X`. The gating corpus already pins "Stop
+reminding me about the gym" and "Never mind the milk" as `.cancel` with
+targets "gym" and "milk", and the new tests use those frames with a
+different noun. A leading "cancel" is the one frame that does not reach
+"the lease": `cancelsAnArrangement` reads "lease" as an arrangement and
+files the sentence as an errand. Not run here (no Swift toolchain); the new
+tests drive the rules path when the suite runs.
+
+**The change.** The row stays searchable, and when the one match is not
+`isActionKind` the request is held, beside the existing `awaitsOrganization`
+hold: `holdOperation` keeps the capture as a Needs review row and the
+outcome is `.ambiguous` naming that row. Nothing is deleted, completed or
+moved without the person, and the request is not dropped. Excluding such
+rows from the search instead was rejected: with no match the request reports
+nothing found and its words become a new errand, which silently drops what
+the person asked. It applies to complete and reschedule as well as cancel,
+since the rows it reaches are only knowledge rows held for review.
+
+**Hypothesis.** A single-target cancel, complete or move acts without the
+person only on a row that is `isActionKind`. A knowledge row held for review
+that is the one match is held, with the row and its transcript intact.
+
+**Falsifier.** `testASingleTargetCancelHoldsAReportedSpeechRowHeldForReview`
+or `testASingleTargetCancelHoldsANoteHeldForReview` reporting `.performed`,
+losing the row or its transcript, or leaving no review row for the request;
+or `testASingleTargetCancelStillActsOnAnActionRow` no longer cancelling the
+one action row in the same frame.
+
+## 2026-09-23 — A broad request reaches Today's action rows and never Memory (DEL-25)
+
+"Cancel all my reminders" and "delete all my tasks" are held for
+confirmation, and that part was right. What they would act on was not: the
+list stored for the prompt was `CaptureTargetMatcher.activeItems` over every
+other capture, which leaves out only completed and archived rows. So a
+confirmed broad cancel deleted Memory's notes, ideas and people facts along
+with the tasks, and `delete` took each capture's transcript with its last
+row. The single-target search has refused rows in Memory
+(`belongsInMemory`) since "cancel my milk reminder" deleted "Sarah likes oat
+milk"; the broad list had no line at all. Found by reading, in the V1 audit
+of decisions on reach and obligation (Q-A).
+
+**The invariant.** A broad request reaches only rows that are the kind of
+thing Today is for: an actionable type (task, shopping, person follow-up,
+event) or a row carrying a reminder the person asked for. That is
+`CapturedItem.isActionKind`, which is now the one expression `belongsInToday`
+and `belongsInMemory` split on, not a second classification beside them. It
+is drawn by kind rather than by live placement, so a knowledge row waiting in
+Needs review (which is in neither destination) is left out, and a note with a
+reminder (on Today, by the person's own request) is reached. That makes the
+broad line stricter than the single-target one, not the same: the
+single-target search asks `belongsInMemory`, which a held knowledge row does
+not satisfy, so a single-target cancel can still reach one. This entry covers
+the broad path only; DEL-26 (above) holds the single-target case.
+`SwiftDataThoughtRepository.broadOperationCandidates(in:)` applies it. The
+prompt's "Cancel N items?" and the confirmation both read the stored list
+again through `heldCandidates` (below), so the number confirmed is the
+number acted on. Cancel and complete read the same list. What confirming
+does to a row (delete for cancel) is unchanged: delete versus archive is the owner's open
+decision in Q-A, and this is only about reach.
+
+**The noun is not narrowed, because the parser does not keep it.** The rules
+path builds a broad request with `target: nil`, so "cancel all my
+reminders", "delete all my tasks" and "delete all my notes" are the same
+request. Reading "reminders" as "rows with a reminder" would be the more
+conservative reading, but it would have to be re-parsed from `sourceQuote` in
+the repository, which is a second parser. So every broad request reaches the
+whole action side, and "delete all my notes" now names nothing rather than
+everything. Keeping the noun on `CaptureOperationRequest` is the follow-up if
+the owner wants "reminders" to mean less than "tasks".
+
+**Hypothesis.** Every row a confirmed broad cancel or complete destroys or
+marks done was on Today's action side when the request was held, and no row
+`belongsInMemory` is ever in the stored list.
+
+**Falsifier.** A `CaptureOperationTests` case in which a confirmed broad
+cancel or complete removes or completes a `.note`, `.idea` or person note, or
+a held knowledge row, or in which the stored list's count differs from the
+number of rows acted on. `testAConfirmedBroadCancelNeverReachesMemory`,
+`testABroadRequestWithOnlyMemoryRowsNamesNothing` and
+`testAConfirmedBroadCompleteNeverReachesMemory` are those cases, and each
+fails if the list goes back to `activeItems` alone. The first also fails if
+the line is drawn with `!belongsInMemory` (the held note) or excludes a note
+with a reminder.
+
+**How it composes with #131** (merged into this branch on 2026-09-23, so
+this is stacked on #131). #131 leaves unorganized captures out of the same
+list and reads each held row again at confirmation. `broadOperationCandidates`
+now takes both filters, `isActionKind && !awaitsOrganization`, and
+`heldCandidate` asks both again. So a row edited into a note between hold and
+confirm, or a Memory row named by a record held before this change, is
+neither counted by the prompt (`pendingOperationCandidateIDs`) nor acted on.
+Both read `heldCandidates`, so the number confirmed is still the number acted
+on. `testConfirmingSkipsARowEditedIntoANoteSinceItWasHeld` and
+`testConfirmingARecordHeldBeforeTheScopeSkipsItsMemoryRows` pin this.
+
+#131's three broad tests in `DurabilityTests` wrote their rows as the
+placeholder `beginCapture` writes, `.unclear`. The kind rule leaves such a
+row out on its own, which broke the control test and would have let the
+other two pass with `awaitsOrganization` deleted. Each now types its row as a
+task (`typeAsTask`) and keeps every mark of a placeholder's shape, so the
+control still proves that shape alone does not exclude a finished capture's
+row, and the other two still prove the state check does the excluding.
 
 ## 2026-09-23 — A broad cancel or complete leaves out captures not yet organized
 

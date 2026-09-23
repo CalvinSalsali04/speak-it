@@ -1655,7 +1655,61 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         4068 -> 4068 on 2026-09-23, from the diagnostics' truthfulness
         fixes: dropping `max_duration` from the pinned `stop_trigger` set
         removes a snake_case label, not a multi-word literal.
-        What the test
+        #152's branch had, on its own parent, 4068 -> 4087 on 2026-09-23, from
+        DEL-25 (a confirmed "cancel all my reminders" reaching Memory):
+        three tests in `CaptureOperationTests`, nineteen literals,
+        enumerated rather than assumed. Six are fixtures: three spoken
+        requests (`"Cancel all my reminders"`, `"Delete all my notes"`,
+        `"Mark all my tasks done"`) and three Memory rows (`"The spare key
+        is under the blue pot"`, `"A podcast about city parks"`,
+        `"Something about the lease"`). The fourth Memory row, `"Sarah
+        likes oat milk"`, was already here, and `"Priya's birthday"` too.
+        Twelve are assertion messages, two of them interpolated. The last
+        is the doc-comment hazard once more, in a `//` comment this time:
+        the editor's prompt quoted as `"Cancel N items?"` counts like a
+        fixture, and is left quoted. One message, `"A broad cancel must be
+        held for confirmation"`, is also in #131's `DurabilityTests`, so
+        the two branches together add one fewer than their deltas sum to.
+        The two met on 2026-09-23, when #131 was merged into the DEL-25
+        branch so that `heldCandidate` could ask the kind question too:
+        4099 (#131) -> 4124, recounted on the merged tree rather than
+        summed. Twenty-five, enumerated: DEL-25's nineteen less the one
+        message both sides carry is eighteen, and the two confirm-time
+        tests the merge added bring seven assertion messages, all new:
+        `a row edited into a note was deleted`, `confirming an old record
+        reached Memory`, `precondition: both were held`, `precondition:
+        the edited row is a Memory note`, `the number confirmed is not
+        the number acted on` (used twice, counted once), `the prompt
+        counts Memory rows from an old record` and `the prompt counts a
+        row that is now a note`. Typing #131's three placeholders as
+        tasks added a helper and four preconditions and no literal.
+        4124 -> 4125 the same day, in review of #150: a fifth knowledge
+        row for the DEL-25 tests, an `.unclear` safety row held for review
+        in a finished capture, so that only its kind can leave it out. One
+        literal, its words, `Something I never finished saying`, recounted
+        from the tree rather than incremented. 4125 -> 4138 on
+        2026-09-23, from DEL-26 (a single-target cancel deleting a
+        knowledge row held for review): three `CaptureOperationTests`
+        tests and a helper, thirteen literals, enumerated rather than
+        assumed. Four are fixtures (`Sarah said the landlord is raising
+        the rent`, `Stop reminding me about the landlord`, `Never mind the
+        lease`, `Remind me to call the landlord tomorrow`) and eight are
+        assertion messages. The thirteenth is a new shape of the quoting
+        hazard: two doc comments each say a quoted utterance `is a
+        gating-corpus cancel with target` a quoted noun, and the extractor
+        reads the words *between* the closing and the opening quotation
+        marks as a literal, ` is a gating-corpus cancel with target `,
+        counted once for both. Left as written. 4138 -> 4142 the same day,
+        in review of #152: the "Never mind the lease" test gains an
+        unrelated action row, so a vague reading would list two rows and
+        fail. Four literals, recounted from the tree: the row's words,
+        `Water the tomato plants`, and three assertion messages. 
+        4800 -> 4843 on 2026-09-23, merging #152 at `74040e2` (which
+        carries #150) into the V1 candidate: measured from the merged tree,
+        not taken from either side (4800 on the candidate, 4142 on #152,
+        4099 at their merge base `b9f044c`; #152 and #150 add 43 and
+        remove 0, and none of the 43 was already on the candidate):
+        4800 + 43 - 0 = 4843. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1947,7 +2001,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4800)
+        self.assertEqual(len(space), 4843)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

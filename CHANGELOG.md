@@ -56,6 +56,15 @@ Entries before September 2026 were reconstructed from the commit history and
   words above what you are saying, so what is saved is what is on screen,
   and words you erase before leaving stay erased.
 
+- A spoken cancel, complete or move whose one match is a knowledge row held
+  in Needs review (reported speech, a note waiting on a question) is held for
+  the person instead of acted on. A cancel used to delete the row, and the
+  capture's original words with its last row (DEL-26).
+- A confirmed broad request such as "cancel all my reminders" reaches only
+  Today's action rows (tasks, errands, follow-ups, events, and anything with
+  a reminder). Memory's notes, ideas and people facts, and knowledge rows
+  waiting in Needs review, are no longer counted or deleted with them. The
+  noun is not read, so "reminders" and "tasks" reach the same rows (DEL-25).
 - Build 19.
 - Merge and Undo in Capture details no longer fold open rows into one already
   ticked done or archived. The result stays open unless every row was

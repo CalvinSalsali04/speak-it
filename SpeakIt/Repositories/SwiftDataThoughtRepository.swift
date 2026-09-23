@@ -1689,6 +1689,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 holdOperation(request, in: session, preserving: preservingItemIDs)
                 return .ambiguous(operation: request.operation, candidateIDs: [itemID])
             }
+            // The search refuses rows in Memory (`belongsInMemory`), and a
+            // knowledge row held in Needs review is not in Memory: the `.unclear`
+            // safety row for reported speech, a note waiting on a question. As
+            // the one match it used to be deleted, and `delete` takes the
+            // capture's transcript with its last row. Only an action row is
+            // acted on without the person (DEL-26). Held rather than dropped,
+            // for the reason given above: dropping it would report nothing
+            // found and file the sentence as a new errand.
+            guard item.isActionKind else {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: request.operation, candidateIDs: [itemID])
+            }
             let title = item.displayTitle
             do {
                 switch request.operation {
@@ -1819,29 +1831,46 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return ((try? heldCandidates(of: record)) ?? []).map(\.id)
     }
 
-    /// What a broad request may act on: every active row except those of a
-    /// capture launch recovery has yet to organize.
+    /// What a broad request may act on: every active row on Today's action
+    /// side, except those of a capture launch recovery has yet to organize.
     ///
-    /// Such a row is a placeholder whose capture still holds words nobody has
-    /// organized, and `delete` removes a capture with its last row, so a
-    /// confirmed "cancel all my reminders" used to delete the unfinished
-    /// capture and its transcript; a confirmed complete stamped the mark that
-    /// makes recovery close it unorganized. Unlike the single-target search,
-    /// dropping the row here makes nothing else look certain: a broad request
-    /// is always held, and nothing it names is touched until the person
-    /// confirms a count that now leaves the row out.
+    /// Nothing in Memory. "Cancel all my reminders" and "delete all my tasks"
+    /// are about commitments. The list used to be every active row, so
+    /// confirming one deleted Memory's notes, ideas and people facts with the
+    /// tasks, and a capture's transcript went with its last row. The
+    /// single-target search (`CaptureTargetMatcher.candidates`) refuses only
+    /// rows that are in Memory now (`belongsInMemory`). This line is drawn by
+    /// kind instead, so it is the stricter of the two: a knowledge row waiting
+    /// in Needs review is in neither destination, and it is left out here.
+    /// That exclusion is this path's alone; it says nothing about what a
+    /// single-target cancel can reach. The parser keeps no noun for a broad
+    /// request (`target` is nil, so "reminders", "tasks" and "notes" all read
+    /// the same), and nothing narrower than the action side can be read from
+    /// it.
+    ///
+    /// Nothing unorganized. Such a row is a placeholder whose capture still
+    /// holds words nobody has organized, and `delete` removes a capture with
+    /// its last row, so a confirmed "cancel all my reminders" used to delete
+    /// the unfinished capture and its transcript; a confirmed complete stamped
+    /// the mark that makes recovery close it unorganized. Unlike the
+    /// single-target search, dropping the row here makes nothing else look
+    /// certain: a broad request is always held, and nothing it names is
+    /// touched until the person confirms a count that now leaves the row out.
+    ///
+    /// `heldCandidate` asks both questions again at confirmation.
     private static func broadOperationCandidates(in items: [CapturedItem]) -> [CapturedItem] {
-        CaptureTargetMatcher.activeItems(items).filter { !awaitsOrganization($0) }
+        CaptureTargetMatcher.activeItems(items).filter { $0.isActionKind && !awaitsOrganization($0) }
     }
 
     /// The rows a held broad request still names, read again at confirmation.
     ///
-    /// The list was fixed when the request was held, and a capture can become
-    /// unfinished after that: `Organize again` leaves a session `.failed` when
-    /// its save fails, and a record written before candidates excluded
-    /// unorganized captures may still name one. The prompt's count and the
-    /// confirmation both read this, so the number the person confirms is the
-    /// number acted on. Rows deleted since are skipped, as before.
+    /// The list was fixed when the request was held, and a row can stop
+    /// qualifying after that: `Organize again` leaves a session `.failed` when
+    /// its save fails, an edit can turn a task into a note, and a record
+    /// written before candidates excluded unorganized captures or Memory rows
+    /// may still name one. The prompt's count and the confirmation both read
+    /// this, so the number the person confirms is the number acted on. Rows
+    /// deleted since are skipped, as before.
     private func heldCandidates(
         of record: PendingOperationStore.StoredPendingOperation
     ) throws -> [CapturedItem] {
@@ -1849,7 +1878,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     private func heldCandidate(_ id: UUID) throws -> CapturedItem? {
-        guard let item = try findItem(withID: id), !Self.awaitsOrganization(item) else { return nil }
+        guard let item = try findItem(withID: id),
+              item.isActionKind,
+              !Self.awaitsOrganization(item) else { return nil }
         return item
     }
 

@@ -264,6 +264,18 @@ final class DurabilityTests: XCTestCase {
         try XCTUnwrap(try allSessions().first { $0.id == sessionID })
     }
 
+    /// Types a capture's first row as a task and returns it. A broad request
+    /// reaches only Today's action rows (DEL-25), and a placeholder is written
+    /// `.unclear`, so a broad-request test about a capture's *state* types
+    /// the row first; left `.unclear` it is excluded by kind and the test
+    /// stops telling whether the state check did anything.
+    private func typeAsTask(firstRowOf sessionID: UUID) throws -> CapturedItem {
+        let row = try XCTUnwrap(try rows(inSession: sessionID).first)
+        row.itemType = .task
+        try container.mainContext.save()
+        return row
+    }
+
     /// The placeholder of an interrupted capture is on screen from the first
     /// frame, and launch recovery only reaches it after the audio drafts are
     /// recovered; a `.failed` capture's row waits in Needs review for as long
@@ -467,7 +479,7 @@ final class DurabilityTests: XCTestCase {
     func testAConfirmedBroadCancelLeavesAnUnfinishedCaptureAndItsWords() async throws {
         let milkID = try await capture("Buy milk").primaryItem.id
         let sessionID = try killAfterRawPersistence(twoThoughts, status: .failed)
-        let placeholderID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+        let placeholderID = try typeAsTask(firstRowOf: sessionID).id
 
         let broad = try await capture("Cancel every reminder")
 
@@ -520,7 +532,7 @@ final class DurabilityTests: XCTestCase {
         let broad = try await capture("Cancel every reminder")
         let reviewRow = try XCTUnwrap(try rows(inSession: broad.session.id).first)
         let sessionID = try killAfterRawPersistence(twoThoughts)
-        let placeholderID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+        let placeholderID = try typeAsTask(firstRowOf: sessionID).id
         PendingOperationStore.set(
             operation: .complete,
             candidateIDs: [milkID, placeholderID],
@@ -552,10 +564,20 @@ final class DurabilityTests: XCTestCase {
     /// Falsifier: an exclusion keyed on how the row looks rather than on its
     /// capture's state (needs clarification, zero confidence, a segment equal
     /// to the transcript) keeps this row and fails every assertion below.
+    ///
+    /// The row is typed as a task (`typeAsTask`). Left `.unclear` it would be
+    /// excluded by kind, and the test would stop asking about shape. The type
+    /// is not one of the shape marks above, and the preconditions check each
+    /// mark is intact.
     func testABroadCancelStillReachesAPlaceholderShapedRowOfAFinishedCapture() async throws {
         let milkID = try await capture("Buy milk").primaryItem.id
         let sessionID = try killAfterRawPersistence(twoThoughts, status: .complete)
-        let rowID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+        let row = try typeAsTask(firstRowOf: sessionID)
+        let rowID = row.id
+        XCTAssertTrue(row.needsClarification)
+        XCTAssertEqual(row.processingConfidence, 0)
+        XCTAssertEqual(row.originalTextSegment, twoThoughts)
+        XCTAssertFalse(row.isReviewed)
 
         let broad = try await capture("Cancel every reminder")
 
