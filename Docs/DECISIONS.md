@@ -853,6 +853,36 @@ pass, with the literal census moved from 4,068 to 4,083 and
 so they probe, and on a healthy host they get `.usable`. No corpus row moves
 for that reason.
 
+## 2026-09-23 — A stale recording releases only what it created
+
+LIF-7. `SpeechTranscriber.start` awaits `makeStartedBackend`, which can take
+seconds on the SpeechAnalyzer path, and "Type instead" stays enabled during
+it. When the abandoned run's await returned after a newer run had started, its
+ownership guard called `resetRecognitionResources()`, which stopped the newer
+run's engine, tap, backend and audio session and left it showing "Listening"
+over a dead microphone. It also lowered `isPreparingEnhancedRecognition`
+before the guard.
+
+The rule now: a continuation that finds its run is over releases only the
+resource it created and nobody else has seen, the backend it was just handed.
+Everything else it set up was already released by the `cancel()` or
+`resetAfterFailure()` that made it stale, and what is there now belongs to the
+newer run. `adoptStartedBackend(_:for:)` holds that guard.
+
+The callbacks were already covered: the run tag (`activeRunID` /
+`acceptsResult`, 2026-09-18 below) refuses the one extra callback the legacy
+recognizer makes when the stale backend is cancelled. Two smaller members of
+the same family close here. The audio-level update queued by the tap now
+checks `activeRunID` as well as the state. `resetRecognitionResources` now
+cancels the finalization deadline together with the backend it belonged to.
+
+Nothing new runs on the start path: no await, no I/O. The audit's suspected
+S5 (the stale run deactivating the session before the newer run starts its
+engine) cannot arise now, because the stale run no longer touches the
+session. The race itself still needs a device to confirm: the
+capture-lifecycle audit's proposed row N-6, not yet in
+`Docs/CAPTURE_STRESS_TEST_PLAN.md`.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

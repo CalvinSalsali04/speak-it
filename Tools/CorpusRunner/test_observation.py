@@ -1161,7 +1161,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         test walks every way out of persistence. Four, enumerated: three
         assertion messages and the ending `"threw a cancellation"` (named `"was cancelled"` in the first draft), which counts
         because it has a space in it; `"returned"` and `"threw"` do not.
-        The rewritten test double added none. What the test
+        The rewritten test double added none. 4119 -> 4121 later on
+        2026-09-23, from two `CaptureFeedbackTests` tests proving a stale
+        speech `start` releases only the backend it was handed (LIF-7).
+        Two, enumerated: both are assertion messages. The tests deliver
+        no words, and every phrase in their doc comments is in backticks.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1282,7 +1287,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the merged tree, not taken from either side (4319 on the
         candidate, 4119 on #119, 4115 at their merge base; #119 adds 4
         and removes 0, 0 of its additions were already on the
-        candidate).
+        candidate). 4323 -> 4325 on 2026-09-23, merging #134 into the V1
+        candidate: measured from the merged tree, not taken from either
+        side (4323 on the candidate, 4121 on #134, 4119 at their merge
+        base; #134 adds 2 and removes 0, 0 of its additions were already
+        on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1292,7 +1301,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4323)
+        self.assertEqual(len(space), 4325)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
