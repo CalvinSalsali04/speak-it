@@ -919,7 +919,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         garbage when I get home"`, `"Set an alarm for 6:45 tomorrow"`,
         `"Pick up the keys"` and `"Private words"`, and so were two of the
         messages, `"precondition: the system holds it"` and `"the counts
-        are unchanged by the order"`. What the test
+        are unchanged by the order"`. 4117 -> 4121 the same day, from
+        nothing held being timed by its proposal: `MorningBriefTests`'
+        held-row test is rewritten so the task leads, and one test is added
+        for a list whose only dated entry is held. Five assertion messages
+        are added, `"the held list is not timed by its proposal"`, `"the
+        held list is not counted as due"`, `"a held proposal does not time
+        its list"`, `"the held entry is still on the list"` and `"a held
+        proposal creates no morning"`, and one is removed, `"the held list
+        is the silent one"`, whose claim is no longer true. Every fixture
+        was already here. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -933,7 +942,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4117)
+        self.assertEqual(len(space), 4121)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

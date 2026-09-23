@@ -43,8 +43,10 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
   date. Once confirmed, the next foreground continues the series; the save
   itself arms nothing, because the date has passed.
 - **Two surfaces still do not show the withheld trigger.** A held shopping row
-  is still not in Needs review (REV-3). It is silent now, but its list row
-  shows the proposed time with no bell and no "not set". A held place row with
+  is still not in Needs review (REV-3). It is silent now, but its row in the
+  checklist shows the proposed time with no bell and no "not set". It no
+  longer times its list, so the list's Today card and the morning brief do
+  not read that time (Docs/DECISIONS.md, 2026-09-23). A held place row with
   a live blocker shows the blocker label instead, which is already true.
 - **A restore can hold a reading it never saw.** `applyICloudSnapshot` writes
   `needsClarification` from the snapshot even when the snapshot carries no
@@ -1026,6 +1028,8 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - **Shopping-list counts resolved (2026-09-08).** The brief counts each dated
   shopping list once, using the same earliest open entry as its Today card.
   Completed and archived entries are excluded; undated lists are not counted.
+  Since 2026-09-23 an entry held for review does not time its list, so a list
+  whose only dated entry is held is undated here and on Today.
 - A brief tap now selects Today, including on cold launch, without starting a
   capture. Direct taps reset the unanswered count regardless of age.
 - For ordinary app opens, "answered" is inferred: the app was opened within twelve hours of a brief

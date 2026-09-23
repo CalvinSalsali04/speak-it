@@ -345,7 +345,10 @@ struct TodayView: View {
     private typealias ShoppingGroupSummary = ShoppingListProjection.GroupSummary
 
     private var shoppingGroupSummaries: [ShoppingGroupSummary] {
-        ShoppingListProjection.groupSummaries(in: allItems)
+        ShoppingListProjection.groupSummaries(
+            in: allItems,
+            authorization: locationAuthorization
+        )
     }
 
     private func shoppingGroups(

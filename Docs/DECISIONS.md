@@ -42,8 +42,19 @@ per-session sync, the all-reminders sync, Siri, and Today's permission card)
 agree. `CapturedItem.hasLivePlaceTrigger` replaces the checks the reconcile
 filter and both crossing-handler guards each repeated, and reads
 `mayArmPlace`, so a held place is neither watched, nor reported blocked, nor
-delivered. The morning brief reads `mayArmTime` too: a held row's proposed
-date will not ring, so the brief no longer ranks it behind items that will.
+delivered. Nothing held is timed by its proposal either. A held task was
+already out of the morning brief, because `belongsInToday(authorization:)`
+excludes `requiresReview`. A held shopping row still timed its list, so the
+brief counted and named the list as due, and could schedule a morning that
+would otherwise be silent, from a date nobody confirmed. Now
+`ShoppingListProjection.groupSummaries(in:authorization:)` times a list only
+by entries where `requiresReview(authorization:)` is false. It is the same
+predicate as the task's, and a held entry still counts toward the list's
+size. The Today list card reads the same summaries, so it no longer sits under
+Due now or Coming up, or shows a time, because of a held entry. The brief's
+build sites still pass `reminderDate` through `mayArmTime`, which no row that
+reaches them can fail today. The alternative was listing held rows in the
+brief as "to review", which would be a new line for tasks too.
 `synchronizeAllReminders` now scopes its cancellation on the rows it fetched,
 as the other two passes do, so an alarm armed before a hold is cancelled on
 that pass as well.

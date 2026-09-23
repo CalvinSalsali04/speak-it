@@ -133,7 +133,10 @@ enum MorningBriefPlanner {
                 reminderDate: armedReminderDate(of: $0)
             )
         }
-        let lists = ShoppingListProjection.groupSummaries(in: items).compactMap { group -> MorningBriefItem? in
+        let lists = ShoppingListProjection.groupSummaries(
+            in: items,
+            authorization: authorization
+        ).compactMap { group -> MorningBriefItem? in
             guard let item = group.timingItem else { return nil }
             return MorningBriefItem(
                 dueDate: item.reminderDate ?? item.dueDate,
@@ -152,6 +155,12 @@ enum MorningBriefPlanner {
     /// The reminder that will actually ring: the stored date, unless the
     /// system holds the row for review, when nothing is scheduled for it and
     /// the brief must not count on it announcing itself.
+    ///
+    /// Neither build site above passes a held row today: ordinary rows are
+    /// filtered by `belongsOnTopLevelToday`, and a list is timed only by
+    /// entries out of review (`groupSummaries(in:authorization:)`). Both
+    /// exclude `requiresReview`, which includes every row this would withhold.
+    /// It stays so that admitting held rows later cannot rank one as ringing.
     @MainActor
     private static func armedReminderDate(of item: CapturedItem) -> Date? {
         ItemPresentation.mayArmTime(item) ? item.reminderDate : nil
