@@ -1,10 +1,14 @@
 import CoreLocation
 import Foundation
+import os
 import SwiftData
 import WidgetKit
 
 @MainActor
 final class SwiftDataThoughtRepository: ThoughtRepository {
+    /// Content-free diagnostics for reminder bookkeeping. Messages name a
+    /// state, never an item's words, and nothing here reaches analytics.
+    private static let reminderLog = Logger(subsystem: "com.calvinwak.SpeakIt", category: "Reminders")
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
     private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
 
@@ -459,7 +463,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// hand, then a date moved by voice (`.unchanged` place), then a
     /// reorganize whose sentence has no time leaves a live place reminder with
     /// a nil trigger kind, and a predicate on that column would never plan it
-    /// (`testALivePlaceWithNoTriggerKindIsStillPlanned`). The blob column is
+    /// (`testALivePlaceWithNoTriggerKindIsStillPlanned`). It sticks because
+    /// `apply` re-writes the place after the intent only when the place is not
+    /// user-edited, so a place set in the editor is never written back. The
+    /// first two steps alone leave the column reading `time` on a live place
+    /// reminder, so `== "location"` misses it sooner still. The blob column is
     /// the definition: the `locationIntent` setter writes it exactly when a
     /// place is stored.
     @discardableResult
@@ -471,7 +479,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     item.completedAt == nil
             }
         )
-        guard let items = try? modelContext.fetch(descriptor) else {
+        // A predicate the store cannot translate fails here, at fetch time,
+        // not at compile time. Swallowed, it would leave every place reminder
+        // unplanned on every path without a trace, so it is logged.
+        let items: [CapturedItem]
+        do {
+            items = try modelContext.fetch(descriptor)
+        } catch {
+            Self.reminderLog.fault("Place reminder reconcile could not fetch its rows")
             return LocationMonitorReconciliation()
         }
         let monitor = LocationReminderMonitor.shared
@@ -1964,7 +1979,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 // foreground, and the receipt could not know whether it had
                 // taken the last slot. Inside this branch on purpose, although
                 // the flag is named for scheduling: every caller that turns it
-                // off is a tutorial capture, a DEBUG sample loader, the
+                // off is a tutorial capture (`schedulesReminders:
+                // tutorialMission == nil` in CaptureView, an expression, so a
+                // search for `: false` misses it), a DEBUG sample loader, the
                 // shopping list, or `SaveThoughtIntent`, which reconciles
                 // places itself straight after its save returns.
                 reconcileLocationReminders(

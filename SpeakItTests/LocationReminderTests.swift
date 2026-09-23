@@ -1653,6 +1653,10 @@ final class LocationReminderTests: XCTestCase {
     /// Falsifier: scope the fetch in `reconcileLocationReminders` on
     /// `reminderTriggerKindRawValue == "location"`, and this reminder is never
     /// fetched, so it is neither monitored nor blocked.
+    ///
+    /// It is also the only test that the scoped `#Predicate` translates in the
+    /// store at all. A predicate that does not translate fails at fetch time,
+    /// the reconcile returns an empty plan, and this assertion fails.
     func testALivePlaceWithNoTriggerKindIsStillPlanned() throws {
         setHome()
         let item = try repository.createCapture(
