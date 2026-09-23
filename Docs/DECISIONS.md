@@ -14,22 +14,39 @@ waived.
 **The default, which Calvin may reverse:** a row the *system* holds for review
 arms nothing (no notification, no alarm, no geofence) until the person
 resolves it. A row whose reminder the *person* set or confirmed keeps arming.
-`ItemPresentation.mayArm` is the one rule: true unless `needsClarification` is
-set and neither the temporal nor the location intent is `isUserEdited`. Every
-save in the editor marks the temporal intent `isUserEdited`, so the manual
-Needs review toggle keeps its reminder armed, and so does any edited reminder.
+The rule has one half per trigger, both in `ItemPresentation`:
+
+- `mayArmTime`, which is true unless `needsClarification` is set and the
+  temporal intent is not `isUserEdited`;
+- `mayArmPlace`, which is true unless `needsClarification` is set and neither
+  intent is `isUserEdited`.
+
+Every save in the editor marks the temporal intent `isUserEdited`, so the
+manual Needs review toggle keeps its reminder and its place armed, and so does
+any edited reminder. The halves differ because a reorganize (`apply`) rewrites
+the temporal intent, wiping its mark, and keeps a hand-set place with its mark.
+A single rule that read either mark let a confirmed place release a guessed
+time, the failure this entry exists to stop. The place half still reads the
+temporal mark, because the save does not mark a place it did not change, and
+without it the manual toggle would silence the person's own place reminder.
 The same save is how a hold is resolved, and `update` already reschedules
 after it; it now also re-reconciles regions when the save changed whether a
 place row may arm. `markReviewed` resynchronizes the same way.
 
 It sits beside the delivery rule of the entry below, so everything reads it
-through one of two doors. `scheduledDelivery` returns `.none` for a held row,
+through one of two doors. `scheduledDelivery` reads `mayArmTime` and returns
+`.none` for a held row,
 and `ReminderScheduleRequest.init?` returns `nil` for `.none`, so the row's
 bell, the receipt and all five request builders (foreground reconcile,
 per-session sync, the all-reminders sync, Siri, and Today's permission card)
 agree. `CapturedItem.hasLivePlaceTrigger` replaces the checks the reconcile
-filter and both crossing-handler guards each repeated, and reads `mayArm`, so
-a held place is neither watched, nor reported blocked, nor delivered.
+filter and both crossing-handler guards each repeated, and reads
+`mayArmPlace`, so a held place is neither watched, nor reported blocked, nor
+delivered. The morning brief reads `mayArmTime` too: a held row's proposed
+date will not ring, so the brief no longer ranks it behind items that will.
+`synchronizeAllReminders` now scopes its cancellation on the rows it fetched,
+as the other two passes do, so an alarm armed before a hold is cancelled on
+that pass as well.
 `SemanticState.permitsAction` is still not called: the vague-time and
 series-exception holds are stored `.resolved`, and a confirmed row keeps its
 recorded gap, so it would have missed the first and silenced the second.
@@ -57,7 +74,9 @@ person saved. No SemanticCorpus row's expected delivery changes, because the
 corpus reads the parser's `reminderDelivery`, not scheduling. Pinned by
 `ItemPresentationTests`, `TemporalFullPathTests`
 (`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed`),
-`LocationReminderTests` and `SwiftDataThoughtRepositoryTests`.
+`LocationReminderTests`, `SwiftDataThoughtRepositoryTests`
+(`testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing`),
+`MorningBriefTests` and `DurabilityTests`.
 
 ## 2026-09-23 — A stored reminder date arms, and one function says so
 

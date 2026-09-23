@@ -109,6 +109,58 @@ final class MorningBriefTests: XCTestCase {
         XCTAssertEqual(updatedPlan[1].body, "1 due today · 2 overdue")
     }
 
+    /// A row the system holds for review never announces itself: its
+    /// proposed time is kept and not scheduled (`ItemPresentation.mayArmTime`).
+    /// So it keeps the lead the brief gives an errand that will not reach the
+    /// person any other way, instead of ranking behind one that rings. Held
+    /// shopping rows are the ones that reach the brief, through their list.
+    ///
+    /// Falsifier: feed the stored `reminderDate` to `MorningBriefItem` at
+    /// either build site in `projectedItems` and the list is ranked as
+    /// ringing, so the task that really rings takes the lead.
+    @MainActor
+    func testAHeldRowKeepsTheLeadOfAnErrandThatNeverAnnouncesItself() {
+        let savedGroups = ShoppingGroupStore.snapshot()
+        defer { ShoppingGroupStore.restore(savedGroups) }
+        let now = date(2026, 9, 8, 7)
+        let held = CapturedItem(
+            originalTextSegment: "Private words",
+            displayTitle: "Private words",
+            itemType: .shopping,
+            dueDate: date(2026, 9, 8, 17),
+            reminderDate: date(2026, 9, 8, 17),
+            needsClarification: true
+        )
+        ShoppingGroupStore.set("Groceries", for: held.id)
+        let ringing = CapturedItem(
+            originalTextSegment: "Pick up the keys",
+            displayTitle: "Pick up the keys",
+            itemType: .task,
+            dueDate: date(2026, 9, 8, 12),
+            reminderDate: date(2026, 9, 8, 12)
+        )
+        XCTAssertFalse(ItemPresentation.mayArmTime(held), "precondition: the system holds it")
+
+        let projection = MorningBriefPlanner.projectedItems(
+            from: [held, ringing],
+            authorization: LocationAuthorization(
+                status: .notDetermined, isPrecise: false, isRegionMonitoringAvailable: true
+            ),
+            now: now
+        )
+        let plan = MorningBriefPlanner.plan(
+            items: projection,
+            now: now,
+            time: eight,
+            calendar: calendar,
+            includesNames: true,
+            locale: Locale(identifier: "en_US")
+        )
+
+        XCTAssertEqual(plan.first?.lead?.title, "Groceries", "the held list is the silent one")
+        XCTAssertEqual(plan.first?.subtitle, "2 due today", "the counts are unchanged by the order")
+    }
+
     // MARK: Naming the first thing
 
     private let english = Locale(identifier: "en_US")

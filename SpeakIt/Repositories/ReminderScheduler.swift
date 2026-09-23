@@ -37,7 +37,7 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         // that screen.
         //
         // `.none` with a `reminderDate` present means the system is holding
-        // the row for review (`ItemPresentation.mayArm`), so no request is
+        // the row for review (`ItemPresentation.mayArmTime`), so no request is
         // made. This is the only gate between a held row and iOS: every
         // builder (foreground reconcile, per-session sync, the all-reminders
         // sync, Siri, and Today's permission card) goes through this init.

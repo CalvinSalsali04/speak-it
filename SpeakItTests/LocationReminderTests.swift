@@ -674,10 +674,10 @@ final class LocationReminderTests: XCTestCase {
     /// reported blocked without it, and it must be neither. The crossing
     /// assertion reads `firedAt`, which is written only after a delivery.
     ///
-    /// Falsifier: drop `ItemPresentation.mayArm` from
+    /// Falsifier: drop `ItemPresentation.mayArmPlace` from
     /// `CapturedItem.hasLivePlaceTrigger` and the row is accounted for by the
     /// monitor and the crossing delivers it. Make confirming leave the row
-    /// held (the save not clearing it, or `mayArm` ignoring the save) and the
+    /// held (the save not clearing it, or `mayArmPlace` ignoring the save) and the
     /// last crossing delivers nothing.
     func testAPlaceRowHeldForReviewIsNeitherWatchedNorDeliveredUntilConfirmed() async throws {
         setHome()
@@ -740,8 +740,9 @@ final class LocationReminderTests: XCTestCase {
     /// on in the editor marks the saved intent `isUserEdited`, so the place
     /// stays watched and a crossing still delivers.
     ///
-    /// Falsifier: make `mayArm` read `!needsClarification` alone and the
-    /// person's own toggle silences their place reminder.
+    /// Falsifier: make `mayArmPlace` read `!needsClarification` alone, or
+    /// the location mark only (the save leaves an unchanged place unmarked),
+    /// and the person's own toggle silences their place reminder.
     func testAPlaceRowThePersonHoldsIsStillDelivered() async throws {
         setHome()
         let item = try repository.createCapture(

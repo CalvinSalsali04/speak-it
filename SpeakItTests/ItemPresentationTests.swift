@@ -362,14 +362,14 @@ final class ItemPresentationTests: XCTestCase {
     /// (`SemanticCorpusDataE`: held for a real time rather than guessed). It
     /// used to schedule that 8 PM while the Needs review row showed neither a
     /// time nor a bell. Now the row, the bell, the receipt and the request
-    /// all read `ItemPresentation.mayArm` through `scheduledDelivery`, so all
+    /// all read `ItemPresentation.mayArmTime` through `scheduledDelivery`, so all
     /// four say nothing is set, and the row names the time it would use.
     ///
     /// Captured two days out, at 10:00 on this machine's own calendar, so the
     /// guessed evening is still ahead whenever and wherever this runs; only
     /// the hold can be what stops the request. No wall clock is asserted.
     ///
-    /// Falsifier: drop the `mayArm` guard from `scheduledDelivery` and a
+    /// Falsifier: drop the `mayArmTime` guard from `scheduledDelivery` and a
     /// request is built, the row reads as armed, and `withheldTriggerText`
     /// is `nil`.
     func testAVagueTimeHeldForReviewArmsNothingAndSaysWhatItWouldDo() throws {
@@ -439,7 +439,7 @@ final class ItemPresentationTests: XCTestCase {
     /// intent `isUserEdited`, and a reminder the person saved is theirs: it
     /// stays armed, the bell stays on, and nothing is described as withheld.
     ///
-    /// Falsifier: make `mayArm` read `!needsClarification` alone and this
+    /// Falsifier: make `mayArmTime` read `!needsClarification` alone and this
     /// reminder is silenced by the person's own toggle.
     func testTurningNeedsReviewOnByHandKeepsTheReminderArmed() throws {
         let item = try repository.createCapture(

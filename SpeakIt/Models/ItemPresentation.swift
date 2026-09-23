@@ -70,12 +70,12 @@ struct ItemPresentation: Equatable, Sendable {
         /// rows apart. See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1.
         /// `delivery` is also `.none` for a row the system is holding for
         /// review: its proposed date is shown, and nothing fires on it until
-        /// the person confirms it (`ItemPresentation.mayArm`).
+        /// the person confirms it (`ItemPresentation.mayArmTime`).
         case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
         case place(LocationIntent)
         case blockedPlace(LocationIntent, LocationReminderBlocker)
         /// A place trigger that could be watched, and is not, because the
-        /// system is holding the row for review (`ItemPresentation.mayArm`).
+        /// system is holding the row for review (`ItemPresentation.mayArmPlace`).
         /// Distinct from `blockedPlace` because nothing on the device is
         /// missing: the person has not yet confirmed what was heard.
         case heldPlace(LocationIntent)
@@ -181,10 +181,14 @@ struct ItemPresentation: Equatable, Sendable {
         // the moment, and a date alongside it only narrows the window.
         if let locationIntent = item.locationIntent {
             if let blocker { return .blockedPlace(locationIntent, blocker) }
+            // Merge order, when this meets #125/#135's combined check on this
+            // branch: blocker, then combined place-and-time, then this hold,
+            // then `.place`. A combined row is under review for another reason.
+            //
             // The same rule the location monitor's request builder reads
             // (`CapturedItem.hasLivePlaceTrigger`), so a place that is not
             // being watched is never shown as armed.
-            guard mayArm(item) else { return .heldPlace(locationIntent) }
+            guard mayArmPlace(item) else { return .heldPlace(locationIntent) }
             return .place(locationIntent)
         }
         if let date = item.reminderDate ?? item.dueDate {
@@ -211,12 +215,12 @@ struct ItemPresentation: Equatable, Sendable {
     nonisolated(unsafe) private static var deliveryCache:
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
 
-    /// Whether this item may arm anything at all: a notification, an alarm or
-    /// a monitored region. **The one rule for held rows.** Everything that
-    /// arms reaches it: `scheduledDelivery` below, so the row's bell, the
-    /// receipt's label and every `ReminderScheduleRequest` builder; and
-    /// `CapturedItem.hasLivePlaceTrigger`, so the location monitor's request
-    /// builder, its reconcile filter and the crossing handler.
+    /// Whether this item's *time* may arm: a notification or an alarm. **One
+    /// of the two halves of the rule for held rows**, with `mayArmPlace`.
+    /// Everything that arms a clock reaches it: `scheduledDelivery` below (so
+    /// the row's bell, the receipt's label and every `ReminderScheduleRequest`
+    /// builder), the successor decisions in `advanceOverdueRecurrences` and
+    /// `setCompleted`, and the morning brief's "rings on its own".
     ///
     /// A row the *system* holds for review arms nothing until the person
     /// resolves it. A vague `later today` carries a guessed 8 PM, and `every
@@ -226,18 +230,40 @@ struct ItemPresentation: Equatable, Sendable {
     /// 2026-09-23, "A row the system holds for review arms nothing").
     ///
     /// A row the *person* holds still arms. Every save in the editor marks the
-    /// temporal intent `isUserEdited`, and a place edited there marks the
-    /// location intent the same way, so a reminder the person set, edited, or
-    /// saved while turning Needs review on by hand is theirs, and it fires.
-    /// Resolving a system hold goes through that same save, which is why it
-    /// arms at once. `SemanticState.permitsAction` is not read here: the
-    /// vague-time and series-exception holds are stored as `.resolved`, and a
-    /// row the person confirmed keeps its recorded gap, so it would miss the
-    /// first and silence the second.
-    static func mayArm(_ item: CapturedItem) -> Bool {
+    /// temporal intent `isUserEdited`, unconditionally, so a reminder the
+    /// person set, edited, or saved while turning Needs review on by hand is
+    /// theirs, and it fires. Resolving a system hold goes through that same
+    /// save, which is why it arms at once.
+    ///
+    /// Only the temporal mark counts here. A reorganize (`apply`) rewrites the
+    /// temporal intent, wiping its mark, and keeps a hand-set place with its
+    /// mark; reading either mark let a confirmed place release a guessed time.
+    ///
+    /// `SemanticState.permitsAction` is not read: the vague-time and
+    /// series-exception holds are stored as `.resolved`, and a row the person
+    /// confirmed keeps its recorded gap, so it would miss the first and
+    /// silence the second.
+    static func mayArmTime(_ item: CapturedItem) -> Bool {
         guard item.needsClarification else { return true }
         return item.temporalIntent?.isUserEdited == true
-            || item.locationIntent?.isUserEdited == true
+    }
+
+    /// Whether this item's *place* may be watched and delivered, the other
+    /// half of the rule. Read by `CapturedItem.hasLivePlaceTrigger` (the
+    /// location monitor's reconcile filter and both crossing-handler guards)
+    /// and by `.heldPlace` here.
+    ///
+    /// Either mark counts, unlike `mayArmTime`. The location mark is the
+    /// person's own place, and it is the one that survives a reorganize. The
+    /// temporal mark means the last write was an editor save of the whole row,
+    /// place included: the save does not mark an unchanged place, so without
+    /// it turning Needs review on by hand would silence the person's own place
+    /// reminder. A reorganize rewrites the temporal intent, so that mark
+    /// cannot outlive a re-read the person has not seen.
+    static func mayArmPlace(_ item: CapturedItem) -> Bool {
+        guard item.needsClarification else { return true }
+        return item.locationIntent?.isUserEdited == true
+            || item.temporalIntent?.isUserEdited == true
     }
 
     /// The alert kind that will fire for a timed item, and the only answer to
@@ -248,12 +274,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// voice-moving an item that had none, carries wording with no alert word
     /// in it, and reading that wording as `.none` hid a notification iOS was
     /// holding (Docs/DECISIONS.md, 2026-09-23). A row the system holds for
-    /// review is `.none` whatever it carries (`mayArm`).
+    /// review is `.none` whatever it carries (`mayArmTime`).
     ///
     /// Whether the date is still ahead is deliberately not asked here: a past
     /// `reminderDate` produces no request but still reads as armed on the row.
     static func scheduledDelivery(for item: CapturedItem) -> ReminderDelivery {
-        guard mayArm(item) else { return .none }
+        guard mayArmTime(item) else { return .none }
         return proposedDelivery(for: item)
     }
 
@@ -421,12 +447,12 @@ struct ItemPresentation: Equatable, Sendable {
         timing: String?,
         recurrence: String?
     ) -> String? {
-        guard !mayArm(item) else { return nil }
         switch state {
         case let .heldPlace(intent):
+            // `.heldPlace` is only built when `mayArmPlace` is false.
             return "Reminder not set · \(placeSentence(for: intent))"
         case .time:
-            guard let timing else { return nil }
+            guard !mayArmTime(item), let timing else { return nil }
             let kind: String
             switch proposedDelivery(for: item) {
             case .none: return nil

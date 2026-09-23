@@ -401,7 +401,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
 
             // No successor is generated while the system holds the source for
-            // review (`ItemPresentation.mayArm`). A successor is a copy of an
+            // review (`ItemPresentation.mayArmTime`). A successor is a copy of an
             // unconfirmed reading: generated un-held, it carried "except this
             // Friday" out of review as a clean armed row in Today; generated
             // held, it would add one more review row asking the same question
@@ -409,7 +409,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // held row never fires and so is always overdue. The source stays
             // the one place the question is asked, and once the person
             // resolves it the next pass continues the series from it.
-            guard ItemPresentation.mayArm(item) else { continue }
+            guard ItemPresentation.mayArmTime(item) else { continue }
 
             let next = CapturedItem(
                 originalTextSegment: item.originalTextSegment,
@@ -481,7 +481,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // "stop watching this place".
         // A row the system holds for review is excluded the same way: it is
         // not a live reminder yet, so it is neither watched nor reported
-        // blocked (`hasLivePlaceTrigger`, which reads `ItemPresentation.mayArm`).
+        // blocked (`hasLivePlaceTrigger`, which reads `ItemPresentation.mayArmPlace`).
         let live = items.filter {
             $0.hasLivePlaceTrigger && $0.locationIntent?.isRetired != true
         }
@@ -1421,10 +1421,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         guard !normalizedTitle.isEmpty else { throw RepositoryError.emptyTitle }
         let previousRecurrences = RecurrenceStore.snapshots()
-        // A row the system held for review arms nothing (`ItemPresentation.mayArm`).
-        // Saving here is the person resolving or confirming it, so whatever
-        // it now may arm has to be armed by this save, not by the next launch.
-        let couldArmBefore = ItemPresentation.mayArm(item)
+        // A row the system held for review arms nothing (`ItemPresentation`'s
+        // `mayArmTime` and `mayArmPlace`). Saving here is the person resolving
+        // or confirming it, so whatever it now may arm has to be armed by this
+        // save, not by the next launch.
+        let placeCouldArmBefore = ItemPresentation.mayArmPlace(item)
 
         item.displayTitle = normalizedTitle
         // Only a title the automatic pass would disagree with needs protecting.
@@ -1503,7 +1504,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // untouched: nothing else would register its region until the next
         // foreground.
         if locationChanged
-            || (item.locationIntent != nil && ItemPresentation.mayArm(item) != couldArmBefore) {
+            || (item.locationIntent != nil
+                && ItemPresentation.mayArmPlace(item) != placeCouldArmBefore) {
             reconcileLocationReminders()
         }
         if let personName = item.personName {
@@ -1519,7 +1521,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // No successor while the system holds the row for review: see
         // `advanceOverdueRecurrences`, which follows the same rule.
         if completed, !item.isCompleted,
-           ItemPresentation.mayArm(item),
+           ItemPresentation.mayArmTime(item),
            RecurrenceStore.generatedNextItemID(for: item.id) == nil,
            let rule = RecurrenceStore.rule(for: item.id),
            let session = item.captureSession,
@@ -1602,7 +1604,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     /// Clears the hold without the editor. Clearing it releases whatever the
-    /// row was withholding (`ItemPresentation.mayArm`), so this reconciles
+    /// row was withholding (`mayArmTime`, `mayArmPlace`), so this reconciles
     /// the same way `update` does rather than leaving the reminder unarmed
     /// until the next foreground.
     func markReviewed(_ item: CapturedItem) throws {
@@ -2534,13 +2536,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.reminderDate != nil && item.isArchived == false && item.completedAt == nil
             }
         )
-        let requests = (try? modelContext.fetch(descriptor))?.compactMap(ReminderScheduleRequest.init(item:)) ?? []
+        let items = (try? modelContext.fetch(descriptor)) ?? []
+        let requests = items.compactMap(ReminderScheduleRequest.init(item:))
+        // Scoped on the fetched items, not on the requests, as the other two
+        // scopes are. A row held for review makes no request, so a
+        // requests-only scope never called `cancel(itemID:)` for it: the
+        // notification still went with `replacesAllSpeakItReminders`, and an
+        // AlarmKit alarm armed before the hold did not.
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
             scope: ReminderSynchronizationScope(
-                itemIDs: Set(requests.map(\.itemID)),
-                captureSessionIDs: Set(requests.compactMap(\.captureSessionID)),
+                itemIDs: Set(items.map(\.id)),
+                captureSessionIDs: Set(items.compactMap { $0.captureSession?.id }),
                 replacesAllSpeakItReminders: true
             )
         )
