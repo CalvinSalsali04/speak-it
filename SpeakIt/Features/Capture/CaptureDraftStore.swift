@@ -96,6 +96,10 @@ enum CaptureDraftStore {
     /// capture screen reads them back, when it switches to typing after the
     /// pass fails (`CaptureAudioRecovery.wordsToOffer`); Today's row shows the
     /// failure kind alone.
+    ///
+    /// A cache, not a record: the typing checkpoint may overwrite these words a
+    /// moment later, and that loses nothing, because the recording is what the
+    /// next attempt reads and the stored text is not consulted while it exists.
     static func keepRecoveredWords(_ partial: String, id: UUID, at date: Date = .now) {
         guard let existing = draft(id: id) else { return }
         let recovered = normalizedTranscript(partial)

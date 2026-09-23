@@ -1179,7 +1179,10 @@ struct CaptureView: View {
 
     /// `keptWords` are words a failed recovery pass stored on the draft. They
     /// replace the live transcript only when they carry on from it; see
-    /// `CaptureAudioRecovery.wordsToOffer` for the rule.
+    /// `CaptureAudioRecovery.wordsToOffer` for the rule. No test reaches this
+    /// view method, so dropping `keptWords:` from the caller in
+    /// `recoverActiveAudio` would leave every test green and bring back a
+    /// write nothing reads. Keep it when merging or refactoring that catch.
     private func continueByTyping(notice: String, keptWords: String = "") {
         let repairedKeptWords = tutorialMission?.repairVoiceTranscript(keptWords) ?? keptWords
         let partialTranscript = CaptureAudioRecovery.wordsToOffer(
