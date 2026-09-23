@@ -134,7 +134,8 @@ is to be picked blindly.
 - **#139 × #134,** in `SpeechTranscriber.start`: #134's comment must read "nothing between the wait's own ownership check and here suspends", and the stale guard must release only this run's microphone claim.
 - **#136 × #138:** move `awaitsPlaceOrTimeChoice` into `ItemPresentation.mayArmTime`, and assert that `scheduledDelivery` is `.none` for such a row.
 - **#143 × #135:** rewrite `testALivePlaceWithNoTriggerKindIsStillPlanned`, whose precondition relied on DEL-20 (the reorganize taking the time away). Build it around a live place whose column reads `time`.
-- **#143 × #138:** #138's `mayArmPlace` reads either mark, on the argument that the temporal mark cannot outlive a reorganize, which #143 makes false. Re-check before landing both that a re-guessed place under a system hold cannot arm through a kept time mark.
+- **#143 × #138:** resolved on #138 (`d615c84`, `b7a48db`). `mayArmPlace` reads only the location mark, and only the editor's `.update` sets it, so #143's kept time mark cannot arm a re-read place. Both graders say they compose in either order; land them together.
+- **#145 after #127.** #145 cancels a removed row's alarm synchronously and relies on #127's orphan sweep to heal a kill before that cancel. Both edit `DurabilityTests`' `RecordingDelivery`: keep #145's lock and #127's `scheduledAlarmIDs` hook.
 - **#144 × #139:** the no-audio branch of `endAttemptWithoutWords` should keep the typed words.
 - **Every PR** moves the census pin in `Tools/CorpusRunner/test_observation.py` and the figures in `Docs/LANGUAGE_BASELINE.md`. Recount after each merge (`python3 baseline_figures.py --write` in `Tools/CorpusRunner`), never pick a side.
 
@@ -168,6 +169,8 @@ in the one device session.
 | D13 | #133 (DEL-13) | `.weekly` with all seven weekdays behaves as daily; a repeating alarm survives in AlarmKit's store after it fires. | queued |
 | D14 | #139 (A11Y D-3) | A VoiceOver announcement during recording does not appear in the transcript. | queued |
 | D15 | #139 (A11Y F3) | With VoiceOver on, log the type and value of `UIAccessibility.announcementStringValueUserInfoKey` in one `announcementDidFinishNotification` (for example the "Listening" cue). A `String` or an `NSAttributedString` equal to the posted text is fine: both are read. Anything else means every wait runs its whole allowance. | queued |
+| D16 | #145 + #127 (DEL-22) | Arm an alarm, delete its row, and kill the app before the next foreground; the alarm must not ring. Then relaunch with an orphan armed and confirm #127's sweep cancels it. | queued |
+| D17 | main, pre-existing | Arm an alarm, let it ring, then open Speak It. Every launch and foreground reconcile issues `stop` and `cancel` on every known row's alarm and re-arms only future ones, so by reading a ringing or snoozed alarm is silenced and not put back. Record whether it stops. No release note may say a ringing alarm survives opening the app until this has run. | queued |
 
 ## Hosted evidence (no owner action)
 

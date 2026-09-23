@@ -86,4 +86,5 @@ pr143-edit-time	d5fe9eaf4c4f26a52f1b22f71d6fcdd12c2ae7a4	claude/v1-reliability-n
 pr144-typed-draft	e87d30520f27e9a22ea8ed6c21054f1066e6a081	claude/v1-reliability-nyngoe-typed-draft	SpeakItTests/DurabilityTests	yes	yes	-
 # #118 is stacked on #117 (base claude/entity-context-avp56j): its head
 # contains #117's commits.
+pr145-alarm-cancel	04bdea4b0342057bd3dd42d3dae8473c0da894ad	claude/v1-reliability-nyngoe-alarm-cancel	SpeakItTests/CaptureOperationTests,SpeakItTests/DurabilityTests	yes	yes	-
 semantic-units	d79d9fa21aabd03855fdcb330d52b29ed77261fa	claude/semantic-map-xklzll	-	no	no	./Tools/SemanticMap/UnitsExperiment/run.sh "$QUALIFICATION_ROW_DIR/units-experiment"
