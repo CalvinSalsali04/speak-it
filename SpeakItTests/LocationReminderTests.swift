@@ -2041,10 +2041,11 @@ final class LocationReminderTests: XCTestCase {
     /// branch, so it is checked here on values the parser never produced.
     ///
     /// Falsifier: if the hold read how a reading was reached (which branch,
-    /// which temporal form) and not just its fields, one of the saved-place
-    /// cases would keep its reminder. If it read too little, the named place
-    /// or the place-only case would lose a reminder or gain a question that
-    /// the product contract says it must not.
+    /// which temporal form) and not just its fields, one of the place cases
+    /// would keep its reminder. If it read too much, the place-only, time-only
+    /// or unreadable-place case would lose a reminder or gain a question that
+    /// the product contract says it must not. A named place is held since
+    /// 2026-09-23 (DEL-18); before that it kept its time.
     func testPlaceAndTimeHoldReadsOnlyTheFinishedReading() {
         let fire = Date(timeIntervalSince1970: 1_800_000_000)
         func reading(_ place: PlaceReference?, _ kind: TemporalKind) -> OrganizedThought {
@@ -2063,7 +2064,7 @@ final class LocationReminderTests: XCTestCase {
             )
         }
 
-        for place in [PlaceReference.home, .work, .currentLocation] {
+        for place in [PlaceReference.home, .work, .currentLocation, .named("costco")] {
             for kind in [TemporalKind.dateOnly, .exactDateTime, .relativeDuration,
                          .calendarRecurrence, .durationRecurrence] {
                 let held = reading(place, kind).holdingPlaceAndTime()
@@ -2077,20 +2078,26 @@ final class LocationReminderTests: XCTestCase {
             }
         }
 
-        let named = reading(.named("costco"), .dateOnly)
-        XCTAssertEqual(named.holdingPlaceAndTime(), named, "a named place with a time keeps its time")
+        let unreadable = reading(.named(""), .dateOnly)
+        XCTAssertEqual(
+            unreadable.holdingPlaceAndTime(), unreadable,
+            "a place lead with no readable place names nothing to wait for"
+        )
         let placeOnly = reading(.home, TemporalKind.none)
         XCTAssertEqual(placeOnly.holdingPlaceAndTime(), placeOnly, "no time was said, so nothing is held")
         let timeOnly = reading(nil, .dateOnly)
         XCTAssertEqual(timeOnly.holdingPlaceAndTime(), timeOnly, "no place was said, so nothing is held")
     }
 
-    /// The hold is only for places Speak It could actually enforce. A named
-    /// business cannot be geofenced at all, so its stated time is the one
-    /// trigger available and the capture acts on it instead of parking in
-    /// review — "when I go to Sobeys … in one hour" fires in an hour, and the
-    /// store still names the shopping list.
-    func testNamedPlaceWithATimeActsOnTheTimeInsteadOfReview() throws {
+    /// A named place beside a time is held like a saved one (2026-09-23,
+    /// DEL-18). It cannot be geofenced from its name, and until that date the
+    /// time won: "when I go to Sobeys … in one hour" rang in an hour wherever
+    /// the person was, and the place was dropped. That is the arrival
+    /// condition executing unconditionally, so the person is asked instead.
+    ///
+    /// Falsifier: the stored row has lost its place, carries a reminder date
+    /// the scheduler would arm, or is not in review.
+    func testNamedPlaceWithATimeIsHeldForReview() throws {
         let item = try repository.createCapture(
             text: "When I go to Sobeys, remind me to get cheese in one hour",
             source: .inAppText,
@@ -2098,10 +2105,50 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: true
         )
 
-        XCTAssertNil(item.locationIntent, "an unenforceable place is not kept as a trigger")
-        XCTAssertFalse(item.needsClarification)
-        XCTAssertNotNil(item.reminderDate, "the stated hour becomes the real trigger")
-        XCTAssertFalse(item.constrainsBothPlaceAndTime)
+        XCTAssertEqual(item.locationIntent?.place, .named("sobeys"), "the place is kept as said")
+        XCTAssertNil(item.reminderDate, "the hour must not fire without the place")
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertTrue(item.constrainsBothPlaceAndTime)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
+    /// "Remind me at <time>" is still a time when the clock is one the place
+    /// grammar's own list does not know. Since a named place beside a time is
+    /// held, reading one of these as a place would put an ordinary timed
+    /// reminder in review, so the temporal grammar is asked first.
+    ///
+    /// Falsifier: any of the first group parses as a place. The second group
+    /// is the other direction: a place said after "at", with or without a
+    /// time elsewhere, is still a place.
+    func testRemindMeAtAClockIsATimeAndRemindMeAtAPlaceIsAPlace() {
+        for text in [
+            "Remind me at lunch to call the bank",
+            "Remind me at half five to take the bins out",
+            "Remind me at half five tomorrow to call mum",
+            "Remind me at twenty to eight to take my pills",
+            "Remind me at seventeen thirty to call the bank",
+            "Remind me at zero nine hundred to call the bank",
+            "Remind me at sharp 5 to call the bank",
+        ] {
+            XCTAssertNil(LocationIntentParser.parse(text), text)
+        }
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at Costco to buy batteries")?.place,
+            .named("costco")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at Costco tomorrow to buy batteries")?.place,
+            .named("costco")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at the pharmacy to pick up the prescription")?.place,
+            .named("pharmacy")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me at the office tomorrow to book the meeting room")?.place,
+            .work
+        )
     }
 
     /// The guard must not catch plain place reminders. "When I get home" names

@@ -52,19 +52,19 @@ struct OrganizedThought: Equatable, Sendable {
 }
 
 extension OrganizedThought {
-    /// True when this reading names a place Speak It can watch (Home, Work,
-    /// here) and also any time at all: a day, a weekday, a date, a part of
+    /// True when this reading names a place (Home, Work, here, or a place by
+    /// its name) and also any time at all: a day, a weekday, a date, a part of
     /// the day, a clock, or a repeat.
     ///
     /// Only the finished value is read, not how it was reached. That is why it
     /// can be a post-condition: whichever branch produced the reading, a place
     /// beside a time looks the same here. It is the parse-time twin of
     /// `CapturedItem.constrainsBothPlaceAndTime`, which excludes the same items
-    /// from region monitoring, narrowed to the places the parser keeps beside
-    /// a time. (A named place with a time loses its location intent in
-    /// `TemporalIntentParser.parse`, so it never reaches this check with one.)
+    /// from region monitoring and, unless the person has decided, from
+    /// scheduling. A lead whose place could not be read (`.named("")`) names
+    /// nothing to wait for, so it is not held; see `PlaceReference.namesAPlace`.
     var holdsPlaceAndTime: Bool {
-        guard locationIntent?.place.isEnforceable == true else { return false }
+        guard locationIntent?.place.namesAPlace == true else { return false }
         return temporalIntent.kind != .none
     }
 
@@ -890,8 +890,8 @@ enum ThoughtOrganizer {
     /// Reads one capture into what Speak It will store and schedule.
     ///
     /// **Every reading leaves through `OrganizedThought.holdingPlaceAndTime()`.**
-    /// A saved place beside any time is held for review with no clock
-    /// reminder, and that rule is enforced here, after all the other rules
+    /// A place beside any time, saved or named, is held for review with no
+    /// clock reminder, and that rule is enforced here, after all the other rules
     /// have run, instead of inside any one branch. It used to be computed in
     /// the middle of `TemporalIntentParser.parse` and consumed only by that
     /// function's last return. The date-only branch returned before reaching
@@ -2427,20 +2427,22 @@ private enum TemporalIntentParser {
         // the time win here; on-device QA produced exactly the 8pm-but-not-home
         // misfire this rule exists to prevent.)
         //
-        // A *named* place is different in kind: it cannot be geofenced at all,
-        // so the stated time is the only trigger Speak It could ever enforce.
-        // There the time wins — "when I go to Sobeys, remind me to get cheese
-        // in one hour" acts on the hour, and the name still labels the
-        // shopping list. The place words survive on the untouched transcript
-        // either way.
+        // A *named* place is held the same way (2026-09-23, DEL-18). It cannot
+        // be geofenced until it is searched for, and until then the time used
+        // to win: "tomorrow when I get to Costco" armed 9 AM tomorrow and
+        // dropped the place. That is the arrival condition executing
+        // unconditionally, the same failure the saved-place rule exists to
+        // prevent, so the person is asked instead. A lead whose place could
+        // not be read at all ("when I get there") still lets the time win,
+        // because it names nothing to wait for.
         //
         // This decides only whether the place is *kept*. The hold itself (no
         // clock reminder, and a review question) is applied to every reading
         // that leaves `ThoughtOrganizer.organize`, by
         // `OrganizedThought.holdingPlaceAndTime()`. The date-only branch
         // below returns early, and it used to skip the hold.
-        let placeIsEnforceable = parsedLocation?.place.isEnforceable ?? false
-        let combinesPlaceAndTime = placeIsEnforceable && resolution.intent.kind != .none
+        let placeIsHeld = parsedLocation?.place.namesAPlace ?? false
+        let combinesPlaceAndTime = placeIsHeld && resolution.intent.kind != .none
         let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
             ? parsedLocation
             : nil
@@ -2457,9 +2459,12 @@ private enum TemporalIntentParser {
             ConditionalIntentScope.isTemporalAdjunct($0.condition)
                 && conditionResolution?.intent.kind != TemporalKind.none
         } ?? false
-        // Named places cannot be geofenced, but an explicit time beside one is
-        // an existing supported fallback: the time wins. `locationIntent` is
-        // nil in that branch, so retain the parsed place as its evidence.
+        // A place lead whose place could not be read, beside an explicit time,
+        // lets the time win, and `locationIntent` is nil in that branch. The
+        // parsed lead is retained here as evidence that the condition was a
+        // place, so it is not also reported as an unsupported condition. A
+        // named place with a name is kept as `locationIntent` and never
+        // reaches this.
         let namedPlaceWithExplicitTime: Bool = if case .named? = parsedLocation?.place {
             resolution.intent.kind != .none
         } else {

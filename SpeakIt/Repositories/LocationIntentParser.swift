@@ -23,6 +23,9 @@ enum LocationIntentParser {
         let pattern: String
         let event: LocationEvent
         let repeats: Bool
+        /// True for the one lead whose preposition also introduces a time:
+        /// "remind me at <place>" and "remind me at <time>" are one shape.
+        var objectMayBeATime = false
     }
 
     // Returning to a place is expressed just as often as motion toward it:
@@ -45,12 +48,13 @@ enum LocationIntentParser {
     /// So the object is asked what it is, and a time answers first — reading
     /// "five" as a place would break an ordinary reminder to fix a rarer one.
     ///
-    /// This list is deliberately not the whole clock grammar, and it does not
-    /// need to be: `TemporalIntentParser` reads the time first and drops a
-    /// searchable place whenever a time resolved, so a form this list misses
-    /// ("half five", "seventeen thirty", "sharp 5") becomes a place only if the
-    /// temporal grammar could not read it either. Widening the grammar there is
-    /// what closed register C1; widening this list is not required.
+    /// This list is deliberately not the whole clock grammar. Forms it misses
+    /// ("half five", "seventeen thirty", "sharp 5", "lunch") are asked of the
+    /// temporal grammar itself, in `parse`, before the object is taken as a
+    /// place. Register C1 used to be closed by the timing flow dropping any
+    /// named place once a time resolved. A named place beside a time is now
+    /// held for review instead (2026-09-23, DEL-18), so a clock read as a
+    /// place would be held too, and the grammar has to be asked here.
     private static let clockPhrase = #"^(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"#
         + #"|noon|midnight|half\s+past|quarter\s+(?:past|to)"#
         + #"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"#
@@ -85,7 +89,8 @@ enum LocationIntentParser {
         Lead(
             pattern: #"\b(?:remind|tell|ping|alert)\s+(?:me|us)\s+at\s+"#,
             event: .arrive,
-            repeats: false
+            repeats: false,
+            objectMayBeATime: true
         )
     ]
 
@@ -149,7 +154,16 @@ enum LocationIntentParser {
                 return nil
             }
 
-            guard let place = placeReference(in: remainder) else {
+            // Past that list, the temporal grammar decides. "Remind me at
+            // lunch", "at half five", "at twenty to eight" are times, and
+            // reading one as a place would hold an ordinary timed reminder
+            // for review over a place that exists nowhere.
+            let (name, following) = placeName(in: remainder)
+            if lead.objectMayBeATime, readsAsTime("at " + name, followedBy: following) {
+                return nil
+            }
+
+            guard let place = classify(name) else {
                 // A recognised lead with an unreadable place is still a place
                 // request. Returning nil here would send it back to the temporal
                 // parser, which would find no time and ask "what did you mean?"
@@ -264,10 +278,6 @@ enum LocationIntentParser {
             .replacingOccurrences(of: #"^[\s,;.!?]+"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func placeReference(in remainder: String) -> PlaceReference? {
-        classify(placeName(in: remainder).name)
     }
 
     /// The words that name the place, and everything said after them.

@@ -64,20 +64,25 @@ enum PlaceReference: Codable, Equatable, Sendable {
         }
     }
 
-    /// True when Speak It can watch this place from the words alone: Home,
-    /// Work, or the spot the person was standing on. Only these places hold a
-    /// time beside them for review. A named place cannot be geofenced until it
-    /// is searched for, so a time beside one is the only trigger available
-    /// and the time wins.
+    /// True when the words named a place: Home, Work, here, or a place by its
+    /// name. False only for `.named("")`, a place lead whose place could not
+    /// be read ("when I get there"), which names nothing to wait for.
+    ///
+    /// Every place this is true for holds a time beside it for review. Until
+    /// 2026-09-23 only Home, Work and here did: a named place cannot be
+    /// geofenced until it is searched for, so its time won and the place was
+    /// dropped. That is a condition executing unconditionally, so a named
+    /// place is now held like a saved one (see Docs/DECISIONS.md, 2026-09-23,
+    /// DEL-18).
     ///
     /// `TemporalIntentParser.parse` (which decides whether the place is kept)
     /// and `OrganizedThought.holdingPlaceAndTime()` (which enforces the hold)
     /// both read this one property, so they cannot drift apart about which
     /// places hold.
-    var isEnforceable: Bool {
+    var namesAPlace: Bool {
         switch self {
         case .home, .work, .currentLocation: true
-        case .named: false
+        case let .named(name): !name.isEmpty
         }
     }
 }

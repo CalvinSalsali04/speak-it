@@ -217,8 +217,8 @@ large library and belongs to the next performance pass:
   timed item before the delivery cache is warm. Hash instead of join, and warm
   the cache off the main actor at launch.
 - **Launch and every foreground run unbounded fetches** in
-  `backfillTemporalIntents`, `resolveCombinedPlaceAndTimeHoldouts` and
-  `reconcilePendingReminders`. Add predicates so they scan the rows that need
+  `backfillTemporalIntents` and `reconcilePendingReminders`
+  (`resolveCombinedPlaceAndTimeHoldouts` was removed on 2026-09-23). Add predicates so they scan the rows that need
   work rather than the whole table.
 - **Memory home counts each collection with its own pass** over the active
   items; four cards, one pass each. One pass, four counts.

@@ -368,8 +368,9 @@ enum SemanticCorpusB {
                    note: "The terminator's \"after\" cut this name at \"home the day\". The grammar reads the day with what follows it."),
 
         // Controls for the rows above. The same place alone, the same time
-        // alone, the named place whose time wins, and the forms that were
-        // already held. The hold must not move any of them.
+        // alone, and the forms that were already held. The hold must not move
+        // any of them. The named-place row among them did move, on purpose:
+        // see its note.
         corpusCase(.location, "Remind me to water the plants when I get home", count: 1,
                    delivery: [.none], kind: [TemporalKind.none], remind: [nil],
                    place: [CorpusPlace(event: .arrive, place: .home)], review: [false],
@@ -379,8 +380,9 @@ enum SemanticCorpusB {
                    remind: [CorpusDate(month: 8, day: 4, hour: nil)], place: [nil], review: [false],
                    note: "A day alone still alerts on that day. The hold reads the place, and there is none."),
         corpusCase(.location, "Remind me to buy paper towels tomorrow when I get to Costco", count: 1,
-                   delivery: [.notification], remind: [CorpusDate(month: 8, day: 4, hour: nil)], place: [nil],
-                   note: "A named place cannot be watched from its name, so the time wins as before and nothing is held."),
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("costco"))], review: [true],
+                   note: "Moved 2026-09-23 (DEL-18). Was notification at 9 AM on 8/4 with the place dropped: the arrival condition executed unconditionally. A named place beside a time is now held like a saved one."),
         corpusCase(.location, "Remind me to water the plants when I get home tonight", count: 1,
                    delivery: [.none], kind: [.exactDateTime], remind: [nil],
                    place: [CorpusPlace(event: .arrive, place: .home)], review: [true],

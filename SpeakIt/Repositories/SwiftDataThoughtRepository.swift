@@ -74,7 +74,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
-        resolveCombinedPlaceAndTimeHoldouts()
+        // A named place held beside a time is not released here any more.
+        // Since 2026-09-23 (DEL-18) capture holds it on purpose, as it holds a
+        // saved place beside a time, and a launch pass that re-armed its clock
+        // would undo that on every start.
     }
 
     private func recoverOrganization(of session: CaptureSession) {
@@ -118,51 +121,6 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         session.processingError = CaptureRecoveryAttemptLedger.quarantineMessage
         CaptureRecoveryAttemptLedger.quarantine(session.id)
         try? persistChanges()
-    }
-
-    /// Releases items that older builds held in review for naming a *named*
-    /// place and a time together ("when I go to Sobeys, remind me … in one
-    /// hour").
-    ///
-    /// A named place cannot be geofenced, so for those sentences the stated
-    /// time wins at capture, and legacy holdouts are re-derived the same way:
-    /// reparse the untouched original wording, keep the timed reading, drop
-    /// the unenforceable place trigger. A reminder whose moment has already
-    /// passed lands as an honest overdue row rather than staying stuck.
-    ///
-    /// A combination built on a *saved* place — "when I get home tonight" —
-    /// is deliberately left alone: it is held for review at capture on
-    /// purpose, because Speak It can enforce either half and must ask which.
-    /// A place the person set by hand in the editor is never touched either.
-    private func resolveCombinedPlaceAndTimeHoldouts() {
-        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
-        var changed = false
-
-        for item in items
-        where !item.isArchived
-            && !item.isCompleted
-            && item.locationIntent.map({ intent in
-                if case .named = intent.place { true } else { false }
-            }) == true
-            && item.locationIntent?.isUserEdited != true
-            && (item.temporalKind ?? TemporalKind.none) != TemporalKind.none {
-            let reparsed = ThoughtOrganizer.organize(
-                item.originalTextSegment,
-                referenceDate: item.createdAt
-            )
-            item.locationIntent = nil
-            if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
-            if item.dueDate == nil { item.dueDate = reparsed.dueDate }
-            item.temporalIntent = reparsed.temporalIntent
-            item.needsClarification = reparsed.needsClarification
-            item.lastModifiedAt = .now
-            changed = true
-        }
-
-        guard changed else { return }
-        // Best effort, idempotent: an interrupted pass leaves the rest for the
-        // next launch. Scheduling happens in `reconcilePendingReminders`.
-        try? modelContext.save()
     }
 
     /// Gives rows written before schema version 2 the temporal intent they were
