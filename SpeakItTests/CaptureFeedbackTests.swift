@@ -807,7 +807,7 @@ final class CaptureFeedbackTests: XCTestCase {
     /// Discard clears the draft while recovery is still running. The late
     /// result must not bring it back.
     ///
-    /// Falsifier: let `keepRecoveredWords` insert a draft it did not find.
+    /// Falsifier: let `leaveRecoveredWordsForToday` insert a draft it did not find.
     func testRecoveryThatFinishesAfterDiscardDoesNotBringTheDraftBack() throws {
         CaptureDraftStore.clear()
         defer { CaptureDraftStore.clear() }

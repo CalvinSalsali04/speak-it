@@ -23,7 +23,7 @@ withdrawn and the screen stays open on the "your recording is safe" notice,
 rather than staying armed for the next save. Audio recovery is held to the
 same rule (`CaptureRecoveryHandoff`): its transcription can outlast the screen,
 and if it does, it no longer calls that screen's `save`. Recovered words stay
-on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`), so
+on the draft beside the recording (`CaptureDraftStore.leaveRecoveredWordsForToday`), so
 Today offers them and the next launch recovers them; a failure is recorded on
 the draft; neither touches the gone screen. A clarification retry recovered
 this way arrives as a new capture, and the unclear attempt it was replacing

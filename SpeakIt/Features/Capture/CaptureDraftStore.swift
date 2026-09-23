@@ -117,7 +117,7 @@ enum CaptureDraftStore {
     /// recovers it. An empty result leaves an earlier partial transcript as it
     /// was. A draft that no longer exists, because the person discarded it, is
     /// not brought back.
-    static func keepRecoveredWords(id: UUID, transcript: String, at date: Date = .now) {
+    static func leaveRecoveredWordsForToday(id: UUID, transcript: String, at date: Date = .now) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
         let normalized = transcript

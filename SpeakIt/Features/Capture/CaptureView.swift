@@ -495,7 +495,7 @@ enum CaptureRecoveryHandoff {
         switch recovery {
         case .success(let recoveredText):
             guard !owner.hasEnded else {
-                CaptureDraftStore.keepRecoveredWords(id: draftID, transcript: recoveredText)
+                CaptureDraftStore.leaveRecoveredWordsForToday(id: draftID, transcript: recoveredText)
                 return .leftForToday
             }
             save(recoveredText)
