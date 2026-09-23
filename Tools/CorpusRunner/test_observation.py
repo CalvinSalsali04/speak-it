@@ -938,7 +938,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         alone"` and `"a place nobody confirmed is not delivered"`; the
         eighth is a KNOWN_ISSUES heading a doc comment quotes, `"Saving
         counts as confirming"`. The transcript, the title and
-        `"precondition: the system holds it"` were already here. What the test
+        `"precondition: the system holds it"` were already here. 4129 ->
+        4132 the same day, from a save that leaves the place out no longer
+        confirming it: one test in `LocationReminderTests` adds three
+        assertion messages, `"precondition: a place was read"`,
+        `"precondition: nobody confirmed it"` and `"a place the save never
+        named is not confirmed"`, and none is removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -952,7 +957,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4129)
+        self.assertEqual(len(space), 4132)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -740,12 +740,13 @@ final class LocationReminderTests: XCTestCase {
     /// on in the editor marks the saved intent `isUserEdited`, so the place
     /// stays watched and a crossing still delivers.
     ///
-    /// The save leaves the place `.unchanged`, and `update(_:with:)` stamps a
-    /// present place it leaves alone, as it stamps the time.
+    /// The save sends the place back as `.update`, as the editor screen does
+    /// with every place it shows (`ItemEditorView.locationIntentEdit`), and
+    /// that marks it, as the same save marks the time.
     ///
     /// Falsifier: make `mayArmPlace` read `!needsClarification` alone, or
-    /// remove the stamping of an unchanged place from `update(_:with:)`, and
-    /// the person's own toggle silences their place reminder.
+    /// stop `.update` marking the place, and the person's own toggle silences
+    /// their place reminder.
     func testAPlaceRowThePersonHoldsIsStillDelivered() async throws {
         setHome()
         let item = try repository.createCapture(
@@ -755,6 +756,7 @@ final class LocationReminderTests: XCTestCase {
             schedulesReminder: false
         )
         XCTAssertFalse(item.needsClarification, "precondition: nothing was held")
+        let shown = try XCTUnwrap(item.locationIntent)
 
         try repository.update(item, with: ItemEdits(
             title: item.displayTitle,
@@ -764,7 +766,8 @@ final class LocationReminderTests: XCTestCase {
             reminderDate: item.reminderDate,
             priority: item.priority,
             personName: item.personName,
-            needsClarification: true
+            needsClarification: true,
+            locationIntent: .update(shown)
         ))
 
         XCTAssertTrue(item.needsClarification)
@@ -773,18 +776,17 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertNotNil(item.locationIntent?.firedAt, "the person's own hold does not silence them")
     }
 
-    /// A row the system held, saved in the editor with Needs review left on
-    /// and the place left `.unchanged`, arms the place the editor showed, as
-    /// the same save arms the time ("Saving counts as confirming" in
-    /// KNOWN_ISSUES). `mayArmPlace` reads only the location mark, so the
-    /// stamp `update(_:with:)` puts on a present, unchanged place is all
-    /// that releases it. The stamp confirms the trigger without changing it:
-    /// the revision stays, so iOS keeps the same region.
+    /// A row the system held, saved in the editor with Needs review left on,
+    /// arms the place the editor showed, as the same save arms the time
+    /// ("Saving counts as confirming" in KNOWN_ISSUES). The editor sends a
+    /// place it showed back as `.update` with the trigger untouched, and
+    /// `mayArmPlace` reads only the location mark, so the mark that save
+    /// puts on the place is all that releases it. Confirming does not change
+    /// the trigger: the revision stays, so iOS keeps the same region.
     ///
-    /// Falsifier: remove the stamping of an unchanged place from
-    /// `update(_:with:)` and the place keeps no mark, so the saved row is
+    /// Falsifier: stop `.update` marking the place and the saved row is
     /// neither watched nor delivered.
-    func testSavingAHeldPlaceRowWithThePlaceUnchangedArmsThePlace() async throws {
+    func testSavingAHeldPlaceRowInTheEditorArmsThePlace() async throws {
         setHome()
         let text = "Remind me to take the bins out when I get home"
         let reading = ThoughtOrganizer.organize(text)
@@ -800,7 +802,8 @@ final class LocationReminderTests: XCTestCase {
         container.mainContext.insert(item)
         try container.mainContext.save()
         XCTAssertFalse(item.hasLivePlaceTrigger, "precondition: the system holds it")
-        let revision = try XCTUnwrap(item.locationIntent?.triggerRevision)
+        let shown = try XCTUnwrap(item.locationIntent)
+        let revision = shown.triggerRevision
 
         try repository.update(item, with: ItemEdits(
             title: item.displayTitle,
@@ -810,7 +813,8 @@ final class LocationReminderTests: XCTestCase {
             reminderDate: item.reminderDate,
             priority: item.priority,
             personName: item.personName,
-            needsClarification: true
+            needsClarification: true,
+            locationIntent: .update(shown)
         ))
 
         XCTAssertTrue(item.needsClarification)
@@ -819,6 +823,37 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertTrue(item.hasLivePlaceTrigger)
         await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
         XCTAssertNotNil(item.locationIntent?.firedAt, "the saved place is delivered")
+    }
+
+    /// A save that leaves the place out, as the voice reschedule does, does
+    /// not confirm it. Such a caller never showed the place, and a mark there
+    /// would exempt the row from the launch pass that resolves a combined
+    /// place-and-time request, leaving its place unwatched for good.
+    ///
+    /// Falsifier: mark a present place in `update(_:with:)`'s `.unchanged`
+    /// branch and the place carries the person's mark.
+    func testASaveThatLeavesThePlaceOutDoesNotConfirmIt() throws {
+        let item = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotNil(item.locationIntent, "precondition: a place was read")
+        XCTAssertFalse(item.locationIntent?.isUserEdited == true, "precondition: nobody confirmed it")
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: false
+        ))
+
+        XCTAssertFalse(item.locationIntent?.isUserEdited == true, "a place the save never named is not confirmed")
     }
 
     /// A place nobody confirmed is not released by the time's mark. The
