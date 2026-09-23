@@ -913,7 +913,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `CaptureOperationTests`, `Buy milk and tomorrow I need to, never
         mind` is in `AbandonmentTests`, and `Catherine needs a copy`
         came in with the entry above -- and a precondition message used
-        twice counts once. What the test
+        twice counts once. 4110 -> 4111 on 2026-09-23, from the second
+        review: `On the 15th pay the rent` moved to its own test, which
+        abstains on a blind tagger because only the tagger reads that
+        date, and the timing list now holds `On the 15th, pay the rent`,
+        which the day-number regex reads. That is the one addition; the
+        bare phrase and the new test's messages were already here, and
+        nothing was removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -927,7 +933,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4110)
+        self.assertEqual(len(space), 4111)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

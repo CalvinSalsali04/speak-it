@@ -7155,7 +7155,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     func testTheDegradedPolicyKeepsATimeTheResolverReadsInTheRowsOwnWords() {
         let due = Date(timeIntervalSince1970: 1_786_550_400)
         let phrases = [
-            "On the 15th pay the rent",
+            // With the comma, the day-number regex reads the date without the
+            // tagger. The bare form is in the blind-skipping test below.
+            "On the 15th, pay the rent",
             "rent is due on the first",
             "send it by eod",
             "finish the deck by the end of the work day",
@@ -7183,5 +7185,22 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             transcript: control
         ).items
         XCTAssertNil(stripped.first?.organization.dueDate)
+    }
+
+    /// "On the 15th pay the rent" is read as a date only through
+    /// `ordinalContinuesWithAVerb`, which asks the tagger: the day-number
+    /// regex refuses it because "pay" is open-class. Blind, the rules never
+    /// read that date either, so this assertion abstains there rather than
+    /// failing on the host's missing model.
+    func testTheDegradedPolicyKeepsADayNumberOnlyTheTaggerReads() throws {
+        try LexicalTagging.skipIfBlind()
+        let phrase = "On the 15th pay the rent"
+        let due = Date(timeIntervalSince1970: 1_786_550_400)
+        XCTAssertTrue(DegradedLanguagePolicy.statesItsOwnTiming(phrase), phrase)
+        let held = DegradedLanguagePolicy.applying(
+            to: ThoughtExtractionResult(items: [plainRow(phrase, dueDate: due)], method: .rules),
+            transcript: phrase
+        ).items
+        XCTAssertEqual(held.first?.organization.dueDate, due, phrase)
     }
 }
