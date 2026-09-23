@@ -499,6 +499,16 @@ final class SpeechTranscriber: ObservableObject {
         state = .idle
     }
 
+    /// Forgets the words of a run that has already ended, once the screen has
+    /// moved them into its editor. `resetAfterFailure` keeps them so they can
+    /// be read first; left there afterwards, a later "Type instead" or Save &
+    /// Close read them again and added them a second time. Nothing else is
+    /// reset: whether audio was heard still decides if a recording is kept.
+    func releaseTranscript() {
+        guard activeRunID == nil else { return }
+        transcript = ""
+    }
+
     private func markAudioInputReady(startID: UUID) {
         guard state == .requestingPermission, activeStartID == startID else { return }
         audioInputReadyTimeout?.cancel()
@@ -1211,12 +1221,45 @@ private final class AudioActivityTracker: @unchecked Sendable {
 /// It intentionally uses the same system recognizer and vocabulary corrections
 /// as normal capture, keeping recovery local to the app's existing speech path.
 enum CaptureAudioRecovery {
+    /// The draft's words, as a save of them should store them: anything
+    /// typed before the recording started, then what the recording says
+    /// (`CaptureDraftStore.words(for:spoken:)`). Every recovery that saves a
+    /// draft by itself uses this, so a typed beginning is not replaced by the
+    /// recording (audit D6). The capture screen, which still holds the typed
+    /// words in its editor, uses `transcribeRecording(of:)` and joins them
+    /// in `save` instead.
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
+        try await transcribe(draft, reading: { url in
+            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        })
+    }
+
+    /// `transcribe` with the recognizer supplied, so the joining can be
+    /// tested without one.
+    static func transcribe(
+        _ draft: CaptureDraftStore.Draft,
+        reading read: (URL) async throws -> String
+    ) async throws -> String {
+        let spoken = try await transcribeRecording(of: draft, reading: read)
+        return CaptureDraftStore.words(for: draft, spoken: spoken)
+    }
+
+    /// What the draft's recording says, and nothing else.
+    static func transcribeRecording(of draft: CaptureDraftStore.Draft) async throws -> String {
+        try await transcribeRecording(of: draft, reading: { url in
+            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        })
+    }
+
+    static func transcribeRecording(
+        of draft: CaptureDraftStore.Draft,
+        reading read: (URL) async throws -> String
+    ) async throws -> String {
         guard let url = await CaptureDraftStore.audioURL(for: draft),
               await CaptureDraftStore.hasRecoveryAudio(for: draft) else {
             throw CaptureAudioRecoveryError.missingRecording
         }
-        return try await transcribeAudio(at: url)
+        return try await read(url)
     }
 
     static func transcribeAudio(at url: URL) async throws -> String {

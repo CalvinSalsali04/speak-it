@@ -970,7 +970,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         comments, `"Speak instead"` and `"Type instead"`, which the
         extractor reads like any other line. The typed fixture `"Pick up the
         dry cleaning"` is already counted, and `"Call Dana"` is under the
-        twelve-character floor. What the test
+        twelve-character floor. 4161 -> 4166 the same day, when words typed
+        before speaking came to be kept ahead of the recovered recording:
+        three test methods in `DurabilityTests.swift` and five literals,
+        enumerated. Three are fixtures, `"about the invoice tomorrow"`, the
+        recognizer's stand-in result, `"Call Dana about the"`, the spoken
+        checkpoint, and `"Call Dana about the invoice tomorrow"`, the joined
+        words. Two are assertion messages, `"The original transcript is what
+        was typed and what was said, in that order"` and `"The recognizer's
+        failure must reach the caller"`. `"No speech detected"` and `"Email
+        Sam"` add nothing: the first is already counted and the second is
+        under the floor. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -984,7 +994,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4161)
+        self.assertEqual(len(space), 4166)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

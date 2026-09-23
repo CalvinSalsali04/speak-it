@@ -1911,16 +1911,52 @@ struct CaptureHistoryView: View {
     /// recognizer nor the repository, and it survives a relaunch.
     private func deleteRecording(_ draft: CaptureDraftStore.Draft) {
         pendingDeletion = nil
-        CaptureDraftStore.deleteRecording(id: draft.id)
+        // Words typed before the recording started are not part of it, so
+        // they are kept rather than deleted with it.
+        let keptTypedWords = CaptureDraftStore.deleteRecordingKeepingTypedWords(id: draft.id)
         if recoveringDraftID == draft.id {
             recoveringDraftID = nil
         }
         reloadDrafts()
         showSuccess("Recording deleted")
+        if let keptTypedWords {
+            saveTypedWords(keptBy: keptTypedWords)
+        }
+    }
+
+    /// Saves the typed words a deleted recording left behind. The kept draft
+    /// is released only after they are stored; if storage is unavailable or
+    /// the save fails, it stays and the next launch's text pass saves them.
+    private func saveTypedWords(keptBy kept: CaptureDraftStore.Draft) {
+        guard let repository else { return }
+        Task { @MainActor in
+            do {
+                _ = try await CaptureDraftStore.handOff(
+                    draftID: kept.id,
+                    transcript: kept.transcript
+                ) { sessionID in
+                    try await repository.createCaptureResult(
+                        text: kept.transcript,
+                        source: .inAppText,
+                        createdAt: kept.startedAt,
+                        schedulesReminders: true,
+                        performance: nil,
+                        sessionID: sessionID
+                    )
+                }
+                CaptureDraftStore.clear(id: kept.id)
+                showSuccess("Recording deleted. Your typed words were saved")
+            } catch {
+                errorMessage = "The recording was deleted. Your typed words are kept and will be saved the next time Speak It opens. \(error.localizedDescription)"
+            }
+        }
     }
 
     private func deletionMessage(for draft: CaptureDraftStore.Draft) -> String {
-        CaptureRecoveryPresentation.row(for: draft).stopsPromisingRecovery
+        if CaptureRecoveryPresentation.keepsTypedWordsOnDelete(draft) {
+            return "This recording will be permanently removed. The words you typed before speaking are not part of it, and are saved as a thought."
+        }
+        return CaptureRecoveryPresentation.row(for: draft).stopsPromisingRecovery
             ? "This recording could not be recovered and will be permanently removed."
             : "This recording will be permanently removed, and its words are not saved anywhere else."
     }
@@ -2010,9 +2046,18 @@ private struct RecoveryTypeInsteadView: View {
     let onSave: (String) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
-    @State private var typedText = ""
+    @State private var typedText: String
     @State private var isSaving = false
     @FocusState private var isTextFocused: Bool
+
+    /// Starts from the words typed before the recording, when there were any.
+    /// Saving here deletes the recording, so a reconstruction that began
+    /// empty would have deleted those words with it (audit D6).
+    init(draft: CaptureDraftStore.Draft, onSave: @escaping (String) async -> Bool) {
+        self.draft = draft
+        self.onSave = onSave
+        _typedText = State(initialValue: CaptureRecoveryPresentation.typeInsteadStartingText(for: draft))
+    }
 
     private var trimmedText: String {
         typedText.trimmingCharacters(in: .whitespacesAndNewlines)

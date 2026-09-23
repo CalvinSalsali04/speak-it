@@ -31,6 +31,13 @@ enum CaptureDraftStore {
         /// never handed to anything. Optional, like every field added after the
         /// first build, so older drafts decode as "not handed off" and replay.
         var handedOffSessionID: UUID?
+        /// What the person had typed when this draft was first spoken into,
+        /// kept apart because spoken checkpoints and recovery would otherwise
+        /// replace it. The draft's words are these, then what was said
+        /// (`words(for:spoken:)`), so `transcript` holds both and a recording
+        /// recovered later is joined after them. Optional like the rest, so a
+        /// draft from an earlier build decodes as spoken from the start.
+        var typedBeforeSpeaking: String?
 
         var captureSource: CaptureSource {
             CaptureSource(rawValue: captureSourceRawValue ?? "") ?? .shortcut
@@ -64,13 +71,16 @@ enum CaptureDraftStore {
     nonisolated static let tombstoneRetention: TimeInterval = 60 * 60 * 24 * 30
     private static let recoveryFolderName = "CaptureRecovery"
 
+    /// `typedBeforeSpeaking` is whatever the capture screen's editor held when
+    /// a recording begins in a new draft; it is ignored for typing.
     @discardableResult
     static func begin(
         source: CaptureSource = .shortcut,
+        typedBeforeSpeaking typed: String = "",
         at date: Date = .now
     ) -> Draft {
         let id = UUID()
-        let draft = Draft(
+        var draft = Draft(
             id: id,
             startedAt: date,
             updatedAt: date,
@@ -84,6 +94,13 @@ enum CaptureDraftStore {
             recoveryFailureKindRawValue: nil,
             handedOffSessionID: nil
         )
+        if recordsProtectedAudio(for: source) {
+            let typedWords = normalizedTranscript(typed)
+            if !typedWords.isEmpty {
+                draft.typedBeforeSpeaking = typedWords
+                draft.transcript = typedWords
+            }
+        }
         var drafts = allDrafts()
         drafts.append(draft)
         persist(drafts, notifiesRecoveryChange: true)
@@ -111,6 +128,25 @@ enum CaptureDraftStore {
     /// from the save rather than from the recording (audit D6).
     nonisolated static func shouldCheckpoint(_ text: String, hasActiveDraft: Bool) -> Bool {
         hasActiveDraft || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Typed words first, then spoken ones, in the order the person gave them.
+    /// Either may be empty. Nothing is dropped and nothing is deduplicated: a
+    /// repeated phrase is the person's own, and a duplicate can be edited where
+    /// a lost word cannot.
+    nonisolated static func joined(typedBeforeSpeaking typed: String?, spoken: String) -> String {
+        [typed ?? "", spoken]
+            .map { normalizedTranscript($0) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// The draft's words once `spoken` is what was said into it: the words
+    /// typed before it was spoken into, if any, then `spoken`. Recovery away
+    /// from the capture screen goes through this; the screen joins its own
+    /// editor's words the same way (`joined`), so either saves the same words.
+    nonisolated static func words(for draft: Draft, spoken: String) -> String {
+        joined(typedBeforeSpeaking: draft.typedBeforeSpeaking, spoken: spoken)
     }
 
     static func update(id: UUID, transcript: String, at date: Date = .now) {
@@ -184,7 +220,7 @@ enum CaptureDraftStore {
         allDrafts().filter { $0.handedOffSessionID != nil }
     }
 
-    private static func normalizedTranscript(_ transcript: String) -> String {
+    private nonisolated static func normalizedTranscript(_ transcript: String) -> String {
         transcript
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -205,12 +241,39 @@ enum CaptureDraftStore {
     /// capture that reuses a typed draft is protected exactly like one that
     /// began as speech. Moving back to typing never takes the file away: a
     /// recording made before the switch can hold the only copy of spoken words.
-    static func updateSource(id: UUID, source: CaptureSource, at date: Date = .now) {
+    ///
+    /// Moving from typing to speaking also sets aside what was typed
+    /// (`typedBeforeSpeaking`, the editor's text as the caller passes it), so
+    /// that neither spoken checkpoints nor a recovered recording replace it.
+    /// An empty editor sets nothing aside and leaves the draft's words alone.
+    static func updateSource(
+        id: UUID,
+        source: CaptureSource,
+        typedBeforeSpeaking typed: String = "",
+        at date: Date = .now
+    ) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        let startsSpeaking = drafts[index].captureSource == .inAppText
+            && recordsProtectedAudio(for: source)
         drafts[index].captureSourceRawValue = source.rawValue
         if drafts[index].recoveryAudioFilename == nil, recordsProtectedAudio(for: source) {
             drafts[index].recoveryAudioFilename = protectedAudioFilename(for: id)
+        }
+        let typedWords = normalizedTranscript(typed)
+        if startsSpeaking {
+            // Replaced, not added to: the editor already holds anything typed
+            // or spoken earlier in this capture, and anything the person
+            // erased from it stays erased.
+            drafts[index].typedBeforeSpeaking = typedWords.isEmpty ? nil : typedWords
+        }
+        if startsSpeaking, !typedWords.isEmpty {
+            if typedWords != drafts[index].transcript {
+                // The same rule as `update`: a handoff vouches only for the
+                // words it was recorded with.
+                drafts[index].handedOffSessionID = nil
+            }
+            drafts[index].transcript = typedWords
         }
         drafts[index].updatedAt = date
         persist(drafts)
@@ -229,10 +292,11 @@ enum CaptureDraftStore {
     static func leaveRecoveredWordsForToday(id: UUID, transcript: String, at date: Date = .now) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
-        let normalized = transcript
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalized.isEmpty {
+        let recovered = normalizedTranscript(transcript)
+        if !recovered.isEmpty {
+            // After any words typed before the recording, as a live save of
+            // the recovered words would have saved them.
+            let normalized = words(for: drafts[index], spoken: recovered)
             if normalized != drafts[index].transcript {
                 // The same rule as `update`: a handoff vouches only for the
                 // words it was recorded with, and these were never handed on.
@@ -372,6 +436,38 @@ enum CaptureDraftStore {
         let remaining = drafts.filter { $0.id != id }
         persist(remaining, notifiesRecoveryChange: true)
         return draft(id: id) == nil
+    }
+
+    /// Today's Delete. The recording goes exactly as `deleteRecording` removes
+    /// it, but words the person typed before speaking were never part of the
+    /// recording and are not discarded with it (audit D6). They are kept as a
+    /// typed draft of their own, under a new ID because the old one is now
+    /// tombstoned, and returned so the caller can save them at once. If that
+    /// save cannot happen, the launch text pass replays them. Words recognized
+    /// from the recording are not kept: they are the recording being deleted.
+    @discardableResult
+    static func deleteRecordingKeepingTypedWords(id: UUID, at date: Date = .now) -> Draft? {
+        let existing = draft(id: id)
+        let typedWords = existing?.typedBeforeSpeaking.map { normalizedTranscript($0) }
+        let startedAt = existing?.startedAt
+        deleteRecording(id: id)
+        guard let typedWords, !typedWords.isEmpty, let startedAt else { return nil }
+        let kept = Draft(
+            id: UUID(),
+            startedAt: startedAt,
+            updatedAt: date,
+            transcript: typedWords,
+            captureSourceRawValue: CaptureSource.inAppText.rawValue,
+            recoveryAudioFilename: nil,
+            recoveryStatusRawValue: RecoveryStatus.capturing.rawValue,
+            recoveryFailureMessage: nil,
+            recoveryFailureKindRawValue: nil,
+            handedOffSessionID: nil
+        )
+        var drafts = allDrafts()
+        drafts.append(kept)
+        persist(drafts, notifiesRecoveryChange: true)
+        return kept
     }
 
     static func isDeleted(_ id: UUID) -> Bool {
@@ -690,6 +786,16 @@ enum CaptureRecoveryPresentation {
         drafts.contains { $0.recoveryStatus == .failed }
             ? "Needs attention"
             : "Ready to recover"
+    }
+
+    /// Words typed before this recording started. They are not part of the
+    /// recording, so Delete keeps them and Type it starts from them.
+    nonisolated static func typeInsteadStartingText(for draft: CaptureDraftStore.Draft) -> String {
+        (draft.typedBeforeSpeaking ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated static func keepsTypedWordsOnDelete(_ draft: CaptureDraftStore.Draft) -> Bool {
+        !typeInsteadStartingText(for: draft).isEmpty
     }
 
     static let sectionFooter = "These recordings stay only on this iPhone. A successful recovery deletes the recording, and deleting one removes it for good."

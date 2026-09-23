@@ -156,21 +156,68 @@ D6.)
   draft, dated from the recording. The screen also no longer leaves an empty
   draft behind after every typed save.
 
-A draft that holds both typed words and a recording is recovered from the
-recording, which was already the rule for a voice draft edited after "Type
-instead" (`testAudioRecoveryTakesPriorityOverAPartialTranscript`). It now
-reaches drafts that began as typing; see Known Issues. Rejected: beginning a
-second, voice-only draft for the recording and keeping the typed one. Both
-would be replayed after a kill, as two captures of one thought, and the typed
-one after a successful voice save as well, unless every save learned to
-retire a sibling draft.
+**Words typed before speaking are kept, ahead of what is said.** Protecting
+the recording first made it win: the audio passes saved only what the
+recording said, so words typed before "Speak instead" were lost on exactly the
+path that used to keep them. (Only sometimes kept, even then: the first spoken
+checkpoint overwrote the draft's text, and a live voice save dropped the
+editor's words every time.) A capture's words are now what was typed, then
+what was said, in one `CaptureSession`, whichever path saves them.
+
+- **The draft sets the typed words aside.** On the switch from typing to a
+  recording source, `updateSource` (or `begin`, for a new draft) stores the
+  editor's words as `typedBeforeSpeaking`, an optional field, so drafts from
+  earlier builds decode as spoken from the start. It is replaced, not added
+  to, on each switch: the editor already holds anything earlier, and words the
+  person erased stay erased.
+- **Every save of spoken words joins them after it.**
+  `CaptureDraftStore.joined(typedBeforeSpeaking:spoken:)` and
+  `words(for:spoken:)`: a single space, nothing deduplicated, since a
+  duplicate can be edited and a lost word cannot.
+  - `CaptureAudioRecovery.transcribe(_:)` returns the joined words, so the
+    launch audio pass and Today's recovery save both without changes.
+  - The capture screen still holds the typed words in its editor while
+    speaking. Its `save`, its checkpoints and its flush on leaving join them
+    there. In-screen recovery reads the recording alone
+    (`transcribeRecording(of:)`) and goes through that `save`.
+  - Recovery that outlives the screen joins them on the draft
+    (`leaveRecoveredWordsForToday`).
+  - "Type instead", the typing fallback and the paywall put the typed words
+    and what was said in the editor, rather than what was said alone.
+- **A live voice save keeps them too.** This is a behaviour change. After
+  "Speak instead", the saved thought now begins with what was typed. Saving
+  only the speech would make an interrupted capture store different words
+  from an uninterrupted one, and the rule forbids either silently replacing
+  the other. The typed words are not shown on the voice screen while the
+  person speaks. Showing them is a design question left open.
+- **A failed recording keeps the typed words listed.** The draft stays on
+  Today with its words. "Type it" starts from the typed words, because saving
+  a reconstruction deletes the recording. Delete removes the recording and
+  keeps the typed words (`deleteRecordingKeepingTypedWords`): Today saves them
+  at once as their own thought, and the launch text pass saves them if it
+  cannot. Words recognized from the deleted recording are not kept, because
+  they are the recording.
+- **A handed-over transcript is released.** Once "Type instead" or the typing
+  fallback has moved a run's words into the editor, the transcriber forgets
+  them (`releaseTranscript`). Otherwise a later "Type instead" or Save & Close
+  would read them again and, now that words are joined, add them twice.
+
+Rejected: beginning a second, voice-only draft for the recording beside the
+typed one. Both would be replayed after a kill, as two captures of one
+thought, and the typed one after a successful voice save as well, unless
+every save learned to retire a sibling draft. Also rejected: saving the typed
+words alone when recognition fails. The recording can still be read later,
+and its words would then arrive as a second capture without the first half
+of the sentence. What remains open is in Known Issues, "Typed edits made
+after a recording lose to the recording".
 
 Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
 take a call; expect "Recovering your words…", not the typing fallback. Then a
 typed save that asks for clarification, Try saying it again, speak, and
 interrupt the same way; expect recovery. Force-quitting instead of taking the
-call, the next launch should save the spoken words from the recording, or list
-the recording on Today if recognition fails.
+call, the next launch should save the typed word and the spoken words as one
+thought, or list the recording on Today if recognition fails; then "Type it"
+should open with the typed word, and Delete should save it as a thought.
 
 ## 2026-09-23 — A save belongs to the capture screen that started it
 

@@ -1470,7 +1470,10 @@ struct CaptureView: View {
         Task { @MainActor in
             let recovery: Result<String, Error>
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Only the recording: `save` joins it after the typed words
+                // still in the editor, and `leaveRecoveredWordsForToday` after
+                // the draft's.
+                let recoveredText = try await CaptureAudioRecovery.transcribeRecording(of: draft)
                 recovery = .success(recoveredText)
             } catch {
                 recovery = .failure(error)
@@ -1535,7 +1538,12 @@ struct CaptureView: View {
         captureNotice = nil
         let partialTranscript = tutorialAwareVoiceTranscript
         if !partialTranscript.isEmpty {
-            typedText = partialTranscript
+            // Anything typed before speaking is still in the editor. What was
+            // said follows it rather than replacing it (audit D6).
+            typedText = CaptureDraftStore.joined(
+                typedBeforeSpeaking: typedText,
+                spoken: partialTranscript
+            )
         }
 
         // `startVoiceCapture` may still be waiting on its launch delay or on a
@@ -1549,6 +1557,7 @@ struct CaptureView: View {
             Task { await CaptureActivityManager.cancelListening() }
         } else if transcriber.state != .idle {
             transcriber.resetAfterFailure()
+            transcriber.releaseTranscript()
         }
 
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
@@ -1567,9 +1576,16 @@ struct CaptureView: View {
         let partialTranscript = tutorialAwareVoiceTranscript
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !partialTranscript.isEmpty {
-            typedText = partialTranscript
+            // After anything typed before speaking, as in `switchToTyping`.
+            typedText = CaptureDraftStore.joined(
+                typedBeforeSpeaking: typedText,
+                spoken: partialTranscript
+            )
         }
         transcriber.resetAfterFailure()
+        // Those words are in the editor now. Left on the transcriber, a later
+        // "Type instead" or Save & Close would read them and add them again.
+        transcriber.releaseTranscript()
         captureNotice = notice
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
@@ -1595,8 +1611,15 @@ struct CaptureView: View {
         let repairedText = source == .inAppVoice
             ? tutorialMission?.repairVoiceTranscript(text) ?? text
             : text
-        let normalizedText = repairedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else {
+        let saidOrTyped = repairedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A spoken save is what was typed before speaking, still in the
+        // editor, then what was said: the person's words in the order they
+        // gave them, neither replacing the other (audit D6). The typed words
+        // alone are not a spoken save, so the empty check reads the speech.
+        let normalizedText = source == .inAppVoice
+            ? CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: saidOrTyped)
+            : saidOrTyped
+        guard !saidOrTyped.isEmpty else {
             errorMessage = "Speak a little longer, or type the thought instead."
             return
         }
@@ -1636,9 +1659,10 @@ struct CaptureView: View {
             // clears the transcript, so what the person had just finished
             // saying vanished off the screen at the same moment the paywall
             // appeared, with nothing telling them where it went.
-            let spoken = tutorialAwareVoiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !spoken.isEmpty, trimmedTypedText.isEmpty {
-                typedText = spoken
+            // For speech, that is the typed words and what was said, in
+            // order; a typed save's words are already there.
+            if source == .inAppVoice {
+                typedText = normalizedText
                 mode = .text
             }
             transcriber.cancel()
@@ -2131,7 +2155,15 @@ struct CaptureView: View {
         }
         ensureDraft(source: source)
         guard let activeDraftID else { return }
-        CaptureDraftStore.update(id: activeDraftID, transcript: text)
+        CaptureDraftStore.update(id: activeDraftID, transcript: draftWords(saying: text, source: source))
+    }
+
+    /// What a checkpoint stores: typed words as they are, and speech after
+    /// whatever was typed before it, which is still in the editor. Stored
+    /// alone, the first spoken checkpoint replaced the typed words.
+    private func draftWords(saying text: String, source: CaptureSource) -> String {
+        guard CaptureDraftStore.recordsProtectedAudio(for: source) else { return text }
+        return CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: text)
     }
 
     private func scheduleCheckpoint(_ text: String, source: CaptureSource) {
@@ -2150,19 +2182,32 @@ struct CaptureView: View {
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
         guard let activeDraftID else { return }
-        let text = mode == .text ? typedText : transcriber.transcript
+        // In voice mode the editor still holds what was typed before
+        // speaking. Writing the transcript alone erased it from the draft
+        // whenever the screen went before anything was said.
+        let text = mode == .text
+            ? typedText
+            : draftWords(saying: transcriber.transcript, source: .inAppVoice)
         CaptureDraftStore.update(id: activeDraftID, transcript: text)
     }
 
     private func ensureDraft(source: CaptureSource) {
         // Reusing the draft goes through `updateSource`, which is what gives a
         // draft that began as typing its protected recording before a voice
-        // capture starts in it.
+        // capture starts in it, and sets aside what the editor holds so that
+        // recovering the recording adds to it rather than replacing it.
+        let typedBeforeSpeaking = CaptureDraftStore.recordsProtectedAudio(for: source)
+            ? typedText
+            : ""
         if let activeDraftID {
-            CaptureDraftStore.updateSource(id: activeDraftID, source: source)
+            CaptureDraftStore.updateSource(
+                id: activeDraftID,
+                source: source,
+                typedBeforeSpeaking: typedBeforeSpeaking
+            )
             return
         }
-        let draft = CaptureDraftStore.begin(source: source)
+        let draft = CaptureDraftStore.begin(source: source, typedBeforeSpeaking: typedBeforeSpeaking)
         activeDraftID = draft.id
         captureStartedAt = draft.startedAt
     }

@@ -31,6 +31,11 @@ Entries before September 2026 were reconstructed from the commit history and
   recovering the words, and a kill could lose them. The retry is also dated
   from the recording, not from the save before it, and a typed save no longer
   leaves an empty draft behind.
+- Words typed before "Speak instead" are kept. The saved thought is what you
+  typed and then what you said, whether it is saved live, recovered in the
+  capture screen, recovered at launch or from Today. If the recording cannot
+  be read, "Type it" starts from the typed words, and deleting the recording
+  keeps them as a thought of their own.
 
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark

@@ -319,29 +319,34 @@ its first run for reasons unrelated to it.
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
 
-## A draft with a recording is recovered from the recording alone
+## Typed edits made after a recording lose to the recording
 
 *2026-09-23.* One capture screen keeps one draft across "Speak instead" and
 "Type instead", and since the D6 fix (see Decisions, "A draft's recording
 follows how it is being captured now") any draft that has been spoken into
-carries a protected recording, whichever way it began. Recovery reads such a
-draft from its recording only; its checkpointed text is not saved beside it.
-That is the same outcome as a live voice save, which saves the spoken words
-and empties the editor, but it means:
+carries a protected recording, whichever way it began. Words typed *before*
+the first recording are kept beside it (`typedBeforeSpeaking`) and saved ahead
+of whatever the recording gives, by a live save and by every recovery. What
+is not kept:
 
-- Words typed before "Speak instead" are dropped if the recording is
-  recovered. Before the fix, a kill before the first spoken words were
-  checkpointed replayed the typed words instead and lost the spoken ones.
-- Words typed or edited after "Type instead" on a spoken draft are dropped if
-  the app dies before they are saved, and the recording's words are saved in
-  their place. This was already true of drafts that began as speech
-  (`testAudioRecoveryTakesPriorityOverAPartialTranscript`).
-- Today's "Type it" sheet for a recording that could not be recovered starts
-  empty; it does not offer the text the draft still holds.
-
-Keeping both would need the draft's text and its recording to be recovered
-separately and then told apart from a duplicate, which is the same missing
-provenance as the voice-draft-edited-during-save gap in Decisions.
+- Words typed or edited after "Type instead", on a draft whose recording is
+  still there, are dropped if the app dies before they are saved: recovery
+  reads the recording and joins it after the words typed before it, not after
+  the edit. This was already true of drafts that began as speech
+  (`testAudioRecoveryTakesPriorityOverAPartialTranscript`). Speaking again
+  sets the edited text aside, so only the window between editing and saving
+  is exposed. It also records over the first recording, which reuses its
+  file, so anything the live transcript missed from the first attempt is gone
+  with it; that predates the D6 fix.
+- A voice attempt that ends with no audio input at all (the no-speech timeout
+  with nothing recorded) discards the draft, and with it any words typed
+  before speaking. They are still on screen in the editor; a kill before the
+  person types again loses them. The discard is in the no-speech branch that
+  the VoiceOver change rewrites as `endAttemptWithoutWords`, so it is left to
+  follow that change rather than conflict with it.
+- When a recording is deleted from Today, the words typed before it are saved
+  at once as their own thought. If storage refuses that save, they are kept as
+  a typed draft and saved at the next launch, not sooner.
 
 ## The app cannot set what customers are charged
 
