@@ -1927,6 +1927,34 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
+    /// Names that end in a number or in a weekday: what the cut does to them
+    /// today, pinned as it is rather than as it should be.
+    ///
+    /// A number alone is not a time. The bare-hour clock needs a preposition
+    /// in front of it, so "gate 5" and "room 204" keep their numbers. A
+    /// plural weekday is not a time to the temporal grammar either, so "TGI
+    /// Fridays" keeps its name. A name that ends in a singular weekday is cut:
+    /// "Ruby Tuesday" leaves "ruby". Nothing in the words tells that name
+    /// from "Costco Tuesday", which is a place and a day. The sentence-level
+    /// parse reads the Tuesday either way, so only the place shown in review
+    /// is wrong (see Docs/KNOWN_ISSUES.md).
+    ///
+    /// Falsifier: "gate 5" or "room 204" losing its number means the cut now
+    /// reads a bare number as a clock. "Ruby Tuesday" keeping its name, or
+    /// "TGI Fridays" losing its plural, means the rule changed and the known
+    /// issue needs revisiting.
+    func testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem() {
+        let cases: [(String, PlaceReference)] = [
+            ("Remind me to get a coffee when I get to gate 5", .named("gate 5")),
+            ("Remind me to drop off the forms when I get to room 204", .named("room 204")),
+            ("Remind me to grab a table when I get to TGI Fridays", .named("tgi fridays")),
+            ("Remind me to grab napkins when I get to Ruby Tuesday", .named("ruby")),
+        ]
+        for (text, place) in cases {
+            XCTAssertEqual(LocationIntentParser.parse(text)?.place, place, text)
+        }
+    }
+
     /// The natural phrasing, end to end: held exactly like "…when I get home
     /// tomorrow", with the day kept and nothing armed.
     ///

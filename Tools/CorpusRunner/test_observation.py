@@ -918,6 +918,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         nobody would say. The messages were reworded to say "held" and
         "stays" rather than the bullet repinned, because the bullet is about
         how people say the word and these were never people talking.
+        4145 -> 4154 on 2026-09-23, from the second review of that change
+        (names that end in a number or a weekday): nine added, none
+        removed, enumerated by diffing this population at both commits.
+        Four test captures (`"Remind me to get a coffee when I get to gate
+        5"`, `"Remind me to drop off the forms when I get to room 204"`,
+        `"Remind me to grab a table when I get to TGI Fridays"`, `"Remind
+        me to grab napkins when I get to Ruby Tuesday"`), each also a
+        `corpusCase` in `SemanticCorpusB.location` except the room; three
+        `note:` arguments on those rows; and two phrases quoted in a doc
+        comment, `"Ruby Tuesday"` and `"Costco Tuesday"`. The
+        development-set overlap stayed at 114.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -932,7 +943,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4145)
+        self.assertEqual(len(space), 4154)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

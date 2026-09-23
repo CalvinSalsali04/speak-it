@@ -367,6 +367,26 @@ enum SemanticCorpusB {
                    remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
                    note: "The terminator's \"after\" cut this name at \"home the day\". The grammar reads the day with what follows it."),
 
+        // Names that end in a number or a weekday (2026-09-23, round two of
+        // DEL-11). Pinned as the grammar reads them now. A number alone is
+        // not a clock, so a numbered place keeps its number. A name ending in
+        // a singular weekday is cut there, which is the known issue: the day
+        // was read as a time before the cut too, so the row is held either
+        // way and only the place name shown is wrong. Falsifier: "gate 5"
+        // losing its number, or any of these arming a reminder.
+        corpusCase(.location, "Remind me to get a coffee when I get to gate 5", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("gate 5"))],
+                   note: "A bare number needs \"at\" or the like in front of it to be a clock, so the gate keeps its number."),
+        corpusCase(.location, "Remind me to grab napkins when I get to Ruby Tuesday", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("ruby"))], review: [true],
+                   note: "Known issue: the name is cut at the weekday. Nothing in the words tells it from a place and a day, and the Tuesday was read as the day before the cut as well."),
+        corpusCase(.location, "Remind me to grab a table when I get to TGI Fridays", count: 1,
+                   kind: [TemporalKind.none], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .named("tgi fridays"))],
+                   note: "A plural weekday is a repeat only after \"every\" or \"weekly\", and never a single day, so the name is kept whole."),
+
         // Controls for the rows above. The same place alone, the same time
         // alone, and the forms that were already held. The hold must not move
         // any of them. The named-place row among them did move, on purpose:

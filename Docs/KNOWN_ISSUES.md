@@ -572,6 +572,16 @@ The specifics:
     phrasings sit in the corpus beside the day-first rows (see
     `DECISIONS.md`, 2026-09-23). A name that still ends in a time the
     grammar cannot read keeps the whole phrase as a named place.
+  - **A place name that ends in a weekday loses the weekday.** "When I get
+    to Ruby Tuesday" names a place called "ruby". The name ends where the
+    temporal grammar finds a time, and nothing in the words tells "Ruby
+    Tuesday" from "Costco Tuesday", a place and then a day. The time is still
+    read, and was read before the cut too, so the request is held for review
+    either way and nothing is armed. Only the place name shown in review is
+    cut. A number is not cut ("gate 5", "room 204"), and neither is a plural
+    weekday ("TGI Fridays"). The corpus rows and
+    `testNamesEndingInANumberOrAWeekdayAreCutAsTheGrammarReadsThem` pin all
+    four as they read now.
   - *Resolved the same day for rows that kept their place.* A row captured
     before the fix still carries its 9 AM alert, and no launch pass re-reads
     it, but `ReminderScheduleRequest` now refuses any row that constrains a
