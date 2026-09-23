@@ -143,6 +143,18 @@ jobs:
         run: |
           echo "::warning title=No Swift compiled on this pull request::Files under the iOS filter changed, and the iOS job runs on pull requests only when IOS_RUNNER is set. The green checks here are Linux checks and say nothing about whether the app builds. Dispatch ci.yml on this branch to compile it."
 
+      # The dispatch half of the same gap. language_only skips the iOS job, and
+      # an absent job says nothing; a reader asking "did it compile?" should get
+      # "no" in words. The language job builds the command-line corpus tools
+      # from a subset of the app's sources, which is not the app, its
+      # extensions or its tests.
+      - name: Say when a language-only dispatch compiles no app
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.language_only == true }}
+        run: |
+          message="language_only dispatch: the iOS job did not run, so the app, its extensions and its test bundles were NOT compiled and no unit, Release or UI test ran. The language job's numbers say nothing about whether the app builds."
+          echo "::warning title=No app Swift compiled on this dispatch::$message"
+          echo "$message" >> "$GITHUB_STEP_SUMMARY"
+
   hygiene:
     name: Secrets, workflow and shell lint
     runs-on: ubuntu-latest
@@ -367,6 +379,11 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # Deliberately not gated on the compile step above, unlike the tests:
+      # it is its own build (Release configuration, generic iOS device, its own
+      # derived data), so it answers its own question even when the simulator
+      # compile failed. A FAIL beside a PASS here means the Release build
+      # passed and the simulator build did not; it does not mean "it builds".
       - name: Release compile check
         id: release
         if: ${{ !cancelled() && (inputs.release_build == true || github.ref == 'refs/heads/main') }}
@@ -394,7 +411,9 @@ jobs:
       # One line per stage, each with its own outcome. `skipped` means the
       # stage did not run, and is printed as NOT RUN so that it can never be
       # read as a pass. The unit-test row names what was selected, because a
-      # green focused run is not a green suite.
+      # green focused run is not a green suite, and carries the passed, failed
+      # and skipped counts unit-tests.sh read from the result bundle, because
+      # one word cannot say which failures were the diagnostic's.
       - name: What this run established
         if: ${{ always() }}
         env:
@@ -402,8 +421,14 @@ jobs:
           COMPILE: ${{ steps.compile.outcome }}
           UNIT: ${{ steps.unit.outcome }}
           SELECTION: ${{ inputs.tests || 'SpeakItTests' }}
+          UNIT_PASSED: ${{ steps.unit.outputs.passed }}
+          UNIT_FAILED: ${{ steps.unit.outputs.failed }}
+          UNIT_SKIPPED: ${{ steps.unit.outputs.skipped }}
           RELEASE: ${{ steps.release.outcome }}
           UI: ${{ steps.ui.outcome }}
+          UI_PASSED: ${{ steps.ui.outputs.passed }}
+          UI_FAILED: ${{ steps.ui.outputs.failed }}
+          UI_SKIPPED: ${{ steps.ui.outputs.skipped }}
         run: Tools/CI/stage-summary.sh
 
   language:
