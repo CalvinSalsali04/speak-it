@@ -84,12 +84,26 @@ enum CaptureDraftStore {
     static func update(id: UUID, transcript: String, at date: Date = .now) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
-        let normalized = transcript
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        drafts[index].transcript = normalized
+        drafts[index].transcript = normalizedTranscript(transcript)
         drafts[index].updatedAt = date
         persist(drafts)
+    }
+
+    /// Keeps the words an incomplete recovery pass did read beside the
+    /// recording, so a pass that stopped early loses nothing it heard. It never
+    /// replaces a longer checkpoint (the live transcript may already hold more),
+    /// and it never touches the recording: the draft stays retryable.
+    static func keepRecoveredWords(_ partial: String, id: UUID, at date: Date = .now) {
+        guard let existing = draft(id: id) else { return }
+        let words = normalizedTranscript(partial)
+        guard words.count > existing.transcript.count else { return }
+        update(id: id, transcript: words, at: date)
+    }
+
+    private static func normalizedTranscript(_ transcript: String) -> String {
+        transcript
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Removes abandoned empty checkpoints while preserving any draft that has
