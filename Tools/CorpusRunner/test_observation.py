@@ -1600,6 +1600,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         another question names no list"`, `"the dated trip keeps its
         reminder beside a held list"`). Its `"buy milk"` and `"Buy milk"`
         were already in the population.
+        4100 -> 4104 on 2026-09-23, from the fifth round of that change's
+        grading: a snooze of a recurring row whose intent data will not
+        decode had no test. Four in, none out, all assertion messages --
+        `"Precondition: the backfill kept the bytes"`, `"Precondition: the
+        row recurs"`, `"a snooze of this row must report it unreadable, not
+        recorded"` and `"a snooze must not write a record over intent data
+        it cannot read"`. It reuses the weekly bins sentence, `"not an
+        intent"` and `"Precondition: data that will not decode"`.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1787,7 +1795,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         already on the candidate). The merge resolution itself adds 2
         (`launch released a named place held beside a time`, `the row's
         bell reads the same refusal as the scheduler`) and removes 1
-        (`the system's place is still released`).
+        (`the system's place is still released`). 4700 -> 4704 on
+        2026-09-23, re-merging #129 at `9b88e05` into the V1 candidate
+        in the second merge rehearsal: measured from the merged tree,
+        not taken from either side (4700 on the candidate, 4104 on #129,
+        4100 at their merge base; #129 adds 4 and removes 0, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1797,7 +1810,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4700)
+        self.assertEqual(len(space), 4704)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

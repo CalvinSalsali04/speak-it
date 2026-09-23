@@ -1211,6 +1211,68 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
+    /// A recurring row whose intent data will not decode, and which the launch
+    /// backfill therefore kept as it is, can still be snoozed: the snooze
+    /// reports `unreadableIntent`, writes no record over those bytes, and does
+    /// not stop a Debug build.
+    ///
+    /// The row goes through a relaunch first, so it reaches the snooze by the
+    /// same road a real one does: the backfill meets it, counts it as
+    /// unreadable, and leaves it. That count only feeds a log line, so it is
+    /// not asserted here; the bytes surviving the relaunch are what it guards.
+    /// The outcome is read from `setSnoozedFromReminderDate` on the same row,
+    /// the call `recordSnoozeDisplacement` makes, since that method keeps its
+    /// outcome to itself.
+    ///
+    /// Falsifier: remove `guard outcome != .unreadableIntent` from
+    /// `recordSnoozeDisplacement`. The suite runs Debug, so the snooze below
+    /// then traps in `assertionFailure`. Making the snooze overwrite the blob
+    /// instead fails the bytes assertion. Parsing, the store and the snooze
+    /// run under the pin; nothing here reads the notification center.
+    func testSnoozeOnARecurringRowWithUnreadableIntentDataRecordsNothing() throws {
+        let unreadable = Data("not an intent".utf8)
+        var itemID: UUID!
+        var firstDue: Date!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            let item = try repository.createCapture(
+                text: "Remind me every Monday at 9 am to take the bins out",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            firstDue = try XCTUnwrap(item.dueDate)
+            item.temporalIntentData = unreadable
+            XCTAssertNil(item.temporalIntent, "Precondition: data that will not decode")
+            try container.mainContext.save()
+            itemID = item.id
+        }
+
+        try withFixtureClock { _ in
+            try relaunch()
+            let item = try loadItem(withID: itemID)
+            XCTAssertEqual(item.temporalIntentData, unreadable, "Precondition: the backfill kept the bytes")
+            XCTAssertNotNil(RecurrenceStore.rule(for: item.id), "Precondition: the row recurs")
+            XCTAssertNotNil(item.seriesReminderDate)
+            XCTAssertEqual(item.seriesReminderDate, item.reminderDate)
+
+            try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
+
+            XCTAssertEqual(
+                item.setSnoozedFromReminderDate(firstDue),
+                .unreadableIntent,
+                "a snooze of this row must report it unreadable, not recorded"
+            )
+            XCTAssertEqual(
+                item.temporalIntentData,
+                unreadable,
+                "a snooze must not write a record over intent data it cannot read"
+            )
+            XCTAssertNil(item.temporalIntent)
+            XCTAssertEqual(item.reminderDate?.timeIntervalSinceNow ?? 0, 10 * 60, accuracy: 3)
+        }
+    }
+
     /// What a scheduling pass selects to arm, read from the value
     /// `scheduleBatch` itself acts on: a series whose alert has fired is still
     /// armed as a notification, and nothing in it is taken for an alarm.
