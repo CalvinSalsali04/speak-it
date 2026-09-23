@@ -20,6 +20,10 @@ enum CaptureTextLimit {
 }
 
 struct SharedCapturePayload: Codable, Equatable, Identifiable, Sendable {
+    /// Minted once per share and never reused for other text: the import
+    /// commits under this id as the capture's session id, so a replay after
+    /// a kill returns the session it already made. Reusing an id for new
+    /// text would make that import return the old session and drop the text.
     let id: UUID
     let text: String
     let sourceURL: URL?

@@ -96,6 +96,17 @@ capture's words is listed, so an absence here is a checked absence:
   - the quarantine path (`createPendingCapture` after too many attempts)
     skips dedupe, so it would quarantine the words a second time, in Needs
     review.
+- **A second small gap, a voice draft edited during its own save:** editing or
+  clearing the text field while a draft with a recording is saving withdraws
+  the handoff (the edited words were never committed), but the recording
+  stays. A kill after the commit and before the draft is cleared leaves the
+  audio pass to re-transcribe spoken words that were already saved, so the
+  capture appears twice. Keeping the handoff instead would release the draft
+  and lose the typed edit, which is stored nowhere else. The draft's text and
+  its recording need separate provenance, and `handedOffSessionID` can vouch
+  for only one; with an edit and a kill both inside one sub-second save, and
+  a visible duplicate rather than a lost thought as the result, no field was
+  spent on it.
 
 Rejected: matching a session by `createdAt == draft.startedAt`, the audit's
 smallest fix. It infers what can be recorded, and it is only as good as the
