@@ -70,11 +70,11 @@ evidence that closed it).
 | `pr135-regions` | #135 | `8da8ea8` | `claude/v1-reliability-nyngoe-regions` | `LocationReminderTests` | yes / yes |
 | `pr136-place-day` | #136 | `00bcf75` | `claude/v1-reliability-nyngoe-place-day` | `LocationReminderTests`, `SemanticCorpusTests`, `SwiftDataThoughtRepositoryTests` | yes / yes |
 | `pr137-weekly-clock` | #137 | `06b5d62` | `claude/v1-reliability-nyngoe-weekly-clock` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr138-held` | #138 | `5fb026c` | `claude/v1-reliability-nyngoe-held` | `ItemPresentationTests`, `TemporalFullPathTests`, `LocationReminderTests`, `SwiftDataThoughtRepositoryTests`, `DurabilityTests`, `MorningBriefTests` | yes / yes |
+| `pr138-held` | #138 | `12dd411` | `claude/v1-reliability-nyngoe-held` | `ItemPresentationTests`, `TemporalFullPathTests`, `LocationReminderTests`, `SwiftDataThoughtRepositoryTests`, `DurabilityTests`, `MorningBriefTests` | yes / yes |
 | `pr139-a11y` | #139 | `1419bb6` | `claude/v1-reliability-nyngoe-a11y` | `VoiceOverAnnouncementTests` | yes / yes |
 | `pr140-held-shopping` | #140 | `338fb1d` | `claude/v1-reliability-nyngoe-held-shopping` | `ItemPresentationTests`, UI test `SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` | yes / yes |
 | `pr141-merge-undo` | #141 | `71ccfb7` | `claude/v1-reliability-nyngoe-merge-undo` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr142-widget-review` | #142 | `87fe802` | `claude/v1-reliability-nyngoe-widget-review` | `LocationReminderTests` | yes / yes |
+| `pr142-widget-review` | #142 | `89e68b8` | `claude/v1-reliability-nyngoe-widget-review` | `LocationReminderTests` | yes / yes |
 | `pr143-edit-time` | #143 | `d5fe9ea` | `claude/v1-reliability-nyngoe-edit-time` | `SwiftDataThoughtRepositoryTests` | yes / yes |
 | `pr144-typed-draft` | #144 | `e87d305` | `claude/v1-reliability-nyngoe-typed-draft` | `DurabilityTests` | yes / yes |
 | `semantic-units` | #118 | `d79d9fa` | `claude/semantic-map-xklzll` | - (extra: the units experiment, M2) | no / no |
@@ -82,7 +82,7 @@ evidence that closed it).
 Stacked rows, whose head contains their base's commits: #125 on #122 (up to
 `60c660b`, not #122's two later fixture commits), #126 and #134 on #119, #128
 and #132 on #126, #131 on #124, #133 on #127, #135 on #125, #138 on #122, #139
-and #144 on #128, #140 on #138, #118 on #117. `pr116-with-119` composes #116
+and #144 on #128, #140 on #138 (up to `5fb026c`, not #138's later commits), #118 on #117. `pr116-with-119` composes #116
 and #119; #116's own tip (`fix/capture-experience-reliability`) must still be
 contained in its pin, which `--check-pins` does not check.
 

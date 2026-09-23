@@ -70,16 +70,16 @@ pr136-place-day	00bcf750ea02dca8e7017e76adcb2bc520384229	claude/v1-reliability-n
 pr137-weekly-clock	06b5d62b7425f62a550f908a69d1ec4e95f9278a	claude/v1-reliability-nyngoe-weekly-clock	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
 # Stacked on #122 (base claude/v1-reliability-nyngoe-bell): its head contains
 # #122's commits.
-pr138-held	5fb026cd5904a0f10b546877c56585ac5149596e	claude/v1-reliability-nyngoe-held	SpeakItTests/ItemPresentationTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests,SpeakItTests/SwiftDataThoughtRepositoryTests,SpeakItTests/DurabilityTests,SpeakItTests/MorningBriefTests	yes	yes	-
+pr138-held	12dd41177d4a7bef0faa6ee256d5dc5d7c45147b	claude/v1-reliability-nyngoe-held	SpeakItTests/ItemPresentationTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests,SpeakItTests/SwiftDataThoughtRepositoryTests,SpeakItTests/DurabilityTests,SpeakItTests/MorningBriefTests	yes	yes	-
 # Stacked on #128 (base claude/v1-reliability-nyngoe-relaunch): its head
 # contains #128's, #126's, #119's and #116's commits.
 pr139-a11y	1419bb6b1570ae4e0e104161e09c51f4bafecc9b	claude/v1-reliability-nyngoe-a11y	SpeakItTests/VoiceOverAnnouncementTests	yes	yes	-
 # Stacked on #138 (base claude/v1-reliability-nyngoe-held): its head contains
-# #138's and #122's commits. The UI test is the only one that reaches
+# #122's commits and #138's up to 5fb026c, not #138's later commits. The UI test is the only one that reaches
 # TodayView.needsReview; UI tests are not in CI, so this cell is its evidence.
 pr140-held-shopping	338fb1d2ed48d3ca570abaf38e6dd2ffaf66afb4	claude/v1-reliability-nyngoe-held-shopping	SpeakItTests/ItemPresentationTests,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	-
 pr141-merge-undo	71ccfb72db69e5479354a277af1de1309846d8e0	claude/v1-reliability-nyngoe-merge-undo	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-pr142-widget-review	87fe8025d344402be0007092097f9de6cb9f1e21	claude/v1-reliability-nyngoe-widget-review	SpeakItTests/LocationReminderTests	yes	yes	-
+pr142-widget-review	89e68b8d64c796d271c438888215c269ac338a79	claude/v1-reliability-nyngoe-widget-review	SpeakItTests/LocationReminderTests	yes	yes	-
 pr143-edit-time	d5fe9eaf4c4f26a52f1b22f71d6fcdd12c2ae7a4	claude/v1-reliability-nyngoe-edit-time	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
 # Stacked on #128 (base claude/v1-reliability-nyngoe-relaunch): its head
 # contains #128's, #126's, #119's and #116's commits.
