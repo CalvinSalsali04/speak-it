@@ -285,8 +285,12 @@ final class SpeechTranscriber: ObservableObject {
                     // belongs to a run that is over. The state check alone
                     // lets it into the next run's meter. No test covers this
                     // guard: it runs inside a live AVAudioEngine tap, which the
-                    // unit tests have no seam for. Its failure is cosmetic, a
-                    // stale level briefly moving the newer run's meter.
+                    // unit tests have no seam for. Were it to fail, a stale
+                    // level would move the newer run's meter and could set
+                    // `hasDetectedAudioInput` for a run that heard nothing,
+                    // which gates the offer to recover a capture from its
+                    // audio: a later failure would then spend a recovery
+                    // attempt on a silent file.
                     guard activeRunID == startID else { return }
                     guard state == .requestingPermission
                             || state == .listening
@@ -304,12 +308,18 @@ final class SpeechTranscriber: ObservableObject {
             audioEngine.prepare()
             try audioEngine.start()
             // Nothing between adopting the backend and here suspends, so this
-            // run still owns the capture and the guard cannot fail today. Were
-            // an await added above, a run found stale here would release
-            // nothing: whatever it installed was already reset by the start
-            // that superseded it, and resetting now would tear down that newer
-            // run's microphone (LIF-7), the way the stale branch in
-            // `adoptStartedBackend` used to.
+            // run still owns the capture and the guard cannot fail today.
+            // Returning without a reset is right only for an await added
+            // between `audioEngine.start()` and this line: the stale run has
+            // finished its writes, the start that superseded it already reset
+            // them, and resetting now would tear down that newer run's
+            // microphone (LIF-7), the way the stale branch in
+            // `adoptStartedBackend` used to. An await added anywhere earlier
+            // needs its own ownership check immediately after it, before the
+            // first write to shared state (the recovery file, the audio
+            // processor, the tap on bus 0): a stale run resuming there would
+            // otherwise install over the newer run, and this guard would then
+            // leave it in place.
             guard activeStartID == startID else { return }
             audioInputReadyTimeout?.cancel()
             audioInputReadyTimeout = Task { @MainActor [weak self] in
@@ -950,9 +960,10 @@ final class SpeechTranscriber: ObservableObject {
         // A finalization deadline belongs to the backend being released here.
         // Left running, it would outlive its run by up to two seconds: stop
         // a recording, then start another before its finalization settles,
-        // and the old deadline could force-complete a finalization that
-        // belongs to nobody. The other cancels of this deadline do not make
-        // this one redundant.
+        // and if the new run reaches `.finalizing` inside that window the old
+        // deadline force-completes the new run's finalization early,
+        // truncating it. A start while `.finalizing` reaches this reset and
+        // no other cancel of this deadline, so this one is not redundant.
         finalizationTimeout?.cancel()
         finalizationTimeout = nil
         lastEndpointingSignature = ""
