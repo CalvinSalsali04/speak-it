@@ -837,7 +837,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             displayTitle: "Take out the garbage",
             itemType: .task,
             lastModifiedAt: Self.storedModificationDate,
-            temporalIntent: .none,
+            temporalIntent: nil,
             locationIntent: LocationIntent(event: .arrive, place: .home)
         )
         let timeAlone = try storedPlaceAndTimeRow()

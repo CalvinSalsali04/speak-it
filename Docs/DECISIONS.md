@@ -60,12 +60,18 @@ no hand-set time that is still out of review. Or a reviewed, hand-set,
 held, done or archived row, or a place alone or a time alone, that gains
 the flag or a new modification date. Or a moved row that lost a word, its
 place, its day or its clock. Or a second launch that changes anything. The
-four tests are in `SwiftDataThoughtRepositoryTests`, beside
+three tests are in `SwiftDataThoughtRepositoryTests`, beside
 `testLaunchLeavesANamedPlaceAndTimeHoldInReview`.
 
 **Not covered.**
 
 - **Not compiled or run here.** There is no Swift toolchain on this host.
+- **Rows with no clock, or a clock already past.** The selection is
+  `awaitsPlaceOrTimeChoice`, not "the scheduler refused a live alert", so
+  it also takes a place-and-time row that never had a clock or whose clock
+  has gone by. An old overdue row is then asked about a time that has
+  passed. That is harmless, and those are the rows capture holds today, so
+  the code keeps the wider selection.
 - **An iCloud restore that lands later in the same launch.**
   `reconcileICloudSync` runs after this pass. A snapshot applied then can
   bring the row back out of review until the next launch. The scheduler
