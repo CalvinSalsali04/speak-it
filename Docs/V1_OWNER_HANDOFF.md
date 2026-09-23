@@ -10,87 +10,85 @@ engineering would be unsafe without a hardware result (every known Mac check is
 then batched into one run), every non-hardware V1 task is complete, or a
 destructive, privacy or cost decision needs his approval.
 
-**Mac steps are one command, plus one short block by hand.** `./Tools/CI/v1-qualification.sh`
+**Mac steps are one command, then one typed session.** `./Tools/CI/v1-qualification.sh`
 qualifies every row of `Tools/CI/v1-qualification.tsv` in fresh worktrees
 pinned to exact commits, and writes one evidence directory and one zip. The
 manifest and this file are kept in step: a Mac entry below with status *queued*
-is a row there, and the commit list under M1 is the manifest's rows. M3 is the
-only Mac step outside the command: two probe scripts and a timing for #136.
+is a row there, and the commit list under M1 is the manifest's rows. There are
+three rows: `baseline` (main), `rc` (the V1 candidate, carrying every check the
+per-PR rows used to run) and `semantic-units` (M2). M3 is the only Mac step
+outside the command: captures typed into the Simulator with Apple Intelligence
+on, using a list the command writes. Nothing else on the Mac is run by hand.
 
 **Before the session, check the pins.** `./Tools/CI/v1-qualification.sh
 --check-pins` fetches origin and compares every row's commit with the tip of the
-branch the manifest names for it (a PR row's head branch). Exit 0 means every
-pin is its branch's tip. Exit 1 lists each stale pin and how far behind it is:
-stop there and have the manifest and the commit list below repinned, because a
-run on a stale pin qualifies a version of the PR nobody is proposing to merge.
-The full run makes the same check and marks any stale row in `SUMMARY.md` and
-in that row's `identity.txt`, so the evidence says so even if this step is
-skipped.
+branch the manifest names for it (for `rc`, the candidate branch). Exit 0 means
+every pin is its branch's tip. Exit 1 lists each stale pin and how far behind it
+is: stop there and have the manifest and the commit list below repinned, because
+a run on a stale pin qualifies a version nobody is proposing to ship. The `rc`
+pin goes stale whenever anything is merged into the candidate after it was set;
+repinning it is one line in the manifest. The full run makes the same check and
+marks any stale row in `SUMMARY.md` and in that row's `identity.txt`, so the
+evidence says so even if this step is skipped.
 
 Status values: **queued** (ready, waiting for the consolidated run),
 **pending** (the thing to validate is not built yet), **done** (with the
 evidence that closed it).
 
+**Gates.** A step marked **Gates:** names a claim that no release note,
+CHANGELOG line or App Store text may make until that step has run and said yes.
+
 ## Mac
 
-### M1. Compile, test and build the open reliability PRs against a healthy simulator
+### M1. Compile, test and build the V1 candidate against a healthy simulator
 
 | | |
 |---|---|
-| Commits | one manifest row each, listed in the commit list below: the baseline (main), one row per open PR from #116 to #144 except #121 (this file's own PR, whose checkout runs the command), and #118's model run (M2). Stacked PRs have their own row at their own head, which contains their base's commits. |
-| Why a Mac | GitHub's hosted macOS simulator has no `NLTagger` lexical-class model: every token tags `OtherWord`. The whole unit suite and every tagger-dependent assertion can only be answered where the model exists. Hosted dispatches can still settle whether the Swift compiles and whether the Release build passes, and those runs are recorded under *Hosted evidence* below. They compiled #117, main, #116 with #119's first commit, and two integration merges of earlier heads (wave 1 and wave 2). Of the PR pins below, only #124 `660fcfb` and #127 `f21cb09` went through a compiler, and only as parts of the wave-2 merge. Every other PR head has moved on since, so it has not been through a compiler as far as this file records. |
+| Commits | The three manifest rows in the commit list below. `rc` is the candidate branch `claude/v1-reliability-nyngoe-rc`, which contains the head of every V1 PR merged into it: #116, #117, #119 to #148 and #150 to #153 (#150 arrived with #152). #118 is M2. It replaces the per-PR rows this file used to list; where each of their checks went is under the commit list. |
+| Why a Mac | GitHub's hosted macOS simulator has no `NLTagger` lexical-class model: every token tags `OtherWord`. The whole unit suite and every tagger-dependent assertion can only be answered where the model exists. Hosted dispatches can still settle whether the Swift compiles and whether the Release build passes, and those runs are recorded under *Hosted evidence* below. They compiled earlier heads and integration merges; none of them is the `rc` pin, so as far as this file records the pinned candidate has not been through a compiler. |
 | Command | `./Tools/CI/v1-qualification.sh --check-pins` first (see above), then `./Tools/CI/v1-qualification.sh` (runs M1 and M2 together). Exit 1 is expected on this Mac: the gate fails on main because of one known row, and a blind simulator fails the NaturalLanguage diagnostics. Exit 4 means at least one comparison was not measured; `SUMMARY.md` says which. |
-| Expected evidence | `SUMMARY.md`. **Table:** PASS on every PR row for compile, and for Release on every row that asks for it (`pr120-ci` and `semantic-units` do not). Each row's focused cell (the classes in the commit list) carries passed, failed and skipped from its own result bundle. #117's `testAnAccountIsHeldWithAnInstitutionAndNotWithAPerson` may skip if the tagger reads its brand as a name; the skip shows in that cell's skipped count. **Suite comparison, per row:** "measured" and **NEW: 0**. A row can instead read **INCOMPLETE** (it ran fewer tests than the baseline plus the test methods its own source adds: a crash, a timeout or a partial run) or **NOT MEASURED** (checkout failed, no readable result bundle, the summary could not be read, or its failures carry no `testIdentifierString`). Neither is a verdict: rerun that row with `--only <label>`. `PersonMentionTests.testTransportVerbsCarryPeopleNotParcels` is expected to FAIL on the baseline row too if this simulator is blind: it failed on the hosted, blind simulator on main (runs 35809409958 and 35810907291) as well as at #117's commit, so it is not NEW. **Gate comparison, per row:** NEW blocking rows 0. The baseline section lists the one known blocking row, GATE-1 ("Remind me before the office closes December 24": delivery expected notification, got none). GATE-1 is expected red on every row until the owner answers Q5 (restore a reminder on that day, or retire the decision and the corpus row); on a row it is never NEW. **Tests to read by name** (the summary names failures only, so a skip or a pass is read in the row's `focused.xcresult`): `pr129-snooze`: `TemporalFullPathTests/testASchedulingPassLeavesAFiredSeriesArmedInTheNotificationCenter` is the only test that proves a fired series stays armed after a real scheduling pass. It needs provisional notification authorization, which a fresh simulator grants without a prompt. **If it is reported skipped, the simulator refused authorization and the row is not evidence for that guarantee**, whatever its pass count says. `pr135-regions`: the reconcile now fetches with a `#Predicate` on an optional `Data` column, which nothing else in the app does, and a predicate the store cannot translate fails when it runs, not when it compiles. `LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned` fails if it does not translate, and the app logs a `fault` ("Place reminder reconcile could not fetch its rows"). A PASS on that test is the evidence; a skip, or that fault in `pr135-regions/focused-console.txt`, is a failure of the row. `pr140-held-shopping`: the UI test `SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` is the only test that reaches `TodayView.needsReview`. It types the Costco sentence and expects the `today.review.Buy cereal` row with the `Costco` card still present. UI tests are not in CI, so record its result under *Results recorded from the run* below. **Also** the `NaturalLanguageEnvironmentTests` readout, and from #117's own list, `grep entity-frame-comparison pr117/focused-console.txt`: six lines, but only if `testTheTaggerFrameIsNotALeadingQuestion` did not skip (it skips when no control name gets a personal tag, which is what a blind simulator does). That file is the console log pulled out of `pr117/focused.xcresult` with `xcrun xcresulttool get log --type console`, and its first line says how many items came back. **Unverified:** that subcommand is in xcresulttool's manual for Xcode 16 and later, but it has not been run on a real bundle here and its JSON schema is undocumented. If the file says the command failed or found 0 items, the bundle is kept beside it: open it in Xcode and read that test's console output. **Blind spot:** both comparisons are on names, so a test (or corpus row) that already fails on the baseline and fails on a branch for a new reason is not NEW. Read the failure text of the tagger-dependent tests in the region a branch changes, `PersonMentionTests` for #117 above all. |
-| Cost | Most of a day of the Mac, unattended: run it overnight. The manifest has 28 rows. Every row runs the corpus gate (about 9 min on the hosted runner in run 35810907291; `CLAUDE.md` says about 90 s on the author's Mac). The 26 that ask for them (baseline and 25 PR rows) also run the whole unit suite (about 9 min, `CLAUDE.md`) and the Release build (about 2.5 min, hosted): about 20 min a row, so about 8 h 40 min, plus the gate and compile of `pr120-ci` and `semantic-units`. On top of that come each row's clean simulator compile (derived data is per row and commit, so nothing is reused), its focused classes, the baseline's NaturalLanguage readout and M2's model run. Schedule about thirteen hours; a faster local gate makes it shorter. Derived data is kept per row and commit under `SPEAKIT_QUALIFICATION_WORK`, so check free disk before starting. `--only <label>` re-runs one row, and always runs the baseline beside it, so a single re-run costs two rows, about 45 min. No CI minutes, no paid inference. |
-| Later work depends on it | Yes. No PR here can be proposed for merge without it, and the readout decides how every tagger-dependent failure is read. |
+| Expected evidence | `SUMMARY.md`. **Table:** PASS for compile and Release on `baseline` and `rc` (`semantic-units` asks for neither Release nor the suite). The `rc` focused cell carries passed, failed and skipped from its own result bundle. #117's `PersonMentionTests/testAnAccountIsHeldWithAnInstitutionAndNotWithAPerson` may skip if the tagger reads its brand as a name; the skip shows in that cell's skipped count. **Suite comparison (`rc` against `baseline`):** "measured" and **NEW: 0**. It can instead read **INCOMPLETE** (it ran fewer tests than the baseline plus the test methods the candidate adds: a crash, a timeout or a partial run) or **NOT MEASURED** (checkout failed, no readable result bundle, the summary could not be read, or its failures carry no `testIdentifierString`). Neither is a verdict: rerun with `--only rc`. `PersonMentionTests.testTransportVerbsCarryPeopleNotParcels` is expected to FAIL on the baseline row too if this simulator is blind: it failed on the hosted, blind simulator on main (runs 35809409958 and 35810907291) as well as at #117's commit, so it is not NEW. **Gate comparison:** NEW blocking rows 0. The baseline section lists the one known blocking row, GATE-1 ("Remind me before the office closes December 24": delivery expected notification, got none). GATE-1 is expected red on both rows until the owner answers Q5 (restore a reminder on that day, or retire the decision and the corpus row); it is never NEW. **Tests to read by name** in `rc/focused.xcresult` (the summary names failures only, so a skip or a pass is read in the bundle): `TemporalFullPathTests/testASchedulingPassLeavesAFiredSeriesArmedInTheNotificationCenter` is the only test that proves a fired series stays armed after a real scheduling pass (#129). It needs provisional notification authorization, which a fresh simulator grants without a prompt. **If it is reported skipped, the simulator refused authorization and the run is not evidence for that guarantee**, whatever the pass count says. In the same class, F1's `testASnoozedRepeatingAlarmKeepsItsSeriesArmedUnderTheItemID`, `testASnoozedRepeatingAlarmRingsOnceAtTheSnoozeUnderItsOwnID` and `testARepeatingAlarmThatHasRungIsStillArmedForItsNextRing` skip only when the run happens within a minute of their ring: a skip there is not a pass, and `--only rc` settles it. `LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned` (#135): the reconcile fetches with a `#Predicate` on an optional `Data` column, which nothing else in the app does, and a predicate the store cannot translate fails when it runs, not when it compiles. The test fails if it does not translate, and the app logs a `fault` ("Place reminder reconcile could not fetch its rows"). A PASS is the evidence; a skip, or that fault in `rc/focused-console.txt`, is a failure. The UI test `SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` (#140) is the only test that reaches `TodayView.needsReview`. It types the Costco sentence and expects the `today.review.Buy cereal` row with the `Costco` card still present. UI tests are not in CI, so its result is recorded under *Results recorded from the run* below. **Also** the `NaturalLanguageEnvironmentTests` readout, and `grep entity-frame-comparison rc/focused-console.txt`: six lines, but only if `PersonMentionTests/testTheTaggerFrameIsNotALeadingQuestion` did not skip (it skips when no control name gets a personal tag, which is what a blind simulator does). That file is the console log pulled out of `rc/focused.xcresult` with `xcrun xcresulttool get log --type console`, and its first line says how many items came back. **Unverified:** that subcommand is in xcresulttool's manual for Xcode 16 and later, but it has not been run on a real bundle here and its JSON schema is undocumented. If the file says the command failed or found 0 items, the bundle is kept beside it: open it in Xcode and read that test's console output. **Probes** (the `rc` extra cell; `rc/probes/steps.txt` has one line per step, and nothing in it is read by hand): `build` PASS. `dec24` PASS means every sentence of the December 24 family was answered; `dec24.tsv` records route, review flag, due date, reminder, delivery, title and state for each, for Q5. The audit expects the first block to be held for review with no date and no delivery, and it expects "before the weekend" and "before the autumn" to be held too without having confirmed it; this step confirms or refutes that. `151-held` 13/13: each piece of advice in somebody else's words is one row, held, gap `reportedSpeech`, no due date and no reminder. `151-unchanged` 12/12: each control reads the same as on the candidate just before #151. `136-conditional` 72/72 and `136-cancellation` 187/187 (#136's DEL-11 scorers; the sets and scorers are unchanged since #136's head, so a lower figure is a later merge moving a row, named in that step's file, and a finding for a session, not a rerun). `136-timing` records three figures for 200 copies of one long unpunctuated capture: before #136's place-name cap (`11c93d7`), the cap alone (`26e69c0`) and the candidate; a session copies them into `Docs/PERFORMANCE_BENCHMARKING.md`. `d19-picks` writes `d19-picks.tsv`, the list M3 types. A FAIL on any probe step makes the extra cell FAIL; `steps.txt` says which. **Gates:** no release note may say that advice reported from somebody else is held for review until `151-held` and `151-unchanged` pass. **Blind spot:** both comparisons are on names, so a test (or corpus row) that already fails on the baseline and fails on the candidate for a new reason is not NEW. Read the failure text of the tagger-dependent tests, `PersonMentionTests` above all. |
+| Cost | Unattended, about two and a half hours: run it overnight. `baseline` and `rc` each run the corpus gate (about 9 min on the hosted runner in run 35810907291; `CLAUDE.md` says about 90 s on the author's Mac), the whole unit suite (about 9 min, `CLAUDE.md`) and the Release build (about 2.5 min, hosted), each after a clean simulator compile (derived data is per row and commit, so nothing is reused). On top of that: the baseline's NaturalLanguage readout; `rc`'s focused tests (one UI test among them) and its probes (four probe builds, each a few minutes, and the timing); and `semantic-units`' compile, gate and M2's model run. Derived data is kept per row and commit under `SPEAKIT_QUALIFICATION_WORK`, so check free disk before starting. `--only rc` re-runs the candidate, and always runs the baseline beside it: about an hour and a half. No CI minutes, no paid inference. |
+| Later work depends on it | Yes. The candidate cannot be proposed for release without it, and the readout decides how every tagger-dependent failure is read. M3 types the list it writes. |
 | Release blocker | Yes. The frozen commit must compile and build Release. |
 | Status | queued |
 
 #### Commit list (kept in step with the manifest)
 
-| Row | PR | Pin | Branch whose tip it is | Focused | Suite / Release |
-|---|---|---|---|---|---|
-| `baseline` | main | `fbb6f90` | `main` | - | yes / yes |
-| `pr116-with-119` | #116 + #119 | `bfc482d` | `claude/v1-reliability-nyngoe` | `CaptureFeedbackTests` | yes / yes |
-| `pr117` | #117 | `c51842c` | `claude/entity-context-avp56j` | `PersonMentionTests` | yes / yes |
-| `pr120-ci` | #120 | `630e3e0` | `claude/v1-reliability-nyngoe-ci` | - | no / no |
-| `pr122-bell` | #122 | `edb9e2b` | `claude/v1-reliability-nyngoe-bell` | `ItemPresentationTests` | yes / yes |
-| `pr123-recovery` | #123 | `ce62a4d` | `claude/v1-reliability-nyngoe-recovery` | `DurabilityTests`, `CaptureRecoveryEscapeTests` | yes / yes |
-| `pr124-edits` | #124 | `660fcfb` | `claude/v1-reliability-nyngoe-edits` | `DurabilityTests` | yes / yes |
-| `pr125-place` | #125 | `6d09fcd` | `claude/v1-reliability-nyngoe-place` | `LocationReminderTests`, `ItemPresentationTests` | yes / yes |
-| `pr126-stale-save` | #126 | `6333167` | `claude/v1-reliability-nyngoe-stale-save` | `CaptureFeedbackTests` | yes / yes |
-| `pr127-alarms` | #127 | `f21cb09` | `claude/v1-reliability-nyngoe-alarms` | `DurabilityTests` | yes / yes |
-| `pr128-relaunch` | #128 | `e18e148` | `claude/v1-reliability-nyngoe-relaunch` | `DurabilityTests`, `UpgradeDurabilityTests` | yes / yes |
-| `pr129-snooze` | #129 | `20827c8` | `claude/v1-reliability-nyngoe-snooze` | `TemporalFullPathTests`, `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr130-health` | #130 | `37cb1a7` | `claude/v1-reliability-nyngoe-health` | `LexicalTaggingHealthTests`, `SemanticStatePersistenceTests`, `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr131-broad-ops` | #131 | `b9f044c` | `claude/v1-reliability-nyngoe-broad-ops` | `DurabilityTests` | yes / yes |
-| `pr132-retry-snapshot` | #132 | `75e94ca` | `claude/v1-reliability-nyngoe-retry-snapshot` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr133-alarm-repeat` | #133 | `043f009` | `claude/v1-reliability-nyngoe-alarm-repeat` | `TemporalFullPathTests` | yes / yes |
-| `pr134-mic2` | #134 | `42a9db3` | `claude/v1-reliability-nyngoe-mic2` | `CaptureFeedbackTests` | yes / yes |
-| `pr135-regions` | #135 | `8da8ea8` | `claude/v1-reliability-nyngoe-regions` | `LocationReminderTests` | yes / yes |
-| `pr136-place-day` | #136 | `00bcf75` | `claude/v1-reliability-nyngoe-place-day` | `LocationReminderTests`, `SemanticCorpusTests`, `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr137-weekly-clock` | #137 | `06b5d62` | `claude/v1-reliability-nyngoe-weekly-clock` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr138-held` | #138 | `12dd411` | `claude/v1-reliability-nyngoe-held` | `ItemPresentationTests`, `TemporalFullPathTests`, `LocationReminderTests`, `SwiftDataThoughtRepositoryTests`, `DurabilityTests`, `MorningBriefTests` | yes / yes |
-| `pr139-a11y` | #139 | `1419bb6` | `claude/v1-reliability-nyngoe-a11y` | `VoiceOverAnnouncementTests` | yes / yes |
-| `pr140-held-shopping` | #140 | `338fb1d` | `claude/v1-reliability-nyngoe-held-shopping` | `ItemPresentationTests`, UI test `SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` | yes / yes |
-| `pr141-merge-undo` | #141 | `71ccfb7` | `claude/v1-reliability-nyngoe-merge-undo` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr142-widget-review` | #142 | `89e68b8` | `claude/v1-reliability-nyngoe-widget-review` | `LocationReminderTests` | yes / yes |
-| `pr143-edit-time` | #143 | `d5fe9ea` | `claude/v1-reliability-nyngoe-edit-time` | `SwiftDataThoughtRepositoryTests` | yes / yes |
-| `pr144-typed-draft` | #144 | `e87d305` | `claude/v1-reliability-nyngoe-typed-draft` | `DurabilityTests` | yes / yes |
-| `semantic-units` | #118 | `09a9eed` | `claude/semantic-map-xklzll` | - (extra: the units experiment, M2) | no / no |
+The manifest's `rc` line is the one place the candidate's pin is set; this
+table restates it.
 
-Stacked rows, whose head contains their base's commits: #125 on #122 (up to
-`60c660b`, not #122's two later fixture commits), #126 and #134 on #119, #128
-and #132 on #126, #131 on #124, #133 on #127, #135 on #125, #138 on #122, #139
-and #144 on #128, #140 on #138 (up to `5fb026c`, not #138's later commits), #118 on #117. `pr116-with-119` composes #116
-and #119; #116's own tip (`fix/capture-experience-reliability`) must still be
-contained in its pin, which `--check-pins` does not check.
+| Row | What | Pin | Branch whose tip it is | Focused | Suite / Release | Extra |
+|---|---|---|---|---|---|---|
+| `baseline` | main, before any V1 change: what `rc` is compared with | `fbb6f90` | `main` | - | yes / yes | - |
+| `rc` | the V1 candidate: #116, #117, #119 to #148, #150 to #153 | `5f2c2d3` | `claude/v1-reliability-nyngoe-rc` | `PersonMentionTests`, `TemporalFullPathTests`, `LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned`, UI test `SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` | yes / yes | `Tools/CI/v1-probes.sh` |
+| `semantic-units` | #118 | `09a9eed` | `claude/semantic-map-xklzll` | - | no / no | the units experiment (M2) |
+
+`baseline` stays a separate commit because it is the comparison: the candidate
+compared with itself would call nothing NEW. `semantic-units` belongs to the
+semantic-map lane, which sets its pin.
+
+**Where the per-PR rows went.** Every PR branch the old list named, #118's aside, has its head
+inside the `rc` pin (checked with `git merge-base --is-ancestor` for each), so
+each row's suite, Release build and gate now run once, at the candidate, against
+the same baseline. #146 to #148 and #150 to #153, which never had rows, are covered the same way.
+
+| Former row or step | Its check now |
+|---|---|
+| `pr116-with-119` to `pr145-alarm-cancel`: the whole suite, Release and the gate at each PR head | `rc`'s whole suite, Release and gate, compared with `baseline` |
+| `pr117`: `PersonMentionTests` and its console readout | `rc` focused, `rc/focused-console.txt` |
+| `pr129-snooze`: the pass-level test in `TemporalFullPathTests` | `rc` focused (the whole class, which also holds F1's tests) |
+| `pr135-regions`: the `#Predicate` test | `rc` focused, by name |
+| `pr140-held-shopping`: the UI test | `rc` focused, by name |
+| `pr120-ci`: compile and gate through #120's own `Tools/CI` scripts | `rc`'s compile and gate, through the candidate's `Tools/CI`, which carry #120 |
+| every other focused class (`CaptureFeedbackTests`, `ItemPresentationTests`, `DurabilityTests`, `CaptureRecoveryEscapeTests`, `UpgradeDurabilityTests`, `SwiftDataThoughtRepositoryTests`, `LexicalTaggingHealthTests`, `SemanticStatePersistenceTests`, `SemanticCorpusTests`, `MorningBriefTests`, `VoiceOverAnnouncementTests`, `CaptureOperationTests`) | `rc`'s whole suite, at the same commit. The suite names its failures; it does not list skips, and none of these classes had a skip the old list read by name |
+| the old M3: #136's two scorers and its R1 timing, by hand | `rc`'s probes (`136-conditional`, `136-cancellation`, `136-timing`) |
 
 #### Results recorded from the run
 
 | Item | Result |
 |---|---|
-| `pr140-held-shopping`: UI test `testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` | not yet run |
+| `rc`: UI test `testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard` | not yet run |
 
 ### M2. Semantic-unit representation experiment (Foundation Models)
 
@@ -105,18 +103,25 @@ contained in its pin, which `--check-pins` does not check.
 | Release blocker | No by itself. The production change it chooses will be. |
 | Status | queued |
 
-### M3. #136 (DEL-11): probe scripts and a timing, by hand
+### M3. #146's two-second budget and #151's model path, typed into the Simulator (D19)
 
-The only Mac step outside the command. Run it in a worktree at the
-`pr136-place-day` pin, after the run (it needs `swiftc`, not a simulator).
+The only Mac step outside the command, and the only one that needs Apple
+Intelligence: the Simulator must reach the on-device model. Run it after the
+command, on the candidate at the `rc` pin, because it types the list the
+command wrote. (The #146 audit calls this D19; it is a Mac step, not an iPhone
+one.)
 
 | | |
 |---|---|
-| Commit | the `pr136-place-day` pin above; the timing also needs `11c93d7` (#136 before the place-name cap) |
-| Command | `git worktree add /tmp/si-136-after <pr136-place-day pin>`, then in it: `./Tools/CorpusRunner/devsets/conditional-intent-score.sh` and `./Tools/CorpusRunner/devsets/cancellation-scope-score.sh`. For the timing (R1, #136 round 2), also `git worktree add /tmp/si-136-before 11c93d7`; write "Remind me when I get home from the long weekend away with the whole family and the dog and our neighbours from the cottage down the road Friday to call Mom" 200 times, one per line, to a file; then in each worktree `./Tools/PipelineProbe/build.sh && time ./Tools/PipelineProbe/build/probe <that file> > /dev/null`. Remove both worktrees afterwards with `git worktree remove`. |
-| Expected evidence | `conditional-intent-score.sh`: 72/72. `cancellation-scope-score.sh`: 187/187. The corpus gate is already run by the `pr136-place-day` row: GATE-1 stays its only blocking row. The two timings, before and after, are recorded in `Docs/PERFORMANCE_BENCHMARKING.md` on #136's branch. |
-| Cost | A few minutes. |
-| Release blocker | Yes for #136: its scores are unmeasured until then. |
+| Commit | the `rc` pin (it contains #146 and #151) |
+| Set up | `git worktree add /tmp/si-rc <rc pin>`, open `SpeakIt.xcodeproj` from it in Xcode, and run the app in an iPhone Simulator. Apple Intelligence on for the Mac; the Simulator's region and language `en_CA`. In Instruments, attach the os_signpost / Logging template to the app, filtered to subsystem `com.calvinwak.SpeakIt`, category `CapturePipeline`; add the Foundation Models instrument if this Xcode has one. Every capture is **typed** (paste each line's text from the list into Type), which follows the same save path as speech without speech's variance. Afterwards, `git worktree remove /tmp/si-rc`. |
+| Inputs | `rc/probes/d19-picks.tsv` from the run's evidence: up to 30 captures the rules would send to the model (no operation, at most 1,500 characters, at least one row held for review), the eight the audit names first where they still qualify (`d19-named.txt` says which do not), then five **controls** the rules keep for themselves. Its `rules reading` column is what the rules alone save. Then one more capture: "Sarah said I should call Mike tomorrow at 3". |
+| Pacing | (a) the list in order, at least 15 s between one receipt and the next capture; (b) cold: quit the app, relaunch it and type the next capture, then type five more at least 2 minutes apart; (c) busy: two multi-row picks back to back, the second saved within 1 s of the first receipt. |
+| Record | For every capture: its `n` from the list, the `SemanticParsing` and `RawCapturePersistence` interval durations, any `RefinementClaimTakenOver` event, and each Foundation Models `respond` start, end and token count if the instrument is there. A screenshot of the capture screen about 1 s into the save, and one of the receipt. The saved rows: how many, Today or Memory, and whether each is in Needs review. Export the Instruments trace and put it, the screenshots and a text file of the rest beside the run's zip. |
+| What the result means | A capture was *invoked* when its `SemanticParsing` is at least the controls' plus 300 ms. **Any `SemanticParsing` above about 2.15 s means #146 does not bound the wait.** Every invoked capture that took 2 s or more must have saved exactly its rules reading, with at least one row in Needs review. In (c) the second capture must save its rules reading. `RefinementClaimTakenOver` should never appear. `RawCapturePersistence` must end before `SemanticParsing` begins, the screenshots must show the saving copy, and no receipt may mention a model. If every eligible capture's `SemanticParsing` looks like a control's, the Simulator never reached the model: say so, and the iPhone's D5 becomes the only answer. For the last capture: the saved row must still be held for review with no date. If it comes back as a confident task due tomorrow at 3, refinement undoes #151 on the model path. A session reads all of this against the audit (expired and invoked, warm against cold, whether abandoned calls stop near 2 s) and asks the semantic-map thread to run the same inputs unbudgeted for the discarded-answer count. |
+| Cost | About an hour of typing and waiting, most of it the pacing. No paid inference. |
+| Gates | No release note or CHANGELOG line may say #146 bounds the save's wait at two seconds until this has run with no interval above about 2.15 s. No release note may say reported advice stays held on Apple Intelligence devices until the last capture has come back held. |
+| Release blocker | Yes for the two claims above, and for the keep-or-defer decision on refinement. |
 | Status | queued |
 
 ## Merge order and conflicts (for whoever merges)
@@ -170,8 +175,14 @@ in the one device session.
 | D14 | #139 (A11Y D-3) | A VoiceOver announcement during recording does not appear in the transcript. | queued |
 | D15 | #139 (A11Y F3) | With VoiceOver on, log the type and value of `UIAccessibility.announcementStringValueUserInfoKey` in one `announcementDidFinishNotification` (for example the "Listening" cue). A `String` or an `NSAttributedString` equal to the posted text is fine: both are read. Anything else means every wait runs its whole allowance. | queued |
 | D16 | #145 + #127 (DEL-22) | Arm an alarm, delete its row, and kill the app before the next foreground; the alarm must not ring. Then relaunch with an orphan armed and confirm #127's sweep cancels it. | queued |
-| D17 | main, pre-existing | Arm an alarm, let it ring, then open Speak It. Every launch and foreground reconcile issues `stop` and `cancel` on every known row's alarm and re-arms only future ones, so by reading a ringing or snoozed alarm is silenced and not put back. Record whether it stops. No release note may say a ringing alarm survives opening the app until this has run. | queued |
+| D17 | main, pre-existing; DEL-23 fix (#153) on the candidate | (a) On the candidate: arm an alarm, let it ring, then open Speak It. Repeat while a snoozed repeating alarm rings under its snooze ID, and while a repeating alarm rings; then open the app while an alarm is snoozed and not ringing. Before the DEL-23 fix, every launch and foreground reconcile issued `stop` and `cancel` on every known row's alarm, so by reading a ringing or snoozed alarm was silenced. Since the fix, that pass leaves alone a row whose alarm rang in the last 30 minutes (`ReminderScheduler.alertingWindow`, a guess). Record whether each alarm keeps ringing, or stays snoozed and rings at its snooze time: none may go silent unless you stopped it. (b) Record how long an unattended alarm alerts, to check the window. (c) On a build of main (`fbb6f90`, without the fix), done first in the session so the candidate is installed over it and never the other way round: arm an alarm, let it ring, open Speak It, and record whether it stops. That says whether `stop` reaches an alerting alarm at all. **What (c) decides:** if `stop` reaches it, DEL-23 is real on a device, and #153's known `.fixed` gap has a candidate fix (arm the advanced occurrence under the row's snooze ID while that slot is free), held until then because it doubles those rows against the alarm limit. If `stop` never reaches a ringing alarm, DEL-23 never happened on a device, #153's window only costs the gaps `KNOWN_ISSUES.md` lists, and keeping it is revisited. **Gates:** no release note may say a ringing alarm survives opening the app until this has run. | queued |
 | D18 | #144 (R1) | With VoiceOver on, type a few words, then switch to voice and swipe once through the voice screen. Record whether the typed words are read once, or twice (once from the child label and once from the container). | queued |
+| D19 | #146 | A Mac step, not an iPhone one: see M3. | queued |
+| D20 | GATE-1 (Q5), the candidate | Type "Remind me before the office closes December 24" as a capture. Record whether the saved row is in Needs review. Note the Scheduled count in Reminder settings before and after the save: it must not change. Record whether AlarmKit lists any alarm for the row (see *Reading what is armed* below): it must list none. A pending request or an alarm means a held row is armed. **Gates:** the interim December 24 answer (the row is held and nothing is armed) may not be described as shipped behaviour until this has run. | queued |
+| D21 | F1 on the candidate (`83ce9c5`; rehearsal 2, G7) | Create a weekly alarm, let it ring, and snooze it. AlarmKit must then list both as scheduled: a `.fixed` alarm under the snooze ID, and the weekly `.relative` series under the item's ID. The snooze rings once; the series rings at its next weekly time. Then, with the same setup, stop the snooze and cancel it through the app's snooze path: the weekly series must stay armed. Record both. Extends D13, which checks a repeating alarm with no snooze. **Gates:** no release note may say snoozing a repeating alarm keeps its series until this has run. #153's follow-up in D17 rests on the same answer (two alarms from one app side by side). | queued |
+| D22 | #148 diagnostics follow-up | On one iPhone, ten voice captures with VoiceOver off, then ten with it on. For each, record `capture_ready_ms`: from the `CaptureActivated` signpost to `MicrophoneReady` (Instruments, os_signpost, subsystem `com.calvinwak.SpeakIt`, category `CapturePipeline`). With VoiceOver on, the "Listening" cue is spoken before the engine starts, so expect the cue's length plus the queue drain on top. Report both sets. **Decides** whether `capture_ready_ms` is bucketed or dropped so it stops marking VoiceOver installs (`KNOWN_ISSUES.md`, "`capture_ready_ms` can still carry VoiceOver use"). **Gates:** no privacy answer or release note may say performance timings carry no trace of VoiceOver use until this is measured and decided. | queued |
+
+**Reading what is armed.** Reminder settings (from Settings, or from Today) shows a Scheduled count: Speak It's pending reminder notifications, the morning brief excluded. No screen in the app lists AlarmKit's alarms; D7, D20 and D21 read `AlarmManager.shared.alarms` with the build run from Xcode, in the debugger console (`po try AlarmManager.shared.alarms`). That command has not been tried here.
 
 ## Hosted evidence (no owner action)
 

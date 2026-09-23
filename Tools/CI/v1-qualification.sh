@@ -3,7 +3,7 @@
 # v1-qualification.tsv and writes one evidence directory and one zip.
 #
 #   ./Tools/CI/v1-qualification.sh                  # every row of the manifest
-#   ./Tools/CI/v1-qualification.sh --only pr117     # one row, by label, plus baseline
+#   ./Tools/CI/v1-qualification.sh --only rc        # one row, by label, plus baseline
 #   ./Tools/CI/v1-qualification.sh --dry-run        # print the plan, run nothing
 #   ./Tools/CI/v1-qualification.sh --check-pins     # is every pin its branch's tip? run nothing else
 #
@@ -14,7 +14,10 @@
 # branch's tip. A full run makes the same check, records it in each row's
 # identity.txt with every branch containing the pin, and puts a STALE PIN line
 # in SUMMARY.md for each row whose pin is not its branch's tip, so evidence
-# about a commit a branch has moved past says so itself.
+# about a commit a branch has moved past says so itself. Only the manifest's
+# rows are checked: a commit an extra command checks out for itself (the rc
+# row's probes build three fixed historical commits) is not a row and is not
+# compared with anything.
 #
 # Each row is checked out into its own fresh worktree at the exact commit the
 # manifest pins, so the checkout this script runs from is never touched and a
@@ -33,7 +36,10 @@
 #                question even when the simulator compile failed
 #   extra        the row's extra command, if any (for example a model run),
 #                run with QUALIFICATION_ROW_DIR set to the row's evidence
-#                directory so it can write its results there. Anything the
+#                directory so it can write its results there, and
+#                QUALIFICATION_CHECKOUT set to this checkout, so it can reach
+#                inputs and helpers the pinned tree predates (the rc row's
+#                probes: Tools/CI/v1-probes.sh). Anything the
 #                command leaves under the tree's output/ is copied there too,
 #                because the tree is removed when the row finishes. Not gated
 #                on the compile either: it is the row's own command and builds
@@ -624,7 +630,7 @@ for row in "${ROWS[@]}"; do
   if [ "$extra" = "-" ] || [ -z "$extra" ]; then
     extra_r="$(not_run "$dir" extra "none listed")"
   else
-    extra_r="$(cd "$tree" && run_stage "$dir" extra env QUALIFICATION_ROW_DIR="$dir" /bin/bash -c "$extra")"
+    extra_r="$(cd "$tree" && run_stage "$dir" extra env QUALIFICATION_ROW_DIR="$dir" QUALIFICATION_CHECKOUT="$ROOT" /bin/bash -c "$extra")"
   fi
   if [ -d "$tree/output" ]; then
     cp -R "$tree/output" "$dir/tree-output"

@@ -1,0 +1,15 @@
+# #151 (reported-speech case 4). Each capture's rows must be identical at the
+# rc pin and on the candidate just before #151 was merged: #151 must not
+# change them.
+Sarah said the meeting is off
+Sarah said Mike needs to call the bank
+Sarah said Mike should call the bank tomorrow at 3
+Sarah asked me to call Mike
+Sarah asked me to call Mike tomorrow at 3
+Sarah told me to call Mike
+Sarah asked me to call Mike, so I need to call him today
+Sarah said I should call Mike, so I need to call him today
+I think I should call the dentist
+Sarah said I need to call Mike
+My doctor says I should cut back on coffee
+Do you think I should call Mike

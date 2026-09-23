@@ -1,90 +1,44 @@
 # V1 qualification manifest, read by v1-qualification.sh. Tab-separated.
 # label	commit	branch the pin must be the tip of	focused classes (comma-separated, or -)	whole suite (yes/no)	release build (yes/no)	extra command run in the tree (or -)
 #
-# `baseline` is the row every other row's whole-suite failures and blocking
-# gate rows are compared with. It runs every stage a PR row runs, Release
-# included, so any stage's result on a branch has a baseline to be read
-# against. Pin full commits, never branch names: a branch moves, and evidence
-# about a moved branch is evidence about nothing. Keep this file and
-# Docs/V1_OWNER_HANDOFF.md in step.
+# Three rows, three kinds of pin. Pin full commits, never branch names: a
+# branch moves, and evidence about a moved branch is evidence about nothing.
+# Keep this file and Docs/V1_OWNER_HANDOFF.md in step.
 #
 # The branch column is what makes a stale pin visible rather than something to
 # remember: it names the branch (on origin, without the `origin/` prefix) whose
-# tip the pin is meant to be, which for a PR row is the PR's head branch. It
-# cannot be inferred, because a pin sits on many branches (baseline on every
-# branch cut from main; a PR's commit on every PR stacked on it).
-# `v1-qualification.sh --check-pins` fetches and exits non-zero when any pin is
-# not its branch's tip, and every run records the same check in each row's
-# identity.txt and in SUMMARY.md. Repinning means moving the commit column to
-# the branch's new tip, and keeping the handoff's commit list in step.
+# tip the pin is meant to be. It cannot be inferred, because a pin sits on many
+# branches. `v1-qualification.sh --check-pins` fetches and exits non-zero when
+# any pin is not its branch's tip, and every run records the same check in each
+# row's identity.txt and in SUMMARY.md.
+#
+# 1. `baseline`: main, the tree before any V1 change. It is the row the rc
+# row's whole-suite failures and blocking gate rows are compared with, so it
+# must stay a separate commit: comparing the candidate with itself would call
+# nothing NEW. It runs every stage the rc row runs, Release included, so every
+# stage has a baseline to be read against. It moves only if main does.
 baseline	fbb6f909ad7309491b267256e3291925e2836b0f	main	-	yes	yes	-
-# pr116-with-119 composes two PRs and names only #119's head branch. #116's own
-# branch (fix/capture-experience-reliability) is checked by hand: its tip must
-# still be contained in this pin, or the row qualifies a #116 that has moved on.
-pr116-with-119	bfc482ddf28d9ed38a3488e354b003b0e06dd294	claude/v1-reliability-nyngoe	SpeakItTests/CaptureFeedbackTests	yes	yes	-
-pr117	c51842c966be68e509f519f0689e99a0cc75c9c1	claude/entity-context-avp56j	SpeakItTests/PersonMentionTests	yes	yes	-
-# #120 changes CI scripts and the workflow only, so the row asks for neither
-# the whole suite nor Release; its compile and gate still run through #120's
-# own Tools/CI scripts. #121 (this manifest's own PR) has no row: a pin cannot
-# name the commit that adds it, and #121's checkout is the one that runs this.
-pr120-ci	630e3e0d9d64ff693c8bee6389492bc2e4f78593	claude/v1-reliability-nyngoe-ci	-	no	no	-
-pr122-bell	edb9e2b97fd953b6a0f181a75293e0167deb2c1c	claude/v1-reliability-nyngoe-bell	SpeakItTests/ItemPresentationTests	yes	yes	-
-pr123-recovery	ce62a4d03ee590ae225fb895ce8faab05b1b0a36	claude/v1-reliability-nyngoe-recovery	SpeakItTests/DurabilityTests,SpeakItTests/CaptureRecoveryEscapeTests	yes	yes	-
-pr124-edits	660fcfbfe78b917b3d9d91d50ba71952b9426c16	claude/v1-reliability-nyngoe-edits	SpeakItTests/DurabilityTests	yes	yes	-
-# Stacked on #122 (base claude/v1-reliability-nyngoe-bell): its head contains
-# #122's commits up to 60c660b, not #122's two later fixture commits.
-pr125-place	6d09fcd8bc3feaeabe478d3c66a26695c4daa68d	claude/v1-reliability-nyngoe-place	SpeakItTests/LocationReminderTests,SpeakItTests/ItemPresentationTests	yes	yes	-
-# Stacked on #119 (base claude/v1-reliability-nyngoe): its head contains #116's
-# and #119's commits.
-pr126-stale-save	63331672558bff96c8b0845b6b87fa0684d9ec83	claude/v1-reliability-nyngoe-stale-save	SpeakItTests/CaptureFeedbackTests	yes	yes	-
-pr127-alarms	f21cb09f140534de68d1b07c164946d2cf6c45fb	claude/v1-reliability-nyngoe-alarms	SpeakItTests/DurabilityTests	yes	yes	-
-# Stacked on #126 (base claude/v1-reliability-nyngoe-stale-save): its head
-# contains #126's, #119's and #116's commits.
-pr128-relaunch	e18e14897dccc5156f2a59d548137ed1b909eb3e	claude/v1-reliability-nyngoe-relaunch	SpeakItTests/DurabilityTests,SpeakItTests/UpgradeDurabilityTests	yes	yes	-
-# TemporalFullPathTests holds testASchedulingPassLeavesAFiredSeriesArmedInTheNotificationCenter,
-# the only test that proves a fired series stays armed after a real scheduling
-# pass. A skip means the simulator refused provisional authorization: check it
-# by name in pr129-snooze/focused.xcresult (the handoff says how).
-pr129-snooze	20827c87de45b1a9917ac99cee04c944d7b67a2b	claude/v1-reliability-nyngoe-snooze	SpeakItTests/TemporalFullPathTests,SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-pr130-health	37cb1a7557c84bfabce4e23214785c01bc0e94f7	claude/v1-reliability-nyngoe-health	SpeakItTests/LexicalTaggingHealthTests,SpeakItTests/SemanticStatePersistenceTests,SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-# Stacked on #124 (base claude/v1-reliability-nyngoe-edits): its head contains
-# #124's commits.
-pr131-broad-ops	b9f044c29337b5b4fbf84857764683630e388094	claude/v1-reliability-nyngoe-broad-ops	SpeakItTests/DurabilityTests	yes	yes	-
-# Stacked on #126 (base claude/v1-reliability-nyngoe-stale-save): its head
-# contains #126's, #119's and #116's commits.
-pr132-retry-snapshot	75e94ca6ca6474237c3f167200782fbd45177602	claude/v1-reliability-nyngoe-retry-snapshot	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-# Stacked on #127 (base claude/v1-reliability-nyngoe-alarms): its head contains
-# #127's commits.
-pr133-alarm-repeat	043f00901f9cecd7b79945330ff12306e934d1af	claude/v1-reliability-nyngoe-alarm-repeat	SpeakItTests/TemporalFullPathTests	yes	yes	-
-# Stacked on #119 (base claude/v1-reliability-nyngoe): its head contains #116's
-# and #119's commits.
-pr134-mic2	42a9db37c5a7c81db07da73edc9cad84608fea0a	claude/v1-reliability-nyngoe-mic2	SpeakItTests/CaptureFeedbackTests	yes	yes	-
-# Stacked on #125 (base claude/v1-reliability-nyngoe-place): its head contains
-# #125's commits and, through them, #122's up to 60c660b. The focused class
-# holds testALivePlaceWithNoTriggerKindIsStillPlanned, the one test that fails
-# if the reconcile's #Predicate does not translate: a skip is a failure here.
-pr135-regions	8da8ea8209683d5a9e56bfdeaa14a04de0194206	claude/v1-reliability-nyngoe-regions	SpeakItTests/LocationReminderTests	yes	yes	-
-# SemanticCorpusTests is listed because this PR changes the location corpus
-# rows (SemanticCorpusDataB and R) that class runs.
-pr136-place-day	00bcf750ea02dca8e7017e76adcb2bc520384229	claude/v1-reliability-nyngoe-place-day	SpeakItTests/LocationReminderTests,SpeakItTests/SemanticCorpusTests,SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-pr137-weekly-clock	06b5d62b7425f62a550f908a69d1ec4e95f9278a	claude/v1-reliability-nyngoe-weekly-clock	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-# Stacked on #122 (base claude/v1-reliability-nyngoe-bell): its head contains
-# #122's commits.
-pr138-held	12dd41177d4a7bef0faa6ee256d5dc5d7c45147b	claude/v1-reliability-nyngoe-held	SpeakItTests/ItemPresentationTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests,SpeakItTests/SwiftDataThoughtRepositoryTests,SpeakItTests/DurabilityTests,SpeakItTests/MorningBriefTests	yes	yes	-
-# Stacked on #128 (base claude/v1-reliability-nyngoe-relaunch): its head
-# contains #128's, #126's, #119's and #116's commits.
-pr139-a11y	1419bb6b1570ae4e0e104161e09c51f4bafecc9b	claude/v1-reliability-nyngoe-a11y	SpeakItTests/VoiceOverAnnouncementTests	yes	yes	-
-# Stacked on #138 (base claude/v1-reliability-nyngoe-held): its head contains
-# #122's commits and #138's up to 5fb026c, not #138's later commits. The UI test is the only one that reaches
-# TodayView.needsReview; UI tests are not in CI, so this cell is its evidence.
-pr140-held-shopping	338fb1d2ed48d3ca570abaf38e6dd2ffaf66afb4	claude/v1-reliability-nyngoe-held-shopping	SpeakItTests/ItemPresentationTests,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	-
-pr141-merge-undo	71ccfb72db69e5479354a277af1de1309846d8e0	claude/v1-reliability-nyngoe-merge-undo	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-pr142-widget-review	89e68b8d64c796d271c438888215c269ac338a79	claude/v1-reliability-nyngoe-widget-review	SpeakItTests/LocationReminderTests	yes	yes	-
-pr143-edit-time	d5fe9eaf4c4f26a52f1b22f71d6fcdd12c2ae7a4	claude/v1-reliability-nyngoe-edit-time	SpeakItTests/SwiftDataThoughtRepositoryTests	yes	yes	-
-# Stacked on #128 (base claude/v1-reliability-nyngoe-relaunch): its head
-# contains #128's, #126's, #119's and #116's commits.
-pr144-typed-draft	e87d30520f27e9a22ea8ed6c21054f1066e6a081	claude/v1-reliability-nyngoe-typed-draft	SpeakItTests/DurabilityTests	yes	yes	-
-# #118 is stacked on #117 (base claude/entity-context-avp56j): its head
-# contains #117's commits.
-pr145-alarm-cancel	04bdea4b0342057bd3dd42d3dae8473c0da894ad	claude/v1-reliability-nyngoe-alarm-cancel	SpeakItTests/CaptureOperationTests,SpeakItTests/DurabilityTests	yes	yes	-
+#
+# 2. `rc`: the V1 candidate, and every check the per-PR rows used to run, at
+# ONE commit. This line is the one place its pin lives: to repin, put
+# `git rev-parse origin/claude/v1-reliability-nyngoe-rc` in the commit column
+# and change the handoff's commit list to match. Merging anything into the
+# candidate after this pin (#121 included) moves the branch past it, and
+# --check-pins then says STALE until this line is repinned.
+#   focused  the tests the handoff reads by name, with their own result bundle
+#            and console log: PersonMentionTests (#117's entity-frame-comparison
+#            lines and its skips), TemporalFullPathTests (#129's pass-level
+#            test and F1's snoozed-series tests, where a skip is not a pass),
+#            LocationReminderTests' #Predicate test (#135), and the one UI test
+#            that reaches TodayView.needsReview (#140; UI tests are not in CI).
+#            Every other class a per-PR row focused on is in the whole suite at
+#            the same commit.
+#   extra    Tools/CI/v1-probes.sh from this checkout: the December 24 family
+#            and #151's sentences through the probe, #136's two scorers and
+#            its R1 timing, and the typed inputs for the handoff's M3.
+rc	5f2c2d3b297d0b96796a7b7b13816bfe0ed74025	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
+#
+# 3. `semantic-units`: the semantic-map lane's units experiment (#118, stacked
+# on #117), at its own pin. That lane owns this row, its pin, its run.sh and its
+# outputs; nothing here changes them.
 semantic-units	09a9eed13c5841f2f924c46c9e44e3c0153070c0	claude/semantic-map-xklzll	-	no	no	./Tools/SemanticMap/UnitsExperiment/run.sh "$QUALIFICATION_ROW_DIR/units-experiment"
