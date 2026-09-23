@@ -84,9 +84,12 @@ Entries before September 2026 were reconstructed from the commit history and
   finish even after the timer won, so a slow model held the capture.
 - Beta analytics tell capture endings apart without content:
   `speech_capture_quality` carries `finalized_by` and `stop_trigger`, a new
-  `capture_recovery` event says which branch recovered a recording, and
-  `capture_failed` now reports `speech`, `storage` and `organization` at the
-  stage that failed. What is saved and shown is unchanged.
+  `capture_recovery` event says whether a recording was recovered or the
+  closed kind of failure (a pass that timed out or stopped after partial
+  words has a kind of its own), and `capture_failed` now reports `speech`,
+  `storage` and `organization` at the stage that failed. Finishing with no
+  words under VoiceOver is the person's choice and sends nothing. What is
+  saved and shown is unchanged.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

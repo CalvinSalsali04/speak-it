@@ -2711,6 +2711,7 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
         let kinds: [CaptureRecoveryFailureKind] = [
             .noSpeechDetected, .missingRecording, .permissionRequired,
             .recognizerUnavailable, .onDeviceRecognitionUnavailable, .timedOut,
+            .timedOutAfterPartial, .stoppedAfterPartial,
             .cancelled, .storageUnavailable, .unknown
         ]
         for kind in kinds {
@@ -2924,7 +2925,7 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             CaptureAudioRecovery.outcome(latest: " buy milk and call ", ending: .timedOut)
         ))
 
-        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOut)
+        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOutAfterPartial)
         XCTAssertFalse(
             CaptureRecoveryFailureKind(error: error).stopsPromisingRecovery,
             "Another attempt has to stay on offer"
@@ -2943,9 +2944,37 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             )
         ))
 
-        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .unknown)
+        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .stoppedAfterPartial)
         XCTAssertFalse(CaptureRecoveryFailureKind(error: error).stopsPromisingRecovery)
         XCTAssertEqual(CaptureAudioRecovery.partialTranscript(in: error), "buy milk and call")
+    }
+
+    /// The two partial-pass kinds exist so analytics can tell "timed out with
+    /// nothing" from "timed out after the words were kept" (#148). What the
+    /// person sees did not change: each shows exactly the copy of the kind it
+    /// was folded into before, and keeps offering another attempt. Falsifier:
+    /// any new wording, or a partial kind that stops promising recovery.
+    func testAPartialPassKindShowsTheCopyItShowedBeforeItHadItsOwnKind() {
+        let pairs: [(CaptureRecoveryFailureKind, CaptureRecoveryFailureKind)] = [
+            (.timedOutAfterPartial, .timedOut),
+            (.stoppedAfterPartial, .unknown)
+        ]
+        for (partial, before) in pairs {
+            XCTAssertEqual(
+                CaptureRecoveryPresentation.detail(for: partial),
+                CaptureRecoveryPresentation.detail(for: before)
+            )
+            XCTAssertEqual(
+                CaptureRecoveryPresentation.alertTitle(for: partial),
+                CaptureRecoveryPresentation.alertTitle(for: before)
+            )
+            XCTAssertEqual(
+                CaptureRecoveryPresentation.alertMessage(for: partial),
+                CaptureRecoveryPresentation.alertMessage(for: before)
+            )
+            XCTAssertEqual(partial.stopsPromisingRecovery, before.stopsPromisingRecovery)
+            XCTAssertFalse(partial.stopsPromisingRecovery)
+        }
     }
 
     /// Falsifier: a final result that fails, or that hands back the older
@@ -3001,7 +3030,7 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
         let stored = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
         XCTAssertEqual(stored.transcript, "buy milk and call the")
-        XCTAssertEqual(stored.recoveryFailureKind, .timedOut)
+        XCTAssertEqual(stored.recoveryFailureKind, .timedOutAfterPartial)
         XCTAssertEqual(CaptureRecoveryPresentation.row(for: stored).title, "Needs attention")
         XCTAssertEqual(
             CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
@@ -3033,7 +3062,7 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             })
             XCTFail("Reported as the whole recording: \(text)")
         } catch {
-            XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOut)
+            XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOutAfterPartial)
         }
 
         XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.transcript, "buy milk and call the")

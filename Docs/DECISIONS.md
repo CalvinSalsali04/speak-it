@@ -1737,7 +1737,10 @@ deleted the recording, so the tail of a long capture was lost with the only
 copy of it. Now only a final result is a success (`CaptureAudioRecovery.outcome`):
 a timeout after partial text fails as `timedOut`, and an error after partial
 text fails as `unknown` rather than `noSpeechDetected`, because words were
-found and another attempt must stay on offer. The words that pass did read are
+found and another attempt must stay on offer. (In the V1 candidate, with
+#148, these became kinds of their own, `timedOutAfterPartial` and
+`stoppedAfterPartial`, with the same copy and the same retry; see #148's
+entry.) The words that pass did read are
 kept on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`,
 never shrinking a longer checkpoint). When the capture screen switches to
 typing after such a pass, it offers those words in place of the live
@@ -2419,14 +2422,42 @@ offline are lost.
 **In the V1 candidate (merged with #123, 2026-09-23).** A recording
 recovery that reads only part of the recording fails there instead of
 saving the partial words (`stoppedEarly`, `timedOutAfterPartial`), so the
-recording is never deleted with its tail unread. `capture_recovery` then
-reports it as `failed`, with `failure_kind` `unknown` (stopped early) or
-`timed_out`, and `partial_on_error` and `partial_on_timeout` are declared
-but not sent (`CaptureAudioRecovery.reportedOutcome`). The recovery entry
+recording is never deleted with its tail unread. The recovery entry
 points keep #144's typed-words join and #123's kept partial words:
-`transcribeReportingEnding` joins, `transcribeRecordingReportingEnding` is
-the capture screen's spoken-only reading. The live finalization paths
-(`finalized_by`) are unaffected.
+`transcribeReportingEnding` and `transcribe` both join through
+`transcribe(_:reading:)`, the seam the join's tests call, and
+`transcribeRecordingReportingEnding` is the capture screen's spoken-only
+reading. The live finalization paths (`finalized_by`) are unaffected.
+
+**Rehearsal-2 follow-up in the candidate (2026-09-23).** Three things the
+grade of that merge found only exist where #148 meets #123, #139 and #144,
+so they are fixed in a candidate commit rather than on #148:
+
+- With #123, no path could send `partial_on_error` or `partial_on_timeout`,
+  and a partial pass was reported as `failed` with `timed_out` or `unknown`,
+  the same rows as "timed out having read nothing" and an unclassified
+  error. The two outcomes are removed, so `outcome` is `final` or `failed`,
+  and `CaptureRecoveryFailureKind` gains `timedOutAfterPartial` and
+  `stoppedAfterPartial` (`failure_kind` `timed_out_after_partial`,
+  `stopped_after_partial`). The kind is stored on the draft as a `String`
+  and decoded with `?? .unknown`, so the new raw values are additive; each
+  shows the copy of the kind it replaced and keeps offering another attempt
+  (`stopsPromisingRecovery` is false). The falsifier's "partial outcome"
+  reads, in the candidate, as those two failure kinds.
+- #139 made an empty Finish with VoiceOver on end the attempt through the
+  same function as the ten-second no-speech timeout, so both sent
+  `capture_failed(speech)`. The person chose to finish; that is not a
+  failure. It now sends nothing, and the timeout keeps `speech` and its
+  quality sample (`CaptureWordlessEnding`). A category of its own was
+  rejected: the branch exists only while VoiceOver is on, so any value it
+  sent, however content-free, would say "VoiceOver is on" against the
+  per-install id. For the same reason the quality sample is not sent there
+  either, and no VoiceOver-gated branch may send analytics. An empty Finish
+  with recorded audio still recovers it, and that recovery reports as any
+  other `live_audio` recovery does.
+- `transcribe(_:)` now delegates to `transcribe(_:reading:)` with the real
+  recognizer, and `transcribeReportingEnding` does too, so there is one
+  typed-and-spoken join and the tests reach it. The text is unchanged.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

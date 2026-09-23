@@ -583,6 +583,36 @@ enum CaptureRecoveryHandoff {
     }
 }
 
+/// Why a voice attempt ended with no words and no recording to recover, and
+/// what that ending reports.
+///
+/// Only the no-speech timeout is a failure: ten seconds of listening heard
+/// nothing, so it sends `capture_failed(speech)` and the audio quality it
+/// measured. The person finishing before any words is their choice, not a
+/// failure, and it sends nothing. That finish exists only while VoiceOver is
+/// on (#139), so any event of its own, even a content-free category, would
+/// say "VoiceOver is on" against a per-install id. It is deliberately silent,
+/// and it must stay that way: a VoiceOver-gated branch sends no analytics.
+enum CaptureWordlessEnding: Equatable {
+    /// Ten seconds of listening produced no words.
+    case noSpeechTimeout
+    /// The person asked to finish before any words were heard.
+    case finishedByPerson
+
+    func analyticsEvents(quality: SpeechCaptureAudioQuality?) -> [SpeakItAnalyticsEvent] {
+        switch self {
+        case .noSpeechTimeout:
+            var events: [SpeakItAnalyticsEvent] = [.captureFailed(source: .voice, category: "speech")]
+            if let quality {
+                events.append(.speechCaptureQuality(quality, producedWords: false))
+            }
+            return events
+        case .finishedByPerson:
+            return []
+        }
+    }
+}
+
 /// What the close dialog's Save & Close does with the words on screen.
 enum CaptureCloseRequest: Equatable {
     /// Start a save of what is on screen, and close when it finishes.
@@ -1563,7 +1593,7 @@ struct CaptureView: View {
                     // as the no-speech timeout would, recovering any recorded
                     // audio and otherwise saying so once the microphone is shut.
                     noSpeechTimeoutTask?.cancel()
-                    endAttemptWithoutWords()
+                    endAttemptWithoutWords(.finishedByPerson)
                     return
                 }
                 voiceNotice = "I’m listening — say your thought, then pause."
@@ -1676,15 +1706,16 @@ struct CaptureView: View {
                   transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return
             }
-            endAttemptWithoutWords()
+            endAttemptWithoutWords(.noSpeechTimeout)
         }
     }
 
     /// Ends a recording that produced no words: recovers the protected audio
     /// if any was heard, and otherwise stops and says why. The notice is set
     /// after `transcriber.cancel()` has shut the microphone, so it can be
-    /// announced (A11Y-2).
-    private func endAttemptWithoutWords() {
+    /// announced (A11Y-2). What it reports depends on why it ended
+    /// (`CaptureWordlessEnding`); the screen does the same either way.
+    private func endAttemptWithoutWords(_ ending: CaptureWordlessEnding) {
         if hasRecoverableActiveAudio {
             recoverActiveAudio()
             return
@@ -1699,16 +1730,15 @@ struct CaptureView: View {
         if !typedBeforeSpeakingOnScreen.isEmpty {
             checkpoint(typedText, source: .inAppText)
         }
-        SpeakItAnalytics.track(.captureFailed(source: .voice, category: "speech"))
+        for event in ending.analyticsEvents(quality: transcriber.lastAudioQuality) {
+            SpeakItAnalytics.track(event)
+        }
         if let quality = transcriber.lastAudioQuality, quality.isVeryQuiet {
             voiceNotice = "That was very quiet. Bring the iPhone closer and try once more."
         } else if let quality = transcriber.lastAudioQuality, quality.isLikelyClipped {
             voiceNotice = "That was too loud for the microphone. Move it a little farther away."
         } else {
             voiceNotice = "I didn’t hear speech. Tap when you’re ready, or type instead."
-        }
-        if let quality = transcriber.lastAudioQuality {
-            SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: false))
         }
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
         Task { await CaptureActivityManager.cancelListening() }

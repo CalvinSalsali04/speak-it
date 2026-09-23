@@ -1907,7 +1907,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the rehearsal-2 follow-up: measured from the merged tree, not
         taken from either side (4775 on the candidate, 4068 on #148,
         4068 at their merge base `666eb1e`; #148 adds 0 and removes 0, 0
-        of its additions were already on the candidate).
+        of its additions were already on the candidate). 4775 -> 4778 on
+        2026-09-23, a candidate commit of the rehearsal-2 follow-up (#148
+        with #123, #139 and #144): partial recovery passes get failure
+        kinds of their own and an empty VoiceOver finish sends nothing.
+        Three in, all phrases quoted in the new tests' doc comments, the
+        hazard above once more (`VoiceOver is on`, `stopped after partial
+        words`, `timed out having read nothing`), none out: 4775 + 3 - 0
+        = 4778. The tests' fixture, `buy milk and call`, was already in
+        `DurabilityTests`, and every expected value is a snake_case label.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1917,7 +1925,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4775)
+        self.assertEqual(len(space), 4778)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

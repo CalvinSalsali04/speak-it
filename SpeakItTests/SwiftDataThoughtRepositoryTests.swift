@@ -7940,7 +7940,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
                 finalizedBy: .graceTimeout,
                 stopTrigger: .autoPauseDeferralsSpent
             ),
-            .captureRecovery(path: .liveAudio, outcome: .recovered(.partialOnTimeout)),
+            .captureRecovery(path: .liveAudio, outcome: .recovered(.recognizerFinal)),
+            .captureRecovery(path: .liveAudio, outcome: .failed(.timedOutAfterPartial)),
+            .captureRecovery(path: .launchAudio, outcome: .failed(.stoppedAfterPartial)),
             .captureRecovery(path: .launchAudio, outcome: .failed(.onDeviceRecognitionUnavailable)),
             .freeLimitReached(used: 10),
             .paywallViewed(context: .freeLimit),
@@ -8018,7 +8020,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             Set(CaptureAudioRecoveryEnding.allCases.map(\.rawValue)),
-            ["final", "partial_on_error", "partial_on_timeout"]
+            ["final"]
         )
         XCTAssertEqual(
             Set(AnalyticsRecoveryPath.allCases.map(\.rawValue)),
@@ -8027,6 +8029,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let failureKinds: [CaptureRecoveryFailureKind] = [
             .noSpeechDetected, .missingRecording, .permissionRequired,
             .recognizerUnavailable, .onDeviceRecognitionUnavailable, .timedOut,
+            .timedOutAfterPartial, .stoppedAfterPartial,
             .cancelled, .storageUnavailable, .unknown
         ]
         XCTAssertEqual(
@@ -8034,7 +8037,8 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             [
                 "no_speech_detected", "missing_recording", "permission_required",
                 "recognizer_unavailable", "on_device_recognition_unavailable",
-                "timed_out", "cancelled", "storage_unavailable", "unknown"
+                "timed_out", "timed_out_after_partial", "stopped_after_partial",
+                "cancelled", "storage_unavailable", "unknown"
             ]
         )
         XCTAssertTrue(SpeakItAnalyticsEvent.allowedPropertyKeys.isSuperset(of: [
@@ -8097,11 +8101,11 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     func testCaptureRecoveryCarriesOnlyTheBranchOrTheClosedFailureKind() {
         let recovered = SpeakItAnalyticsEvent.captureRecovery(
             path: .launchAudio,
-            outcome: .recovered(.partialOnTimeout)
+            outcome: .recovered(.recognizerFinal)
         )
         XCTAssertEqual(recovered.name, "capture_recovery")
         XCTAssertEqual(recovered.properties["path"] as? String, "launch_audio")
-        XCTAssertEqual(recovered.properties["outcome"] as? String, "partial_on_timeout")
+        XCTAssertEqual(recovered.properties["outcome"] as? String, "final")
         XCTAssertNil(recovered.properties["failure_kind"])
 
         let failed = SpeakItAnalyticsEvent.captureRecovery(
@@ -8111,6 +8115,90 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(failed.properties["path"] as? String, "live_audio")
         XCTAssertEqual(failed.properties["outcome"] as? String, "failed")
         XCTAssertEqual(failed.properties["failure_kind"] as? String, "no_speech_detected")
+    }
+
+    /// A recovery pass reaches `capture_recovery` the way the capture screen
+    /// and launch recovery map it: a success as its ending, a failure as
+    /// `CaptureRecoveryFailureKind(error:)`. Only a final result succeeds
+    /// (#123), so "timed out having read nothing" and "timed out after
+    /// partial words, which were kept" are separate failure kinds, and so are
+    /// "stopped after partial words" and an unclassified error. Falsifier:
+    /// folding `timedOutAfterPartial` back into `.timedOut`, or `stoppedEarly`
+    /// into `.unknown`, fails the equalities; a partial pass reported as a
+    /// success fails the `failed` outcome.
+    func testARecoveryPassThatKeptPartialWordsReportsItsOwnFailureKind() {
+        func reported(
+            _ latest: String?,
+            _ ending: CaptureAudioRecovery.Ending
+        ) -> [String: Any] {
+            let outcome: AnalyticsRecoveryOutcome
+            switch CaptureAudioRecovery.reportedOutcome(latest: latest, ending: ending) {
+            case .success(let transcript):
+                outcome = .recovered(transcript.ending)
+            case .failure(let error):
+                outcome = .failed(CaptureRecoveryFailureKind(error: error))
+            }
+            return SpeakItAnalyticsEvent.captureRecovery(path: .launchAudio, outcome: outcome).properties
+        }
+        let words = "buy milk and call"
+        let stopped = NSError(domain: NSCocoaErrorDomain, code: 1)
+
+        let whole = reported(words, .finished(words))
+        XCTAssertEqual(whole["outcome"] as? String, "final")
+        XCTAssertNil(whole["failure_kind"])
+
+        let timedOutEmpty = reported(nil, .timedOut)
+        XCTAssertEqual(timedOutEmpty["outcome"] as? String, "failed")
+        XCTAssertEqual(timedOutEmpty["failure_kind"] as? String, "timed_out")
+
+        let timedOutPartial = reported(words, .timedOut)
+        XCTAssertEqual(timedOutPartial["outcome"] as? String, "failed")
+        XCTAssertEqual(timedOutPartial["failure_kind"] as? String, "timed_out_after_partial")
+
+        let stoppedPartial = reported(words, .failed(stopped))
+        XCTAssertEqual(stoppedPartial["outcome"] as? String, "failed")
+        XCTAssertEqual(stoppedPartial["failure_kind"] as? String, "stopped_after_partial")
+
+        let stoppedEmpty = reported(nil, .failed(stopped))
+        XCTAssertEqual(stoppedEmpty["outcome"] as? String, "failed")
+        XCTAssertEqual(stoppedEmpty["failure_kind"] as? String, "unknown")
+
+        for properties in [whole, timedOutEmpty, timedOutPartial, stoppedPartial, stoppedEmpty] {
+            XCTAssertFalse(properties.values.contains { "\($0)".contains(words) })
+        }
+        // Another attempt stays on offer, as it did when these were
+        // `.timedOut` and `.unknown`.
+        XCTAssertFalse(CaptureRecoveryFailureKind.timedOutAfterPartial.stopsPromisingRecovery)
+        XCTAssertFalse(CaptureRecoveryFailureKind.stoppedAfterPartial.stopsPromisingRecovery)
+    }
+
+    /// The no-speech timeout is a failure and reports one. The person
+    /// finishing before any words is not, and reports nothing: that finish
+    /// exists only while VoiceOver is on (#139), so any event of its own would
+    /// stand in for "VoiceOver is on". Falsifier: any event from
+    /// `.finishedByPerson`, or the timeout losing its `speech` category or its
+    /// quality sample.
+    func testFinishingBeforeAnyWordsSendsNothingWhileTheTimeoutStillReportsSpeech() {
+        let quality = SpeechCaptureAudioQuality(
+            rmsDecibels: -52,
+            peakDecibels: -30,
+            clippedSampleFraction: 0,
+            durationMilliseconds: 1_200,
+            profile: .spokenAudio,
+            recognitionEngine: .speechAnalyzer
+        )
+        XCTAssertTrue(CaptureWordlessEnding.finishedByPerson.analyticsEvents(quality: quality).isEmpty)
+        XCTAssertTrue(CaptureWordlessEnding.finishedByPerson.analyticsEvents(quality: nil).isEmpty)
+
+        let timeout = CaptureWordlessEnding.noSpeechTimeout.analyticsEvents(quality: quality)
+        XCTAssertEqual(timeout.map(\.name), ["capture_failed", "speech_capture_quality"])
+        XCTAssertEqual(timeout.first?.properties["source"] as? String, "voice")
+        XCTAssertEqual(timeout.first?.properties["error_category"] as? String, "speech")
+        XCTAssertEqual(timeout.last?.properties["output_present"] as? Bool, false)
+        XCTAssertEqual(
+            CaptureWordlessEnding.noSpeechTimeout.analyticsEvents(quality: nil).map(\.name),
+            ["capture_failed"]
+        )
     }
 
     /// A thrown save is a storage failure, never "organization": organizing

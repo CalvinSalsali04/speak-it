@@ -1526,19 +1526,19 @@ private final class AudioActivityTracker: @unchecked Sendable {
     }
 }
 
-/// Which branch of a recording recovery produced its words. Recorded for beta
-/// diagnostics only; the words are the same whichever branch it was. The raw
-/// values are the `capture_recovery` event's `outcome` vocabulary.
+/// How a recording recovery that produced its words ended. The raw values are
+/// the `capture_recovery` event's `outcome` vocabulary, beside `failed`.
+///
+/// Only a final result succeeds (#123), so it is the only case. A pass that
+/// times out or errors after partial words fails and keeps those words on the
+/// draft; it reaches `capture_recovery` as `failed` with the failure kind
+/// `timed_out_after_partial` or `stopped_after_partial`, never as a success.
+/// #148 first listed `partial_on_error` and `partial_on_timeout` here; with
+/// #123 no path could send them, so they were removed rather than left to
+/// read as "never happens".
 enum CaptureAudioRecoveryEnding: String, CaseIterable, Sendable {
     /// The recognizer delivered its final result for the recording.
     case recognizerFinal = "final"
-    /// The recognizer failed after partial words; those were kept. Not
-    /// produced in the V1 candidate: with #123 such a pass fails and keeps
-    /// its words on the draft (`CaptureAudioRecovery.reportedOutcome`).
-    case partialOnError = "partial_on_error"
-    /// The 25 s recovery timeout ran out after partial words; those were
-    /// kept. Not produced in the V1 candidate either, for the same reason.
-    case partialOnTimeout = "partial_on_timeout"
 }
 
 struct CaptureAudioRecoveryTranscript: Sendable {
@@ -1568,27 +1568,34 @@ enum CaptureAudioRecovery {
     /// (`CaptureDraftStore.words(for:spoken:)`). Every recovery that saves a
     /// draft by itself uses this, so a typed beginning is not replaced by the
     /// recording (audit D6). The capture screen, which still holds the typed
-    /// words in its editor, uses `transcribeRecording(of:)` and joins them
-    /// in `save` instead.
+    /// words in its editor, uses `transcribeRecordingReportingEnding(of:)` and
+    /// joins them in `save` instead.
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
-        try await transcribeReportingEnding(draft).text
+        try await transcribe(draft, reading: { url in
+            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        })
     }
 
     /// The same recovery as `transcribe`, also saying which branch finished
     /// it, for the `capture_recovery` diagnostic (#148). The words are the
-    /// same: typed words first, then the recording's.
+    /// same: typed words first, then the recording's, joined by
+    /// `transcribe(_:reading:)` like `transcribe`'s.
     static func transcribeReportingEnding(
         _ draft: CaptureDraftStore.Draft
     ) async throws -> CaptureAudioRecoveryTranscript {
-        let spoken = try await transcribeRecordingReportingEnding(of: draft)
-        return CaptureAudioRecoveryTranscript(
-            text: CaptureDraftStore.words(for: draft, spoken: spoken.text),
-            ending: spoken.ending
-        )
+        var ending = CaptureAudioRecoveryEnding.recognizerFinal
+        let text = try await transcribe(draft, reading: { url in
+            let recovered = try await CaptureAudioRecovery.transcribeAudioReportingEnding(at: url)
+            ending = recovered.ending
+            return recovered.text
+        })
+        return CaptureAudioRecoveryTranscript(text: text, ending: ending)
     }
 
     /// `transcribe` with the recognizer supplied, so the joining can be
-    /// tested without one.
+    /// tested without one. `transcribe(_:)` and `transcribeReportingEnding(_:)`
+    /// both come through here with the real recognizer, so the typed and
+    /// spoken join these tests pin is the one production stores.
     static func transcribe(
         _ draft: CaptureDraftStore.Draft,
         reading read: (URL) async throws -> String
@@ -1619,7 +1626,8 @@ enum CaptureAudioRecovery {
 
     /// `transcribeRecording(of:)` with the recognition pass supplied, so the
     /// handling around it can be tested without a recognizer. Production
-    /// passes `transcribeAudio(at:)` and nothing else. An incomplete pass
+    /// passes the real recognizer, `transcribeAudio(at:)` or its reporting
+    /// form, and nothing else. An incomplete pass
     /// keeps the words it read on the draft here, whichever of the entry
     /// points above reached it.
     static func transcribeRecording(
@@ -1704,8 +1712,10 @@ enum CaptureAudioRecovery {
     /// pass the recognizer finished succeeds; a partial one fails and keeps
     /// its words on the draft (#123). So every success ends
     /// `.recognizerFinal`, and a partial pass reaches `capture_recovery` as a
-    /// failure (`timedOutAfterPartial` as `timed_out`, `stoppedEarly` as
-    /// `unknown`), never as `partial_on_error` or `partial_on_timeout`.
+    /// failure of its own kind (`timedOutAfterPartial` as
+    /// `timed_out_after_partial`, `stoppedEarly` as `stopped_after_partial`),
+    /// apart from a pass that read nothing (`timed_out`, or the recognizer's
+    /// own error's kind).
     static func reportedOutcome(
         latest: String?,
         ending: Ending
@@ -1926,8 +1936,9 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
         case .permissionRequired: .permissionRequired
         case .recognizerUnavailable: .recognizerUnavailable
         case .onDeviceRecognitionUnavailable: .onDeviceRecognitionUnavailable
-        case .timedOut, .timedOutAfterPartial: .timedOut
-        case .stoppedEarly: .unknown
+        case .timedOut: .timedOut
+        case .timedOutAfterPartial: .timedOutAfterPartial
+        case .stoppedEarly: .stoppedAfterPartial
         case .cancelled: .cancelled
         }
     }

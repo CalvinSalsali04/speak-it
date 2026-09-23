@@ -81,8 +81,10 @@ enum AnalyticsRecoveryPath: String, CaseIterable, Sendable {
     case launchAudio = "launch_audio"
 }
 
-/// How a recording recovery ended: which branch produced the words, or the
-/// closed reason it produced none. Never the words or the recognizer's message.
+/// How a recording recovery ended: the recording's words were read to the end,
+/// or the closed reason they were not, which includes a pass that read part of
+/// the recording and kept those words on the draft. Never the words or the
+/// recognizer's message.
 enum AnalyticsRecoveryOutcome: Equatable, Sendable {
     case recovered(CaptureAudioRecoveryEnding)
     case failed(CaptureRecoveryFailureKind)
@@ -338,6 +340,8 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .recognizerUnavailable: "recognizer_unavailable"
         case .onDeviceRecognitionUnavailable: "on_device_recognition_unavailable"
         case .timedOut: "timed_out"
+        case .timedOutAfterPartial: "timed_out_after_partial"
+        case .stoppedAfterPartial: "stopped_after_partial"
         case .cancelled: "cancelled"
         case .storageUnavailable: "storage_unavailable"
         case .unknown: "unknown"
