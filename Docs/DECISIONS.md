@@ -155,9 +155,15 @@ downgrade, and the newer build can still read it. The cost is real but
 bounded. Such a row still schedules from its resolved `reminderDate`. But
 the native repeating trigger takes its rule from the intent, so a recurring
 row is armed one occurrence at a time and rolls forward only when the app
-runs, from the rule `RecurrenceStore` still holds. That is the behaviour of
-every series iOS cannot repeat. Editing the row writes a fresh intent. No
-path is known to produce such a row.
+runs, from the rule `RecurrenceStore` still holds. It is worse than a series
+iOS cannot repeat, which still has a readable intent. With no intent there
+is no wall-clock anchor either, so each occurrence derives from the previous
+resolved instant and a daylight-saving change moves its clock time for good.
+And a snooze of it records nothing: it reports `unreadableIntent`, logs a
+`fault` without stopping a Debug build, and the snoozed time carries
+forward, because there is no intent to hold the series time. The launch
+backfill counts rows it could not encode in the same `fault`. Editing the
+row writes a fresh intent. No path is known to produce such a row.
 
 **Alarms are not covered.** An `.alarm` item is armed through AlarmKit with
 `.fixed(fireDate)`, a one-shot for every occurrence, snoozed or not. A

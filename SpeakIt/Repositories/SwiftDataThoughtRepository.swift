@@ -198,6 +198,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         var changed = false
         var unreadable = 0
+        var unencodable = 0
 
         // Only rows with no readable intent. A user-edited one is never
         // revisited, and neither is one already reconstructed.
@@ -208,11 +209,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
             if item.backfillTemporalIntentKeepingTrigger(reconstructedIntent(for: item)) {
                 changed = true
+            } else {
+                unencodable += 1
             }
         }
-        if unreadable > 0 {
+        if unreadable > 0 || unencodable > 0 {
             Self.reminderLog.fault(
-                "Launch backfill kept unreadable intent data: \(unreadable, privacy: .public) rows"
+                "Launch backfill left rows without an intent: unreadable \(unreadable, privacy: .public), unencodable \(unencodable, privacy: .public)"
             )
         }
 
@@ -836,7 +839,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// yet. It gets the backfill's own reconstruction here, so the record has
     /// somewhere to go and the next occurrence is computed from the series
     /// rather than from the snoozed time. Any other failure is logged, with
-    /// the reason only, and stops a Debug build.
+    /// the reason only, and stops a Debug build, except `unreadableIntent`:
+    /// the launch backfill keeps undecodable data on purpose, so a row in
+    /// that state is one the app chose to leave, and a Debug trap on the
+    /// person's snooze of it would be hostile. It is logged the same way.
     private func recordSnoozeDisplacement(of item: CapturedItem, from seriesReminder: Date) {
         var outcome = item.setSnoozedFromReminderDate(seriesReminder)
         if outcome == .noIntent {
@@ -849,6 +855,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         Self.reminderLog.fault(
             "Recurring snooze recorded no series alert: \(outcome.rawValue, privacy: .public)"
         )
+        guard outcome != .unreadableIntent else { return }
         assertionFailure("Recurring snooze recorded no series alert: \(outcome.rawValue)")
     }
 
