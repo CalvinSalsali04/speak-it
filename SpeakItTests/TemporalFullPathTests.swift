@@ -1301,6 +1301,169 @@ final class TemporalFullPathTests: XCTestCase {
         )
     }
 
+    /// A repeating alarm whose stored occurrence has already rung is still
+    /// armed: AlarmKit keeps a relative alarm scheduled for its next weekday
+    /// match. Every scheduling pass cancels each item in its scope and then
+    /// re-arms the requests it was handed, so while the initializer answered
+    /// `nil` for a past fire date, any pass that reached the row before the
+    /// foreground pass rolled it forward (an edit to another item from the
+    /// same capture, a notification action on one) cancelled the alarm and
+    /// armed nothing.
+    ///
+    /// The capture is dated eight days back under the pin, so its 6:30 has
+    /// passed on any day the suite runs: the state a row is in between its
+    /// alarm ringing and the next foreground. The request is built and read in
+    /// the machine's zone, pinned by nothing. The minute before each ring
+    /// skips, because the schedule stays `.fixed` there by design.
+    ///
+    /// Falsifier: put back `guard let fireDate = item.reminderDate, fireDate >
+    /// .now else { return nil }` at the top of `ReminderScheduleRequest.init`,
+    /// and the request is `nil`.
+    func testARepeatingAlarmThatHasRungIsStillArmedForItsNextRing() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Set an alarm every day at 6:30 AM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.frequency, .daily)
+        }
+
+        // The machine's zone from here on.
+        let machineCalendar = Calendar.current
+        let now = Date.now
+        let rung = try XCTUnwrap(item.reminderDate)
+        XCTAssertLessThan(rung, now, "precondition: the stored occurrence has rung")
+        XCTAssertNil(
+            RecurrenceStore.generatedNextItemID(for: item.id),
+            "precondition: no successor row owns the series"
+        )
+
+        let request = try XCTUnwrap(
+            ReminderScheduleRequest(item: item),
+            "a daily alarm that rang this morning still rings tomorrow, so a pass must re-arm it"
+        )
+        XCTAssertEqual(request.itemID, item.id, "under the alarm ID AlarmKit already holds")
+        XCTAssertEqual(request.delivery, .alarm)
+        XCTAssertGreaterThan(request.fireDate, now, "a pass arms only what is ahead")
+        XCTAssertLessThan(
+            request.fireDate.timeIntervalSince(now),
+            26 * 60 * 60,
+            "the next ring of a daily series, not a later one"
+        )
+        let rungClock = machineCalendar.dateComponents([.hour, .minute], from: rung)
+        let hour = try XCTUnwrap(rungClock.hour)
+        let minute = try XCTUnwrap(rungClock.minute)
+        XCTAssertEqual(
+            machineCalendar.dateComponents([.hour, .minute], from: request.fireDate),
+            rungClock,
+            "at the series' own clock"
+        )
+
+        try XCTSkipIf(
+            request.fireDate.timeIntervalSince(now) <= 60,
+            "a ring a minute away or less stays .fixed by design"
+        )
+        XCTAssertEqual(
+            ReminderScheduler.alarmSchedule(for: request, now: now, calendar: machineCalendar),
+            .weekly(
+                hour: hour,
+                minute: minute,
+                weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+            ),
+            "the pass re-arms the same repetition AlarmKit was holding"
+        )
+    }
+
+    /// The exception belongs only to the row that still owns its series.
+    /// `Every weekday` is a series AlarmKit repeats but one notification
+    /// trigger cannot, so the foreground pass continues it on a successor row,
+    /// which arms the next occurrence under its own alarm ID. The row it came
+    /// from is then spent.
+    ///
+    /// Falsifier: drop the `continuedBySuccessor` clause from
+    /// `ReminderScheduleRequest.nextRingOfFiredAlarm`, and the original row
+    /// asks for the same ring as its successor: two alarms at 7.
+    func testARungRepeatingAlarmWhoseSeriesMovedToASuccessorIsSpent() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Alarm at 7 every weekday",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.weekdays, [2, 3, 4, 5, 6])
+        }
+        XCTAssertLessThan(
+            try XCTUnwrap(item.reminderDate),
+            .now,
+            "precondition: the stored occurrence has rung"
+        )
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: item),
+            "before the foreground pass, the row still owns the series and is armed"
+        )
+
+        repository.reconcilePendingReminders()
+
+        let successorID = try XCTUnwrap(
+            RecurrenceStore.generatedNextItemID(for: item.id),
+            "precondition: the foreground pass continued the series on a successor"
+        )
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "the row the series left is spent, or its alarm rings beside the successor's"
+        )
+        let armed = try XCTUnwrap(ReminderScheduleRequest(item: try loadItem(withID: successorID)))
+        XCTAssertEqual(armed.itemID, successorID)
+        XCTAssertEqual(armed.delivery, .alarm)
+    }
+
+    /// The decision on its own, in the fixture zone: a fired occurrence rings
+    /// again only when it is an alarm, AlarmKit repeats it, and no successor
+    /// owns the series.
+    ///
+    /// Falsifier: drop any one clause of the guard in
+    /// `ReminderScheduleRequest.nextRingOfFiredAlarm`, and that case returns
+    /// Tuesday's ring.
+    func testOnlyARepeatingAlarmThatStillOwnsItsSeriesHasANextRing() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let rung = makeDate(year: 2026, month: 8, day: 3, hour: 6, minute: 30, calendar: calendar)
+            let daily = ReminderScheduleRequest.alarmRepetition(
+                rule: RecurrenceRule(frequency: .daily),
+                fireDate: rung,
+                calendar: calendar
+            )
+            func nextRing(
+                _ delivery: ReminderDelivery,
+                _ repetition: ReminderAlarmRepetition?,
+                successor: Bool
+            ) -> Date? {
+                ReminderScheduleRequest.nextRingOfFiredAlarm(
+                    delivery: delivery,
+                    repetition: repetition,
+                    continuedBySuccessor: successor,
+                    now: now,
+                    calendar: calendar
+                )
+            }
+
+            XCTAssertEqual(
+                nextRing(.alarm, daily, successor: false),
+                makeDate(year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar)
+            )
+            XCTAssertNil(nextRing(.notification, daily, successor: false), "a notification")
+            XCTAssertNil(nextRing(.alarm, nil, successor: false), "a rule AlarmKit cannot repeat")
+            XCTAssertNil(nextRing(.alarm, daily, successor: true), "a series a successor owns")
+        }
+    }
+
     // MARK: Permission and background state
 
     /// Notification permission is environment, not meaning. Losing it must

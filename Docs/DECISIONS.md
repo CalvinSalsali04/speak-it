@@ -1,5 +1,66 @@
 # Decisions
 
+## 2026-09-23 — A repeating alarm that has rung is still armed, and a pass re-arms it
+
+Finding F2 of the V1 integration rehearsal, present on this branch alone.
+`ReminderScheduleRequest.init(item:)` opened with
+`guard let fireDate = item.reminderDate, fireDate > .now else { return nil }`.
+That was true of every alert when AlarmKit armed one occurrence at a time, and
+the entry below made it false: a relative weekly alarm stays scheduled for its
+next match after it rings, while the row keeps the occurrence that rang until
+the foreground pass (`advanceOverdueRecurrences`) rolls it forward. Every
+scheduling pass calls `cancel(itemID:)` for each ID in its scope
+(`scheduleBatch`), then arms only the requests it was handed. A per-capture
+pass (`synchronizeReminders(for:)`) scopes every item of the capture, so an
+edit to another item from the same capture, or a notification action on one,
+cancelled the repeating alarm, found no request for its row, and armed
+nothing. Stopped, the alarm stayed gone until the app next came to the
+foreground. That is the notification failure #129 fixes (DEL-12), reached by
+alarms.
+
+**The request is built for the next ring.** A past row still gets a request
+when three things hold: its words ask for an alarm, AlarmKit repeats its rule
+(`alarmRepetition`, read from the stored occurrence, so its clock and weekday
+are the series'), and no successor row owns the series (`RecurrenceStore`'s
+`generatedNextItemID`). Its `fireDate` is then the repetition's next match
+after now (`ReminderScheduleRequest.nextRingOfFiredAlarm`), which is the alarm
+AlarmKit already holds, and `alarmSchedule(for:)` answers `.weekly` for it the
+way it does for any occurrence whose first ring is this one. So the pass still
+cancels and re-arms, as it does for every alarm it re-arms, but it re-arms the
+same repetition. Nothing downstream changed: `scheduleBatch` and `schedule`
+still drop a request whose `fireDate` has passed, and this one has not.
+
+The successor clause matters for "every weekday": one notification trigger
+cannot repeat it, so the foreground pass continues it on a new row with its own
+alarm ID and leaves the old row open. Without the clause both rows would ask
+for the same ring. The same answer is right when the alarm that rang was a
+`.fixed` one-shot (armed so because its first ring was not the next match):
+the series' next occurrence is still that match, and re-arming it is what the
+foreground pass would do.
+
+**Hypothesis.** A repeating alarm is lost between its ring and the next
+foreground only through a scoped pass that finds no request for its row; with a
+request for the next ring, every pass leaves the series armed.
+**Falsifier.** `TemporalFullPathTests`: a daily alarm captured eight days
+ago (so its occurrence has passed, as after a ring) gets a request at its own
+clock within a day, `.weekly` on all seven days, and a weekday alarm the
+foreground pass has moved to a successor gets none. Put back the old guard and
+the first test's request is `nil`; drop the successor clause and the second
+test's old row asks for a request.
+
+**Not covered.** No test reaches AlarmKit, so that re-arming an identical
+relative alarm under the same ID is harmless on a device is unconfirmed, as is
+every other device check in KNOWN_ISSUES. A pass that runs while the alarm is
+alerting still calls `stop(id:)` through `cancel(itemID:)` and silences it; that
+predates this change. A fired repeating *notification* is still dropped by a
+scoped pass on this branch; #129 fixes that one (`forScheduling`). When the two
+meet, #129 rewrites this initializer and moves every pass to `forScheduling`,
+so this rule has to move with it into #129's private initializer, ahead of its
+`fireHasPassed` guard, and #129's `BatchSelection.alarms` comment ("AlarmKit
+arms one occurrence at a time") stops being true. A ring less than a minute
+away still arms `.fixed`, by the rule below, so a pass in that minute leaves
+the series to the foreground pass.
+
 ## 2026-09-23 — A recurring alarm repeats in AlarmKit, not in the app
 
 Finding DEL-13 of the v1 delivery-integrity audit. `ReminderScheduler.schedule`

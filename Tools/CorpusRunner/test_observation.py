@@ -905,7 +905,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         message the second one replaced because the reason it gave applied
         to the one-shot branch just as much. A reworded message is a fall
         and a rise, not a zero, and it only nets to zero when both sides
-        clear twelve characters.
+        clear twelve characters. 4078 -> 4093 on 2026-09-23, from a
+        repeating alarm that has rung staying armed: three
+        `TemporalFullPathTests` methods and fifteen literals, all assertion
+        messages, enumerated rather than assumed. Their two captures, `"Set
+        an alarm every day at 6:30 AM"` and `"Alarm at 7 every weekday"`,
+        were already in this directory and add nothing. A first count was
+        4094, the extra being `"Every weekday"` quoted in a doc comment;
+        that comment uses backticks now.
         What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -919,7 +926,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4078)
+        self.assertEqual(len(space), 4093)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

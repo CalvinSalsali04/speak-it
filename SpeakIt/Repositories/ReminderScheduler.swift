@@ -33,15 +33,50 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// ordering stays keyed by item ID so it remains stable across launches.
     let createdAt: Date
 
+    /// The request that arms an item's next alert, or `nil` when it has none.
+    ///
+    /// That is the stored `reminderDate` while it is ahead. Once it has
+    /// passed, it is `nil`, with one exception: a recurring alarm that
+    /// AlarmKit repeats by itself (`alarmRepetition`) still has a next ring,
+    /// and its request is built for that ring (see
+    /// `nextRingOfFiredAlarm(delivery:repetition:continuedBySuccessor:now:calendar:)`).
+    /// Every scheduling pass cancels each item in its scope before re-arming
+    /// the requests it was given, so answering `nil` for that row made any
+    /// pass that reached it before the foreground pass rolled it forward
+    /// cancel a live repeating alarm and arm nothing.
     @MainActor
     init?(item: CapturedItem) {
-        guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
+        guard let storedFireDate = item.reminderDate else { return nil }
+        let rule = item.temporalIntent?.recurrence
+        // Read from the stored occurrence, which carries the series' clock
+        // and, for "every week" with no day named, its weekday.
+        let repetition = Self.alarmRepetition(rule: rule, fireDate: storedFireDate)
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these
         // requests on every render pass to keep its scheduling signature live,
         // which made two fresh `ThoughtOrganizer` parses per reminder item here
-        // the single largest cost of scrolling that screen.
-        let wordedDelivery = ItemPresentation.effectiveReminderDelivery(for: item)
+        // the single largest cost of scrolling that screen. A past row reads
+        // it only when AlarmKit could still be repeating it.
+        let fireDate: Date
+        let delivery: ReminderDelivery
+        let now = Date.now
+        if storedFireDate > now {
+            fireDate = storedFireDate
+            delivery = ItemPresentation.effectiveReminderDelivery(for: item) == .alarm
+                ? .alarm
+                : .notification
+        } else {
+            guard repetition != nil,
+                  ItemPresentation.effectiveReminderDelivery(for: item) == .alarm,
+                  let nextRing = Self.nextRingOfFiredAlarm(
+                      delivery: .alarm,
+                      repetition: repetition,
+                      continuedBySuccessor: RecurrenceStore.generatedNextItemID(for: item.id) != nil,
+                      now: now
+                  ) else { return nil }
+            fireDate = nextRing
+            delivery = .alarm
+        }
 
         itemID = item.id
         captureSessionID = item.captureSession?.id
@@ -49,15 +84,12 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             from: item.displayTitle == originalText ? originalText : item.displayTitle
         )
         self.fireDate = fireDate
-        delivery = wordedDelivery == .alarm ? .alarm : .notification
+        self.delivery = delivery
         repeatingComponents = Self.repeatingComponents(
-            rule: item.temporalIntent?.recurrence,
-            fireDate: fireDate
+            rule: rule,
+            fireDate: storedFireDate
         )
-        alarmRepetition = Self.alarmRepetition(
-            rule: item.temporalIntent?.recurrence,
-            fireDate: fireDate
-        )
+        alarmRepetition = repetition
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
@@ -156,6 +188,36 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             weekdayNumbers: weekdayNumbers,
             weekdays: weekdays
         )
+    }
+
+    /// When a recurring alarm whose stored occurrence has already rung rings
+    /// next, or `nil` when that occurrence was the row's last alert.
+    ///
+    /// A one-shot alarm is spent once it rings, and so is a notification this
+    /// branch does not reach. A relative AlarmKit alarm is not: it stays
+    /// scheduled for its next weekday match, so the row it belongs to is still
+    /// armed until the foreground pass (`advanceOverdueRecurrences`) rolls it
+    /// forward. Its request is built for that match, which is the alarm
+    /// AlarmKit already holds, so a pass that cancels and re-arms the row
+    /// re-arms the same repetition instead of leaving nothing.
+    ///
+    /// Not when the series has moved on to a successor row
+    /// (`continuedBySuccessor`, a `RecurrenceStore` link): that row owns the
+    /// next occurrence under its own alarm ID, and arming this one as well
+    /// would ring twice. The same answer holds if the fired alarm was a
+    /// `.fixed` one-shot, because the series' next occurrence is still this
+    /// match; re-arming it is what the foreground pass would do.
+    static func nextRingOfFiredAlarm(
+        delivery: ReminderDelivery,
+        repetition: ReminderAlarmRepetition?,
+        continuedBySuccessor: Bool,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard delivery == .alarm,
+              let repetition,
+              !continuedBySuccessor else { return nil }
+        return repetition.nextOccurrence(after: now, calendar: calendar)
     }
 }
 
