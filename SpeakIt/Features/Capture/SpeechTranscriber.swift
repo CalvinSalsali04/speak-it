@@ -224,14 +224,7 @@ final class SpeechTranscriber: ObservableObject {
                 onVoiceActivity: run.deliverVoiceActivity,
                 onError: run.deliverError
             )
-            isPreparingEnhancedRecognition = false
-            guard activeStartID == startID else {
-                backend.cancel()
-                resetRecognitionResources()
-                return
-            }
-            recognitionBackend = backend
-            recognitionEngine = backend.engine
+            guard adoptStartedBackend(backend, for: startID) else { return }
 
             let recoveryFile: AVAudioFile?
             if let recoveryAudioURL {
@@ -288,6 +281,17 @@ final class SpeechTranscriber: ObservableObject {
                 ) else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    // A level queued by a tap that has since been removed
+                    // belongs to a run that is over. The state check alone
+                    // lets it into the next run's meter. No test covers this
+                    // guard: it runs inside a live AVAudioEngine tap, which the
+                    // unit tests have no seam for. Were it to fail, a stale
+                    // level would move the newer run's meter and could set
+                    // `hasDetectedAudioInput` for a run that heard nothing,
+                    // which gates the offer to recover a capture from its
+                    // audio: a later failure would then spend a recovery
+                    // attempt on a silent file.
+                    guard activeRunID == startID else { return }
                     guard state == .requestingPermission
                             || state == .listening
                             || state == .finalizing else { return }
@@ -303,10 +307,20 @@ final class SpeechTranscriber: ObservableObject {
 
             audioEngine.prepare()
             try audioEngine.start()
-            guard activeStartID == startID else {
-                resetRecognitionResources()
-                return
-            }
+            // Nothing between adopting the backend and here suspends, so this
+            // run still owns the capture and the guard cannot fail today.
+            // Returning without a reset is right only for an await added
+            // between `audioEngine.start()` and this line: the stale run has
+            // finished its writes, the start that superseded it already reset
+            // them, and resetting now would tear down that newer run's
+            // microphone (LIF-7), the way the stale branch in
+            // `adoptStartedBackend` used to. An await added anywhere earlier
+            // needs its own ownership check immediately after it, before the
+            // first write to shared state (the recovery file, the audio
+            // processor, the tap on bus 0): a stale run resuming there would
+            // otherwise install over the newer run, and this guard would then
+            // leave it in place.
+            guard activeStartID == startID else { return }
             audioInputReadyTimeout?.cancel()
             audioInputReadyTimeout = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.audioInputReadyGracePeriod)
@@ -412,6 +426,78 @@ final class SpeechTranscriber: ObservableObject {
     /// Test support. Which run the transcriber is currently willing to hear
     /// from, so a test can assert the lifecycle rather than assume it.
     var activeRunIDForTesting: UUID? { activeRunID }
+
+    /// Takes the backend `makeStartedBackend` returned for `startID`, or
+    /// releases it when that run is already over. Returns whether the run
+    /// still owns the capture.
+    ///
+    /// The await can last seconds on the SpeechAnalyzer path (model
+    /// preparation, and a model download for the tutorial), and "Type instead"
+    /// stays enabled while it runs. By the time it returns, the run that asked
+    /// may have been cancelled and a newer run may already hold the
+    /// microphone, the tap, `recognitionBackend` and the audio session. This
+    /// used to call `resetRecognitionResources()`, which stopped all four for
+    /// the newer run and left it showing "Listening" over a dead microphone
+    /// (LIF-7).
+    ///
+    /// A stale run releases only the one resource it created and nobody else
+    /// has seen: the backend it was just handed. Everything else it set up
+    /// before the await was released for it by the `cancel()` or
+    /// `resetAfterFailure()` that made it stale, and what is there now belongs
+    /// to whoever came next. `isPreparingEnhancedRecognition` is the current
+    /// run's too, so only the owner lowers it.
+    ///
+    /// Cancelling a legacy backend makes `SFSpeechRecognitionTask` call back
+    /// once more, while the newer run is live. `acceptsResult` refuses that
+    /// callback because it carries the stale run's id.
+    private func adoptStartedBackend(
+        _ backend: any SpeechRecognitionBackend,
+        for startID: UUID
+    ) -> Bool {
+        guard activeStartID == startID else {
+            backend.cancel()
+            return false
+        }
+        isPreparingEnhancedRecognition = false
+        recognitionBackend = backend
+        recognitionEngine = backend.engine
+        return true
+    }
+
+    // Test support for the stale-start race. `beginRunWithoutAudioForTesting`
+    // reports the microphone ready at once, which is where a run stands after
+    // its backend is adopted. The race needs a run still inside its
+    // `makeStartedBackend` await, so these hooks stop earlier. Each one enters
+    // the function `start` runs at that step. Nothing in the app calls them.
+
+    /// Opens a run the way `start` does and leaves it where `start` sits while
+    /// it awaits its backend: `.requestingPermission`, holding its start id.
+    func openRunWithoutAudioForTesting(
+        preparingEnhancedRecognition: Bool = false,
+        onAutomaticFinalization: @escaping (String) -> Void = { _ in }
+    ) -> UUID {
+        let startID = beginRun(onAutomaticFinalization: onAutomaticFinalization)
+        isPreparingEnhancedRecognition = preparingEnhancedRecognition
+        return startID
+    }
+
+    /// What `start` does when `makeStartedBackend` returns for `startID`.
+    func adoptStartedBackendForTesting(
+        _ backend: any SpeechRecognitionBackend,
+        for startID: UUID
+    ) -> Bool {
+        adoptStartedBackend(backend, for: startID)
+    }
+
+    /// What the first microphone buffer of `startID` does.
+    func reportAudioInputReadyForTesting(startID: UUID) {
+        markAudioInputReady(startID: startID)
+    }
+
+    /// Whether `backend` is the one the transcriber would stop on cancel.
+    func isInstalledBackendForTesting(_ backend: any SpeechRecognitionBackend) -> Bool {
+        recognitionBackend === backend
+    }
 
     /// Prefers the higher-accuracy on-device SpeechAnalyzer engine when iOS 26
     /// and its language model are available, falling back to the legacy
@@ -871,6 +957,16 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseTask = nil
         audioInputReadyTimeout?.cancel()
         audioInputReadyTimeout = nil
+        // A finalization deadline belongs to the backend being released here.
+        // Left running, it would outlive its run by up to two seconds: stop
+        // a recording, then start another before its finalization settles,
+        // and if the new run reaches `.finalizing` inside that window the old
+        // deadline force-completes the new run's finalization early,
+        // truncating it. A start made while the previous run is `.finalizing`
+        // reaches this reset and no other cancel of this deadline, so this
+        // one is not redundant.
+        finalizationTimeout?.cancel()
+        finalizationTimeout = nil
         lastEndpointingSignature = ""
         isWaitingForContinuation = false
         stopAudioInput()
