@@ -422,6 +422,28 @@ Today's collapsed disclosure sections were fixed by not building their rows whil
 
 The consequence elsewhere has not been measured. Every remaining `.accessibilityHidden(true)` in the app hides a decorative image — `CapturedItemRow`, `ShoppingListView`, `PlaceSetupView`, `ItemEditorView`, `RootView` — and on this OS none of them is likely to be doing what it says. XCUITest and VoiceOver read the same tree but are not the same client, so whether these images are actually *spoken* needs the hands-on VoiceOver pass, not another automated run. Nothing hidden this way carries an action, so the risk is verbosity rather than a wrong tap.
 
+## Organize again keeps only the time and the place a person set
+
+*2026-09-23.* A re-read (Organize again, split, merge, undo, launch
+recovery) keeps a due date, reminder date, temporal intent and repeat rule
+set in the editor, as it already kept a place (see `DECISIONS.md`). What it
+still does not keep:
+
+- **The other editor fields.** Title, type, category, priority and person
+  have no per-field mark, so a re-read replaces them. A title typed by hand
+  is recorded in `HandEditedTitleStore`, which launch title polish honours
+  and `apply` does not. The dialog says so.
+- **Row identity is positional.** The kept time stays on whichever row the
+  re-read puts at the same position. When the re-read splits the capture
+  differently, the time can sit on a different thought, exactly as a kept
+  place already could.
+- **The re-read verdict still flags the row.** `needsClarification` and
+  `semanticState` refresh, so a row whose time the person set can still ask
+  about its time (`ambiguousTemporalScope`) after Organize again.
+- **Not yet compiled or run.** The change and its five tests in
+  `SwiftDataThoughtRepositoryTests` were written without a Swift toolchain;
+  the unit suite and release build on a Mac have not run them.
+
 ## Clarification reasons are inferred, not recorded
 
 `CapturedItem.needsClarification` is a single `Bool`, so the reason extraction had at capture time is discarded. `ThoughtOrganizer` knows when it wanted a reminder and could not parse a time, `ThoughtExtractor` knows when it kept a capture whole because splitting it looked unsafe, and the on-device model path knows when it was simply unconfident — all three collapse into one flag.
