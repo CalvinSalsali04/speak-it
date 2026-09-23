@@ -24,7 +24,8 @@ The rule has one half per trigger, both in `ItemPresentation`:
 Each trigger is released only by the person's confirmation of that trigger.
 Every save in the editor marks the temporal intent `isUserEdited`, and the
 editor sends every place it shows back as an edit
-(`ItemEditorView.locationIntentEdit`), which marks the place the same way. So
+(`LocationIntentEdit.fromEditor`, pinned by
+`testTheEditorSendsEveryPlaceItShowsBackAsAnEdit`), which marks the place the same way. So
 the manual Needs review toggle keeps its reminder and its place armed, and so
 does any edited reminder. A single rule that read either mark let a confirmed
 place release a guessed time, because a reorganize (`apply`) rewrites the
