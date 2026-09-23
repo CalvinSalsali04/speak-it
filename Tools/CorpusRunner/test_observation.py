@@ -1647,6 +1647,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         deadline): four assertion messages. 4083 -> 4085 from the third
         round: the claimed-path precondition and the takeover being
         observable, two assertion messages.
+        4068 -> 4068 on 2026-09-23, from the capture diagnostics: six
+        new tests and two extended ones add no literal, because every
+        expected value is a snake_case label with no space and the one
+        private-message fixture, `"The user typed a private thought
+        here"`, was already in `SwiftDataThoughtRepositoryTests`.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1864,6 +1869,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the second merge rehearsal: measured from the merged tree, not
         taken from either side (4750 on the candidate, 4085 on #146,
         4068 at their merge base; #146 adds 17 and removes 0, 0 of its
+        additions were already on the candidate). 4767 -> 4767 on
+        2026-09-23, merging #148 at `666eb1e` into the V1 candidate in
+        the second merge rehearsal: measured from the merged tree, not
+        taken from either side (4767 on the candidate, 4068 on #148,
+        4068 at their merge base; #148 adds 0 and removes 0, 0 of its
         additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]

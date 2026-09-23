@@ -1403,12 +1403,19 @@ struct RootView: View {
                     if result.consumesFreeCapture {
                         subscriptionStore.recordSuccessfulCapture()
                     }
-                    SpeakItAnalytics.track(.captureSaved(
-                        source: .shareSheet,
-                        itemCount: result.itemCount,
-                        needsReviewCount: result.needsReviewCount,
-                        plan: subscriptionStore.hasProAccess ? .pro : .free
-                    ))
+                    // The words are durable either way. A capture whose
+                    // organization failed is reported under that stage, as
+                    // the in-app capture does, not counted as saved.
+                    if result.session.processingStatus == .failed {
+                        SpeakItAnalytics.track(.captureFailed(source: .shareSheet, category: "organization"))
+                    } else {
+                        SpeakItAnalytics.track(.captureSaved(
+                            source: .shareSheet,
+                            itemCount: result.itemCount,
+                            needsReviewCount: result.needsReviewCount,
+                            plan: subscriptionStore.hasProAccess ? .pro : .free
+                        ))
+                    }
                     importedCount += 1
                 }
             } catch {
@@ -1452,18 +1459,26 @@ struct RootView: View {
             // deliberate retry from capture history is still available.
             guard !draft.recoveryFailureKind.stopsPromisingRecovery else { continue }
             CaptureDraftStore.markProcessing(id: draft.id)
+            // A save that fails after the words were recovered is not a
+            // recovery failure, so the event is sent once, for transcription.
+            var reportedRecovery = false
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                let recovered = try await CaptureAudioRecovery.transcribeReportingEnding(draft)
+                SpeakItAnalytics.track(.captureRecovery(
+                    path: .launchAudio,
+                    outcome: .recovered(recovered.ending)
+                ))
+                reportedRecovery = true
                 // Recovery's own save is handed off the same way a live one
                 // is, so a kill inside it is not replayed at the next launch.
                 let sessionID = UUID()
                 CaptureDraftStore.recordHandoff(
                     id: draft.id,
-                    transcript: recoveredText,
+                    transcript: recovered.text,
                     sessionID: sessionID
                 )
                 let result = try await repository.createCaptureResult(
-                    text: recoveredText,
+                    text: recovered.text,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
                     schedulesReminders: true,
@@ -1478,15 +1493,28 @@ struct RootView: View {
                     if result.consumesFreeCapture {
                         subscriptionStore.recordSuccessfulCapture()
                     }
-                    SpeakItAnalytics.track(.captureSaved(
-                        source: .recovery,
-                        itemCount: result.itemCount,
-                        needsReviewCount: result.needsReviewCount,
-                        plan: subscriptionStore.hasProAccess ? .pro : .free
-                    ))
+                    // The words are durable either way. A capture whose
+                    // organization failed is reported under that stage, as
+                    // the in-app capture does, not counted as saved.
+                    if result.session.processingStatus == .failed {
+                        SpeakItAnalytics.track(.captureFailed(source: .recovery, category: "organization"))
+                    } else {
+                        SpeakItAnalytics.track(.captureSaved(
+                            source: .recovery,
+                            itemCount: result.itemCount,
+                            needsReviewCount: result.needsReviewCount,
+                            plan: subscriptionStore.hasProAccess ? .pro : .free
+                        ))
+                    }
                     recoveredCount += 1
                 }
             } catch {
+                if !reportedRecovery {
+                    SpeakItAnalytics.track(.captureRecovery(
+                        path: .launchAudio,
+                        outcome: .failed(CaptureRecoveryFailureKind(error: error))
+                    ))
+                }
                 CaptureDraftStore.markFailed(id: draft.id, error: error)
             }
         }

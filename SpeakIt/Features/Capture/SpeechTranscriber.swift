@@ -54,6 +54,39 @@ struct SpeechCaptureAudioQuality: Codable, Equatable, Sendable {
     var isLikelyClipped: Bool { clippedSampleFraction >= 0.005 }
 }
 
+/// Which code path handed a voice capture's words to be saved. Recorded for
+/// beta diagnostics only: every path saves exactly the words it saved before
+/// this existed. The raw values are the `finalized_by` analytics vocabulary.
+enum SpeechFinalizationPath: String, CaseIterable, Sendable {
+    /// The words are the recognizer's final result.
+    case recognizerFinal = "recognizer_final"
+    /// The 2 s finalization grace period ran out first; the last partial was kept.
+    case graceTimeout = "grace_timeout"
+    /// The recognizer reported an error after partial words; those were kept.
+    case errorWithPartial = "error_with_partial"
+    /// The microphone route went away while finalizing; the partial was kept.
+    case routeChangeWithPartial = "route_change_with_partial"
+    /// Another audio session interrupted, or the iPhone's media services
+    /// reset, while finalizing; the partial was kept. The same code path as a
+    /// route change, reported apart because the cause is different.
+    case interruptionWithPartial = "interruption_with_partial"
+}
+
+/// What asked a voice capture to stop listening. The raw values are the
+/// `stop_trigger` analytics vocabulary. There is none when the recognizer
+/// ended its own result, or an error ended the capture, before anything asked.
+enum SpeechStopTrigger: String, CaseIterable, Sendable {
+    /// The person tapped to finish, or chose Save & Close.
+    case manual
+    /// Natural-pause endpointing closed the capture.
+    case autoPause = "auto_pause"
+    /// Natural-pause endpointing closed the capture after spending its audio
+    /// deferrals while voice activity was still arriving.
+    case autoPauseDeferralsSpent = "auto_pause_deferrals_spent"
+    /// The Siri and Shortcuts capture's 60 s cap.
+    case maxDuration = "max_duration"
+}
+
 enum SpeechCaptureDiagnosticsStore {
     private static let key = "SpeakIt.debug.lastSpeechCaptureQuality"
 
@@ -94,6 +127,11 @@ final class SpeechTranscriber: ObservableObject {
     private(set) var finalTranscriptAt: CapturePerformanceClock.Instant?
     private(set) var lastAudioQuality: SpeechCaptureAudioQuality?
     private(set) var recognitionEngine: SpeechRecognitionEngine?
+    /// Which path ended the most recent capture and what asked it to stop.
+    /// Diagnostics only; both reset when a capture starts.
+    private(set) var lastFinalizationPath: SpeechFinalizationPath?
+    private(set) var lastStopTrigger: SpeechStopTrigger?
+    private var lastTranscriptWasFinal = false
 
     var lastVoiceActivityAt: CapturePerformanceClock.Instant? {
         audioActivityTracker.lastVoiceActivityAt
@@ -445,6 +483,9 @@ final class SpeechTranscriber: ObservableObject {
         recognitionEngine = nil
         speechEndpointDetectedAt = nil
         finalTranscriptAt = nil
+        lastFinalizationPath = nil
+        lastStopTrigger = nil
+        lastTranscriptWasFinal = false
         automaticFinalization = onAutomaticFinalization
         return startID
     }
@@ -624,9 +665,12 @@ final class SpeechTranscriber: ObservableObject {
         return legacyBackend
     }
 
-    func stopAndFinalize(_ completion: @escaping (String) -> Void) {
+    func stopAndFinalize(
+        trigger: SpeechStopTrigger = .manual,
+        _ completion: @escaping (String) -> Void
+    ) {
         guard state == .listening else { return }
-        beginFinalization(completion)
+        beginFinalization(completion, trigger: trigger)
     }
 
     func cancel() {
@@ -715,6 +759,7 @@ final class SpeechTranscriber: ObservableObject {
         }
 
         transcript = SpeechVocabularyStore.apply(to: text)
+        lastTranscriptWasFinal = isFinal
         let hasWords = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let endpointingSignature = Self.endpointingSignature(for: transcript)
         let hasLexicalContent = !endpointingSignature.isEmpty
@@ -731,9 +776,9 @@ final class SpeechTranscriber: ObservableObject {
 
         if isFinal {
             if state == .finalizing {
-                completeFinalization()
+                completeFinalization(firedBy: .recognizerFinal)
             } else if hasWords, let automaticFinalization {
-                beginFinalization(automaticFinalization)
+                beginFinalization(automaticFinalization, trigger: nil)
             }
             return
         }
@@ -761,12 +806,12 @@ final class SpeechTranscriber: ObservableObject {
         ) {
         case .finalizeTranscript:
             if state == .finalizing {
-                completeFinalization()
+                completeFinalization(firedBy: .errorWithPartial)
             } else if let automaticFinalization {
                 finalization = automaticFinalization
                 markSpeechEndpointDetectedIfNeeded()
                 state = .finalizing
-                completeFinalization()
+                completeFinalization(firedBy: .errorWithPartial)
             }
         case .recoverRecording, .reportFailure:
             resetRecognitionResources()
@@ -850,17 +895,17 @@ final class SpeechTranscriber: ObservableObject {
                     promptAfter,
                     pauseBeganAt: &pauseBeganAt,
                     audioActivityDeferralsRemaining: &audioActivityDeferralsRemaining
-                ) else { return }
+                ) != nil else { return }
                 isWaitingForContinuation = true
             }
 
-            guard await waitForPause(
+            guard let stopTrigger = await waitForPause(
                 decision.finishAfter,
                 pauseBeganAt: &pauseBeganAt,
                 audioActivityDeferralsRemaining: &audioActivityDeferralsRemaining
             ) else { return }
             guard let automaticFinalization else { return }
-            beginFinalization(automaticFinalization)
+            beginFinalization(automaticFinalization, trigger: stopTrigger)
         }
     }
 
@@ -874,28 +919,52 @@ final class SpeechTranscriber: ObservableObject {
     /// guard covers the smaller race where the person resumes just before the
     /// timer fires but recognition has not published their new words yet.
     /// Rebasing is bounded so steady background noise cannot listen forever.
+    /// Returns what should be recorded as the stop trigger once the pause is
+    /// complete, or `nil` when endpointing must not proceed.
     private func waitForPause(
         _ requiredDuration: Duration,
         pauseBeganAt: inout CapturePerformanceClock.Instant,
         audioActivityDeferralsRemaining: inout Int
-    ) async -> Bool {
+    ) async -> SpeechStopTrigger? {
         while canContinueAutomaticEndpointing {
             let elapsed = pauseBeganAt.duration(to: CapturePerformanceClock.now)
             if elapsed < requiredDuration {
                 try? await Task.sleep(for: requiredDuration - elapsed)
             }
-            guard canContinueAutomaticEndpointing else { return false }
+            guard canContinueAutomaticEndpointing else { return nil }
 
+            let latestVoiceActivityAt = lastVoiceActivityAt
             if audioActivityDeferralsRemaining > 0,
-               let lastVoiceActivityAt,
-               lastVoiceActivityAt > pauseBeganAt {
-                pauseBeganAt = lastVoiceActivityAt
+               let latestVoiceActivityAt,
+               latestVoiceActivityAt > pauseBeganAt {
+                pauseBeganAt = latestVoiceActivityAt
                 audioActivityDeferralsRemaining -= 1
                 continue
             }
-            return true
+            return Self.naturalPauseStopTrigger(
+                voiceActivityContinued: (latestVoiceActivityAt ?? pauseBeganAt) > pauseBeganAt
+            )
         }
-        return false
+        return nil
+    }
+
+    /// A finished pause wait that still sees voice activity newer than the
+    /// pause can only have got there by spending every audio deferral, which
+    /// is the "endpointing ended while audio was still arriving" case.
+    nonisolated static func naturalPauseStopTrigger(
+        voiceActivityContinued: Bool
+    ) -> SpeechStopTrigger {
+        voiceActivityContinued ? .autoPauseDeferralsSpent : .autoPause
+    }
+
+    /// Whatever path fired, words that came from the recognizer's final result
+    /// are reported as final: the diagnostic question is whether the saved
+    /// words could be missing a tail, not which callback happened to run last.
+    nonisolated static func finalizationPath(
+        firedBy path: SpeechFinalizationPath,
+        lastTranscriptWasFinal: Bool
+    ) -> SpeechFinalizationPath {
+        lastTranscriptWasFinal ? .recognizerFinal : path
     }
 
     /// A longer adaptive pause lets somebody think without making every
@@ -977,9 +1046,13 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseDecision(for: transcript).finishAfter
     }
 
-    private func beginFinalization(_ completion: @escaping (String) -> Void) {
+    private func beginFinalization(
+        _ completion: @escaping (String) -> Void,
+        trigger: SpeechStopTrigger?
+    ) {
         guard state == .listening else { return }
 
+        lastStopTrigger = trigger
         naturalPauseTask?.cancel()
         isWaitingForContinuation = false
         markSpeechEndpointDetectedIfNeeded()
@@ -1004,16 +1077,22 @@ final class SpeechTranscriber: ObservableObject {
         finalizationTimeout = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.finalizationGracePeriod)
             guard !Task.isCancelled else { return }
-            self?.completeFinalization()
+            self?.completeFinalization(firedBy: .graceTimeout)
         }
     }
 
-    private func completeFinalization() {
+    private func completeFinalization(firedBy path: SpeechFinalizationPath) {
         guard state == .finalizing else { return }
         activeRunID = nil
         finalizationTimeout?.cancel()
         markSpeechEndpointDetectedIfNeeded()
         finalTranscriptAt = CapturePerformanceClock.now
+        // Set before the completion runs: the capture screen reads it while
+        // saving, inside that call.
+        lastFinalizationPath = Self.finalizationPath(
+            firedBy: path,
+            lastTranscriptWasFinal: lastTranscriptWasFinal
+        )
         let completion = finalization
         let finalText = transcript
         finalization = nil
@@ -1126,7 +1205,8 @@ final class SpeechTranscriber: ObservableObject {
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     self?.failForAudioEnvironmentChange(
-                        "The iPhone audio service restarted."
+                        "The iPhone audio service restarted.",
+                        partialPath: .interruptionWithPartial
                     )
                 }
             }
@@ -1138,7 +1218,10 @@ final class SpeechTranscriber: ObservableObject {
               AVAudioSession.InterruptionType(rawValue: rawValue) == .began else {
             return
         }
-        failForAudioEnvironmentChange("Recording was interrupted by another audio session.")
+        failForAudioEnvironmentChange(
+            "Recording was interrupted by another audio session.",
+            partialPath: .interruptionWithPartial
+        )
     }
 
     private func handleAudioRouteChange(_ notification: Notification) {
@@ -1147,15 +1230,21 @@ final class SpeechTranscriber: ObservableObject {
               Self.shouldStopForRouteChange(reason) else {
             return
         }
-        failForAudioEnvironmentChange("The microphone route changed during capture.")
+        failForAudioEnvironmentChange(
+            "The microphone route changed during capture.",
+            partialPath: .routeChangeWithPartial
+        )
     }
 
-    private func failForAudioEnvironmentChange(_ message: String) {
+    private func failForAudioEnvironmentChange(
+        _ message: String,
+        partialPath: SpeechFinalizationPath
+    ) {
         guard state == .listening || state == .finalizing else { return }
 
         if state == .finalizing,
            !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            completeFinalization()
+            completeFinalization(firedBy: partialPath)
             return
         }
 
@@ -1428,6 +1517,26 @@ private final class AudioActivityTracker: @unchecked Sendable {
     }
 }
 
+/// Which branch of a recording recovery produced its words. Recorded for beta
+/// diagnostics only; the words are the same whichever branch it was. The raw
+/// values are the `capture_recovery` event's `outcome` vocabulary.
+enum CaptureAudioRecoveryEnding: String, CaseIterable, Sendable {
+    /// The recognizer delivered its final result for the recording.
+    case recognizerFinal = "final"
+    /// The recognizer failed after partial words; those were kept. Not
+    /// produced in the V1 candidate: with #123 such a pass fails and keeps
+    /// its words on the draft (`CaptureAudioRecovery.reportedOutcome`).
+    case partialOnError = "partial_on_error"
+    /// The 25 s recovery timeout ran out after partial words; those were
+    /// kept. Not produced in the V1 candidate either, for the same reason.
+    case partialOnTimeout = "partial_on_timeout"
+}
+
+struct CaptureAudioRecoveryTranscript: Sendable {
+    let text: String
+    let ending: CaptureAudioRecoveryEnding
+}
+
 /// Reprocesses the protected temporary recording when live recognition fails.
 /// It intentionally uses the same system recognizer and vocabulary corrections
 /// as normal capture, keeping recovery local to the app's existing speech path.
@@ -1453,9 +1562,20 @@ enum CaptureAudioRecovery {
     /// words in its editor, uses `transcribeRecording(of:)` and joins them
     /// in `save` instead.
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
-        try await transcribe(draft, reading: { url in
-            try await CaptureAudioRecovery.transcribeAudio(at: url)
-        })
+        try await transcribeReportingEnding(draft).text
+    }
+
+    /// The same recovery as `transcribe`, also saying which branch finished
+    /// it, for the `capture_recovery` diagnostic (#148). The words are the
+    /// same: typed words first, then the recording's.
+    static func transcribeReportingEnding(
+        _ draft: CaptureDraftStore.Draft
+    ) async throws -> CaptureAudioRecoveryTranscript {
+        let spoken = try await transcribeRecordingReportingEnding(of: draft)
+        return CaptureAudioRecoveryTranscript(
+            text: CaptureDraftStore.words(for: draft, spoken: spoken.text),
+            ending: spoken.ending
+        )
     }
 
     /// `transcribe` with the recognizer supplied, so the joining can be
@@ -1470,9 +1590,22 @@ enum CaptureAudioRecovery {
 
     /// What the draft's recording says, and nothing else.
     static func transcribeRecording(of draft: CaptureDraftStore.Draft) async throws -> String {
-        try await transcribeRecording(of: draft, reading: { url in
-            try await CaptureAudioRecovery.transcribeAudio(at: url)
+        try await transcribeRecordingReportingEnding(of: draft).text
+    }
+
+    /// `transcribeRecording(of:)`, also saying which branch finished it
+    /// (#148). It goes through `transcribeRecording(of:reading:)`, so an
+    /// incomplete pass still keeps its words on the draft.
+    static func transcribeRecordingReportingEnding(
+        of draft: CaptureDraftStore.Draft
+    ) async throws -> CaptureAudioRecoveryTranscript {
+        var ending = CaptureAudioRecoveryEnding.recognizerFinal
+        let text = try await transcribeRecording(of: draft, reading: { url in
+            let recovered = try await CaptureAudioRecovery.transcribeAudioReportingEnding(at: url)
+            ending = recovered.ending
+            return recovered.text
         })
+        return CaptureAudioRecoveryTranscript(text: text, ending: ending)
     }
 
     /// `transcribeRecording(of:)` with the recognition pass supplied, so the
@@ -1558,6 +1691,21 @@ enum CaptureAudioRecovery {
         }
     }
 
+    /// `outcome(latest:ending:)` as the recovery reports it (#148). Only a
+    /// pass the recognizer finished succeeds; a partial one fails and keeps
+    /// its words on the draft (#123). So every success ends
+    /// `.recognizerFinal`, and a partial pass reaches `capture_recovery` as a
+    /// failure (`timedOutAfterPartial` as `timed_out`, `stoppedEarly` as
+    /// `unknown`), never as `partial_on_error` or `partial_on_timeout`.
+    static func reportedOutcome(
+        latest: String?,
+        ending: Ending
+    ) -> Result<CaptureAudioRecoveryTranscript, Error> {
+        outcome(latest: latest, ending: ending).map {
+            CaptureAudioRecoveryTranscript(text: $0, ending: .recognizerFinal)
+        }
+    }
+
     /// The words an incomplete pass did read, when `error` is one.
     static func partialTranscript(in error: Error) -> String? {
         guard let recoveryError = error as? CaptureAudioRecoveryError else { return nil }
@@ -1570,6 +1718,12 @@ enum CaptureAudioRecovery {
     }
 
     static func transcribeAudio(at url: URL) async throws -> String {
+        try await transcribeAudioReportingEnding(at: url).text
+    }
+
+    static func transcribeAudioReportingEnding(
+        at url: URL
+    ) async throws -> CaptureAudioRecoveryTranscript {
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
             throw CaptureAudioRecoveryError.permissionRequired
         }
@@ -1609,7 +1763,7 @@ enum CaptureAudioRecovery {
                         )
                         completion.updateLatest(text)
                         if result.isFinal {
-                            completion.finish(with: CaptureAudioRecovery.outcome(
+                            completion.finish(with: CaptureAudioRecovery.reportedOutcome(
                                 latest: text,
                                 ending: .finished(text)
                             ))
@@ -1618,7 +1772,7 @@ enum CaptureAudioRecovery {
                     }
 
                     if let error {
-                        completion.finish(with: CaptureAudioRecovery.outcome(
+                        completion.finish(with: CaptureAudioRecovery.reportedOutcome(
                             latest: completion.latestNonemptyTranscript,
                             ending: .failed(error)
                         ))
@@ -1629,7 +1783,7 @@ enum CaptureAudioRecovery {
                 let timeoutTask = Task {
                     try? await Task.sleep(for: .seconds(25))
                     guard !Task.isCancelled else { return }
-                    completion.finish(with: CaptureAudioRecovery.outcome(
+                    completion.finish(with: CaptureAudioRecovery.reportedOutcome(
                         latest: completion.latestNonemptyTranscript,
                         ending: .timedOut
                     ))
@@ -1644,7 +1798,7 @@ enum CaptureAudioRecovery {
 
 private final class AudioRecoveryCompletion: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<String, Error>?
+    private var continuation: CheckedContinuation<CaptureAudioRecoveryTranscript, Error>?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var timeoutTask: Task<Void, Never>?
     private var latestTranscript = ""
@@ -1657,7 +1811,7 @@ private final class AudioRecoveryCompletion: @unchecked Sendable {
         return normalized.isEmpty ? nil : normalized
     }
 
-    func install(_ continuation: CheckedContinuation<String, Error>) {
+    func install(_ continuation: CheckedContinuation<CaptureAudioRecoveryTranscript, Error>) {
         lock.lock()
         self.continuation = continuation
         let alreadyFinished = didFinish
@@ -1695,7 +1849,7 @@ private final class AudioRecoveryCompletion: @unchecked Sendable {
         lock.unlock()
     }
 
-    func finish(with result: Result<String, Error>) {
+    func finish(with result: Result<CaptureAudioRecoveryTranscript, Error>) {
         lock.lock()
         guard !didFinish else {
             lock.unlock()
