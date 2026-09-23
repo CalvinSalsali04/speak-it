@@ -3264,10 +3264,15 @@ row's organization, so the rejection is the new check's.
 **Falsifier.** (a) A refinement of a held reported-advice row reaches the
 store with a due date, reminder, recurrence, place, or as a resolved
 actionable row. (b) A refinement that changes only title, category or split
-shape of a held row, arming nothing, is rejected. (c) Any row not held for
-reported speech is accepted or rejected differently than before. The unit
-tests pin (a) and (b) for the split shape. (c) holds by construction: the new
-check does nothing for any other state. Only a Mac run of
+shape of a held row, arming nothing, is rejected. (c) A capture with no row
+held for reported speech is accepted or rejected differently than before. The
+check is per capture, not per row: in a capture that has a held row, the whole
+refinement goes, so its other rows fall back to the rules reading too (the
+cost below). The unit tests pin (a) and (b) for the split shape. (c) holds by
+construction: the new check does nothing when no rules row is in that state.
+Not examined: a refined row that matches no rules row at all. Reaching it
+needs a quote of filler words alone, or every content word of the held row
+repeated in another row; the worst case is the behaviour before this change. Only a Mac run of
 `RefinementGuardTests` checks the tests, and only an Apple Intelligence
 device can show what the model actually returns.
 
