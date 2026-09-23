@@ -42,6 +42,20 @@ open. Whether presenting a sheet from the capture screen fires its
 `onDisappear`, which would end the presentation for good and withhold the
 save's confirmation and close, is a device question that needs QA on hardware.
 
+## 2026-09-23 — A date beside a place is shown as holding the place, not as a place reminder
+
+Turning on `Has a due date` for a live place reminder stores a date beside the
+place, which is `constrainsBothPlaceAndTime`, so the region monitor drops the
+region and refuses crossings (the 2026-08-14 "held, not halved" rule below).
+`ItemPresentation.reminderState` still took any stored place, so the row kept
+its pin and the editor kept saying `Active` while iOS held nothing. The monitor
+is kept as the source of truth rather than changed, because letting a date
+merely narrow a place would reopen the 2pm-arrival problem that rule settled:
+a combined item now presents its date exactly as an item with no place
+would, and the editor says `Off while a date is set` the moment a
+date is turned on. The place itself is kept, and turning the date off arms it
+again.
+
 ## 2026-09-23 — A stored reminder date arms, and one function says so
 
 The row's bell and `ReminderScheduleRequest` answered "is an alert armed"

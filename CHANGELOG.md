@@ -26,6 +26,11 @@ Entries before September 2026 were reconstructed from the commit history and
   action, so the parts could add up to more than the number of things saved.
 
 - Build 19.
+- Adding a due date to a place reminder no longer leaves it looking armed. The
+  date pauses the place, as place-and-time combinations always have, but the
+  row kept its pin and the editor said Active. The row now shows the date, the
+  editor says the place is off while a date is set, and removing the date
+  brings the place reminder back.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

@@ -246,7 +246,7 @@ struct ItemEditorView: View {
                 // before ever setting a Home should not have to leave the
                 // thought, find the setting, and come back to it — the gap and
                 // the fix belong on the same screen.
-                if let locationBlocker {
+                if let locationBlocker, !dateSuspendsPlaceReminder {
                     Section {
                         locationFix(for: locationBlocker)
                     } footer: {
@@ -261,6 +261,7 @@ struct ItemEditorView: View {
                 if editedLocationIntent != nil,
                    editedLocationIntent?.isRetired != true,
                    locationBlocker == nil,
+                   !dateSuspendsPlaceReminder,
                    notificationDeliveryState != .ready {
                     Section {
                         notificationDeliveryFix
@@ -836,7 +837,11 @@ struct ItemEditorView: View {
 
             LabeledContent("Status") {
                 Text(locationStatusText)
-                    .foregroundStyle(locationBlocker == nil ? Color.speakMuted : Color.speakWarning)
+                    .foregroundStyle(
+                        locationBlocker == nil && !dateSuspendsPlaceReminder
+                            ? Color.speakMuted
+                            : Color.speakWarning
+                    )
             }
 
             Button(role: .destructive) {
@@ -870,6 +875,9 @@ struct ItemEditorView: View {
     /// whole point of naming the blocker here is that "on" and "actually being
     /// watched by iOS" are different states.
     private var locationStatusText: String {
+        // First, because no blocker or permission matters while a date is set:
+        // the saved item will not be watched at this place at all.
+        if dateSuspendsPlaceReminder { return "Off while a date is set" }
         if let locationBlocker { return locationBlocker.listLabel }
         if let firedAt = editedLocationIntent?.firedAt,
            editedLocationIntent?.repeats == false {
@@ -926,7 +934,21 @@ struct ItemEditorView: View {
         }
     }
 
+    /// True when Save would store this place beside a date.
+    ///
+    /// Save writes a time intent whenever `Has a due date` or `Remind me` is
+    /// on (`editedDueDate` is then non-nil), and a place stored beside a time
+    /// is `constrainsBothPlaceAndTime`, which the region monitor excludes. So
+    /// this is read from the form rather than from `item`: the person sees
+    /// the place stop the moment they turn a date on, not after saving.
+    private var dateSuspendsPlaceReminder: Bool {
+        editedLocationIntent != nil && (hasDueDate || hasReminder)
+    }
+
     private func locationSectionFooter(_ intent: LocationIntent) -> String {
+        if dateSuspendsPlaceReminder {
+            return "Place and time conditions aren't supported together yet, so Speak It won't watch for \(intent.place.displayName) while this item has a date. Turn off the date to use the place again."
+        }
         if intent.repeats {
             return "Speak It reminds you every time you \(intent.event.verbPhrase) \(intent.place.displayName)."
         }
