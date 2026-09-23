@@ -874,7 +874,25 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. 4068 -> 4076 on 2026-09-23, from the
+        not assumed from the wording. 4068 -> 4073 on 2026-09-23, from
+        the row's bell and the scheduler reading one delivery function:
+        three tests in `ItemPresentationTests`, five literals, all
+        assertion messages — `"precondition: the wording asks for no
+        alert"`, `"a future reminder date is scheduled whatever the
+        wording says"`, `"the row must not deny an alert iOS is
+        holding"`, `"precondition: the alarm was given a moment"` and
+        `"precondition: the day was heard"`. Both fixtures add nothing,
+        `"Call the accountant tomorrow"` being in `DurabilityTests` and
+        `"Set an alarm for 6:45 tomorrow"` in `SemanticCorpusDataC`, and
+        a phrase the doc comment first quoted was put in backticks
+        instead. 4073 -> 4074 the same day, from the review of that change:
+        three more tests in `ItemPresentationTests` (the receipt counting a
+        hand-set reminder once, its kind label matching the scheduler's
+        delivery, and a past reminder date armed with no request) add one
+        fixture, `"Set an alarm for 6:45 and call the accountant
+        tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
+        the wording asks for no alert"` are reused, and their doc comments
+        quote in backticks. 4074 -> 4082 on 2026-09-23, from the
         test that a date added in the editor holds a place reminder rather
         than leaving it shown as armed: one `LocationReminderTests` method,
         eight literals, enumerated rather than assumed, and all eight are
@@ -886,7 +904,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         watches"`, `"the held place delivers once the date is gone"`). Its
         one fixture, `"Remind me to take the bins out when I get home"`,
         was already in this file and adds nothing, and its doc comment puts
-        every phrase in backticks. What the test
+        every phrase in backticks. It was
+        written as 4068 -> 4076 on its own branch, before it was stacked
+        on the delivery change above; the two sets of additions do not
+        overlap, so the merged tree was measured at 4082 rather than
+        either side's figure being kept. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -900,7 +922,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4076)
+        self.assertEqual(len(space), 4082)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

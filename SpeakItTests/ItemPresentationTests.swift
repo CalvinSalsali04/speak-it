@@ -152,6 +152,194 @@ final class ItemPresentationTests: XCTestCase {
         )
     }
 
+    // MARK: What the row calls armed is what iOS is handed
+
+    /// The row's bell and the scheduler used to answer `is an alert armed`
+    /// from two different rules. The scheduler arms any future
+    /// `reminderDate`; the row re-read the wording, found no alert word in
+    /// `Call the accountant tomorrow`, and showed no bell. A reminder turned
+    /// on in the editor, or a voice move of an item that had no date, writes
+    /// `reminderDate` without touching the wording, so iOS held a
+    /// notification the person was told did not exist. The date is assigned
+    /// directly here because that is all the editor's save does to it
+    /// (`item.reminderDate = edits.reminderDate`), and doing it without the
+    /// repository keeps this test off the notification center.
+    ///
+    /// Falsifier: derive the row's delivery from the wording alone again (the
+    /// old `reminderDelivery(for:)`, which returned
+    /// `effectiveReminderDelivery` unmapped) and `isArmed` is false while a
+    /// request exists.
+    func testAHandSetReminderReadsAsArmedWithTheKindThatWillFire() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNil(item.reminderDate, "precondition: the wording asks for no alert")
+
+        item.reminderDate = Date.now.addingTimeInterval(30 * 24 * 60 * 60)
+
+        let state = presentation(for: item).reminderState
+        let request = try XCTUnwrap(
+            ReminderScheduleRequest(item: item),
+            "a future reminder date is scheduled whatever the wording says"
+        )
+        XCTAssertTrue(state.isArmed, "the row must not deny an alert iOS is holding")
+        XCTAssertEqual(state.alertGlyph, request.delivery)
+        XCTAssertEqual(request.delivery, .notification)
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), request.delivery)
+    }
+
+    /// The other kind must survive the same single rule: wording that asked
+    /// for an alarm is an alarm on the row and in the request alike.
+    ///
+    /// Falsifier: map every armed delivery to `.notification` in
+    /// `scheduledDelivery`, or have the request stop reading it, and the two
+    /// sides disagree or both lose the alarm.
+    func testAnAlarmIsAnAlarmOnTheRowAndInTheRequest() throws {
+        let item = try repository.createCapture(
+            text: "Set an alarm for 6:45 tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotNil(item.reminderDate, "precondition: the alarm was given a moment")
+
+        let state = presentation(for: item).reminderState
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(state.isArmed)
+        XCTAssertEqual(state.alertGlyph, .alarm)
+        XCTAssertEqual(request.delivery, .alarm)
+    }
+
+    /// A date is not an alert. With a due date and no reminder date, nothing
+    /// is scheduled, so nothing may be shown as armed either.
+    ///
+    /// Falsifier: arm on `reminderDate ?? dueDate` in `scheduledDelivery` and
+    /// this row grows a bell with no request behind it.
+    func testADueDateAloneIsNeitherArmedNorScheduled() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        XCTAssertNotNil(item.dueDate, "precondition: the day was heard")
+        XCTAssertNil(item.reminderDate)
+
+        let state = presentation(for: item).reminderState
+        XCTAssertFalse(state.isArmed)
+        XCTAssertNil(state.alertGlyph)
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .none)
+    }
+
+    /// A row with a `reminderDate` and no alert word in its wording is one
+    /// reminder on the capture receipt, not also an action. It used to be
+    /// both: its state was `.time`, which `reminderCount` counts, and its
+    /// delivery was `.none`, so `isArmed` was false and `actionCount` counted
+    /// it too, the double count the comment in `actionCount` rules out. The
+    /// receipt for two such rows beside one plain action read `3 things ·
+    /// 3 actions · 2 reminders` and now reads `3 things · 1 action ·
+    /// 2 reminders`.
+    ///
+    /// Falsifier: derive the row's delivery from the wording alone again and
+    /// `actionCount` is 1.
+    func testAHandSetReminderIsCountedOnceOnTheReceipt() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        item.reminderDate = Date.now.addingTimeInterval(30 * 24 * 60 * 60)
+        // Preconditions: an action row, so the old rule would have counted it
+        // as an action as well as a reminder.
+        let shown = presentation(for: item)
+        XCTAssertFalse(shown.requiresReview)
+        XCTAssertNotEqual(shown.destination, .memory)
+
+        let session = try XCTUnwrap(item.captureSession)
+        let receipt = CaptureCreationResult(session: session, items: [item])
+
+        XCTAssertEqual(receipt.reminderCount, 1)
+        XCTAssertEqual(receipt.actionCount, 0)
+    }
+
+    /// The receipt's kind label reads the same delivery the scheduler hands
+    /// iOS, including its fallback to the whole transcript when the item's
+    /// own segment has no alert word. So for the second half of `set an alarm
+    /// for 6:45 and call the accountant tomorrow` the label says Alarm, which
+    /// is what fires; it used to parse the segment alone and say Reminder.
+    ///
+    /// This pins agreement, not the product answer. Whether one segment's
+    /// alarm word should make a sibling an alarm is Calvin's call
+    /// (Docs/DECISIONS.md, 2026-09-23); if it changes, the label and the
+    /// request must change together and only the last assertion moves.
+    ///
+    /// The item is built by hand, with its date set, so the test reads the
+    /// label's source and not how the splitter divides the sentence. The
+    /// fallback reads only the session's transcript, so the alarm half need
+    /// not be a row here.
+    ///
+    /// Falsifier: give `deliveryKindLabel` its segment-only parse back and the
+    /// label is Reminder while the request is an alarm.
+    func testTheReceiptLabelIsTheDeliveryTheSchedulerHandsIOS() throws {
+        let accountant = CapturedItem(
+            originalTextSegment: "Call the accountant tomorrow",
+            displayTitle: "Call the accountant tomorrow",
+            itemType: .task,
+            reminderDate: Date.now.addingTimeInterval(24 * 60 * 60)
+        )
+        let session = CaptureSession(
+            originalTranscription: "Set an alarm for 6:45 and call the accountant tomorrow",
+            items: [accountant]
+        )
+        accountant.captureSession = session
+        XCTAssertEqual(
+            ThoughtOrganizer.organize(accountant.originalTextSegment).reminderDelivery,
+            .none,
+            "precondition: the wording asks for no alert"
+        )
+
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: accountant))
+        let context = ReminderScheduler.confirmationContext(
+            for: accountant,
+            authorization: authorized
+        )
+        let label = try XCTUnwrap(context.components(separatedBy: " · ").first)
+
+        XCTAssertEqual(label, request.delivery == .alarm ? "Alarm" : "Reminder")
+        XCTAssertEqual(request.delivery, .alarm)
+    }
+
+    /// Records a deliberate decision, not a wish: a `reminderDate` that has
+    /// already passed still reads as armed on the row, although
+    /// `ReminderScheduleRequest` makes no request for it. The row keeps
+    /// saying a reminder was set once it has fired; `scheduledDelivery`
+    /// deliberately does not ask whether the date is ahead (Docs/DECISIONS.md,
+    /// 2026-09-23). So the invariant the code holds is that a stored
+    /// `reminderDate` arms, not that iOS is holding a request.
+    ///
+    /// Falsifier: either side changing alone. Asking in `scheduledDelivery`
+    /// whether the date is ahead fails the first assertion; scheduling a past
+    /// date fails the second. Changing the decision means changing this test
+    /// and the decision entry together.
+    func testAPastReminderReadsAsArmedThoughNothingIsScheduled() throws {
+        let item = try repository.createCapture(
+            text: "Call the accountant tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: false
+        )
+        item.reminderDate = Date.now.addingTimeInterval(-60 * 60)
+
+        XCTAssertTrue(presentation(for: item).reminderState.isArmed)
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .notification)
+    }
+
     // MARK: A place reminder must say so
 
     /// The editor showed "Remind me: off" on an item with a live geofence, and
