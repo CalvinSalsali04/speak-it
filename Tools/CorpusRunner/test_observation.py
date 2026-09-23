@@ -945,7 +945,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         commits. Two `corpusCase` captures in `SemanticCorpusB.location`
         (`"Remind me to take my pills when I go to bed tonight"`, `"Remind me
         to mute my phone when I'm in a meeting tomorrow"`) and their two
-        `note:` arguments. The overlap stayed at 114.
+        `note:` arguments. The overlap stayed at 114. Still 4159 on
+        2026-09-23 after the round-3 grade: those two notes each gained a
+        sentence saying the place they pin (bed, meeting) is a false place a
+        later fix should move, so two literals were replaced by two and the
+        count did not change.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly

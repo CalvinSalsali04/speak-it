@@ -430,11 +430,11 @@ enum SemanticCorpusB {
         corpusCase(.location, "Remind me to take my pills when I go to bed tonight", count: 1,
                    delivery: [.none], kind: [.exactDateTime], remind: [nil],
                    place: [CorpusPlace(event: .arrive, place: .named("bed"))], review: [true],
-                   note: "Moved 2026-09-23 (DEL-18). The time won and 8 PM tonight was armed, with the place dropped. Held now: going to bed is the condition, and 8 PM is a guess at it."),
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 8 PM tonight was armed, with the place dropped. Held now: going to bed is the condition, and 8 PM is a guess at it. The place named bed is a false place, an activity read as somewhere to go; a fix for that moves this row on purpose."),
         corpusCase(.location, "Remind me to mute my phone when I'm in a meeting tomorrow", count: 1,
                    delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 4, hour: nil)],
                    remind: [nil], place: [CorpusPlace(event: .arrive, place: .named("meeting"))], review: [true],
-                   note: "Moved 2026-09-23 (DEL-18). The time won and 9 AM tomorrow was armed, with the place dropped. The meeting is the condition, and 9 AM is a guess at it."),
+                   note: "Moved 2026-09-23 (DEL-18). The time won and 9 AM tomorrow was armed, with the place dropped. The meeting is the condition, and 9 AM is a guess at it. The place named meeting is a false place, an event read as somewhere to go; a fix for that moves this row on purpose."),
     ]
 
     static let all: [CorpusCase] = temporalAmbiguity + nonTimeNumbers + people + recurrence + location

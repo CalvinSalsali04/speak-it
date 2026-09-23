@@ -53,6 +53,14 @@ worth handling, or whether people say it. It is a shape, and a shape with a
 mark on it is still a shape: the mark below says a population is concentrated
 by these two mechanical measures, never that evidence is weak. That judgement
 belongs to a person reading why the rows are alike.
+
+WHAT IT COUNTS AS AN UTTERANCE. Every multi-word string literal in the test
+files, assertion messages and skip reasons included, because that is the
+population the census walks. So a test message that happens to contain a
+form moves that form's figures: `wait` went from 58 rows over 30 stems to 60
+over 32 on 2026-09-23 when three assertion messages about a reminder that
+waits for the person were added. Test prose is not speech, but rewording it
+to hold a figure still is worse than moving the figure and saying why.
 """
 import collections
 import re
