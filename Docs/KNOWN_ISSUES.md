@@ -28,10 +28,10 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
-## A held row arms nothing, and four edges of that remain
+## A held row arms nothing, and three edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or
-geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
+geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
 
 - **Saving counts as confirming.** A held row saved in the editor with Needs
   review still on arms what the editor showed, because every editor save marks
@@ -42,14 +42,6 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
   is not rolled forward, so it waits in Needs review with a past proposed
   date. Once confirmed, the next foreground continues the series; the save
   itself arms nothing, because the date has passed.
-- **A list is still timed by a held row's proposal.** A held shopping row is
-  listed in Needs review and its list row says `Reminder not set · …`
-  (Docs/DECISIONS.md, 2026-09-23, "Needs review lists what the receipt says
-  it does"). The Today list card still times a list by its earliest date, held
-  rows included, so a list whose only timed row is held sits under that
-  proposed time with no "not set". Nothing fires on it. The morning brief
-  no longer does this, because it reads the hold. A held place row with a
-  live blocker shows the blocker label instead, which is already true.
 - **A restore can hold a reading it never saw.** `applyICloudSnapshot` writes
   `needsClarification` from the snapshot even when the snapshot carries no
   intents, so the hold lands on this device's own readings. If the person had
@@ -1030,6 +1022,8 @@ segmentation and `isFragment` in `ThoughtExtractor`, upstream of the formatter.
 - **Shopping-list counts resolved (2026-09-08).** The brief counts each dated
   shopping list once, using the same earliest open entry as its Today card.
   Completed and archived entries are excluded; undated lists are not counted.
+  Since 2026-09-23 an entry held for review does not time its list, so a list
+  whose only dated entry is held is undated here and on Today.
 - A brief tap now selects Today, including on cold launch, without starting a
   capture. Direct taps reset the unanswered count regardless of age.
 - For ordinary app opens, "answered" is inferred: the app was opened within twelve hours of a brief

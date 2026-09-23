@@ -13,8 +13,19 @@ enum ShoppingListProjection {
 
     /// One card per open list, timed by its earliest reminder or due date.
     /// Shared with the morning brief so its counts match Today.
+    ///
+    /// Only entries out of review time a list: a date the system proposed and
+    /// nobody confirmed does not make a list due, the same as a held task,
+    /// which `belongsInToday(authorization:)` keeps off Today and out of the
+    /// brief by the same `requiresReview(authorization:)`. A held entry still
+    /// counts toward the list's size, because it is still on the list. So a
+    /// list whose only dated entry is held is undated: its card sits under
+    /// "When you have time" and the brief neither counts nor names it.
     @MainActor
-    static func groupSummaries(in items: [CapturedItem]) -> [GroupSummary] {
+    static func groupSummaries(
+        in items: [CapturedItem],
+        authorization: LocationAuthorization
+    ) -> [GroupSummary] {
         var order: [String] = []
         var buckets: [String: [CapturedItem]] = [:]
         for item in openItems(in: items) {
@@ -26,7 +37,8 @@ enum ShoppingListProjection {
             let items = buckets[name] ?? []
             let timed = items
                 .compactMap { item -> (item: CapturedItem, date: Date)? in
-                    guard let date = item.reminderDate ?? item.dueDate else { return nil }
+                    guard !item.requiresReview(authorization: authorization),
+                          let date = item.reminderDate ?? item.dueDate else { return nil }
                     return (item, date)
                 }
                 .min { $0.date < $1.date }

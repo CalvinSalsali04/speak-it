@@ -109,17 +109,18 @@ final class MorningBriefTests: XCTestCase {
         XCTAssertEqual(updatedPlan[1].body, "1 due today · 2 overdue")
     }
 
-    /// A row the system holds for review never announces itself: its
-    /// proposed time is kept and not scheduled (`ItemPresentation.mayArmTime`).
-    /// So it keeps the lead the brief gives an errand that will not reach the
-    /// person any other way, instead of ranking behind one that rings. Held
-    /// shopping rows are the ones that reach the brief, through their list.
+    /// A row the system holds for review is not timed by its proposal, in
+    /// the brief or anywhere else: a held task is left out of the brief by
+    /// `belongsOnTopLevelToday`, and a held shopping row no longer times its
+    /// list (`ShoppingListProjection.groupSummaries(in:authorization:)`). So
+    /// the task that really rings is the only thing due, and it leads.
     ///
-    /// Falsifier: feed the stored `reminderDate` to `MorningBriefItem` at
-    /// either build site in `projectedItems` and the list is ranked as
-    /// ringing, so the task that really rings takes the lead.
+    /// Falsifier: drop the `requiresReview(authorization:)` guard from
+    /// `groupSummaries`. The held entry times "Groceries" at its proposed
+    /// 17:00, the list is counted, and because nothing will ring for it
+    /// the list takes the lead: `Groceries` and `2 due today`.
     @MainActor
-    func testAHeldRowKeepsTheLeadOfAnErrandThatNeverAnnouncesItself() {
+    func testAHeldRowNeitherLeadsNorCountsInTheBrief() {
         let savedGroups = ShoppingGroupStore.snapshot()
         defer { ShoppingGroupStore.restore(savedGroups) }
         let now = date(2026, 9, 8, 7)
@@ -157,8 +158,66 @@ final class MorningBriefTests: XCTestCase {
             locale: Locale(identifier: "en_US")
         )
 
-        XCTAssertEqual(plan.first?.lead?.title, "Groceries", "the held list is the silent one")
-        XCTAssertEqual(plan.first?.subtitle, "2 due today", "the counts are unchanged by the order")
+        XCTAssertEqual(plan.first?.lead?.title, "Pick up the keys", "the held list is not timed by its proposal")
+        XCTAssertEqual(plan.first?.subtitle, "1 due today", "the held list is not counted as due")
+    }
+
+    /// The case where the proposal was the whole reason to speak. A list
+    /// whose only dated entry is held is undated, so a morning with nothing
+    /// else due stays silent: the planner schedules nothing on a morning with
+    /// nothing due, and a date nobody confirmed must not create one. The held
+    /// entry still counts toward the list's size.
+    ///
+    /// Falsifier: drop the `requiresReview(authorization:)` guard from
+    /// `ShoppingListProjection.groupSummaries`. `timingItem` becomes the held
+    /// row and the plan schedules the next three mornings, due then overdue.
+    @MainActor
+    func testAListTimedOnlyByAHeldEntryIsUndatedAndSilent() {
+        let savedGroups = ShoppingGroupStore.snapshot()
+        defer { ShoppingGroupStore.restore(savedGroups) }
+        let now = date(2026, 9, 8, 7)
+        let held = CapturedItem(
+            originalTextSegment: "Private words",
+            displayTitle: "Private words",
+            itemType: .shopping,
+            dueDate: date(2026, 9, 8, 17),
+            reminderDate: date(2026, 9, 8, 17),
+            needsClarification: true
+        )
+        let undated = CapturedItem(
+            originalTextSegment: "Private words",
+            displayTitle: "Private words",
+            itemType: .shopping
+        )
+        ShoppingGroupStore.set("Groceries", for: held.id)
+        ShoppingGroupStore.set("Groceries", for: undated.id)
+        let authorization = LocationAuthorization(
+            status: .notDetermined, isPrecise: false, isRegionMonitoringAvailable: true
+        )
+        XCTAssertTrue(held.requiresReview(authorization: authorization), "precondition: the system holds it")
+
+        let summaries = ShoppingListProjection.groupSummaries(
+            in: [held, undated],
+            authorization: authorization
+        )
+        XCTAssertEqual(summaries.map(\.name), ["Groceries"])
+        XCTAssertNil(summaries.first?.timingItem, "a held proposal does not time its list")
+        XCTAssertEqual(summaries.first?.count, 2, "the held entry is still on the list")
+
+        let projection = MorningBriefPlanner.projectedItems(
+            from: [held, undated],
+            authorization: authorization,
+            now: now
+        )
+        let plan = MorningBriefPlanner.plan(
+            items: projection,
+            now: now,
+            time: eight,
+            calendar: calendar,
+            includesNames: true,
+            locale: Locale(identifier: "en_US")
+        )
+        XCTAssertEqual(plan, [], "a held proposal creates no morning")
     }
 
     // MARK: Naming the first thing
