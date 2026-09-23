@@ -1764,6 +1764,11 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             ),
             "buy milk and call mom"
         )
+        // A kept word that only starts with the live one changes that word.
+        XCTAssertEqual(
+            CaptureAudioRecovery.wordsToOffer(live: "buy milk", kept: "buy milkshake"),
+            "buy milk"
+        )
         for live in ["", "   "] {
             XCTAssertEqual(
                 CaptureAudioRecovery.wordsToOffer(live: live, kept: "buy milk and call"),

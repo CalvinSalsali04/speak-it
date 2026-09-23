@@ -890,6 +890,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         in `CaptureRecoveryEscapeTests` add one fixture, `"Buy milk, and call
         the plumber"`, capitalised and punctuated on purpose to exercise the
         comparison; every other literal they use was already counted.
+        4076 -> 4077 the same day, from `"buy milkshake"`, the fixture
+        pinning that the kept words must carry on by whole words.
         The doc comments use backticks, and the development-set overlap
         stayed at 114. What the test
         is actually
@@ -905,7 +907,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4076)
+        self.assertEqual(len(space), 4077)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

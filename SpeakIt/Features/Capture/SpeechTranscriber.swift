@@ -1170,7 +1170,9 @@ enum CaptureAudioRecovery {
         guard !live.isEmpty else { return kept }
         let liveKey = comparisonKey(live)
         let keptKey = comparisonKey(kept)
-        guard keptKey != liveKey, keptKey.hasPrefix(liveKey) else { return live }
+        // Whole words only: a live "buy milk" does not give way to a kept
+        // "buy milkshake", which changes a word the person was shown.
+        guard keptKey.hasPrefix(liveKey + " ") else { return live }
         return kept
     }
 
