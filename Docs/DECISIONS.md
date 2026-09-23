@@ -188,19 +188,52 @@ what was said, in one `CaptureSession`, whichever path saves them.
   "Speak instead", the saved thought now begins with what was typed. Saving
   only the speech would make an interrupted capture store different words
   from an uninterrupted one, and the rule forbids either silently replacing
-  the other. The typed words are not shown on the voice screen while the
-  person speaks. Showing them is a design question left open.
+  the other.
+- **The voice screen shows them.** Decided after review of #144: a save that
+  stores words the screen never showed reads as a bug. While the voice screen
+  is up, the editor's words sit above the live transcript in
+  `SpeakItTypography.sectionDetail` and `Color.speakMuted`, the quieter style
+  the screen already uses for its subtitle, so the speech stays the main
+  line. They are joined exactly as `save` joins them, so the screen shows what
+  will be stored. At most three lines, truncated at the start: the last words
+  typed are the ones the speech continues, and the box still follows the
+  newest speech. VoiceOver reads them as part of the live transcription,
+  marked "Typed:", because the style is the only thing telling them apart and
+  a listener cannot see it (`CaptureVoiceTranscriptAccessibility`). Nothing
+  is added when nothing was typed. Rejected: a caption or a control to drop
+  the typed words from the voice screen. Type instead already edits them, and
+  the screen is kept to the orb, the words and one way out.
+- **Erasing the editor erases them from the draft.** A checkpoint that
+  empties a draft's transcript also clears `typedBeforeSpeaking`
+  (`CaptureDraftStore.update`). The screen checkpoints typed and spoken words
+  together, so an empty checkpoint means the person erased everything, and a
+  draft whose recording survived that must not bring the erased words back in
+  front of it when it is recovered. Before this only a later switch to
+  speaking replaced them, so typing, speaking, Type instead, select all,
+  delete and leaving brought them back.
 - **A failed recording keeps the typed words listed.** The draft stays on
   Today with its words. "Type it" starts from the typed words, because saving
   a reconstruction deletes the recording. Delete removes the recording and
   keeps the typed words (`deleteRecordingKeepingTypedWords`): Today saves them
-  at once as their own thought, and the launch text pass saves them if it
-  cannot. Words recognized from the deleted recording are not kept, because
-  they are the recording.
-- **A handed-over transcript is released.** Once "Type instead" or the typing
-  fallback has moved a run's words into the editor, the transcriber forgets
-  them (`releaseTranscript`). Otherwise a later "Type instead" or Save & Close
-  would read them again and, now that words are joined, add them twice.
+  at once as their own thought (`commitKeptTypedWords`), and the launch text
+  pass saves them if it cannot. Words recognized from the deleted recording
+  are not kept, because they are the recording. The two saves cannot both
+  store them, for two reasons that are tested separately. A kill after
+  Today's commit leaves the kept draft naming a committed session, and the
+  launch releases it before the text pass runs. A replay the handoff did not
+  stop commits as typing under the recording's start time, as Today does, so
+  the in-app deduplication window returns the stored session. Delete shows
+  one notice: the save's, or "Recording deleted" when nothing typed was kept
+  or storage is unavailable.
+- **A handed-over transcript is released, in every state.** Once "Type
+  instead" or the typing fallback has moved a run's words into the editor,
+  the transcriber forgets them (`releaseTranscript`). Otherwise a later "Type
+  instead" or Save & Close would read them again and, now that words are
+  joined, add them twice. "Type instead" first skipped this when the
+  transcriber was already idle, which is where a finished run whose save
+  returned early leaves its final words. `SpeechTranscriber.stopForTyping`
+  now makes the whole decision and releases in every state; no branch leaves
+  a run open, so the release never declines.
 
 Rejected: beginning a second, voice-only draft for the recording beside the
 typed one. Both would be replayed after a kill, as two captures of one
@@ -211,13 +244,31 @@ and its words would then arrive as a second capture without the first half
 of the sentence. What remains open is in Known Issues, "Typed edits made
 after a recording lose to the recording".
 
+Also rejected, after review: telling the launch text pass to leave alone any
+draft that *intends* a recording (`recoveryAudioFilename != nil`), rather than
+one whose recording is already on disk (`hasRecoveryAudio`, more than 512
+bytes). The aim was a wider margin against the text pass claiming a live
+recording's typed words. But every in-app voice draft and every Shortcut
+draft carries a file name from `begin`, so a draft killed before its first
+audio buffer, or one whose recording never reached disk, would be left to
+neither pass: kept by the launch prune because it has words, and saved by
+nothing. Typed words ahead of a recording that never started are the whole
+capture in that case. `testTypedWordsSurviveAKillBeforeTheRecordingHasAudio`
+names the rejected line as its falsifier, and the margin that remains is in
+Known Issues, "The launch passes rely on ordering nothing enforces".
+
 Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
 take a call; expect "Recovering your words…", not the typing fallback. Then a
 typed save that asks for clarification, Try saying it again, speak, and
 interrupt the same way; expect recovery. Force-quitting instead of taking the
 call, the next launch should save the typed word and the spoken words as one
 thought, or list the recording on Today if recognition fails; then "Type it"
-should open with the typed word, and Delete should save it as a thought.
+should open with the typed word, and Delete should save it as a thought,
+with one notice. On the voice screen after Speak instead, the typed word
+should sit above the speech in the muted style, in light and dark, at the
+largest accessibility text size, and with a paragraph typed (three lines,
+starting with an ellipsis); VoiceOver should read it as "Typed:" within the
+live transcription.
 
 ## 2026-09-23 — A save belongs to the capture screen that started it
 

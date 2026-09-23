@@ -35,7 +35,9 @@ Entries before September 2026 were reconstructed from the commit history and
   typed and then what you said, whether it is saved live, recovered in the
   capture screen, recovered at launch or from Today. If the recording cannot
   be read, "Type it" starts from the typed words, and deleting the recording
-  keeps them as a thought of their own.
+  keeps them as a thought of their own. The voice screen shows the typed
+  words above what you are saying, so what is saved is what is on screen,
+  and words you erase before leaving stay erased.
 
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark

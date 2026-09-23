@@ -348,6 +348,52 @@ is not kept:
   at once as their own thought. If storage refuses that save, they are kept as
   a typed draft and saved at the next launch, not sooner.
 
+## The launch passes rely on ordering nothing enforces
+
+*2026-09-23, from the review of #144.* Two launch-time protections for a
+recording in progress hold today by where code happens to sit, not by
+anything that would fail if it moved.
+
+- **The empty-draft prune runs before any capture can begin, in shipping
+  builds only.** `pruneEmptyTextDrafts` keeps a draft only if it has words or
+  more than 512 bytes of recording on disk, and a live recording is under
+  that until its first buffer lands. It is safe because in `RootView`'s
+  launch task the only suspension before the prune is one `Task.yield()`,
+  and the capture screen cannot have begun a draft by then (it has to be
+  presented, and its `.task` waits 180 ms first). Everything else above the
+  prune is `#if DEBUG`. In a DEBUG build launched with
+  `--load-today-examples`, the UI-test configuration, that block awaits a
+  real `createCaptureResult` per example before the prune, so the ordering
+  does not hold there, and a recording that vanished in a UI test could be
+  this and not a test artefact. A voice draft that carries typed words is
+  kept regardless, because its transcript is not empty.
+- **Nothing pins the ordering.** No test fails if an `await` is added above
+  the prune, which would reopen the window in shipping builds too.
+- **The text pass tells a live recording from an interrupted draft by one
+  file-size check.** `recoverable()` takes drafts with words, no recording
+  over 512 bytes, and at least 12 s since their last update. Before #144 a
+  live voice draft had no words, so the first condition excluded it; one
+  that carries typed words now has words, and only the file size excludes
+  it. No reachable instance was found: the text pass runs only at launch
+  (`RootView`), after the audio pass, and a draft begun in that launch would
+  need the audio pass to take over 12 s and its recording to stay under 512
+  bytes, about one buffer. Excluding every draft that intends a recording was
+  considered and rejected, because it strands drafts that never recorded
+  (Decisions, "A draft's recording follows how it is being captured now").
+
+## A draft initializer relies on a language rule this repository has not used
+
+*2026-09-23, from the review of #144.* `CaptureDraftStore.Draft` gained
+`typedBeforeSpeaking`, a trailing optional `var`, and both explicit
+`Draft(...)` constructions (`begin` and `deleteRecordingKeepingTypedWords`)
+omit it. That relies on the memberwise initializer giving an optional `var`
+a default of `nil`. It is the language rule, but no other struct under
+`SpeakIt/` or `Shared/` is constructed that way, and `handedOffSessionID`,
+added the same way earlier, is still passed explicitly, so the existing code
+does not show it compiling. The branch was reviewed and changed without a
+Swift compiler; a build settles it, and passing `typedBeforeSpeaking: nil`
+explicitly is the fallback if it does not.
+
 ## The app cannot set what customers are charged
 
 September 8 pricing follow-up: launch percentage claims now require the actual USD 14.99 product price, enabled flag and sale window. Other currencies show localized prices without an unverified discount. The future standard price and preservation of existing subscriber prices still need App Store Connect verification; the paywall no longer promises an indefinite rate.
