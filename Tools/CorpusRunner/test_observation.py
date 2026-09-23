@@ -885,7 +885,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         assertion messages (`"Another attempt has to stay on offer"` and
         `"Reported as the whole recording: \\(text)"`, which counts with its
         interpolation). `"buy milk"` and `"   "` add nothing: both are under
-        the twelve-character minimum.
+        the twelve-character minimum. 4075 -> 4076 the same day, from the
+        capture screen offering the words a failed pass kept: two more tests
+        in `CaptureRecoveryEscapeTests` add one fixture, `"Buy milk, and call
+        the plumber"`, capitalised and punctuated on purpose to exercise the
+        comparison; every other literal they use was already counted.
         The doc comments use backticks, and the development-set overlap
         stayed at 114. What the test
         is actually
@@ -901,7 +905,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4075)
+        self.assertEqual(len(space), 4076)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

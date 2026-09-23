@@ -1123,21 +1123,62 @@ enum CaptureAudioRecovery {
     }
 
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
+        try await transcribe(draft, reading: transcribeAudio(at:))
+    }
+
+    /// `transcribe(_:)` with the recognition pass supplied, so the handling
+    /// around it can be tested without a recognizer. Production passes
+    /// `transcribeAudio(at:)` and nothing else.
+    static func transcribe(
+        _ draft: CaptureDraftStore.Draft,
+        reading read: (URL) async throws -> String
+    ) async throws -> String {
         guard let url = await CaptureDraftStore.audioURL(for: draft),
               await CaptureDraftStore.hasRecoveryAudio(for: draft) else {
             throw CaptureAudioRecoveryError.missingRecording
         }
         do {
-            return try await transcribeAudio(at: url)
+            return try await read(url)
         } catch {
-            // The words read before the pass stopped are kept with the draft,
-            // beside the recording, so an incomplete pass loses nothing it did
-            // read. The recording itself is untouched and stays retryable.
+            // The words read before the pass stopped are stored on the draft,
+            // beside the recording, which is untouched and stays retryable.
+            // Stored is not shown: the capture screen offers them when it
+            // switches to typing (`wordsToOffer`), but Today's row shows only
+            // the failure kind and its Type Instead sheet starts empty.
             if let partial = partialTranscript(in: error) {
                 await CaptureDraftStore.keepRecoveredWords(partial, id: draft.id)
             }
             throw error
         }
+    }
+
+    /// What the capture screen puts in the text field after a recovery pass
+    /// failed: the live recognizer's transcript, or the words kept on the draft
+    /// when those carry on from it.
+    ///
+    /// The kept words win only when they contain everything the live
+    /// transcript says and more, compared without case, accents, punctuation
+    /// or spacing, so a live "buy milk and" gives way to a kept "Buy milk, and
+    /// call Mom". When the two disagree anywhere, the live transcript wins even
+    /// if it is shorter: taking the kept words would drop something the person
+    /// was already shown, and the recording stays for another attempt. Either
+    /// side that is empty yields to the other.
+    static func wordsToOffer(live: String, kept: String) -> String {
+        let live = live.trimmingCharacters(in: .whitespacesAndNewlines)
+        let kept = kept.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !kept.isEmpty else { return live }
+        guard !live.isEmpty else { return kept }
+        let liveKey = comparisonKey(live)
+        let keptKey = comparisonKey(kept)
+        guard keptKey != liveKey, keptKey.hasPrefix(liveKey) else { return live }
+        return kept
+    }
+
+    private static func comparisonKey(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     /// The terminal decision for one recognition pass, kept pure so it can be

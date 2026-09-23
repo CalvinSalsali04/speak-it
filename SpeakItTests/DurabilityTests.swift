@@ -1682,6 +1682,11 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
     /// beside the recording, and the recording stays listed for another try.
     /// Falsifier: keeping the words by any route that releases the draft or
     /// the audio, or letting a shorter pass shrink a longer checkpoint.
+    ///
+    /// This test calls `keepRecoveredWords` itself, so on its own it does not
+    /// notice that call being deleted from `transcribe`.
+    /// `testTranscribeStoresTheWordsAnIncompletePassRead` pins that edge
+    /// through the `reading:` seam.
     func testAnIncompletePassKeepsTheRecordingAndTheWordsItRead() throws {
         let (draft, audioURL) = try makeProtectedRecording()
         CaptureDraftStore.update(id: draft.id, transcript: "buy milk")
@@ -1705,5 +1710,69 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
 
         CaptureDraftStore.keepRecoveredWords("buy", id: draft.id)
         XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.transcript, "buy milk and call the")
+    }
+
+    /// The edge from `transcribe` to the draft, with the recognition pass
+    /// replaced by the failure an incomplete pass produces. Falsifier: deleting
+    /// the `keepRecoveredWords` call from `transcribe(_:reading:)` leaves the
+    /// stored transcript at `"buy milk"`; returning the partial as a success
+    /// fails the `XCTFail`.
+    ///
+    /// Not covered, because both need a recognizer or a view: that
+    /// `transcribeAudio(at:)` really ends its timed-out and errored passes
+    /// through `outcome`, and that the capture screen's `recoverActiveAudio`
+    /// reads the stored words back before it switches to typing.
+    func testTranscribeStoresTheWordsAnIncompletePassRead() async throws {
+        let (draft, audioURL) = try makeProtectedRecording()
+        CaptureDraftStore.update(id: draft.id, transcript: "buy milk")
+        let pass = CaptureAudioRecovery.outcome(latest: "buy milk and call the", ending: .timedOut)
+
+        do {
+            let text = try await CaptureAudioRecovery.transcribe(draft, reading: { _ in
+                try pass.get()
+            })
+            XCTFail("Reported as the whole recording: \(text)")
+        } catch {
+            XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOut)
+        }
+
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.transcript, "buy milk and call the")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+
+    /// After a failed pass the capture screen offers the kept words only when
+    /// they carry on from what the live recognizer showed, compared without
+    /// case or punctuation. Falsifiers: seeding from the live transcript alone
+    /// (the old behaviour) fails the first assertion; a longer-text-wins rule
+    /// fails the third, dropping "mom", which the person had already seen.
+    func testTheCaptureScreenOffersKeptWordsOnlyWhenTheyCarryOnFromTheLiveOnes() {
+        XCTAssertEqual(
+            CaptureAudioRecovery.wordsToOffer(
+                live: "buy milk and call",
+                kept: "Buy milk, and call the plumber"
+            ),
+            "Buy milk, and call the plumber"
+        )
+        XCTAssertEqual(
+            CaptureAudioRecovery.wordsToOffer(live: "buy milk and call the", kept: "buy milk and call"),
+            "buy milk and call the"
+        )
+        XCTAssertEqual(
+            CaptureAudioRecovery.wordsToOffer(
+                live: "buy milk and call mom",
+                kept: "Buy milk, and call the plumber"
+            ),
+            "buy milk and call mom"
+        )
+        for live in ["", "   "] {
+            XCTAssertEqual(
+                CaptureAudioRecovery.wordsToOffer(live: live, kept: "buy milk and call"),
+                "buy milk and call"
+            )
+        }
+        XCTAssertEqual(
+            CaptureAudioRecovery.wordsToOffer(live: " buy milk and call ", kept: ""),
+            "buy milk and call"
+        )
     }
 }

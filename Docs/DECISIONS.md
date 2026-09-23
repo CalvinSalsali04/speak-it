@@ -11,9 +11,15 @@ a timeout after partial text fails as `timedOut`, and an error after partial
 text fails as `unknown` rather than `noSpeechDetected`, because words were
 found and another attempt must stay on offer. The words that pass did read are
 kept on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`,
-never shrinking a longer checkpoint), and the recording stays listed for Try
-Again, Type Instead or Delete; the person sees the existing timed-out or
-did-not-finish copy instead of `Interrupted capture recovered`. The 25-second
+never shrinking a longer checkpoint). When the capture screen switches to
+typing after such a pass, it offers those words in place of the live
+transcript if they carry on from it (`CaptureAudioRecovery.wordsToOffer`,
+compared without case or punctuation); where the two disagree the live words
+stay, so nothing the person was already shown is dropped. Today's row still
+shows only the failure kind, and its Type Instead sheet starts empty. The
+recording stays listed for Try Again, Type Instead or Delete; the person sees
+the existing timed-out or did-not-finish copy instead of `Interrupted capture
+recovered`. The 25-second
 limit is unchanged, so a recording too long to read in that time is kept and
 retryable but never recovers on its own, which is honest where the old
 behaviour was silent (audit F1, `capacity-truncation.md`).
