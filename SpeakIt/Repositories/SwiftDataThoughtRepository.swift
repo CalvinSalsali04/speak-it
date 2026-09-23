@@ -2080,6 +2080,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             try persistChanges(deletedItemIDs: itemIDs, deletedSessionIDs: [sessionID])
         }
 
+        // Delivery stops here, synchronously, not only in the queued pass
+        // below. That pass waits behind every earlier one, which can include a
+        // pass sitting on a permission prompt, and a kill in that window would
+        // leave the replaced attempt's alarm armed. The queued pass stays: it
+        // re-cancels anything an earlier pass arms after this line.
+        itemIDs.forEach(ReminderScheduler.cancel(itemID:))
         for itemID in itemIDs {
             RecurrenceStore.remove(itemID)
             PendingOperationStore.remove(itemID)

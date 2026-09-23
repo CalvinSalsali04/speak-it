@@ -1412,6 +1412,35 @@ be replayed at all is a separate decision. The relaunch-after-lock timing
 that feeds this (no background-task assertion during a save, audit S4) needs
 a device.
 
+## 2026-09-23 — Replacing an attempt stops its alarm before the queued pass
+
+Finding F3 of the V1 integration rehearsal. `deleteCapture(sessionID:)`, the
+deletion "Try saying it again" runs, stopped the attempt's notifications and
+alarm only through the `ReminderScheduler.synchronize` pass it queues. That
+pass waits behind every earlier one, which can be a pass sitting on a
+permission prompt, and a kill in that window left the replaced attempt's alarm
+armed until the next launch. It now calls `ReminderScheduler.cancel(itemID:)`
+for every row after the store has saved, as #145 does for Delete and the other
+removal paths; the queued pass stays and re-cancels anything an earlier pass
+arms afterwards. `cancel(itemID:)` itself is older than both changes, so this
+needs nothing from #145.
+
+**Hypothesis.** The only thing between a replaced attempt and a silent phone is
+the order of the scheduler's queue. **Falsifier.**
+`testReplacingTheAttemptStopsItsAlarmBeforeAnyQueuedPassRuns` holds the queue
+behind an earlier pass, runs the retry's replacement, and asserts the
+attempt's alarm and notification are gone before the queue moves; without the
+synchronous cancel they are still armed.
+
+It already called `LocationReminderMonitor.shared.stopMonitoring(itemID:)` for
+each row, which stops that row's region at once, and that stays. What it does
+not do is re-plan the region budget, so a place reminder waiting for a free
+slot gets the one this frees only at the next foreground. #135 adds that
+re-plan to the other delete paths (`reconcileLocationReminders(ifTouchingPlaces:)`),
+and it has to be added here when the two meet. **Not covered:** no test
+reaches AlarmKit or CoreLocation; the recorder sees teardown only, and a kill
+between the save and the synchronous cancel is still a window, a narrower one.
+
 ## 2026-09-23 — "Try saying it again" replaces the attempt by its identity
 
 The retry used to delete the attempt's rows as the capture screen listed them

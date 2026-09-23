@@ -3168,6 +3168,154 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
+    /// Replacing the attempt deletes it, so its alarm and notifications must
+    /// stop the way Delete's do: synchronously, not only in the scheduling
+    /// pass `deleteCapture` queues. That pass waits behind every earlier one,
+    /// which can be a pass sitting on a permission prompt, and a kill in that
+    /// window left the replaced attempt's alarm armed until the next launch.
+    ///
+    /// The first assertions run with the scheduler's queue held, so only a
+    /// teardown `deleteCapture` performs itself can satisfy them. The recorder
+    /// is installed only after the captures' own passes have drained. No zone
+    /// pin: nothing here reads a wall-clock result.
+    ///
+    /// Falsifier: drop `itemIDs.forEach(ReminderScheduler.cancel(itemID:))`
+    /// from `deleteCapture`, and the attempt's alarm and notification are
+    /// still armed when the first assertions run.
+    func testReplacingTheAttemptStopsItsAlarmBeforeAnyQueuedPassRuns() async throws {
+        let attempt = try await repository.createCaptureResult(
+            text: "Set an alarm for 7 AM to take my pills",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        let attemptID = attempt.session.id
+        let attemptItemIDs = Set(attempt.session.items.map(\.id))
+        XCTAssertFalse(attemptItemIDs.isEmpty, "precondition: the attempt has a row to arm")
+        let retry = try await repository.createCaptureResult(
+            text: "Set an alarm for 7:30 AM to take my vitamins",
+            source: .inAppVoice,
+            createdAt: .now.addingTimeInterval(60),
+            schedulesReminders: false
+        )
+
+        let delivery = HeldReminderDelivery()
+        let previousDelivery = ReminderScheduler.delivery
+        await drainReminderScheduler()
+        ReminderScheduler.delivery = delivery.sink
+        addTeardownBlock { @MainActor in
+            // A held pass left in the static tail would stall every later test.
+            delivery.release()
+            _ = await ReminderScheduler.synchronizeAndVerify(
+                [],
+                requestAuthorizationIfNeeded: false,
+                scope: ReminderSynchronizationScope()
+            )
+            ReminderScheduler.delivery = previousDelivery
+        }
+        delivery.hold()
+        ReminderScheduler.synchronize(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope()
+        )
+        let attemptNotifications = Set(attemptItemIDs.map(ReminderScheduler.notificationIdentifier(for:)))
+        attemptItemIDs.forEach(delivery.seedAlarm)
+        attemptNotifications.forEach(delivery.seedNotification)
+        let unrelated = UUID()
+        delivery.seedAlarm(unrelated)
+
+        let replacement = try replaceAttempt(attemptID, with: retry)
+
+        XCTAssertEqual(replacement.deletedRows, attemptItemIDs.count, "precondition: the attempt was deleted")
+        XCTAssertTrue(
+            delivery.scheduledAlarms.isDisjoint(with: attemptItemIDs),
+            "the replaced attempt's alarm must be cancelled before any queued pass runs"
+        )
+        XCTAssertTrue(
+            delivery.pendingNotifications.isDisjoint(with: attemptNotifications),
+            "and its notification removed"
+        )
+        XCTAssertTrue(delivery.scheduledAlarms.contains(unrelated), "an unrelated alarm must be left alone")
+
+        delivery.release()
+        await drainReminderScheduler()
+
+        XCTAssertTrue(
+            delivery.scheduledAlarms.isDisjoint(with: attemptItemIDs),
+            "after the queued pass the attempt's alarm must still be gone"
+        )
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(unrelated),
+            "the queued pass must not cancel an alarm it was not asked about"
+        )
+    }
+
+    // `drainReminderScheduler()` is declared once in this class, above
+    // (#141); #132 added an identical one, dropped in the V1 candidate.
+
+    /// Records teardown of notifications and alarms, and while held keeps any
+    /// scheduler pass that reads what is pending waiting, so every pass queued
+    /// after it waits too, as it would behind a permission prompt. Locked,
+    /// because the queued pass runs off the main actor.
+    private final class HeldReminderDelivery: @unchecked Sendable {
+        private let lock = NSLock()
+        private var notifications: Set<String> = []
+        private var alarms: Set<UUID> = []
+        private var isHeld = false
+        private var heldPasses: [CheckedContinuation<Void, Never>] = []
+
+        var pendingNotifications: Set<String> { lock.withLock { notifications } }
+        var scheduledAlarms: Set<UUID> { lock.withLock { alarms } }
+
+        func seedNotification(_ identifier: String) {
+            lock.withLock { _ = notifications.insert(identifier) }
+        }
+
+        func seedAlarm(_ id: UUID) {
+            lock.withLock { _ = alarms.insert(id) }
+        }
+
+        func hold() {
+            lock.withLock { isHeld = true }
+        }
+
+        func release() {
+            let waiting = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+                isHeld = false
+                defer { heldPasses = [] }
+                return heldPasses
+            }
+            waiting.forEach { $0.resume() }
+        }
+
+        private func waitWhileHeld() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let proceed = lock.withLock { () -> Bool in
+                    guard isHeld else { return true }
+                    heldPasses.append(continuation)
+                    return false
+                }
+                if proceed { continuation.resume() }
+            }
+        }
+
+        var sink: ReminderDeliverySink {
+            ReminderDeliverySink(
+                removeNotifications: { [self] identifiers in
+                    lock.withLock { identifiers.forEach { notifications.remove($0) } }
+                },
+                cancelAlarm: { [self] id in
+                    lock.withLock { _ = alarms.remove(id) }
+                },
+                pendingIdentifiers: { [self] in
+                    await waitWhileHeld()
+                    return lock.withLock { Array(notifications) }
+                }
+            )
+        }
+    }
+
     /// What one retry save did: whether it replaced the attempt, how it
     /// settled, and how many rows `retire` reported deleting (`nil` when
     /// `retire` never returned, because it was not called or it threw).

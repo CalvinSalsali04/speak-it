@@ -1618,6 +1618,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         briefly rewritten into backticks to leave 4093 and then put back,
         for the reason the 4068 entry gives: the count is a tripwire, not a
         target.
+        4182 -> 4190 on 2026-09-23, when replacing the attempt began
+        stopping its alarm synchronously: one method and eight literals,
+        enumerated rather than assumed. One fixture, the retry `"Set an
+        alarm for 7:30 AM to take my vitamins"` (the attempt, `"Set an
+        alarm for 7 AM to take my pills"`, was already counted), and
+        seven assertion messages, two of them preconditions.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1815,6 +1821,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         in the second merge rehearsal: measured from the merged tree,
         not taken from either side (4704 on the candidate, 4094 on #133,
         4078 at their merge base; #133 adds 16 and removes 0, 0 of its
+        additions were already on the candidate). 4720 -> 4728 on
+        2026-09-23, re-merging #132 at `867bdae` into the V1 candidate
+        in the second merge rehearsal: measured from the merged tree,
+        not taken from either side (4720 on the candidate, 4190 on #132,
+        4182 at their merge base; #132 adds 8 and removes 0, 0 of its
         additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -1825,7 +1836,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4720)
+        self.assertEqual(len(space), 4728)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
