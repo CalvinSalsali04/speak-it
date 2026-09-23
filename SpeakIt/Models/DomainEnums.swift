@@ -217,6 +217,7 @@ struct RecurrenceRule: Codable, Equatable, Sendable {
                             weekday: weekday
                         ),
                         matchingPolicy: .nextTime,
+                        repeatedTimePolicy: .first,
                         direction: .forward
                     )
                 }
