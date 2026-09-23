@@ -267,19 +267,91 @@ enum LocationIntentParser {
     }
 
     private static func placeReference(in remainder: String) -> PlaceReference? {
-        // Strip the connector, then take the phrase up to whatever ends it.
+        classify(placeName(in: remainder).name)
+    }
+
+    /// The words that name the place, and everything said after them.
+    ///
+    /// Strip the connector, then take the phrase up to whatever ends it. The
+    /// terminator ends a name at punctuation, at the action, and at the time
+    /// words it lists. It cannot end one at every time, because a time can
+    /// follow a place with no word between them: "when I get home Friday",
+    /// "when I get to work next Monday", "when I get home on the 15th". So
+    /// the temporal grammar is asked where a time starts inside the phrase,
+    /// and the name ends there. Before it was asked, those three read as
+    /// places called "home friday", "work next monday" and "home on the 15th".
+    /// None of them is Home or Work, so the time won, the place was dropped,
+    /// and 9 AM was armed with nothing asked (DEL-11, through the grammar).
+    private static func placeName(in remainder: String) -> (name: String, following: String) {
         let stripped = remainder.replacingOccurrences(
             of: connector,
             with: "",
             options: [.regularExpression]
         )
-        guard let endRange = stripped.range(
-            of: placeTerminator,
-            options: [.regularExpression]
-        ) else {
-            return classify(stripped)
+        let phraseEnd = stripped.range(of: placeTerminator, options: [.regularExpression])?
+            .lowerBound ?? stripped.endIndex
+        let phrase = String(stripped[..<phraseEnd])
+        let following = String(stripped[phraseEnd...])
+        guard let timeStart = trailingTimeStart(in: phrase, followedBy: following) else {
+            return (phrase, following)
         }
-        return classify(String(stripped[..<endRange.lowerBound]))
+        return (String(phrase[..<timeStart]), String(phrase[timeStart...]) + following)
+    }
+
+    /// Where a time begins that runs from some word of `phrase` to its end,
+    /// or `nil` when none does.
+    ///
+    /// The earliest such word wins, so "next Monday" is cut before "next" and
+    /// not before "Monday". The first word is never a candidate: something has
+    /// to be left to name the place. Neither is a cut that would leave only an
+    /// article, because "the" is not a place: "the weekend" is a time.
+    private static func trailingTimeStart(
+        in phrase: String,
+        followedBy following: String
+    ) -> String.Index? {
+        let words = wordRanges(in: phrase)
+        guard words.count > 1 else { return nil }
+        for word in words.dropFirst() {
+            let head = phrase[..<word.lowerBound].trimmingCharacters(in: .whitespaces)
+            if head.range(of: #"^(?:the|a|an|my)$"#, options: [.regularExpression]) != nil {
+                continue
+            }
+            if readsAsTime(String(phrase[word.lowerBound...]), followedBy: following) {
+                return word.lowerBound
+            }
+        }
+        return nil
+    }
+
+    /// True when `words` state a time that runs to their last word, in the
+    /// sentence they are part of.
+    ///
+    /// Two questions, both put to the temporal grammar. Do these words change
+    /// what the sentence says about time? And does their last word? The second
+    /// is what keeps a place that merely *contains* a time word a place: in
+    /// "the Monday market", "Monday" is a day, but "market" adds nothing to it,
+    /// so the time does not run to the end and nothing is cut. `following` is
+    /// read with them because a time can need its context: "at twenty" is
+    /// nothing, and "at twenty to eight" is 7:40.
+    private static func readsAsTime(_ words: String, followedBy following: String) -> Bool {
+        guard let reading = ThoughtOrganizer.statedTime(in: words + following),
+              reading != ThoughtOrganizer.statedTime(in: following) else { return false }
+        let lastWord = wordRanges(in: words).last?.lowerBound ?? words.startIndex
+        return reading != ThoughtOrganizer.statedTime(in: String(words[..<lastWord]) + following)
+    }
+
+    private static func wordRanges(in text: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var searchStart = text.startIndex
+        while let range = text.range(
+            of: #"\S+"#,
+            options: [.regularExpression],
+            range: searchStart..<text.endIndex
+        ) {
+            ranges.append(range)
+            searchStart = range.upperBound
+        }
+        return ranges
     }
 
     private static func classify(_ rawPlace: String) -> PlaceReference? {

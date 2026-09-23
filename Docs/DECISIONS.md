@@ -1,5 +1,43 @@
 # Decisions
 
+## 2026-09-23 — The place name ends where the temporal grammar finds a time
+
+**DEL-11, reached through the place grammar.** "Remind me to call Mom when I
+get home Friday" read a place called "home friday". `placeTerminator` in
+`LocationIntentParser` ends a name at the time words it lists ("tonight",
+"tomorrow", "on Friday", "at 6", "after"), and a bare weekday, "next
+Monday", "this weekend", "the 15th" and a month name were not among them.
+"Home friday" is not Home, so it was a named place, the time won, the place
+was dropped, and 9 AM Friday was armed with nothing asked. The hold that
+runs after `organize` could not see it, because the reading no longer
+carried a watchable place. The DEL-11 corpus rows had been worded "on
+Friday" or day-first so that they tested the hold and not this.
+
+**The decision.** The name is no longer ended by a longer list. After the
+terminator, `LocationIntentParser.placeName(in:)` asks the temporal grammar
+where a time begins inside the phrase, through
+`ThoughtOrganizer.statedTime(in:)`, which reads with the same resolver
+`organize` uses. It cuts at the earliest word from which the rest of the
+phrase is a time that runs to its last word, read together with whatever
+follows the phrase. "Runs to its last word" is what keeps a place that only
+contains a day a place: in "the Monday market", "market" adds nothing to
+"Monday". A cut that would leave only an article is refused, because "the"
+is not a place. This is #130's G2 lesson again: a second list falls behind
+the resolver, so the list asks the resolver.
+
+**Falsifier.** A saved place said straight before a day that the temporal
+grammar reads, where the stored place is not Home or Work, or where the row
+arms anything. The rows are in `SemanticCorpusB.location`, beside the
+day-first rows the rewording produced, and in
+`LocationReminderTests.testATimeRightAfterThePlaceEndsThePlaceName`. The
+other direction is `testAPlaceNameThatContainsATimeWordKeepsItsName`.
+
+**What could move.** Only a place phrase of two or more words whose tail the
+grammar reads as a time. In the test corpus that was one capture, "When I go
+to Sobeys in an hour, remind me…", whose place becomes "sobeys" instead of
+"sobeys in an hour". Its reading did not change here, because a named place
+beside a time was still dropped.
+
 ## 2026-09-23 — A saved place beside a time is held after organizing, not in one branch of it
 
 **DEL-11, exit-gate P0: an unresolved condition executing unconditionally.**
@@ -115,7 +153,8 @@ Not fixed here, because each is a different layer. Both are in
 - `LocationIntentParser`'s place terminator does not stop at a bare weekday,
   "this weekend", "the day after", or a month name. So "when I get home
   Friday" reads as a named place called "home friday", the time wins, and
-  the place is dropped.
+  the place is dropped. *Closed later the same day; see "The place name ends
+  where the temporal grammar finds a time" above.*
 
 Rows stored before this change keep the reminder they were given.
 

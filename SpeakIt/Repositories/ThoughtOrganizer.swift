@@ -801,6 +801,35 @@ enum ThoughtOrganizer {
         TemporalIntentParser.namesAMonthAndDay(in: text)
     }
 
+    /// What some words say about time, reduced to the fields two readings can
+    /// be compared on. `nil` when they say nothing about time at all.
+    ///
+    /// For the place grammar, which has to know where a place name stops and a
+    /// time starts. "When I get home Friday" names Home and then a day, and
+    /// only the temporal grammar can say that "Friday" is the day and "home"
+    /// is not. The place grammar's own list of time words stopped at "on
+    /// Friday", so the name swallowed the day and became a place called "home
+    /// friday". Asking the resolver `organize` itself uses means the two
+    /// cannot fall out of step again. See Docs/DECISIONS.md, 2026-09-23.
+    ///
+    /// Read against a fixed reference instant in UTC with bare clocks allowed,
+    /// because callers compare the *shape* of two readings and never use the
+    /// date they land on.
+    static func statedTime(in text: String) -> StatedTime? {
+        TemporalIntentParser.statedTime(in: text)
+    }
+
+    /// See `statedTime(in:)`.
+    struct StatedTime: Equatable, Sendable {
+        let kind: TemporalKind
+        let day: CalendarDay?
+        let time: WallClockTime?
+        let relativeSeconds: Double?
+        let timeZoneIdentifier: String?
+        /// Understood as a time, but not as one moment ("next week", "4/5").
+        let isAmbiguous: Bool
+    }
+
     /// Whether the sentence opens on an acquisition verb whose object is the
     /// person the resolver found: "get Sam from the airport", "pick up Mom".
     private static func transportsAPerson(_ person: String, in text: String) -> Bool {
@@ -3703,6 +3732,35 @@ private enum TemporalIntentParser {
     static func namesAMonthAndDay(in text: String) -> Bool {
         monthAndDay(in: text, referenceDate: Date(), calendar: .current) != nil
     }
+
+    /// The readers `organize` resolves with, as a comparable value. See
+    /// `ThoughtOrganizer.statedTime(in:)`.
+    static func statedTime(in text: String) -> ThoughtOrganizer.StatedTime? {
+        let resolution = timingResolution(
+            in: text.lowercased(),
+            referenceDate: statedTimeReference,
+            calendar: statedTimeCalendar,
+            allowsBareClock: true
+        )
+        guard resolution.isAmbiguous || resolution.intent.kind != .none else { return nil }
+        return ThoughtOrganizer.StatedTime(
+            kind: resolution.intent.kind,
+            day: resolution.intent.day,
+            time: resolution.intent.time,
+            relativeSeconds: resolution.intent.relativeSeconds,
+            timeZoneIdentifier: resolution.intent.timeZoneIdentifier,
+            isAmbiguous: resolution.isAmbiguous
+        )
+    }
+
+    private static let statedTimeReference = Date(timeIntervalSinceReferenceDate: 0)
+
+    private static let statedTimeCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }()
 
     /// The spoken clock forms, read together. See `ThoughtOrganizer.statesAClock`.
     static func statesASpokenClock(in text: String) -> Bool {

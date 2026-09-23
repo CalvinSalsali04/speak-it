@@ -1852,6 +1852,77 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
     }
 
+    /// A time said straight after the place, with no word between them, ends
+    /// the place name where the temporal grammar says the time begins.
+    ///
+    /// Falsifier: before the name asked the temporal grammar, each of these
+    /// read a place called "home friday", "work next monday", "home on the
+    /// 15th" and so on. None of those is Home or Work, so the time won, the
+    /// place was dropped, and the day's alert was armed with nothing asked:
+    /// DEL-11 again, through the place grammar instead of the temporal branch.
+    func testATimeRightAfterThePlaceEndsThePlaceName() {
+        let cases: [(String, PlaceReference)] = [
+            ("Remind me to call Mom when I get home Friday", .home),
+            ("When I get home Friday, remind me to call Mom", .home),
+            ("When I get to work next Monday remind me to submit my timesheet", .work),
+            ("Remind me to water the plants when I get home on the 15th", .home),
+            ("Remind me to water the plants when I get home this weekend", .home),
+            ("Remind me to water the plants when I get home August 20th", .home),
+            ("Remind me to water the plants when I get home the day after tomorrow", .home),
+            ("When I go to Sobeys in an hour, remind me to get eggs", .named("sobeys")),
+        ]
+        for (text, place) in cases {
+            XCTAssertEqual(LocationIntentParser.parse(text)?.place, place, text)
+        }
+    }
+
+    /// The other direction: a place whose name merely contains a time word
+    /// keeps its whole name, because the time does not run to its last word.
+    ///
+    /// Falsifier: a boundary that cut at the first word the temporal grammar
+    /// can read, without asking whether the time runs to the end of the name,
+    /// would leave these as places called "the" and "sunday".
+    func testAPlaceNameThatContainsATimeWordKeepsItsName() {
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to buy bread when I get to the Monday market")?.place,
+            .named("monday market")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to bring the snacks when I get to Sunday school")?.place,
+            .named("sunday school")
+        )
+        XCTAssertEqual(
+            LocationIntentParser.parse("Remind me to stretch when I get to the gym")?.place,
+            .named("gym")
+        )
+    }
+
+    /// The natural phrasing, end to end: held exactly like "…when I get home
+    /// tomorrow", with the day kept and nothing armed.
+    ///
+    /// Falsifier: the stored place is anything but Home, or the row carries a
+    /// reminder date that `ReminderScheduleRequest` would schedule for 9 AM
+    /// Friday.
+    func testSavedPlaceBeforeABareWeekdayIsHeldForReview() throws {
+        setHome()
+        let reference = Calendar.current.date(
+            bySettingHour: 9, minute: 0, second: 0, of: .now
+        )!
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home Friday",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: true
+        )
+
+        XCTAssertEqual(item.locationIntent?.place, .home, "the place ends before the day")
+        XCTAssertEqual(item.temporalKind, .dateOnly, "the day is kept as said")
+        XCTAssertNil(item.reminderDate, "a day beside a saved place carries no clock")
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
+    }
+
     /// The hold is a post-condition on a finished reading, not a step in one
     /// branch, so it is checked here on values the parser never produced.
     ///

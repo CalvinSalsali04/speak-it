@@ -329,6 +329,44 @@ enum SemanticCorpusB {
                    place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
                    note: "The recurrence rescue in organize re-armed a reminder the parse had held, and dropped the review. The series is kept as spoken; nothing fires until a trigger is picked."),
 
+        // The place said first and the day straight after it, with no word
+        // between them (2026-09-23, DEL-11 through the place grammar). The
+        // rows above put the day first, or say "on Friday", so that they test
+        // the hold alone. These are the natural phrasings that rewording
+        // stepped around, kept beside it. The place name used to run on into
+        // the day, "home friday", which is no saved place, so the time won and
+        // the day's alert was armed with nothing asked. The name now ends
+        // where the temporal grammar finds a time. Falsifier: any row here
+        // with a reminder date, a notification delivery, no review, or a
+        // place that is not Home or Work.
+        corpusCase(.location, "Remind me to call Mom when I get home Friday", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "Read as a place called \"home friday\" until the place name asked the temporal grammar where the time begins."),
+        corpusCase(.location, "When I get home Friday, remind me to call Mom", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 7, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "When I get to work Friday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true],
+                   note: "The phrasing the \"on Friday\" row above was reworded from."),
+        corpusCase(.location, "When I get to work next Monday remind me to submit my timesheet", count: 1,
+                   delivery: [.none], kind: [.dateOnly], remind: [nil],
+                   place: [CorpusPlace(event: .arrive, place: .work)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home on the 15th", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 15, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home this weekend", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 8, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home August 20th", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 20, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true]),
+        corpusCase(.location, "Remind me to water the plants when I get home the day after tomorrow", count: 1,
+                   delivery: [.none], kind: [.dateOnly], due: [CorpusDate(month: 8, day: 5, hour: nil)],
+                   remind: [nil], place: [CorpusPlace(event: .arrive, place: .home)], review: [true],
+                   note: "The terminator's \"after\" cut this name at \"home the day\". The grammar reads the day with what follows it."),
+
         // Controls for the rows above. The same place alone, the same time
         // alone, the named place whose time wins, and the forms that were
         // already held. The hold must not move any of them.
