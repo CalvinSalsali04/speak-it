@@ -855,9 +855,14 @@ final class ItemPresentationTests: XCTestCase {
             result.receiptContext.contains("1 to review"),
             "got \(result.receiptContext)"
         )
+        // Typed locals: as one expression, this did not type-check in
+        // reasonable time once the V1 fixes were merged together.
+        let byUUID: (UUID, UUID) -> Bool = { $0.uuidString < $1.uuidString }
+        let listIDs: [UUID] = ShoppingListProjection.openItems(in: stored).map(\.id)
+        let expectedListIDs: [UUID] = [milk.id, eggs.id]
         XCTAssertEqual(
-            ShoppingListProjection.openItems(in: stored).map(\.id).sorted { $0.uuidString < $1.uuidString },
-            [milk.id, eggs.id].sorted { $0.uuidString < $1.uuidString },
+            listIDs.sorted(by: byUUID),
+            expectedListIDs.sorted(by: byUUID),
             "both shopping rows stay on their list"
         )
 
