@@ -412,6 +412,15 @@ struct ReminderDeliverySink: Sendable {
     /// only observe teardown that was already targeted by id, which is the half
     /// that was never in doubt.
     var pendingIdentifiers: @Sendable () async -> [String]
+    /// The AlarmKit alarms still waiting to ring. The alarm half of
+    /// `pendingIdentifiers`: without it, an alarm could only ever be cancelled
+    /// by an item ID somebody already held, so an alarm whose row was removed
+    /// by iCloud, or by a kill between `delete`'s save and its teardown, was
+    /// never cancelled by anyone. Only the `.scheduled` state is reported; an
+    /// alarm that is already alerting is in front of the person, who can stop
+    /// it. Defaults to none, so a test double that does not model alarms can
+    /// never make the orphan sweep cancel one.
+    var scheduledAlarmIDs: @Sendable () async -> [UUID] = { return [] }
 
     static let live = ReminderDeliverySink(
         removeNotifications: { identifiers in
@@ -432,6 +441,18 @@ struct ReminderDeliverySink: Sendable {
         },
         pendingIdentifiers: {
             await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier)
+        },
+        scheduledAlarmIDs: {
+            // Listing arrived with AlarmKit itself, so there is no OS on which
+            // Speak It can hold an alarm it cannot read back. Below iOS 26 the
+            // alarm path falls back to a `SpeakIt.reminder.` notification,
+            // which the prefix sweep already heals.
+            guard #available(iOS 26.0, *) else { return [] }
+            // `alarms` lists only this app's alarms. It throws when the daemon
+            // cannot answer, and an unreadable list must mean "cancel
+            // nothing", never "every alarm is an orphan".
+            guard let alarms = try? AlarmManager.shared.alarms else { return [] }
+            return alarms.filter { $0.state == .scheduled }.map(\.id)
         }
     )
 }
@@ -706,6 +727,47 @@ enum ReminderScheduler {
     static func cancel(itemID: UUID) {
         delivery.removeNotifications([notificationIdentifier(for: itemID)])
         delivery.cancelAlarm(itemID)
+    }
+
+    /// Cancels every scheduled alarm that no row in the store accounts for,
+    /// after every scheduling pass already queued has finished.
+    ///
+    /// Notifications are healed by the `replacesAllSpeakItReminders` prefix
+    /// sweep, which removes whatever it finds. Alarms had no such sweep: they
+    /// were only cancelled by an item ID in some scope, and a row that is gone
+    /// is in no scope. The AlarmKit ID of a reminder alarm is its item ID, and
+    /// `schedule` is the only place Speak It creates an AlarmKit alarm, so an
+    /// alarm whose ID names no row belongs to a reminder that no longer exists.
+    ///
+    /// `accountedFor` is read on the main actor *after* the alarm list, not
+    /// captured when the pass was queued. A row saved before the read protects
+    /// its alarm even if it was created while this pass waited in the tail,
+    /// and an alarm listed before the read cannot belong to a row saved after
+    /// it, because rows are saved before they are scheduled. `nil` means the
+    /// rows could not be read, and cancels nothing.
+    static func cancelOrphanedAlarms(
+        accountedFor: @escaping @MainActor @Sendable () -> Set<UUID>?
+    ) {
+        let predecessor = synchronizationTail
+        synchronizationTail = Task {
+            await predecessor?.value
+            let scheduled = await delivery.scheduledAlarmIDs()
+            guard !scheduled.isEmpty,
+                  let rowIDs = await accountedFor() else { return }
+            for alarmID in orphanedAlarmIDs(scheduled: scheduled, accountedFor: rowIDs) {
+                delivery.cancelAlarm(alarmID)
+            }
+        }
+    }
+
+    /// The decision behind `cancelOrphanedAlarms`, with no AlarmKit and no
+    /// store in it: every scheduled alarm ID that is not one of `accountedFor`,
+    /// in the order AlarmKit listed them.
+    static func orphanedAlarmIDs(
+        scheduled: [UUID],
+        accountedFor: Set<UUID>
+    ) -> [UUID] {
+        scheduled.filter { !accountedFor.contains($0) }
     }
 
     static func cancel(captureSessionID: UUID) {
