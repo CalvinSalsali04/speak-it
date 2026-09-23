@@ -614,7 +614,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// widget rather than the shortcut. So the queued tap is dropped and the
     /// row waits in Needs review. Dropping loses a tap the person made;
     /// keeping it would re-apply forever or complete a held row, and the
-    /// person can still finish it from Needs review in one tap.
+    /// person can still finish it from Needs review in one tap. A dropped tap
+    /// is not an outcome either, so the morning brief does not count it as
+    /// something finished away from the app.
     ///
     /// `actionsIn` names the queue's folder for a test; `nil` is the app
     /// group's, which is what every caller in the app uses.
