@@ -75,11 +75,37 @@ the hold would ring once at 9 AM, wherever the person was.
 **The decision.** `ReminderScheduleRequest` now also refuses a row for which
 `CapturedItem.awaitsPlaceOrTimeChoice` is true: the row constrains both a
 place and a time (`constrainsBothPlaceAndTime`), and nothing shows the
-person decided. The marks are the ones launch recovery reads for "the
-person's hand is on this row": `isReviewed`, or `isUserEdited` on either
-intent. The editor's way out is setting a time. That goes through
+person confirmed the time: neither `isReviewed` nor `isUserEdited` on the
+temporal intent. The editor's way out is setting a time. That goes through
 `SwiftDataThoughtRepository.update`, which sets `isReviewed` and stamps the
 temporal intent `isUserEdited`, so a row the person resolved still arms.
+
+The location intent's `isUserEdited` does not release the time. The first
+version of this refusal read it, as launch recovery does. #138 settled that
+only a review or the temporal mark confirms a time, because a reorganize
+(`apply`) rewrites the temporal intent and keeps a hand-set place with its
+mark, so a place the person confirmed would release a clock they never saw.
+This refusal follows the same rule (round two of the review, R2).
+
+**Merge instruction, for whichever of #136 and #138 merges second.** #138
+makes `ItemPresentation.scheduledDelivery` read the stored `reminderDate`,
+gated only by `ItemPresentation.mayArmTime`, and makes
+`ReminderScheduleRequest.init?` read `scheduledDelivery`, so that what a row
+shows as armed and what iOS is handed are one function. This refusal is a
+second gate beside it. Merged as they stand, a stored, unreviewed "…when I
+get home tomorrow" row would show a notification bell while its request is
+refused. The second merge must:
+
+1. Move `awaitsPlaceOrTimeChoice` into `ItemPresentation.mayArmTime`, as a
+   `return false` when it holds, so the bell, the receipt and the request
+   refuse together, and drop the separate `guard` in
+   `ReminderScheduleRequest.init?`.
+2. Add one assertion to `testSchedulerRefusesAStoredPlaceAndTimeRowUntilThePersonDecides`
+   (or its successor): the refused row's `ItemPresentation.scheduledDelivery`
+   is `.none`, and becomes `.notification` once `isReviewed` is set.
+
+The release rule is already the same on both branches: `isReviewed`, or the
+temporal intent's `isUserEdited`.
 
 This is a second layer, not the fix the entry below rejected. The capture
 hold still asks the question. The refusal covers stored rows and any
@@ -87,8 +113,9 @@ producer outside `organize`, and asks nothing, which is why it cannot be
 the only layer.
 
 **Falsifier.** A stored place-and-time row, unreviewed and unedited, with a
-future reminder date, that produces a `ReminderScheduleRequest`; or the same
-row, reviewed or edited by hand, that does not. Both are in
+future reminder date, that produces a `ReminderScheduleRequest`; the same
+row with only its place marked as set by hand, that produces one; or the
+same row, reviewed or with its time set by hand, that does not. Both are in
 `LocationReminderTests`, with dates built in the machine's zone, and so is
 the editor path through `update`.
 

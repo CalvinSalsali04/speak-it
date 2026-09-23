@@ -2027,9 +2027,14 @@ final class LocationReminderTests: XCTestCase {
         )
     }
 
-    /// Either intent marked as set by hand counts as the person deciding, the
-    /// same marks launch recovery reads.
-    func testSchedulerAcceptsAPlaceAndTimeRowWhoseIntentThePersonEdited() throws {
+    /// Only the time marked as set by hand counts as the person deciding. A
+    /// place marked by hand does not: a reorganize keeps a hand-set place with
+    /// its mark and rewrites the time, so that mark says nothing about the
+    /// clock.
+    ///
+    /// Falsifier: the row with only its place marked produces a request, so a
+    /// confirmed place releases a guessed clock.
+    func testSchedulerAcceptsAPlaceAndTimeRowOnlyWhenThePersonEditedTheTime() throws {
         let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
         let fire = try XCTUnwrap(
             Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
@@ -2049,7 +2054,10 @@ final class LocationReminderTests: XCTestCase {
 
         XCTAssertNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: false)))
         XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: true, locationEdited: false)))
-        XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)))
+        XCTAssertNil(
+            ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)),
+            "a place set by hand does not confirm the time beside it"
+        )
     }
 
     /// The editor's way out still arms. Setting a time on a held row goes

@@ -585,8 +585,8 @@ The specifics:
   - *Resolved the same day for rows that kept their place.* A row captured
     before the fix still carries its 9 AM alert, and no launch pass re-reads
     it, but `ReminderScheduleRequest` now refuses any row that constrains a
-    place and a time until the person has decided (`isReviewed`, or either
-    intent marked `isUserEdited`). Such a row stays silent and unwatched.
+    place and a time until the person has decided (`isReviewed`, or the
+    temporal intent marked `isUserEdited`). Such a row stays silent and unwatched.
     Nothing moves it into Needs review, though: its stored
     `needsClarification` is still false, so it sits on Today with its day
     and no alert, and nothing tells the person that the alert they were

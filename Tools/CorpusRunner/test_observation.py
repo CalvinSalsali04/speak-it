@@ -929,6 +929,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `note:` arguments on those rows; and two phrases quoted in a doc
         comment, `"Ruby Tuesday"` and `"Costco Tuesday"`. The
         development-set overlap stayed at 114.
+        4154 -> 4155 on 2026-09-23, from aligning the scheduler refusal
+        with #138 (a place set by hand no longer releases the time beside
+        it): one assertion message added, `"a place set by hand does not
+        confirm the time beside it"`, none removed, found by diffing this
+        population at both commits. The overlap stayed at 114.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -943,7 +948,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4154)
+        self.assertEqual(len(space), 4155)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
