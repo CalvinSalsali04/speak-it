@@ -1259,8 +1259,18 @@ struct CaptureView: View {
 
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
+        // Name the session before it exists and write that name onto the draft
+        // first. A kill after the commit then leaves a draft a relaunch can
+        // recognise as already saved, instead of replaying it into a second
+        // session; a kill before the commit leaves a name the store does not
+        // hold, and the draft is replayed exactly as before.
+        let sessionID = UUID()
         if let activeDraftID {
-            CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+            CaptureDraftStore.recordHandoff(
+                id: activeDraftID,
+                transcript: normalizedText,
+                sessionID: sessionID
+            )
         }
         isSaving = true
         Task { @MainActor in
@@ -1273,7 +1283,8 @@ struct CaptureView: View {
                     source: persistenceSource,
                     createdAt: captureStartedAt ?? .now,
                     schedulesReminders: tutorialMission == nil,
-                    performance: performance
+                    performance: performance,
+                    sessionID: sessionID
                 )
                 let retrySource = retryingUnclearResult
                 let replacesRetrySource = retrySource.map {

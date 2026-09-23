@@ -240,6 +240,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Only a genuine persistence failure keeps the checkpoint, which is the
     /// case it exists for.
     func recoverInterruptedCaptureDraft() {
+        // A checkpoint whose words already reached a committed session is not
+        // interrupted; replaying it is how one thought became two. `RootView`
+        // releases these before the audio pass as well, and doing it here too
+        // keeps this entry point correct without relying on its caller.
+        releaseHandedOffCaptureDrafts()
         while let draft = CaptureDraftStore.recoverable() {
             // Same guard as `recoverUnorganizedCaptures`: a checkpoint whose
             // words trap the pipeline has already cost two launches by the
@@ -279,6 +284,39 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 break
             }
         }
+    }
+
+    /// Releases every draft whose words provably reached the store.
+    ///
+    /// `CaptureView.save` records the session ID on the draft before it
+    /// commits that session, and clears the draft only after persistence
+    /// returns. A kill between the two used to leave both behind, and launch
+    /// recovery replayed the draft into a second session: always for a
+    /// practice capture, whose session is `.tutorial` while its draft is not,
+    /// and for a voice capture whenever re-transcribing the recording came out
+    /// in different words. A committed session is finished by
+    /// `recoverUnorganizedCaptures`, so the draft has nothing left to protect.
+    ///
+    /// Proof is the session itself, read from the store. A handoff whose
+    /// session is absent — killed before the commit, or the commit failed — is
+    /// left exactly as it was and replayed, because a duplicate is recoverable
+    /// and a lost thought is not. The recording is deleted only on the release
+    /// path, which is the same point a normal save deletes it: after the words
+    /// are durable.
+    func releaseHandedOffCaptureDrafts() {
+        for draft in CaptureDraftStore.handedOffDrafts() {
+            guard let sessionID = draft.handedOffSessionID,
+                  (try? committedSession(id: sessionID)) != nil else { continue }
+            CaptureDraftStore.clear(id: draft.id)
+        }
+    }
+
+    private func committedSession(id: UUID) throws -> CaptureSession? {
+        var descriptor = FetchDescriptor<CaptureSession>(
+            predicate: #Predicate { session in session.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
     }
 
     func reconcilePendingReminders() {
@@ -1063,7 +1101,35 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         schedulesReminders: Bool = true,
         performance: CapturePerformanceTrace? = nil
     ) async throws -> CaptureCreationResult {
+        try await createCaptureResult(
+            text: text,
+            source: source,
+            createdAt: createdAt,
+            schedulesReminders: schedulesReminders,
+            performance: performance,
+            sessionID: UUID()
+        )
+    }
+
+    func createCaptureResult(
+        text: String,
+        source: CaptureSource,
+        createdAt: Date,
+        schedulesReminders: Bool,
+        performance: CapturePerformanceTrace?,
+        sessionID: UUID
+    ) async throws -> CaptureCreationResult {
         let normalizedText = try normalizedCaptureText(text)
+        // `id` is unique, and SwiftData treats inserting a second model with a
+        // unique value as an update. Reusing a handed-off ID must therefore
+        // return what is there rather than overwrite its original words.
+        if let committed = try committedSession(id: sessionID) {
+            return CaptureCreationResult(
+                session: committed,
+                items: orderedItems(in: committed),
+                createdNewCapture: false
+            )
+        }
         if let duplicate = try recentDuplicate(
             text: normalizedText,
             source: source,
@@ -1075,7 +1141,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let pending = try createPendingCapture(
             text: normalizedText,
             source: source,
-            createdAt: createdAt
+            createdAt: createdAt,
+            id: sessionID
         )
 
         performance?.beginSemanticParsing()
@@ -1790,9 +1857,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private func createPendingCapture(
         text: String,
         source: CaptureSource,
-        createdAt: Date
+        createdAt: Date,
+        id: UUID = UUID()
     ) throws -> (session: CaptureSession, placeholder: CapturedItem) {
         let session = CaptureSession(
+            id: id,
             originalTranscription: text,
             createdAt: createdAt,
             captureSource: source,

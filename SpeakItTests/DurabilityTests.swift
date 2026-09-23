@@ -96,6 +96,7 @@ final class DurabilityTests: XCTestCase {
         let next = makeRepository()
         CaptureDraftStore.pruneEmptyTextDrafts()
         CaptureDraftStore.pruneResolvedTombstones()
+        next.releaseHandedOffCaptureDrafts()
         next.recoverUnorganizedCaptures()
         next.recoverInterruptedCaptureDraft()
         next.reconcilePendingReminders()
@@ -127,9 +128,11 @@ final class DurabilityTests: XCTestCase {
         _ text: String,
         source: CaptureSource = .inAppVoice,
         createdAt: Date = .now,
-        status: ProcessingStatus = .pending
+        status: ProcessingStatus = .pending,
+        id: UUID = UUID()
     ) throws -> UUID {
         let session = CaptureSession(
+            id: id,
             originalTranscription: text,
             createdAt: createdAt,
             captureSource: source,
@@ -652,6 +655,196 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.recoverable())
     }
 
+    // MARK: - 4b. A handoff that committed is not an interruption
+
+    /// What `CaptureView.save` leaves behind when it is killed after recording
+    /// the handoff: the draft carries the words and the ID of the session it
+    /// was about to commit. Whether that session exists is up to the caller.
+    private func seedHandedOffDraft(
+        _ transcript: String,
+        source: CaptureSource,
+        startedAt: Date = Date().addingTimeInterval(-120)
+    ) -> (draft: CaptureDraftStore.Draft, sessionID: UUID) {
+        let draft = seedRecoverableDraft(transcript, source: source, startedAt: startedAt)
+        let sessionID = UUID()
+        CaptureDraftStore.recordHandoff(
+            id: draft.id,
+            transcript: transcript,
+            sessionID: sessionID,
+            at: startedAt
+        )
+        return (CaptureDraftStore.draft(id: draft.id) ?? draft, sessionID)
+    }
+
+    private func writeRecording(for draft: CaptureDraftStore.Draft) throws -> URL {
+        let audioURL = try XCTUnwrap(CaptureDraftStore.prepareAudioURL(for: draft))
+        try Data(repeating: 0x1, count: 1_024).write(to: audioURL, options: .atomic)
+        return audioURL
+    }
+
+    /// Audit D3a. A practice capture is drafted as `.inAppText` but saved as
+    /// `.tutorial`, so source-scoped dedupe never matched and a kill after the
+    /// commit turned the practice sentence into a real capture with a real
+    /// reminder, on a row tutorial cleanup does not delete.
+    ///
+    /// Falsifier: make `releaseHandedOffCaptureDrafts` release nothing (or stop
+    /// `recordHandoff` storing the ID) and `recoverInterruptedCaptureDraft`
+    /// replays the draft: two sessions, the second one `.inAppText`.
+    func testAKilledPracticeSaveIsNotReplayedAsARealCapture() throws {
+        let text = "Tomorrow at 9, ask Maya about the proposal."
+        let (draft, sessionID) = seedHandedOffDraft(text, source: .inAppText)
+        try killAfterRawPersistence(
+            text,
+            source: .tutorial,
+            createdAt: draft.startedAt,
+            id: sessionID
+        )
+
+        relaunch()
+
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1, "A committed practice save must not be replayed")
+        XCTAssertEqual(sessions.first?.id, sessionID)
+        XCTAssertEqual(sessions.first?.captureSource, .tutorial)
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id), "A committed handoff releases its draft")
+        XCTAssertNil(CaptureDraftStore.recoverable())
+    }
+
+    /// Audit D3b. A voice draft is replayed from its recording, not its words:
+    /// `RootView.recoverInterruptedAudioDrafts` re-transcribes every draft in
+    /// `recoverableAudioDrafts()`, and any word the second recognizer hears
+    /// differently defeats dedupe. The fix is that a committed draft is no
+    /// longer in that list by the time the audio pass reads it, and its
+    /// recording is gone because its words are durable. The audio pass itself
+    /// needs a recognizer and is not run here.
+    ///
+    /// Falsifier: make `releaseHandedOffCaptureDrafts` release nothing and the
+    /// draft is still listed with its recording, so the audio pass would
+    /// re-transcribe it into a second session.
+    func testAKilledVoiceSaveIsNotLeftForTheAudioPassToReplay() throws {
+        let text = "Call the landlord about the lease"
+        let (draft, sessionID) = seedHandedOffDraft(text, source: .inAppVoice)
+        let audioURL = try writeRecording(for: draft)
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [draft.id],
+            "The seeded recording must be one the audio pass would replay"
+        )
+        try killAfterRawPersistence(
+            text,
+            source: .inAppVoice,
+            createdAt: draft.startedAt,
+            id: sessionID
+        )
+
+        relaunch()
+
+        XCTAssertTrue(CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.originalTranscription, text)
+    }
+
+    /// The control. A kill after the handoff was recorded but before the
+    /// session committed leaves an ID the store does not hold, and those words
+    /// exist nowhere but the draft. It has to be replayed exactly as an
+    /// unmarked draft is.
+    ///
+    /// Falsifier: let `releaseHandedOffCaptureDrafts` clear every handed-off
+    /// draft without looking its session up, and this thought is lost: no
+    /// session at all.
+    func testAHandoffThatNeverCommittedIsStillReplayed() throws {
+        let text = "Renew the passport before March"
+        let (draft, sessionID) = seedHandedOffDraft(text, source: .inAppText)
+
+        relaunch()
+
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1, "Uncommitted words must come back")
+        XCTAssertEqual(sessions.first?.originalTranscription, text)
+        XCTAssertNotEqual(sessions.first?.id, sessionID)
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id))
+    }
+
+    /// The control for the recording. An uncommitted voice handoff keeps its
+    /// recording and stays listed for the audio pass.
+    ///
+    /// Falsifier: the same unconditional release deletes the recording, the
+    /// only copy of words that never reached the store.
+    func testAHandoffThatNeverCommittedKeepsItsRecording() throws {
+        let (draft, _) = seedHandedOffDraft(
+            "Book the car in for its service",
+            source: .inAppVoice
+        )
+        let audioURL = try writeRecording(for: draft)
+
+        relaunch()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [draft.id]
+        )
+        XCTAssertTrue(try allSessions().isEmpty, "The text pass leaves audio drafts to the audio pass")
+    }
+
+    /// A handoff describes the words it was recorded with. Words checkpointed
+    /// afterwards have reached no session, so the mark has to go with them.
+    ///
+    /// Falsifier: stop `CaptureDraftStore.update` clearing the ID when the
+    /// words change, and a committed session vouches for words it never held:
+    /// the new words are released instead of replayed.
+    func testCheckpointingNewWordsWithdrawsTheHandoff() throws {
+        let (draft, sessionID) = seedHandedOffDraft(
+            "Text Jordan the gate code",
+            source: .inAppText
+        )
+
+        CaptureDraftStore.update(id: draft.id, transcript: "Text  Jordan the gate code ")
+        XCTAssertEqual(
+            CaptureDraftStore.draft(id: draft.id)?.handedOffSessionID,
+            sessionID,
+            "The same words, differently spaced, are still the handed-off words"
+        )
+
+        CaptureDraftStore.update(id: draft.id, transcript: "Text Jordan the new gate code")
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id)?.handedOffSessionID)
+    }
+
+    /// `CaptureSession.id` is unique, and SwiftData turns a second insert with
+    /// the same unique value into an update. A reused handoff ID must never
+    /// become a way to rewrite a person's original words.
+    ///
+    /// Falsifier: remove the `committedSession` guard at the top of the
+    /// session-ID `createCaptureResult`, and the second call either rewrites
+    /// the stored transcript or throws on save.
+    func testAReusedSessionIDNeverRewritesTheOriginalWords() async throws {
+        let sessionID = UUID()
+        _ = try await repository.createCaptureResult(
+            text: "Water the tomatoes tonight",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminders: false,
+            performance: nil,
+            sessionID: sessionID
+        )
+
+        let second = try await repository.createCaptureResult(
+            text: "Something else entirely",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminders: false,
+            performance: nil,
+            sessionID: sessionID
+        )
+
+        XCTAssertFalse(second.createdNewCapture)
+        let sessions = try allSessions()
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.originalTranscription, "Water the tomatoes tonight")
+    }
+
     // MARK: - 5. Device clock destruction
 
     /// Moves the process into `identifier`'s time zone, the way stepping off a
@@ -1027,6 +1220,50 @@ final class UpgradeDurabilityTests: XCTestCase {
             "An in-flight capture from the previous build must survive the update"
         )
         XCTAssertNil(CaptureDraftStore.recoverable())
+    }
+
+    /// Drafts written before the handoff existed carry no `handedOffSessionID`
+    /// key at all. They must decode as "not handed off" and be replayed, never
+    /// be dropped because the key is missing or treated as already saved.
+    /// Written as a plain JSON object on purpose: encoding a `Draft` would
+    /// prove only that this build reads what this build writes.
+    ///
+    /// Falsifier: make `handedOffSessionID` non-optional and the array fails
+    /// to decode, `allDrafts()` returns nothing, and the words are gone.
+    func testADraftWrittenBeforeHandoffsStillDecodesAndRecovers() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+
+        let id = UUID()
+        let written = Date().addingTimeInterval(-300).timeIntervalSinceReferenceDate
+        // Exactly the keys an earlier build wrote, with `Date` in its default
+        // Codable form, seconds since the reference date.
+        let olderBuildDrafts: [[String: Any]] = [[
+            "id": id.uuidString,
+            "startedAt": written,
+            "updatedAt": written,
+            "transcript": "Ask Dana for the invoice number",
+            "captureSourceRawValue": "inAppText",
+            "recoveryStatusRawValue": "capturing",
+        ]]
+        UserDefaults.standard.set(
+            try JSONSerialization.data(withJSONObject: olderBuildDrafts),
+            forKey: "SpeakIt.activeCaptureDraft"
+        )
+
+        let decoded = try XCTUnwrap(CaptureDraftStore.draft(id: id), "The old format must decode")
+        XCTAssertNil(decoded.handedOffSessionID)
+        XCTAssertEqual(CaptureDraftStore.recoverable()?.id, id)
+
+        _ = try writeVersionOneStore()
+        let opened = try openAsReleaseCandidate()
+        let items = try opened.container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+
+        XCTAssertTrue(
+            items.contains { $0.originalTextSegment == "Ask Dana for the invoice number" },
+            "A pre-handoff draft must still be replayed after the update"
+        )
+        XCTAssertNil(CaptureDraftStore.draft(id: id))
     }
 }
 

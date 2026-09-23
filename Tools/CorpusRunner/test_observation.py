@@ -874,7 +874,31 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4086 on 2026-09-23, from
+        recording the handoff of a draft to its CaptureSession so a
+        relaunch stops replaying words already committed: seven
+        test methods in `DurabilityTests.swift` and eighteen literals, enumerated rather
+        than assumed. Nine are fixtures: `"Call the landlord about the
+        lease"`, `"Renew the passport before March"`, `"Book the car in
+        for its service"`, `"Text Jordan the gate code"`, `"Text  Jordan
+        the gate code "` (the same words with a doubled space and a
+        trailing one, which is the point of that test and a distinct
+        string here), `"Text Jordan the new gate code"`, `"Water the
+        tomatoes tonight"`, `"Something else entirely"` and `"Ask Dana for
+        the invoice number"`. Eight are assertion messages: `"A committed
+        practice save must not be replayed"`, `"A committed handoff
+        releases its draft"`, `"The seeded recording must be one the audio
+        pass would replay"`, `"Uncommitted words must come back"`, `"The
+        text pass leaves audio drafts to the audio pass"`, `"The same
+        words, differently spaced, are still the handed-off words"`, `"The
+        old format must decode"` and `"A pre-handoff draft must still be
+        replayed after the update"`. The eighteenth is the doc-comment
+        hazard once more: a test explaining how an older draft decodes
+        quotes `"not handed off"`, and it counts like a fixture. The
+        practice sentence the tutorial test reuses, `"Tomorrow at 9, ask
+        Maya about the proposal."`, adds nothing, because three files here
+        already carry it. The development-set overlap stayed at 114, checked
+        by regenerating `LANGUAGE_BASELINE.md` rather than assumed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +912,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4086)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
