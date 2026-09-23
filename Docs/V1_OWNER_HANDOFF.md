@@ -72,6 +72,14 @@ known for them:
   simulator refused authorization and the row is not evidence for that
   guarantee**, whatever its pass count says. The summary names failures only,
   so check this test by name in the row's result bundle.
+- **#135 (place reminders iOS is not watching):** focused class
+  `SpeakItTests/LocationReminderTests`. Its reconcile now fetches with a
+  `#Predicate` on an optional `Data` column, which nothing else in the app
+  does; a predicate the store cannot translate fails when it runs, not when
+  it compiles. `testALivePlaceWithNoTriggerKindIsStillPlanned` fails if it
+  does not translate, and the app logs a `fault` ("Place reminder reconcile
+  could not fetch its rows"). A PASS on that test is the evidence; a skip or
+  that fault in the console is a failure of the row.
 
 ## Physical iPhone
 
