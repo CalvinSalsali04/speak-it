@@ -1405,10 +1405,18 @@ struct RootView: View {
             // deliberate retry from capture history is still available.
             guard !draft.recoveryFailureKind.stopsPromisingRecovery else { continue }
             CaptureDraftStore.markProcessing(id: draft.id)
+            // A save that fails after the words were recovered is not a
+            // recovery failure, so the event is sent once, for transcription.
+            var reportedRecovery = false
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                let recovered = try await CaptureAudioRecovery.transcribeReportingEnding(draft)
+                SpeakItAnalytics.track(.captureRecovery(
+                    path: .launchAudio,
+                    outcome: .recovered(recovered.ending)
+                ))
+                reportedRecovery = true
                 let result = try await repository.createCaptureResult(
-                    text: recoveredText,
+                    text: recovered.text,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
                     schedulesReminders: true
@@ -1430,6 +1438,12 @@ struct RootView: View {
                     recoveredCount += 1
                 }
             } catch {
+                if !reportedRecovery {
+                    SpeakItAnalytics.track(.captureRecovery(
+                        path: .launchAudio,
+                        outcome: .failed(CaptureRecoveryFailureKind(error: error))
+                    ))
+                }
                 CaptureDraftStore.markFailed(id: draft.id, error: error)
             }
         }

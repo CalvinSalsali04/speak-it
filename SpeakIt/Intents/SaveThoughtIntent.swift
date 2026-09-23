@@ -349,7 +349,7 @@ private final class BackgroundCaptureCoordinator {
                     )
                 }
             } else {
-                self.transcriber.stopAndFinalize { [weak self] finalText in
+                self.transcriber.stopAndFinalize(trigger: .maxDuration) { [weak self] finalText in
                     Task { @MainActor in
                         await self?.persistAndFinish(finalText)
                     }

@@ -6234,6 +6234,21 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
                 ),
                 producedWords: true
             ),
+            .speechCaptureQuality(
+                SpeechCaptureAudioQuality(
+                    rmsDecibels: -28,
+                    peakDecibels: -4,
+                    clippedSampleFraction: 0,
+                    durationMilliseconds: 4_200,
+                    profile: .spokenAudio,
+                    recognitionEngine: .speechAnalyzer
+                ),
+                producedWords: true,
+                finalizedBy: .graceTimeout,
+                stopTrigger: .autoPauseDeferralsSpent
+            ),
+            .captureRecovery(path: .liveAudio, outcome: .recovered(.partialOnTimeout)),
+            .captureRecovery(path: .launchAudio, outcome: .failed(.onDeviceRecognitionUnavailable)),
             .freeLimitReached(used: 10),
             .paywallViewed(context: .freeLimit),
             .planSelected(.annual),
@@ -6290,6 +6305,146 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(AnalyticsSearchResultBucket(resultCount: 1), .oneToFive)
         XCTAssertEqual(AnalyticsSearchResultBucket(resultCount: 5), .oneToFive)
         XCTAssertEqual(AnalyticsSearchResultBucket(resultCount: 6), .sixOrMore)
+    }
+
+    // MARK: - Beta diagnostics: which path ended a capture
+
+    /// The vocabulary is closed and exact. A new value has to be added here on
+    /// purpose, next to the privacy review that comes with it.
+    func testCaptureDiagnosticsVocabularyIsExactlyTheClosedSet() {
+        XCTAssertEqual(
+            Set(SpeechFinalizationPath.allCases.map(\.rawValue)),
+            [
+                "recognizer_final", "grace_timeout", "error_with_partial",
+                "route_change_with_partial", "interruption_with_partial"
+            ]
+        )
+        XCTAssertEqual(
+            Set(SpeechStopTrigger.allCases.map(\.rawValue)),
+            ["manual", "auto_pause", "auto_pause_deferrals_spent", "max_duration"]
+        )
+        XCTAssertEqual(
+            Set(CaptureAudioRecoveryEnding.allCases.map(\.rawValue)),
+            ["final", "partial_on_error", "partial_on_timeout"]
+        )
+        XCTAssertEqual(
+            Set(AnalyticsRecoveryPath.allCases.map(\.rawValue)),
+            ["live_audio", "launch_audio"]
+        )
+        let failureKinds: [CaptureRecoveryFailureKind] = [
+            .noSpeechDetected, .missingRecording, .permissionRequired,
+            .recognizerUnavailable, .onDeviceRecognitionUnavailable, .timedOut,
+            .cancelled, .storageUnavailable, .unknown
+        ]
+        XCTAssertEqual(
+            Set(failureKinds.map(SpeakItAnalyticsEvent.recoveryFailureKindValue)),
+            [
+                "no_speech_detected", "missing_recording", "permission_required",
+                "recognizer_unavailable", "on_device_recognition_unavailable",
+                "timed_out", "cancelled", "storage_unavailable", "unknown"
+            ]
+        )
+        XCTAssertTrue(SpeakItAnalyticsEvent.allowedPropertyKeys.isSuperset(of: [
+            "finalized_by", "stop_trigger", "path", "outcome", "failure_kind"
+        ]))
+    }
+
+    /// Each path saves the words it has; what it reports is whether those
+    /// words were the recognizer's final result or a partial it kept.
+    func testEachFinalizationPathReportsItselfUnlessTheWordsWereFinal() {
+        for path in SpeechFinalizationPath.allCases {
+            XCTAssertEqual(
+                SpeechTranscriber.finalizationPath(firedBy: path, lastTranscriptWasFinal: false),
+                path
+            )
+            XCTAssertEqual(
+                SpeechTranscriber.finalizationPath(firedBy: path, lastTranscriptWasFinal: true),
+                .recognizerFinal
+            )
+        }
+    }
+
+    func testNaturalPauseReportsWhenItStoppedWhileAudioWasStillArriving() {
+        XCTAssertEqual(
+            SpeechTranscriber.naturalPauseStopTrigger(voiceActivityContinued: false),
+            .autoPause
+        )
+        XCTAssertEqual(
+            SpeechTranscriber.naturalPauseStopTrigger(voiceActivityContinued: true),
+            .autoPauseDeferralsSpent
+        )
+    }
+
+    func testSpeechCaptureQualitySendsThePathAndTriggerOnlyWhenKnown() {
+        let quality = SpeechCaptureAudioQuality(
+            rmsDecibels: -28,
+            peakDecibels: -4,
+            clippedSampleFraction: 0,
+            durationMilliseconds: 4_200,
+            profile: .spokenAudio,
+            recognitionEngine: .legacyRecognizer
+        )
+        let finished = SpeakItAnalyticsEvent.speechCaptureQuality(
+            quality,
+            producedWords: true,
+            finalizedBy: .routeChangeWithPartial,
+            stopTrigger: .manual
+        )
+        XCTAssertEqual(finished.name, "speech_capture_quality")
+        XCTAssertEqual(finished.properties["finalized_by"] as? String, "route_change_with_partial")
+        XCTAssertEqual(finished.properties["stop_trigger"] as? String, "manual")
+
+        // No speech, or words recovered from the recording: the transcriber
+        // did not finalize, so neither key is invented.
+        let unfinished = SpeakItAnalyticsEvent.speechCaptureQuality(quality, producedWords: false)
+        XCTAssertNil(unfinished.properties["finalized_by"])
+        XCTAssertNil(unfinished.properties["stop_trigger"])
+    }
+
+    func testCaptureRecoveryCarriesOnlyTheBranchOrTheClosedFailureKind() {
+        let recovered = SpeakItAnalyticsEvent.captureRecovery(
+            path: .launchAudio,
+            outcome: .recovered(.partialOnTimeout)
+        )
+        XCTAssertEqual(recovered.name, "capture_recovery")
+        XCTAssertEqual(recovered.properties["path"] as? String, "launch_audio")
+        XCTAssertEqual(recovered.properties["outcome"] as? String, "partial_on_timeout")
+        XCTAssertNil(recovered.properties["failure_kind"])
+
+        let failed = SpeakItAnalyticsEvent.captureRecovery(
+            path: .liveAudio,
+            outcome: .failed(.noSpeechDetected)
+        )
+        XCTAssertEqual(failed.properties["path"] as? String, "live_audio")
+        XCTAssertEqual(failed.properties["outcome"] as? String, "failed")
+        XCTAssertEqual(failed.properties["failure_kind"] as? String, "no_speech_detected")
+    }
+
+    /// A thrown save is a storage failure, never "organization": organizing
+    /// does not throw. The repository's message never reaches the event.
+    func testCaptureFailureLabelsAThrownSaveAsStorage() {
+        let privateMessage = "The user typed a private thought here"
+        let storageErrors: [Error] = [
+            RepositoryError.saveFailed(privateMessage),
+            RepositoryError.storageUnavailable
+        ]
+        for error in storageErrors {
+            let category = SpeakItAnalyticsEvent.captureFailureCategory(forSaveError: error)
+            XCTAssertEqual(category, "storage")
+            let event = SpeakItAnalyticsEvent.captureFailed(source: .voice, category: category)
+            XCTAssertEqual(event.properties["error_category"] as? String, "storage")
+            XCTAssertFalse(event.properties.values.contains { "\($0)".contains(privateMessage) })
+        }
+        XCTAssertEqual(
+            SpeakItAnalyticsEvent.captureFailureCategory(
+                forSaveError: NSError(domain: NSCocoaErrorDomain, code: 134_030)
+            ),
+            "unknown"
+        )
+        XCTAssertEqual(
+            SpeakItAnalyticsEvent.captureFailureCategory(forSaveError: RepositoryError.emptyCapture),
+            "unknown"
+        )
     }
 
     private func date(_ offset: TimeInterval) -> Date {

@@ -275,8 +275,10 @@ final class ReleaseReadinessTests: XCTestCase {
 
     /// App Review compares the manifest against what leaves the device.
     /// Analytics sends capture latency (`capture_performance`,
-    /// `speech_capture_quality`) and error categories (`capture_failed`),
-    /// which Apple files under Performance Data and Other Diagnostic Data.
+    /// `speech_capture_quality`), error categories (`capture_failed`) and how
+    /// a capture or recording recovery ended (`finalized_by`, `stop_trigger`,
+    /// `capture_recovery`), which Apple files under Performance Data and
+    /// Other Diagnostic Data.
     /// The manifest is read from the built app so a dropped Resources-phase
     /// entry fails here too, not in App Review.
     func testTheBuiltAppsPrivacyManifestDeclaresDiagnosticAnalytics() throws {
@@ -286,8 +288,14 @@ final class ReleaseReadinessTests: XCTestCase {
         XCTAssertEqual(failure.name, "capture_failed")
         XCTAssertEqual(failure.properties["error_category"] as? String, "storage")
         XCTAssertTrue(SpeakItAnalyticsEvent.allowedPropertyKeys.isSuperset(of: [
-            "capture_total_ms", "semantic_parsing_ms", "persistence_ms", "error_category"
+            "capture_total_ms", "semantic_parsing_ms", "persistence_ms", "error_category",
+            "finalized_by", "stop_trigger", "outcome", "failure_kind"
         ]))
+        let recovery = SpeakItAnalyticsEvent.captureRecovery(
+            path: .liveAudio,
+            outcome: .failed(.timedOut)
+        )
+        XCTAssertEqual(recovery.name, "capture_recovery")
 
         // Hosted test bundle, so `Bundle.main` is the app under test.
         let url = try XCTUnwrap(

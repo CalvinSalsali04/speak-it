@@ -1,5 +1,70 @@
 # Decisions
 
+## 2026-09-23 — Beta analytics say which path ended a capture and which stage failed
+
+Four paths save a partial transcript and report success: the 2 s
+finalization grace timer, an error after partial words, an audio route
+change while finalizing, and the 25 s recording-recovery timeout. Afterwards
+nothing told them apart. `capture_failed` never sent `speech`, and labelled a
+thrown save `organization`, while a capture whose organization really failed
+was counted by `capture_saved`. This is observation only: no path saves or
+shows different words than it did before.
+
+**Hypothesis.** A beta tester's analytics can tell the four partial-transcript
+paths apart, and a speech failure from a storage failure from an
+organization failure, without any content.
+
+What changed, all closed enums with no free text:
+
+- `speech_capture_quality` gains `finalized_by` (`recognizer_final`,
+  `grace_timeout`, `error_with_partial`, `route_change_with_partial`,
+  `interruption_with_partial`) and `stop_trigger` (`manual`, `auto_pause`,
+  `auto_pause_deferrals_spent`, `max_duration`). Words that came from the
+  recognizer's final result report `recognizer_final` whichever callback ran
+  last, because the question is whether the saved words could be missing a
+  tail. `interruption_with_partial` is one value beyond the audit's four: the
+  route-change path also handles an audio interruption and a media-services
+  reset, and filing a phone call under "route change" would repeat the
+  mislabelling this entry fixes. `stop_trigger` is absent when the
+  recognizer or an error ended the capture before anything asked it to stop;
+  both keys are absent when the transcriber did not finalize (no speech, or
+  words recovered from the recording).
+- A new `capture_recovery` event (`path`: `live_audio`, `launch_audio`;
+  `outcome`: `final`, `partial_on_error`, `partial_on_timeout`, `failed`;
+  `failure_kind`, the `CaptureRecoveryFailureKind` case in snake case, only
+  when failed). `CaptureAudioRecovery.transcribeReportingEnding` says which
+  branch finished; `transcribe` returns exactly the same text as before.
+- `capture_failed` now sends `speech` when the in-app recognizer fails or is
+  unavailable, when ten seconds pass with no speech, and when recovering the
+  live recording fails. A thrown `createCaptureResult` sends `storage` for
+  `RepositoryError.saveFailed` and `.storageUnavailable`, and `unknown`
+  otherwise, because organizing never throws. A new capture whose session
+  ends `.failed` sends `capture_failed(organization)` instead of
+  `capture_saved`. No new category: the founder dashboard counts
+  `capture_failed` events and does not read `error_category`, so it needs no
+  change, but its saved count now excludes captures whose organization failed.
+
+`PrivacyInfo.xcprivacy` is unchanged: these are Performance Data and Other
+Diagnostic Data, already declared as not linked, not tracking, purpose
+Analytics. Analytics stays off without a build key.
+
+**Falsifier.** After a beta week with analytics on, if a tester's report of a
+cut-off or lost capture cannot be matched to a `finalized_by` other than
+`recognizer_final`, a `capture_recovery` partial outcome, or a
+`capture_failed` stage, the hypothesis is wrong for that case and the missing
+path has to be found. If `grace_timeout` and `recognizer_final` never differ
+in how often testers report cut-offs, the grace timer is not the loss.
+
+**Not covered.** Siri, Shortcuts, Back Tap and Share captures send no
+analytics today, so `max_duration` is recorded by the transcriber but is not
+emitted until that path sends `speech_capture_quality`. Recovery retried from
+the Today card and the Shortcuts path is not instrumented; neither are
+checkpoint replay, unorganized-session recovery, quarantine, or the
+recovery's duration, which the audit also proposed. A storage failure after
+a successful launch recovery sends no `capture_failed`. Deduplicated
+captures still send nothing. Sends are fire-and-forget, so events emitted
+offline are lost.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

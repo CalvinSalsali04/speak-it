@@ -8,6 +8,11 @@ Entries before September 2026 were reconstructed from the commit history and
 ## Unreleased
 
 - Build 19.
+- Beta analytics tell capture endings apart without content:
+  `speech_capture_quality` carries `finalized_by` and `stop_trigger`, a new
+  `capture_recovery` event says which branch recovered a recording, and
+  `capture_failed` now reports `speech`, `storage` and `organization` at the
+  stage that failed. What is saved and shown is unchanged.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.
