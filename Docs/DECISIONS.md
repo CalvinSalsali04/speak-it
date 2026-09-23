@@ -40,17 +40,30 @@ leaves no row for the words. Neither is tested: `modelContext` is a concrete
 putting a protocol in front of every store read in the repository. That is
 recorded rather than papered over with a test of a helper.
 
-**Not covered.** The unfiltered `try?` fetches elsewhere in the file carry no
-predicate, so a translation failure cannot reach them, and they were left
-alone. Most return early on failure; `reconcilePendingReminders`, which uses
-the same replace-everything scope, is one of those. Three still read a
-failure as empty and deserve their own look: `applyCaptureOperation`
-(finds no target, so the operation reports not found) and the two in
-`makeICloudSnapshot`, whose empty snapshot the iCloud merge would read as a
-device holding nothing, and `applyICloudSnapshot` deletes every local row a
-merged snapshot does not contain. That one is the likeliest to cost data
-and wants its own change. A logged fault is visible in Console and sysdiagnoses
-only; nothing tells the person.
+Two unfiltered fetches read a failure as empty in a way that costs more
+than a skipped pass, so they are in this change too, although no predicate
+reaches them:
+
+- **iCloud sync** (`makeICloudSnapshot`). Both fetches were `try? ?? []`.
+  The merge is a union, so an empty local side merges to the cloud copy
+  alone, and `applyICloudSnapshot` deletes every local row that copy does
+  not hold: everything captured since the last upload. `applyICloudSnapshot`
+  reads the store again with `try`, so a failure that persists stops it
+  there; a failure that clears between the two reads deletes. The items
+  fetch failing while the sessions fetch succeeds does the same to the
+  rows under sessions it kept. `makeICloudSnapshot` now throws, and the sync
+  reports "couldn't read this iPhone's library" and changes nothing.
+- **Spoken operations** (`applyCaptureOperation`). A failure read as "no
+  row matches" reached `.notFound`, and the caller files "cancel my dentist"
+  as a new task while the dentist reminder stays armed. It is now held for
+  review with no candidates, the way an operation that could not be applied
+  already is.
+
+**Not covered.** The other unfiltered `try?` fetches in the file carry no
+predicate and return early on failure; `reconcilePendingReminders`, which
+uses the same replace-everything scope, is one of those. A logged fault is
+visible in Console and sysdiagnoses only; nothing tells the person, except
+the iCloud sync, whose failure is reported like any other sync failure.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

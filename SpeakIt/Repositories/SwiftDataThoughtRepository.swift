@@ -648,7 +648,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // Taken *after* the download, for the same reason as the merge
             // below: a capture saved while the download was in flight must be
             // in the file this uploads.
-            let local = makeICloudSnapshot()
+            guard let local = readICloudSnapshot() else { return Self.unreadableLibrary }
             // `.missing` answers a local-filesystem question, not a cloud one:
             // it is `fileExists` on a container whose metadata sync is
             // asynchronous, so a library this device has simply not been told
@@ -689,7 +689,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // apply treated it as a row the cloud had removed. This runs on
             // every launch and every foreground, and speaking a thought while
             // it ran was enough to lose it.
-            let local = makeICloudSnapshot()
+            guard let local = readICloudSnapshot() else { return Self.unreadableLibrary }
             let wasUpToDate = local.hasSameContent(as: cloud)
             // Nothing below can change anything when the two sides already
             // match, and this runs on every launch and every foreground — so
@@ -1192,7 +1192,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             return .retracted
         }
 
-        let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+        // A failed fetch is not "nothing matches". Read as empty, it would
+        // reach `.notFound`, and the caller would file "cancel my dentist" as
+        // a new task while the dentist reminder stayed armed. Held for review
+        // instead, the way an operation that could not be applied is held.
+        let existing: [CapturedItem]
+        do {
+            existing = try modelContext.fetch(FetchDescriptor<CapturedItem>())
+        } catch {
+            Self.captureLog.fault("A spoken operation could not read the store; held for review")
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: request.operation, candidateIDs: [])
+        }
         let searchable = existing.filter { $0.captureSession?.id != session.id }
 
         // Broad destructive requests are never executed, at any confidence.
@@ -2291,13 +2302,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
-    private func makeICloudSnapshot() -> ICloudLibrarySnapshot {
+    private static let unreadableLibrary = ICloudSyncResult.failed(
+        "Speak It couldn’t read this iPhone’s library. Nothing was synced or changed."
+    )
+
+    /// The local snapshot, or nil, logged, when the store cannot be read. The
+    /// sync stops there rather than merging and applying from nothing.
+    private func readICloudSnapshot() -> ICloudLibrarySnapshot? {
+        do {
+            return try makeICloudSnapshot()
+        } catch {
+            Self.captureLog.fault("iCloud sync could not read the local library; nothing was merged")
+            return nil
+        }
+    }
+
+    /// Throws when the store cannot be read. An empty snapshot built from a
+    /// failed fetch would merge as "this iPhone has nothing", and
+    /// `applyICloudSnapshot` then deletes every local row the cloud copy does
+    /// not hold, which is everything captured since the last upload.
+    private func makeICloudSnapshot() throws -> ICloudLibrarySnapshot {
         // Practice is local, temporary UI state. Never upload it, even if the
         // user enables iCloud while the tutorial is still open.
-        let sessions = ((try? modelContext.fetch(FetchDescriptor<CaptureSession>())) ?? [])
+        let sessions = try modelContext.fetch(FetchDescriptor<CaptureSession>())
             .filter { $0.captureSource != .tutorial }
         let syncedSessionIDs = Set(sessions.map(\.id))
-        let items = ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
+        let items = try modelContext.fetch(FetchDescriptor<CapturedItem>())
             .filter { item in
                 guard let sessionID = item.captureSession?.id else { return false }
                 return syncedSessionIDs.contains(sessionID)
