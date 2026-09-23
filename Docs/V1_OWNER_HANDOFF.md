@@ -136,7 +136,7 @@ is to be picked blindly.
 - **#143 × #135:** rewrite `testALivePlaceWithNoTriggerKindIsStillPlanned`, whose precondition relied on DEL-20 (the reorganize taking the time away). Build it around a live place whose column reads `time`.
 - **#143 × #138:** resolved on #138 (`d615c84`, `b7a48db`). `mayArmPlace` reads only the location mark, and only the editor's `.update` sets it, so #143's kept time mark cannot arm a re-read place. Both graders say they compose in either order; land them together.
 - **#145 after #127.** #145 cancels a removed row's alarm synchronously and relies on #127's orphan sweep to heal a kill before that cancel. Both edit `DurabilityTests`' `RecordingDelivery`: keep #145's lock and #127's `scheduledAlarmIDs` hook.
-- **#144 × #139:** the no-audio branch of `endAttemptWithoutWords` should keep the typed words. After both merge the census pin must read 4207 (base `e18e148` at 4156, #139 +25, #144 +26, no shared literals), which `baseline_figures.py --write` should reproduce, not be typed in.
+- **#144 × #139:** the no-audio branch of `endAttemptWithoutWords` should keep the typed words. After both merge the census pin should read 4209 (base `e18e148` at 4156, #139 +25, #144 +28 at `b298587`, no shared literals as graded at `95a1f6f`), which `baseline_figures.py --write` should reproduce, not be typed in.
 - **Every PR** moves the census pin in `Tools/CorpusRunner/test_observation.py` and the figures in `Docs/LANGUAGE_BASELINE.md`. Recount after each merge (`python3 baseline_figures.py --write` in `Tools/CorpusRunner`), never pick a side.
 
 ## Physical iPhone
