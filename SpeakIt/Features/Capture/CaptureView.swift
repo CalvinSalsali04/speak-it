@@ -300,6 +300,34 @@ enum CaptureVoiceStatus: Equatable {
     }
 }
 
+/// The one place a save's in-flight flag comes down.
+///
+/// `CaptureView.save` raises `isSaving` synchronously, before it starts the
+/// Task, so a second tap in the same frame already finds the controls refused.
+/// It used to lower the flag by hand in two places, after the result and in the
+/// `catch`. Both were right, but nothing made them right: a third way out of
+/// that Task, such as an early `return` or a new `throw`, would have left the
+/// orb on "Saving" with every control disabled, and the delayed-save tests
+/// would have stayed green because they could not see `@State`.
+///
+/// The persistence call is the save's only suspension point, so lowering the
+/// flag when it returns is the same frame as lowering it after the synchronous
+/// bookkeeping that follows. That holds only while the bookkeeping stays
+/// synchronous, which the comment at the call site guards. The function has two
+/// exits, a return and a throw (a cancelled persistence arrives as a thrown
+/// `CancellationError`), and the `defer` lowers the flag on both. The tests run
+/// this function rather than a copy of it.
+enum CaptureSaveInFlight {
+    @MainActor
+    static func persisting<Value>(
+        lower: () -> Void,
+        _ persist: () async throws -> Value
+    ) async throws -> Value {
+        defer { lower() }
+        return try await persist()
+    }
+}
+
 struct CaptureView: View {
     /// Scroll anchor for the live transcript, so it keeps the newest words in
     /// view as they arrive.
@@ -1389,13 +1417,19 @@ struct CaptureView: View {
                 let persistenceSource: CaptureSource = tutorialMission == nil
                     ? source
                     : .tutorial
-                let result = try await repository.createCaptureResult(
-                    text: normalizedText,
-                    source: persistenceSource,
-                    createdAt: captureStartedAt ?? .now,
-                    schedulesReminders: tutorialMission == nil,
-                    performance: performance
-                )
+                let result = try await CaptureSaveInFlight.persisting(lower: { isSaving = false }) {
+                    try await repository.createCaptureResult(
+                        text: normalizedText,
+                        source: persistenceSource,
+                        createdAt: captureStartedAt ?? .now,
+                        schedulesReminders: tutorialMission == nil,
+                        performance: performance
+                    )
+                }
+                // `isSaving` is already down here. Nothing between this line
+                // and `savedResult = result` may suspend: an `await` added in
+                // this span would show the orb idle while the save is still
+                // finishing (see `CaptureSaveInFlight`).
                 let retrySource = retryingUnclearResult
                 let replacesRetrySource = retrySource.map {
                     result.createdNewCapture && $0.session.id != result.session.id
@@ -1432,7 +1466,6 @@ struct CaptureView: View {
                     }
                 }
                 retryingUnclearResult = nil
-                isSaving = false
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
@@ -1514,7 +1547,6 @@ struct CaptureView: View {
                     }
                 }
             } catch {
-                isSaving = false
                 closesAfterSave = false
                 SpeakItAnalytics.track(.captureFailed(
                     source: source == .inAppVoice ? .voice : .text,

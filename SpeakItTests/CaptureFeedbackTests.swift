@@ -445,6 +445,42 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertEqual(transcriber.transcript, spoken, "the failed save took the words with it")
     }
 
+    /// The lifecycle invariant itself, on the function `CaptureView.save`
+    /// lowers its flag through: up for as long as persistence runs, and down
+    /// exactly once however persistence ends. It has two exits, a return and a
+    /// throw; the third row is the throw a cancelled store call surfaces as,
+    /// not a cancelled Task.
+    ///
+    /// Falsifier: replace the `defer` with a `lower()` after the `await` and the
+    /// two throwing rows fail, which is the orb left on "Saving" with
+    /// every control refused.
+    func testTheSavingFlagComesDownOnEveryWayOutOfPersistence() async {
+        struct StoreRefused: Error {}
+        let endings: [(name: String, persist: () async throws -> Int)] = [
+            ("returned", { 1 }),
+            ("threw", { throw StoreRefused() }),
+            ("threw a cancellation", { throw CancellationError() })
+        ]
+
+        for ending in endings {
+            var isSaving = true
+            var lowered = 0
+            var raisedWhileRunning: Bool?
+
+            _ = try? await CaptureSaveInFlight.persisting(lower: {
+                isSaving = false
+                lowered += 1
+            }) {
+                raisedWhileRunning = isSaving
+                return try await ending.persist()
+            }
+
+            XCTAssertEqual(raisedWhileRunning, true, "persistence \(ending.name) with the flag already down")
+            XCTAssertFalse(isSaving, "persistence \(ending.name) and left the screen saying Saving")
+            XCTAssertEqual(lowered, 1, "persistence \(ending.name) and lowered the flag \(lowered) times")
+        }
+    }
+
     /// Recovery outranks a save while it runs, and the control stays refused
     /// for both — the screen never offers a new capture during either.
     func testEveryStateThatIsWorkingRefusesANewCapture() {
@@ -621,35 +657,43 @@ extension CaptureVoiceStatus {
 
 /// A save whose length this test decides.
 ///
-/// Only the flag is re-stated here: `isSaving` is `@State` inside
-/// `CaptureView`, so a unit test cannot read the real one. It is raised before
-/// the save's one `await` and lowered on both the success and the failure
-/// path, which is what `CaptureView.save` does. Everything the assertions read
-/// through it is production code.
+/// `isSaving` is `@State` inside `CaptureView`, so a unit test cannot read the
+/// real one. What this double does NOT restate is the lowering: its held-open
+/// save runs through `CaptureSaveInFlight.persisting`, the function
+/// `CaptureView.save` wraps its one `await` in, so the flag comes down here by
+/// the shipping code's `defer` and by nothing else. Only the raise is
+/// restated, because `CaptureView` does it synchronously before the Task.
 @MainActor
 private final class SaveHeldOpenByTheTest {
+    private struct SaveFailed: Error {}
+
     private(set) var isSaving = false
-    private var released = false
-    private var resume: CheckedContinuation<Void, Never>?
+    private var outcome: Result<Void, Error>?
+    private var resume: CheckedContinuation<Void, Error>?
 
     func begin() { isSaving = true }
 
     func holdUntilReleased() async {
-        guard !released else { return }
-        await withCheckedContinuation { resume = $0 }
+        _ = try? await CaptureSaveInFlight.persisting(lower: { isSaving = false }) {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if let outcome {
+                    continuation.resume(with: outcome)
+                } else {
+                    resume = continuation
+                }
+            }
+        }
     }
 
-    /// Both do the same thing, and that is the statement: `CaptureView.save`
-    /// lowers the flag on its success path and again in its `catch`, and the
-    /// screen reads the same either way.
-    func succeed() { release() }
+    /// Nothing here lowers the flag. If the two paths read the same afterwards,
+    /// that is because the shipping function lowers it on both.
+    func succeed() { release(.success(())) }
 
-    func fail() { release() }
+    func fail() { release(.failure(SaveFailed())) }
 
-    private func release() {
-        released = true
-        isSaving = false
-        resume?.resume()
+    private func release(_ result: Result<Void, Error>) {
+        outcome = result
+        resume?.resume(with: result)
         resume = nil
     }
 }
