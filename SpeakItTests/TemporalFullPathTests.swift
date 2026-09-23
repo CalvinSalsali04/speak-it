@@ -713,8 +713,14 @@ final class TemporalFullPathTests: XCTestCase {
     /// and the rule did not. The premise is checked in the machine's zone
     /// with the scheduler's own match. It cannot hold for a run inside the
     /// five minutes before a Friday at five, or up to an hour more when the
-    /// machine's clocks change that week. Such a run is skipped with that
-    /// reason rather than asserted.
+    /// machine's clocks change that week. Nor can it hold on a machine whose
+    /// zone puts Toronto's Friday 17:00 on another local weekday (about
+    /// UTC+3 and east, UTC+2 in winter). `repeatingComponents` takes the
+    /// hour and minute in the machine's calendar but the weekday from the
+    /// rule, so there production's exact one-shot fallback applies, and the
+    /// test skips on every run. Each of these runs is skipped with its reason
+    /// rather than asserted. `assertSeriesComponents` runs first, so the
+    /// components themselves are still checked on every machine.
     ///
     /// Falsifier: drop the `scheduledDelivery != .none` guard from
     /// `ReminderScheduleRequest.init?(item:)` and a weekly request is pending
@@ -756,11 +762,12 @@ final class TemporalFullPathTests: XCTestCase {
             ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fire),
             "precondition: unheld, this is a native weekly trigger"
         )
+        assertSeriesComponents(weekly, describe: fire, weekday: 6)
         let firstMatch = UNCalendarNotificationTrigger(dateMatching: weekly, repeats: true)
             .nextTriggerDate()
         try XCTSkipUnless(
             firstMatch.map { abs($0.timeIntervalSince(fire)) < 60 } == true,
-            "a run just before a Friday alert, or across a clock change: the weekly match's next fire is not the fixture's Friday"
+            "the weekly match's next fire is not the fixture's Friday: a run just before a Friday alert, a clock change that week, or this machine's zone puts the Friday alert on another local weekday, so production's one-shot fallback applies"
         )
         XCTAssertNil(ReminderScheduleRequest(item: item))
         XCTAssertEqual(

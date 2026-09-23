@@ -2047,7 +2047,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         message (`precondition: the series first alerts on that week's
         Friday`, `a run just before a Friday alert, or across a clock
         change: the weekly match's next fire is not the fixture's
-        Friday`). None out: 4889 + 2 - 0 = 4891.
+        Friday`). None out: 4889 + 2 - 0 = 4891. 4891 -> 4891 the same
+        day, the follow-up to that fix (grade N-2): the skip message also
+        names the zone case. One out (`a run just before a Friday alert,
+        or across a clock change: the weekly match's next fire is not the
+        fixture's Friday`), one in (`the weekly match's next fire is not
+        the fixture's Friday: a run just before a Friday alert, a clock
+        change that week, or this machine's zone puts the Friday alert on
+        another local weekday, so production's one-shot fallback
+        applies`): 4891 + 1 - 1 = 4891.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2766,6 +2774,139 @@ class AVoiceOverGatedBranchSendsNoAnalytics(unittest.TestCase):
             encoding="utf-8")
         self.assertIn("enum SpeakItAnalytics {", service)
         self.assertIn("static func track(_ event: SpeakItAnalyticsEvent)", service)
+
+
+class AnIntentThatWillNotDecodeIsNeverWrittenOverWithNil(unittest.TestCase):
+    """The temporal intent's setter writes `nil` over whatever bytes the row
+    holds. It also clears the kind they denormalize and drops a time trigger.
+    Two passes carried a `nil` that meant "nothing readable to carry", not
+    "the person cleared the time": the roll-forward of an overdue series and
+    `applyICloudSnapshot`. Each relaunch or round trip erased bytes the launch
+    backfill deliberately keeps (Docs/DECISIONS.md, 2026-09-23, "Carrying an
+    intent forward never erases bytes it could not read").
+    `CapturedItem.carryTemporalIntent(_:)` is the fix.
+
+    `testCarryingNothingKeepsIntentBytesThatWillNotDecode` drives that
+    method, but no Swift test sees whether the call sites use it: revert the
+    restore to `item.temporalIntent = ...` and the Swift suite stays green.
+    This class reads the call sites. Every direct `temporalIntent =` write in
+    app source is listed below with the reason it cannot carry a `nil` from
+    an unreadable blob. A new write fails until it is listed with a reason,
+    or goes through `carryTemporalIntent`. Listed by the statement's text,
+    not by line number, so the list does not rot as the files move.
+    """
+
+    ROOT = pathlib.Path(__file__).resolve().parents[2]
+    SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
+    REPOSITORY = pathlib.Path("SpeakIt") / "Repositories" / "SwiftDataThoughtRepository.swift"
+    #: A write to `temporalIntent` itself: not `temporalIntentData`, not a
+    #: comparison, not a write through the optional (`temporalIntent?.x =`,
+    #: which does nothing on a row whose intent will not decode).
+    WRITE = re.compile(r"(?<![\w])temporalIntent\s*=(?!=)")
+    #: (file, statement as written, reason). Each must be found exactly once.
+    ALLOWED = (
+        ("SpeakIt/Models/CapturedItem.swift",
+         "self.temporalIntent = temporalIntent",
+         "the initializer: a new row has no bytes to lose"),
+        ("SpeakIt/Models/CapturedItem.swift",
+         "temporalIntent = intent",
+         "inside carryTemporalIntent, after its guard"),
+        ("SpeakIt/Repositories/ThoughtOrganizer.swift",
+         "self.temporalIntent = temporalIntent",
+         "OrganizedThought's initializer: a struct, not a row"),
+        (str(REPOSITORY),
+         "item.temporalIntent = TemporalIntent.userEdited(",
+         "the editor's save: non-optional, and an editor clear really is a clear"),
+        (str(REPOSITORY),
+         "item.temporalIntent = keepsHandSetTime ? item.temporalIntent : organization.temporalIntent",
+         "apply: the organizer's reading is non-optional, and the kept arm needs "
+         "isUserEdited, which an unreadable row cannot have. On an unreadable row "
+         "it replaces the bytes with the re-read, which is what Organize again is for"),
+        (str(REPOSITORY),
+         "item.temporalIntent = temporalIntent",
+         "the legacy snapshot branch, bound by `if let`: never nil"),
+    )
+    #: The two passes that carry an intent forward, and what they must call.
+    CARRIES = (
+        ("private func advanceOverdueRecurrences(", "item.carryTemporalIntent(carried)"),
+        ("private func applyICloudSnapshot(", "item.carryTemporalIntent(semantics.temporalIntent)"),
+    )
+
+    @staticmethod
+    def code(line):
+        """The line without a trailing `//` comment; a comment names, it does
+        not write."""
+        return line.split("//", 1)[0]
+
+    def writes(self, text):
+        """(line number, statement) for every direct write in `text`. A
+        declaration (`let temporalIntent = ...`, `if let temporalIntent =
+        ...`) binds a name and is not a write."""
+        found = []
+        for number, line in enumerate(text.splitlines(), start=1):
+            code = self.code(line)
+            for match in self.WRITE.finditer(code):
+                if re.search(r"\b(?:let|var)\s+$", code[:match.start()]):
+                    continue
+                found.append((number, code.strip()))
+        return found
+
+    def all_writes(self):
+        found = []
+        for top in self.SOURCES:
+            for swift in sorted((self.ROOT / top).rglob("*.swift")):
+                text = swift.read_text(encoding="utf-8", errors="replace")
+                found += [(str(swift.relative_to(self.ROOT)), n, statement)
+                          for n, statement in self.writes(text)]
+        return found
+
+    def test_every_direct_write_is_listed_with_its_reason(self):
+        found = self.all_writes()
+        listed = {(path, statement) for path, statement, _ in self.ALLOWED}
+        unlisted = [(path, n, statement) for path, n, statement in found
+                    if (path, statement) not in listed]
+        self.assertEqual(
+            unlisted, [],
+            f"unlisted temporalIntent writes: {unlisted}. A pass that carries "
+            "an intent forward uses carryTemporalIntent; any other write is "
+            "listed in ALLOWED with the reason it cannot carry a nil from an "
+            "unreadable blob.")
+        for path, statement, reason in self.ALLOWED:
+            count = sum(1 for p, _, s in found if (p, s) == (path, statement))
+            self.assertEqual(
+                count, 1,
+                f"expected `{statement}` once in {path} ({reason}), found {count}")
+
+    def test_the_passes_that_carry_an_intent_go_through_the_guard(self):
+        lines = (self.ROOT / self.REPOSITORY).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+        for declaration, call in self.CARRIES:
+            starts = [i for i, line in enumerate(lines) if declaration in self.code(line)]
+            self.assertEqual(len(starts), 1, f"expected one `{declaration}`")
+            first = starts[0]
+            last = next(i for i in range(first + 1, len(lines))
+                        if lines[i].startswith("    }"))
+            body = [self.code(line) for line in lines[first:last]]
+            self.assertEqual(
+                sum(call in line for line in body), 1,
+                f"`{declaration}` must carry its intent with `{call}`")
+
+    def test_the_scan_tells_a_write_from_everything_else(self):
+        """Falsifier for the scan itself."""
+        self.assertEqual(self.writes(
+            "item.temporalIntent = carried\n"
+            "temporalIntent = intent\n"
+            "item.temporalIntent=x\n"
+            "item.temporalIntentData = data\n"
+            "if item.temporalIntent == nil {}\n"
+            "item.temporalIntent?.snoozedFromReminderDate = nil\n"
+            "if let temporalIntent = value.temporalIntent {}\n"
+            "let temporalIntent = x\n"
+            "// item.temporalIntent = carried\n"
+            "x.carryTemporalIntent(carried) // not temporalIntent = here\n"),
+            [(1, "item.temporalIntent = carried"),
+             (2, "temporalIntent = intent"),
+             (3, "item.temporalIntent=x")])
 
 
 if __name__ == "__main__":

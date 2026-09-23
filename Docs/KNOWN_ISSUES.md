@@ -124,6 +124,23 @@ things follow from that rule and neither is resolved:
   a capture with no words is not in the data and cannot be. That question
   belongs to device QA and the owner handoff.
 
+## Timing data this build cannot read stays on the device that wrote it
+
+A row's temporal intent is stored as encoded bytes. A build that cannot
+decode them keeps them rather than erasing them. The launch check, the
+roll-forward of an overdue series, and a restore of that same row all
+leave them alone (Docs/DECISIONS.md, 2026-09-23). Three limits remain:
+
+- **They never reach another device.** `makeICloudSnapshot` exports the
+  decoded intent, which is nothing for such a row. A restore onto a device
+  that never had the row creates it with no bytes, and the launch check
+  rebuilds an intent from the row's dates.
+- **They are not advanced.** When the series moves on, its dates move and
+  the bytes still describe the occurrence that has passed. The series is
+  driven by its stored rule, so it keeps going.
+- **Organize again replaces them.** A re-read writes the organizer's reading
+  over them, as it would over any reading the person did not set by hand.
+
 ## A held row arms nothing, and four edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or

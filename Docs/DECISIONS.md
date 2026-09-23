@@ -19,8 +19,17 @@ notification permission it skips.
 The rule stays. The fixture now captures on the Monday of the week whose
 Friday at five is the next one at least five minutes away, inside the
 Toronto pin. It then checks the premise in the machine's zone with the
-scheduler's own match. The run is skipped only in the minutes before a
-Friday alert, or the hour a clock change adds that week. The test still
+scheduler's own match. The run is skipped in three cases, each named in the
+skip message:
+- in the minutes before a Friday alert;
+- in the hour a clock change adds that week;
+- on every run, on a machine whose zone puts Toronto's Friday 17:00 on
+  another local weekday (about UTC+3 and east, UTC+2 in winter).
+
+The third happens because `repeatingComponents` takes the hour and minute
+from the machine's calendar but the weekday from the rule, so there
+production's exact one-shot fallback applies. `assertSeriesComponents`
+checks the components before the skip, on every machine. The test still
 asserts a repeating trigger. That is what it means ("a native repeating
 trigger"), and asserting the one-shot instead would pin the far-out case,
 which is not what the test is about.
@@ -106,7 +115,41 @@ passes that carry an intent forward, the roll-forward and the restore. A
 `nil` never goes through the setter onto bytes that will not decode. Every
 other value, including `nil` on a row with no bytes, is written as before.
 The roll-forward still moves the row's dates. It cannot move a day it cannot
-read, so the bytes stay as they were.
+read, so the bytes stay as they were, and that means unadvanced. They
+describe the occurrence that has passed, while the dates point at the next
+one. A build that can read them later sees a stale day. The rule that drives
+the series lives in `RecurrenceStore`, not in the intent, so the series
+still advances.
+
+What the fix does not cover, and what it changes:
+
+- **Organize again still replaces the bytes, deliberately.** On an
+  unreadable row, `apply` always takes the organizer arm. The kept arm needs
+  `isUserEdited`, which an intent that will not decode cannot have. So
+  Organize again replaces the bytes with the organizer's reading, possibly
+  `.none`. That is an explicit re-read doing its job, not the nil-erasure
+  this fix closes.
+- **The damage is bounded to round trips, not removed.**
+  `makeICloudSnapshot` exports the decoded intent, which is `nil` for such a
+  row, so the bytes never leave the device. The guard protects a row that is
+  still here when its own snapshot comes home. A restore onto a device
+  without the row creates it with no bytes, and the launch backfill then
+  reconstructs an intent from the row's fields. Whether to ship bytes this
+  build cannot read between devices is a design choice this entry leaves
+  open. See KNOWN_ISSUES.
+- **The fix is not behaviour-neutral.** Before it, the first relaunch after
+  such a row's occurrence fired also cleared `temporalKindRawValue` and
+  `reminderTriggerKindRawValue`, so the row stopped being a time trigger. The
+  row now keeps its kind and its time trigger and goes on being scheduled as
+  it was.
+- **The call sites are guarded by source, not by a Swift test.**
+  `AnIntentThatWillNotDecodeIsNeverWrittenOverWithNil` in
+  `Tools/CorpusRunner/test_observation.py` fails in two cases. The first is
+  when either pass stops calling `carryTemporalIntent`. The second is when a
+  direct `temporalIntent =` write appears that is not listed with its reason.
+  Reverting the roll-forward to `item.temporalIntent = carried` fails two of
+  its tests, and so does reverting the restore. Before the guard, both
+  reverts left the Swift suite green.
 
 - Hypothesis: the relaunch erased the bytes in the roll-forward's setter call.
   #129's test then passes as written. Its other three failing lines (the
