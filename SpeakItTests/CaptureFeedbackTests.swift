@@ -1320,6 +1320,26 @@ final class VoiceOverAnnouncementTests: XCTestCase {
         XCTAssertTrue(microphoneOpened)
     }
 
+    /// Speak It posts an attributed string, and VoiceOver's finish report may
+    /// carry either form. This cannot show which one the real VoiceOver sends
+    /// (a device check); it shows that either one releases the wait.
+    ///
+    /// Falsifier: read the report only as a `String`, and the attributed form
+    /// matches nothing, so every wait runs its whole allowance.
+    func testAFinishReportIsReadInEitherFormItMayArriveIn() {
+        XCTAssertEqual(VoiceOverAnnouncer.spokenText(fromFinishReport: NSAttributedString(string: "Listening")), "Listening")
+        XCTAssertEqual(VoiceOverAnnouncer.spokenText(fromFinishReport: "Listening"), "Listening")
+        XCTAssertNil(VoiceOverAnnouncer.spokenText(fromFinishReport: nil))
+        XCTAssertNil(VoiceOverAnnouncer.spokenText(fromFinishReport: 7))
+
+        let announcer = makeAnnouncer()
+        announcer.announce("Listening")
+        announcer.announcementDidFinish(
+            VoiceOverAnnouncer.spokenText(fromFinishReport: NSAttributedString(string: "Listening"))
+        )
+        XCTAssertEqual(announcer.unfinished, [], "a report in the attributed form did not match what was posted")
+    }
+
     // MARK: - No cost without VoiceOver, and no permanent hold with it
 
     /// Falsifier: drop `!voiceOverRunning ||` from `mayOpenMicrophone`, and a

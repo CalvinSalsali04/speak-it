@@ -272,7 +272,9 @@ final class VoiceOverAnnouncer {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let spoken = notification.userInfo?[UIAccessibility.announcementStringValueUserInfoKey] as? String
+            let spoken = VoiceOverAnnouncer.spokenText(
+                fromFinishReport: notification.userInfo?[UIAccessibility.announcementStringValueUserInfoKey]
+            )
             Task { @MainActor [weak self] in
                 self?.announcementDidFinish(spoken)
             }
@@ -365,6 +367,24 @@ final class VoiceOverAnnouncer {
             return
         }
         openMicrophones -= 1
+    }
+
+    /// The text a finish report names, in either form it may arrive in.
+    ///
+    /// Speak It posts an `NSAttributedString`, so that it can queue, and which
+    /// form VoiceOver hands back under `announcementStringValueUserInfoKey` is
+    /// a device check, not a known. Read only as a `String`, an attributed
+    /// report would match nothing and every wait would run its whole
+    /// allowance, silently. Anything that is neither form is no report.
+    nonisolated static func spokenText(fromFinishReport value: Any?) -> String? {
+        switch value {
+        case let text as String:
+            return text
+        case let attributed as NSAttributedString:
+            return attributed.string
+        default:
+            return nil
+        }
     }
 
     /// VoiceOver finished speaking `spoken`, or was interrupted.

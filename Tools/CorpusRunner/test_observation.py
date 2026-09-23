@@ -981,6 +981,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         method and two literals, enumerated, both assertion messages:
         `"a released transcriber kept the microphone claimed"` and `"the
         transcriber outlived its last reference, so this proves nothing"`.
+        4178 -> 4179 on 2026-09-23, when a VoiceOver finish report came to be
+        read as either a string or an attributed string: one test method
+        and one literal, an assertion message, `"a report in the attributed
+        form did not match what was posted"`. Its fixture, `"Listening"`, is
+        one word and adds nothing.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -995,7 +1000,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4178)
+        self.assertEqual(len(space), 4179)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
