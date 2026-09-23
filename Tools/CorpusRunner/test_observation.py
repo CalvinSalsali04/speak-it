@@ -997,10 +997,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         to no recovery pass"`, `"The launch must release a kept draft whose
         words reached a committed session"`, `"The text pass never replayed
         the kept draft"` and `"Today's save and the launch fallback stored
-        the kept words twice"`. Three are fixtures: `"about the invoice"`,
-        the spoken words, and the two readings VoiceOver is given for the
-        voice screen, `"Typed: Call Dana"` and `"Typed: Call Dana. about the
-        invoice"`. The sixteenth is the doc-comment hazard again: a
+        the kept words twice"`. Three are fixtures. One is the spoken
+        words, `"about the invoice"`; the other two are the readings
+        VoiceOver is given for the voice screen, `"Typed: Call Dana"` and
+        `"Typed: Call Dana. about the invoice"`. The sixteenth is the doc-comment hazard again: a
         falsifier quotes the words that used to come back, `"Call Dana about
         the invoice"`. `"buy milk"`, `"and eggs"`, `"and bread"` and
         `"Typed:"` are under the floor, and the button titles the doc

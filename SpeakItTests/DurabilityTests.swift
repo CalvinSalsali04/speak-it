@@ -1270,11 +1270,11 @@ final class DurabilityTests: XCTestCase {
     /// capture and the text pass is the only one that can save them.
     ///
     /// This is why the text pass tells a live recording from a draft it may
-    /// replay by the audio on disk and not by `recoveryAudioFilename`. Every
-    /// in-app voice draft and every Shortcut draft carries that name from
-    /// `begin`, so excluding on it leaves a draft like this one to neither
-    /// pass, kept by the launch prune because it has words, and shown
-    /// nowhere.
+    /// replay by the audio on disk and not by `recoveryAudioFilename`. A draft
+    /// from every source but typing carries that name, from `begin` or from
+    /// the switch to speaking, so excluding on it leaves a draft like this
+    /// one to neither pass, kept by the launch prune because it has words,
+    /// and shown nowhere.
     ///
     /// Falsifier: add `$0.recoveryAudioFilename == nil` to `recoverable()`
     /// and no session is saved, the draft is still there after the relaunch,

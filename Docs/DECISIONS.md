@@ -248,14 +248,16 @@ Also rejected, after review: telling the launch text pass to leave alone any
 draft that *intends* a recording (`recoveryAudioFilename != nil`), rather than
 one whose recording is already on disk (`hasRecoveryAudio`, more than 512
 bytes). The aim was a wider margin against the text pass claiming a live
-recording's typed words. But every in-app voice draft and every Shortcut
-draft carries a file name from `begin`, so a draft killed before its first
-audio buffer, or one whose recording never reached disk, would be left to
-neither pass: kept by the launch prune because it has words, and saved by
-nothing. Typed words ahead of a recording that never started are the whole
-capture in that case. `testTypedWordsSurviveAKillBeforeTheRecordingHasAudio`
-names the rejected line as its falsifier, and the margin that remains is in
-Known Issues, "The launch passes rely on ordering".
+recording's typed words. But a draft from every source but typing carries a
+file name, from `begin` or from the switch to speaking
+(`recordsProtectedAudio(for:)` is `source != .inAppText`), so a draft
+killed before its first audio buffer, or one whose recording never reached
+disk, would be left to neither pass: kept by the launch prune because it has
+words, and saved by nothing. Typed words ahead of a recording that never
+started are the whole capture in that case.
+`testTypedWordsSurviveAKillBeforeTheRecordingHasAudio` names the rejected
+line as its falsifier, and the margin that remains is in Known Issues, "The
+launch passes rely on ordering".
 
 Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
 take a call; expect "Recovering your words…", not the typing fallback. Then a
