@@ -1877,11 +1877,21 @@ struct CaptureHistoryView: View {
         Task { @MainActor in
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Handed off before the commit, like a live save, so a kill
+                // inside this save is not replayed at the next launch.
+                let sessionID = UUID()
+                CaptureDraftStore.recordHandoff(
+                    id: draft.id,
+                    transcript: recoveredText,
+                    sessionID: sessionID
+                )
                 _ = try await repository.createCaptureResult(
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
-                    schedulesReminders: true
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 recoveringDraftID = nil
@@ -1933,12 +1943,23 @@ struct CaptureHistoryView: View {
         }
 
         do {
-            _ = try await repository.createCaptureResult(
-                text: typed,
-                source: .inAppText,
-                createdAt: draft.startedAt,
-                schedulesReminders: true
-            )
+            // Handed off like the recovery above. Here a replay would almost
+            // never be caught by dedupe: the person is typing because the
+            // recording's words came out wrong, so re-transcribing it at the
+            // next launch gives different words from these.
+            _ = try await CaptureDraftStore.handOff(
+                draftID: draft.id,
+                transcript: typed
+            ) { sessionID in
+                try await repository.createCaptureResult(
+                    text: typed,
+                    source: .inAppText,
+                    createdAt: draft.startedAt,
+                    schedulesReminders: true,
+                    performance: nil,
+                    sessionID: sessionID
+                )
+            }
             CaptureDraftStore.deleteRecording(id: draft.id)
             typingSelection = nil
             reloadDrafts()

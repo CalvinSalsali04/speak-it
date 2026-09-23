@@ -883,6 +883,128 @@ session. The race itself still needs a device to confirm: the
 capture-lifecycle audit's proposed row N-6, not yet in
 `Docs/CAPTURE_STRESS_TEST_PLAN.md`.
 
+## 2026-09-23 — A draft records which session its words were handed to
+
+Relaunch recovery replayed drafts whose words had already been committed. A
+save commits the raw words as a pending `CaptureSession` before extraction
+(and, on an Apple Intelligence device, the 2 s refinement), and clears the
+draft only when the whole save returns. A kill inside that window, which
+locking the phone mid-save makes likely, left both the session and the draft,
+and the next launch saved the words twice. For a practice capture it always
+did: the draft is `.inAppText` or `.inAppVoice`, the session is `.tutorial`,
+and dedupe is scoped by source, so the tutorial sentence came back as a real
+capture with a real reminder that tutorial cleanup does not remove. For a
+voice capture it did whenever re-transcribing the recording at launch gave
+different words from the live transcript, which also defeats dedupe.
+(Audit `v1/audits/capture-lifecycle.md`, D3.)
+
+The fix records the handoff instead of inferring it.
+
+- **The session is named before it exists.** `CaptureView.save` makes the
+  session's UUID, writes it onto the draft together with the words it is
+  saving (`CaptureDraftStore.recordHandoff`, one write), and only then calls
+  `createCaptureResult(…, sessionID:)`, which commits the session under that
+  ID. The other saves of a draft's words do the same; the list is below.
+- **Only a save that holds the slot hands off.** This stacks on the save
+  slot from "A save belongs to the capture screen that started it" below.
+  `CaptureView.save` records the handoff after `beginSave()` succeeds; a save
+  refused because another is running only checkpoints its words with
+  `update`. Recording first would let the refused save overwrite the running
+  save's ID with one that never commits, and a kill after the running save
+  committed would replay its words into a second session.
+- **A relaunch trusts the store, not the mark.**
+  `releaseHandedOffCaptureDrafts` runs before the audio pass and at the top
+  of the text pass, and clears a draft only when a session with its recorded
+  ID is in the store. That session is finished by
+  `recoverUnorganizedCaptures`. A kill before the commit leaves an ID the
+  store does not hold, and the draft is replayed exactly as before, recording
+  included. Either side of the handoff is recoverable, and the uncertain
+  direction always keeps the words: a duplicate can be deleted, a lost
+  thought cannot.
+- **A handoff covers only its own words.** Checkpointing different words
+  onto the draft clears the ID, so a committed session never vouches for
+  words it does not hold. That holds for every writer of a draft's words:
+  `update`, and `leaveRecoveredWordsForToday`, which late audio recovery
+  uses and which does not go through `update`.
+- **No schema change.** The ID lives on the draft, which is JSON in
+  `UserDefaults`, as an optional field; drafts written by earlier builds have
+  no such key and decode as not handed off. `CaptureSession.id` was already
+  settable. Because it is unique, and SwiftData turns a second insert with a
+  unique value into an update, the session-ID save returns an existing
+  session with that ID unchanged rather than overwrite its original words.
+
+Which saves carry a handoff, as of this entry. Every path that commits a
+capture's words is listed, so an absence here is a checked absence:
+
+- **Hand off before committing:**
+  - `CaptureView.save`, for in-app voice and text, a clarification retry,
+    Save & Close, and every hardware trigger: Back Tap and the Action Button
+    run `BeginListeningIntent`, which opens this screen. That includes the
+    first-run readiness test, which RootView routes here with a practice
+    mission, so its draft is in-app and its session `.tutorial`;
+  - the launch audio pass, `RootView.recoverInterruptedAudioDrafts`;
+  - Today's audio recovery, `CaptureHistoryView.recover`;
+  - Today's typed recovery, `CaptureHistoryView.saveTypedRecovery`. Dedupe
+    would almost never catch this one, because the person is typing words the
+    recording did not give;
+  - `ExternalCaptureWriter.save(…, handingOff:)`, for its one caller with a
+    draft, `BackgroundCaptureCoordinator`. That coordinator is inside
+    `#if false` and does not ship. It is handed off anyway, because its
+    practice capture commits `.tutorial` from a `.shortcut` draft, which
+    dedupe can never match, so reviving it without the handoff would bring
+    the duplicate back.
+
+  The last two go through `CaptureDraftStore.handOff`, which writes the
+  three steps once. The first three write them inline, because their commit
+  is wrapped in work that helper cannot express.
+- **Carry the equivalent:** the share-extension inbox (`RootView`'s import).
+  It has no draft, but each payload has a UUID minted once by the extension,
+  which also names its inbox file. The import commits under that UUID, so a
+  kill between the commit and `SharedCaptureInbox.remove` gets the same
+  session back unchanged at the next import, uncharged, and the file is
+  removed. Dedupe mostly caught this already, because a replayed payload
+  carries its own `createdAt`, text and source; the ID makes it exact.
+- **No handoff, and none needed:**
+  - `SaveThoughtIntent.perform`, the intent run with a `thought` parameter
+    from Shortcuts or Siri. It goes through the same writer with no draft, so
+    there is nothing to replay;
+  - the shopping list's `addShoppingItems` and the Debug sample loaders. They
+    have no draft either.
+- **No handoff, and a small gap left open:** the text pass itself,
+  `recoverInterruptedCaptureDraft`. It commits a draft and clears it in
+  synchronous main-actor code, so no suspension falls between the two. A kill
+  there needs the process to die inside that span. If it does:
+  - the ordinary replay carries the same words, source and `createdAt`, and
+    dedupe catches it;
+  - the quarantine path (`createPendingCapture` after too many attempts)
+    skips dedupe, so it would quarantine the words a second time, in Needs
+    review.
+- **A second small gap, a voice draft edited during its own save:** editing or
+  clearing the text field while a draft with a recording is saving withdraws
+  the handoff (the edited words were never committed), but the recording
+  stays. A kill after the commit and before the draft is cleared leaves the
+  audio pass to re-transcribe spoken words that were already saved, so the
+  capture appears twice. Keeping the handoff instead would release the draft
+  and lose the typed edit, which is stored nowhere else. The draft's text and
+  its recording need separate provenance, and `handedOffSessionID` can vouch
+  for only one; with an edit and a kill both inside one sub-second save, and
+  a visible duplicate rather than a lost thought as the result, no field was
+  spent on it.
+
+Rejected: matching a session by `createdAt == draft.startedAt`, the audit's
+smallest fix. It infers what can be recorded, and it is only as good as the
+promise that nothing else writes that pairing. Also rejected: a new
+`RecoveryStatus.persisting`. It says a save started, not that it committed,
+so it could not tell the two kill points apart.
+
+Not changed here: a draft is still created as `.inAppText`/`.inAppVoice`
+during practice, so a practice save killed *before* its commit is still
+replayed as a real capture. The words exist nowhere else in that case, so
+keeping them is the durability rule working; whether practice words should
+be replayed at all is a separate decision. The relaunch-after-lock timing
+that feeds this (no background-task assertion during a save, audit S4) needs
+a device.
+
 ## 2026-09-23 — A save belongs to the capture screen that started it
 
 A save's Task outlives its screen, and it used to publish into whatever was on

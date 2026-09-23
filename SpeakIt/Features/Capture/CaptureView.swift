@@ -1673,10 +1673,18 @@ struct CaptureView: View {
 
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
-        if let activeDraftID {
-            CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+        guard let thisSave = presentation.beginSave() else {
+            // Refused because another save of this screen is running. Only
+            // checkpoint the words: a handoff here would overwrite the running
+            // save's with a session that is never committed, and a kill after
+            // that save commits would replay its words into a second session.
+            // Different words withdraw the running handoff (see `update`), so
+            // a kill replays them, which keeps the thought.
+            if let activeDraftID {
+                CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
+            }
+            return
         }
-        guard let thisSave = presentation.beginSave() else { return }
         // Held here rather than read back from `@State` after the `await`: the
         // screen may be gone by then, and a torn-down view's `@State` is not a
         // reliable thing to read. The retry source matters most of the three:
@@ -1685,6 +1693,21 @@ struct CaptureView: View {
         let owner = presentation
         let savingDraftID = activeDraftID
         let savingRetrySource = retryingUnclearResult
+        // Name the session before it exists and write that name onto the draft
+        // first. A kill after the commit then leaves a draft a relaunch can
+        // recognise as already saved, instead of replaying it into a second
+        // session; a kill before the commit leaves a name the store does not
+        // hold, and the draft is replayed exactly as before. This sits after
+        // `beginSave()` on purpose: the single save slot is what stops a second
+        // `save` overwriting this handoff with a session that never commits.
+        let sessionID = UUID()
+        if let savingDraftID {
+            CaptureDraftStore.recordHandoff(
+                id: savingDraftID,
+                transcript: normalizedText,
+                sessionID: sessionID
+            )
+        }
         isSaving = true
         Task { @MainActor in
             do {
@@ -1700,7 +1723,8 @@ struct CaptureView: View {
                         source: persistenceSource,
                         createdAt: captureStartedAt ?? .now,
                         schedulesReminders: tutorialMission == nil,
-                        performance: performance
+                        performance: performance,
+                        sessionID: sessionID
                     )
                 }
                 // `isSaving` is already down here, and this save's slot is
