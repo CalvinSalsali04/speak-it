@@ -910,9 +910,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `TemporalFullPathTests` methods and fifteen literals, all assertion
         messages, enumerated rather than assumed. Their two captures, `"Set
         an alarm every day at 6:30 AM"` and `"Alarm at 7 every weekday"`,
-        were already in this directory and add nothing. A first count was
-        4094, the extra being `"Every weekday"` quoted in a doc comment;
-        that comment uses backticks now.
+        were already in this directory and add nothing. The sixteenth,
+        making 4094, is `"Every weekday"` quoted in a doc comment. It was
+        briefly rewritten into backticks to leave 4093 and then put back,
+        for the reason the 4068 entry gives: the count is a tripwire, not a
+        target.
         What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -926,7 +928,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4093)
+        self.assertEqual(len(space), 4094)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

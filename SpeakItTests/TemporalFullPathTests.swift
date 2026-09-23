@@ -1379,7 +1379,7 @@ final class TemporalFullPathTests: XCTestCase {
     }
 
     /// The exception belongs only to the row that still owns its series.
-    /// `Every weekday` is a series AlarmKit repeats but one notification
+    /// "Every weekday" is a series AlarmKit repeats but one notification
     /// trigger cannot, so the foreground pass continues it on a successor row,
     /// which arms the next occurrence under its own alarm ID. The row it came
     /// from is then spent.
