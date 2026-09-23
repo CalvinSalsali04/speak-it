@@ -874,7 +874,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4070 on 2026-09-23, from a
+        named-weekday series returning to its stated clock after a
+        spring-forward: one assertion message (`"2:30 does not exist that
+        night"`) and one quotation in the new test's doc comment (`"every
+        Sunday at 2:30 AM"`), which counts like a fixture, the hazard
+        above again. Nothing was removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -904,7 +909,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         none of the forty-eight is verbatim a devset row; checked by
         regenerating `LANGUAGE_BASELINE.md`, not assumed. Predicting the
         count from the nine test methods would have missed the six
-        comment fragments entirely.
+        comment fragments entirely. 4116 -> 4118 on 2026-09-23, merging
+        #137 into the V1 candidate: measured from the merged tree, not
+        taken from either side (4116 on the candidate, 4070 on #137,
+        4068 at their merge base; #137 adds 2 and removes 0, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -914,7 +923,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4116)
+        self.assertEqual(len(space), 4118)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
