@@ -11,9 +11,21 @@ notification the person was told did not exist. `ItemPresentation.scheduledDeliv
 is now the only answer: `.none` without a `reminderDate`, otherwise `.alarm`
 when the wording asked for one and `.notification` for everything else. The
 row, the capture receipt and the scheduler all read it, and what gets
-scheduled is unchanged. A past `reminderDate` still reads as armed on the row
-though no request is made for it, and delivery still depends on a
-time-zone-sensitive re-parse; both are left as they were.
+scheduled is unchanged. Two receipt changes follow from that. A row with a
+`reminderDate` and no alert word is now counted once, as a reminder; it used to
+be counted as an action as well, so its receipt said one action too many
+(`testAHandSetReminderIsCountedOnceOnTheReceipt`). And the receipt's kind label
+now shares the scheduler's fallback to the whole transcript when the item's own
+segment has no alert word, so a reminder on the second half of `set an alarm
+for 6:45 and call the accountant tomorrow` reads Alarm rather than Reminder,
+which is what the scheduler always fired (`testTheReceiptLabelIsTheDeliveryTheSchedulerHandsIOS`).
+Whether one segment's alarm word should make a sibling an alarm at all is an
+open product question for Calvin; this change only makes the label agree with
+what fires. A past `reminderDate` still reads as armed on the row though no
+request is made for it, deliberately, since a fired reminder is still worth
+showing (`testAPastReminderReadsAsArmedThoughNothingIsScheduled` pins the
+pair), and delivery still depends on a time-zone-sensitive re-parse; both are
+left as they were.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

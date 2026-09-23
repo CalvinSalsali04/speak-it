@@ -885,7 +885,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Call the accountant tomorrow"` being in `DurabilityTests` and
         `"Set an alarm for 6:45 tomorrow"` in `SemanticCorpusDataC`, and
         a phrase the doc comment first quoted was put in backticks
-        instead. What the test
+        instead. 4073 -> 4074 the same day, from the review of that change:
+        three more tests in `ItemPresentationTests` (the receipt counting a
+        hand-set reminder once, its kind label matching the scheduler's
+        delivery, and a past reminder date armed with no request) add one
+        fixture, `"Set an alarm for 6:45 and call the accountant
+        tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
+        the wording asks for no alert"` are reused, and their doc comments
+        quote in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -899,7 +906,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4073)
+        self.assertEqual(len(space), 4074)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

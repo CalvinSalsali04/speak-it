@@ -60,9 +60,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// perfectly healthy while nothing was monitoring it.
     enum ReminderState: Equatable, Sendable {
         case none
-        /// `delivery` is `.none` for a date the person never asked to be
-        /// reminded about — "buy milk tomorrow" carries a date but nothing
-        /// will alert on it. Carrying delivery here, rather than inferring
+        /// `delivery` is `.none` when the date is a due date with no
+        /// `reminderDate` beside it — "buy milk tomorrow" carries a date but
+        /// nothing will alert on it. The wording does not decide that: any
+        /// stored `reminderDate` makes delivery `.alarm` or `.notification`
+        /// (`ItemPresentation.scheduledDelivery`), and the wording only picks
+        /// between those two. Carrying delivery here, rather than inferring
         /// "has a date" as "will alert", is what lets a surface tell those two
         /// rows apart. See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1.
         case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
