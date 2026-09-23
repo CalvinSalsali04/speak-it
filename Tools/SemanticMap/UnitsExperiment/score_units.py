@@ -554,7 +554,11 @@ def degenerate(arm, units, lines):
     return None
 
 
-def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids):
+def multi_ids(golds_by_id):
+    return {cid for cid, golds in golds_by_id.items() if min(len(g.units) for g in golds) >= 2}
+
+
+def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids, own_golds):
     arms = arms_in(table)
     width = 17
     print("WHOLE-CAPTURE RESULT, view `any` (primary class; + when there are more flags)")
@@ -573,6 +577,17 @@ def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids)
         print(f"EXACT, view `{name}`")
         for arm in arms:
             print(f"  {arm:12} {exact_line(source, arm)}")
+    for name, source, golds in (("any", table, golds_by_id), ("own", own_table, own_golds)):
+        multi = multi_ids(golds)
+        print()
+        print(f"EXACT WHERE GOLD HAS >=2 UNITS, view `{name}` ({len(multi)} captures: no admissible reading is one unit)")
+        for arm in arms:
+            print(f"  {arm:12} {exact_line(source, arm, multi)}")
+    print()
+    print("EVERY CLASS, view `any` (captures per primary class; the constant one-unit arm beside both candidates)")
+    print("class".ljust(18) + "".join(a.rjust(12) for a in arms))
+    for cls in CLASSES:
+        print(cls.ljust(18) + "".join(str(sum(1 for r in table if arm in r and r[arm][0] == cls)).rjust(12) for arm in arms))
     if reference_ids:
         print()
         print(f"EXACT ON THE {len(reference_ids)} DIAGNOSTIC CAPTURES (the only ones the recorded arms cover), view `any`")
@@ -864,7 +879,7 @@ def main():
         families = json.loads(Path(options["families"]).read_text()) if options.get("families") else {}
         table, meta = score_run(golds_by_id, inputs, results, reference)
         own_table, _ = score_run(own_by_id, inputs, results, reference)
-        report(table, own_table, meta, families, golds_by_id, inputs, set(reference))
+        report(table, own_table, meta, families, golds_by_id, inputs, set(reference), own_by_id)
         return 0
     print(__doc__)
     return 2

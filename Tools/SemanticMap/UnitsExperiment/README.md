@@ -23,6 +23,8 @@ Both prompts share one paragraph about what a thought is, word for word
 | `inputs.jsonl` | Atoms and clause lines per capture, from `make_inputs.py`. |
 | `families.json` | Per-capture families for the per-family table. |
 | `score_units.py` | `precheck` (no model), `score`, `selftest`. |
+| `decide.py` | The decision rule as code: RUN INVALID, A, B or C, with every gate's value. |
+| `DECISION_PLAN.md` | Why each gate exists, and the plan for each outcome. Pinned before any generation. |
 | `MANIFEST` | sha256 of everything above plus the prompts' Swift file. |
 | `run.sh` | The one command: checks the manifest, prechecks, builds, generates once per arm per capture, scores. |
 
@@ -35,7 +37,7 @@ On an Apple Intelligence Mac, from a clean checkout:
 ```
 
 It writes one evidence directory under `output/` (`steps.txt`,
-`precheck.txt`, `availability.txt`, `results.jsonl`, `score.txt`). It refuses
+`precheck.txt`, `availability.txt`, `results.jsonl`, `score.txt`, `decision.txt`). It refuses
 to generate if any pinned file changed. Everything except generation runs
 anywhere:
 

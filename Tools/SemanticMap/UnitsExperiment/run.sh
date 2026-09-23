@@ -37,6 +37,7 @@ if [ $status -ne 0 ]; then echo "refusing to generate: the frozen inputs do not 
 
 step "scorer selftest"
 python3 "$HERE/score_units.py" selftest > "$OUT/selftest.txt" 2>&1 && pass "scorer selftest" || fail "scorer selftest"
+python3 "$HERE/decide.py" selftest >> "$OUT/selftest.txt" 2>&1 && pass "decision selftest" || fail "decision selftest"
 
 step "representability (no model)"
 python3 "$HERE/score_units.py" precheck --gold "$HERE/gold/gold.json" --inputs "$HERE/inputs.jsonl" > "$OUT/precheck.txt" 2>&1 \
@@ -55,6 +56,11 @@ step "score"
 python3 "$HERE/score_units.py" score --gold "$HERE/gold/gold.json" --inputs "$HERE/inputs.jsonl" \
   --results "$OUT/results.jsonl" --families "$HERE/families.json" > "$OUT/score.txt" 2>&1 \
   && pass "score" || fail "score"
+
+step "decide (the rule pinned in DECISION_PLAN.md)"
+python3 "$HERE/decide.py" --gold "$HERE/gold/gold.json" --inputs "$HERE/inputs.jsonl" \
+  --results "$OUT/results.jsonl" --families "$HERE/families.json" > "$OUT/decision.txt" 2>&1 \
+  && pass "decision: $(tail -n 1 "$OUT/decision.txt")" || fail "decision"
 
 echo
 echo "evidence: $OUT  (results.jsonl holds integers, labels and ids only; no capture text)"
