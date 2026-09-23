@@ -4,9 +4,10 @@
 #
 #   ./Tools/SemanticMap/UnitsExperiment/run.sh [evidence-dir]
 #
-# Refuses to generate unless the frozen gold and inputs hash to the values
-# pinned in MANIFEST, so the model can never be run against a gold written or
-# changed after the fact. One greedy generation per candidate per capture.
+# Refuses to generate unless the frozen gold, the inputs, the scorer and the
+# prompts hash to the values pinned in MANIFEST, so the model can never be run
+# against a gold, scorer or prompt changed after the fact. One greedy
+# generation per candidate per capture.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -26,10 +27,10 @@ step "frozen inputs"
 check_hash() {
   local want got
   want=$(awk -v f="$1" '$2 == f {print $1}' "$HERE/MANIFEST")
-  got=$(shasum -a 256 "$HERE/$1" | cut -d' ' -f1)
+  got=$(shasum -a 256 "$ROOT/$1" | cut -d' ' -f1)
   if [ -n "$want" ] && [ "$want" = "$got" ]; then pass "hash $1"; else fail "hash $1 (manifest ${want:-missing}, file $got)"; fi
 }
-for f in gold.jsonl captures.jsonl inputs.jsonl clause_lines.py families.json; do check_hash "$f"; done
+for f in $(awk '{print $2}' "$HERE/MANIFEST"); do check_hash "$f"; done
 python3 "$HERE/make_inputs.py" "$HERE/captures.jsonl" | cmp -s - "$HERE/inputs.jsonl" \
   && pass "inputs regenerate identically" || fail "inputs regenerate identically"
 if [ $status -ne 0 ]; then echo "refusing to generate: the frozen inputs do not check out"; exit 1; fi
@@ -38,7 +39,7 @@ step "scorer selftest"
 python3 "$HERE/score_units.py" selftest > "$OUT/selftest.txt" 2>&1 && pass "scorer selftest" || fail "scorer selftest"
 
 step "representability (no model)"
-python3 "$HERE/score_units.py" precheck --gold "$HERE/gold.jsonl" --inputs "$HERE/inputs.jsonl" > "$OUT/precheck.txt" 2>&1 \
+python3 "$HERE/score_units.py" precheck --gold "$HERE/gold/gold.json" --inputs "$HERE/inputs.jsonl" > "$OUT/precheck.txt" 2>&1 \
   && pass "precheck" || fail "precheck"
 
 step "build the probe"
@@ -51,7 +52,7 @@ step "generate (one greedy pass per candidate per capture)"
   && pass "generation wrote $(wc -l < "$OUT/results.jsonl" | tr -d ' ') records" || fail "generation"
 
 step "score"
-python3 "$HERE/score_units.py" score --gold "$HERE/gold.jsonl" --inputs "$HERE/inputs.jsonl" \
+python3 "$HERE/score_units.py" score --gold "$HERE/gold/gold.json" --inputs "$HERE/inputs.jsonl" \
   --results "$OUT/results.jsonl" --families "$HERE/families.json" > "$OUT/score.txt" 2>&1 \
   && pass "score" || fail "score"
 

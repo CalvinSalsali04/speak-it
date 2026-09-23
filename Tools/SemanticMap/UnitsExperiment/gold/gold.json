@@ -1,0 +1,3686 @@
+{
+ "schema": "speakit-semantic-unit-gold/1",
+ "evidence_class": "development evidence, not unseen launch accuracy",
+ "offsets": "half-open [start,end) in Unicode code points of the exact source string",
+ "unit_definition_sha256": "23afc1d5f37a8db9a6cae1fad01f596d017157277d197f1bd2fc0b07d2ee29d3",
+ "captures_input_sha256": "9c0f500d315f4b294b29eb64bf096089fc8bed1479b4b8c8c86675acb1d12cfb",
+ "spec_sha256": "1a7304fa236c404131a94b7c95a5d20ea5e3424a7745dfbed0cc74dc550b16ea",
+ "author": "independent gold-author thread session (not the experiment author, not a grader of #118)",
+ "written_at": "2026-09-23",
+ "independence": "Written from the transcript text in gold-input/captures.jsonl only. Not read while writing: any model output (runs.jsonl, map.jsonl, asked.jsonl, diag.zip), the bottleneck, six-rejection and whole-list reports, the #118 grade files, the experiment thread's messages, and Candidate 1 or 2 outputs or schemas. Disclosure: the project memory loaded into this session names some of these capture ids and summarises failure mechanisms at family level (for example that some production answers dropped a deliberation); it holds no per-capture units or model outputs. The unit definition was hashed before any transcript was received. Families for the \"dropped-intention\" and \"correct complex control\" buckets are not assigned here: they depend on past system behaviour this author deliberately did not see, so the experiment thread supplies them.",
+ "capture_count": 30,
+ "unit_count": 83,
+ "captures": [
+  {
+   "id": "RB13R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "source_sha256": "caef16fd7f4689aa733a0775094c0cbe3c92d595622652e7400f8237a98fab92",
+   "source_is_ascii": true,
+   "source_length": 101,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       101
+      ]
+     ],
+     "text": [
+      "I could drive to the airport Sunday or take the bus actually no take the bus to the airport on Sunday"
+     ],
+     "gloss": "take the bus to the airport on Sunday (drive considered, then corrected)"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        20
+       ]
+      ],
+      "note": "take the bus to the airport on Sunday (drive considered, then corrected)"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB14C",
+   "families": [
+    "coherent single thought"
+   ],
+   "source_sha256": "837312ded15a59e6ac3ad52b88e27054a4423e8345bf318784fbe45ae2ab3982",
+   "source_is_ascii": true,
+   "source_length": 27,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       27
+      ]
+     ],
+     "text": [
+      "give Dimitri the blue chair"
+     ],
+     "gloss": "give Dimitri the blue chair"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "single simple action",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        4
+       ]
+      ],
+      "note": "give Dimitri the blue chair"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB16R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "source_sha256": "ef6ad6be98d911f93f0423ec99f5ac5e0e7e11a54ea69f6deb970c62cf836593",
+   "source_is_ascii": true,
+   "source_length": 113,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       113
+      ]
+     ],
+     "text": [
+      "there's a morning session and an afternoon one and honestly the afternoon is better so book the afternoon session"
+     ],
+     "gloss": "book the afternoon session (two sessions weighed)"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        18
+       ]
+      ],
+      "note": "book the afternoon session (two sessions weighed)"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB17R",
+   "families": [
+    "mixed action + Memory",
+    "reported speech"
+   ],
+   "source_sha256": "9e6fb428661754a5d71d0bddf94a9c4176dfdcdb50aef0f8118917693c2e1b5a",
+   "source_is_ascii": true,
+   "source_length": 129,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       91,
+       129
+      ]
+     ],
+     "text": [
+      "I need to book the service before then"
+     ],
+     "gloss": "book the furnace service before the warranty ends"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      2
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      88,
+      90
+     ],
+     "text": "so"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      3,
+      87
+     ],
+     "text": "the guy said the furnace warranty expires in November which is sooner than I thought",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        17,
+        24
+       ]
+      ],
+      "note": "book the furnace service before the warranty ends"
+     }
+    ],
+    "filler": [
+     0,
+     16
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB19R",
+   "families": [
+    "mixed action + Memory",
+    "reported speech"
+   ],
+   "source_sha256": "84894cc283a7d915545d39c81f234e26a9056d4b5a818e8707b20efe3239ba53",
+   "source_is_ascii": true,
+   "source_length": 107,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       67,
+       107
+      ]
+     ],
+     "text": [
+      "I should draft the renewal at some point"
+     ],
+     "gloss": "draft the lease renewal at some point"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      64,
+      66
+     ],
+     "text": "so"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      0,
+      63
+     ],
+     "text": "the property manager mentioned the tenant's lease ends in March",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        11,
+        18
+       ]
+      ],
+      "note": "draft the lease renewal at some point"
+     }
+    ],
+    "filler": [
+     10
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB21R",
+   "families": [
+    "rambling multiple tasks"
+   ],
+   "source_sha256": "1553756578e3ca4b8c4acb2827218a77180fdff18e3a9f61c836413c3236fc3f",
+   "source_is_ascii": true,
+   "source_length": 66,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       26
+      ]
+     ],
+     "text": [
+      "drop the donation bags off"
+     ],
+     "gloss": "drop the donation bags off"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       31,
+       66
+      ]
+     ],
+     "text": [
+      "while I'm out there fill the car up"
+     ],
+     "gloss": "fill the car up while out"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      27,
+      30
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        4
+       ]
+      ],
+      "note": "drop the donation bags off"
+     },
+     {
+      "ranges": [
+       [
+        6,
+        13
+       ]
+      ],
+      "note": "fill the car up while out"
+     }
+    ],
+    "filler": [
+     5
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB28C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "f97ba21c6dd918fb3ad656decfbd8944e4370d44893ae0cd653c8ef8ebf3f374",
+   "source_is_ascii": true,
+   "source_length": 273,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       71,
+       128
+      ]
+     ],
+     "text": [
+      "I need to move the bikes out of the way before he arrives"
+     ],
+     "gloss": "move the bikes before the contractor arrives"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       133,
+       229
+      ]
+     ],
+     "text": [
+      "I should also get a second quote from the company Rosa used because his first number seemed high"
+     ],
+     "gloss": "get a second quote from the company Rosa used, because the first seemed high"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      67,
+      70
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      129,
+      132
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      230,
+      233
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      0,
+      66
+     ],
+     "text": "the contractor is coming Tuesday morning to look at the back steps",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    },
+    {
+     "range": [
+      234,
+      273
+     ],
+     "text": "the deck boards need pricing separately",
+     "owners": [
+      "own",
+      2
+     ],
+     "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        13,
+        25
+       ]
+      ],
+      "note": "move the bikes before the contractor arrives"
+     },
+     {
+      "ranges": [
+       [
+        27,
+        44
+       ]
+      ],
+      "note": "get a second quote from the company Rosa used, because the first seemed high"
+     }
+    ],
+    "filler": [
+     12,
+     26,
+     45
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     },
+     {
+      "atoms": [
+       46,
+       47,
+       48,
+       49,
+       50,
+       51
+      ],
+      "units": [
+       "own",
+       2
+      ],
+      "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB28R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "db31fd30c9c1e9597a6a14019dc943aec4b72fca1ba9f3c7fa7b28a3bb3df707",
+   "source_is_ascii": true,
+   "source_length": 305,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       81,
+       143
+      ]
+     ],
+     "text": [
+      "I need to like move the bikes out of the way before he arrives"
+     ],
+     "gloss": "move the bikes before the contractor arrives"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       151,
+       256
+      ]
+     ],
+     "text": [
+      "I should also get a second quote from the company Rosa used because honestly his first number seemed high"
+     ],
+     "gloss": "get a second quote from the company Rosa used, because the first seemed high"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      10
+     ],
+     "text": "okay so um"
+    },
+    {
+     "range": [
+      78,
+      80
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      144,
+      150
+     ],
+     "text": "and uh"
+    },
+    {
+     "range": [
+      257,
+      265
+     ],
+     "text": "and yeah"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      11,
+      77
+     ],
+     "text": "the contractor is coming Tuesday morning to look at the back steps",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    },
+    {
+     "range": [
+      266,
+      305
+     ],
+     "text": "the deck boards need pricing separately",
+     "owners": [
+      "own",
+      2
+     ],
+     "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        16,
+        29
+       ]
+      ],
+      "note": "move the bikes before the contractor arrives"
+     },
+     {
+      "ranges": [
+       [
+        32,
+        50
+       ]
+      ],
+      "note": "get a second quote from the company Rosa used, because the first seemed high"
+     }
+    ],
+    "filler": [
+     0,
+     1,
+     2,
+     15,
+     30,
+     31,
+     51,
+     52
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     },
+     {
+      "atoms": [
+       53,
+       54,
+       55,
+       56,
+       57,
+       58
+      ],
+      "units": [
+       "own",
+       2
+      ],
+      "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB29C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "156ad062677ba3996d6a5cabf4d85d0c0a7af142ea69ed4829e125e6b3569d13",
+   "source_is_ascii": true,
+   "source_length": 223,
+   "unit_count": 3,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       61
+      ]
+     ],
+     "text": [
+      "the school sent the trip form home today and it needs signing"
+     ],
+     "gloss": "sign the trip form the school sent home"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       66,
+       108
+      ]
+     ],
+     "text": [
+      "the payment is due by the end of the month"
+     ],
+     "gloss": "trip payment due by end of month"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       113,
+       223
+      ]
+     ],
+     "text": [
+      "I want to ask whether Nadia can sit with Priya on the coach because last year she was on her own the whole way"
+     ],
+     "gloss": "ask whether Nadia can sit with Priya on the coach, and why"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      62,
+      65
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      109,
+      112
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        11
+       ]
+      ],
+      "note": "sign the trip form the school sent home"
+     },
+     {
+      "ranges": [
+       [
+        13,
+        22
+       ]
+      ],
+      "note": "trip payment due by end of month"
+     },
+     {
+      "ranges": [
+       [
+        24,
+        47
+       ]
+      ],
+      "note": "ask whether Nadia can sit with Priya on the coach, and why"
+     }
+    ],
+    "filler": [
+     12,
+     23
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB29R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "38afadd15abff4b255be7695ee02b694979fe8a6af4f391924ecec51f2c0474f",
+   "source_is_ascii": true,
+   "source_length": 254,
+   "unit_count": 3,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       3,
+       70
+      ]
+     ],
+     "text": [
+      "the school sent the trip form home today and it um it needs signing"
+     ],
+     "gloss": "sign the trip form the school sent home"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       83,
+       125
+      ]
+     ],
+     "text": [
+      "the payment is due by the end of the month"
+     ],
+     "gloss": "trip payment due by end of month"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       130,
+       254
+      ]
+     ],
+     "text": [
+      "I also want to ask whether Nadia can sit with Priya on the coach because you know last year she was on her own the whole way"
+     ],
+     "gloss": "ask whether Nadia can sit with Priya on the coach, and why"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      2
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      71,
+      74
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      126,
+      129
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      75,
+      82
+     ],
+     "text": "I think",
+     "owners": [
+      2,
+      "filler"
+     ],
+     "reason": "epistemic hedge at the unit's edge; it qualifies the claim but carries no content of its own"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        1,
+        14
+       ]
+      ],
+      "note": "sign the trip form the school sent home"
+     },
+     {
+      "ranges": [
+       [
+        18,
+        27
+       ]
+      ],
+      "note": "trip payment due by end of month"
+     },
+     {
+      "ranges": [
+       [
+        29,
+        55
+       ]
+      ],
+      "note": "ask whether Nadia can sit with Priya on the coach, and why"
+     }
+    ],
+    "filler": [
+     0,
+     15,
+     28
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       16,
+       17
+      ],
+      "units": [
+       2,
+       "filler"
+      ],
+      "reason": "epistemic hedge at the unit's edge; it qualifies the claim but carries no content of its own"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB30C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "58fc0db3dea92389a6ef7246edde0b0530873489c615d6cd1f5b4f22583cd5e8",
+   "source_is_ascii": true,
+   "source_length": 210,
+   "unit_count": 3,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       74,
+       110
+      ]
+     ],
+     "text": [
+      "book a follow up with Doctor Adeyemi"
+     ],
+     "gloss": "book a follow up with Doctor Adeyemi"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       115,
+       142
+      ]
+     ],
+     "text": [
+      "start the supplements again"
+     ],
+     "gloss": "start the supplements again"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       147,
+       210
+      ]
+     ],
+     "text": [
+      "I should tell Mum because hers was the same thing two years ago"
+     ],
+     "gloss": "tell Mum, because hers was the same"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      61,
+      63
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      111,
+      114
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      143,
+      146
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [
+    {
+     "range": [
+      64,
+      73
+     ],
+     "text": "I need to",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    }
+   ],
+   "ambiguous": [
+    {
+     "range": [
+      0,
+      60
+     ],
+     "text": "I picked up the blood work results and the iron is low again",
+     "owners": [
+      "own",
+      1,
+      2
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        17,
+        23
+       ]
+      ],
+      "note": "book a follow up with Doctor Adeyemi"
+     },
+     {
+      "ranges": [
+       [
+        25,
+        28
+       ]
+      ],
+      "note": "start the supplements again"
+     },
+     {
+      "ranges": [
+       [
+        30,
+        42
+       ]
+      ],
+      "note": "tell Mum, because hers was the same"
+     }
+    ],
+    "filler": [
+     13,
+     24,
+     29
+    ],
+    "shared": [
+     {
+      "atoms": [
+       14,
+       15,
+       16
+      ],
+      "units": [
+       1,
+       2
+      ]
+     }
+    ],
+    "ambiguous": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12
+      ],
+      "units": [
+       "own",
+       1,
+       2
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB30R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "source_sha256": "26f9f3c6e6ce77eb4512e4e2fea5e00ce226452eba0b9d75efdfb3b743f15079",
+   "source_is_ascii": true,
+   "source_length": 241,
+   "unit_count": 3,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       86,
+       122
+      ]
+     ],
+     "text": [
+      "book a follow up with Doctor Adeyemi"
+     ],
+     "gloss": "book a follow up with Doctor Adeyemi"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       130,
+       157
+      ]
+     ],
+     "text": [
+      "start the supplements again"
+     ],
+     "gloss": "start the supplements again"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       162,
+       241
+      ]
+     ],
+     "text": [
+      "I should probably tell Mum because I mean hers was the same thing two years ago"
+     ],
+     "gloss": "tell Mum, because hers was the same"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      8
+     ],
+     "text": "right so"
+    },
+    {
+     "range": [
+      73,
+      75
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      123,
+      129
+     ],
+     "text": "and uh"
+    },
+    {
+     "range": [
+      158,
+      161
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [
+    {
+     "range": [
+      76,
+      85
+     ],
+     "text": "I need to",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    }
+   ],
+   "ambiguous": [
+    {
+     "range": [
+      9,
+      72
+     ],
+     "text": "I picked up the blood work results and um the iron is low again",
+     "owners": [
+      "own",
+      1,
+      2
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        20,
+        26
+       ]
+      ],
+      "note": "book a follow up with Doctor Adeyemi"
+     },
+     {
+      "ranges": [
+       [
+        29,
+        32
+       ]
+      ],
+      "note": "start the supplements again"
+     },
+     {
+      "ranges": [
+       [
+        34,
+        49
+       ]
+      ],
+      "note": "tell Mum, because hers was the same"
+     }
+    ],
+    "filler": [
+     0,
+     1,
+     16,
+     27,
+     28,
+     33
+    ],
+    "shared": [
+     {
+      "atoms": [
+       17,
+       18,
+       19
+      ],
+      "units": [
+       1,
+       2
+      ]
+     }
+    ],
+    "ambiguous": [
+     {
+      "atoms": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15
+      ],
+      "units": [
+       "own",
+       1,
+       2
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB31C",
+   "families": [
+    "coherent single thought"
+   ],
+   "source_sha256": "8910c002e752546eb74425cc3078b2ea46b189a45925ea2e37b7162ae458e535",
+   "source_is_ascii": true,
+   "source_length": 299,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       299
+      ]
+     ],
+     "text": [
+      "the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over"
+     ],
+     "gloss": "why the back steps rot and why the downspout must move"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "long single Memory explanation",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        54
+       ]
+      ],
+      "note": "why the back steps rot and why the downspout must move"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB31R",
+   "families": [
+    "coherent single thought"
+   ],
+   "source_sha256": "1a54719a0a45affeecdf7777b0028ff1b304d3d47c873b4a5f37d411cb558278",
+   "source_is_ascii": true,
+   "source_length": 330,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       6,
+       330
+      ]
+     ],
+     "text": [
+      "the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over"
+     ],
+     "gloss": "why the back steps rot and why the downspout must move"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      5
+     ],
+     "text": "um so"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "long single Memory explanation",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        2,
+        60
+       ]
+      ],
+      "note": "why the back steps rot and why the downspout must move"
+     }
+    ],
+    "filler": [
+     0,
+     1
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB33R",
+   "families": [
+    "rambling multiple tasks",
+    "deliberation + final decision"
+   ],
+   "source_sha256": "d8ad199fb86a8cdd93e1c34000c37622e1b6d18f055d4d1e20ea9019041c5dbf",
+   "source_is_ascii": true,
+   "source_length": 138,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       24
+      ]
+     ],
+     "text": [
+      "order the projector bulb"
+     ],
+     "gloss": "order the projector bulb"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       35,
+       138
+      ]
+     ],
+     "text": [
+      "I could pay the framing invoice now or wait for the purchase order, no, now, so pay the framing invoice"
+     ],
+     "gloss": "pay the framing invoice now (waiting considered, then rejected)"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      25,
+      34
+     ],
+     "text": "and then,"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        3
+       ]
+      ],
+      "note": "order the projector bulb"
+     },
+     {
+      "ranges": [
+       [
+        6,
+        25
+       ]
+      ],
+      "note": "pay the framing invoice now (waiting considered, then rejected)"
+     }
+    ],
+    "filler": [
+     4,
+     5
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB38C",
+   "families": [
+    "coherent single thought"
+   ],
+   "source_sha256": "39fa8b28f4e9c605a6fc8b18a6a7376e460e5e42cc006c9fbe2cfff118a7487a",
+   "source_is_ascii": true,
+   "source_length": 150,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       150
+      ]
+     ],
+     "text": [
+      "the reason the nursery keeps asking for the second form is that the funding year restarts in April and the one on file was signed against the old year"
+     ],
+     "gloss": "why the nursery keeps asking for the second form"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "single Memory explanation",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        28
+       ]
+      ],
+      "note": "why the nursery keeps asking for the second form"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB41R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "source_sha256": "0fbbf8613eca49c672f943255cff0dfea3421125d5e9db5184b9c76817495f82",
+   "source_is_ascii": true,
+   "source_length": 162,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       162
+      ]
+     ],
+     "text": [
+      "I could do the Tuesday slot with the physio or the Friday one and Tuesday is better so book the Tuesday slot with the physio because I'm off that afternoon anyway"
+     ],
+     "gloss": "book the Tuesday physio slot (Friday weighed), because off that afternoon"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        30
+       ]
+      ],
+      "note": "book the Tuesday physio slot (Friday weighed), because off that afternoon"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB43R",
+   "families": [
+    "deliberation + final decision",
+    "rambling multiple tasks"
+   ],
+   "source_sha256": "e4839892e85e5380174fb15f96e4b5b698be83e80efefc5add765868deef7d39",
+   "source_is_ascii": true,
+   "source_length": 135,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       85,
+       96
+      ]
+     ],
+     "text": [
+      "the dentist"
+     ],
+     "gloss": "call the dentist before they shut"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       106,
+       118
+      ]
+     ],
+     "text": [
+      "the optician"
+     ],
+     "gloss": "call the optician before they shut"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      77,
+      79
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      97,
+      105
+     ],
+     "text": "and then"
+    }
+   ],
+   "shared": [
+    {
+     "range": [
+      0,
+      76
+     ],
+     "text": "I thought it was the dentist or the optician today but there's time for both",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    },
+    {
+     "range": [
+      80,
+      84
+     ],
+     "text": "call",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    },
+    {
+     "range": [
+      119,
+      135
+     ],
+     "text": "before they shut",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    }
+   ],
+   "ambiguous": [],
+   "note": "one deliberation resolves into two calls; the deliberation, the verb and the deadline are shared",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        17,
+        18
+       ]
+      ],
+      "note": "call the dentist before they shut"
+     },
+     {
+      "ranges": [
+       [
+        21,
+        22
+       ]
+      ],
+      "note": "call the optician before they shut"
+     }
+    ],
+    "filler": [
+     15,
+     19,
+     20
+    ],
+    "shared": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14
+      ],
+      "units": [
+       1,
+       2
+      ]
+     },
+     {
+      "atoms": [
+       16
+      ],
+      "units": [
+       1,
+       2
+      ]
+     },
+     {
+      "atoms": [
+       23,
+       24,
+       25
+      ],
+      "units": [
+       1,
+       2
+      ]
+     }
+    ],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB44R",
+   "families": [
+    "deliberation + final decision",
+    "rambling multiple tasks"
+   ],
+   "source_sha256": "4dbf864be837ac2a6d50dfbb9f0e0a0f9f45b38d1b9e5d481e08a49d777d1544",
+   "source_is_ascii": true,
+   "source_length": 144,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       87,
+       112
+      ]
+     ],
+     "text": [
+      "book the van for Saturday"
+     ],
+     "gloss": "book the van for Saturday"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       117,
+       144
+      ]
+     ],
+     "text": [
+      "ask Theo to help me load it"
+     ],
+     "gloss": "ask Theo to help load it"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      84,
+      86
+     ],
+     "text": "so"
+    },
+    {
+     "range": [
+      113,
+      116
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [
+    {
+     "range": [
+      0,
+      83
+     ],
+     "text": "I can't decide if I need the van or just Theo's car and thinking about it it's both",
+     "owners": [
+      1,
+      2
+     ],
+     "reason": ""
+    }
+   ],
+   "ambiguous": [],
+   "note": "one deliberation resolves into two actions; the deliberation is shared",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        19,
+        23
+       ]
+      ],
+      "note": "book the van for Saturday"
+     },
+     {
+      "ranges": [
+       [
+        25,
+        31
+       ]
+      ],
+      "note": "ask Theo to help load it"
+     }
+    ],
+    "filler": [
+     18,
+     24
+    ],
+    "shared": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13,
+       14,
+       15,
+       16,
+       17
+      ],
+      "units": [
+       1,
+       2
+      ]
+     }
+    ],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB45R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "source_sha256": "0e4725264626ef7ab9caf37cab6aa44eb681b7fa85896c125ee436d33dd640d8",
+   "source_is_ascii": true,
+   "source_length": 114,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       114
+      ]
+     ],
+     "text": [
+      "I keep going back and forth on whether to do the March intake or wait for September and I genuinely don't know yet"
+     ],
+     "gloss": "undecided between the March intake and September"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "deliberation with no decision; one thought",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        22
+       ]
+      ],
+      "note": "undecided between the March intake and September"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB46R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "source_sha256": "61a223f56c01db7ce48ce89f0dedc6f06383c14b0a84d9bf4a6e3f5ad0c1e604",
+   "source_is_ascii": true,
+   "source_length": 143,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       3,
+       143
+      ]
+     ],
+     "text": [
+      "the chimney needs repointing or maybe it's the whole gable that needs re-rendering and I'll have to get someone to look before I can call it"
+     ],
+     "gloss": "get someone to look at the chimney or gable before deciding"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      0,
+      2
+     ],
+     "text": "so"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "uncertain diagnosis resolved into one action",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        1,
+        26
+       ]
+      ],
+      "note": "get someone to look at the chimney or gable before deciding"
+     }
+    ],
+    "filler": [
+     0
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RB17C",
+   "families": [
+    "mixed action + Memory"
+   ],
+   "source_sha256": "5ec448c7b7daa11f6022d98cc6086848fe5395c14537e72dacf19ffad4103238",
+   "source_is_ascii": true,
+   "source_length": 83,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       45,
+       83
+      ]
+     ],
+     "text": [
+      "I need to book the service before then"
+     ],
+     "gloss": "book the furnace service before then"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      41,
+      44
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      0,
+      40
+     ],
+     "text": "the furnace warranty expires in November",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        7,
+        14
+       ]
+      ],
+      "note": "book the furnace service before then"
+     }
+    ],
+    "filler": [
+     6
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RB21C",
+   "families": [
+    "clean multiple tasks"
+   ],
+   "source_sha256": "289b317cd4f09a2457f949646cdf47461a128e082b96217ec99b92e62653f256",
+   "source_is_ascii": true,
+   "source_length": 46,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       26
+      ]
+     ],
+     "text": [
+      "drop the donation bags off"
+     ],
+     "gloss": "drop the donation bags off"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       31,
+       46
+      ]
+     ],
+     "text": [
+      "fill the car up"
+     ],
+     "gloss": "fill the car up"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      27,
+      30
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        4
+       ]
+      ],
+      "note": "drop the donation bags off"
+     },
+     {
+      "ranges": [
+       [
+        6,
+        9
+       ]
+      ],
+      "note": "fill the car up"
+     }
+    ],
+    "filler": [
+     5
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "CM04",
+   "families": [
+    "message content"
+   ],
+   "source_sha256": "6df25703bfb6e38426578951e93a656bedaacea084a6621705aed523c533e5e2",
+   "source_is_ascii": true,
+   "source_length": 52,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       52
+      ]
+     ],
+     "text": [
+      "text Dana that I am running late and will call after"
+     ],
+     "gloss": "text Dana: running late, will call after"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "both clauses are the message's content",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        10
+       ]
+      ],
+      "note": "text Dana: running late, will call after"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "CM06",
+   "families": [
+    "message content",
+    "clean multiple tasks"
+   ],
+   "source_sha256": "6c4ac34dfa0b5fbcf524bd30ca0fb1d305f35e28513de0d03ab2bfb86ae51d36",
+   "source_is_ascii": true,
+   "source_length": 67,
+   "unit_count": 2,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       39
+      ]
+     ],
+     "text": [
+      "text Mike that the meeting is cancelled"
+     ],
+     "gloss": "text Mike that the meeting is cancelled"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       44,
+       67
+      ]
+     ],
+     "text": [
+      "remind me to call Sarah"
+     ],
+     "gloss": "remind me to call Sarah"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      40,
+      43
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        6
+       ]
+      ],
+      "note": "text Mike that the meeting is cancelled"
+     },
+     {
+      "ranges": [
+       [
+        8,
+        12
+       ]
+      ],
+      "note": "remind me to call Sarah"
+     }
+    ],
+    "filler": [
+     7
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "CM07",
+   "families": [
+    "message content",
+    "clean multiple tasks"
+   ],
+   "source_sha256": "ced10b22c4e8d0e707336c3463449693afdda2459a87c15830c0077b9f4baf0c",
+   "source_is_ascii": true,
+   "source_length": 43,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       25
+      ]
+     ],
+     "text": [
+      "tell Priya I will be late"
+     ],
+     "gloss": "tell Priya I will be late"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      26,
+      29
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "range": [
+      30,
+      43
+     ],
+     "text": "book the room",
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a bare imperative after a message complement: the user's own task, or part of what Priya is told"
+    }
+   ],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        5
+       ]
+      ],
+      "note": "tell Priya I will be late"
+     }
+    ],
+    "filler": [
+     6
+    ],
+    "shared": [],
+    "ambiguous": [
+     {
+      "atoms": [
+       7,
+       8,
+       9
+      ],
+      "units": [
+       "own",
+       1
+      ],
+      "reason": "a bare imperative after a message complement: the user's own task, or part of what Priya is told"
+     }
+    ]
+   }
+  },
+  {
+   "id": "RS03",
+   "families": [
+    "reported speech"
+   ],
+   "source_sha256": "028cd3b479339083a057a8a927c181fec5636e2c37a92a46d5b94afe78223344",
+   "source_is_ascii": true,
+   "source_length": 56,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       56
+      ]
+     ],
+     "text": [
+      "Mike told me the deal closed and the team is celebrating"
+     ],
+     "gloss": "Mike's news: deal closed, team celebrating"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        10
+       ]
+      ],
+      "note": "Mike's news: deal closed, team celebrating"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "RS04",
+   "families": [
+    "reported speech"
+   ],
+   "source_sha256": "4063bf36f5e9dc0aae3a83e7f70ee50800bf5c2a724f58bbf369f303b804ebc1",
+   "source_is_ascii": true,
+   "source_length": 29,
+   "unit_count": 1,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       29
+      ]
+     ],
+     "text": [
+      "Sarah said call Mike tomorrow"
+     ],
+     "gloss": "Sarah said call Mike tomorrow"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": [],
+   "note": "a reported command; whether it is the user's task is a destination question, not a span question",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        4
+       ]
+      ],
+      "note": "Sarah said call Mike tomorrow"
+     }
+    ],
+    "filler": [],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "CAP14",
+   "families": [
+    "clean multiple tasks",
+    "capacity"
+   ],
+   "source_sha256": "f423a350516fa0a17e49a7287a76403b383fe805410d5a34060c7d465ec6950b",
+   "source_is_ascii": true,
+   "source_length": 238,
+   "unit_count": 14,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       12
+      ]
+     ],
+     "text": [
+      "Call person1"
+     ],
+     "gloss": "call person1"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       17,
+       29
+      ]
+     ],
+     "text": [
+      "Call person2"
+     ],
+     "gloss": "call person2"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       34,
+       46
+      ]
+     ],
+     "text": [
+      "Call person3"
+     ],
+     "gloss": "call person3"
+    },
+    {
+     "index": 4,
+     "ranges": [
+      [
+       51,
+       63
+      ]
+     ],
+     "text": [
+      "Call person4"
+     ],
+     "gloss": "call person4"
+    },
+    {
+     "index": 5,
+     "ranges": [
+      [
+       68,
+       80
+      ]
+     ],
+     "text": [
+      "Call person5"
+     ],
+     "gloss": "call person5"
+    },
+    {
+     "index": 6,
+     "ranges": [
+      [
+       85,
+       97
+      ]
+     ],
+     "text": [
+      "Call person6"
+     ],
+     "gloss": "call person6"
+    },
+    {
+     "index": 7,
+     "ranges": [
+      [
+       102,
+       114
+      ]
+     ],
+     "text": [
+      "Call person7"
+     ],
+     "gloss": "call person7"
+    },
+    {
+     "index": 8,
+     "ranges": [
+      [
+       119,
+       131
+      ]
+     ],
+     "text": [
+      "Call person8"
+     ],
+     "gloss": "call person8"
+    },
+    {
+     "index": 9,
+     "ranges": [
+      [
+       136,
+       148
+      ]
+     ],
+     "text": [
+      "Call person9"
+     ],
+     "gloss": "call person9"
+    },
+    {
+     "index": 10,
+     "ranges": [
+      [
+       153,
+       166
+      ]
+     ],
+     "text": [
+      "Call person10"
+     ],
+     "gloss": "call person10"
+    },
+    {
+     "index": 11,
+     "ranges": [
+      [
+       171,
+       184
+      ]
+     ],
+     "text": [
+      "Call person11"
+     ],
+     "gloss": "call person11"
+    },
+    {
+     "index": 12,
+     "ranges": [
+      [
+       189,
+       202
+      ]
+     ],
+     "text": [
+      "Call person12"
+     ],
+     "gloss": "call person12"
+    },
+    {
+     "index": 13,
+     "ranges": [
+      [
+       207,
+       220
+      ]
+     ],
+     "text": [
+      "Call person13"
+     ],
+     "gloss": "call person13"
+    },
+    {
+     "index": 14,
+     "ranges": [
+      [
+       225,
+       238
+      ]
+     ],
+     "text": [
+      "Call person14"
+     ],
+     "gloss": "call person14"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      13,
+      16
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      30,
+      33
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      47,
+      50
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      64,
+      67
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      81,
+      84
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      98,
+      101
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      115,
+      118
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      132,
+      135
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      149,
+      152
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      167,
+      170
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      185,
+      188
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      203,
+      206
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      221,
+      224
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "capacity stress: 14 separate units",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        1
+       ]
+      ],
+      "note": "call person1"
+     },
+     {
+      "ranges": [
+       [
+        3,
+        4
+       ]
+      ],
+      "note": "call person2"
+     },
+     {
+      "ranges": [
+       [
+        6,
+        7
+       ]
+      ],
+      "note": "call person3"
+     },
+     {
+      "ranges": [
+       [
+        9,
+        10
+       ]
+      ],
+      "note": "call person4"
+     },
+     {
+      "ranges": [
+       [
+        12,
+        13
+       ]
+      ],
+      "note": "call person5"
+     },
+     {
+      "ranges": [
+       [
+        15,
+        16
+       ]
+      ],
+      "note": "call person6"
+     },
+     {
+      "ranges": [
+       [
+        18,
+        19
+       ]
+      ],
+      "note": "call person7"
+     },
+     {
+      "ranges": [
+       [
+        21,
+        22
+       ]
+      ],
+      "note": "call person8"
+     },
+     {
+      "ranges": [
+       [
+        24,
+        25
+       ]
+      ],
+      "note": "call person9"
+     },
+     {
+      "ranges": [
+       [
+        27,
+        28
+       ]
+      ],
+      "note": "call person10"
+     },
+     {
+      "ranges": [
+       [
+        30,
+        31
+       ]
+      ],
+      "note": "call person11"
+     },
+     {
+      "ranges": [
+       [
+        33,
+        34
+       ]
+      ],
+      "note": "call person12"
+     },
+     {
+      "ranges": [
+       [
+        36,
+        37
+       ]
+      ],
+      "note": "call person13"
+     },
+     {
+      "ranges": [
+       [
+        39,
+        40
+       ]
+      ],
+      "note": "call person14"
+     }
+    ],
+    "filler": [
+     2,
+     5,
+     8,
+     11,
+     14,
+     17,
+     20,
+     23,
+     26,
+     29,
+     32,
+     35,
+     38
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  },
+  {
+   "id": "CAP25",
+   "families": [
+    "clean multiple tasks",
+    "capacity"
+   ],
+   "source_sha256": "16497da13d9a1b7f653465dbd27bf7d9f0be11f6adc8f1b4c0112c71b71019d0",
+   "source_is_ascii": true,
+   "source_length": 436,
+   "unit_count": 25,
+   "units": [
+    {
+     "index": 1,
+     "ranges": [
+      [
+       0,
+       12
+      ]
+     ],
+     "text": [
+      "Call person1"
+     ],
+     "gloss": "call person1"
+    },
+    {
+     "index": 2,
+     "ranges": [
+      [
+       17,
+       29
+      ]
+     ],
+     "text": [
+      "Call person2"
+     ],
+     "gloss": "call person2"
+    },
+    {
+     "index": 3,
+     "ranges": [
+      [
+       34,
+       46
+      ]
+     ],
+     "text": [
+      "Call person3"
+     ],
+     "gloss": "call person3"
+    },
+    {
+     "index": 4,
+     "ranges": [
+      [
+       51,
+       63
+      ]
+     ],
+     "text": [
+      "Call person4"
+     ],
+     "gloss": "call person4"
+    },
+    {
+     "index": 5,
+     "ranges": [
+      [
+       68,
+       80
+      ]
+     ],
+     "text": [
+      "Call person5"
+     ],
+     "gloss": "call person5"
+    },
+    {
+     "index": 6,
+     "ranges": [
+      [
+       85,
+       97
+      ]
+     ],
+     "text": [
+      "Call person6"
+     ],
+     "gloss": "call person6"
+    },
+    {
+     "index": 7,
+     "ranges": [
+      [
+       102,
+       114
+      ]
+     ],
+     "text": [
+      "Call person7"
+     ],
+     "gloss": "call person7"
+    },
+    {
+     "index": 8,
+     "ranges": [
+      [
+       119,
+       131
+      ]
+     ],
+     "text": [
+      "Call person8"
+     ],
+     "gloss": "call person8"
+    },
+    {
+     "index": 9,
+     "ranges": [
+      [
+       136,
+       148
+      ]
+     ],
+     "text": [
+      "Call person9"
+     ],
+     "gloss": "call person9"
+    },
+    {
+     "index": 10,
+     "ranges": [
+      [
+       153,
+       166
+      ]
+     ],
+     "text": [
+      "Call person10"
+     ],
+     "gloss": "call person10"
+    },
+    {
+     "index": 11,
+     "ranges": [
+      [
+       171,
+       184
+      ]
+     ],
+     "text": [
+      "Call person11"
+     ],
+     "gloss": "call person11"
+    },
+    {
+     "index": 12,
+     "ranges": [
+      [
+       189,
+       202
+      ]
+     ],
+     "text": [
+      "Call person12"
+     ],
+     "gloss": "call person12"
+    },
+    {
+     "index": 13,
+     "ranges": [
+      [
+       207,
+       220
+      ]
+     ],
+     "text": [
+      "Call person13"
+     ],
+     "gloss": "call person13"
+    },
+    {
+     "index": 14,
+     "ranges": [
+      [
+       225,
+       238
+      ]
+     ],
+     "text": [
+      "Call person14"
+     ],
+     "gloss": "call person14"
+    },
+    {
+     "index": 15,
+     "ranges": [
+      [
+       243,
+       256
+      ]
+     ],
+     "text": [
+      "Call person15"
+     ],
+     "gloss": "call person15"
+    },
+    {
+     "index": 16,
+     "ranges": [
+      [
+       261,
+       274
+      ]
+     ],
+     "text": [
+      "Call person16"
+     ],
+     "gloss": "call person16"
+    },
+    {
+     "index": 17,
+     "ranges": [
+      [
+       279,
+       292
+      ]
+     ],
+     "text": [
+      "Call person17"
+     ],
+     "gloss": "call person17"
+    },
+    {
+     "index": 18,
+     "ranges": [
+      [
+       297,
+       310
+      ]
+     ],
+     "text": [
+      "Call person18"
+     ],
+     "gloss": "call person18"
+    },
+    {
+     "index": 19,
+     "ranges": [
+      [
+       315,
+       328
+      ]
+     ],
+     "text": [
+      "Call person19"
+     ],
+     "gloss": "call person19"
+    },
+    {
+     "index": 20,
+     "ranges": [
+      [
+       333,
+       346
+      ]
+     ],
+     "text": [
+      "Call person20"
+     ],
+     "gloss": "call person20"
+    },
+    {
+     "index": 21,
+     "ranges": [
+      [
+       351,
+       364
+      ]
+     ],
+     "text": [
+      "Call person21"
+     ],
+     "gloss": "call person21"
+    },
+    {
+     "index": 22,
+     "ranges": [
+      [
+       369,
+       382
+      ]
+     ],
+     "text": [
+      "Call person22"
+     ],
+     "gloss": "call person22"
+    },
+    {
+     "index": 23,
+     "ranges": [
+      [
+       387,
+       400
+      ]
+     ],
+     "text": [
+      "Call person23"
+     ],
+     "gloss": "call person23"
+    },
+    {
+     "index": 24,
+     "ranges": [
+      [
+       405,
+       418
+      ]
+     ],
+     "text": [
+      "Call person24"
+     ],
+     "gloss": "call person24"
+    },
+    {
+     "index": 25,
+     "ranges": [
+      [
+       423,
+       436
+      ]
+     ],
+     "text": [
+      "Call person25"
+     ],
+     "gloss": "call person25"
+    }
+   ],
+   "filler": [
+    {
+     "range": [
+      13,
+      16
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      30,
+      33
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      47,
+      50
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      64,
+      67
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      81,
+      84
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      98,
+      101
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      115,
+      118
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      132,
+      135
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      149,
+      152
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      167,
+      170
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      185,
+      188
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      203,
+      206
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      221,
+      224
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      239,
+      242
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      257,
+      260
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      275,
+      278
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      293,
+      296
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      311,
+      314
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      329,
+      332
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      347,
+      350
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      365,
+      368
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      383,
+      386
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      401,
+      404
+     ],
+     "text": "and"
+    },
+    {
+     "range": [
+      419,
+      422
+     ],
+     "text": "and"
+    }
+   ],
+   "shared": [],
+   "ambiguous": [],
+   "note": "capacity stress: 25 separate units",
+   "atom_view": {
+    "units": [
+     {
+      "ranges": [
+       [
+        0,
+        1
+       ]
+      ],
+      "note": "call person1"
+     },
+     {
+      "ranges": [
+       [
+        3,
+        4
+       ]
+      ],
+      "note": "call person2"
+     },
+     {
+      "ranges": [
+       [
+        6,
+        7
+       ]
+      ],
+      "note": "call person3"
+     },
+     {
+      "ranges": [
+       [
+        9,
+        10
+       ]
+      ],
+      "note": "call person4"
+     },
+     {
+      "ranges": [
+       [
+        12,
+        13
+       ]
+      ],
+      "note": "call person5"
+     },
+     {
+      "ranges": [
+       [
+        15,
+        16
+       ]
+      ],
+      "note": "call person6"
+     },
+     {
+      "ranges": [
+       [
+        18,
+        19
+       ]
+      ],
+      "note": "call person7"
+     },
+     {
+      "ranges": [
+       [
+        21,
+        22
+       ]
+      ],
+      "note": "call person8"
+     },
+     {
+      "ranges": [
+       [
+        24,
+        25
+       ]
+      ],
+      "note": "call person9"
+     },
+     {
+      "ranges": [
+       [
+        27,
+        28
+       ]
+      ],
+      "note": "call person10"
+     },
+     {
+      "ranges": [
+       [
+        30,
+        31
+       ]
+      ],
+      "note": "call person11"
+     },
+     {
+      "ranges": [
+       [
+        33,
+        34
+       ]
+      ],
+      "note": "call person12"
+     },
+     {
+      "ranges": [
+       [
+        36,
+        37
+       ]
+      ],
+      "note": "call person13"
+     },
+     {
+      "ranges": [
+       [
+        39,
+        40
+       ]
+      ],
+      "note": "call person14"
+     },
+     {
+      "ranges": [
+       [
+        42,
+        43
+       ]
+      ],
+      "note": "call person15"
+     },
+     {
+      "ranges": [
+       [
+        45,
+        46
+       ]
+      ],
+      "note": "call person16"
+     },
+     {
+      "ranges": [
+       [
+        48,
+        49
+       ]
+      ],
+      "note": "call person17"
+     },
+     {
+      "ranges": [
+       [
+        51,
+        52
+       ]
+      ],
+      "note": "call person18"
+     },
+     {
+      "ranges": [
+       [
+        54,
+        55
+       ]
+      ],
+      "note": "call person19"
+     },
+     {
+      "ranges": [
+       [
+        57,
+        58
+       ]
+      ],
+      "note": "call person20"
+     },
+     {
+      "ranges": [
+       [
+        60,
+        61
+       ]
+      ],
+      "note": "call person21"
+     },
+     {
+      "ranges": [
+       [
+        63,
+        64
+       ]
+      ],
+      "note": "call person22"
+     },
+     {
+      "ranges": [
+       [
+        66,
+        67
+       ]
+      ],
+      "note": "call person23"
+     },
+     {
+      "ranges": [
+       [
+        69,
+        70
+       ]
+      ],
+      "note": "call person24"
+     },
+     {
+      "ranges": [
+       [
+        72,
+        73
+       ]
+      ],
+      "note": "call person25"
+     }
+    ],
+    "filler": [
+     2,
+     5,
+     8,
+     11,
+     14,
+     17,
+     20,
+     23,
+     26,
+     29,
+     32,
+     35,
+     38,
+     41,
+     44,
+     47,
+     50,
+     53,
+     56,
+     59,
+     62,
+     65,
+     68,
+     71
+    ],
+    "shared": [],
+    "ambiguous": []
+   }
+  }
+ ]
+}

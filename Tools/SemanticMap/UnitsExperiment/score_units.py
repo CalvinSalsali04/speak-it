@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Scores the semantic-unit experiment: whole-capture unit recovery against a
-frozen gold, for either candidate and for the free reference arms.
+"""Scores the semantic-unit experiment: whole-capture unit recovery against the
+frozen gold, for both candidates, the free reference arms and two constant
+baselines.
 
-    score_units.py precheck --gold gold.jsonl --inputs inputs.jsonl
-    score_units.py score    --gold gold.jsonl --inputs inputs.jsonl --results results.jsonl
+    score_units.py precheck --gold gold/gold.json --inputs inputs.jsonl
+    score_units.py score    --gold gold/gold.json --inputs inputs.jsonl [--results results.jsonl]
                             [--reference DIAG_FOLDER] [--families families.json]
     score_units.py selftest
 
@@ -13,18 +14,24 @@ precheck  NO MODEL. Whether each candidate CAN express each gold answer:
           drift apart. Run this before any generation is read.
 score     Every capture, every arm: EXACT or the failure classes, per family,
           per-unit boundary precision and recall, latency and tokens.
-          `--reference` adds three arms that cost no model call: the rules
-          rows, the recorded split-index units job and the recorded
-          production whole-list answer, from the diagnostic run's folder.
+          Without --results only the free arms are scored. The constant
+          baselines (`one-unit`, `every-line`) cost nothing and a candidate
+          must beat both. `--reference` adds the rules rows, the recorded
+          split-index units job and the recorded production whole-list
+          answer from the diagnostic run's folder.
 
 Prints capture ids, counts and closed-vocabulary classes only: no capture text.
 
-GOLD CONTRACT (one JSON object per line):
-    {"id": ..., "units": [{"ranges": [[first, last], ...]}, ...],
-     "filler": [atom, ...], "ambiguous": [{"atoms": [...], "units": [k, ...]}]}
-A unit's CONTENT is its atoms minus filler and ambiguous atoms. Filler atoms
-may sit in any unit or in none. An ambiguous atom may sit in any unit it
-names, or in none. Everything else must be exactly where the gold puts it.
+GOLD (gold/gold.json, frozen by an independent author; see gold/README.md).
+Per capture `atom_view` holds `units` (atom ranges), `filler` (free anywhere
+or nowhere), `shared` (a span several units own) and `ambiguous` (a span with
+admissible owners: a 1-based unit index, "own" for a unit of its own, or
+"filler"). Both arms return non-overlapping units, so a shared span must sit
+whole in ONE of its owners, and an ambiguous span whole under one admissible
+reading. Each combination is a READING; an answer is scored under the reading
+that treats it best. Two views are reported:
+    any   every admissible owner is accepted (the author's rule)
+    own   an ambiguous span that may be its own unit must be its own unit
 """
 import hashlib
 import json
@@ -97,6 +104,85 @@ class Gold:
         for a, b in zip(order, order[1:]):
             out.append(set(range(max(self.units[a]), min(self.units[b]))))
         return out
+
+
+def readings(entry, atom_count, view="any"):
+    """Every concrete gold the frozen entry admits, as `Gold` objects with no
+    ambiguity left: each shared span given whole to one owner, each ambiguous
+    span given whole to one admissible owner, a unit of its own, or filler."""
+    import itertools
+    view_ = entry["atom_view"]
+    firm = []
+    for unit in view_["units"]:
+        atoms = set()
+        for first, last in unit["ranges"]:
+            atoms.update(range(first, last + 1))
+        firm.append(atoms)
+    choices = []
+    for span in view_["shared"]:
+        choices.append([(tuple(span["atoms"]), ("unit", owner - 1)) for owner in span["units"]])
+    for span in view_["ambiguous"]:
+        options = []
+        for owner in span["units"]:
+            if owner == "own":
+                options.append((tuple(span["atoms"]), ("own",)))
+            elif owner == "filler":
+                options.append((tuple(span["atoms"]), ("filler",)))
+            else:
+                options.append((tuple(span["atoms"]), ("unit", owner - 1)))
+        if view == "own" and "own" in span["units"]:
+            options = [o for o in options if o[1] == ("own",)]
+        choices.append(options)
+    out, seen = [], set()
+    for combo in itertools.product(*choices) if choices else [()]:
+        units = [set(u) for u in firm]
+        filler = set(view_["filler"])
+        for atoms, (kind, *rest) in combo:
+            if kind == "unit":
+                units[rest[0]].update(atoms)
+            elif kind == "own":
+                units.append(set(atoms))
+            else:
+                filler.update(atoms)
+        units.sort(key=min)
+        key = (tuple(tuple(sorted(u)) for u in units), tuple(sorted(filler)))
+        if key in seen:
+            continue
+        seen.add(key)
+        record = {"id": entry["id"], "units": [{"ranges": [[a, a] for a in sorted(u)]} for u in units],
+                  "filler": sorted(filler), "ambiguous": []}
+        out.append(Gold(record, atom_count))
+    return out
+
+
+def load_gold(path, counts, view="any"):
+    frozen = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {entry["id"]: readings(entry, counts[entry["id"]], view)
+            for entry in frozen["captures"] if entry["id"] in counts}
+
+
+# Across readings the answer is judged under the reading that treats it best.
+SEVERITY = ["exact", "wrong-boundaries", "under-split", "over-split", "absorbed",
+            "filler-only", "dropped", "capacity", "representation", "malformed"]
+
+
+def interleaved(gold):
+    """True when some gold unit's content lies inside another's extent, as
+    when a shared preamble is given to a later owner."""
+    return any(not gap for gap in gold.gaps())
+
+
+def best_reading(golds, judge):
+    """judge(gold) -> (class, flags, ...). Returns (gold, result) for the least
+    severe result; on a tie a reading whose units do not interleave, then the
+    first."""
+    best, best_key = None, None
+    for gold in golds:
+        result = judge(gold)
+        key = (SEVERITY.index(result[0]), interleaved(gold))
+        if best is None or key < best_key:
+            best, best_key = (gold, result), key
+    return best
 
 
 # ------------------------------------------------------------ an answer
@@ -268,15 +354,34 @@ def best_labels(gold, lines):
     return units, None
 
 
-def precheck(gold_by_id, inputs):
+def representable(golds, builder):
+    """(True, None) when the arm can express some admissible reading exactly,
+    else (False, the distinct reasons across readings)."""
+    reasons = []
+    for gold in golds:
+        units, reason = builder(gold)
+        if reason is None and classify(gold, units)[0] == "exact":
+            return True, None
+        why = reason or "does not score exact"
+        if why not in reasons:
+            reasons.append(why)
+    return False, reasons
+
+
+def unit_count(golds):
+    counts = sorted({len(g.units) for g in golds})
+    return str(counts[0]) if len(counts) == 1 else f"{counts[0]}-{counts[-1]}"
+
+
+def precheck(golds_by_id, inputs):
     rows = []
     for item in inputs:
-        gold = gold_by_id[item["id"]]
-        r_units, r_reason = best_ranges(gold)
-        r_class = "representable" if r_reason is None and classify(gold, r_units)[0] == "exact" else (r_reason or "does not score exact")
-        l_units, l_reason = best_labels(gold, item["lines"])
-        l_class = "representable" if l_reason is None and classify(gold, l_units)[0] == "exact" else (l_reason or "does not score exact")
-        rows.append((item["id"], len(gold.units), len(item["lines"]), r_class, l_class))
+        golds = golds_by_id[item["id"]]
+        r_ok, r_why = representable(golds, best_ranges)
+        l_ok, l_why = representable(golds, lambda g: best_labels(g, item["lines"]))
+        rows.append((item["id"], unit_count(golds), len(item["lines"]),
+                     "representable" if r_ok else "; ".join(r_why),
+                     "representable" if l_ok else "; ".join(l_why)))
     return rows
 
 
@@ -314,7 +419,10 @@ def fold(word):
 
 def locate_all(quotes, atoms, strict=False):
     """Each quote as the first whole-atom match at or after the previous one.
-    None when any quote cannot be placed (strict) or when nothing is placed."""
+    strict (a model's quote): it must appear verbatim, or the whole answer is
+    None, since an unplaceable model quote is authored text. Otherwise (a
+    rules quote) an in-order subsequence is accepted. None when nothing is
+    placed."""
     hay = [fold(a) for a in atoms]
     units, cursor = [], 0
     for quote in quotes:
@@ -325,12 +433,27 @@ def locate_all(quotes, atoms, strict=False):
                 if hay[start:start + len(needle)] == needle:
                     found = start
                     break
-        if found is None:
+        span = (found, found + len(needle) - 1) if found is not None else None
+        if span is None and not strict and needle:
+            # A rules quote is the source with words removed (fillers, the
+            # operation phrase), never invented: place it as the in-order
+            # subsequence it is, from its first matched atom to its last.
+            placed, at = [], cursor
+            for word in needle:
+                while at < len(hay) and hay[at] != word:
+                    at += 1
+                if at == len(hay):
+                    break
+                placed.append(at)
+                at += 1
+            if len(placed) == len(needle):
+                span = (placed[0], placed[-1])
+        if span is None:
             if strict:
                 return None
             continue
-        units.append(set(range(found, found + len(needle))))
-        cursor = found + len(needle)
+        units.append(set(range(span[0], span[1] + 1)))
+        cursor = span[1] + 1
     return units or None
 
 
@@ -346,37 +469,51 @@ def splits_units(splits, n):
 
 # --------------------------------------------------------------------- score
 
-def score_run(gold_by_id, inputs, results, reference, families):
+MODEL_ARMS = ("ranges", "labels")
+FREE_ARMS = ("one-unit", "every-line", "rules", "units-job", "whole-list")
+
+
+def model_units(arm, record, item):
+    job = record["job"]
+    n, lines = len(item["atoms"]), item["lines"]
+    if arm == "labels" and job.get("outcome") == "skipped" and job.get("skip") == "tooShortToSplit":
+        return whole_from_lines(lines)
+    if job.get("outcome") != "accepted" or not record.get("raw"):
+        return None
+    return ranges_units(record["raw"], n) if arm == "ranges" else labels_units(record["raw"], lines)
+
+
+def score_run(golds_by_id, inputs, results, reference):
+    """One row per capture: arm -> (class, flags, units, the reading judged)."""
     by_arm = defaultdict(dict)
-    meta = defaultdict(dict)
     for record in results:
         by_arm[record["arm"]][record["id"]] = record
-    table = []
-    for item in inputs:
-        cid, n, lines = item["id"], len(item["atoms"]), item["lines"]
-        gold = gold_by_id[cid]
-        _, r_reason = best_ranges(gold)
-        _, l_reason = best_labels(gold, lines)
-        row = {"id": cid, "gold": len(gold.units)}
-        for arm in ("ranges", "labels"):
+    table, meta = [], defaultdict(dict)
+    for position, item in enumerate(inputs):
+        cid, lines = item["id"], item["lines"]
+        golds = golds_by_id[cid]
+        row = {"id": cid, "gold": unit_count(golds), "position": position}
+        for arm in MODEL_ARMS:
             record = by_arm[arm].get(cid)
             if record is None:
-                row[arm] = ("missing", ["missing"], None)
                 continue
-            job = record["job"]
-            if arm == "labels" and job.get("outcome") == "skipped" and job.get("skip") == "tooShortToSplit":
-                units = whole_from_lines(lines)
-            elif job.get("outcome") != "accepted" or not record.get("raw"):
-                units = None
-            else:
-                units = ranges_units(record["raw"], n) if arm == "ranges" else labels_units(record["raw"], lines)
-            reason = r_reason if arm == "ranges" else l_reason
-            cls, flags = classify(gold, units, cap=RANGES_CAP if arm == "ranges" else None,
-                                  representable=reason is None or reason.startswith("capacity"))
-            row[arm] = (cls, flags, units)
-            meta[arm][cid] = job
-        for arm, units in (reference.get(cid) or {}).items():
-            row[arm] = classify(gold, units) + (units,)
+            units = model_units(arm, record, item)
+            builder = best_ranges if arm == "ranges" else (lambda g: best_labels(g, lines))
+            cap = RANGES_CAP if arm == "ranges" else None
+
+            def judge(gold, units=units, builder=builder, cap=cap):
+                _, reason = builder(gold)
+                return classify(gold, units, cap=cap,
+                                representable=reason is None or reason.startswith("capacity"))
+            gold, result = best_reading(golds, judge)
+            row[arm] = result + (units, gold)
+            meta[arm][cid] = record
+        free = {"one-unit": whole_from_lines(lines),
+                "every-line": [set(range(first, last + 1)) for first, last in lines]}
+        free.update(reference.get(cid) or {})
+        for arm, units in free.items():
+            gold, result = best_reading(golds, lambda g, units=units: classify(g, units))
+            row[arm] = result + (units, gold)
         table.append(row)
     return table, meta
 
@@ -388,61 +525,162 @@ def pct(values, q):
     return values[min(len(values) - 1, int(round(q * (len(values) - 1))))]
 
 
-def report(table, meta, families, gold_by_id):
-    arms = [a for a in ("ranges", "labels") if any(meta[a] for _ in [0])] + [a for a in ("rules", "units-job", "whole-list")
-                                   if any(a in row for row in table)]
-    print("WHOLE-CAPTURE RESULT (primary class; flags in brackets when more than one)")
-    print("id".ljust(8) + "gold".rjust(5) + "".join(a.rjust(20) for a in arms))
+def arms_in(table):
+    return [a for a in MODEL_ARMS + FREE_ARMS if any(a in row for row in table)]
+
+
+def exact_line(table, arm, ids=None):
+    rows = [r for r in table if arm in r and (ids is None or r["id"] in ids)]
+    exact = sum(1 for r in rows if r[arm][0] == "exact")
+    counts = Counter(r[arm][0] for r in rows)
+    return f"exact {exact}/{len(rows)}   " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()) if k != "exact")
+
+
+def degenerate(arm, units, lines):
+    """Answers with a shape that ignores the content: named, not scored."""
+    if units is None:
+        return None
+    if arm == "labels":
+        if len(lines) >= 2 and len(units) == 1:
+            return "all continues"
+        if len(lines) >= 2 and len(units) == len(lines):
+            return "all starts"
+        return None
+    if len(units) == 1:
+        return "one thought"
+    widths = [max(u) - min(u) + 1 for u in units]
+    if len(units) >= 3 and len(set(widths)) == 1:
+        return f"fixed stride {widths[0]}"
+    return None
+
+
+def report(table, own_table, meta, families, golds_by_id, inputs, reference_ids):
+    arms = arms_in(table)
+    width = 17
+    print("WHOLE-CAPTURE RESULT, view `any` (primary class; + when there are more flags)")
+    print("id".ljust(8) + "gold".rjust(6) + "".join(a.rjust(width) for a in arms))
     for row in table:
         cells = []
         for arm in arms:
             if arm not in row:
-                cells.append("n/a".rjust(20))
+                cells.append("n/a".rjust(width))
                 continue
             cls, flags = row[arm][0], row[arm][1]
-            extra = "+" if len(flags) > 1 else ""
-            cells.append((cls + extra).rjust(20))
-        print(row["id"].ljust(8) + str(row["gold"]).rjust(5) + "".join(cells))
+            cells.append((cls + ("+" if len(flags) > 1 else "")).rjust(width))
+        print(row["id"].ljust(8) + row["gold"].rjust(6) + "".join(cells))
+    for name, source in (("any", table), ("own", own_table)):
+        print()
+        print(f"EXACT, view `{name}`")
+        for arm in arms:
+            print(f"  {arm:12} {exact_line(source, arm)}")
+    if reference_ids:
+        print()
+        print(f"EXACT ON THE {len(reference_ids)} DIAGNOSTIC CAPTURES (the only ones the recorded arms cover), view `any`")
+        for arm in arms:
+            print(f"  {arm:12} {exact_line(table, arm, reference_ids)}")
     print()
-    print("EXACT COUNTS")
-    for arm in arms:
-        rows = [r for r in table if arm in r]
-        exact = sum(1 for r in rows if r[arm][0] == "exact")
-        counts = Counter(r[arm][0] for r in rows)
-        print(f"  {arm:12} exact {exact}/{len(rows)}   " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()) if k != "exact"))
-    print()
-    print("BOUNDARY PRECISION / RECALL (pooled over captures)")
+    print("BOUNDARY PRECISION / RECALL, view `any` (pooled; judged against the reading chosen for the capture)")
     for arm in arms:
         mp = pp = mg = gg = 0
         for r in table:
             if arm not in r:
                 continue
-            a, b, c, d = boundary_counts(gold_by_id[r["id"]], r[arm][2])
+            a, b, c, d = boundary_counts(r[arm][3], r[arm][2])
             mp, pp, mg, gg = mp + a, pp + b, mg + c, gg + d
         print(f"  {arm:12} precision {mp}/{pp}   recall {mg}/{gg}")
     if families:
-        print()
-        print("PER FAMILY (exact / captures)")
         names = sorted({f for fs in families.values() for f in fs})
-        print("family".ljust(28) + "".join(a.rjust(14) for a in arms))
-        for name in names:
-            ids = [r for r in table if name in families.get(r["id"], [])]
-            cells = []
-            for arm in arms:
-                rows = [r for r in ids if arm in r]
-                cells.append(f"{sum(1 for r in rows if r[arm][0] == 'exact')}/{len(rows)}".rjust(14))
-            print(name.ljust(28) + "".join(cells))
+        for name, source in (("any", table), ("own", own_table)):
+            print()
+            print(f"PER FAMILY, exact / captures, view `{name}`")
+            print("family".ljust(26) + "".join(a.rjust(12) for a in arms))
+            for family in names:
+                ids = [r for r in source if family in families.get(r["id"], [])]
+                cells = []
+                for arm in arms:
+                    rows = [r for r in ids if arm in r]
+                    cells.append(f"{sum(1 for r in rows if r[arm][0] == 'exact')}/{len(rows)}".rjust(12))
+                print(family.ljust(26) + "".join(cells))
     print()
-    print("LATENCY AND TOKENS (model arms)")
-    for arm in ("ranges", "labels"):
-        jobs = [j for j in meta[arm].values() if j.get("outcome") != "skipped"]
+    print("UNCOVERED SOURCE, view `any`: capture (content atoms in no unit / whole gold units among them).")
+    print("Recorded, never discarded. A partial loss of 1-2 atoms between two rows of one unit is usually a")
+    print("connective left between an over-split's pieces; the primary class still says dropped.")
+    for arm in arms:
+        rows = []
+        for r in table:
+            if arm not in r or r[arm][2] is None:
+                continue
+            gold = r[arm][3]
+            lost = gold.content - set().union(*r[arm][2])
+            if lost:
+                rows.append(f"{r['id']} ({len(lost)}/{sum(1 for u in gold.units if u <= lost)})")
+        print(f"  {arm:12} {len(rows)}: " + (", ".join(rows) or "none"))
+    lines_by_id = {item["id"]: item["lines"] for item in inputs}
+    model = [a for a in MODEL_ARMS if meta[a]]
+    if not model:
+        print()
+        print("MODEL ARMS: no results given; only the free arms are scored.")
+        return
+    print()
+    print("SHAPE (named, not scored): non-exact answers whose shape ignores the content. `on multi` counts")
+    print("captures where no admissible reading has a single unit, so the shape cannot be right there.")
+    for arm in model:
+        shapes, on_multi = Counter(), Counter()
+        one_word = 0
+        for r in table:
+            if arm not in r:
+                continue
+            shape = degenerate(arm, r[arm][2], lines_by_id[r["id"]]) if r[arm][0] != "exact" else None
+            if shape:
+                shapes[shape] += 1
+                if min(len(g.units) for g in golds_by_id[r["id"]]) > 1:
+                    on_multi[shape] += 1
+            one_word += sum(1 for u in (r[arm][2] or []) if len(u) == 1)
+        print(f"  {arm:8} " + (", ".join(f"{k} {v} (on multi {on_multi[k]})" for k, v in sorted(shapes.items()))
+                               or "no degenerate shape") + f"; one-atom units {one_word}")
+    print()
+    print("MALFORMED OR REFUSED BY POSITION (run order, and which arm went first)")
+    for arm in model:
+        records = meta[arm]
+        thirds = Counter()
+        firsts = Counter()
+        for r in table:
+            if arm not in r:
+                continue
+            bad = r[arm][0] == "malformed"
+            third = ("early", "middle", "late")[min(2, r["position"] * 3 // len(table))]
+            thirds[(third, bad)] += 1
+            firsts[(records[r["id"]]["order"], bad)] += 1
+        print(f"  {arm:8} " + "  ".join(f"{t} {thirds[(t, True)]}/{thirds[(t, True)] + thirds[(t, False)]}"
+                                         for t in ("early", "middle", "late"))
+              + "   " + "  ".join(f"{'first' if o == 0 else 'second'} {firsts[(o, True)]}/{firsts[(o, True)] + firsts[(o, False)]}"
+                                  for o in (0, 1)))
+    print()
+    print("LATENCY AND TOKENS (model arms; skipped jobs excluded)")
+    for arm in model:
+        jobs = [rec["job"] for rec in meta[arm].values() if rec["job"].get("outcome") != "skipped"]
         lat = [j.get("latencyMilliseconds") for j in jobs]
         out = [j.get("responseTokens") for j in jobs]
         inp = [(j.get("promptTokens") or 0) + (j.get("instructionTokens") or 0) + (j.get("schemaTokens") or 0)
                for j in jobs if j.get("promptTokens") is not None]
-        outcomes = Counter(j.get("outcome") for j in meta[arm].values())
-        print(f"  {arm:8} asked {len(jobs)}  outcomes {dict(outcomes)}  latency ms p50 {pct(lat, .5)} p90 {pct(lat, .9)} max {pct(lat, 1)}"
-              f"  response tokens p50 {pct(out, .5)} max {pct(out, 1)}  input tokens p50 {pct(inp, .5)} max {pct(inp, 1)}")
+        outcomes = Counter(rec["job"].get("outcome") for rec in meta[arm].values())
+        prints = sorted({rec["promptFingerprint"] for rec in meta[arm].values()})
+        print(f"  {arm:8} prompt {','.join(prints)}  asked {len(jobs)}  outcomes {dict(outcomes)}")
+        print(f"           latency ms p50 {pct(lat, .5)} p90 {pct(lat, .9)} max {pct(lat, 1)}"
+              f"   response tokens p50 {pct(out, .5)} max {pct(out, 1)}   input tokens p50 {pct(inp, .5)} max {pct(inp, 1)}")
+    print()
+    print("CAPACITY")
+    for r in table:
+        if int(r["gold"].split("-")[-1]) > RANGES_CAP:
+            print(f"  {r['id']} gold {r['gold']} units, ranges cap {RANGES_CAP}: "
+                  + ", ".join(f"{arm} {r[arm][0]}" for arm in model if arm in r))
+    print()
+    print("STRUCTURALLY SATISFIED, NOT MEASURED")
+    print("  labels: in bounds, ordered, no overlap and full coverage hold by construction (a partition of the")
+    print("          clause lines); an out-of-order or duplicate line number is decoded as malformed.")
+    print("  ranges: in bounds by the schema's range guides; order, overlap and coverage ARE measured here")
+    print("          (unordered or overlapping -> malformed; uncovered content -> dropped, listed above).")
+    print("  both:   no title, wording, date, person, operation or reminder can be returned: no string field.")
 
 
 # ------------------------------------------------------------------ selftest
@@ -482,6 +720,36 @@ def selftest():
     check("ambiguous given to a unit it may not join", classify(b, [{0, 1, 2}, {3, 4}])[0], "wrong-boundaries")
     check("labels group",labels_units('{"lines":[{"line":0,"label":"continues"},{"line":1,"label":"starts"}]}', [[0, 3], [4, 7]]),
           [set(range(0, 4)), set(range(4, 8))])
+
+    # Readings of the frozen gold's shape: shared and ambiguous spans.
+    def entry(units, filler=(), shared=(), ambiguous=()):
+        return {"id": "e", "atom_view": {"units": [{"ranges": r} for r in units], "filler": list(filler),
+                                         "shared": list(shared), "ambiguous": list(ambiguous)}}
+
+    def judged(golds, units):
+        return best_reading(golds, lambda gold: classify(gold, units))[1][0]
+    own = entry([[[3, 5]]], ambiguous=[{"atoms": [0, 1, 2], "units": ["own", 1]}])
+    check("own-or-joined: one unit, view any", judged(readings(own, 6), [set(range(6))]), "exact")
+    check("own-or-joined: two units, view any", judged(readings(own, 6), [{0, 1, 2}, {3, 4, 5}]), "exact")
+    check("own-or-joined: one unit, view own", judged(readings(own, 6, "own"), [set(range(6))]), "under-split")
+    check("own-or-joined: two units, view own", judged(readings(own, 6, "own"), [{0, 1, 2}, {3, 4, 5}]), "exact")
+    check("own-or-joined: span split", judged(readings(own, 6), [{0}, {1, 2, 3, 4, 5}]), "over-split")
+    check("own-or-joined: span dropped", judged(readings(own, 6), [{3, 4, 5}]), "dropped")
+    hedge = entry([[[0, 1]], [[2, 3]]], ambiguous=[{"atoms": [4], "units": [2, "filler"]}])
+    check("unit-or-filler: left out", judged(readings(hedge, 5), [{0, 1}, {2, 3}]), "exact")
+    check("unit-or-filler: in its unit", judged(readings(hedge, 5), [{0, 1}, {2, 3, 4}]), "exact")
+    check("unit-or-filler: alone is cut from its unit", judged(readings(hedge, 5), [{0, 1}, {2, 3}, {4}]), "over-split")
+    shared = entry([[[2, 3]], [[4, 5]]], shared=[{"atoms": [0, 1], "units": [1, 2]}])
+    check("shared with its first owner", judged(readings(shared, 6), [{0, 1, 2, 3}, {4, 5}]), "exact")
+    check("shared split between owners", judged(readings(shared, 6), [{0, 2, 3}, {1, 4, 5}]) != "exact", True)
+    check("shared dropped", judged(readings(shared, 6), [{2, 3}, {4, 5}]), "dropped")
+    gold_other = readings(shared, 6)
+    check("shared given to its second owner is a discontinuous range answer",
+          sorted(r for g in gold_other for r in [best_ranges(g)[1]] if r), ["discontinuous: another unit's content lies inside this unit's span"])
+    check("labels decode rejects out-of-order lines",
+          labels_units('{"lines":[{"line":1,"label":"starts"},{"line":0,"label":"starts"}]}', [[0, 1], [2, 3]]), None)
+    check("labels decode rejects a duplicate line",
+          labels_units('{"lines":[{"line":0,"label":"starts"},{"line":0,"label":"starts"}]}', [[0, 1], [2, 3]]), None)
 
     # Exhaustive agreement between the precheck and the scorer: on random gold
     # over up to 7 atoms, candidate 2 has an exact answer among ALL labelings
@@ -570,31 +838,33 @@ def main():
         return 0 if selftest() else 1
     inputs = read_jsonl(options["inputs"])
     counts = {item["id"]: len(item["atoms"]) for item in inputs}
-    gold_by_id = {g["id"]: Gold(g, counts[g["id"]]) for g in read_jsonl(options["gold"]) if g["id"] in counts}
-    missing = [i for i in counts if i not in gold_by_id]
+    golds_by_id = load_gold(options["gold"], counts, "any")
+    own_by_id = load_gold(options["gold"], counts, "own")
+    missing = [i for i in counts if i not in golds_by_id]
     if missing:
         print(f"no gold for {len(missing)} capture(s): {', '.join(missing)}")
         return 2
     print(f"gold    {sha256(options['gold'])}")
     print(f"inputs  {sha256(options['inputs'])}")
     if command == "precheck":
-        rows = precheck(gold_by_id, inputs)
-        print()
-        print("REPRESENTABILITY (no model)")
-        print("id".ljust(8) + "gold".rjust(5) + "lines".rjust(6) + "  candidate 1 (ranges)".ljust(58) + "candidate 2 (labels)")
-        for cid, g, l, r, c in rows:
-            print(cid.ljust(8) + str(g).rjust(5) + str(l).rjust(6) + "  " + r.ljust(56) + c)
-        print()
-        print(f"candidate 1 representable {sum(r[3] == 'representable' for r in rows)}/{len(rows)}; "
-              f"candidate 2 representable {sum(r[4] == 'representable' for r in rows)}/{len(rows)}")
+        for name, source in (("any", golds_by_id), ("own", own_by_id)):
+            rows = precheck(source, inputs)
+            print()
+            print(f"REPRESENTABILITY, view `{name}` (no model)")
+            print("id".ljust(8) + "gold".rjust(6) + "lines".rjust(6) + "  " + "candidate 1 (ranges)".ljust(44) + "candidate 2 (labels)")
+            for cid, g, l, r, c in rows:
+                print(cid.ljust(8) + g.rjust(6) + str(l).rjust(6) + "  " + r.ljust(44) + c)
+            print(f"candidate 1 representable {sum(r[3] == 'representable' for r in rows)}/{len(rows)}; "
+                  f"candidate 2 representable {sum(r[4] == 'representable' for r in rows)}/{len(rows)}")
         return 0
     if command == "score":
         results = read_jsonl(options["results"]) if options.get("results") else []
-        print(f"results {sha256(options['results']) if options.get('results') else 'none (reference arms only)'}")
-        reference = reference_arms(options["reference"], inputs, gold_by_id) if options.get("reference") else {}
+        print(f"results {sha256(options['results']) if options.get('results') else 'none (free arms only)'}")
+        reference = reference_arms(options["reference"], inputs, golds_by_id) if options.get("reference") else {}
         families = json.loads(Path(options["families"]).read_text()) if options.get("families") else {}
-        table, meta = score_run(gold_by_id, inputs, results, reference, families)
-        report(table, meta, families, gold_by_id)
+        table, meta = score_run(golds_by_id, inputs, results, reference)
+        own_table, _ = score_run(own_by_id, inputs, results, reference)
+        report(table, own_table, meta, families, golds_by_id, inputs, set(reference))
         return 0
     print(__doc__)
     return 2

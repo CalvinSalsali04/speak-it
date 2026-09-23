@@ -93,31 +93,36 @@ struct UnitsExperimentRecord: Encodable {
     let raw: String?
 }
 
+/// Why the inputs were refused, naming only a capture id.
+struct UnitsInputRefusal: Error {
+    let reason: String
+}
+
 enum UnitsExperimentInputs {
     /// Every input, or a refusal naming only the capture id: the whole run is
     /// refused rather than any capture being asked about inputs that differ
     /// from the ones the gold and the precheck saw.
-    static func read(_ path: String) -> Result<[UnitsExperimentInput], String> {
-        guard let data = FileManager.default.contents(atPath: path) else { return .failure("cannot read \(path)") }
+    static func read(_ path: String) -> Result<[UnitsExperimentInput], UnitsInputRefusal> {
+        guard let data = FileManager.default.contents(atPath: path) else { return .failure(UnitsInputRefusal(reason: "cannot read \(path)")) }
         var inputs: [UnitsExperimentInput] = []
         for line in String(decoding: data, as: UTF8.self).split(separator: "\n")
         where !line.trimmingCharacters(in: .whitespaces).isEmpty {
             guard let input = try? JSONDecoder().decode(UnitsExperimentInput.self, from: Data(line.utf8)) else {
-                return .failure("unreadable input line \(inputs.count + 1)")
+                return .failure(UnitsInputRefusal(reason: "unreadable input line \(inputs.count + 1)"))
             }
             let atoms = Atoms.atomize(input.transcript)
             guard atoms.map({ String(input.transcript[$0.range]) }) == input.atoms else {
-                return .failure("\(input.id): the atoms differ from this build's atomizer")
+                return .failure(UnitsInputRefusal(reason: "\(input.id): the atoms differ from this build's atomizer"))
             }
             var next = 0
             for pair in input.lines {
                 guard pair.count == 2, pair[0] == next, pair[1] >= pair[0], pair[1] < atoms.count else {
-                    return .failure("\(input.id): the clause lines are not a partition of the atoms")
+                    return .failure(UnitsInputRefusal(reason: "\(input.id): the clause lines are not a partition of the atoms"))
                 }
                 next = pair[1] + 1
             }
             guard next == atoms.count, !atoms.isEmpty else {
-                return .failure("\(input.id): the clause lines do not cover every atom")
+                return .failure(UnitsInputRefusal(reason: "\(input.id): the clause lines do not cover every atom"))
             }
             inputs.append(input)
         }
@@ -242,8 +247,8 @@ func runUnitsExperiment(_ path: String, out: String?) async {
     let inputs: [UnitsExperimentInput]
     switch UnitsExperimentInputs.read(path) {
     case let .success(read): inputs = read
-    case let .failure(reason):
-        FileHandle.standardError.write(Data("semantic-map: units experiment refused: \(reason)\n".utf8))
+    case let .failure(refusal):
+        FileHandle.standardError.write(Data("semantic-map: units experiment refused: \(refusal.reason)\n".utf8))
         exit(2)
     }
 #if canImport(FoundationModels)
