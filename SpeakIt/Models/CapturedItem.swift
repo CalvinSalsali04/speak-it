@@ -311,9 +311,9 @@ final class CapturedItem: Identifiable {
     /// row the person resolved still arms.
     ///
     /// The location intent's mark does not count. A reorganize (`apply`)
-    /// rewrites the temporal intent and keeps a hand-set place with its mark,
-    /// so reading that mark would let a place the person confirmed release a
-    /// time they never saw. This is the rule #138 settled for
+    /// re-reads any time without the person's mark and keeps a hand-set place
+    /// with its mark, so reading that mark would let a place the person
+    /// confirmed release a time they never saw. This is the rule #138 settled for
     /// `ItemPresentation.mayArmTime`: only the temporal mark, or a review,
     /// confirms a time.
     ///

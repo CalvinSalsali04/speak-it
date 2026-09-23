@@ -7051,22 +7051,38 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertNotNil(ReminderScheduleRequest(item: item))
     }
 
-    /// A hand-set place must not release the system's hold on a guessed time.
-    /// The person edits the row, which marks both intents; organizing the
-    /// capture again re-reads `later today` into a guessed evening held for
-    /// review. `apply` rewrites the temporal intent, wiping its mark, and
-    /// keeps the hand-set place with its mark. The clock must stay unarmed
-    /// while the place half keeps the person's confirmation.
+    /// A place set by hand beside a guessed time, then Organize again,
+    /// composed under the documented rule that an editor save confirms what
+    /// the editor showed. That rule is "Saving counts as confirming, for the
+    /// time and the place" in Docs/KNOWN_ISSUES.md, and item 5 of the
+    /// owner's decision batch, which is still open.
     ///
-    /// The region is withheld here as well, by a different rule: a place with
-    /// a time beside it is a combined request, which the monitor never
-    /// watches. This test pins the two halves of the hold rule, not the region.
+    /// #138 wrote this test before #143. It assumed a re-read rewrites the
+    /// temporal intent and wipes its mark, so the guessed evening would come
+    /// back held. Since #143, `apply` keeps a time that carries the person's
+    /// mark. The editor shows this row's time: `timingSection` always
+    /// renders, with Remind me on and the reminder picker seeded from
+    /// `item.reminderDate`, the guessed evening. Under the documented rule,
+    /// the place-only save confirmed that time. Organize again keeps it and
+    /// it arms. The hosted run on f6c5bd2 failed the old premise at the
+    /// re-read. The test is retargeted rather than deleted:
+    /// - The first half pins the composition.
+    /// - The second half keeps what #138 checked, the hold rule itself, on
+    ///   the state #138 assumed a re-read would leave. That state is built
+    ///   by hand, because since #143 no re-read produces it.
     ///
-    /// Falsifier: let either mark release the time (the single OR rule this
-    /// branch first shipped) and the guessed evening is scheduled.
+    /// The region is withheld here by a different rule: a place with a time
+    /// beside it is a combined request, which the monitor never watches.
+    ///
+    /// Falsifiers: stop `apply` keeping a hand-set time (`keepsHandSetTime`)
+    /// and the kept date and mark fail. Let either mark release the time (the
+    /// single OR rule #138 first shipped) and the second half's unmarked time
+    /// is scheduled.
     func testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing() throws {
         let item = try heldLaterTodayCapture()
         let session = try XCTUnwrap(item.captureSession)
+        let shownDue = item.dueDate
+        let shownReminder = try XCTUnwrap(item.reminderDate)
         let home = try XCTUnwrap(
             LocationIntentParser.parse("Remind me to take out the garbage when I get home")
         )
@@ -7089,15 +7105,38 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         try repository.reorganize(session)
 
         XCTAssertTrue(item.needsClarification, "precondition: the re-read holds its guess")
-        XCTAssertGreaterThan(try XCTUnwrap(item.reminderDate), .now)
-        XCTAssertFalse(
+        XCTAssertEqual(item.dueDate, shownDue)
+        XCTAssertEqual(
+            item.reminderDate,
+            shownReminder,
+            "Organize again replaced the time the editor showed and the save confirmed"
+        )
+        XCTAssertTrue(
             item.temporalIntent?.isUserEdited == true,
-            "precondition: the re-read wiped the time's mark"
+            "the re-read kept the time's mark"
         )
         XCTAssertTrue(
             item.locationIntent?.isUserEdited == true,
             "precondition: and kept the hand-set place"
         )
+        XCTAssertTrue(ItemPresentation.mayArmTime(item))
+        XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .notification)
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: item),
+            "a time the person confirmed stays armed through a re-read"
+        )
+
+        // What #138 checked: the time without the person's mark, beside
+        // their place, on a held row. Reviewed, so the place-or-time choice,
+        // which reads only the time's mark, is not what refuses the clock.
+        let place = item.locationIntent
+        var unmarked = try XCTUnwrap(item.temporalIntent)
+        unmarked.isUserEdited = false
+        item.temporalIntent = unmarked
+        item.locationIntent = place
+        item.isReviewed = true
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertFalse(item.awaitsPlaceOrTimeChoice, "precondition: only the hold can refuse the clock")
 
         XCTAssertFalse(ItemPresentation.mayArmTime(item))
         XCTAssertEqual(ItemPresentation.scheduledDelivery(for: item), .none)

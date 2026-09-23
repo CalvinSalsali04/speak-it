@@ -1,5 +1,49 @@
 # Decisions
 
+## 2026-09-23 — A place-only save confirms the time the editor showed (#138 × #143)
+
+Found by the hosted run on f6c5bd2 (run 35927571971). #138's
+`testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing` failed at
+"precondition: the re-read wiped the time's mark". #138 wrote that test
+before #143. It assumed that Organize again rewrites the temporal intent
+and wipes its mark. #143's `keepsHandSetTime` keeps a marked time, and
+`update(_:with:)` marks the time on every save. It has done so
+unconditionally since before either PR. So the place-only save marked the
+guessed evening, the re-read kept it, and it armed.
+
+We checked what the editor shows before calling that wrong.
+`ItemEditorView` always renders `timingSection`: at the top when the
+requirement is the time, and below the type pickers otherwise. Its Remind
+me toggle and reminder picker are seeded from `item.reminderDate`, which
+is the guessed evening. So the person saw the time and could change it.
+Under the documented rule ("Saving counts as confirming, for the time and
+the place", KNOWN_ISSUES), the save confirmed it. That rule is the
+reversible default of owner decision 5, which is still open. The test's
+premise was wrong in composition with #143. The code is not changed:
+changing it here would answer decision 5 for the owner. It would also
+silence E19 (a person's own Needs review toggle on an armed row) and two
+tests that pin the documented rule.
+
+The test is retargeted, not deleted. Its first half pins the composition:
+the shown time keeps its date and mark through Organize again, and it
+arms. Its second half keeps what #138 checked, the hold rule itself. On a
+held, reviewed row whose time lacks the person's mark beside a marked
+place, the time does not arm and the place still may. That state is built
+by hand, because since #143 no re-read produces it.
+
+- Hypothesis: the failure is the composition. The code arms a time the
+  person was shown and saved. The retargeted test passes.
+- Falsifier: the retargeted first half fails on a Mac run, for example
+  because the re-read no longer holds the row, or `scheduledDelivery` is
+  not `.notification`. That means the composition is not what the trace
+  says. Separately, letting either mark release the time fails the second
+  half.
+- The alternative, recorded for decision 5: a save marks a trigger only
+  when the person changed it, or when it was already live before the save.
+  That needs no stored marker, keeps E19, and leaves an untouched guess
+  held. It flips `testASeriesThePersonHoldsKeepsGoingWithTheirFlag`, and
+  for the place `testSavingAHeldPlaceRowInTheEditorArmsThePlace`.
+
 ## 2026-09-23 — Carrying an intent forward never erases bytes it could not read
 
 Found by the hosted run on f6c5bd2 (run 35927571971). #129's

@@ -2032,7 +2032,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         replaces the bytes`, `carrying nothing erased the bytes`, `no
         bytes: nil goes through the setter as before`, `precondition:
         bytes that will not decode`). None out. Its fixture, `Take the
-        bins out`, was already here: 4882 + 4 - 0 = 4886.
+        bins out`, was already here: 4882 + 4 - 0 = 4886. 4886 -> 4889
+        the same day, the next commit of that fix: #138's hand-set-place
+        test is retargeted to the documented save-confirms rule under
+        #143. Four in, all assertion messages (`Organize again replaced
+        the time the editor showed and the save confirmed`, `a time the
+        person confirmed stays armed through a re-read`, `precondition:
+        only the hold can refuse the clock`, `the re-read kept the time's
+        mark`). One out (`precondition: the re-read wiped the time's
+        mark`), whose premise #143 ended: 4886 + 4 - 1 = 4889.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2042,7 +2050,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4886)
+        self.assertEqual(len(space), 4889)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

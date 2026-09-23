@@ -310,9 +310,11 @@ struct ItemPresentation: Equatable, Sendable {
     /// theirs, and it fires. Resolving a system hold goes through that same
     /// save, which is why it arms at once.
     ///
-    /// Only the temporal mark counts here. A reorganize (`apply`) rewrites the
-    /// temporal intent, wiping its mark, and keeps a hand-set place with its
-    /// mark; reading either mark let a confirmed place release a guessed time.
+    /// Only the temporal mark counts here. A reorganize (`apply`) re-reads
+    /// any time without the person's mark and keeps a hand-set place with its
+    /// mark, so reading either mark let a confirmed place release a guessed
+    /// time. Since #143 it also keeps a marked time, and an editor save marks
+    /// the time it showed ("Saving counts as confirming" in KNOWN_ISSUES).
     ///
     /// `SemanticState.permitsAction` is not read: the vague-time and
     /// series-exception holds are stored as `.resolved`, and a row the person
