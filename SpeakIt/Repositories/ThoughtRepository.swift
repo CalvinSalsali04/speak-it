@@ -408,6 +408,15 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func setArchived(_ item: CapturedItem, archived: Bool) throws
     func markReviewed(_ item: CapturedItem) throws
     func delete(_ item: CapturedItem) throws
+    /// Deletes one whole capture by its identity: the `CaptureSession`, its
+    /// original transcript, and every row it has at the moment of deletion,
+    /// looked up fresh rather than from a list somebody held earlier.
+    ///
+    /// Only for a capture the person has explicitly chosen to replace, which
+    /// today means "Try saying it again". A capture that is already gone is
+    /// not an error; it returns 0. Returns how many rows went with it.
+    @discardableResult
+    func deleteCapture(sessionID: UUID) throws -> Int
     func confirmPendingOperation(_ item: CapturedItem) throws
     func dismissPendingOperation(_ item: CapturedItem) throws
     func split(_ item: CapturedItem, into parts: [String]) throws

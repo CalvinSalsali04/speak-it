@@ -2538,6 +2538,328 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(session.originalTranscription, transcript)
     }
 
+    // MARK: - "Try saying it again" replaces the attempt as it is now
+
+    /// The capture screen offers "Review what I understood" beside "Try saying
+    /// it again", so the attempt can gain rows before the retry replaces it.
+    /// Split adds one. The retry used to delete the rows the screen was shown
+    /// when the attempt saved, so the split-off row survived, still in the
+    /// attempt's session, next to the new capture.
+    ///
+    /// Runs what `CaptureView.save` runs once the retry is durable:
+    /// `CaptureRetryReplacement.replaces`, then `CaptureSaveSettlement.settle`
+    /// with `CaptureRetryReplacement.retire` as the deletion.
+    ///
+    /// Falsifier: make `retire` delete a list of rows taken when the attempt
+    /// was shown (`for item in shown { try repository.delete(item) }`, the
+    /// shipped loop) and the split-off row is left: the leftover assertion
+    /// fails with one row.
+    func testRetryingAfterASplitLeavesNothingOfTheAttempt() async throws {
+        let attempt = try await repository.createCaptureResult(
+            text: "Something about the bank and the fee thing",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        let attemptID = attempt.session.id
+        let shown = attempt.items
+        try repository.split(attempt.primaryItem, into: ["Call the bank", "Ask about the fee"])
+        XCTAssertEqual(
+            attempt.session.items.count,
+            shown.count + 1,
+            "precondition: Split added a row the screen was never shown"
+        )
+
+        let retry = try await repository.createCaptureResult(
+            text: "Call the bank tomorrow about the overdraft fee",
+            source: .inAppVoice,
+            createdAt: .now.addingTimeInterval(60),
+            schedulesReminders: false
+        )
+        let settled = try replaceAttempt(attemptID, with: retry)
+
+        XCTAssertFalse(settled.retrySourceSurvived)
+        try assertAttemptIsGone(attemptID, retry: retry)
+    }
+
+    /// Merge deletes a row that the screen's list of rows still held, which
+    /// the retry then deleted a second time. That either threw, and the person
+    /// was told the attempt was "still in Needs review" when it was half gone,
+    /// or trapped in SwiftData on a deleted, saved model (audit S2).
+    ///
+    /// Falsifier: the shipped snapshot loop reaches `delete` for the merged-away
+    /// row, which either traps here or throws, and `retrySourceSurvived` is
+    /// true.
+    func testRetryingAfterAMergeDeletesEverythingWithoutTouchingTheMergedAwayRow() async throws {
+        let attempt = try await repository.createCaptureResult(
+            text: "Buy milk and call the dentist",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        let attemptID = attempt.session.id
+        let shown = attempt.items
+        XCTAssertEqual(shown.count, 2, "precondition: two rows to merge")
+        try repository.merge(attempt.session.items)
+        XCTAssertEqual(attempt.session.items.count, 1, "precondition: Merge deleted a row the screen still held")
+
+        let retry = try await repository.createCaptureResult(
+            text: "Pick up oat milk on the way home",
+            source: .inAppVoice,
+            createdAt: .now.addingTimeInterval(60),
+            schedulesReminders: false
+        )
+        let settled = try replaceAttempt(attemptID, with: retry)
+
+        XCTAssertFalse(
+            settled.retrySourceSurvived,
+            "a clean replacement was reported as a failure, because a row Merge had already deleted was deleted again"
+        )
+        try assertAttemptIsGone(attemptID, retry: retry)
+    }
+
+    /// Undo deletes every row but the first, the same hazard as Merge from a
+    /// different tool. A second replacement of an attempt that is already gone
+    /// is a no-op, not an error: a capture being gone is what was asked for.
+    ///
+    /// Falsifier: the shipped snapshot loop deletes the undone row a second
+    /// time (trap or `retrySourceSurvived == true`). Make `deleteCapture`
+    /// throw when the session is not found and the last assertion fails.
+    func testRetryingAfterUndoDeletesEverythingAndASecondDeletionIsANoOp() async throws {
+        let attempt = try await repository.createCaptureResult(
+            text: "Buy milk and call the dentist",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        let attemptID = attempt.session.id
+        XCTAssertEqual(attempt.items.count, 2, "precondition: Undo has a row to delete")
+        try repository.undoOrganization(attempt.session)
+        XCTAssertEqual(attempt.session.items.count, 1, "precondition: Undo deleted a row the screen still held")
+
+        let retry = try await repository.createCaptureResult(
+            text: "Call the dentist on Monday to move the cleaning",
+            source: .inAppVoice,
+            createdAt: .now.addingTimeInterval(60),
+            schedulesReminders: false
+        )
+        let settled = try replaceAttempt(attemptID, with: retry)
+
+        XCTAssertFalse(settled.retrySourceSurvived)
+        try assertAttemptIsGone(attemptID, retry: retry)
+        XCTAssertEqual(
+            try repository.deleteCapture(sessionID: attemptID),
+            0,
+            "an attempt that is already gone must be a no-op, not a failure"
+        )
+    }
+
+    /// Organize again after Undo: Undo deleted a shown row and Organize again
+    /// inserted one the screen never had, so the list the screen held is wrong
+    /// in both directions at once.
+    ///
+    /// Falsifier: the shipped snapshot loop deletes the undone row again
+    /// (trap or `retrySourceSurvived == true`) and leaves the row Organize
+    /// again inserted.
+    func testRetryingAfterOrganizeAgainLeavesNothingOfTheAttempt() async throws {
+        let attempt = try await repository.createCaptureResult(
+            text: "Buy milk and call the dentist",
+            source: .inAppVoice,
+            createdAt: .now,
+            schedulesReminders: false
+        )
+        let attemptID = attempt.session.id
+        let shownIDs = Set(attempt.items.map(\.id))
+        try repository.undoOrganization(attempt.session)
+        try repository.reorganize(attempt.session)
+        XCTAssertTrue(
+            attempt.session.items.contains { !shownIDs.contains($0.id) },
+            "precondition: Organize again inserted a row the screen was never shown"
+        )
+
+        let retry = try await repository.createCaptureResult(
+            text: "Buy oat milk and call the dentist before noon",
+            source: .inAppVoice,
+            createdAt: .now.addingTimeInterval(60),
+            schedulesReminders: false
+        )
+        let settled = try replaceAttempt(attemptID, with: retry)
+
+        XCTAssertFalse(settled.retrySourceSurvived)
+        try assertAttemptIsGone(attemptID, retry: retry)
+    }
+
+    /// The replacement persists first and the deletion comes after, so a store
+    /// that refuses the deletion keeps both captures, and the screen is told
+    /// the attempt survived. No iCloud tombstone may be left behind for it
+    /// either, or the next sync would delete on another device what this one
+    /// still has.
+    ///
+    /// The store is written normally, then reopened read-only, so the
+    /// deletion's save is refused by SwiftData itself.
+    ///
+    /// Falsifier: swallow the save error in `deleteCapture` (`try?
+    /// persistChanges(...)`) and `retrySourceSurvived` is false while the
+    /// attempt is still there. Drop `ICloudDeletionStore.restore` from
+    /// `persistChanges`'s `catch` and the tombstone assertion fails.
+    func testARetryWhoseDeletionIsRefusedKeepsTheAttemptAndSaysSo() async throws {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpeakItRetryReplacement-\(UUID().uuidString)")
+            .appendingPathExtension("store")
+        defer {
+            for suffix in ["", "-shm", "-wal"] {
+                try? FileManager.default.removeItem(at: URL(fileURLWithPath: storeURL.path + suffix))
+            }
+        }
+
+        var attemptID = UUID()
+        var attemptRowCount = 0
+        var retrySessionID = UUID()
+        do {
+            let writable = try ModelContainer(
+                for: PersistenceController.schema,
+                migrationPlan: SpeakItMigrationPlan.self,
+                configurations: [ModelConfiguration(schema: PersistenceController.schema, url: storeURL)]
+            )
+            let writer = SwiftDataThoughtRepository(
+                modelContext: writable.mainContext,
+                requestsReminderAuthorization: false
+            )
+            let attempt = try await writer.createCaptureResult(
+                text: "Buy milk and call the dentist",
+                source: .inAppVoice,
+                createdAt: .now,
+                schedulesReminders: false
+            )
+            let retry = try await writer.createCaptureResult(
+                text: "Pick up oat milk on the way home",
+                source: .inAppVoice,
+                createdAt: .now.addingTimeInterval(60),
+                schedulesReminders: false
+            )
+            attemptID = attempt.session.id
+            attemptRowCount = attempt.session.items.count
+            retrySessionID = retry.session.id
+        }
+
+        let readOnly = try ModelContainer(
+            for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(
+                schema: PersistenceController.schema,
+                url: storeURL,
+                allowsSave: false
+            )]
+        )
+        let refusing = SwiftDataThoughtRepository(
+            modelContext: readOnly.mainContext,
+            requestsReminderAuthorization: false
+        )
+        let sessions = try readOnly.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        let retrySession = try XCTUnwrap(sessions.first { $0.id == retrySessionID })
+        let retry = CaptureCreationResult(session: retrySession, items: retrySession.items)
+
+        let settled = try replaceAttempt(attemptID, with: retry, in: refusing)
+
+        XCTAssertTrue(
+            settled.retrySourceSurvived,
+            "a deletion the store refused was reported as done, and the person was not told the attempt is still there"
+        )
+        let durable = ModelContext(readOnly)
+        XCTAssertTrue(
+            try durable.fetch(FetchDescriptor<CaptureSession>()).contains { $0.id == attemptID },
+            "the attempt's session, and its original words, must survive a refused deletion"
+        )
+        XCTAssertEqual(
+            try durable.fetch(FetchDescriptor<CapturedItem>())
+                .filter { $0.captureSession?.id == attemptID }.count,
+            attemptRowCount,
+            "every row of the attempt must survive a refused deletion"
+        )
+        XCTAssertTrue(
+            try readOnly.mainContext.fetch(FetchDescriptor<CaptureSession>()).contains { $0.id == attemptID },
+            "the rolled-back deletion must be visible to readers, or Today and Memory hide a capture that still exists"
+        )
+        XCTAssertTrue(
+            try durable.fetch(FetchDescriptor<CaptureSession>()).contains { $0.id == retrySessionID },
+            "the retry itself must be untouched"
+        )
+        XCTAssertFalse(
+            ICloudDeletionStore.records().contains { $0.id == attemptID },
+            "a refused deletion left an iCloud tombstone that would delete the attempt on another device"
+        )
+    }
+
+    /// What `CaptureView.save` does with a durable retry, minus the charge,
+    /// analytics and draft, which `CaptureFeedbackTests` covers.
+    private func replaceAttempt(
+        _ attemptID: UUID,
+        with retry: CaptureCreationResult,
+        in store: (any ThoughtRepository)? = nil
+    ) throws -> CaptureSaveSettlement.Settled {
+        let target: any ThoughtRepository
+        if let store {
+            target = store
+        } else {
+            target = try XCTUnwrap(repository)
+        }
+        let replaces = CaptureRetryReplacement.replaces(attempt: attemptID, with: retry)
+        XCTAssertTrue(replaces, "precondition: the retry is a new capture, not the attempt handed back")
+        return CaptureSaveSettlement.settle(
+            createdNewCapture: retry.createdNewCapture,
+            consumesFreeCapture: retry.consumesFreeCapture,
+            replacesRetrySource: replaces,
+            chargeFreeCapture: {},
+            recordSaved: {},
+            deleteRetrySource: {
+                try CaptureRetryReplacement.retire(attempt: attemptID, in: target)
+            },
+            publishes: { true },
+            clearDraftOfEndedScreen: {}
+        )
+    }
+
+    /// Nothing of the attempt is left, in this context or in the store, it
+    /// cannot come back from iCloud, and the retry is whole.
+    private func assertAttemptIsGone(
+        _ attemptID: UUID,
+        retry: CaptureCreationResult,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        for context in [container.mainContext, ModelContext(container)] {
+            let leftovers = try context.fetch(FetchDescriptor<CapturedItem>())
+                .filter { $0.captureSession?.id == attemptID }
+            XCTAssertEqual(
+                leftovers.map(\.displayTitle),
+                [],
+                "rows of the replaced attempt survived beside its retry",
+                file: file,
+                line: line
+            )
+            XCTAssertFalse(
+                try context.fetch(FetchDescriptor<CaptureSession>()).contains { $0.id == attemptID },
+                "the replaced attempt's session survived",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(
+                try context.fetch(FetchDescriptor<CapturedItem>())
+                    .filter { $0.captureSession?.id == retry.session.id }.count,
+                retry.items.count,
+                "the retry lost rows",
+                file: file,
+                line: line
+            )
+        }
+        XCTAssertTrue(
+            ICloudDeletionStore.records().contains { $0.id == attemptID },
+            "the replaced attempt has no iCloud tombstone, so another device would bring it back",
+            file: file,
+            line: line
+        )
+    }
+
     func testOneHundredActionPairsAreSeparatedPredictably() {
         let actions = [
             "Buy milk", "Call dentist", "Email Jordan", "Submit report", "Book haircut",

@@ -1611,6 +1611,54 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
+    /// The session is fetched by id and its rows are read from it now, so
+    /// whatever Split, Merge, Organize again or Undo did to the capture since
+    /// somebody last looked, this deletes exactly what is there. A row those
+    /// tools already deleted is not in `session.items` any more and is never
+    /// touched; a session that is already gone is a no-op.
+    ///
+    /// Nothing outside the store is cleaned up until the store has saved: a
+    /// refused save rolls the context back and throws, and the capture is
+    /// still there, reminders and all.
+    @discardableResult
+    func deleteCapture(sessionID: UUID) throws -> Int {
+        var descriptor = FetchDescriptor<CaptureSession>(
+            predicate: #Predicate { $0.id == sessionID }
+        )
+        descriptor.fetchLimit = 1
+        guard let session = try modelContext.fetch(descriptor).first else { return 0 }
+
+        let itemIDs = session.items.map(\.id)
+        let isTutorial = session.captureSource == .tutorial
+        // The cascade takes every row the session has, the same way `delete`
+        // removes a session with its last row.
+        modelContext.delete(session)
+        if isTutorial {
+            // Practice never reaches iCloud, so it mints no tombstones.
+            try persistChanges()
+        } else {
+            try persistChanges(deletedItemIDs: itemIDs, deletedSessionIDs: [sessionID])
+        }
+
+        for itemID in itemIDs {
+            RecurrenceStore.remove(itemID)
+            PendingOperationStore.remove(itemID)
+            LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+        }
+        MemoryPinStore.removeMetadata(for: itemIDs)
+        ShoppingGroupStore.removeMetadata(for: itemIDs)
+        IdeaStageStore.removeMetadata(for: itemIDs)
+        ReminderScheduler.synchronize(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope(
+                itemIDs: Set(itemIDs),
+                captureSessionIDs: [sessionID]
+            )
+        )
+        return itemIDs.count
+    }
+
     func split(_ item: CapturedItem, into parts: [String]) throws {
         let normalizedParts = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

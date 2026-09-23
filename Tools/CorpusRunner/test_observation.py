@@ -918,7 +918,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"a discarded recording was saved"`. The fixture
         `"buy milk and eggs today"` was already counted earlier in this entry.
         The development-set overlap stayed at 114, checked by
-        regenerating `LANGUAGE_BASELINE.md`. What the test
+        regenerating `LANGUAGE_BASELINE.md`. 4135 -> 4162 on 2026-09-23,
+        when "Try saying it again" came to replace the attempt by its
+        session id (`deleteCapture(sessionID:)`) rather than by the rows
+        the screen was shown. Twenty-seven, enumerated: nineteen assertion
+        messages, seven of them preconditions; six fixtures, the attempt and
+        retry sentences and the split part `"Ask about the fee"` (its twin
+        `"Call the bank"` and the attempt `"Buy milk and call the dentist"`
+        were already counted); and two phrases quoted in doc comments, the
+        button title `"Review what I understood"` and the tail of the
+        failure notice, `"still in Needs review"`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -932,7 +941,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4135)
+        self.assertEqual(len(space), 4162)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
