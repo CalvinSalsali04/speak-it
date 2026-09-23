@@ -110,15 +110,16 @@ escaped were the ones that do not advance:
 
 That is one mechanism, DEL-12, and it covered snoozed and unsnoozed rows
 alike. Every scheduling pass now builds its requests with
-`ReminderScheduleRequest.forScheduling`. That includes the Shortcuts and
-Siri capture path (`ExternalCaptureWriter.save` in `SaveThoughtIntent.swift`)
-and the permission card on Today, whose Allow button runs
-`requestAccessAndSchedule` over the same requests Today reads its access
-status from. Both were still on `init?(item:)`. For a series iOS can repeat whose
+`ReminderScheduleRequest.forScheduling`. For a series iOS can repeat whose
 fire has passed, it returns a request that arms only the series'
 repeating trigger, under the `.series` identifier, until the app rolls the
-row forward. `init?(item:)` keeps its meaning of an alert still ahead,
-which is what Today counts.
+row forward. The passes include the Shortcuts and Siri capture path
+(`ExternalCaptureWriter.save` in `SaveThoughtIntent.swift`) and the
+permission card on Today, whose Allow button runs `requestAccessAndSchedule`
+over the same requests Today reads its access status from. Both were still
+on `init?(item:)`. That leaves `init?(item:)` with no production caller. It
+stays as the definition of an alert still ahead, which `forScheduling` is
+described against and tests assert on.
 
 What a pass arms is one value, `ReminderScheduler.batchSelection`: alarms
 still ahead, and notification requests that are still ahead or that only
@@ -136,9 +137,27 @@ spot so the record has somewhere to go. That write goes around the
 time trigger. Through the setter, a recurring place reminder reached this
 way became a clock reminder. `backfillTemporalIntentKeepingTrigger` writes
 the blob and its kind, and leaves a place trigger alone. The launch
-backfill still uses the setter, and is unchanged here. Any other failure is a `fault` on
-the `com.calvinwak.SpeakIt` / `Reminders` log with the reason only, and an
-`assertionFailure` in Debug.
+backfill now writes through it too. There the setter was safe only by a
+coincidence of schema versions: the trigger column arrived one version
+after the intent, so a row with no intent data had no trigger to flip.
+The helper makes it hold by construction. Any other failure of the snooze
+record is a `fault` on the `com.calvinwak.SpeakIt` / `Reminders` log with
+the reason only, and an `assertionFailure` in Debug.
+
+**Unreadable intent data is kept, not replaced.** `temporalIntent` reads nil
+for two rows: one with no intent data, and one whose data will not decode.
+The launch backfill used to reconstruct both, which replaced unreadable
+data for good. It now fills in only the first. It keeps unreadable data and
+logs a `fault` with the row count only, as a snooze does with
+`unreadableIntent`, which refuses to overwrite it too. Data that will not
+decode is most plausibly a shape a newer build wrote, read after a
+downgrade, and the newer build can still read it. The cost is real but
+bounded. Such a row still schedules from its resolved `reminderDate`. But
+the native repeating trigger takes its rule from the intent, so a recurring
+row is armed one occurrence at a time and rolls forward only when the app
+runs, from the rule `RecurrenceStore` still holds. That is the behaviour of
+every series iOS cannot repeat. Editing the row writes a fresh intent. No
+path is known to produce such a row.
 
 **Alarms are not covered.** An `.alarm` item is armed through AlarmKit with
 `.fixed(fireDate)`, a one-shot for every occurrence, snoozed or not. A
@@ -148,13 +167,13 @@ so the notification actions reach an alarm item only after it has fallen
 back to a notification. At that point it gets both requests like any other
 notification. See `KNOWN_ISSUES.md`.
 
-Covered by nine tests in `TemporalFullPathTests`. Parsing and the
+Covered by eleven tests in `TemporalFullPathTests`. Parsing and the
 repository's date arithmetic run pinned to the fixture zone. Every value
 the scheduler builds is read in the machine's zone. A hosted Mac in UTC
 showed why: under the pin, `Calendar.current` follows the fixture zone
 while `TimeZone.current` stays the machine's. Components built there carry
 Toronto's clock labelled with UTC's zone. On a device the two cannot
-disagree, because the app never sets `NSTimeZone.default`. The nine tests:
+disagree, because the app never sets `NSTimeZone.default`. The eleven tests:
 
 - a weekly snooze followed by completion;
 - the scheduler's plan for a snoozed weekly occurrence, which holds the
@@ -164,6 +183,10 @@ disagree, because the app never sets `NSTimeZone.default`. The nine tests:
 - a snooze on a recurring row with no intent blob;
 - the same on a recurring place reminder, which stays a place reminder;
 - the selection a scheduling pass arms, with a fired series in it;
+- the same pass run against the notification center, which catches a
+  `scheduleBatch` that stops selecting through `batchSelection`;
+- the launch backfill, which keeps a place trigger and keeps unreadable
+  intent data;
 - snooze then Tomorrow on a daily series;
 - a one-off reminder, as the unchanged control.
 

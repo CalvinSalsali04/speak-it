@@ -939,6 +939,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         dentist"`, `"a series whose alert has fired must still be armed by
         the pass"`. They also reuse the weekly bins sentence and
         `"Precondition: the alert has fired"`, which were already here.
+        4093 -> 4100 on 2026-09-23, from the third round of that
+        change's grading, eight in and one out. The launch backfill test
+        brought `"Remind me tomorrow at 10 am to water the plants"`, `"not
+        an intent"`, `"Precondition: data that will not decode"`, `"the
+        backfill must not re-derive the trigger"`, `"a row with no intent
+        data is still backfilled"` and `"intent data that will not decode
+        must be kept, not replaced"`. The pass read from the notification
+        center brought `"the pass must leave the series armed, not only
+        cancel it"`. One message was false once Today stopped reading
+        `init?(item:)`: `"Today still counts only alerts ahead"` went, and
+        `"an alert that has fired is no longer still ahead"` came.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -953,7 +964,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4093)
+        self.assertEqual(len(space), 4100)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

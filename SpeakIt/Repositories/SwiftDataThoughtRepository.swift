@@ -169,8 +169,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try? modelContext.save()
     }
 
-    /// Gives rows written before schema version 2 the temporal intent they were
-    /// never able to store.
+    /// Gives a row with no stored intent the temporal intent it was never able
+    /// to store: a row written before schema version 2.
     ///
     /// The recovery is only possible because Speak It never discards what a
     /// person actually said: reparsing `originalTextSegment` against the item's
@@ -182,15 +182,38 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     ///
     /// Resolved dates are never rewritten here. A person's existing reminders
     /// must not move because the app learned to describe them better.
+    ///
+    /// `temporalIntent` is nil for two different rows: one with no intent data,
+    /// and one whose data is there but will not decode. Only the first is
+    /// backfilled. Data that will not decode may be a shape a newer build
+    /// wrote, and replacing it would destroy it for good, so it is kept as it
+    /// is and reported, the way a snooze reports `unreadableIntent`. The
+    /// intent is written with `backfillTemporalIntentKeepingTrigger`, never
+    /// through the setter, so a row's trigger is not re-derived: a place
+    /// reminder stays one. The setter was safe here too, but only because the
+    /// trigger column arrived a schema version after the intent, so a row
+    /// with no intent data had no trigger to flip. This makes it hold by
+    /// construction.
     private func backfillTemporalIntents() {
         guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         var changed = false
+        var unreadable = 0
 
-        // Only rows that have no intent at all. A user-edited one is never
+        // Only rows with no readable intent. A user-edited one is never
         // revisited, and neither is one already reconstructed.
         for item in items where item.temporalIntent == nil {
-            item.temporalIntent = reconstructedIntent(for: item)
-            changed = true
+            guard item.temporalIntentData == nil else {
+                unreadable += 1
+                continue
+            }
+            if item.backfillTemporalIntentKeepingTrigger(reconstructedIntent(for: item)) {
+                changed = true
+            }
+        }
+        if unreadable > 0 {
+            Self.reminderLog.fault(
+                "Launch backfill kept unreadable intent data: \(unreadable, privacy: .public) rows"
+            )
         }
 
         guard changed else { return }

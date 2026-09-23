@@ -1033,7 +1033,7 @@ final class TemporalFullPathTests: XCTestCase {
         }
         let alerted = try XCTUnwrap(item.reminderDate)
         XCTAssertLessThan(alerted, .now, "Precondition: the alert has fired")
-        XCTAssertNil(ReminderScheduleRequest(item: item), "Today still counts only alerts ahead")
+        XCTAssertNil(ReminderScheduleRequest(item: item), "an alert that has fired is no longer still ahead")
 
         let now = Date.now
         let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
@@ -1166,6 +1166,56 @@ final class TemporalFullPathTests: XCTestCase {
             "a series whose alert has fired must still be armed by the pass"
         )
         XCTAssertEqual(selection.alarms, [])
+    }
+
+    /// The same guarantee, read where it lands: a scheduling pass over a
+    /// series whose alert has fired leaves its repeating trigger pending in
+    /// the notification center.
+    ///
+    /// Falsifier: `scheduleBatch` stops selecting through `batchSelection`,
+    /// for instance by going back to `futureRequests.filter { $0.delivery ==
+    /// .notification }` as on 3b10701. The pass then cancels the series and
+    /// adds nothing, so nothing is pending. The selection test above cannot
+    /// see that bypass; this one can. The capture runs under the pin; the
+    /// pass and every notification-center read run in the machine's zone.
+    func testASchedulingPassLeavesAFiredSeriesArmedInTheNotificationCenter() async throws {
+        try await requireNotificationAuthorization()
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Remind me every Monday at 9 am to take the bins out",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+        }
+        let seriesIdentifier = ReminderScheduler.seriesNotificationIdentifier(for: item.id)
+        defer {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                withIdentifiers: [seriesIdentifier]
+            )
+        }
+        let now = Date.now
+        XCTAssertLessThan(try XCTUnwrap(item.reminderDate), now, "Precondition: the alert has fired")
+        let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
+
+        let results = await ReminderScheduler.synchronizeAndVerify(
+            [request],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope(requests: [request])
+        )
+        await drainScheduler()
+
+        let pending = await pendingRequests(for: item.id)
+        XCTAssertEqual(
+            pending.map(\.identifier),
+            [seriesIdentifier],
+            "the pass must leave the series armed, not only cancel it"
+        )
+        XCTAssertEqual(results, [.scheduled])
+        let trigger = try XCTUnwrap(pending.first?.trigger as? UNCalendarNotificationTrigger)
+        XCTAssertTrue(trigger.repeats)
     }
 
     /// Snoozing a daily occurrence and then sending it to tomorrow must put it
@@ -1409,6 +1459,69 @@ final class TemporalFullPathTests: XCTestCase {
                 reloaded.temporalIntent?.time,
                 "the backfill must not invent a time of day that was never spoken"
             )
+        }
+    }
+
+    /// The launch backfill fills in only a row with no intent data, and never
+    /// changes what a row fires on. A place reminder with no intent data gets
+    /// one and stays a place reminder. A row whose intent data is there but
+    /// will not decode keeps those bytes.
+    ///
+    /// Falsifiers, on 9fa1841, where the backfill assigned through the
+    /// `temporalIntent` setter to every row whose intent read as nil:
+    /// - the first row's trigger becomes `.time`, because the setter marks any
+    ///   intent that expresses a time as a time trigger;
+    /// - the second row's bytes are replaced by a reconstruction, and its
+    ///   trigger becomes `.time` too.
+    /// Calling `backfillTemporalIntentKeepingTrigger` without the skip catches
+    /// only the second. Everything here is parsing and the store, so it runs
+    /// under the pin, and nothing reads the notification center.
+    func testLaunchBackfillKeepsPlaceTriggersAndUnreadableIntentData() throws {
+        let unreadable = Data("not an intent".utf8)
+        var missingID: UUID!
+        var corruptID: UUID!
+        try withFixtureClock { _ in
+            let missing = try repository.createCapture(
+                text: "Remind me tomorrow at 9 am to call the dentist",
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            let corrupt = try repository.createCapture(
+                text: "Remind me tomorrow at 10 am to water the plants",
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            missing.temporalIntentData = nil
+            missing.temporalKindRawValue = nil
+            missing.locationIntent = LocationIntent(event: .arrive, place: .home, repeats: true)
+            corrupt.temporalIntentData = unreadable
+            corrupt.locationIntent = LocationIntent(event: .arrive, place: .home, repeats: true)
+            XCTAssertEqual(missing.reminderTriggerKind, .location, "Precondition: a place reminder")
+            XCTAssertNil(corrupt.temporalIntent, "Precondition: data that will not decode")
+            try container.mainContext.save()
+            missingID = missing.id
+            corruptID = corrupt.id
+        }
+
+        try withFixtureClock { _ in
+            try relaunch()
+
+            let filled = try loadItem(withID: missingID)
+            XCTAssertEqual(filled.reminderTriggerKind, .location, "the backfill must not re-derive the trigger")
+            XCTAssertNotNil(filled.locationIntent)
+            XCTAssertNotNil(filled.temporalIntent, "a row with no intent data is still backfilled")
+            XCTAssertEqual(filled.temporalKindRawValue, filled.temporalIntent?.kind.rawValue)
+
+            let kept = try loadItem(withID: corruptID)
+            XCTAssertEqual(
+                kept.temporalIntentData,
+                unreadable,
+                "intent data that will not decode must be kept, not replaced"
+            )
+            XCTAssertEqual(kept.reminderTriggerKind, .location)
+            XCTAssertNotNil(kept.locationIntent)
         }
     }
 

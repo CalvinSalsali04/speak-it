@@ -42,9 +42,13 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// ordering stays keyed by item ID so it remains stable across launches.
     let createdAt: Date
 
-    /// A request for an alert still ahead, or `nil`. What Today reads to
-    /// describe pending reminders. A scheduling pass uses `forScheduling`,
-    /// which also keeps an alerted series armed.
+    /// A request for an alert still ahead, or `nil` once it has fired.
+    ///
+    /// This is the definition of "still ahead", and nothing more. No
+    /// production code calls it. Every scheduling pass, and Today's pending
+    /// reminders, use `forScheduling`, which also keeps an alerted series
+    /// armed. It stays because `forScheduling` is described against it, the
+    /// distinction is worth a name, and tests assert on it.
     @MainActor
     init?(item: CapturedItem) {
         self.init(item: item, now: .now, continuingPastFire: false)
