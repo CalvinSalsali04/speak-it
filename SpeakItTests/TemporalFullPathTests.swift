@@ -1044,6 +1044,426 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
+    // MARK: Repeating alarms
+
+    /// A daily series is an alarm that repeats on all seven days, at the time
+    /// of day it was asked for. Monday 2026-08-03 10:00 in Toronto, so the
+    /// next 6:30 is Tuesday's.
+    ///
+    /// Falsifier: return `.fixed(fireDate)` unconditionally from
+    /// `alarmSchedule(repeating:fireDate:now:calendar:)`, as the scheduler did
+    /// before, or map `.daily` to the fire date's weekday alone, and the
+    /// schedule is no longer seven days at 6:30.
+    func testADailyAlarmRepeatsOnEveryWeekday() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let fireDate = makeDate(
+                year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar
+            )
+
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .daily),
+                    fireDate: fireDate,
+                    now: now,
+                    calendar: calendar
+                ),
+                .weekly(
+                    hour: 6,
+                    minute: 30,
+                    weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+                )
+            )
+        }
+    }
+
+    /// `Every Monday` repeats on Monday alone, and `every week` with no day
+    /// named repeats on the fire date's own weekday.
+    ///
+    /// Falsifier: number the weekdays from Monday instead of `Calendar`'s
+    /// Sunday in `ReminderAlarmRepetition.weekday(number:)`, and the Monday
+    /// series rings on Tuesdays.
+    func testAWeeklyMondayAlarmRepeatsOnMondayOnly() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let nextMonday = makeDate(year: 2026, month: 8, day: 10, hour: 9, calendar: calendar)
+
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .weekly, weekdays: [2]),
+                    fireDate: nextMonday,
+                    now: now,
+                    calendar: calendar
+                ),
+                .weekly(hour: 9, minute: 0, weekdays: [.monday])
+            )
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .weekly),
+                    fireDate: nextMonday,
+                    now: now,
+                    calendar: calendar
+                ),
+                .weekly(hour: 9, minute: 0, weekdays: [.monday]),
+                "a weekly series with no day named repeats on its fire date's weekday"
+            )
+        }
+    }
+
+    /// The finding itself: `wake me up every weekday at 6:30` is one alarm
+    /// that repeats Monday to Friday, which one notification trigger cannot
+    /// be, so it must not be limited to what `repeatingComponents` accepts.
+    ///
+    /// Falsifier: build the repetition from `repeatingComponents`, which
+    /// refuses more than one weekday, and the series is a one-shot again.
+    func testAWeekdaysAlarmRepeatsMondayToFriday() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let fireDate = makeDate(
+                year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar
+            )
+
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .weekly, weekdays: [2, 3, 4, 5, 6]),
+                    fireDate: fireDate,
+                    now: now,
+                    calendar: calendar
+                ),
+                .weekly(
+                    hour: 6,
+                    minute: 30,
+                    weekdays: [.monday, .tuesday, .wednesday, .thursday, .friday]
+                )
+            )
+        }
+    }
+
+    /// An alarm with no recurrence rings once, at exactly its fire date.
+    ///
+    /// Falsifier: let a `nil` rule fall through to a daily repetition, and a
+    /// one-off alarm rings every morning.
+    func testAOneOffAlarmStaysFixed() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let fireDate = makeDate(year: 2026, month: 8, day: 4, hour: 7, calendar: calendar)
+
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: nil,
+                    fireDate: fireDate,
+                    now: now,
+                    calendar: calendar
+                ),
+                .fixed(fireDate)
+            )
+        }
+    }
+
+    /// A rule AlarmKit's weekly recurrence cannot express keeps the one-shot
+    /// alarm the foreground pass re-arms. Every one of these would ring on the
+    /// wrong days as a weekly alarm: 52 times a year for `the first Monday
+    /// every month`, every Tuesday for `every other Tuesday`.
+    ///
+    /// Falsifier: drop the `interval`, `repeatsByElapsedTime` or `anchor`
+    /// clause of the `alarmRepetition` guard, or map `.monthly` or `.yearly`
+    /// to the fire date's weekday, and that rule's case returns `.weekly`.
+    func testAnInexpressibleRuleStaysFixed() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            // Tuesday, so every weekly reading of these rules has a day to
+            // land on.
+            let fireDate = makeDate(year: 2026, month: 8, day: 4, hour: 9, calendar: calendar)
+            let inexpressible: [(String, RecurrenceRule)] = [
+                ("first Monday every month",
+                 RecurrenceRule(frequency: .monthly, ordinalWeekday: OrdinalWeekday(ordinal: 1, weekday: 2))),
+                ("every month", RecurrenceRule(frequency: .monthly)),
+                ("every year", RecurrenceRule(frequency: .yearly)),
+                ("every other Tuesday", RecurrenceRule(frequency: .weekly, interval: 2, weekdays: [3])),
+                ("every 2 days", RecurrenceRule(frequency: .daily, interval: 2)),
+                ("every 3 hours", RecurrenceRule(frequency: .daily, intervalSeconds: 3 * 3600)),
+                ("a day after completion", RecurrenceRule(frequency: .daily, anchor: .completionDate))
+            ]
+
+            for (name, rule) in inexpressible {
+                XCTAssertEqual(
+                    ReminderScheduler.alarmSchedule(
+                        rule: rule,
+                        fireDate: fireDate,
+                        now: now,
+                        calendar: calendar
+                    ),
+                    .fixed(fireDate),
+                    name
+                )
+            }
+        }
+    }
+
+    /// A relative alarm rings from now on, not from its fire date. A daily
+    /// series whose next occurrence is a week out would ring tomorrow as a
+    /// repeating alarm, so it stays a one-shot until the foreground pass
+    /// re-arms it; so does one less than a minute away.
+    ///
+    /// Falsifier: drop the first-ring comparison from
+    /// `alarmSchedule(repeating:fireDate:now:calendar:)`, and the week-out
+    /// series comes back `.weekly`; drop the more-than-a-minute clause, and
+    /// the half-minute one does.
+    func testARepeatingAlarmWhoseFirstRingIsNotThisOccurrenceStaysFixed() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let weekOut = makeDate(
+                year: 2026, month: 8, day: 11, hour: 6, minute: 30, calendar: calendar
+            )
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .daily),
+                    fireDate: weekOut,
+                    now: now,
+                    calendar: calendar
+                ),
+                .fixed(weekOut)
+            )
+
+            let halfAMinuteOut = makeDate(
+                year: 2026, month: 8, day: 3, hour: 10, minute: 1, calendar: calendar
+            )
+            XCTAssertEqual(
+                ReminderScheduler.alarmSchedule(
+                    rule: RecurrenceRule(frequency: .daily),
+                    fireDate: halfAMinuteOut,
+                    now: halfAMinuteOut.addingTimeInterval(-30),
+                    calendar: calendar
+                ),
+                .fixed(halfAMinuteOut),
+                "a relative alarm registered too late rings at the next match, not today"
+            )
+        }
+    }
+
+    /// The path production takes, not the arithmetic beside it. `schedule`
+    /// asks `alarmSchedule(for:)`, which reads the repetition
+    /// `ReminderScheduleRequest.init` stored on the request. Every test above
+    /// calls the `rule:` overload, which recomputes the repetition itself, so
+    /// none of them can see the initializer stop storing one.
+    ///
+    /// Only the parse is pinned. The request is built and scheduled in the
+    /// machine's zone, the way the scheduler runs everywhere else in this
+    /// file, and the expected hour and minute are the fire date read on the
+    /// machine's clock, so the answer cannot depend on how far the pin reaches
+    /// into `Calendar.current` and `TimeZone.current`. That the occurrence is
+    /// 6:30 is checked separately, in the fixture zone, as a fact about the
+    /// parse. The capture is dated now, because the initializer refuses a fire
+    /// date that has passed on the real clock, and the schedule is asked an
+    /// hour before the occurrence, so its first ring is this one on any day
+    /// the suite runs.
+    ///
+    /// Falsifier: assign `nil` to `alarmRepetition` in
+    /// `ReminderScheduleRequest.init` instead of computing it, and the request
+    /// carries no repetition and the alarm is a one-shot again.
+    func testAnAlarmRequestBuiltFromARealItemRepeats() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            item = try repository.createCapture(
+                text: "Set an alarm every day at 6:30 AM",
+                source: .inAppText,
+                createdAt: .now,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.frequency, .daily)
+            let parsedFireDate = try XCTUnwrap(item.reminderDate)
+            XCTAssertEqual(
+                calendar.dateComponents([.hour, .minute], from: parsedFireDate),
+                DateComponents(hour: 6, minute: 30)
+            )
+        }
+
+        // The machine's zone from here on, pinned by nothing.
+        let machineCalendar = Calendar.current
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(request.delivery, .alarm, "production asks alarmSchedule only for an alarm")
+        XCTAssertNotNil(request.alarmRepetition)
+
+        let clock = machineCalendar.dateComponents([.hour, .minute], from: request.fireDate)
+        let hour = try XCTUnwrap(clock.hour)
+        let minute = try XCTUnwrap(clock.minute)
+        XCTAssertEqual(
+            ReminderScheduler.alarmSchedule(
+                for: request,
+                now: request.fireDate.addingTimeInterval(-60 * 60),
+                calendar: machineCalendar
+            ),
+            .weekly(
+                hour: hour,
+                minute: minute,
+                weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+            )
+        )
+    }
+
+    /// A repeating alarm whose stored occurrence has already rung is still
+    /// armed: AlarmKit keeps a relative alarm scheduled for its next weekday
+    /// match. Every scheduling pass cancels each item in its scope and then
+    /// re-arms the requests it was handed, so while the initializer answered
+    /// `nil` for a past fire date, any pass that reached the row before the
+    /// foreground pass rolled it forward (an edit to another item from the
+    /// same capture, a notification action on one) cancelled the alarm and
+    /// armed nothing.
+    ///
+    /// The capture is dated eight days back under the pin, so its 6:30 has
+    /// passed on any day the suite runs: the state a row is in between its
+    /// alarm ringing and the next foreground. The request is built and read in
+    /// the machine's zone, pinned by nothing. The minute before each ring
+    /// skips, because the schedule stays `.fixed` there by design.
+    ///
+    /// Falsifier: put back `guard let fireDate = item.reminderDate, fireDate >
+    /// .now else { return nil }` at the top of `ReminderScheduleRequest.init`,
+    /// and the request is `nil`.
+    func testARepeatingAlarmThatHasRungIsStillArmedForItsNextRing() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Set an alarm every day at 6:30 AM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.frequency, .daily)
+        }
+
+        // The machine's zone from here on.
+        let machineCalendar = Calendar.current
+        let now = Date.now
+        let rung = try XCTUnwrap(item.reminderDate)
+        XCTAssertLessThan(rung, now, "precondition: the stored occurrence has rung")
+        XCTAssertNil(
+            RecurrenceStore.generatedNextItemID(for: item.id),
+            "precondition: no successor row owns the series"
+        )
+
+        let request = try XCTUnwrap(
+            ReminderScheduleRequest(item: item),
+            "a daily alarm that rang this morning still rings tomorrow, so a pass must re-arm it"
+        )
+        XCTAssertEqual(request.itemID, item.id, "under the alarm ID AlarmKit already holds")
+        XCTAssertEqual(request.delivery, .alarm)
+        XCTAssertGreaterThan(request.fireDate, now, "a pass arms only what is ahead")
+        XCTAssertLessThan(
+            request.fireDate.timeIntervalSince(now),
+            26 * 60 * 60,
+            "the next ring of a daily series, not a later one"
+        )
+        let rungClock = machineCalendar.dateComponents([.hour, .minute], from: rung)
+        let hour = try XCTUnwrap(rungClock.hour)
+        let minute = try XCTUnwrap(rungClock.minute)
+        XCTAssertEqual(
+            machineCalendar.dateComponents([.hour, .minute], from: request.fireDate),
+            rungClock,
+            "at the series' own clock"
+        )
+
+        try XCTSkipIf(
+            request.fireDate.timeIntervalSince(now) <= 60,
+            "a ring a minute away or less stays .fixed by design"
+        )
+        XCTAssertEqual(
+            ReminderScheduler.alarmSchedule(for: request, now: now, calendar: machineCalendar),
+            .weekly(
+                hour: hour,
+                minute: minute,
+                weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+            ),
+            "the pass re-arms the same repetition AlarmKit was holding"
+        )
+    }
+
+    /// The exception belongs only to the row that still owns its series.
+    /// "Every weekday" is a series AlarmKit repeats but one notification
+    /// trigger cannot, so the foreground pass continues it on a successor row,
+    /// which arms the next occurrence under its own alarm ID. The row it came
+    /// from is then spent.
+    ///
+    /// Falsifier: drop the `continuedBySuccessor` clause from
+    /// `ReminderScheduleRequest.nextRingOfFiredAlarm`, and the original row
+    /// asks for the same ring as its successor: two alarms at 7.
+    func testARungRepeatingAlarmWhoseSeriesMovedToASuccessorIsSpent() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Alarm at 7 every weekday",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(item.temporalIntent?.recurrence?.weekdays, [2, 3, 4, 5, 6])
+        }
+        XCTAssertLessThan(
+            try XCTUnwrap(item.reminderDate),
+            .now,
+            "precondition: the stored occurrence has rung"
+        )
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: item),
+            "before the foreground pass, the row still owns the series and is armed"
+        )
+
+        repository.reconcilePendingReminders()
+
+        let successorID = try XCTUnwrap(
+            RecurrenceStore.generatedNextItemID(for: item.id),
+            "precondition: the foreground pass continued the series on a successor"
+        )
+        XCTAssertNil(
+            ReminderScheduleRequest(item: item),
+            "the row the series left is spent, or its alarm rings beside the successor's"
+        )
+        let armed = try XCTUnwrap(ReminderScheduleRequest(item: try loadItem(withID: successorID)))
+        XCTAssertEqual(armed.itemID, successorID)
+        XCTAssertEqual(armed.delivery, .alarm)
+    }
+
+    /// The decision on its own, in the fixture zone: a fired occurrence rings
+    /// again only when it is an alarm, AlarmKit repeats it, and no successor
+    /// owns the series.
+    ///
+    /// Falsifier: drop any one clause of the guard in
+    /// `ReminderScheduleRequest.nextRingOfFiredAlarm`, and that case returns
+    /// Tuesday's ring.
+    func testOnlyARepeatingAlarmThatStillOwnsItsSeriesHasANextRing() {
+        withFixtureClock { calendar in
+            let now = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            let rung = makeDate(year: 2026, month: 8, day: 3, hour: 6, minute: 30, calendar: calendar)
+            let daily = ReminderScheduleRequest.alarmRepetition(
+                rule: RecurrenceRule(frequency: .daily),
+                fireDate: rung,
+                calendar: calendar
+            )
+            func nextRing(
+                _ delivery: ReminderDelivery,
+                _ repetition: ReminderAlarmRepetition?,
+                successor: Bool
+            ) -> Date? {
+                ReminderScheduleRequest.nextRingOfFiredAlarm(
+                    delivery: delivery,
+                    repetition: repetition,
+                    continuedBySuccessor: successor,
+                    now: now,
+                    calendar: calendar
+                )
+            }
+
+            XCTAssertEqual(
+                nextRing(.alarm, daily, successor: false),
+                makeDate(year: 2026, month: 8, day: 4, hour: 6, minute: 30, calendar: calendar)
+            )
+            XCTAssertNil(nextRing(.notification, daily, successor: false), "a notification")
+            XCTAssertNil(nextRing(.alarm, nil, successor: false), "a rule AlarmKit cannot repeat")
+            XCTAssertNil(nextRing(.alarm, daily, successor: true), "a series a successor owns")
+        }
+    }
+
     // MARK: Permission and background state
 
     /// Notification permission is environment, not meaning. Losing it must

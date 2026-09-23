@@ -880,8 +880,42 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Relaunch must cancel an alarm whose row is gone"`. The capture
         they share, `"Set an alarm for 7 AM to take my pills"`, was
         already in `CaptureOperationTests` and adds nothing, and every
-        phrase their doc comments quote is in backticks. What the test
-        is actually
+        phrase their doc comments quote is in backticks. 4069 -> 4076 on
+        2026-09-23, from repeating AlarmKit alarms: six
+        `TemporalFullPathTests` methods and seven literals, enumerated
+        rather than assumed. Five are the names an inexpressible-rule test
+        gives its cases (`"first Monday every month"`, `"every other
+        Tuesday"`, `"every 2 days"`, `"every 3 hours"`, `"a day after
+        completion"`) and two are assertion messages. Two more case names,
+        `"every month"` and `"every year"`, add nothing because they are
+        under twelve characters. The first draft quoted phrases in its doc
+        comments and measured 4078, one of the two extras being
+        `", every Tuesday for "`: a quotation opened on one line and
+        closed on the next pairs with the wrong mark and counts the prose
+        between two quotes as a literal. Those comments use backticks now.
+        4076 -> 4078 on 2026-09-23, from that change's review: one
+        `TemporalFullPathTests` method that builds a real request, because
+        the six above never reached the overload production calls. Three
+        literals in, one out, enumerated rather than assumed. In: the
+        capture `"Set an alarm every day at 6:30 AM"`, new to this
+        directory, and two assertion messages, `"production asks
+        alarmSchedule only for an alarm"` and `"a relative alarm registered
+        too late rings at the next match, not today"`. Out: `"an occurrence
+        under a minute away could pass while AlarmKit registers it"`, the
+        message the second one replaced because the reason it gave applied
+        to the one-shot branch just as much. A reworded message is a fall
+        and a rise, not a zero, and it only nets to zero when both sides
+        clear twelve characters. 4078 -> 4093 on 2026-09-23, from a
+        repeating alarm that has rung staying armed: three
+        `TemporalFullPathTests` methods and fifteen literals, all assertion
+        messages, enumerated rather than assumed. Their two captures, `"Set
+        an alarm every day at 6:30 AM"` and `"Alarm at 7 every weekday"`,
+        were already in this directory and add nothing. The sixteenth,
+        making 4094, is `"Every weekday"` quoted in a doc comment. It was
+        briefly rewritten into backticks to leave 4093 and then put back,
+        for the reason the 4068 entry gives: the count is a tripwire, not a
+        target.
+        What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -894,7 +928,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4069)
+        self.assertEqual(len(space), 4094)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
