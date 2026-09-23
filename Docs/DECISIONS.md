@@ -3217,11 +3217,65 @@ Nothing is added to the schema or to the list of destinations.
   today" into two rows, the report half is held and the commitment half is the
   errand. Over the whole capture the reader sees case 5 and does not hold.
 - On Apple Intelligence devices a held row now invites the refinement pass
-  (`RefinementPolicy.shouldRefine`). `RefinementGuard` checks behavioural
-  fields only for resolved rules rows, so a model that splits the frame from
-  the action could return a confident task. That is the pre-change behaviour,
-  not a new harm, and it is the Foundation Models thread's to close.
+  (`RefinementPolicy.shouldRefine`). `RefinementGuard` checked behavioural
+  fields only for resolved rules rows, so a model that split the frame from
+  the action could return a confident task. Closed the same day by the next
+  entry.
 
 **Sealed measures.** Not measured: no parser runs here and no sealed set was
 read. The next Mac `language-metrics.sh` run decides whether a ledger row is
 owed.
+
+## 2026-09-23 — A refinement may not arm a row held for somebody else's words
+
+**Defect (grade of #151, section 4).** Holding reported advice for review
+(the entry above) makes `RefinementPolicy.shouldRefine` true for it, so on an
+Apple Intelligence device the model re-reads the capture. `RefinementGuard`
+compared behavioural fields only for a rules row that was `resolved`, and a
+held row is not. A single frame-stripped quote was already rejected, because
+"sarah" and "said" are required tokens. Splitting was not: item A "Sarah said"
+plus item B "I should call Mike tomorrow at 3" covers every token, and
+`IntelligentThoughtExtractor.validate` organizes B's own words into a
+confident task armed for tomorrow at 3. That is the Foundation Models path
+bypassing a safety hold, an exit-gate P0 family. Whether the model produces
+the split is not known; it fits the recorded tendency to split frames off.
+
+**Hypothesis.** The bypass needs a refined row that is about the held row and
+carries a commitment the hold withheld. "About" is already decided in the
+guard: the refined rows whose quote shares a distinctive token with the rules
+row (or contains all its tokens when it has none of its own), the `matching`
+set every other check uses. "Commitment" is closed: a due date, a reminder
+date, a recurrence rule, a place trigger, or a resolved actionable reading.
+Rejecting on that conjunction closes the split and the whole-quote variant and
+leaves every other refinement of a held row alone: a retitle, a recategory, or
+a split whose action half stays held and undated.
+
+**Change.** In `RefinementGuard.preservesEverything`, when a rules row carries
+`.underspecified(.reportedSpeech)`, the refinement is rejected if any matching
+refined row carries any of those five. Rejection keeps the rules reading, as
+every other failed check does. The rules path is the only producer of that
+state (`ThoughtOrganizer.organize`, the advised branch; the unshipped
+`InterpretationBridge` also produces it), so no other row is affected. Tests
+in `RefinementGuardTests` feed the canned split and the armed whole quote
+through the guard and show both rejected, with a control where the same split
+with the action half still held passes. The two splits differ only in that
+row's organization, so the rejection is the new check's.
+
+**Falsifier.** (a) A refinement of a held reported-advice row reaches the
+store with a due date, reminder, recurrence, place, or as a resolved
+actionable row. (b) A refinement that changes only title, category or split
+shape of a held row, arming nothing, is rejected. (c) Any row not held for
+reported speech is accepted or rejected differently than before. The unit
+tests pin (a) and (b) for the split shape. (c) holds by construction: the new
+check does nothing for any other state. Only a Mac run of
+`RefinementGuardTests` checks the tests, and only an Apple Intelligence
+device can show what the model actually returns.
+
+**Cost, accepted.** When the model merges a case-5 capture ("Sarah said I
+should call Mike, so I need to call him today") into one dated row that also
+covers the held half, the whole refinement is rejected and the rules reading
+stands: the held row plus the errand due today. The person loses the model's
+tidier merge, never the errand.
+
+**No cost-ledger row is owed.** The corpus gate runs the rules path, which
+this does not change.

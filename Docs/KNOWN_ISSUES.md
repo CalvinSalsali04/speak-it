@@ -692,11 +692,14 @@ reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
 - **A split capture keeps a review row beside the errand.** When "Sarah said I
   should call Mike, so I need to call him today" is cut in two, the report half
   is held for review and the commitment half is the errand.
-- **The refinement pass can undo the hold on Apple Intelligence devices.** A
-  held row makes `RefinementPolicy.shouldRefine` true. `RefinementGuard`
-  compares behavioural fields only for resolved rows, so a model that returns
-  the action without its frame produces a confident task. That was the
-  behaviour before the change. The fix belongs to the Foundation Models thread.
+- **The refinement pass costs a held row its latency.** A held row makes
+  `RefinementPolicy.shouldRefine` true, so on an Apple Intelligence device
+  these captures wait for the model, up to its budget. Since 2026-09-23
+  `RefinementGuard` rejects any refinement that would date, remind, repeat,
+  place or confidently action a row held for somebody else's words, so the
+  model cannot undo the hold. A merge the model makes across a held row and
+  the person's own commitment is rejected with it, and the rules reading
+  stands.
 
 ## Removal requests: one defect closed, one decision open
 
