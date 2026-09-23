@@ -17,7 +17,12 @@ build, or a capture `Organize again` left `.failed`), and the prompt counts
 that same list, so the number the person confirms is the number acted on. A
 broad request names no reschedule, and the pronoun path ("cancel it") lists
 every active row only to count them in the receipt and never acts on the
-list, so neither changed.
+list, so neither changed. When that count reaches zero, because every named
+row belongs to an unfinished capture or has gone, the prompt says "Nothing to
+cancel" (or complete) and offers only a Done button that clears the review
+row, rather than a destructive button promising "cannot be undone" that would
+act on nothing. The count is read once per screen pass, since each read is a
+fetch per held row.
 
 ## 2026-09-23 — Launch recovery closes a capture the person has already touched
 
