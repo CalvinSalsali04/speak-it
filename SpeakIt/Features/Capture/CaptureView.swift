@@ -142,6 +142,406 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     }
 }
 
+/// What the voice screen is doing, as one value.
+///
+/// The orb, the title, the subtitle and the button's spoken label used to read
+/// `SpeechTranscriber.State` independently, and not one of them could see the
+/// save. `completeFinalization` returns the transcriber to `.idle` *before* it
+/// hands the words to `save`, so for the whole of that save the screen said
+/// "Tap to speak — say anything you don't want to forget" over a resting orb,
+/// above the person's own sentence, with the only control on screen disabled.
+///
+/// That window is not a flicker. It is the one place on-device refinement runs,
+/// it is entered only for a capture the rules already found ambiguous, and the
+/// refinement gets a two-second budget of its own before persistence even
+/// starts. The screen described itself as idle for the longest it is ever busy.
+///
+/// Derived once and read by all four, so they cannot disagree again. There is
+/// no progress fraction here on purpose: nothing in the save reports how far
+/// through it is, and a bar that moves on a timer would be an invention.
+enum CaptureVoiceStatus: Equatable {
+    case idle
+    case preparing(isEnhanced: Bool)
+    case listening(isWaitingForContinuation: Bool)
+    /// The recognizer is being asked for its last words.
+    case finalizing
+    /// The words are in hand and the capture is being read and stored.
+    case saving
+    /// The recognizer failed and the protected recording is being transcribed.
+    case recovering
+    case permissionDenied
+    case unavailable
+    case failed
+
+    init(
+        transcriberState: SpeechTranscriber.State,
+        isSaving: Bool,
+        isRecoveringAudio: Bool,
+        isWaitingForContinuation: Bool,
+        isPreparingEnhancedRecognition: Bool
+    ) {
+        // Recovery and saving are both work the transcriber has no state for,
+        // and both outrank whatever it was left holding. Recovery first: it is
+        // the one that ends by starting a save.
+        if isRecoveringAudio {
+            self = .recovering
+        } else if isSaving {
+            self = .saving
+        } else {
+            switch transcriberState {
+            case .idle: self = .idle
+            case .requestingPermission:
+                self = .preparing(isEnhanced: isPreparingEnhancedRecognition)
+            case .listening:
+                self = .listening(isWaitingForContinuation: isWaitingForContinuation)
+            case .finalizing: self = .finalizing
+            case .permissionDenied: self = .permissionDenied
+            case .unavailable: self = .unavailable
+            case .failed: self = .failed
+            }
+        }
+    }
+
+    /// True while Speak It is doing something with words it already has.
+    ///
+    /// The three states this covers are the ones where the person cannot act
+    /// and must not be told to: tapping does nothing, and the words are not
+    /// theirs to lose yet.
+    var isBusy: Bool {
+        switch self {
+        case .finalizing, .saving, .recovering: true
+        case .idle, .preparing, .listening, .permissionDenied, .unavailable, .failed: false
+        }
+    }
+
+    /// Whether the orb refuses a tap.
+    ///
+    /// `isBusy` is not the same question. Preparing is not work done on words
+    /// the person has already said, so it is not busy, but the microphone is
+    /// not open yet either and a tap would be dropped.
+    ///
+    /// The save is the case this had to be able to answer. The transcriber is
+    /// `.idle` throughout it, so a control reading the transcriber alone would
+    /// have let a second capture start on top of the one being written.
+    var disablesCaptureControl: Bool {
+        switch self {
+        case .preparing, .finalizing, .saving, .recovering: true
+        case .idle, .listening, .permissionDenied, .unavailable, .failed: false
+        }
+    }
+
+    var orbPhase: ListeningOrb.Phase {
+        switch self {
+        case .listening: .listening
+        case .preparing, .finalizing, .saving, .recovering: .processing
+        case .idle, .permissionDenied, .unavailable, .failed: .ready
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .idle: "Tap to speak"
+        case let .preparing(isEnhanced):
+            isEnhanced ? "Preparing accurate recognition…" : "Getting ready…"
+        case let .listening(isWaiting):
+            isWaiting ? "Still listening…" : "Listening"
+        case .finalizing, .saving: "Saving your thought…"
+        case .recovering: "Recovering your words…"
+        case .permissionDenied: "Microphone access is off"
+        case .unavailable: "Speech recognition is unavailable"
+        case .failed: "Couldn’t hear that"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .idle: "Say anything you don’t want to forget."
+        case let .preparing(isEnhanced):
+            isEnhanced
+                ? "One-time voice setup stays on this iPhone."
+                : "Speak It only listens while you’re capturing."
+        case let .listening(isWaiting):
+            isWaiting
+                ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
+                : "Just speak. I’ll save after a natural pause."
+        case .finalizing: "The original words are saved first."
+        // Says what is left rather than claiming a fraction of it. Organizing
+        // is the part that can take a moment, and naming it is also the honest
+        // answer to why the screen is still here.
+        case .saving: "Your exact words are kept. Sorting them now."
+        case .recovering: "The temporary recording is safe on this iPhone."
+        case .permissionDenied: "Allow microphone and speech recognition, or type instead."
+        case .unavailable: "You can still capture this thought by typing."
+        case .failed: "Try once more, or continue by typing."
+        }
+    }
+
+    /// The orb is disabled throughout `isBusy`, and VoiceOver reads a disabled
+    /// button's label anyway — so "Start voice capture" was an instruction to
+    /// do the one thing that could not be done.
+    var buttonAccessibilityLabel: String {
+        switch self {
+        case .listening: "Finish recording now"
+        case .finalizing, .saving: "Saving your thought"
+        case .recovering: "Recovering your words"
+        case .idle, .preparing, .permissionDenied, .unavailable, .failed: "Start voice capture"
+        }
+    }
+
+    var buttonAccessibilityHint: String {
+        switch self {
+        case .listening:
+            "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
+        case .finalizing, .saving, .recovering:
+            "Speak It is still working. Nothing is lost while you wait."
+        case .idle, .preparing, .permissionDenied, .unavailable, .failed:
+            "Requests permission if needed, then begins listening"
+        }
+    }
+}
+
+/// The one place a save's in-flight flag comes down.
+///
+/// `CaptureView.save` raises `isSaving` synchronously, before it starts the
+/// Task, so a second tap in the same frame already finds the controls refused.
+/// It used to lower the flag by hand in two places, after the result and in the
+/// `catch`. Both were right, but nothing made them right: a third way out of
+/// that Task, such as an early `return` or a new `throw`, would have left the
+/// orb on "Saving" with every control disabled, and the delayed-save tests
+/// would have stayed green because they could not see `@State`.
+///
+/// The persistence call is the save's only suspension point, so lowering the
+/// flag when it returns is the same frame as lowering it after the synchronous
+/// bookkeeping that follows. That holds only while the bookkeeping stays
+/// synchronous, which the comment at the call site guards. The function has two
+/// exits, a return and a throw (a cancelled persistence arrives as a thrown
+/// `CancellationError`), and the `defer` lowers the flag on both. The tests run
+/// this function rather than a copy of it.
+enum CaptureSaveInFlight {
+    @MainActor
+    static func persisting<Value>(
+        lower: () -> Void,
+        _ persist: () async throws -> Value
+    ) async throws -> Value {
+        defer { lower() }
+        return try await persist()
+    }
+}
+
+/// The capture screen a save belongs to.
+///
+/// `CaptureView.save` persists in an unstructured Task that outlives the
+/// screen: Discard, or Save & Close, can dismiss it while the save is still
+/// running. Persistence has to finish anyway, because those are the person's
+/// words. What must not happen is the finished save publishing into whatever
+/// is on screen by then. It used to call `onSaved`, whose handler in
+/// `RootView` sets `fullScreenDestination = nil`, and so closed the next
+/// capture mid-sentence; it also rewrote that capture's Live Activity.
+///
+/// One instance lives in each presentation's `@State`, and `RootView` gives
+/// every presentation a fresh view identity, so the object is the identity.
+/// A save holds the object it started on rather than reading `@State` again
+/// after its `await`, because a torn-down view's `@State` is not a reliable
+/// thing to read.
+///
+/// It also owns the presentation's one save slot, the same job
+/// `SpeechTranscriber.acceptsResult` does for recognizer runs: while a save
+/// is running, a second one is refused, so the same words cannot be stored
+/// twice under two different wordings.
+///
+/// Deliberately not main-actor isolated: `@State` evaluates its initial value
+/// outside the view's `body`. Every caller is on the main actor.
+final class CapturePresentation {
+    /// One save this presentation started.
+    struct Save: Equatable {
+        fileprivate let id: UUID
+    }
+
+    private(set) var hasEnded = false
+    private var saveInFlight: UUID?
+    private var latestSave: UUID?
+
+    var isSaveInFlight: Bool { saveInFlight != nil }
+
+    /// Claims the save slot, or refuses because a save is already running.
+    func beginSave() -> Save? {
+        guard saveInFlight == nil else { return nil }
+        let id = UUID()
+        saveInFlight = id
+        latestSave = id
+        return Save(id: id)
+    }
+
+    /// Frees the slot. `CaptureView.save` calls this from the `lower` of
+    /// `CaptureSaveInFlight.persisting`, so it runs on every way out of
+    /// persistence, a throw included.
+    func finishPersisting(_ save: Save) {
+        if saveInFlight == save.id {
+            saveInFlight = nil
+        }
+    }
+
+    /// Whether a save's result may still reach the screen, the parent's
+    /// navigation, the Live Activity or the auto-dismiss timer.
+    ///
+    /// False once the screen has gone, and false for any save older than the
+    /// latest one this screen started.
+    func publishes(_ save: Save) -> Bool {
+        !hasEnded && latestSave == save.id
+    }
+
+    /// The screen is gone, or the person discarded it. Irreversible.
+    func end() {
+        hasEnded = true
+    }
+}
+
+/// What a persisted save does before it may publish, and in what order.
+///
+/// The durable effects come first and run whether or not the screen that
+/// started the save is still up: the free-capture charge, the saved-capture
+/// analytics event, and the deletion of the clarification attempt this save
+/// replaces. Only then is `publishes` asked. A save whose screen has gone
+/// clears its own draft by the id it captured and stops; one whose screen is
+/// still up returns to `CaptureView.save`, which publishes.
+///
+/// A late save used to be the case nothing checked: moving the publishing
+/// check above the charge or the deletion would have dropped both on every
+/// save that outlived its screen, and every test stayed green. The view calls
+/// this function, and the tests run it rather than a copy of it.
+///
+/// Synchronous on purpose. It runs inside the span after persistence has
+/// returned, where `isSaving` is already down and the save slot already free,
+/// and nothing in that span may suspend.
+enum CaptureSaveSettlement {
+    struct Settled: Equatable {
+        /// Whether the screen that started the save may hear about it.
+        let publishes: Bool
+        /// Deleting the superseded clarification attempt failed, so both
+        /// versions are in Needs review. Only a save that publishes has a
+        /// screen to say so on.
+        let retrySourceSurvived: Bool
+    }
+
+    @MainActor
+    static func settle(
+        createdNewCapture: Bool,
+        consumesFreeCapture: Bool,
+        replacesRetrySource: Bool,
+        chargeFreeCapture: () -> Void,
+        recordSaved: () -> Void,
+        deleteRetrySource: () throws -> Void,
+        publishes: () -> Bool,
+        clearDraftOfEndedScreen: () -> Void
+    ) -> Settled {
+        if createdNewCapture {
+            // A clarification retry replaces an attempt that was already
+            // charged, so the person never spends two captures for helping
+            // Speak It understand one thought.
+            if consumesFreeCapture, !replacesRetrySource {
+                chargeFreeCapture()
+            }
+            recordSaved()
+        }
+        var retrySourceSurvived = false
+        if replacesRetrySource {
+            // The retry was durable before this deletion starts. If deletion
+            // fails, both versions remain recoverable rather than either one
+            // being lost.
+            do {
+                try deleteRetrySource()
+            } catch {
+                retrySourceSurvived = true
+            }
+        }
+        guard publishes() else {
+            clearDraftOfEndedScreen()
+            return Settled(publishes: false, retrySourceSurvived: retrySourceSurvived)
+        }
+        return Settled(publishes: true, retrySourceSurvived: retrySourceSurvived)
+    }
+}
+
+/// Where audio recovery's result goes once transcription finishes.
+///
+/// `CaptureView.recoverActiveAudio` transcribes the protected recording in a
+/// Task that can take 25 seconds and is not cancelled with the screen. It used
+/// to call `save` whatever had happened meanwhile, so a recovery that
+/// finished after the screen had gone ran `save` against that screen's
+/// `@State`, the same read `CapturePresentation` exists to avoid, and could
+/// publish into the next capture.
+///
+/// While the screen that started recovery is still up, the result goes back
+/// to it: recovered words to `save`, a failure to typing. Once it has ended,
+/// nothing reaches the screen. Recovered words stay on the draft beside the
+/// recording, for Today's recovery; a failure is recorded on the draft. The
+/// draft is written either way, and a draft the person discarded is not
+/// brought back.
+@MainActor
+enum CaptureRecoveryHandoff {
+    enum Outcome: Equatable {
+        case returnedToScreen
+        case leftForToday
+    }
+
+    @discardableResult
+    static func finish(
+        _ recovery: Result<String, Error>,
+        draftID: UUID,
+        owner: CapturePresentation,
+        save: (String) -> Void,
+        continueByTyping: () -> Void
+    ) -> Outcome {
+        switch recovery {
+        case .success(let recoveredText):
+            guard !owner.hasEnded else {
+                CaptureDraftStore.leaveRecoveredWordsForToday(id: draftID, transcript: recoveredText)
+                return .leftForToday
+            }
+            save(recoveredText)
+            return .returnedToScreen
+        case .failure(let error):
+            CaptureDraftStore.markFailed(id: draftID, error: error)
+            guard !owner.hasEnded else { return .leftForToday }
+            continueByTyping()
+            return .returnedToScreen
+        }
+    }
+}
+
+/// What the close dialog's Save & Close does with the words on screen.
+enum CaptureCloseRequest: Equatable {
+    /// Start a save of what is on screen, and close when it finishes.
+    case saveThenClose
+    /// A save already owns these words, or is about to: finalization will
+    /// hand the recognizer's last result to `save`, and audio recovery ends by
+    /// starting one. Close when that save finishes rather than starting a
+    /// second save of an earlier wording. If recovery fails instead, there is
+    /// no save to close after, and `recoverActiveAudio` withdraws the close.
+    case closeWhenSaveFinishes
+    /// The words are already saved and confirmed on screen.
+    case closeSaved
+
+    static func resolveSaveAndClose(
+        isVoiceMode: Bool,
+        transcriberState: SpeechTranscriber.State,
+        isSaveInFlight: Bool,
+        isRecoveringAudio: Bool,
+        showsSavedConfirmation: Bool
+    ) -> CaptureCloseRequest {
+        if showsSavedConfirmation, !isSaveInFlight {
+            return .closeSaved
+        }
+        if isSaveInFlight || isRecoveringAudio {
+            return .closeWhenSaveFinishes
+        }
+        if isVoiceMode, transcriberState == .finalizing {
+            return .closeWhenSaveFinishes
+        }
+        return .saveThenClose
+    }
+}
+
 struct CaptureView: View {
     /// Scroll anchor for the live transcript, so it keeps the newest words in
     /// view as they arrive.
@@ -195,6 +595,9 @@ struct CaptureView: View {
     @State private var draftCheckpointTask: Task<Void, Never>?
     @State private var isRecoveringAudio = false
     @State private var showsFreeLimit = false
+    /// This presentation's identity and its one save slot. See
+    /// `CapturePresentation`.
+    @State private var presentation = CapturePresentation()
     @FocusState private var isTextFocused: Bool
 
     private var trimmedTypedText: String {
@@ -309,6 +712,7 @@ struct CaptureView: View {
             Text("Your words are still a draft. Save them before closing, or discard them deliberately.")
         }
         .onDisappear {
+            presentation.end()
             confirmationDismissTask?.cancel()
             noSpeechTimeoutTask?.cancel()
             flushPendingCheckpoint()
@@ -457,12 +861,7 @@ struct CaptureView: View {
                 )
             }
             .buttonStyle(.speakIt)
-            .disabled(
-                transcriber.state == .requestingPermission ||
-                    transcriber.state == .finalizing ||
-                    isSaving ||
-                    isRecoveringAudio
-            )
+            .disabled(voiceStatus.disablesCaptureControl)
             .accessibilityLabel(voiceButtonAccessibilityLabel)
             .accessibilityHint(voiceButtonAccessibilityHint)
             .scaleEffect(tutorialMission == nil ? 1 : 0.72)
@@ -983,68 +1382,36 @@ struct CaptureView: View {
         onTutorialEnded()
     }
 
-    private var orbPhase: ListeningOrb.Phase {
-        if isRecoveringAudio { return .processing }
-        return switch transcriber.state {
-        case .listening:
-            .listening
-        case .requestingPermission, .finalizing:
-            .processing
-        default:
-            .ready
-        }
+    private var voiceStatus: CaptureVoiceStatus {
+        CaptureVoiceStatus(
+            transcriberState: transcriber.state,
+            isSaving: isSaving,
+            isRecoveringAudio: isRecoveringAudio,
+            isWaitingForContinuation: transcriber.isWaitingForContinuation,
+            isPreparingEnhancedRecognition: transcriber.isPreparingEnhancedRecognition
+        )
     }
 
-    private var voiceTitle: String {
-        if isRecoveringAudio { return "Recovering your words…" }
-        return switch transcriber.state {
-        case .idle: "Tap to speak"
-        case .requestingPermission:
-            transcriber.isPreparingEnhancedRecognition
-                ? "Preparing accurate recognition…"
-                : "Getting ready…"
-        case .listening:
-            transcriber.isWaitingForContinuation ? "Still listening…" : "Listening"
-        case .finalizing: "Saving your thought…"
-        case .permissionDenied: "Microphone access is off"
-        case .unavailable: "Speech recognition is unavailable"
-        case .failed: "Couldn’t hear that"
-        }
-    }
+    private var orbPhase: ListeningOrb.Phase { voiceStatus.orbPhase }
+
+    private var voiceTitle: String { voiceStatus.title }
 
     private var voiceSubtitle: String {
-        if isRecoveringAudio {
-            return "The temporary recording is safe on this iPhone."
-        }
-        if let voiceNotice {
-            return voiceNotice
-        }
-
-        return switch transcriber.state {
-        case .idle: "Say anything you don’t want to forget."
-        case .requestingPermission:
-            transcriber.isPreparingEnhancedRecognition
-                ? "One-time voice setup stays on this iPhone."
-                : "Speak It only listens while you’re capturing."
-        case .listening:
-            transcriber.isWaitingForContinuation
-                ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
-                : "Just speak. I’ll save after a natural pause."
-        case .finalizing: "The original words are saved first."
-        case .permissionDenied: "Allow microphone and speech recognition, or type instead."
-        case .unavailable: "You can still capture this thought by typing."
-        case .failed: "Try once more, or continue by typing."
-        }
+        // A notice is a specific thing that just happened — "I didn't hear
+        // speech", "try saying it a different way" — and it replaces the
+        // standing description of the state. It cannot replace a description of
+        // work in progress, though: the notice that sent the person back to the
+        // orb is stale the moment they speak again.
+        if let voiceNotice, !voiceStatus.isBusy { return voiceNotice }
+        return voiceStatus.subtitle
     }
 
     private var voiceButtonAccessibilityLabel: String {
-        transcriber.isListening ? "Finish recording now" : "Start voice capture"
+        voiceStatus.buttonAccessibilityLabel
     }
 
     private var voiceButtonAccessibilityHint: String {
-        transcriber.isListening
-            ? "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
-            : "Requests permission if needed, then begins listening"
+        voiceStatus.buttonAccessibilityHint
     }
 
     private func handleVoiceButton() {
@@ -1095,18 +1462,41 @@ struct CaptureView: View {
         transcriber.resetAfterFailure()
         CaptureDraftStore.markProcessing(id: draft.id)
 
+        // Held here rather than read back from `@State` after the `await`:
+        // the screen may be gone by the time transcription finishes. Only
+        // `owner` is needed, because a screen that has not ended is still
+        // installed and `save` reads its own state reliably.
+        let owner = presentation
         Task { @MainActor in
+            let recovery: Result<String, Error>
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
-                isRecoveringAudio = false
-                save(recoveredText, source: .inAppVoice)
+                recovery = .success(recoveredText)
             } catch {
-                isRecoveringAudio = false
-                CaptureDraftStore.markFailed(id: draft.id, error: error)
-                continueByTyping(
-                    notice: "Your recording is safe. Type this thought now, or recover it later from Today."
-                )
+                recovery = .failure(error)
             }
+            CaptureRecoveryHandoff.finish(
+                recovery,
+                draftID: draft.id,
+                owner: owner,
+                save: { recoveredText in
+                    isRecoveringAudio = false
+                    save(recoveredText, source: .inAppVoice)
+                },
+                continueByTyping: {
+                    isRecoveringAudio = false
+                    // Save & Close during recovery waited for the save
+                    // recovery was going to start. There is none now, so the
+                    // close is withdrawn rather than left armed for whatever
+                    // the person saves next. The screen stays open on the
+                    // notice below: the recording is kept for recovery, and
+                    // closing would hide that nothing was saved.
+                    closesAfterSave = false
+                    continueByTyping(
+                        notice: "Your recording is safe. Type this thought now, or recover it later from Today."
+                    )
+                }
+            )
         }
     }
 
@@ -1198,6 +1588,10 @@ struct CaptureView: View {
     }
 
     private func save(_ text: String, source: CaptureSource) {
+        // One save of this screen's words at a time. The finalization
+        // completion and Save & Close could both reach here for one recording,
+        // and when their wordings differed the store kept both.
+        guard !presentation.isSaveInFlight else { return }
         let repairedText = source == .inAppVoice
             ? tutorialMission?.repairVoiceTranscript(text) ?? text
             : text
@@ -1228,8 +1622,9 @@ struct CaptureView: View {
         }
         subscriptionStore.refreshFreeAllowance()
         // A clarification retry is exempt, because it replaces an attempt that
-        // was already charged — the `!replacesRetrySource` condition below
-        // guarantees it cannot charge a second time. Without this, the app
+        // was already charged — the `!replacesRetrySource` condition in
+        // `CaptureSaveSettlement.settle` guarantees it cannot charge a second
+        // time. Without this, the app
         // invited the person to "try saying it again" on their tenth capture
         // and then refused the retry it had just asked for.
         guard tutorialMission != nil
@@ -1262,56 +1657,97 @@ struct CaptureView: View {
         if let activeDraftID {
             CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
         }
+        guard let thisSave = presentation.beginSave() else { return }
+        // Held here rather than read back from `@State` after the `await`: the
+        // screen may be gone by then, and a torn-down view's `@State` is not a
+        // reliable thing to read. The retry source matters most of the three:
+        // read as `nil` from a dead screen, it charged a clarification retry
+        // and left the attempt it replaced in Needs review beside it.
+        let owner = presentation
+        let savingDraftID = activeDraftID
+        let savingRetrySource = retryingUnclearResult
         isSaving = true
         Task { @MainActor in
             do {
                 let persistenceSource: CaptureSource = tutorialMission == nil
                     ? source
                     : .tutorial
-                let result = try await repository.createCaptureResult(
-                    text: normalizedText,
-                    source: persistenceSource,
-                    createdAt: captureStartedAt ?? .now,
-                    schedulesReminders: tutorialMission == nil,
-                    performance: performance
-                )
-                let retrySource = retryingUnclearResult
-                let replacesRetrySource = retrySource.map {
+                let result = try await CaptureSaveInFlight.persisting(lower: {
+                    isSaving = false
+                    owner.finishPersisting(thisSave)
+                }) {
+                    try await repository.createCaptureResult(
+                        text: normalizedText,
+                        source: persistenceSource,
+                        createdAt: captureStartedAt ?? .now,
+                        schedulesReminders: tutorialMission == nil,
+                        performance: performance
+                    )
+                }
+                // `isSaving` is already down here, and this save's slot is
+                // already free. Nothing between this line and
+                // `savedResult = result` may suspend: an `await` added in this
+                // span would show the orb idle while the save is still
+                // finishing (see `CaptureSaveInFlight`), and would let a second
+                // `save` of this screen claim the slot and store the same words
+                // again (see `CapturePresentation`).
+                let replacesRetrySource = savingRetrySource.map {
                     result.createdNewCapture && $0.session.id != result.session.id
                 } ?? false
-                if result.createdNewCapture {
+                // The durable effects, then the one question of whether this
+                // screen still hears about them. The thought is durable, so the
+                // charge, the retry cleanup and the draft happen whatever
+                // happened to the screen. Everything after the guard publishes
+                // the result: to this screen, the parent's navigation, the Live
+                // Activity and the auto-dismiss timer. A save whose screen was
+                // discarded or closed must not publish into the capture that
+                // replaced it.
+                let settled = CaptureSaveSettlement.settle(
+                    createdNewCapture: result.createdNewCapture,
                     // Cancelling, completing or withdrawing manages existing
-                    // content rather than storing a new thought, so it does not
-                    // spend one of the ten free captures.
-                    // A clarification retry replaces an already-charged
-                    // attempt, so the person never spends two captures for
-                    // helping Speak It understand one thought.
-                    if result.consumesFreeCapture, !replacesRetrySource {
+                    // content rather than storing a new thought, so it does
+                    // not spend one of the ten free captures.
+                    consumesFreeCapture: result.consumesFreeCapture,
+                    replacesRetrySource: replacesRetrySource,
+                    chargeFreeCapture: {
                         subscriptionStore.recordSuccessfulCapture()
-                    }
-                    if tutorialMission == nil {
+                    },
+                    recordSaved: {
+                        guard tutorialMission == nil else { return }
                         SpeakItAnalytics.track(.captureSaved(
                             source: source == .inAppVoice ? .voice : .text,
                             itemCount: result.itemCount,
                             needsReviewCount: result.needsReviewCount,
                             plan: subscriptionStore.hasProAccess ? .pro : .free
                         ))
-                    }
-                }
-                if replacesRetrySource, let retrySource {
-                    do {
-                        // The retry was durable before this deletion starts.
-                        // If deletion fails, both versions remain recoverable
-                        // and the person is told instead of losing either one.
-                        for item in retrySource.items {
+                    },
+                    deleteRetrySource: {
+                        guard let savingRetrySource else { return }
+                        for item in savingRetrySource.items {
                             try repository.delete(item)
                         }
-                    } catch {
-                        errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
+                    },
+                    publishes: { owner.publishes(thisSave) },
+                    clearDraftOfEndedScreen: {
+                        if let savingDraftID {
+                            CaptureDraftStore.clear(id: savingDraftID)
+                        }
                     }
-                }
+                )
+                // A save whose screen has gone has nobody to tell that the
+                // earlier attempt survived. Both versions stay in Needs review,
+                // where the person will find them; nothing is written to this
+                // screen's `@State`, which nobody is looking at.
+                guard settled.publishes else { return }
                 retryingUnclearResult = nil
-                isSaving = false
+                if settled.retrySourceSurvived {
+                    errorMessage = "The new version was saved, but the earlier attempt is still in Needs review."
+                }
+                // The live id, not `savingDraftID`. They are equal unless the
+                // person edited during the save, which the editor allows:
+                // clearing the text retires the saving draft, and typing again
+                // begins a new one. That draft holds the words the next line
+                // clears from the editor, and only the live id reaches it.
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
@@ -1388,17 +1824,18 @@ struct CaptureView: View {
                     confirmationDismissTask?.cancel()
                     confirmationDismissTask = Task { @MainActor in
                         try? await Task.sleep(for: .seconds(3.6))
-                        guard !Task.isCancelled else { return }
+                        guard !Task.isCancelled, owner.publishes(thisSave) else { return }
                         finishSavedCapture()
                     }
                 }
             } catch {
-                isSaving = false
-                closesAfterSave = false
                 SpeakItAnalytics.track(.captureFailed(
                     source: source == .inAppVoice ? .voice : .text,
                     category: "organization"
                 ))
+                // The draft is kept either way, so the words are recoverable.
+                guard owner.publishes(thisSave) else { return }
+                closesAfterSave = false
                 errorMessage = error.localizedDescription
             }
         }
@@ -1603,6 +2040,26 @@ struct CaptureView: View {
         closesAfterSave = true
         isTextFocused = false
 
+        switch CaptureCloseRequest.resolveSaveAndClose(
+            isVoiceMode: mode == .voice,
+            transcriberState: transcriber.state,
+            isSaveInFlight: presentation.isSaveInFlight,
+            isRecoveringAudio: isRecoveringAudio,
+            showsSavedConfirmation: showsSavedConfirmation
+        ) {
+        case .closeSaved:
+            closesAfterSave = false
+            finishSavedCapture()
+            return
+        case .closeWhenSaveFinishes:
+            // `closesAfterSave` is already up; the save that owns these words
+            // reads it when it finishes. Starting another here stored the
+            // partial wording beside the final one.
+            return
+        case .saveThenClose:
+            break
+        }
+
         if mode == .text {
             save(trimmedTypedText, source: .inAppText)
         } else if transcriber.isListening {
@@ -1626,6 +2083,9 @@ struct CaptureView: View {
     }
 
     private func discardAndClose() {
+        // A save already running still persists, but it may no longer touch
+        // this screen, the next capture or its Live Activity.
+        presentation.end()
         closesAfterSave = false
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil

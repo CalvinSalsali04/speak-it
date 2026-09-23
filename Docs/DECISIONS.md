@@ -1,5 +1,47 @@
 # Decisions
 
+## 2026-09-23 — A save belongs to the capture screen that started it
+
+A save's Task outlives its screen, and it used to publish into whatever was on
+screen when it finished: after Discard or Save & Close during a running save,
+it called `onSaved`, and `RootView` closed the next capture mid-sentence and
+rewrote its Live Activity. Each presentation now holds a `CapturePresentation`
+in `@State`: the save persists, charges and clears its draft regardless, but
+the screen, `onSaved`, the Live Activity and the auto-dismiss timer run only
+while `publishes(_:)` says its own screen is still up. The same object holds
+one save slot, and Save & Close no longer saves the partial wording when a save
+is running or finalization is about to hand over the final wording; it waits
+for that save and closes (`CaptureCloseRequest`), so one recording stores once,
+with the recognizer's last words. The durable half is one function,
+`CaptureSaveSettlement.settle`, which charges, records and deletes a replaced
+clarification attempt before it asks `publishes`, and `save` holds the retry
+source, the draft id and the presentation from before its `await` rather than
+reading a possibly torn-down screen's `@State`. A late save whose retry cleanup
+fails tells nobody: both versions stay in Needs review, and nothing is written
+to the gone screen. If audio recovery fails after Save & Close, the close is
+withdrawn and the screen stays open on the "your recording is safe" notice,
+rather than staying armed for the next save. Audio recovery is held to the
+same rule (`CaptureRecoveryHandoff`): its transcription can outlast the screen,
+and if it does, it no longer calls that screen's `save`. Recovered words stay
+on the draft beside the recording (`CaptureDraftStore.leaveRecoveredWordsForToday`), so
+Today offers them and the next launch recovers them; a failure is recorded on
+the draft; neither touches the gone screen. A clarification retry recovered
+this way arrives as a new capture, and the unclear attempt it was replacing
+stays in Needs review.
+
+What reaches a save that outlives its screen: Discard from the close dialog
+when the dialog was opened while listening and the recognizer finished behind
+it (the person reading the dialog can be the pause that ends a thought; the
+dialog was already up, so disabling the close button and the swipe during a
+save does not reach its Discard), and the Lock Screen widget's
+`speakit://today` link, which closes whatever is presented without the check
+`speakit://capture`, Back Tap and quick actions make. Termination is not one:
+the save's Task ends with the process. After such a Discard the thought stays
+stored and the free capture spent; whether it should is a product question left
+open. Whether presenting a sheet from the capture screen fires its
+`onDisappear`, which would end the presentation for good and withhold the
+save's confirmation and close, is a device question that needs QA on hardware.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
@@ -74,6 +116,91 @@ normalise the narrow no-break space iOS puts before an AM/PM marker, the way
 `SwiftDataThoughtRepositoryTests` already does for this formatter. Delivery,
 Lock Screen presentation of a subtitle, and Scheduled Summary placement still
 need hands-on iPhone QA.
+
+## 2026-09-18 — A capture surface describes what Speak It is doing, not what it happens to hold
+
+Four defects found by walking the capture-to-save journey rather than by
+reading the parser. None of them is a language failure: in every case the
+repository understood the person correctly, the store held the right record,
+and a surface said something else. They are recorded together because they are
+one mistake made four times — a screen deriving its description from a variable
+that is *nearby* rather than from the reading that answers the question.
+
+**The voice screen went idle while the save ran.** `completeFinalization`
+returns the transcriber to `.idle` before it hands the words to `save`, and the
+orb, the title, the subtitle and the button's spoken label each read
+`SpeechTranscriber.State` on their own. So for the whole of the save the screen
+said "Tap to speak — say anything you don't want to forget" over a resting orb,
+above the person's own sentence, with the only control on screen disabled. That
+window is not a flicker: it is where on-device refinement runs, it is entered
+only for a capture the rules already found ambiguous, and refinement gets two
+seconds of its own before persistence starts. The screen described itself as
+idle for the longest it is ever busy. There is now one `CaptureVoiceStatus`
+derived once and read by all four. It carries no progress fraction, because
+nothing in the save reports one and a bar moving on a timer would be an
+invention.
+
+**A cancelled recording could publish into the next one.** The transcriber
+accepted a recognizer callback on the strength of its own `state` alone. The
+legacy backend hands every result to `Task { @MainActor … }` with nothing
+identifying the run, and `SFSpeechRecognitionTask` may call it once more after
+`cancel()` — so a late partial from an abandoned recording could arrive while
+the *next* recording was `.listening`, pass the state check, and, because
+`receiveTranscript` assigns rather than appends, replace the new recording's
+words with the old ones. `save` reads that same property. Every route that
+abandons a run and starts another is a live path to it: "Try saying it again",
+"Type instead" and back, and both tutorial retries. Callbacks now carry the run
+they came from and `SpeechTranscriber.acceptsResult` decides. `activeStartID`
+could not be reused for this: it is cleared on the first microphone buffer, so
+it is nil for exactly the state the race lands in.
+
+**The capture review list dropped every schedule signal.** It is the only
+screen a multi-item capture is read on straight after saving — the receipt
+behind it shows one row and a count — and it rendered a title, "Category ·
+Type", and a bare question mark whose only description was the words "Needs
+review". So a task due Friday and a task that will ring on Friday were the same
+row, a place trigger was invisible, and the reason a row was held was never
+named. All of it already existed: `ItemPresentation` is the shared reading
+Today, Memory and the saved-capture card draw from, and
+`ClarificationRequirement.listLabel` is the sentence Today already puts on a
+review row. The row reads them now, the alert glyph and its VoiceOver hint moved
+out of `CapturedItemRow`'s private scope onto `ItemPresentation` so both
+surfaces share one answer, and the requirement moves under the title at an
+accessibility text size rather than being squeezed into a second column.
+
+**The receipt promised alerts nothing would deliver.** `reminderCount` asked
+only whether a row's state was `.time`, so "buy milk tomorrow" — a date with
+nothing armed on it — was announced as a reminder, while `actionCount` asked the
+narrower `isArmed` and counted the same row again as a thing to do. One row on
+two lines, parts that could add up to more than the number of things saved, and
+a promise of an alert that will never fire. `reminderCount` now asks `isArmed`
+too. That also keeps a blocked place reminder excluded for the reason it always
+was rather than by a separate case.
+
+**The stale-run rule is proved through the shipping callbacks, which cost the
+transcriber one test-only entry point.** `acceptsResult` is a pure function and
+was covered as a rule, but the rule is only as good as the lifecycle that feeds
+it: the identity has to be assigned when a recording starts, dropped when it is
+abandoned, and replaced by the next recording's. Driving that through `start`
+is not possible in a unit test — it needs speech authorization, an audio
+session and a live `AVAudioEngine`, none of which the race involves. So the run
+prologue is now `beginRun`, the three backend callbacks are now built once by
+`recognitionRun`, and `beginRunWithoutAudioForTesting` returns that same
+`RecognitionRun` without opening a microphone. A test holds an abandoned run's
+callbacks and fires them late into a live one, and every line it exercises is
+the line production runs. The alternative — a test that asserts the identities
+it chose itself — would have passed with the wiring removed. The orb's disabled
+condition moved onto `CaptureVoiceStatus.disablesCaptureControl` for the same
+reason: spelled out in the view body, the one guarantee that stops a second
+capture starting on top of a save was the only part of the saving state nothing
+could check.
+
+The general rule these leave behind: a surface describing an item must derive
+that description from `ItemPresentation`, not from the stored fields or from a
+neighbouring view-state flag. The two failures that matter are the two this
+found — claiming something is armed when it is not, and describing the app as
+idle while it is working.
+
 
 ## 2026-09-16 — A recorded limit is a label, and a stale one is invisible until it is printed
 

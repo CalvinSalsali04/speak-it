@@ -112,7 +112,7 @@ struct CapturedItemRow: View {
             // own words rather than the verb is also the better reading order.
             .accessibilityLabel(spokenLabel(for: presentation))
             .accessibilityHint(
-                [alertAccessibilityHint(for: presentation), "Double tap to edit"]
+                [presentation.alertAccessibilityHint, "Double tap to edit"]
                     .compactMap { $0 }
                     .joined(separator: ". ")
             )
@@ -147,7 +147,7 @@ struct CapturedItemRow: View {
                     // A place reminder gets a glyph because its trailing text is
                     // a place name, and "Home" alone reads like a category. The
                     // pin is what makes it legible as a trigger.
-                    if isPlaceTriggered(presentation) {
+                    if presentation.isPlaceTriggered {
                         Image(systemName: "mappin.and.ellipse")
                             .font(.caption2)
                             .accessibilityHidden(true)
@@ -158,7 +158,7 @@ struct CapturedItemRow: View {
                     // the persistent distinction; the receipt word that used to
                     // carry it auto-dismissed in 3.6 seconds. See
                     // Docs/FINAL_RELEASE_AUDIT.md B-1/C-1/H-1.
-                    if let alertGlyph = alertGlyph(for: presentation) {
+                    if let alertGlyph = presentation.alertSymbolName {
                         Image(systemName: alertGlyph)
                             .font(.caption2)
                             .accessibilityHidden(true)
@@ -172,31 +172,6 @@ struct CapturedItemRow: View {
         .foregroundStyle(Color.speakMuted)
         .multilineTextAlignment(.trailing)
         .padding(.top, 2)
-    }
-
-    private func isPlaceTriggered(_ presentation: ItemPresentation) -> Bool {
-        presentation.reminderState.locationIntent != nil
-    }
-
-    /// SF Symbol name for the row's persistent alert glyph, or `nil` for a
-    /// date with nothing armed on it. A bell for a notification, an alarm
-    /// clock for AlarmKit — the two things Speak It can actually deliver.
-    private func alertGlyph(for presentation: ItemPresentation) -> String? {
-        switch presentation.reminderState.alertGlyph {
-        case .some(.notification): "bell.fill"
-        case .some(.alarm): "alarm.fill"
-        default: nil
-        }
-    }
-
-    /// VoiceOver has no way to see the glyph above, so it needs the same
-    /// distinction in words.
-    private func alertAccessibilityHint(for presentation: ItemPresentation) -> String? {
-        switch presentation.reminderState.alertGlyph {
-        case .some(.notification): "Will send a reminder"
-        case .some(.alarm): "Will sound an alarm"
-        default: nil
-        }
     }
 
     @ViewBuilder

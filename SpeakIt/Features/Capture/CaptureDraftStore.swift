@@ -110,6 +110,29 @@ enum CaptureDraftStore {
         persist(drafts)
     }
 
+    /// Audio recovery finished after the capture screen that started it had
+    /// gone, so there is no screen to save the words on. They stay on the
+    /// draft, beside the recording, which is not touched, and the draft goes
+    /// back to ready-to-recover, so Today offers it and the next launch's sweep
+    /// recovers it. An empty result leaves an earlier partial transcript as it
+    /// was. A draft that no longer exists, because the person discarded it, is
+    /// not brought back.
+    static func leaveRecoveredWordsForToday(id: UUID, transcript: String, at date: Date = .now) {
+        var drafts = allDrafts()
+        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        let normalized = transcript
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalized.isEmpty {
+            drafts[index].transcript = normalized
+        }
+        drafts[index].recoveryStatusRawValue = RecoveryStatus.capturing.rawValue
+        drafts[index].recoveryFailureMessage = nil
+        drafts[index].recoveryFailureKindRawValue = nil
+        drafts[index].updatedAt = date
+        persist(drafts, notifiesRecoveryChange: true)
+    }
+
     static func markProcessing(id: UUID) {
         updateRecoveryState(id: id, status: .processing, failureMessage: nil, failureKind: nil)
     }
