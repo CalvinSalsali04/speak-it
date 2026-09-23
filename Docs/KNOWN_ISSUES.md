@@ -729,6 +729,17 @@ capture-operation classes were run on a simulator — 49 passed, 0 failed, befor
 review added three more tests. The whole unit suite and the release compile
 check have **not** been run. See `Docs/DECISIONS.md`, 2026-09-11.
 
+## A broad request keeps no noun
+
+"Cancel all my reminders", "delete all my tasks" and "delete all my notes"
+reach the same rows: every active action row of any other finished capture
+(`SwiftDataThoughtRepository.broadOperationCandidates`). Memory is never
+reached (DEL-25, 2026-09-23), so "delete all my notes" names nothing, and
+"all my reminders" also reaches tasks that carry no reminder. The rules path
+builds a broad request with `target: nil`, so narrowing by noun needs the noun
+kept on `CaptureOperationRequest` first. The prompt shows a count, not the
+rows. See `Docs/DECISIONS.md`, 2026-09-23.
+
 ## A verb with no object is not read as an unfinished thought
 
 **Measured 2026-09-11**, run 34617253884 on `macos-26`, from

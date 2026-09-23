@@ -407,16 +407,25 @@ final class CapturedItem: Identifiable {
     /// every type that can carry a deadline is already `isActionable`.
     var isTimeCommitted: Bool { reminderDate != nil }
 
+    /// Whether this row is the kind of thing Today is for, whatever state it is
+    /// in: an actionable type, or a reminder the person asked for. For a live
+    /// row this is the whole of the Today/Memory split below. A row held for
+    /// review keeps its kind, so a knowledge row waiting in Needs review is
+    /// still knowledge to anything that must not reach Memory.
+    var isActionKind: Bool {
+        itemType.isActionable || isTimeCommitted
+    }
+
     /// Today is for action. Written as the exact complement of `belongsInMemory`
     /// so no live item can ever fall out of both destinations.
     var belongsInToday: Bool {
-        isLiveThought && (itemType.isActionable || isTimeCommitted)
+        isLiveThought && isActionKind
     }
 
     /// Memory is the durable knowledge layer, not a second task list.
     /// Actionable and completed items remain preserved in Today/Completed.
     var belongsInMemory: Bool {
-        isLiveThought && !(itemType.isActionable || isTimeCommitted)
+        isLiveThought && !isActionKind
     }
 
     /// Neither archived, done, nor waiting on the person to resolve something.

@@ -86,6 +86,67 @@ final class CaptureOperationTests: XCTestCase {
             .map(\.displayTitle)
     }
 
+    /// One finished capture holding one row of a fixed kind. Written directly,
+    /// as the store holds it, so the row's type is the test's premise rather
+    /// than whatever the organizer makes of a sentence today.
+    @discardableResult
+    private func insertFinishedRow(
+        _ text: String,
+        type: ItemType,
+        reminderDate: Date? = nil,
+        personName: String? = nil,
+        needsClarification: Bool = false
+    ) throws -> UUID {
+        let session = CaptureSession(originalTranscription: text, processingStatus: .complete)
+        let row = CapturedItem(
+            originalTextSegment: text,
+            displayTitle: text,
+            itemType: type,
+            reminderDate: reminderDate,
+            personName: personName,
+            needsClarification: needsClarification,
+            captureSession: session
+        )
+        container.mainContext.insert(session)
+        container.mainContext.insert(row)
+        try container.mainContext.save()
+        return row.id
+    }
+
+    private struct MemoryRows {
+        let note: UUID
+        let idea: UUID
+        let person: UUID
+        /// A knowledge row waiting in Needs review: not in Memory yet, and
+        /// still not a commitment.
+        let heldNote: UUID
+        /// The safety row the extractor writes for reported speech or a
+        /// point it cannot identify: `.unclear`, held for review, in a
+        /// finished capture, so only its kind can leave it out.
+        let heldUnclear: UUID
+
+        var all: Set<UUID> { [note, idea, person, heldNote, heldUnclear] }
+    }
+
+    private func insertMemoryRows() throws -> MemoryRows {
+        let rows = MemoryRows(
+            note: try insertFinishedRow("The spare key is under the blue pot", type: .note),
+            idea: try insertFinishedRow("A podcast about city parks", type: .idea),
+            person: try insertFinishedRow("Sarah likes oat milk", type: .note, personName: "Sarah"),
+            heldNote: try insertFinishedRow("Something about the lease", type: .note, needsClarification: true),
+            heldUnclear: try insertFinishedRow(
+                "Something I never finished saying",
+                type: .unclear,
+                needsClarification: true
+            )
+        )
+        for id in [rows.note, rows.idea, rows.person] {
+            let row = try XCTUnwrap(try allItems().first { $0.id == id })
+            XCTAssertTrue(row.belongsInMemory, "precondition: \(row.displayTitle) is a Memory row")
+        }
+        return rows
+    }
+
     // MARK: Cancel
 
     func testCancelRemovesTheOneMatchingActiveItem() async throws {
@@ -253,6 +314,195 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertEqual(Set(try activeTitles()), before, "Declining must leave every existing item untouched")
         XCTAssertNil(try allItems().first { $0.id == reviewRow.id }, "The review row itself is resolved, not left behind")
         XCTAssertNil(PendingOperationStore.record(for: reviewRow.id))
+    }
+
+    /// DEL-25. "Cancel all my reminders" is about commitments, and confirming
+    /// it used to delete every active row of every other capture: Memory's
+    /// notes, ideas and people facts with the tasks, and each capture's
+    /// transcript with its last row.
+    ///
+    /// Falsifiers: listing broad candidates from `activeItems` alone names the
+    /// five knowledge rows, fails the outcome's list and the stored record the
+    /// prompt counts, and deletes them on confirmation; drawing the line with
+    /// `!belongsInMemory` instead of by kind names the two held rows, the note
+    /// and the `.unclear` safety row. A fix that also left out a note carrying
+    /// a reminder (Today's, by the person's own request) fails on the
+    /// birthday.
+    func testAConfirmedBroadCancelNeverReachesMemory() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let momID = try await capture("Call Mom on Friday").primaryItem.id
+        let birthdayID = try insertFinishedRow(
+            "Priya's birthday",
+            type: .note,
+            reminderDate: Date.now.addingTimeInterval(86_400)
+        )
+        let memory = try insertMemoryRows()
+        let actions: Set<UUID> = [milkID, momID, birthdayID]
+
+        let broad = try await capture("Cancel all my reminders")
+
+        guard case let .needsConfirmation(operation, candidateIDs) = try XCTUnwrap(broad.operationOutcome) else {
+            return XCTFail("A broad cancel must be held for confirmation")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertEqual(Set(candidateIDs), actions, "a broad cancel named a Memory row")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        // The editor's "Cancel N items?" counts this record, read again.
+        let record = try XCTUnwrap(PendingOperationStore.record(for: reviewRow.id))
+        XCTAssertEqual(record.candidateIDs.count, actions.count, "the prompt counts rows confirming would not touch")
+        XCTAssertEqual(Set(record.candidateIDs), actions)
+        XCTAssertEqual(Set(repository.pendingOperationCandidateIDs(for: reviewRow)), actions)
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        XCTAssertEqual(Set(try allItems().map(\.id)), memory.all, "confirming reached past the rows it counted")
+        let words = Set(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).map(\.originalTranscription))
+        for kept in [
+            "The spare key is under the blue pot",
+            "A podcast about city parks",
+            "Sarah likes oat milk",
+            "Something about the lease",
+            "Something I never finished saying",
+        ] {
+            XCTAssertTrue(words.contains(kept), "the transcript went with its row: \(kept)")
+        }
+    }
+
+    /// The list is fixed when the request is held, and the person can turn a
+    /// task into a note before confirming. Confirmation reads each row again
+    /// (`heldCandidate`), so the note is neither counted nor deleted, and the
+    /// count the prompt shows is the number of rows confirming removes.
+    ///
+    /// Falsifier: a confirm-time check that asks only whether the capture is
+    /// organized counts two and deletes the note.
+    func testConfirmingSkipsARowEditedIntoANoteSinceItWasHeld() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let momID = try await capture("Call Mom on Friday").primaryItem.id
+        let broad = try await capture("Cancel all my reminders")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        let held = try XCTUnwrap(PendingOperationStore.record(for: reviewRow.id)).candidateIDs
+        XCTAssertEqual(Set(held), [milkID, momID], "precondition: both were held")
+
+        // What the editor's type picker leaves behind.
+        let milk = try XCTUnwrap(try allItems().first { $0.id == milkID })
+        milk.itemType = .note
+        try container.mainContext.save()
+        XCTAssertTrue(milk.belongsInMemory, "precondition: the edited row is a Memory note")
+
+        let counted = repository.pendingOperationCandidateIDs(for: reviewRow)
+        XCTAssertEqual(counted, [momID], "the prompt counts a row that is now a note")
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        let remaining = Set(try allItems().map(\.id))
+        XCTAssertTrue(remaining.contains(milkID), "a row edited into a note was deleted")
+        let actedOn = held.filter { !remaining.contains($0) }
+        XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
+    }
+
+    /// A record stored before DEL-25 can name Memory rows, and it waits in
+    /// Needs review until the person answers it. Confirming it now counts
+    /// and cancels only the action row.
+    ///
+    /// Falsifier: a confirm-time check that trusts the stored list counts
+    /// six and deletes the five knowledge rows.
+    func testConfirmingARecordHeldBeforeTheScopeSkipsItsMemoryRows() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let memory = try insertMemoryRows()
+        let broad = try await capture("Cancel all my reminders")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        let legacy = [milkID, memory.note, memory.idea, memory.person, memory.heldNote, memory.heldUnclear]
+        PendingOperationStore.set(operation: .cancel, candidateIDs: legacy, for: reviewRow.id)
+
+        let counted = repository.pendingOperationCandidateIDs(for: reviewRow)
+        XCTAssertEqual(counted, [milkID], "the prompt counts Memory rows from an old record")
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        let remaining = Set(try allItems().map(\.id))
+        XCTAssertEqual(remaining, memory.all, "confirming an old record reached Memory")
+        let actedOn = legacy.filter { !remaining.contains($0) }
+        XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
+    }
+
+    /// "Delete all my notes" keeps no noun either, and reads as the same broad
+    /// cancel. With only Memory rows in the store it names nothing, and
+    /// confirming it resolves the review row and nothing else.
+    ///
+    /// Falsifier: any list that reaches Memory names the five rows here and
+    /// deletes them on confirmation.
+    func testABroadRequestWithOnlyMemoryRowsNamesNothing() async throws {
+        let memory = try insertMemoryRows()
+
+        let broad = try await capture("Delete all my notes")
+
+        guard case let .needsConfirmation(_, candidateIDs) = try XCTUnwrap(broad.operationOutcome) else {
+            return XCTFail("A broad request must be held for confirmation")
+        }
+        XCTAssertTrue(candidateIDs.isEmpty, "a broad request named Memory rows")
+        let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
+        XCTAssertEqual(PendingOperationStore.record(for: reviewRow.id)?.candidateIDs, [])
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        XCTAssertEqual(Set(try allItems().map(\.id)), memory.all)
+    }
+
+    /// Complete-all goes through the same list. The rules never read a broad
+    /// completion today, but the confirm path carries one (and the
+    /// interpretation bridge can report one), so it is driven here directly.
+    ///
+    /// Falsifier: a scope applied to cancel alone marks the five knowledge
+    /// rows done, which moves them out of Memory into Completed.
+    func testAConfirmedBroadCompleteNeverReachesMemory() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let momID = try await capture("Call Mom on Friday").primaryItem.id
+        let memory = try insertMemoryRows()
+
+        let session = CaptureSession(
+            originalTranscription: "Mark all my tasks done",
+            processingStatus: .organizing
+        )
+        let placeholder = CapturedItem(
+            originalTextSegment: session.originalTranscription,
+            displayTitle: session.originalTranscription,
+            processingConfidence: 0,
+            needsClarification: true,
+            captureSession: session
+        )
+        container.mainContext.insert(session)
+        container.mainContext.insert(placeholder)
+        try container.mainContext.save()
+
+        let outcome = repository.applyCaptureOperation(
+            CaptureOperationRequest(
+                operation: .complete,
+                polarity: .positive,
+                target: nil,
+                sourceQuote: session.originalTranscription,
+                needsReview: true,
+                isBroad: true
+            ),
+            session: session
+        )
+
+        guard case let .needsConfirmation(operation, candidateIDs) = outcome else {
+            return XCTFail("A broad complete must be held for confirmation")
+        }
+        XCTAssertEqual(operation, .complete)
+        XCTAssertEqual(Set(candidateIDs), [milkID, momID])
+        XCTAssertEqual(Set(PendingOperationStore.record(for: placeholder.id)?.candidateIDs ?? []), [milkID, momID])
+
+        try repository.confirmPendingOperation(placeholder)
+
+        let items = try allItems()
+        for id in [milkID, momID] {
+            XCTAssertEqual(items.first { $0.id == id }?.isCompleted, true, "an action row was not completed")
+        }
+        for id in memory.all {
+            let row = try XCTUnwrap(items.first { $0.id == id }, "a Memory row was removed")
+            XCTAssertFalse(row.isCompleted, "a Memory row was marked done: \(row.displayTitle)")
+        }
     }
 
     func testRepeatedCancellationOfTheSameThingIsHarmless() async throws {
