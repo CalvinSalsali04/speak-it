@@ -8,8 +8,10 @@ evidence as the CI job.
 | --- | --- | --- |
 | `corpus-gate.sh` | Tests the scoring instrument, builds `Tools/PipelineProbe` and `Tools/CorpusRunner`, replays the full semantic corpus, fails on any blocking regression | no |
 | `language-metrics.sh` | Runs `corpus-gate.sh`, then all four development-set scorers and the held-out scorer, into one report. Refuses `--verbose` so it can never unseal the held-out set | no |
-| `unit-tests.sh [target]` | Runs `SpeakItTests` (default), one test class, or `SpeakItUITests` | yes |
+| `compile.sh` | Builds the app, its extensions and both test bundles for a simulator without running a test (`build-for-testing`), so "the Swift compiled" is an answer of its own; then checks those five products exist and names them | yes |
+| `unit-tests.sh [target]` | Runs `SpeakItTests` (default), one test class, or `SpeakItUITests`. With `SPEAKIT_RESULT_BUNDLE`, a run that exits 0 having run no test exits 3, and on CI the passed/failed/skipped counts become step outputs | yes |
 | `release-build.sh` | Compiles the Release configuration for a generic iOS device, unsigned | no |
+| `stage-summary.sh` | Prints one line per iOS-job stage from the step outcomes: PASS only for `success`, and NOT RUN for a stage that did not run, so a skipped stage cannot read as a pass; test rows carry their passed/failed/skipped counts and the corpus-gate row its blocking count | no |
 | `simulator-id.sh` | Picks the simulator `unit-tests.sh` uses: `SPEAKIT_SIMULATOR_ID`, else a `SpeakIt-Slim-*` pool device, else a booted iPhone | — |
 | `simulator-pool.sh [N]` | Creates or reuses `SpeakIt-Slim-1…N`, slims them with the profile below, boots them, prints their UDIDs | — |
 | `slim-simulator.sh <udid>` | Applies `simslim-profile.json` to one simulator; a no-op without SimSlim, and refuses non-pool devices unless `SPEAKIT_SLIM_ANY=1` | — |
