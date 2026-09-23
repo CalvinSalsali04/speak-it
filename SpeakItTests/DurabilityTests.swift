@@ -652,6 +652,34 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.recoverable())
     }
 
+    /// An audio recovery that stopped partway keeps its words beside the
+    /// recording. The launch replay of text checkpoints must not save those
+    /// words as the whole capture and release the recording that holds the
+    /// rest. Falsifier: `recoverable()` claiming a draft that still has audio
+    /// saves one item here and deletes the file.
+    func testAPartlyRecoveredRecordingIsNotReplayedAsAWholeCapture() throws {
+        let startedAt = Date().addingTimeInterval(-600)
+        let draft = CaptureDraftStore.begin(source: .inAppVoice, at: startedAt)
+        let audioURL = try XCTUnwrap(CaptureDraftStore.prepareAudioURL(for: draft))
+        try Data(repeating: 0x1, count: 1_024).write(to: audioURL, options: .atomic)
+        CaptureDraftStore.markFailed(id: draft.id, message: "Timed out", kind: .timedOut)
+        // Written old, so the checkpoint's age is not what protects it.
+        CaptureDraftStore.keepRecoveredWords(
+            "Renew the parking permit and",
+            id: draft.id,
+            at: startedAt
+        )
+
+        relaunch()
+
+        XCTAssertTrue(try allItems().isEmpty)
+        XCTAssertEqual(
+            CaptureDraftStore.draft(id: draft.id)?.transcript,
+            "Renew the parking permit and"
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+
     // MARK: - 5. Device clock destruction
 
     /// Moves the process into `identifier`'s time zone, the way stepping off a
@@ -1569,5 +1597,113 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             userInfo: [NSLocalizedDescriptionKey: "No speech detected"]
         )
         XCTAssertEqual(CaptureRecoveryFailureKind(error: opaque), .noSpeechDetected)
+    }
+
+    // MARK: - An incomplete pass is never the whole recording
+
+    /// Every caller saves a success and then deletes the recording, so a pass
+    /// that stopped before the end has to come back as a failure.
+    private func incompleteFailure(
+        _ result: Result<String, Error>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> Error? {
+        switch result {
+        case .success(let text):
+            XCTFail("Reported as the whole recording: \(text)", file: file, line: line)
+            return nil
+        case .failure(let error):
+            return error
+        }
+    }
+
+    /// Falsifier: the timeout branch returning `.success(latest)` again, as it
+    /// did before, fails the unwrap below.
+    func testATimedOutPassWithWordsSoFarIsNeverReportedAsComplete() throws {
+        let error = try XCTUnwrap(incompleteFailure(
+            CaptureAudioRecovery.outcome(latest: " buy milk and call ", ending: .timedOut)
+        ))
+
+        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .timedOut)
+        XCTAssertFalse(
+            CaptureRecoveryFailureKind(error: error).stopsPromisingRecovery,
+            "Another attempt has to stay on offer"
+        )
+        XCTAssertEqual(CaptureAudioRecovery.partialTranscript(in: error), "buy milk and call")
+    }
+
+    /// Falsifier: the error branch returning `.success(latest)` fails the
+    /// unwrap; forwarding the recognizer's own no-speech error fails the kind,
+    /// because words were found and the row would stop offering a retry.
+    func testAnErroredPassWithWordsSoFarIsNeverReportedAsComplete() throws {
+        let error = try XCTUnwrap(incompleteFailure(
+            CaptureAudioRecovery.outcome(
+                latest: "buy milk and call",
+                ending: .failed(noSpeechError)
+            )
+        ))
+
+        XCTAssertEqual(CaptureRecoveryFailureKind(error: error), .unknown)
+        XCTAssertFalse(CaptureRecoveryFailureKind(error: error).stopsPromisingRecovery)
+        XCTAssertEqual(CaptureAudioRecovery.partialTranscript(in: error), "buy milk and call")
+    }
+
+    /// Falsifier: a final result that fails, or that hands back the older
+    /// partial instead of the final text, fails the equality.
+    func testOnlyAFinalResultIsReportedAsComplete() throws {
+        let result = CaptureAudioRecovery.outcome(
+            latest: "buy milk",
+            ending: .finished("buy milk and call mom")
+        )
+
+        XCTAssertEqual(try result.get(), "buy milk and call mom")
+    }
+
+    /// Falsifier: treating whitespace as words would report partial text, and
+    /// losing the forwarded error would stop a no-speech recording from
+    /// being described as one.
+    func testAPassThatReadNothingKeepsItsExistingFailure() throws {
+        for latest in [nil, "", "   "] as [String?] {
+            let timedOut = try XCTUnwrap(incompleteFailure(
+                CaptureAudioRecovery.outcome(latest: latest, ending: .timedOut)
+            ))
+            XCTAssertEqual(CaptureRecoveryFailureKind(error: timedOut), .timedOut)
+            XCTAssertNil(CaptureAudioRecovery.partialTranscript(in: timedOut))
+
+            let failed = try XCTUnwrap(incompleteFailure(
+                CaptureAudioRecovery.outcome(latest: latest, ending: .failed(noSpeechError))
+            ))
+            XCTAssertEqual(CaptureRecoveryFailureKind(error: failed), .noSpeechDetected)
+            XCTAssertNil(CaptureAudioRecovery.partialTranscript(in: failed))
+        }
+    }
+
+    /// What a caller does with an incomplete pass: the words it read are kept
+    /// beside the recording, and the recording stays listed for another try.
+    /// Falsifier: keeping the words by any route that releases the draft or
+    /// the audio, or letting a shorter pass shrink a longer checkpoint.
+    func testAnIncompletePassKeepsTheRecordingAndTheWordsItRead() throws {
+        let (draft, audioURL) = try makeProtectedRecording()
+        CaptureDraftStore.update(id: draft.id, transcript: "buy milk")
+        let error = try XCTUnwrap(incompleteFailure(
+            CaptureAudioRecovery.outcome(latest: "buy milk and call the", ending: .timedOut)
+        ))
+        let partial = try XCTUnwrap(CaptureAudioRecovery.partialTranscript(in: error))
+
+        CaptureDraftStore.keepRecoveredWords(partial, id: draft.id)
+        CaptureDraftStore.markFailed(id: draft.id, error: error)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        let stored = try XCTUnwrap(CaptureDraftStore.draft(id: draft.id))
+        XCTAssertEqual(stored.transcript, "buy milk and call the")
+        XCTAssertEqual(stored.recoveryFailureKind, .timedOut)
+        XCTAssertEqual(CaptureRecoveryPresentation.row(for: stored).title, "Needs attention")
+        XCTAssertEqual(
+            CaptureDraftStore.recoverableAudioDrafts(minimumAge: 0).map(\.id),
+            [draft.id]
+        )
+
+        CaptureDraftStore.keepRecoveredWords("buy", id: draft.id)
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.transcript, "buy milk and call the")
     }
 }
