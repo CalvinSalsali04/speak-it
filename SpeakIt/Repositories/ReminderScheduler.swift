@@ -39,6 +39,11 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// one repeating alarm but not one repeating notification. See
     /// `alarmRepetition(rule:fireDate:calendar:)`.
     let alarmRepetition: ReminderAlarmRepetition?
+    /// Where the series put the occurrence a snooze displaced, for an alarm
+    /// AlarmKit repeats (`alarmRepetition`); `nil` when nothing is displaced.
+    /// While it is set, the series stays armed under the item ID and the
+    /// snoozed occurrence rings once under `ReminderScheduler.snoozeAlarmID(for:)`.
+    let displacedAlarmOccurrence: Date?
     /// The named list a shopping row belongs to ("Sobeys"), or `nil` for
     /// everything else. A coalesced notification whose rows all share one
     /// list is titled by that list, so the alert reads the way the person
@@ -156,6 +161,8 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             }
             : nil
         alarmRepetition = repetition
+        // F1: see `ReminderScheduler.alarmSchedule(for:now:calendar:)`.
+        displacedAlarmOccurrence = displaced && repetition != nil ? seriesFireDate : nil
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
@@ -1018,6 +1025,17 @@ enum ReminderScheduler {
             seriesNotificationIdentifier(for: itemID)
         ])
         delivery.cancelAlarm(itemID)
+        delivery.cancelAlarm(snoozeAlarmID(for: itemID))
+    }
+
+    /// The AlarmKit ID of a snoozed occurrence's one-shot, which rings beside
+    /// the series alarm kept under the item ID. Derived from the item ID alone
+    /// (every bit of the last byte flipped), so `cancel(itemID:)` reaches it
+    /// and the orphan sweep maps it back to its row. It is its own inverse.
+    static func snoozeAlarmID(for itemID: UUID) -> UUID {
+        var bytes = itemID.uuid
+        bytes.15 ^= 0xFF
+        return UUID(uuid: bytes)
     }
 
     /// Cancels every scheduled alarm that no row in the store accounts for,
@@ -1026,7 +1044,8 @@ enum ReminderScheduler {
     /// Notifications are healed by the `replacesAllSpeakItReminders` prefix
     /// sweep, which removes whatever it finds. Alarms had no such sweep: they
     /// were only cancelled by an item ID in some scope, and a row that is gone
-    /// is in no scope. The AlarmKit ID of a reminder alarm is its item ID, and
+    /// is in no scope. The AlarmKit ID of a reminder alarm is its item ID, or
+    /// its snooze ID (`snoozeAlarmID(for:)`), which its row accounts for, and
     /// `schedule` is the only place Speak It creates an AlarmKit alarm, so an
     /// alarm whose ID names no row belongs to a reminder that no longer exists.
     ///
@@ -1053,27 +1072,76 @@ enum ReminderScheduler {
 
     /// The decision behind `cancelOrphanedAlarms`, with no AlarmKit and no
     /// store in it: every scheduled alarm ID that is not one of `accountedFor`,
-    /// in the order AlarmKit listed them.
+    /// in the order AlarmKit listed them. A snoozed occurrence's alarm is
+    /// accounted for by its row, through `snoozeAlarmID(for:)`.
     static func orphanedAlarmIDs(
         scheduled: [UUID],
         accountedFor: Set<UUID>
     ) -> [UUID] {
-        scheduled.filter { !accountedFor.contains($0) }
+        scheduled.filter {
+            !accountedFor.contains($0) && !accountedFor.contains(snoozeAlarmID(for: $0))
+        }
     }
 
-    /// The AlarmKit schedule for an alarm request, decided with no AlarmKit in
-    /// it. See `alarmSchedule(repeating:fireDate:now:calendar:)`.
+    /// The AlarmKit schedule under the item ID, decided with no AlarmKit in
+    /// it. For a snoozed occurrence of a series AlarmKit repeats, that is the
+    /// series itself (`snoozedSeriesSchedule`); otherwise see
+    /// `alarmSchedule(repeating:fireDate:now:calendar:)`.
     static func alarmSchedule(
         for request: ReminderScheduleRequest,
         now: Date = .now,
         calendar: Calendar = .current
     ) -> ReminderAlarmSchedule {
-        alarmSchedule(
+        if let series = snoozedSeriesSchedule(for: request, now: now, calendar: calendar) {
+            return series
+        }
+        return alarmSchedule(
             repeating: request.alarmRepetition,
             fireDate: request.fireDate,
             now: now,
             calendar: calendar
         )
+    }
+
+    /// The series' own `.weekly` schedule for a snoozed occurrence, or `nil`.
+    ///
+    /// Snoozing used to replace the series with a `.fixed` one-shot at the
+    /// snooze, so the next occurrence rang only if the app ran in between.
+    /// Refused, leaving today's one-shot under the item ID, when the series'
+    /// first ring would be the displaced occurrence itself (a snooze pressed
+    /// before its alert; #129's `seriesContinuationTrigger` rule), or is a
+    /// minute away or less (the `> 60` rule of `alarmSchedule(repeating:...)`).
+    static func snoozedSeriesSchedule(
+        for request: ReminderScheduleRequest,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> ReminderAlarmSchedule? {
+        guard let displaced = request.displacedAlarmOccurrence,
+              let repetition = request.alarmRepetition,
+              let firstRing = repetition.nextOccurrence(after: now, calendar: calendar),
+              firstRing.timeIntervalSince(displaced) >= 60,
+              firstRing.timeIntervalSince(now) > 60 else { return nil }
+        return .weekly(
+            hour: repetition.hour,
+            minute: repetition.minute,
+            weekdays: repetition.weekdays
+        )
+    }
+
+    /// When the snoozed occurrence rings, once, under `snoozeAlarmID(for:)`:
+    /// `request.fireDate` whenever the series is kept under the item ID, and
+    /// `nil` otherwise (the item ID's own `.fixed` alarm is then the snooze).
+    /// Pass the same `now` as to `alarmSchedule(for:now:calendar:)`: both
+    /// read one decision, and two reads of the clock can straddle its 60 s
+    /// boundary.
+    static func snoozeAlarmFireDate(
+        for request: ReminderScheduleRequest,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> Date? {
+        snoozedSeriesSchedule(for: request, now: now, calendar: calendar) == nil
+            ? nil
+            : request.fireDate
     }
 
     /// The same decision from the rule a request is built from, so a test can
@@ -1337,9 +1405,12 @@ enum ReminderScheduler {
                         tintColor: .black
                     )
                     // A series AlarmKit can repeat rings again by itself; see
-                    // `alarmSchedule(repeating:fireDate:now:calendar:)`.
+                    // `alarmSchedule(repeating:fireDate:now:calendar:)`. The
+                    // clock is read once: the series and its snooze are one
+                    // decision, and two reads can straddle its 60 s boundary.
+                    let now = Date.now
                     let alarmKitSchedule: Alarm.Schedule
-                    switch alarmSchedule(for: request) {
+                    switch alarmSchedule(for: request, now: now) {
                     case let .fixed(date):
                         alarmKitSchedule = .fixed(date)
                     case let .weekly(hour, minute, weekdays):
@@ -1354,8 +1425,27 @@ enum ReminderScheduler {
                     )
                     // The alarm ID stays the item ID for a repeating alarm too:
                     // `cancel(itemID:)` and the orphan sweep both find an
-                    // alarm by the row it belongs to.
+                    // alarm by the row it belongs to; a snoozed occurrence
+                    // rings under `snoozeAlarmID(for:)` beside it.
                     _ = try await manager.schedule(id: request.itemID, configuration: configuration)
+                    if let snoozeFire = snoozeAlarmFireDate(for: request, now: now) {
+                        do {
+                            _ = try await manager.schedule(
+                                id: snoozeAlarmID(for: request.itemID),
+                                configuration: AlarmManager.AlarmConfiguration.alarm(
+                                    schedule: .fixed(snoozeFire),
+                                    attributes: attributes
+                                )
+                            )
+                        } catch {
+                            // Both or neither, as `addAllOrNone` does for the
+                            // two notifications: the series alone would skip
+                            // the ring the person snoozed. This holds only if
+                            // the cancel succeeds (see DECISIONS, "not covered").
+                            try? manager.cancel(id: request.itemID)
+                            throw error
+                        }
+                    }
                     return .scheduled
                 } catch {
                     // A normal notification is a safe fallback when an alarm

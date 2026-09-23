@@ -1,5 +1,62 @@
 # Decisions
 
+## 2026-09-23 — A snoozed repeating alarm keeps its series under the item ID
+
+Finding F1 of the V1 integration rehearsal, a merge line for #129 with #133,
+applied in the V1 candidate (rehearsal 2). Snoozing one occurrence of a
+series AlarmKit repeats replaced the series with a `.fixed` one-shot at the
+snooze, so the next occurrence rang only if the app ran in between and rolled
+the row forward.
+
+**The design.** A second alarm ID. The series stays `.weekly` under the item
+ID, exactly as if nothing had been snoozed, and the snoozed occurrence rings
+once, as a `.fixed` alarm, under `ReminderScheduler.snoozeAlarmID(for:)`. The
+series keeps the item ID because every existing path finds it there:
+`cancel(itemID:)`, the orphan sweep, the fired-alarm rule (F2) and #145's
+synchronous cancels. The snooze ID is the item ID with every bit of its last
+byte flipped, so it is its own inverse: `cancel(itemID:)` cancels both, and
+`orphanedAlarmIDs` counts a snooze alarm as its row's. The request records
+where the series put the displaced occurrence (`displacedAlarmOccurrence`,
+set only when `alarmRepetition` is). `snoozedSeriesSchedule` refuses the
+series, leaving today's one-shot under the item ID as before, when its first
+ring would be the displaced occurrence itself (a snooze pressed before the
+alert: #129's `seriesContinuationTrigger` rule) or is a minute away or less
+(#133's `> 60` rule). `schedule` reads the clock once and hands the same
+`now` to `alarmSchedule(for:now:)` and `snoozeAlarmFireDate(for:now:)`,
+because both read one decision and two reads could straddle its 60 s
+boundary: no snoozed ring, or two alarms at one instant. It is the #129
+notification design (one-shot at the snooze, series beside it) with a second
+alarm ID in place of `seriesNotificationIdentifier`.
+
+**Hypothesis.** A snoozed series is lost only because one alarm ID carried
+both the snooze and the series.
+**Falsifier.** `TemporalFullPathTests.testASnoozedRepeatingAlarmKeepsItsSeriesArmedUnderTheItemID`:
+a daily 6:30 alarm, snoozed, must still be `.weekly` at 6:30 on all seven
+days under the item ID. Return `nil` from `snoozedSeriesSchedule`, or build
+`displacedAlarmOccurrence` as `nil`, and it is `.fixed` at the snooze.
+`testASnoozedRepeatingAlarmRingsOnceAtTheSnoozeUnderItsOwnID` pins the
+second alarm, and `DurabilityTests.testASnoozeAlarmIsKeptByItsRowAndCancelledWithIt`
+the sweep and the cancel. These replace rehearsal 1's
+`testASnoozedRepeatingAlarmKeepsTheSeriesClockAndRingsOnceAtTheSnooze`, whose
+`.fixed` assertion was the behaviour this entry changes.
+
+**Not covered.**
+- AlarmKit's system alarm limit now counts a snoozed series twice.
+- No device has confirmed that a `.fixed` and a `.relative` alarm from one app
+  coexist, or that `stop` and `cancel` on the snooze ID leave the series
+  alone. If they cannot coexist, the second `schedule` throws, the series is
+  cancelled, and the row falls back to notifications (one-shot plus series):
+  a downgrade, not a lost ring.
+- The "both or neither" rollback is `try? manager.cancel(id:)`. It holds only
+  when that cancel succeeds; if it fails, the row can carry an AlarmKit
+  series and the notification fallback at once.
+- A pass that runs while either alarm is alerting still silences it through
+  `cancel(itemID:)`.
+- `schedule` cancels both IDs before arming, so a snooze recorded in an
+  earlier state cannot survive a re-arm. Any future path that arms an
+  AlarmKit alarm without going through `schedule` must do the same, or a
+  stale snooze alarm, which the orphan sweep protects by design, stays.
+
 ## 2026-09-22 — The frame types the name, and the same evidence is read wherever a name can arrive
 
 "Evidence, not capitalization" was settled on 2026-08-19 (below), and the
@@ -315,12 +372,9 @@ now load-bearing rather than tidy. A repeating alarm for a row that still
 exists is never swept, because the sweep protects every row in the store, not
 only the rows that should ring.
 
-**Follow-up, not done here.** A snoozed occurrence (PR #129, not in this
-branch's base) must decide what happens to a repeating alarm: snoozing one
-occurrence must not replace the series with a one-shot, nor leave the series
-ringing on top of the snooze. When #129 and this change meet, the snooze path
-needs its own alarm ID or an explicit rule for re-arming the series after the
-snooze fires.
+**Follow-up, done in the V1 candidate.** A snoozed occurrence (PR #129) of a
+repeating alarm: see "A snoozed repeating alarm keeps its series under the
+item ID" (2026-09-23).
 
 ## 2026-09-23 — An alarm with no row is cancelled, and every row that exists protects its alarm
 
@@ -346,8 +400,8 @@ prefix sweep already covers. A ledger of scheduled IDs in `UserDefaults` was
 considered and not built: it would add a second record that can disagree with
 the daemon, and it could not heal an alarm scheduled by a build that predates
 it. `ReminderScheduler.schedule` is the only place the app creates an AlarmKit
-alarm, and it uses the item ID as the alarm ID, so every listed alarm is a
-reminder alarm. **A future feature that schedules an AlarmKit alarm that is not
+alarm, and it uses the item ID as the alarm ID, or its snooze ID, so every
+listed alarm is a reminder alarm. **A future feature that schedules an AlarmKit alarm that is not
 keyed to an item must teach `orphanedAlarmIDs` to leave it alone**, or the next
 foreground cancels it.
 

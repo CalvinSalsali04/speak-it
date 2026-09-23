@@ -1881,7 +1881,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         clocks, so its skip message changed. One in (`the series' next
         ring is within a minute of the snooze, where the repetition is
         armed by design`), one out (`the snooze landed on the series'
-        own minute, so the two readings agree`).
+        own minute, so the two readings agree`). 4767 -> 4773 on
+        2026-09-23, a candidate commit of the second merge rehearsal
+        (merge line F1, #129 with #133): a snoozed repeating alarm keeps
+        its series under the item ID and rings once under its own ID;
+        the (c) test is replaced by two tests and a durability test is
+        added. Seven in (`a relative alarm is refused by design`,
+        `cancelling a row must cancel its series and its snooze`,
+        `precondition: the snooze is still ahead`, `snoozing one
+        occurrence must leave the series armed under the item ID`, `the
+        ID maps back to its row`, `the series rings within a minute,
+        where a relative alarm is refused by design`, `the snooze must
+        not replace the series' alarm`), one out (`the series' next ring
+        is within a minute of the snooze, where the repetition is armed
+        by design`): 4767 + 7 - 1 = 4773.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1891,7 +1904,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4767)
+        self.assertEqual(len(space), 4773)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

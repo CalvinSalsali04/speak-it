@@ -2083,29 +2083,20 @@ final class TemporalFullPathTests: XCTestCase {
         )
     }
 
-    /// A snoozed occurrence of a repeating alarm keeps the series' clock in
-    /// its AlarmKit repetition, and rings once, at the snooze (#129 with #133,
-    /// resolved in the V1 candidate merge).
-    ///
-    /// `alarmRepetition` is read from the series' alert (`seriesReminderDate`),
-    /// as `repeatingComponents` is, never from the snoozed `fireDate`. Read
-    /// from the snooze, the repetition's first ring would be the snoozed fire
-    /// itself, so `alarmSchedule(for:)` would arm a repeating alarm at the
-    /// snooze's clock and move every later occurrence of the series to it.
+    /// A snoozed occurrence of a repeating alarm leaves the series armed under
+    /// the item ID, read from the series' alert (`seriesReminderDate`), so the
+    /// next occurrence rings whether or not the app runs after the snooze.
     ///
     /// Only the capture and the snooze are pinned; the request is built and
-    /// read in the machine's zone, as in the test above. The schedule check
-    /// skips when the series' next ring is within a minute of the snooze,
-    /// the condition `alarmSchedule(repeating:fireDate:now:calendar:)` itself
-    /// turns on: there it arms the repetition by design. Equal clocks were a
-    /// narrower proxy for that and missed about a minute a day (machine
-    /// clock 6:19 to 6:20 for a 6:30 series). The hour and minute checks
-    /// need no skip.
+    /// read in the machine's zone. Skips in the minute before the series' next
+    /// ring, where a relative alarm is refused by design.
     ///
-    /// Falsifier: build `alarmRepetition` from `fireDate` in
-    /// `ReminderScheduleRequest.init`, and its hour and minute are the
-    /// snooze's and the schedule is `.weekly` at the snooze's clock.
-    func testASnoozedRepeatingAlarmKeepsTheSeriesClockAndRingsOnceAtTheSnooze() throws {
+    /// Falsifier: return `nil` from `snoozedSeriesSchedule`, or build
+    /// `displacedAlarmOccurrence` as `nil`, and the schedule is
+    /// `.fixed(request.fireDate)`: the series is gone until the next foreground.
+    /// Build `alarmRepetition` from the snoozed `fireDate`, and the hour and
+    /// minute are the snooze's.
+    func testASnoozedRepeatingAlarmKeepsItsSeriesArmedUnderTheItemID() throws {
         var item: CapturedItem!
         var seriesAlert: Date!
         try withFixtureClock { calendar in
@@ -2122,29 +2113,67 @@ final class TemporalFullPathTests: XCTestCase {
             XCTAssertEqual(item.temporalIntent?.snoozedFromReminderDate, seriesAlert)
         }
 
-        // The machine's zone from here on, pinned by nothing.
         let machineCalendar = Calendar.current
-        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
-        XCTAssertEqual(request.delivery, .alarm, "production asks alarmSchedule only for an alarm")
-        let repetition = try XCTUnwrap(
-            request.alarmRepetition,
-            "a daily series is one AlarmKit can repeat"
-        )
-        let seriesClock = machineCalendar.dateComponents([.hour, .minute], from: seriesAlert)
-
-        XCTAssertEqual(repetition.hour, seriesClock.hour, "the repetition must keep the series' hour")
-        XCTAssertEqual(repetition.minute, seriesClock.minute, "the repetition must keep the series' minute")
         let now = Date.now
+        let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
+        XCTAssertEqual(request.delivery, .alarm, "production asks alarmSchedule only for an alarm")
+        XCTAssertGreaterThan(request.fireDate, now, "precondition: the snooze is still ahead")
+        let repetition = try XCTUnwrap(request.alarmRepetition, "a daily series is one AlarmKit can repeat")
+        let seriesClock = machineCalendar.dateComponents([.hour, .minute], from: seriesAlert)
+        let hour = try XCTUnwrap(seriesClock.hour)
+        let minute = try XCTUnwrap(seriesClock.minute)
+        XCTAssertEqual(repetition.hour, hour, "the repetition must keep the series' hour")
+        XCTAssertEqual(repetition.minute, minute, "the repetition must keep the series' minute")
         let firstRing = try XCTUnwrap(repetition.nextOccurrence(after: now, calendar: machineCalendar))
         try XCTSkipIf(
-            abs(firstRing.timeIntervalSince(request.fireDate)) < 60,
-            "the series' next ring is within a minute of the snooze, where the repetition is armed by design"
+            firstRing.timeIntervalSince(now) <= 60,
+            "the series rings within a minute, where a relative alarm is refused by design"
         )
+
         XCTAssertEqual(
             ReminderScheduler.alarmSchedule(for: request, now: now, calendar: machineCalendar),
-            .fixed(request.fireDate),
+            .weekly(
+                hour: hour,
+                minute: minute,
+                weekdays: [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+            ),
+            "snoozing one occurrence must leave the series armed under the item ID"
+        )
+    }
+
+    /// The snoozed occurrence itself rings once, at the snooze, under an alarm
+    /// ID of its own that its row's cancel reaches.
+    ///
+    /// Falsifier: return `nil` from `snoozeAlarmFireDate` while the series is
+    /// kept, and the snooze never rings; drop the second `cancelAlarm` from
+    /// `cancel(itemID:)`, and completing the row leaves the snooze armed.
+    func testASnoozedRepeatingAlarmRingsOnceAtTheSnoozeUnderItsOwnID() throws {
+        var item: CapturedItem!
+        try withFixtureClock { calendar in
+            let createdAt = try XCTUnwrap(calendar.date(byAdding: .day, value: -8, to: .now))
+            item = try repository.createCapture(
+                text: "Set an alarm every day at 6:30 AM",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            try repository.performReminderAction(itemIDs: [item.id], action: .snoozeTenMinutes)
+        }
+        let machineCalendar = Calendar.current
+        let now = Date.now
+        let request = try XCTUnwrap(ReminderScheduleRequest.forScheduling(item, now: now))
+        let repetition = try XCTUnwrap(request.alarmRepetition)
+        let firstRing = try XCTUnwrap(repetition.nextOccurrence(after: now, calendar: machineCalendar))
+        try XCTSkipIf(firstRing.timeIntervalSince(now) <= 60, "a relative alarm is refused by design")
+
+        XCTAssertEqual(
+            ReminderScheduler.snoozeAlarmFireDate(for: request, now: now, calendar: machineCalendar),
+            request.fireDate,
             "the snoozed occurrence rings once, at the snooze"
         )
+        let snoozeID = ReminderScheduler.snoozeAlarmID(for: item.id)
+        XCTAssertNotEqual(snoozeID, item.id, "the snooze must not replace the series' alarm")
+        XCTAssertEqual(ReminderScheduler.snoozeAlarmID(for: snoozeID), item.id, "the ID maps back to its row")
     }
 
     /// A repeating alarm whose stored occurrence has already rung is still

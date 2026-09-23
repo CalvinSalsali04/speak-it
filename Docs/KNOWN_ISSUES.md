@@ -870,8 +870,8 @@ next occurrence (so the orphan sweep keeps protecting it), that
 `cancel(id:)` removes the whole series, and that `.weekly` with all seven
 `Locale.Weekday` values behaves as a daily alarm, which is how a daily series
 is armed and which Apple's documentation neither promises nor rules out. A
-snoozed occurrence of a repeating alarm (PR #129) is not reconciled with the
-series yet; see the follow-up in `DECISIONS.md`.
+snoozed occurrence of a repeating alarm keeps its series; see "A snoozed
+repeating alarm keeps its series under the item ID" in `DECISIONS.md`.
 
 ## Temporal intent is stored; two kinds of trigger are still missing
 
@@ -926,12 +926,16 @@ fired, snoozed or not, keeps its repeating trigger through every scheduling
 pass (DEL-12, closed the same day; see `DECISIONS.md`). What that does not
 cover:
 
-- **Alarms.** AlarmKit delivery is a `.fixed` one-shot for every occurrence.
-  A recurring alarm, snoozed or not, rings once and then waits for the app to
-  run and roll the row forward. The DEL-12 fix does not reach alarms either.
-  Speak It's alarm alert has no snooze, so this gap is not caused by
-  snoozing. It is the existing state of recurring alarms. Closing it means
-  scheduling AlarmKit's own repeating schedule.
+- **Alarms.** *Updated in the V1 candidate.* A series AlarmKit can repeat
+  (daily, or weekly on named weekdays) is armed as AlarmKit's own repeating
+  schedule ("A recurring alarm repeats in AlarmKit, not in the app"), a
+  fired occurrence of one stays armed through every scheduling pass ("A
+  repeating alarm that has rung is still armed"), and a snoozed occurrence
+  rings once under an alarm ID of its own while the series stays armed ("A
+  snoozed repeating alarm keeps its series under the item ID"), all in
+  `DECISIONS.md`. Any other recurring alarm is still a `.fixed` one-shot
+  that waits for the app to roll the row forward. Speak It's alarm alert has
+  no snooze button; the snooze comes from Speak It's own actions.
 - **Only daily and single-weekday series repeat natively.** Every weekday,
   every other week, the first Monday of the month, and elapsed-time series
   have no repeating trigger to keep armed. They still depend on the app

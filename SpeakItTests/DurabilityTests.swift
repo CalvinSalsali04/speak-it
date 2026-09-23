@@ -803,6 +803,29 @@ final class DurabilityTests: XCTestCase {
         )
     }
 
+    /// A snoozed occurrence's alarm belongs to its row, so the orphan sweep
+    /// keeps it while the row exists, and a cancel of the row removes it.
+    ///
+    /// Falsifier: drop the `snoozeAlarmID` clause from `orphanedAlarmIDs`, and
+    /// the relaunch cancels a live snooze; drop the second `cancelAlarm` from
+    /// `cancel(itemID:)`, and the last assertion fails.
+    func testASnoozeAlarmIsKeptByItsRowAndCancelledWithIt() {
+        let row = UUID()
+        let snooze = ReminderScheduler.snoozeAlarmID(for: row)
+        let orphan = UUID()
+        XCTAssertEqual(
+            ReminderScheduler.orphanedAlarmIDs(scheduled: [row, snooze, orphan], accountedFor: [row]),
+            [orphan]
+        )
+        delivery.seedAlarm(row)
+        delivery.seedAlarm(snooze)
+        ReminderScheduler.cancel(itemID: row)
+        XCTAssertTrue(
+            delivery.scheduledAlarms.isDisjoint(with: [row, snooze]),
+            "cancelling a row must cancel its series and its snooze"
+        )
+    }
+
     func testCompletedItemDoesNotKeepAReminderArmedAcrossRelaunch() async throws {
         let created = try await capture("Remind me to call the bank on Friday at 9am")
         let item = created.primaryItem
