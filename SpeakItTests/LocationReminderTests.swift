@@ -1808,26 +1808,56 @@ final class LocationReminderTests: XCTestCase {
 
     /// The place half stays unwatched, as it does for "tonight".
     ///
+    /// Runs the reconciler itself. Its answer depends on this process's live
+    /// location permission, so a control capture with the same saved place and
+    /// no day is reconciled beside it: whatever the permission, a live place
+    /// reminder is either monitored or given a blocker, and only an excluded
+    /// one is neither. The control proves the reconciler would have accounted
+    /// for Home here; the combined row being absent from both proves the
+    /// filter removed it.
+    ///
     /// Falsifier: if the stored reading lost its day (temporal kind `.none`),
-    /// the reconciler would watch Home and deliver on an arrival today, which
-    /// is the day the person ruled out.
+    /// or the reconciler stopped filtering on `constrainsBothPlaceAndTime`, the
+    /// combined row would be monitored or blocked exactly like the control, and
+    /// with permission granted Home would deliver on an arrival today, which is
+    /// the day the person ruled out.
     func testSavedPlaceBesideABareDayIsExcludedFromMonitoring() throws {
         setHome()
         let reference = Calendar.current.date(
             bySettingHour: 9, minute: 0, second: 0, of: .now
         )!
+        let control = try repository.createCapture(
+            text: "Remind me to take out the garbage when I get home",
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminder: false
+        )
         let item = try repository.createCapture(
             text: "Remind me to call Mom when I get home tomorrow",
             source: .inAppText,
             createdAt: reference,
             schedulesReminder: true
         )
-
+        XCTAssertFalse(control.constrainsBothPlaceAndTime, "fixture: the control names no time")
         XCTAssertTrue(
             item.constrainsBothPlaceAndTime,
             "the reconciler excludes exactly this, so the flag is the contract"
         )
-        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+
+        let reconciliation = repository.reconcileLocationReminders()
+
+        XCTAssertTrue(
+            reconciliation.monitored.contains(control.id) || reconciliation.blocked[control.id] != nil,
+            "the reconciler accounts for a live Home reminder under this permission"
+        )
+        XCTAssertFalse(
+            reconciliation.monitored.contains(item.id),
+            "a saved place beside a bare day must not be watched"
+        )
+        XCTAssertNil(
+            reconciliation.blocked[item.id],
+            "an excluded row is neither watched nor blocked: it waits in review"
+        )
     }
 
     /// Held for review, and named as a combined request.
