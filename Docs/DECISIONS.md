@@ -1751,6 +1751,91 @@ and the editor save to stamp a present place it did not change as the
 person's; after that change, a temporal mark kept by a re-read cannot arm a
 place the same re-read proposed.
 
+## 2026-09-23 — Launch asks about a stored place-and-time row nobody was asked about
+
+**The regression.** The scheduler's refusal (the entry "The scheduler refuses
+a place beside a time the person has not chosen between", below) declines
+every row whose `awaitsPlaceOrTimeChoice` is true. A place beside a time is
+never monitored either. The capture-time hold asks about every such row it
+produces by putting it in review. Rows stored before that hold (DEL-11 for a
+saved place, DEL-18 for a named one) never had that question asked. They
+carry a reminder date and `needsClarification == false`. So, on this branch
+alone, such a row sits in Today with nothing armed and nothing asking. Once
+#138's `mayArmTime` carries the same refusal (REHEARSAL F7), the row also
+loses its bell, its series successors and its place in the morning brief,
+while it still shows its date. Rehearsal 1's grade, item (f), ruled this a
+regression to fix before V1. Before the refusal, the row's clock armed and
+fired.
+
+**The decision.** `recoverUnorganizedCaptures` ends with
+`holdUnaskedPlaceAndTimeRowsForReview`, after the temporal backfill, which
+can give an old row the time that makes it a place-and-time row. The pass
+selects a row that is:
+
+- not archived and not completed;
+- not already in review (`needsClarification == false`);
+- not reviewed;
+- a place beside a time, with the time not set by hand
+  (`awaitsPlaceOrTimeChoice`).
+
+It sets `needsClarification` and `lastModifiedAt`, and saves through
+`persistChanges`, so the widget snapshot and iCloud see the change. Nothing
+else changes: not the words, the place, the day, the clock or the
+recurrence. The row then reads `.combinedTimeAndPlace` in Needs review,
+and one save answers it: `markReviewed`, or an editor save through
+`update`. The clock it comes back with is the one it was stored with.
+
+The pass is idempotent, because a row it moves is in review and is no longer
+selected. A failed fetch skips the pass and logs a content-free fault; a
+failed save rolls back and is retried at the next launch. It runs in
+`RootView`'s launch task inside `recoverUnorganizedCaptures`, after the
+`Task.yield()` that keeps launch work off the App Intent cold-start path. It
+adds no `await`. It touches no capture draft, so it is not one of the two
+passes `TheLaunchPassesRunBeforeAnyCaptureCanBegin` (#144) pins. After a
+merge with #144 it still sits above `recoverInterruptedCaptureDraft` without
+suspending.
+
+"In review" here means the stored flag. A row that shows in review only
+because of a live location blocker (no Home set, no permission) is still
+selected. The blocker's label keeps leading the row, and the stored flag
+keeps it in review after the blocker clears. Without the flag, it would
+return to Today silent.
+
+**Hypothesis.** Every row the scheduler refuses for `awaitsPlaceOrTimeChoice`
+and that is not already in review was stored before the capture-time hold,
+or restored from iCloud. No current path produces one. The editor and the
+voice reschedule write through `update`, which marks the time.
+
+**Falsifier.** After one launch, a live, unreviewed place-and-time row with
+no hand-set time that is still out of review. Or a reviewed, hand-set,
+held, done or archived row, or a place alone or a time alone, that gains
+the flag or a new modification date. Or a moved row that lost a word, its
+place, its day or its clock. Or a second launch that changes anything. The
+three tests are in `SwiftDataThoughtRepositoryTests`, beside
+`testLaunchLeavesANamedPlaceAndTimeHoldInReview`.
+
+**Not covered.**
+
+- **Not compiled or run here.** There is no Swift toolchain on this host.
+- **Rows with no clock, or a clock already past.** The selection is
+  `awaitsPlaceOrTimeChoice`, not "the scheduler refused a live alert", so
+  it also takes a place-and-time row that never had a clock or whose clock
+  has gone by. An old overdue row is then asked about a time that has
+  passed. That is harmless, and those are the rows capture holds today, so
+  the code keeps the wider selection.
+- **An iCloud restore that lands later in the same launch.**
+  `reconcileICloudSync` runs after this pass. A snapshot applied then can
+  bring the row back out of review until the next launch. The scheduler
+  still refuses its clock in the meantime.
+- **A row whose place was set by hand.** It is still selected. The place's
+  mark does not confirm a time (the R2 rule above), so it is asked like any
+  other.
+- **What the review row says.** On this branch alone it reads the generic
+  `.combinedTimeAndPlace` label. With #138 it reads "Reminder not set · …".
+- **Old rows with no temporal intent** become place-and-time rows only if the
+  backfill's reparse gives them a time. A row the backfill cannot read stays
+  as it was.
+
 ## 2026-09-23 — A named place beside a time is held too (DEL-18)
 
 **Replaces the earlier recorded design.** Since Build 12 a *named* place
@@ -1842,9 +1927,10 @@ confidence below 0.82 to it. Every other constructor defaults it to
 old behaviour, which errs toward no list and never toward a wrong one. The
 default is safe only because the field's one reader, the shopping pass, runs
 before any site that copies a reading (the pronoun copy runs after it); a
-later reader placed after a copy would see the default. The shopping pass names a row in review only when
-`isHeldOnlyForPlaceAndTime` is true. A held row still lends no fire moment to
-the trip-clause fold, because it rings at no time.
+later reader placed after a copy would see the default. The shopping pass
+names a row in review only when `isHeldOnlyForPlaceAndTime` is true. A held
+row still lends no fire moment to the trip-clause fold, because it rings at no
+time.
 `SwiftDataThoughtRepositoryTests.testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`
 pins this. **Falsifier:** a shopping row in review for another reason, with
 or without the hold beside it, that is named for the store. The other
