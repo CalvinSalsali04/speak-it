@@ -424,7 +424,12 @@ final class SpeechTranscriber: ObservableObject {
             // immediately after it, before the first write to shared state
             // (the recovery file, the audio processor, the tap on bus 0): a
             // stale run resuming there would otherwise install over the newer
-            // run, and this guard would then leave it in place.
+            // run, and this guard would then leave it in place. If that await
+            // is before `claimMicrophone()`, the check must also re-read the
+            // claim's identity (`microphoneClaimStartID`): `claimMicrophone()`
+            // returns early while any run holds the claim, so a stale run's
+            // claim would stay recorded as its own, and this guard would
+            // release it from under the newer run.
             guard activeStartID == startID else {
                 if holdsMicrophone, microphoneClaimStartID == startID {
                     holdsMicrophone = false
