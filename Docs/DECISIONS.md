@@ -255,7 +255,7 @@ neither pass: kept by the launch prune because it has words, and saved by
 nothing. Typed words ahead of a recording that never started are the whole
 capture in that case. `testTypedWordsSurviveAKillBeforeTheRecordingHasAudio`
 names the rejected line as its falsifier, and the margin that remains is in
-Known Issues, "The launch passes rely on ordering nothing enforces".
+Known Issues, "The launch passes rely on ordering".
 
 Needs a device: audit row N-5. Type a word, tap Speak instead, speak, then
 take a call; expect "Recovering your words…", not the typing fallback. Then a

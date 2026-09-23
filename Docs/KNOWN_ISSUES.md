@@ -348,11 +348,13 @@ is not kept:
   at once as their own thought. If storage refuses that save, they are kept as
   a typed draft and saved at the next launch, not sooner.
 
-## The launch passes rely on ordering nothing enforces
+## The launch passes rely on ordering
 
 *2026-09-23, from the review of #144.* Two launch-time protections for a
-recording in progress hold today by where code happens to sit, not by
-anything that would fail if it moved.
+recording in progress hold by where code sits: after a kill, a draft killed
+before its first audio buffer looks exactly like one being recorded now, so
+only running before any capture can begin keeps the passes apart from a live
+recording. The ordering is pinned by a source guard, not by a Swift test.
 
 - **The empty-draft prune runs before any capture can begin, in shipping
   builds only.** `pruneEmptyTextDrafts` keeps a draft only if it has words or
@@ -367,15 +369,22 @@ anything that would fail if it moved.
   does not hold there, and a recording that vanished in a UI test could be
   this and not a test artefact. A voice draft that carries typed words is
   kept regardless, because its transcript is not empty.
-- **Nothing pins the ordering.** No test fails if an `await` is added above
-  the prune, which would reopen the window in shipping builds too.
+- **What pins the ordering.** `TheLaunchPassesRunBeforeAnyCaptureCanBegin`
+  in `Tools/CorpusRunner/test_observation.py` fails if `pruneEmptyTextDrafts`
+  or `recoverInterruptedCaptureDraft` gains a second use anywhere in the app,
+  the Share extension or the Live Activity, if either call leaves `RootView`'s
+  launch task, or if a shipping line of that task above the prune suspends
+  other than the one `Task.yield()`. It reads source; it does not run the
+  launch. `#if DEBUG` lines are left out of the suspension check on purpose,
+  so a new DEBUG await there is not caught; nor is a pass wrapped in a nested
+  `Task` or closure inside the launch task, which would run it later.
 - **The text pass tells a live recording from an interrupted draft by one
   file-size check.** `recoverable()` takes drafts with words, no recording
   over 512 bytes, and at least 12 s since their last update. Before #144 a
   live voice draft had no words, so the first condition excluded it; one
   that carries typed words now has words, and only the file size excludes
   it. No reachable instance was found: the text pass runs only at launch
-  (`RootView`), after the audio pass, and a draft begun in that launch would
+  (`RootView`, pinned by the same guard), after the audio pass, and a draft begun in that launch would
   need the audio pass to take over 12 s and its recording to stay under 512
   bytes, about one buffer. Excluding every draft that intends a recording was
   considered and rejected, because it strands drafts that never recorded
