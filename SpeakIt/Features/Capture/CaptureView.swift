@@ -142,6 +142,21 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     }
 }
 
+/// What VoiceOver reads for the voice screen's words. A spoken save stores
+/// the words typed before speaking ahead of what is said, and the screen
+/// shows them above the speech in a quieter style, so they are read as part
+/// of the transcript and marked as typed, the one thing the style says that
+/// a listener cannot see.
+enum CaptureVoiceTranscriptAccessibility {
+    static func value(typedBeforeSpeaking typed: String, spoken: String) -> String {
+        let typedWords = CaptureDraftStore.joined(typedBeforeSpeaking: typed, spoken: "")
+        let spokenWords = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typedWords.isEmpty else { return spokenWords }
+        let typedPart = "Typed: \(typedWords)"
+        return spokenWords.isEmpty ? typedPart : "\(typedPart). \(spokenWords)"
+    }
+}
+
 /// What the voice screen is doing, as one value.
 ///
 /// The orb, the title, the subtitle and the button's spoken label used to read
@@ -608,6 +623,12 @@ struct CaptureView: View {
         tutorialMission?.repairVoiceTranscript(transcriber.transcript) ?? transcriber.transcript
     }
 
+    /// The editor's words while the voice screen is up: what a spoken save
+    /// stores ahead of the speech (`save` joins them the same way).
+    private var typedBeforeSpeakingOnScreen: String {
+        CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: "")
+    }
+
     init(
         initialMode: CaptureInitialMode = .voice,
         autoStartsVoiceCapture: Bool = false,
@@ -889,13 +910,36 @@ struct CaptureView: View {
             // screen the whole product is built around.
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
-                        .font(.title3)
-                        .foregroundStyle(Color.speakInk.opacity(0.84))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 330)
-                        .padding(.horizontal)
-                        .id(Self.transcriptTailID)
+                    VStack(spacing: 6) {
+                        // What was typed before speaking. A spoken save
+                        // stores it ahead of what is said, so the screen
+                        // shows it too, quieter than the speech. The last
+                        // lines stay visible, since they are the ones the
+                        // speech continues.
+                        if !typedBeforeSpeakingOnScreen.isEmpty {
+                            Text(typedBeforeSpeakingOnScreen)
+                                .font(SpeakItTypography.sectionDetail)
+                                .foregroundStyle(Color.speakMuted)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3)
+                                .truncationMode(.head)
+                                .frame(maxWidth: 330)
+                                .padding(.horizontal)
+                                .accessibilityLabel(
+                                    CaptureVoiceTranscriptAccessibility.value(
+                                        typedBeforeSpeaking: typedBeforeSpeakingOnScreen,
+                                        spoken: ""
+                                    )
+                                )
+                        }
+                        Text(tutorialAwareVoiceTranscript.isEmpty ? " " : tutorialAwareVoiceTranscript)
+                            .font(.title3)
+                            .foregroundStyle(Color.speakInk.opacity(0.84))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 330)
+                            .padding(.horizontal)
+                            .id(Self.transcriptTailID)
+                    }
                 }
                 .onChange(of: tutorialAwareVoiceTranscript) { _, _ in
                     // Not animated: at speaking speed this fires on nearly
@@ -905,12 +949,19 @@ struct CaptureView: View {
                 }
             }
             .frame(
-                maxHeight: tutorialMission != nil && transcriber.transcript.isEmpty
+                maxHeight: tutorialMission != nil
+                    && transcriber.transcript.isEmpty
+                    && typedBeforeSpeakingOnScreen.isEmpty
                     ? 30
                     : 126
             )
             .accessibilityLabel("Live transcription")
-            .accessibilityValue(tutorialAwareVoiceTranscript)
+            .accessibilityValue(
+                CaptureVoiceTranscriptAccessibility.value(
+                    typedBeforeSpeaking: typedBeforeSpeakingOnScreen,
+                    spoken: tutorialAwareVoiceTranscript
+                )
+            )
 
             if showsGuidedExamples,
                tutorialMission == nil,
@@ -1470,7 +1521,10 @@ struct CaptureView: View {
         Task { @MainActor in
             let recovery: Result<String, Error>
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                // Only the recording: `save` joins it after the typed words
+                // still in the editor, and `leaveRecoveredWordsForToday` after
+                // the draft's.
+                let recoveredText = try await CaptureAudioRecovery.transcribeRecording(of: draft)
                 recovery = .success(recoveredText)
             } catch {
                 recovery = .failure(error)
@@ -1535,20 +1589,22 @@ struct CaptureView: View {
         captureNotice = nil
         let partialTranscript = tutorialAwareVoiceTranscript
         if !partialTranscript.isEmpty {
-            typedText = partialTranscript
+            // Anything typed before speaking is still in the editor. What was
+            // said follows it rather than replacing it (audit D6).
+            typedText = CaptureDraftStore.joined(
+                typedBeforeSpeaking: typedText,
+                spoken: partialTranscript
+            )
         }
 
         // `startVoiceCapture` may still be waiting on its launch delay or on a
         // permission prompt. Cancelling here invalidates the transcriber's
         // active start ID, so either path cannot begin listening behind the
-        // typing interface after the person has already changed modes.
-        let wasStartingOrListening = transcriber.state == .requestingPermission
-            || transcriber.isListening
-        if wasStartingOrListening {
-            transcriber.cancel()
+        // typing interface after the person has already changed modes. The
+        // words are in the editor now, so the transcriber forgets them in
+        // every state, `.idle` included.
+        if transcriber.stopForTyping() {
             Task { await CaptureActivityManager.cancelListening() }
-        } else if transcriber.state != .idle {
-            transcriber.resetAfterFailure()
         }
 
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
@@ -1567,9 +1623,21 @@ struct CaptureView: View {
         let partialTranscript = tutorialAwareVoiceTranscript
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !partialTranscript.isEmpty {
-            typedText = partialTranscript
+            // After anything typed before speaking, as in `switchToTyping`.
+            typedText = CaptureDraftStore.joined(
+                typedBeforeSpeaking: typedText,
+                spoken: partialTranscript
+            )
         }
-        transcriber.resetAfterFailure()
+        // Those words are in the editor now, so the transcriber settles and
+        // forgets them exactly as for "Type instead"; `stopForTyping` owns
+        // that decision. The callers reach here in `.failed` or
+        // `.unavailable`, where it resets as before, or in `.idle` after
+        // audio recovery gave up, where `recoverActiveAudio` has already
+        // reset it.
+        if transcriber.stopForTyping() {
+            Task { await CaptureActivityManager.cancelListening() }
+        }
         captureNotice = notice
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
@@ -1595,8 +1663,15 @@ struct CaptureView: View {
         let repairedText = source == .inAppVoice
             ? tutorialMission?.repairVoiceTranscript(text) ?? text
             : text
-        let normalizedText = repairedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else {
+        let saidOrTyped = repairedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A spoken save is what was typed before speaking, still in the
+        // editor, then what was said: the person's words in the order they
+        // gave them, neither replacing the other (audit D6). The typed words
+        // alone are not a spoken save, so the empty check reads the speech.
+        let normalizedText = source == .inAppVoice
+            ? CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: saidOrTyped)
+            : saidOrTyped
+        guard !saidOrTyped.isEmpty else {
             errorMessage = "Speak a little longer, or type the thought instead."
             return
         }
@@ -1636,9 +1711,10 @@ struct CaptureView: View {
             // clears the transcript, so what the person had just finished
             // saying vanished off the screen at the same moment the paywall
             // appeared, with nothing telling them where it went.
-            let spoken = tutorialAwareVoiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !spoken.isEmpty, trimmedTypedText.isEmpty {
-                typedText = spoken
+            // For speech, that is the typed words and what was said, in
+            // order; a typed save's words are already there.
+            if source == .inAppVoice {
+                typedText = normalizedText
                 mode = .text
             }
             transcriber.cancel()
@@ -2123,9 +2199,23 @@ struct CaptureView: View {
     }
 
     private func checkpoint(_ text: String, source: CaptureSource) {
+        // Emptying the editor after a typed save must not begin a draft. One
+        // begun there outlived the save, and "Try saying it again" recorded
+        // into it and dated the retry from it (audit D6).
+        guard CaptureDraftStore.shouldCheckpoint(text, hasActiveDraft: activeDraftID != nil) else {
+            return
+        }
         ensureDraft(source: source)
         guard let activeDraftID else { return }
-        CaptureDraftStore.update(id: activeDraftID, transcript: text)
+        CaptureDraftStore.update(id: activeDraftID, transcript: draftWords(saying: text, source: source))
+    }
+
+    /// What a checkpoint stores: typed words as they are, and speech after
+    /// whatever was typed before it, which is still in the editor. Stored
+    /// alone, the first spoken checkpoint replaced the typed words.
+    private func draftWords(saying text: String, source: CaptureSource) -> String {
+        guard CaptureDraftStore.recordsProtectedAudio(for: source) else { return text }
+        return CaptureDraftStore.joined(typedBeforeSpeaking: typedText, spoken: text)
     }
 
     private func scheduleCheckpoint(_ text: String, source: CaptureSource) {
@@ -2144,16 +2234,32 @@ struct CaptureView: View {
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil
         guard let activeDraftID else { return }
-        let text = mode == .text ? typedText : transcriber.transcript
+        // In voice mode the editor still holds what was typed before
+        // speaking. Writing the transcript alone erased it from the draft
+        // whenever the screen went before anything was said.
+        let text = mode == .text
+            ? typedText
+            : draftWords(saying: transcriber.transcript, source: .inAppVoice)
         CaptureDraftStore.update(id: activeDraftID, transcript: text)
     }
 
     private func ensureDraft(source: CaptureSource) {
+        // Reusing the draft goes through `updateSource`, which is what gives a
+        // draft that began as typing its protected recording before a voice
+        // capture starts in it, and sets aside what the editor holds so that
+        // recovering the recording adds to it rather than replacing it.
+        let typedBeforeSpeaking = CaptureDraftStore.recordsProtectedAudio(for: source)
+            ? typedText
+            : ""
         if let activeDraftID {
-            CaptureDraftStore.updateSource(id: activeDraftID, source: source)
+            CaptureDraftStore.updateSource(
+                id: activeDraftID,
+                source: source,
+                typedBeforeSpeaking: typedBeforeSpeaking
+            )
             return
         }
-        let draft = CaptureDraftStore.begin(source: source)
+        let draft = CaptureDraftStore.begin(source: source, typedBeforeSpeaking: typedBeforeSpeaking)
         activeDraftID = draft.id
         captureStartedAt = draft.startedAt
     }

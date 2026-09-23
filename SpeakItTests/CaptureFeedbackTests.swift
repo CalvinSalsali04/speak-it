@@ -324,6 +324,96 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertEqual(transcriber.state, .listening)
     }
 
+    // MARK: - Words typed before speaking, on the voice screen
+
+    /// The voice screen shows the words typed before speaking above the
+    /// speech, because a spoken save stores both. VoiceOver reads them as
+    /// part of the transcript, marked as typed; with nothing typed it reads
+    /// the speech exactly as before.
+    ///
+    /// Falsifier: return the spoken words alone and the first two assertions
+    /// fail; drop the empty check and a screen with nothing typed reads
+    /// "Typed:" in front of every transcript.
+    func testTheVoiceScreenReadsTypedWordsAsPartOfTheTranscript() {
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: "Call Dana", spoken: "about the invoice"),
+            "Typed: Call Dana. about the invoice"
+        )
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: " Call\nDana ", spoken: ""),
+            "Typed: Call Dana"
+        )
+        XCTAssertEqual(
+            CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: " \n ", spoken: "about the invoice"),
+            "about the invoice"
+        )
+        XCTAssertEqual(CaptureVoiceTranscriptAccessibility.value(typedBeforeSpeaking: "", spoken: ""), "")
+    }
+
+    // MARK: - Type instead after the words have moved to the editor
+
+    /// Type instead folds the spoken words into the editor and then asks the
+    /// transcriber to forget them. A finished recording whose save returned
+    /// early leaves the transcriber `.idle` with its final words still held,
+    /// and that is the state the forgetting used to skip: the next Save &
+    /// Close joined those words after an editor that already held them.
+    ///
+    /// Save & Close is modelled by hand, not run: `CaptureView` is a SwiftUI
+    /// view this suite cannot drive. The model is that a later save reads
+    /// `transcriber.transcript` and `joined` adds nothing for an empty one,
+    /// so what is pinned is the transcriber's edge, that nothing is left for
+    /// a later save to read, and not the screen.
+    ///
+    /// Falsifier: move `releaseTranscript()` in `stopForTyping` back inside
+    /// the `else if state != .idle` branch and the `.idle` half fails on the
+    /// empty transcript.
+    ///
+    /// The typing fallback after a voice failure goes through the same call,
+    /// from `.failed`, where the run is still open. Falsifier: delete the
+    /// `else if state != .idle` branch and the `.failed` half fails, because
+    /// nothing closes the run or settles the state.
+    func testTypeInsteadForgetsTheSpokenWordsInEveryState() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+
+        // A finished run: the final result closes it and hands its words on.
+        let finished = transcriber.beginRunWithoutAudioForTesting()
+        finished.deliverTranscript("and eggs", false)
+        let spoken = transcriber.transcript
+        finished.deliverTranscript(spoken, true)
+        finished.deliverTranscript(spoken, true)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(transcriber.transcript, spoken, "this no longer reproduces the idle state that kept its words")
+
+        XCTAssertFalse(transcriber.stopForTyping(), "a finished run has no Live Activity to end")
+        XCTAssertEqual(
+            transcriber.transcript,
+            "",
+            "the transcriber kept words the editor already holds, for the next save to add again"
+        )
+
+        // A run still listening: cancelled, and its words forgotten likewise.
+        let listening = transcriber.beginRunWithoutAudioForTesting()
+        listening.deliverTranscript("and bread", false)
+        XCTAssertTrue(transcriber.stopForTyping())
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+        XCTAssertEqual(transcriber.transcript, "")
+
+        // A run that failed before any words: the typing fallback's state.
+        let failed = transcriber.beginRunWithoutAudioForTesting()
+        failed.deliverError(
+            NSError(domain: "SFSpeechRecognitionErrorDomain", code: 216, userInfo: nil)
+        )
+        guard case .failed = transcriber.state else {
+            return XCTFail("this no longer reproduces the failed state the typing fallback reads")
+        }
+        XCTAssertNotNil(transcriber.activeRunIDForTesting)
+        XCTAssertFalse(transcriber.stopForTyping(), "a failed run has no Live Activity left to end")
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertNil(transcriber.activeRunIDForTesting)
+    }
+
     // MARK: - The voice screen for as long as the save runs
 
     /// The cause, reproduced rather than assumed. `completeFinalization`

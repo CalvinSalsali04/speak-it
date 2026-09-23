@@ -319,6 +319,91 @@ its first run for reasons unrelated to it.
 
 The project builds and launches on an iPhone 13, passes Xcode static analysis, and all 95 repository, extraction, routing, sync, reminder, draft, integration, and reliability tests pass on an iPhone 17 Pro simulator. The capture subset also passed 175 repeated executions, and the previous complete 93-test baseline passes both Address Sanitizer and Thread Sanitizer. Microphone quality, speech accuracy, true Back Tap recognition, interruptions, AirPods, and locked-device behavior still require the physical-iPhone matrix in `CAPTURE_STRESS_TEST_PLAN.md`; iOS does not expose the hardware Back Tap gesture to automated tests.
 
+## Typed edits made after a recording lose to the recording
+
+*2026-09-23.* One capture screen keeps one draft across "Speak instead" and
+"Type instead", and since the D6 fix (see Decisions, "A draft's recording
+follows how it is being captured now") any draft that has been spoken into
+carries a protected recording, whichever way it began. Words typed *before*
+the first recording are kept beside it (`typedBeforeSpeaking`) and saved ahead
+of whatever the recording gives, by a live save and by every recovery. What
+is not kept:
+
+- Words typed or edited after "Type instead", on a draft whose recording is
+  still there, are dropped if the app dies before they are saved: recovery
+  reads the recording and joins it after the words typed before it, not after
+  the edit. This was already true of drafts that began as speech
+  (`testAudioRecoveryTakesPriorityOverAPartialTranscript`). Speaking again
+  sets the edited text aside, so only the window between editing and saving
+  is exposed. It also records over the first recording, which reuses its
+  file, so anything the live transcript missed from the first attempt is gone
+  with it; that predates the D6 fix.
+- A voice attempt that ends with no audio input at all (the no-speech timeout
+  with nothing recorded) discards the draft, and with it any words typed
+  before speaking. They are still on screen in the editor; a kill before the
+  person types again loses them. The discard is in the no-speech branch that
+  the VoiceOver change rewrites as `endAttemptWithoutWords`, so it is left to
+  follow that change rather than conflict with it.
+- When a recording is deleted from Today, the words typed before it are saved
+  at once as their own thought. If storage refuses that save, they are kept as
+  a typed draft and saved at the next launch, not sooner.
+
+## The launch passes rely on ordering
+
+*2026-09-23, from the review of #144.* Two launch-time protections for a
+recording in progress hold by where code sits: after a kill, a draft killed
+before its first audio buffer looks exactly like one being recorded now, so
+only running before any capture can begin keeps the passes apart from a live
+recording. The ordering is pinned by a source guard, not by a Swift test.
+
+- **The empty-draft prune runs before any capture can begin, in shipping
+  builds only.** `pruneEmptyTextDrafts` keeps a draft only if it has words or
+  more than 512 bytes of recording on disk, and a live recording is under
+  that until its first buffer lands. It is safe because in `RootView`'s
+  launch task the only suspension before the prune is one `Task.yield()`,
+  and the capture screen cannot have begun a draft by then (it has to be
+  presented, and its `.task` waits 180 ms first). Everything else above the
+  prune is `#if DEBUG`. In a DEBUG build launched with
+  `--load-today-examples`, the UI-test configuration, that block awaits a
+  real `createCaptureResult` per example before the prune, so the ordering
+  does not hold there, and a recording that vanished in a UI test could be
+  this and not a test artefact. A voice draft that carries typed words is
+  kept regardless, because its transcript is not empty.
+- **What pins the ordering.** `TheLaunchPassesRunBeforeAnyCaptureCanBegin`
+  in `Tools/CorpusRunner/test_observation.py` fails if `pruneEmptyTextDrafts`
+  or `recoverInterruptedCaptureDraft` gains a second use anywhere in the app,
+  the Share extension or the Live Activity, if either call leaves `RootView`'s
+  launch task, or if a shipping line of that task suspends above the prune
+  other than the one `Task.yield()`, or above the text pass other than that
+  and `recoverInterruptedAudioDrafts()`. It reads source; it does not run the
+  launch. `#if DEBUG` lines are left out of the suspension check on purpose,
+  so a new DEBUG await there is not caught; nor is a pass wrapped in a nested
+  `Task` or closure inside the launch task, which would run it later.
+- **The text pass tells a live recording from an interrupted draft by one
+  file-size check.** `recoverable()` takes drafts with words, no recording
+  over 512 bytes, and at least 12 s since their last update. Before #144 a
+  live voice draft had no words, so the first condition excluded it; one
+  that carries typed words now has words, and only the file size excludes
+  it. No reachable instance was found: the text pass runs only at launch
+  (`RootView`, pinned by the same guard), after the audio pass, and a draft begun in that launch would
+  need the audio pass to take over 12 s and its recording to stay under 512
+  bytes, about one buffer. Excluding every draft that intends a recording was
+  considered and rejected, because it strands drafts that never recorded
+  (Decisions, "A draft's recording follows how it is being captured now").
+
+## A draft initializer relies on a language rule this repository has not used
+
+*2026-09-23, from the review of #144.* `CaptureDraftStore.Draft` gained
+`typedBeforeSpeaking`, a trailing optional `var`, and both explicit
+`Draft(...)` constructions (`begin` and `deleteRecordingKeepingTypedWords`)
+omit it. That relies on the memberwise initializer giving an optional `var`
+a default of `nil`. It is the language rule, but no other struct under
+`SpeakIt/` or `Shared/` is constructed that way, and `handedOffSessionID`,
+added the same way earlier, is still passed explicitly, so the existing code
+does not show it compiling. The branch was reviewed and changed without a
+Swift compiler; a build settles it, and passing `typedBeforeSpeaking: nil`
+explicitly is the fallback if it does not.
+
 ## The app cannot set what customers are charged
 
 September 8 pricing follow-up: launch percentage claims now require the actual USD 14.99 product price, enabled flag and sale window. Other currencies show localized prices without an unverified discount. The future standard price and preservation of existing subscriber prices still need App Store Connect verification; the paywall no longer promises an indefinite rate.
