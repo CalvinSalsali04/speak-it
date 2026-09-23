@@ -927,7 +927,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Call the bank"` and the attempt `"Buy milk and call the dentist"`
         were already counted); and two phrases quoted in doc comments, the
         button title `"Review what I understood"` and the tail of the
-        failure notice, `"still in Needs review"`. What the test
+        failure notice, `"still in Needs review"`. 4162 -> 4182 on
+        2026-09-23, when review found the guard that stops a retry deleting
+        its own session tested only in its true direction, and the rows
+        `deleteCapture` reports read by one no-op assertion. Twenty,
+        enumerated: two fixtures, the lowercased echo of the attempt
+        `"something about the bank and the fee thing"` and the thought said
+        again, `"Call the bank about the overdraft fee"`; and eighteen
+        assertion messages, five of them preconditions. The merge of
+        `claude/v1-reliability-nyngoe-stale-save` touched no test file and
+        added none. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -941,7 +950,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4162)
+        self.assertEqual(len(space), 4182)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -486,8 +486,11 @@ enum CaptureRetryReplacement {
 
     /// Deletes the attempt as it is now: its session, its original transcript,
     /// and every row it has. Runs only after the retry is durable; if it
-    /// throws, both captures stay.
-    static func retire(attempt: UUID, in repository: any ThoughtRepository) throws {
+    /// throws, both captures stay. Returns how many rows went, which the view
+    /// has no use for and the tests pin: a count that differs from the rows
+    /// the attempt has at deletion time means the wrong set was deleted.
+    @discardableResult
+    static func retire(attempt: UUID, in repository: any ThoughtRepository) throws -> Int {
         try repository.deleteCapture(sessionID: attempt)
     }
 }
