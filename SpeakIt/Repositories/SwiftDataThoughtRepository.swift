@@ -1,10 +1,14 @@
 import CoreLocation
 import Foundation
+import os
 import SwiftData
 import WidgetKit
 
 @MainActor
 final class SwiftDataThoughtRepository: ThoughtRepository {
+    /// Content-free diagnostics for reminder bookkeeping. Messages name a
+    /// state, never an item's words, and nothing here reaches analytics.
+    private static let reminderLog = Logger(subsystem: "com.calvinwak.SpeakIt", category: "Reminders")
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
     private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
 
@@ -287,7 +291,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let refreshedItems = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
         let requests = refreshedItems
             .filter { !$0.isArchived && !$0.isCompleted }
-            .compactMap(ReminderScheduleRequest.init(item:))
+            .compactMap { ReminderScheduleRequest.forScheduling($0) }
 
         ReminderScheduler.synchronize(
             requests,
@@ -757,7 +761,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 // than taking the already-snoozed time as the series' own.
                 if RecurrenceStore.rule(for: item.id) != nil,
                    let seriesReminder = item.seriesReminderDate {
-                    item.setSnoozedFromReminderDate(seriesReminder)
+                    recordSnoozeDisplacement(of: item, from: seriesReminder)
                 }
                 item.reminderDate = date
                 item.lastModifiedAt = .now
@@ -798,6 +802,29 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             try persistChanges()
             rescheduleReminders(touching: items)
         }
+    }
+
+    /// Records the series alert a snooze is about to displace, and refuses to
+    /// fail quietly.
+    ///
+    /// The snooze decides to record from `RecurrenceStore`, which lives in
+    /// UserDefaults, while the record lives in the row's intent blob. A
+    /// recurring row with no intent is one the launch backfill has not reached
+    /// yet. It gets the backfill's own reconstruction here, so the record has
+    /// somewhere to go and the next occurrence is computed from the series
+    /// rather than from the snoozed time. Any other failure is logged, with
+    /// the reason only, and stops a Debug build.
+    private func recordSnoozeDisplacement(of item: CapturedItem, from seriesReminder: Date) {
+        var outcome = item.setSnoozedFromReminderDate(seriesReminder)
+        if outcome == .noIntent {
+            item.temporalIntent = reconstructedIntent(for: item)
+            outcome = item.setSnoozedFromReminderDate(seriesReminder)
+        }
+        guard !outcome.isWritten else { return }
+        Self.reminderLog.fault(
+            "Recurring snooze recorded no series alert: \(outcome.rawValue, privacy: .public)"
+        )
+        assertionFailure("Recurring snooze recorded no series alert: \(outcome.rawValue)")
     }
 
     /// Reschedules only the captures a notification action actually touched.
@@ -2492,7 +2519,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let session else { return }
         let requests = session.items
             .filter { !$0.isArchived && !$0.isCompleted }
-            .compactMap(ReminderScheduleRequest.init(item:))
+            .compactMap { ReminderScheduleRequest.forScheduling($0) }
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
@@ -2514,7 +2541,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.reminderDate != nil && item.isArchived == false && item.completedAt == nil
             }
         )
-        let requests = (try? modelContext.fetch(descriptor))?.compactMap(ReminderScheduleRequest.init(item:)) ?? []
+        let requests = (try? modelContext.fetch(descriptor))?.compactMap { ReminderScheduleRequest.forScheduling($0) } ?? []
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,

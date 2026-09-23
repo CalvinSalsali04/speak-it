@@ -1,6 +1,22 @@
 import Foundation
 import SwiftData
 
+/// What `setSnoozedFromReminderDate` did. Every case but `recorded` and
+/// `unchanged` means the series alert was *not* written, and a caller
+/// recording a snooze must not treat that as success.
+enum SnoozeRecordOutcome: String {
+    case recorded
+    /// The intent already held this value, as on a second snooze.
+    case unchanged
+    /// The row has no intent blob to hold the record.
+    case noIntent
+    /// The blob is there but does not decode, so it is not rewritten.
+    case unreadableIntent
+    case unencodable
+
+    var isWritten: Bool { self == .recorded || self == .unchanged }
+}
+
 @Model
 final class CapturedItem: Identifiable {
     @Attribute(.unique) var id: UUID
@@ -425,12 +441,20 @@ final class CapturedItem: Identifiable {
     /// whose setter also re-derives the denormalized kind and trigger. Neither
     /// changes here, and re-deriving the trigger would turn a place reminder
     /// that also carries a time intent into a time reminder.
-    func setSnoozedFromReminderDate(_ date: Date?) {
-        guard var intent = temporalIntent,
-              intent.snoozedFromReminderDate != date else { return }
+    ///
+    /// Reports what happened rather than returning quietly. The snooze decides
+    /// to record from `RecurrenceStore`, which lives in UserDefaults, while the
+    /// record lives in this row's intent blob. If the two ever disagree, a
+    /// quiet no-op would let the snoozed time become the series' time again.
+    @discardableResult
+    func setSnoozedFromReminderDate(_ date: Date?) -> SnoozeRecordOutcome {
+        guard temporalIntentData != nil else { return .noIntent }
+        guard var intent = temporalIntent else { return .unreadableIntent }
+        guard intent.snoozedFromReminderDate != date else { return .unchanged }
         intent.snoozedFromReminderDate = date
-        guard let data = try? JSONEncoder().encode(intent) else { return }
+        guard let data = try? JSONEncoder().encode(intent) else { return .unencodable }
         temporalIntentData = data
+        return .recorded
     }
 
     /// Today is for action. Written as the exact complement of `belongsInMemory`

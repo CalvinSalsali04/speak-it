@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftData
+import UserNotifications
 import XCTest
 @testable import SpeakIt
 
@@ -5648,6 +5649,44 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             Set(removed.values),
             [ReminderScheduler.notificationIdentifier(for: itemID), series]
         )
+    }
+
+    /// When one add of a group's requests throws, none of the group may stay
+    /// armed: a snoozed one-shot without its series trigger is the missed
+    /// reminder the series trigger exists to prevent.
+    ///
+    /// Falsifier: on 3b10701 a throwing add returned `.failed` and left every
+    /// request before it pending, so the one-shot stayed armed alone. Take the
+    /// rollback out of `addAllOrNone` and the removed set is empty.
+    /// `addAllOrNone` is new, so on 3b10701 this does not compile.
+    func testAFailedAddWithdrawsTheRequestsAlreadyAdded() async {
+        let content = UNMutableNotificationContent()
+        let oneShot = UNNotificationRequest(identifier: "one-shot", content: content, trigger: nil)
+        let series = UNNotificationRequest(identifier: "series", content: content, trigger: nil)
+        struct AddFailed: Error {}
+
+        let added = RemovedIdentifiers()
+        let removed = RemovedIdentifiers()
+        let armed = await ReminderScheduler.addAllOrNone(
+            [oneShot, series],
+            add: { request in
+                if request.identifier == "series" { throw AddFailed() }
+                added.values.append(request.identifier)
+            },
+            remove: { removed.values.append(contentsOf: $0) }
+        )
+        XCTAssertFalse(armed)
+        XCTAssertEqual(added.values, ["one-shot"])
+        XCTAssertEqual(Set(removed.values), ["one-shot", "series"])
+
+        let untouched = RemovedIdentifiers()
+        let armedBoth = await ReminderScheduler.addAllOrNone(
+            [oneShot, series],
+            add: { _ in },
+            remove: { untouched.values.append(contentsOf: $0) }
+        )
+        XCTAssertTrue(armedBoth)
+        XCTAssertEqual(untouched.values, [])
     }
 
     func testSharedTodaySnapshotRoundTripsAtomically() throws {

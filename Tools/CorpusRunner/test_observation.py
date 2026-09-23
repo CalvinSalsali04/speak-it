@@ -906,6 +906,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         not this one again"` and `"the snoozed fire must be a one-shot"`.
         The one fixture is reused again, and the identifier test's doc
         comment keeps its names in backticks, so neither adds anything.
+        4083 -> 4088 the same day again, from that change's grading: a
+        series whose alert had fired was disarmed by any scheduling pass
+        that included it, a snooze record could fail without a word, and a
+        failed add left a one-shot armed alone. Four new tests, five
+        literals, enumerated rather than assumed, all assertion messages --
+        `"Precondition: the alert has fired"`, `"Precondition: the snoozed
+        one-shot has fired"`, `"Today still counts only alerts ahead"`, `"a
+        snooze with nowhere to record must make somewhere, not skip the
+        record"` and `"after the snooze fires, the series trigger is all
+        that is left to arm"`. One more message, `"the series must be armed
+        as a repeating trigger"`, is used again and was already here, and
+        the rollback test's identifiers (`"one-shot"`, `"series"`) are under
+        twelve characters, so they were never in this population.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -920,7 +933,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4083)
+        self.assertEqual(len(space), 4088)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

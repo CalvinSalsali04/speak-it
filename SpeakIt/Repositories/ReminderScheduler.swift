@@ -17,7 +17,8 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// path (see `SwiftDataThoughtRepository.setCompleted`).
     let repeatingComponents: DateComponents?
     /// The series' own repeating trigger, armed *beside* this request's fire
-    /// when a snooze has displaced it. `nil` for everything else.
+    /// when a snooze has displaced it, or *instead of* it once that fire has
+    /// passed (see `forScheduling`). `nil` for everything else.
     ///
     /// A snoozed occurrence cannot use `repeatingComponents` for its own fire:
     /// the snooze is not the series' time. Arming only the one-shot left
@@ -27,6 +28,10 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// one-shot at the snooze, and this repeating match under
     /// `ReminderScheduler.seriesNotificationIdentifier(for:)`.
     let seriesContinuation: SeriesContinuation?
+    /// True when this request's own fire had already passed when it was built,
+    /// so it arms `seriesContinuation` and nothing else. Only `forScheduling`
+    /// builds one.
+    let continuesSeriesOnly: Bool
     /// The named list a shopping row belongs to ("Sobeys"), or `nil` for
     /// everything else. A coalesced notification whose rows all share one
     /// list is titled by that list, so the alert reads the way the person
@@ -37,9 +42,47 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     /// ordering stays keyed by item ID so it remains stable across launches.
     let createdAt: Date
 
+    /// A request for an alert still ahead, or `nil`. What Today reads to
+    /// describe pending reminders. A scheduling pass uses `forScheduling`,
+    /// which also keeps an alerted series armed.
     @MainActor
     init?(item: CapturedItem) {
-        guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
+        self.init(item: item, now: .now, continuingPastFire: false)
+    }
+
+    /// The request a scheduling pass arms for an item.
+    ///
+    /// The same request as `init?(item:)` while the alert is ahead. Once it has
+    /// fired, `init?(item:)` returns `nil`, and any pass that included the item
+    /// in its scope removed its triggers and re-added nothing. That covered a
+    /// native repeating series whose alert had fired (DEL-12), and a snoozed
+    /// series whose one-shot had fired, whose repeating trigger was then
+    /// removed with it. For a series iOS can repeat, this returns a request
+    /// whose own fire has passed and which arms only `seriesContinuation`, the
+    /// series' repeating trigger, until the app rolls the row forward.
+    @MainActor
+    static func forScheduling(_ item: CapturedItem, now: Date = .now) -> ReminderScheduleRequest? {
+        ReminderScheduleRequest(item: item, now: now, continuingPastFire: true)
+    }
+
+    @MainActor
+    private init?(item: CapturedItem, now: Date, continuingPastFire: Bool) {
+        guard let fireDate = item.reminderDate else { return nil }
+        // The series' own alert, not a snoozed one. Taken from a snoozed fire
+        // date, the repeating match's first fire *was* the snoozed occurrence,
+        // so iOS was handed "every Monday at 9:10" for a series asked for at 9.
+        // From the series' alert, the match no longer describes this one fire,
+        // which is then armed as an exact one-shot, and the series' repeating
+        // match is armed beside it as `seriesContinuation`.
+        let seriesFireDate = item.seriesReminderDate ?? fireDate
+        let seriesComponents = Self.repeatingComponents(
+            rule: item.temporalIntent?.recurrence,
+            fireDate: seriesFireDate
+        )
+        let fireHasPassed = fireDate <= now
+        if fireHasPassed {
+            guard continuingPastFire, seriesComponents != nil else { return nil }
+        }
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these
         // requests on every render pass to keep its scheduling signature live,
@@ -54,22 +97,13 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         )
         self.fireDate = fireDate
         delivery = wordedDelivery == .alarm ? .alarm : .notification
-        // The series' own alert, not a snoozed one. Taken from a snoozed fire
-        // date, the repeating match's first fire *was* the snoozed occurrence,
-        // so iOS was handed "every Monday at 9:10" for a series asked for at 9.
-        // From the series' alert, the match no longer describes this one fire,
-        // which is then armed as an exact one-shot, and the series' repeating
-        // match is armed beside it as `seriesContinuation`.
-        let seriesFireDate = item.seriesReminderDate ?? fireDate
-        repeatingComponents = Self.repeatingComponents(
-            rule: item.temporalIntent?.recurrence,
-            fireDate: seriesFireDate
-        )
-        seriesContinuation = seriesFireDate == fireDate
-            ? nil
-            : repeatingComponents.map {
+        repeatingComponents = seriesComponents
+        continuesSeriesOnly = fireHasPassed
+        seriesContinuation = fireHasPassed || seriesFireDate != fireDate
+            ? seriesComponents.map {
                 SeriesContinuation(occurrenceFireDate: seriesFireDate, components: $0)
             }
+            : nil
         listName = item.itemType == .shopping
             ? ShoppingGroupStore.group(for: item.id)
             : nil
@@ -1033,8 +1067,7 @@ enum ReminderScheduler {
             return authorizationStatus == .denied ? .denied : .needsPermission
         }
 
-        var identifiers: [String] = []
-        for planned in plannedNotifications(for: group, now: .now) {
+        let notifications = plannedNotifications(for: group, now: .now).map { planned -> UNNotificationRequest in
             let content = UNMutableNotificationContent()
             content.title = planned.group.title
             content.body = planned.group.body
@@ -1045,23 +1078,48 @@ enum ReminderScheduler {
             if settings.timeSensitiveSetting == .enabled {
                 content.interruptionLevel = .timeSensitive
             }
-            let notification = UNNotificationRequest(
+            return UNNotificationRequest(
                 identifier: planned.group.identifier,
                 content: content,
                 trigger: planned.trigger.notificationTrigger
             )
-            do {
-                try await center.add(notification)
-            } catch {
-                return .failed
-            }
-            identifiers.append(notification.identifier)
         }
-        // A snoozed occurrence is only scheduled when both of its
-        // notifications are: the one-shot without the series is the missed
-        // reminder the second one exists to prevent.
+        guard !notifications.isEmpty else { return .failed }
+        let addedAll = await addAllOrNone(
+            notifications,
+            add: { try await center.add($0) },
+            remove: { delivery.removeNotifications($0) }
+        )
+        guard addedAll else { return .failed }
         let pending = Set(await center.pendingNotificationRequests().map(\.identifier))
-        return identifiers.allSatisfy { pending.contains($0) } ? .scheduled : .failed
+        return notifications.allSatisfy { pending.contains($0.identifier) } ? .scheduled : .failed
+    }
+
+    /// Adds every request, or leaves none of them behind.
+    ///
+    /// A snoozed occurrence is two requests, the one-shot and the series, and
+    /// the one-shot alone is the missed reminder the second exists to prevent.
+    /// So when an add throws, everything this call already added is withdrawn
+    /// again, together with the request that threw in case it was half
+    /// registered, and the pass reports failure for the next pass to retry.
+    /// Takes its effects as arguments so the rollback can be tested without
+    /// the notification center.
+    static func addAllOrNone(
+        _ notifications: [UNNotificationRequest],
+        add: (UNNotificationRequest) async throws -> Void,
+        remove: ([String]) -> Void
+    ) async -> Bool {
+        var added: [String] = []
+        for notification in notifications {
+            do {
+                try await add(notification)
+            } catch {
+                remove(added + [notification.identifier])
+                return false
+            }
+            added.append(notification.identifier)
+        }
+        return true
     }
 
     /// What `scheduleNotification` adds for a group, as values.
@@ -1072,7 +1130,7 @@ enum ReminderScheduler {
         for requests: [ReminderScheduleRequest],
         now: Date = .now
     ) -> [PlannedReminderNotification] {
-        notificationGroups(from: requests.filter { $0.fireDate > now && $0.delivery == .notification })
+        notificationGroups(from: armableNotificationRequests(requests, now: now))
             .flatMap { plannedNotifications(for: $0, now: now) }
             .map {
                 PlannedReminderNotification(
@@ -1088,7 +1146,15 @@ enum ReminderScheduler {
         for group: NotificationGroup,
         now: Date
     ) -> [(group: NotificationGroup, trigger: PlannedReminderNotification.Trigger)] {
-        var planned = [(group: group, trigger: trigger(for: group, now: now))]
+        // A group of requests built after their fire had passed holds only
+        // series continuations (`forScheduling`), and arms only their series
+        // triggers. Decided by how the request was built rather than by
+        // comparing with `now` again, so an alert that slips into the past
+        // between the batch and this call still gets its own one-second fire.
+        var planned: [(group: NotificationGroup, trigger: PlannedReminderNotification.Trigger)] = []
+        if !group.requests.allSatisfy(\.continuesSeriesOnly) {
+            planned.append((group: group, trigger: trigger(for: group, now: now)))
+        }
         for request in group.requests {
             guard let continuation = seriesContinuationTrigger(for: request, now: now) else { continue }
             planned.append((
@@ -1100,6 +1166,17 @@ enum ReminderScheduler {
             ))
         }
         return planned
+    }
+
+    /// The notification-delivered requests a pass arms: every one still
+    /// ahead, and every one whose fire has passed but whose series continues.
+    private static func armableNotificationRequests(
+        _ requests: [ReminderScheduleRequest],
+        now: Date
+    ) -> [ReminderScheduleRequest] {
+        requests.filter {
+            $0.delivery == .notification && ($0.fireDate > now || $0.continuesSeriesOnly)
+        }
     }
 
     private static func trigger(
@@ -1197,7 +1274,8 @@ enum ReminderScheduler {
         requestAuthorizationIfNeeded: Bool,
         scope: ReminderSynchronizationScope?
     ) async -> [ReminderSchedulingResult] {
-        let futureRequests = requests.filter { $0.fireDate > .now }
+        let now = Date.now
+        let futureRequests = requests.filter { $0.fireDate > now }
         var resolvedScope = scope ?? ReminderSynchronizationScope(requests: requests)
         resolvedScope.include(requests)
 
@@ -1213,8 +1291,11 @@ enum ReminderScheduler {
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
             ))
         }
+        // Includes a series whose alert has fired, which keeps only its
+        // repeating trigger. The cancel above removed it for every item in
+        // scope, so leaving it out here is what used to disarm the series.
         for group in notificationGroups(
-            from: futureRequests.filter { $0.delivery == .notification }
+            from: armableNotificationRequests(requests, now: now)
         ) {
             results.append(await scheduleNotification(
                 group,

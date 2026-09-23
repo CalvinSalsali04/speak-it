@@ -71,7 +71,46 @@ beside the one-shot: the series' own repeating calendar trigger.
 - **Done on a later occurrence.** The series notification carries the
   item's id, so Done, 10 min and Tomorrow act on the row. Done completes the
   row and generates the next occurrence, whose own trigger replaces both.
-- **Result.** `.scheduled` is reported only when both requests are pending.
+- **Tomorrow never collides with it.** On a daily series, tomorrow at the
+  series' clock is exactly the continuation's next match. The `.tomorrow`
+  action clears the record, so the occurrence is back on its series' alert,
+  no continuation is armed, and one notification rings.
+- **Both or neither.** `.scheduled` is reported only when both requests are
+  pending. When an add throws, `addAllOrNone` withdraws every request it had
+  already added, because a one-shot left armed alone is the missed reminder
+  the series trigger exists to prevent. The next pass retries.
+
+**An alerted series stays armed through every pass (DEL-12).** Every
+scheduling pass cancels both identifiers of each item in its scope, then
+adds only the requests it built. `init?(item:)` returns nil once the fire
+date has passed. So a series whose alert had fired, snoozed or not, was
+disarmed by any pass that included it, and nothing re-armed it until the
+next foreground. The foreground reconcile itself was never the problem:
+`reconcilePendingReminders` runs `advanceOverdueRecurrences` before it
+builds a request. Its in-place branch covers every row that can carry a
+continuation, because it applies whenever `repeatingComponents` is non-nil,
+so the row is rolled onto its next occurrence first. The paths that
+escaped were the ones that do not advance:
+
+- `synchronizeReminders(for:)`, reached from a notification action, an
+  edit, or a completion on another item in the same capture;
+- `synchronizeAllReminders`, reached from loading sample data.
+
+That is one mechanism, DEL-12, and it covered snoozed and unsnoozed rows
+alike. Every scheduling pass now builds its requests with
+`ReminderScheduleRequest.forScheduling`. For a series iOS can repeat whose
+fire has passed, it returns a request that arms only the series'
+repeating trigger, under the `.series` identifier, until the app rolls the
+row forward. `init?(item:)` keeps its meaning of an alert still ahead,
+which is what Today counts.
+
+**The snooze record is not allowed to fail quietly.** The snooze decides to
+record from `RecurrenceStore` (UserDefaults), while the record lives in the
+row's SwiftData intent blob. A recurring row without a blob, one the launch
+backfill has not reached, is given the backfill's own reconstruction on the
+spot so the record has somewhere to go. Any other failure is a `fault` on
+the `com.calvinwak.SpeakIt` / `Reminders` log with the reason only, and an
+`assertionFailure` in Debug.
 
 **Alarms are not covered.** An `.alarm` item is armed through AlarmKit with
 `.fixed(fireDate)`, a one-shot for every occurrence, snoozed or not. A
@@ -81,17 +120,21 @@ so the notification actions reach an alarm item only after it has fallen
 back to a notification. At that point it gets both requests like any other
 notification. See `KNOWN_ISSUES.md`.
 
-Covered by four tests in `TemporalFullPathTests`, pinned to the fixture
+Covered by seven tests in `TemporalFullPathTests`, pinned to the fixture
 zone:
 
 - a weekly snooze followed by completion;
 - the scheduler's plan for a snoozed weekly occurrence, which holds the
   one-shot at the snooze and the series trigger at the next occurrence;
+- the plan once that one-shot has fired, which is the series trigger alone;
+- the plan for an unsnoozed series whose alert has fired (DEL-12);
+- a snooze on a recurring row with no intent blob;
 - snooze then Tomorrow on a daily series;
 - a one-off reminder, as the unchanged control.
 
-A fifth test, in `SwiftDataThoughtRepositoryTests`, checks that the series
-identifier is removed with its item.
+Two tests in `SwiftDataThoughtRepositoryTests` cover the rest: the series
+identifier is removed with its item, and a failed add withdraws what was
+already added.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
