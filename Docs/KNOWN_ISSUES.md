@@ -35,18 +35,15 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
 
 - **Saving counts as confirming, for the time and the place.** A held row
   saved in the editor with Needs review still on arms what the editor showed,
-  because every editor save marks the temporal intent `isUserEdited` and
-  marks a place it leaves present the same way, and the manual toggle looks
-  the same in storage. Telling them apart needs a stored marker. The cost:
-  `apply` never re-reads a hand-set place, so a place saved once is fixed
-  against every later re-read (Organize again, split, merge, undo). Once a
-  re-read also keeps a hand-set time (#143), the rule is "an editor save
-  confirms the row's time and place; re-reads never change them". That is a
-  product-level choice and a reversible default for the owner's decision
-  batch. For the editor screen the place half is not new, because it has
-  always sent a present place back as an edit, which marks it; what is new is
-  `update(_:with:)` marking a place its caller left unchanged, which in the
-  app today is the voice reschedule.
+  because every editor save marks the temporal intent `isUserEdited`, the
+  editor sends every place it shows back as an edit, which marks the place,
+  and the manual toggle looks the same in storage. Telling them apart needs a
+  stored marker. The cost: `apply` never re-reads a hand-set place, so a place
+  saved once in the editor is fixed against every later re-read (Organize
+  again, split, merge, undo). Once a re-read also keeps a hand-set time
+  (#143), the rule is "an editor save confirms the row's time and place;
+  re-reads never change them". That is a product-level choice and a
+  reversible default for the owner's decision batch.
 - **A held series that is not a single native trigger goes stale.** A
   weekday, interval or ordinal series held for review spawns no successor and
   is not rolled forward, so it waits in Needs review with a past proposed
@@ -65,13 +62,6 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
   reading, so it cannot mix them. Reaching any of this needs an iCloud restore
   of a row held on another device, and a restore already does not re-plan
   places until the next foreground.
-- **A row saved before this build may hold its place until saved again.** A
-  save that left a present place unchanged did not mark it before this build,
-  so such a row carries the time's mark and not the place's. If the system
-  holds it, its place is not watched until the person saves or resolves it.
-  The editor screen always marked a present place, so in practice this is a
-  row last moved by voice. It is the safe direction: a place reminder waits,
-  and nothing unconfirmed is watched.
 
 ## A considered thought and a committed one look the same once stored
 

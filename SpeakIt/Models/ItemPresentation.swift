@@ -290,11 +290,12 @@ struct ItemPresentation: Equatable, Sendable {
     ///
     /// Only the location mark counts, as only the temporal mark counts for
     /// `mayArmTime`: each trigger is released by the person's confirmation of
-    /// that trigger and nothing else. Every save in the editor marks a place
-    /// it leaves present `isUserEdited`, the same way it marks the time, so
-    /// a person who turns Needs review on by hand keeps their place reminder
-    /// (E19). `apply` keeps a hand-set place with its mark and re-reads any
-    /// other, so the mark always belongs to the place it sits on.
+    /// that trigger and nothing else. The editor sends every place it shows
+    /// back as an edit, which marks it `isUserEdited`, as every save marks
+    /// the time, so a person who turns Needs review on by hand keeps their
+    /// place reminder (E19). `apply` keeps a hand-set place with its mark
+    /// and re-reads any other, so the mark always belongs to the place it
+    /// sits on.
     ///
     /// The time's mark is not read here, because it can sit beside a place
     /// nobody confirmed. The person clears the time and removes the parsed
