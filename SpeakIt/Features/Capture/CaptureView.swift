@@ -328,6 +328,106 @@ enum CaptureSaveInFlight {
     }
 }
 
+/// The capture screen a save belongs to.
+///
+/// `CaptureView.save` persists in an unstructured Task that outlives the
+/// screen: Discard, or Save & Close, can dismiss it while the save is still
+/// running. Persistence has to finish anyway, because those are the person's
+/// words. What must not happen is the finished save publishing into whatever
+/// is on screen by then. It used to call `onSaved`, whose handler in
+/// `RootView` sets `fullScreenDestination = nil`, and so closed the next
+/// capture mid-sentence; it also rewrote that capture's Live Activity.
+///
+/// One instance lives in each presentation's `@State`, and `RootView` gives
+/// every presentation a fresh view identity, so the object is the identity.
+/// A save holds the object it started on rather than reading `@State` again
+/// after its `await`, because a torn-down view's `@State` is not a reliable
+/// thing to read.
+///
+/// It also owns the presentation's one save slot, the same job
+/// `SpeechTranscriber.acceptsResult` does for recognizer runs: while a save
+/// is running, a second one is refused, so the same words cannot be stored
+/// twice under two different wordings.
+///
+/// Deliberately not main-actor isolated: `@State` evaluates its initial value
+/// outside the view's `body`. Every caller is on the main actor.
+final class CapturePresentation {
+    /// One save this presentation started.
+    struct Save: Equatable {
+        fileprivate let id: UUID
+    }
+
+    private(set) var hasEnded = false
+    private var saveInFlight: UUID?
+    private var latestSave: UUID?
+
+    var isSaveInFlight: Bool { saveInFlight != nil }
+
+    /// Claims the save slot, or refuses because a save is already running.
+    func beginSave() -> Save? {
+        guard saveInFlight == nil else { return nil }
+        let id = UUID()
+        saveInFlight = id
+        latestSave = id
+        return Save(id: id)
+    }
+
+    /// Frees the slot. `CaptureView.save` calls this from the `lower` of
+    /// `CaptureSaveInFlight.persisting`, so it runs on every way out of
+    /// persistence, a throw included.
+    func finishPersisting(_ save: Save) {
+        if saveInFlight == save.id {
+            saveInFlight = nil
+        }
+    }
+
+    /// Whether a save's result may still reach the screen, the parent's
+    /// navigation, the Live Activity or the auto-dismiss timer.
+    ///
+    /// False once the screen has gone, and false for any save older than the
+    /// latest one this screen started.
+    func publishes(_ save: Save) -> Bool {
+        !hasEnded && latestSave == save.id
+    }
+
+    /// The screen is gone, or the person discarded it. Irreversible.
+    func end() {
+        hasEnded = true
+    }
+}
+
+/// What the close dialog's Save & Close does with the words on screen.
+enum CaptureCloseRequest: Equatable {
+    /// Start a save of what is on screen, and close when it finishes.
+    case saveThenClose
+    /// A save already owns these words, or is about to: finalization will
+    /// hand the recognizer's last result to `save`, and audio recovery ends by
+    /// starting one. Close when that save finishes rather than starting a
+    /// second save of an earlier wording.
+    case closeWhenSaveFinishes
+    /// The words are already saved and confirmed on screen.
+    case closeSaved
+
+    static func resolveSaveAndClose(
+        isVoiceMode: Bool,
+        transcriberState: SpeechTranscriber.State,
+        isSaveInFlight: Bool,
+        isRecoveringAudio: Bool,
+        showsSavedConfirmation: Bool
+    ) -> CaptureCloseRequest {
+        if showsSavedConfirmation, !isSaveInFlight {
+            return .closeSaved
+        }
+        if isSaveInFlight || isRecoveringAudio {
+            return .closeWhenSaveFinishes
+        }
+        if isVoiceMode, transcriberState == .finalizing {
+            return .closeWhenSaveFinishes
+        }
+        return .saveThenClose
+    }
+}
+
 struct CaptureView: View {
     /// Scroll anchor for the live transcript, so it keeps the newest words in
     /// view as they arrive.
@@ -381,6 +481,9 @@ struct CaptureView: View {
     @State private var draftCheckpointTask: Task<Void, Never>?
     @State private var isRecoveringAudio = false
     @State private var showsFreeLimit = false
+    /// This presentation's identity and its one save slot. See
+    /// `CapturePresentation`.
+    @State private var presentation = CapturePresentation()
     @FocusState private var isTextFocused: Bool
 
     private var trimmedTypedText: String {
@@ -495,6 +598,7 @@ struct CaptureView: View {
             Text("Your words are still a draft. Save them before closing, or discard them deliberately.")
         }
         .onDisappear {
+            presentation.end()
             confirmationDismissTask?.cancel()
             noSpeechTimeoutTask?.cancel()
             flushPendingCheckpoint()
@@ -1347,6 +1451,10 @@ struct CaptureView: View {
     }
 
     private func save(_ text: String, source: CaptureSource) {
+        // One save of this screen's words at a time. The finalization
+        // completion and Save & Close could both reach here for one recording,
+        // and when their wordings differed the store kept both.
+        guard !presentation.isSaveInFlight else { return }
         let repairedText = source == .inAppVoice
             ? tutorialMission?.repairVoiceTranscript(text) ?? text
             : text
@@ -1411,13 +1519,21 @@ struct CaptureView: View {
         if let activeDraftID {
             CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
         }
+        guard let thisSave = presentation.beginSave() else { return }
+        // Held here rather than read back from `@State` after the `await`: the
+        // screen may be gone by then.
+        let owner = presentation
+        let savingDraftID = activeDraftID
         isSaving = true
         Task { @MainActor in
             do {
                 let persistenceSource: CaptureSource = tutorialMission == nil
                     ? source
                     : .tutorial
-                let result = try await CaptureSaveInFlight.persisting(lower: { isSaving = false }) {
+                let result = try await CaptureSaveInFlight.persisting(lower: {
+                    isSaving = false
+                    owner.finishPersisting(thisSave)
+                }) {
                     try await repository.createCaptureResult(
                         text: normalizedText,
                         source: persistenceSource,
@@ -1466,6 +1582,17 @@ struct CaptureView: View {
                     }
                 }
                 retryingUnclearResult = nil
+                // The thought is durable, so its draft goes whatever happened to
+                // the screen. Everything after this guard publishes the result:
+                // to this screen, the parent's navigation, the Live Activity and
+                // the auto-dismiss timer. A save whose screen was discarded or
+                // closed must not publish into the capture that replaced it.
+                guard owner.publishes(thisSave) else {
+                    if let savingDraftID {
+                        CaptureDraftStore.clear(id: savingDraftID)
+                    }
+                    return
+                }
                 discardActiveDraft()
                 typedText = ""
                 savedResult = result
@@ -1542,16 +1669,18 @@ struct CaptureView: View {
                     confirmationDismissTask?.cancel()
                     confirmationDismissTask = Task { @MainActor in
                         try? await Task.sleep(for: .seconds(3.6))
-                        guard !Task.isCancelled else { return }
+                        guard !Task.isCancelled, owner.publishes(thisSave) else { return }
                         finishSavedCapture()
                     }
                 }
             } catch {
-                closesAfterSave = false
                 SpeakItAnalytics.track(.captureFailed(
                     source: source == .inAppVoice ? .voice : .text,
                     category: "organization"
                 ))
+                // The draft is kept either way, so the words are recoverable.
+                guard owner.publishes(thisSave) else { return }
+                closesAfterSave = false
                 errorMessage = error.localizedDescription
             }
         }
@@ -1756,6 +1885,26 @@ struct CaptureView: View {
         closesAfterSave = true
         isTextFocused = false
 
+        switch CaptureCloseRequest.resolveSaveAndClose(
+            isVoiceMode: mode == .voice,
+            transcriberState: transcriber.state,
+            isSaveInFlight: presentation.isSaveInFlight,
+            isRecoveringAudio: isRecoveringAudio,
+            showsSavedConfirmation: showsSavedConfirmation
+        ) {
+        case .closeSaved:
+            closesAfterSave = false
+            finishSavedCapture()
+            return
+        case .closeWhenSaveFinishes:
+            // `closesAfterSave` is already up; the save that owns these words
+            // reads it when it finishes. Starting another here stored the
+            // partial wording beside the final one.
+            return
+        case .saveThenClose:
+            break
+        }
+
         if mode == .text {
             save(trimmedTypedText, source: .inAppText)
         } else if transcriber.isListening {
@@ -1779,6 +1928,9 @@ struct CaptureView: View {
     }
 
     private func discardAndClose() {
+        // A save already running still persists, but it may no longer touch
+        // this screen, the next capture or its Live Activity.
+        presentation.end()
         closesAfterSave = false
         draftCheckpointTask?.cancel()
         draftCheckpointTask = nil

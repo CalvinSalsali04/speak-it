@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-09-23 — A save belongs to the capture screen that started it
+
+A save's Task outlives its screen, and it used to publish into whatever was on
+screen when it finished: after Discard or Save & Close during a running save,
+it called `onSaved`, and `RootView` closed the next capture mid-sentence and
+rewrote its Live Activity. Each presentation now holds a `CapturePresentation`
+in `@State`: the save persists, charges and clears its draft regardless, but
+the screen, `onSaved`, the Live Activity and the auto-dismiss timer run only
+while `publishes(_:)` says its own screen is still up. The same object holds
+one save slot, and Save & Close no longer saves the partial wording when a save
+is running or finalization is about to hand over the final wording; it waits
+for that save and closes (`CaptureCloseRequest`), so one recording stores once,
+with the recognizer's last words. Discard during a save that is already running
+still leaves the thought stored and the free capture spent; whether it should
+is a product question left open.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

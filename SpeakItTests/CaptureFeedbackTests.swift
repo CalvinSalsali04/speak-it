@@ -498,6 +498,162 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertFalse(CaptureVoiceStatus.listening(isWaitingForContinuation: false).disablesCaptureControl)
     }
 
+    // MARK: - A save belongs to the screen that started it
+
+    /// Discard during a save that is already running. The save has to finish,
+    /// because those are the person's words, but its screen is gone: in the
+    /// shipped defect the finished save called `onSaved`, and `RootView` closed
+    /// whatever capture was up by then, mid-sentence.
+    ///
+    /// The persistence, the slot and the publishing check are the shipping
+    /// `CaptureSaveInFlight.persisting` and `CapturePresentation`. What
+    /// `ScreenSave` restates is one line: `CaptureView.save` publishes only
+    /// past `owner.publishes(thisSave)`.
+    ///
+    /// Falsifier: drop `!hasEnded` from `CapturePresentation.publishes` and
+    /// the closed-screen count below is 1.
+    func testASaveThatFinishesAfterItsScreenWasDiscardedDoesNotCloseTheNextOne() async throws {
+        let discarded = ScreenSave()
+        let save = try XCTUnwrap(discarded.presentation.beginSave())
+        let running = Task { @MainActor in await discarded.run(save) }
+        await Task.yield()
+
+        // The person taps Discard, then opens a new capture.
+        discarded.presentation.end()
+        let next = CapturePresentation()
+        XCTAssertNotNil(next.beginSave(), "a new screen starts with its own free save slot")
+
+        discarded.releasePersistence()
+        await running.value
+
+        XCTAssertEqual(discarded.persistedCount, 1, "the words must still be stored")
+        XCTAssertFalse(discarded.presentation.isSaveInFlight)
+        XCTAssertEqual(
+            discarded.closedScreenCount,
+            0,
+            "a save whose screen was discarded closed the screen that replaced it"
+        )
+    }
+
+    /// Control for the test above: nothing about the gate may stop a save on
+    /// its own screen from closing that screen, exactly once.
+    func testASaveOnTheScreenThatStartedItStillClosesItOnce() async throws {
+        let screen = ScreenSave()
+        let save = try XCTUnwrap(screen.presentation.beginSave())
+        let running = Task { @MainActor in await screen.run(save) }
+        await Task.yield()
+        screen.releasePersistence()
+        await running.value
+
+        XCTAssertEqual(screen.persistedCount, 1)
+        XCTAssertEqual(screen.closedScreenCount, 1)
+        XCTAssertTrue(screen.presentation.publishes(save))
+    }
+
+    /// One screen, one save of its words at a time, and the slot comes back
+    /// when the save is done, because "Try saying it again" saves again on the
+    /// same screen.
+    ///
+    /// Falsifier: drop the `saveInFlight == nil` guard from
+    /// `CapturePresentation.beginSave` and the second request is granted.
+    func testASecondSaveOfTheSameScreenIsRefusedWhileTheFirstRuns() async throws {
+        let screen = ScreenSave()
+        let first = try XCTUnwrap(screen.presentation.beginSave())
+        let running = Task { @MainActor in await screen.run(first) }
+        await Task.yield()
+
+        XCTAssertTrue(screen.presentation.isSaveInFlight)
+        XCTAssertNil(
+            screen.presentation.beginSave(),
+            "a second save of these words started while the first was still being stored"
+        )
+
+        screen.releasePersistence()
+        await running.value
+
+        XCTAssertFalse(screen.presentation.isSaveInFlight)
+        let retry = try XCTUnwrap(screen.presentation.beginSave(), "the slot never came back")
+        XCTAssertTrue(screen.presentation.publishes(retry))
+        XCTAssertFalse(
+            screen.presentation.publishes(first),
+            "an older save of this screen may not publish once a newer one started"
+        )
+    }
+
+    /// The finalization window, driven through a real transcriber. Save &
+    /// Close landed after the recognizer's first final result and before its
+    /// last one, saved the partial wording, and then finalization saved the
+    /// final wording as a second capture.
+    ///
+    /// Falsifier: remove the `.finalizing` branch from
+    /// `CaptureCloseRequest.resolveSaveAndClose` and the partial wording is
+    /// what gets saved, with the final one refused behind it.
+    func testSaveAndCloseDuringFinalizationSavesTheFinalWordsOnce() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let presentation = CapturePresentation()
+        var saved: [String] = []
+        // `CaptureView.save`'s claim and nothing else of it. Persistence never
+        // returns here, so the slot stays taken, as it does while a real save
+        // is still being stored.
+        let save: (String) -> Void = { text in
+            guard presentation.beginSave() != nil else { return }
+            saved.append(text)
+        }
+
+        let recording = transcriber.beginRunWithoutAudioForTesting { save($0) }
+        recording.deliverTranscript("buy milk and eggs", false)
+        recording.deliverTranscript("buy milk and eggs", true)
+        XCTAssertEqual(transcriber.state, .finalizing)
+
+        let request = CaptureCloseRequest.resolveSaveAndClose(
+            isVoiceMode: true,
+            transcriberState: transcriber.state,
+            isSaveInFlight: presentation.isSaveInFlight,
+            isRecoveringAudio: false,
+            showsSavedConfirmation: false
+        )
+        XCTAssertEqual(request, .closeWhenSaveFinishes)
+        if request == .saveThenClose {
+            save(transcriber.transcript)
+        }
+
+        recording.deliverTranscript("buy milk and eggs today", true)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertEqual(saved.count, 1, "one recording was stored as \(saved.count) captures")
+        XCTAssertEqual(saved.first, transcriber.transcript)
+        XCTAssertTrue(saved.first?.contains("today") ?? false, "the partial wording was saved")
+    }
+
+    /// Every other answer Save & Close can give, so the fix above cannot have
+    /// taken the ordinary save away.
+    func testSaveAndCloseOnlyStartsASaveWhenNothingElseOwnsTheWords() {
+        func resolve(
+            voice: Bool = true,
+            state: SpeechTranscriber.State = .idle,
+            inFlight: Bool = false,
+            recovering: Bool = false,
+            confirmed: Bool = false
+        ) -> CaptureCloseRequest {
+            CaptureCloseRequest.resolveSaveAndClose(
+                isVoiceMode: voice,
+                transcriberState: state,
+                isSaveInFlight: inFlight,
+                isRecoveringAudio: recovering,
+                showsSavedConfirmation: confirmed
+            )
+        }
+
+        XCTAssertEqual(resolve(state: .listening), .saveThenClose)
+        XCTAssertEqual(resolve(state: .idle), .saveThenClose)
+        XCTAssertEqual(resolve(voice: false), .saveThenClose)
+        XCTAssertEqual(resolve(voice: false, state: .finalizing), .saveThenClose)
+        XCTAssertEqual(resolve(inFlight: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(voice: false, inFlight: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(recovering: true), .closeWhenSaveFinishes)
+        XCTAssertEqual(resolve(confirmed: true), .closeSaved)
+        XCTAssertEqual(resolve(inFlight: true, confirmed: true), .closeWhenSaveFinishes)
+    }
+
     // MARK: - The capture review list
 
     private var container: ModelContainer!
@@ -695,5 +851,45 @@ private final class SaveHeldOpenByTheTest {
         outcome = result
         resume?.resume(with: result)
         resume = nil
+    }
+}
+
+/// One capture screen's save, with persistence held open until the test lets
+/// it finish.
+///
+/// It runs the shipping `CaptureSaveInFlight.persisting` and frees the slot
+/// through it, as `CaptureView.save` does. The one line restated is the gate:
+/// `CaptureView.save` reaches `onSaved`, whether by Save & Close or by the
+/// auto-dismiss timer, only past `owner.publishes(thisSave)`.
+@MainActor
+private final class ScreenSave {
+    let presentation = CapturePresentation()
+    private(set) var persistedCount = 0
+    private(set) var closedScreenCount = 0
+    private var isReleased = false
+    private var resume: CheckedContinuation<Void, Never>?
+
+    func run(_ save: CapturePresentation.Save) async {
+        _ = try? await CaptureSaveInFlight.persisting(lower: {
+            presentation.finishPersisting(save)
+        }) {
+            await holdUntilReleased()
+            persistedCount += 1
+        }
+        guard presentation.publishes(save) else { return }
+        closedScreenCount += 1
+    }
+
+    func releasePersistence() {
+        isReleased = true
+        resume?.resume()
+        resume = nil
+    }
+
+    private func holdUntilReleased() async {
+        guard !isReleased else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            resume = continuation
+        }
     }
 }
