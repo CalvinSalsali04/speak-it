@@ -825,6 +825,29 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertNotNil(item.locationIntent?.firedAt, "the saved place is delivered")
     }
 
+    /// The premise the two tests above hand-write: the editor sends every
+    /// place it shows back as `.update`, unchanged or not, which is what marks
+    /// it. Falsifier: make `fromEditor` return `.unchanged` for a place the
+    /// person did not touch, and a held row saved in the editor stops arming
+    /// its place.
+    func testTheEditorSendsEveryPlaceItShowsBackAsAnEdit() throws {
+        let shown = try XCTUnwrap(
+            ThoughtOrganizer.organize("Remind me to take the bins out when I get home").locationIntent
+        )
+        XCTAssertEqual(
+            LocationIntentEdit.fromEditor(hadPlace: true, showing: shown),
+            .update(shown),
+            "a place the editor showed comes back as an edit"
+        )
+        XCTAssertEqual(LocationIntentEdit.fromEditor(hadPlace: true, showing: nil), .remove)
+        XCTAssertEqual(LocationIntentEdit.fromEditor(hadPlace: false, showing: nil), .unchanged)
+        XCTAssertEqual(
+            LocationIntentEdit.fromEditor(hadPlace: false, showing: shown),
+            .unchanged,
+            "the editor cannot add a place"
+        )
+    }
+
     /// A save that leaves the place out, as the voice reschedule does, does
     /// not confirm it. Such a caller never showed the place, and a mark there
     /// would exempt the row from the launch pass that resolves a combined

@@ -958,7 +958,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `LocationReminderTests` adds three assertion messages,
         `"precondition: a place was read"`, `"precondition: nobody confirmed
         it"` and `"a place the save never named is not confirmed"`, none of
-        them already on this branch, and none is removed. What the test
+        them already on this branch, and none is removed. 4151 -> 4153 the
+        same day, from merging the pin that the editor sends every place it
+        shows back as an edit (4132 -> 4134 on its own branch): two
+        assertion messages, `"a place the editor showed comes back as an
+        edit"` and `"the editor cannot add a place"`, none of them already on
+        this branch, and none is removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -972,7 +977,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4151)
+        self.assertEqual(len(space), 4153)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
