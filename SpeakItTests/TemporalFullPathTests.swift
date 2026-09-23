@@ -698,9 +698,23 @@ final class TemporalFullPathTests: XCTestCase {
     ///
     /// Parsed with the device pinned, so the Friday is Toronto's; scheduled
     /// and read back in the machine's own zone, which is where
-    /// `UNCalendarNotificationTrigger` reads its components. Captured on a
-    /// Monday at least a week out, so the Friday is ahead on any date this
-    /// runs.
+    /// `UNCalendarNotificationTrigger` reads its components.
+    ///
+    /// Captured on the Monday of the week whose Friday at five is the next
+    /// one at least five minutes from now, so the series' first alert is
+    /// within a week. That is the premise of the `repeats` assertion.
+    /// `ReminderScheduler.trigger(for:now:)` hands iOS the repeating match
+    /// only when that match's next fire is this occurrence, and schedules a
+    /// further-out occurrence as an exact one-shot, which is what keeps a
+    /// repeating trigger from ringing on the wrong week. #138 first wrote
+    /// the capture on a Monday at least a week out, so the Friday was 11 to
+    /// 17 days away and the save armed a one-shot on every date. The hosted
+    /// run on f6c5bd2 was its first run and failed there. The fixture moved,
+    /// and the rule did not. The premise is checked in the machine's zone
+    /// with the scheduler's own match. It cannot hold for a run inside the
+    /// five minutes before a Friday at five, or up to an hour more when the
+    /// machine's clocks change that week. Such a run is skipped with that
+    /// reason rather than asserted.
     ///
     /// Falsifier: drop the `scheduledDelivery != .none` guard from
     /// `ReminderScheduleRequest.init?(item:)` and a weekly request is pending
@@ -709,12 +723,14 @@ final class TemporalFullPathTests: XCTestCase {
     func testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed() async throws {
         try await requireNotificationAuthorization()
         try withFixtureClock { calendar in
-            var monday = try XCTUnwrap(
-                calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: .now))
+            let friday = try XCTUnwrap(calendar.nextDate(
+                after: Date.now.addingTimeInterval(5 * 60),
+                matching: DateComponents(hour: 17, minute: 0, second: 0, weekday: 6),
+                matchingPolicy: .nextTime
+            ))
+            let monday = try XCTUnwrap(
+                calendar.date(byAdding: .day, value: -4, to: calendar.startOfDay(for: friday))
             )
-            while calendar.component(.weekday, from: monday) != 2 {
-                monday = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: monday))
-            }
             let createdAt = try XCTUnwrap(
                 calendar.date(bySettingHour: 10, minute: 0, second: 0, of: monday)
             )
@@ -727,6 +743,7 @@ final class TemporalFullPathTests: XCTestCase {
             XCTAssertTrue(item.needsClarification, "precondition: the exception holds the row")
             let fire = try XCTUnwrap(item.reminderDate, "precondition: the series kept its Friday")
             XCTAssertEqual(calendar.component(.weekday, from: fire), 6)
+            XCTAssertEqual(fire, friday, "precondition: the series first alerts on that week's Friday")
             XCTAssertEqual(RecurrenceStore.rule(for: item.id)?.weekdays, [6])
             self.scheduledCheck = (item.id, fire)
         }
@@ -735,9 +752,15 @@ final class TemporalFullPathTests: XCTestCase {
         let item = try loadItem(withID: itemID)
         defer { try? repository.delete(item) }
         let rule = RecurrenceStore.rule(for: itemID)
-        XCTAssertNotNil(
+        let weekly = try XCTUnwrap(
             ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fire),
             "precondition: unheld, this is a native weekly trigger"
+        )
+        let firstMatch = UNCalendarNotificationTrigger(dateMatching: weekly, repeats: true)
+            .nextTriggerDate()
+        try XCTSkipUnless(
+            firstMatch.map { abs($0.timeIntervalSince(fire)) < 60 } == true,
+            "a run just before a Friday alert, or across a clock change: the weekly match's next fire is not the fixture's Friday"
         )
         XCTAssertNil(ReminderScheduleRequest(item: item))
         XCTAssertEqual(

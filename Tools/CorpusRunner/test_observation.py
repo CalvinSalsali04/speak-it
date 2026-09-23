@@ -2040,7 +2040,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         person confirmed stays armed through a re-read`, `precondition:
         only the hold can refuse the clock`, `the re-read kept the time's
         mark`). One out (`precondition: the re-read wiped the time's
-        mark`), whose premise #143 ended: 4886 + 4 - 1 = 4889.
+        mark`), whose premise #143 ended: 4886 + 4 - 1 = 4889. 4889 ->
+        4891 the same day, the third commit of that fix: #138's held-series
+        test captures in the week of the next Friday alert, so its
+        repeating premise holds. Two in, a precondition message and a skip
+        message (`precondition: the series first alerts on that week's
+        Friday`, `a run just before a Friday alert, or across a clock
+        change: the weekly match's next fire is not the fixture's
+        Friday`). None out: 4889 + 2 - 0 = 4891.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2050,7 +2057,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4889)
+        self.assertEqual(len(space), 4891)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

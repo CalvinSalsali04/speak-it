@@ -1,5 +1,37 @@
 # Decisions
 
+## 2026-09-23 — #138's held-series test captures in the week it arms
+
+Found by the hosted run on f6c5bd2 (run 35927571971).
+`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed` armed exactly one
+request after the confirming save, as it should. That request was a
+one-shot, so the `repeats` assertion read `false`. The fixture captured on a
+Monday at least a week out, which put the Friday 11 to 17 days ahead.
+`ReminderScheduler.trigger(for:now:)` hands iOS the repeating match only
+when that match's next fire is within 60 s of this occurrence. It schedules
+a further-out occurrence as an exact one-shot. That rule is what keeps a
+repeating trigger from ringing on the wrong week, and the F2 merge line's
+no-double-ring finding rests on it. So the test failed on every date and
+every machine. No earlier run of it is recorded. Its only commit is
+da5f859, it was written without a toolchain, and on a Mac without
+notification permission it skips.
+
+The rule stays. The fixture now captures on the Monday of the week whose
+Friday at five is the next one at least five minutes away, inside the
+Toronto pin. It then checks the premise in the machine's zone with the
+scheduler's own match. The run is skipped only in the minutes before a
+Friday alert, or the hour a clock change adds that week. The test still
+asserts a repeating trigger. That is what it means ("a native repeating
+trigger"), and asserting the one-shot instead would pin the far-out case,
+which is not what the test is about.
+
+- Hypothesis: the fixture's date alone made the trigger a one-shot, and
+  the test passes with the Friday inside the week.
+- Falsifier: on a Mac the test still reads `repeats == false` without
+  skipping. That would mean something other than the 60 s match decides.
+  The new precondition that the series first alerts on that week's Friday
+  failing would mean the parser picks a different Friday.
+
 ## 2026-09-23 — A place-only save confirms the time the editor showed (#138 × #143)
 
 Found by the hosted run on f6c5bd2 (run 35927571971). #138's
