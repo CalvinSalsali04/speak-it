@@ -57,6 +57,22 @@ evidence that closed it).
 | Release blocker | No by itself. The production change it chooses will be. |
 | Status | queued |
 
+### M3. Rows still to be added to the manifest
+
+The manifest covers #116-#126. Rows for the later PRs are added, with pins
+checked by `--check-pins`, before this handoff is final. Requirements already
+known for them:
+
+- **#129 (snooze keeps the series time):** focused class
+  `SpeakItTests/TemporalFullPathTests`. Its
+  `testASchedulingPassLeavesAFiredSeriesArmedInTheNotificationCenter` is the
+  only test that proves a fired series stays armed after a real scheduling
+  pass. It needs provisional notification authorization, which a fresh
+  simulator grants without a prompt. **If it is reported skipped, the
+  simulator refused authorization and the row is not evidence for that
+  guarantee**, whatever its pass count says. The summary names failures only,
+  so check this test by name in the row's result bundle.
+
 ## Physical iPhone
 
 Collected here as the lanes that need them are closed. The final session is one
