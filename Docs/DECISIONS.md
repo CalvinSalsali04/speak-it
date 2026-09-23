@@ -96,8 +96,10 @@ The cost is that a place saved once in the editor is never re-read again
 (Organize again, split, merge, undo), which with #143 makes "an editor save
 confirms the row's time and place; re-reads never change them" the rule. It
 is a product-level choice and a reversible default, listed for the owner's
-decision batch. The freeze is also what makes the place half sound against
-#143, not only its cost: the two are one fact seen from either side. A later
+decision batch. The freeze is also what keeps a mark bound to the place it was
+given for, not only a cost: the two are one fact seen from either side. What
+makes the place half sound against #143 is separate: `mayArmPlace` reads only
+the location mark, so #143's changes to the time mark cannot reach it. A later
 change that lets a re-read replace a marked place must drop the mark with it,
 or a guessed place is watched on a confirmation the person gave to a
 different one.
