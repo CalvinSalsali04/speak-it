@@ -598,6 +598,58 @@ Two tests in `SwiftDataThoughtRepositoryTests` cover the rest: the series
 identifier is removed with its item, and a failed add withdraws what was
 already added.
 
+## 2026-09-23 — Merge and Undo keep an open row open
+
+"Merge with next" and "Undo organization" fold several rows of one capture
+into one. Both kept the earliest row and rewrote it in place, and `apply`
+never writes `completedAt` or `isArchived`. So when the earliest row was
+already done or archived, the open rows were folded into it: the result was
+completed, it left Today, `synchronizeReminders` skipped it, and the open
+row's reminder was cancelled with nothing re-armed. Undo's "one reviewable
+item" sat in Completed, where nothing asks for review (REV-5).
+
+**The rule.** The result is open unless every source row was closed. The
+surviving row is the earliest one that is neither completed nor archived;
+only when all of them are closed does the earliest row survive, keeping its
+own state. The joined words and their order do not change, and the merged
+row takes the first row's place in the list.
+
+- **Why open wins.** The two mistakes are not the same size. A done row
+  that comes back open costs one tap to tick again. Open work filed under
+  something marked done loses its reminder and drops out of the place the
+  person looks for it, silently.
+- **Why pick a survivor rather than reopen the first row.** Clearing
+  `completedAt` in place would bypass `setCompleted`, which owns the link
+  from a completed series occurrence to its generated successor. The
+  survivor is already open, so its state needs no write at all. It also
+  closes a silent series stop: merging an occurrence with its own generated
+  successor used to delete the successor while the completed row kept
+  pointing at it, so un-completing and re-completing it generated nothing
+  and the series ended without a word. Now the successor survives and the
+  completed row's record, link included, is deleted with it.
+- **The survivor carries more than state.** `apply` rewrites the words,
+  dates and temporal intent, but the surviving row keeps its own pin, idea
+  stage and hand-set place, and the removed rows' pins and stages are
+  deleted. So a pinned done row merged into an unpinned open one comes out
+  unpinned.
+- **Why not refuse a mixed merge.** The audit suggested throwing
+  `invalidMerge`. Undo has no sensible refusal (its whole point is to fall
+  back to the words), and a refusal would leave the person no way to join
+  two rows once one is ticked.
+- **The reminder is re-armed by the existing path.** Merge already ends in
+  `synchronizeReminders(for:)`, which schedules every open row of the
+  session; with an open survivor, the merged reminder is in that set. Undo
+  still clears dates by design, so its row has no reminder until the person
+  gives it one.
+
+The capture receipt was reading the rows the sheet deleted. `CaptureView`
+kept the `CaptureCreationResult` array taken when the save returned and did
+not wire `onStructuralChange`, so after Merge or Undo its body rendered
+`primaryItem` from a deleted model, and "Try saying it again" later deleted
+from the same stale array (LIF-11). It now re-reads the session's rows after
+every structural change, which matters more now that the surviving row need
+not be the first.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
