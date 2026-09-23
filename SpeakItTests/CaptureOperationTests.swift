@@ -608,6 +608,10 @@ extension CaptureOperationTests {
     ///
     /// Drains first, so call it before seeding: the tail is static, and a pass
     /// another test left queued would otherwise run against what is seeded.
+    ///
+    /// The hold point is inside the pass, after its teardown, so a held pass
+    /// with a non-empty scope has already cancelled that scope before it
+    /// blocks. This one's scope is empty, so it tears nothing down.
     private func holdTheSchedulerQueue() async {
         await drainScheduler()
         delivery.hold()

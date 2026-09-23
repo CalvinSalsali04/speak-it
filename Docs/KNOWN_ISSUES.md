@@ -347,7 +347,8 @@ the same date. Three things are left, and none is verified on a device.
   `DurabilityTests` are the per-item form, so no test covers the grouped one.
 - **The relaunch alarm sweep is only exercised through the test recorder.** It
   lists alarms with `AlarmManager.shared.alarms` (iOS 26) and cancels every id
-  outside the whole-library scope. Apple documents the getter as returning
+  outside `everyItemID`, the set of every row that `reconcilePendingReminders`
+  fetched. Apple documents the getter as returning
   the alarms that belong to the calling app. Whether that includes an alarm
   already alerting or snoozed, and what it does without alarm access, is not
   documented and has not been observed; if it throws, the sweep cancels

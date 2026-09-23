@@ -295,7 +295,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             scope: ReminderSynchronizationScope(
                 itemIDs: Set(refreshedItems.map(\.id)),
                 captureSessionIDs: Set(refreshedItems.compactMap { $0.captureSession?.id }),
-                replacesAllSpeakItReminders: true
+                replacesAllSpeakItReminders: true,
+                everyItemID: Set(refreshedItems.map(\.id))
             )
         )
     }

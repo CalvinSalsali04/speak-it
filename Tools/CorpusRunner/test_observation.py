@@ -897,7 +897,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         pills"`, adds nothing because `CaptureOperationTests` already had
         it, and every phrase in the new doc comments is in backticks. The
         development-set overlap stayed at 114, checked by regenerating
-        `LANGUAGE_BASELINE.md`. What the test
+        `LANGUAGE_BASELINE.md`. 4073 -> 4074 the same day, from the
+        sweep reading an explicit every-row set: one assertion message in
+        `DurabilityTests`, `"A pass that does not name every row must not
+        cancel an alarm it does not know"`, and none removed. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -911,7 +914,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4073)
+        self.assertEqual(len(space), 4074)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -372,6 +372,30 @@ final class DurabilityTests: XCTestCase {
         )
     }
 
+    /// Only a pass that names every row may sweep. Loading sample data
+    /// replaces every notification from a scope of future reminders alone,
+    /// and an alarm still ringing or snoozed past its time belongs to a row
+    /// that scope leaves out, so sweeping there would silence it.
+    /// Falsifier: sweep on `replacesAllSpeakItReminders` instead of
+    /// `everyItemID` and the alarm is cancelled.
+    func testAWholeLibraryPassThatDoesNotNameEveryRowSweepsNoAlarm() async throws {
+        await drainScheduler()
+        let ringing = UUID()
+        delivery.seedAlarm(ringing)
+
+        ReminderScheduler.synchronize(
+            [],
+            requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope(replacesAllSpeakItReminders: true)
+        )
+        await drainScheduler()
+
+        XCTAssertTrue(
+            delivery.scheduledAlarms.contains(ringing),
+            "A pass that does not name every row must not cancel an alarm it does not know"
+        )
+    }
+
     func testCompletedItemDoesNotKeepAReminderArmedAcrossRelaunch() async throws {
         let created = try await capture("Remind me to call the bank on Friday at 9am")
         let item = created.primaryItem

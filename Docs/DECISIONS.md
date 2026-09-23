@@ -34,14 +34,17 @@ row, so it has nothing to cancel.
 
 **Relaunch now reconciles alarms as well.** AlarmKit can list what is armed
 (`AlarmManager.alarms`, iOS 26), so `ReminderDeliverySink` gained
-`armedAlarmIDs` beside `pendingIdentifiers`. A whole-library pass
-(`replacesAllSpeakItReminders`: launch, foreground and iCloud apply through
-`reconcilePendingReminders`, and loading sample data through
-`synchronizeAllReminders`) now cancels any armed alarm whose id is outside its
-scope. That scope includes every row that could still ring, so what the sweep
-finds belongs to a row that is gone, done or archived. Alarms for rows inside
-the scope were already cancelled by that pass and are re-armed only when the
-row still asks to ring.
+`armedAlarmIDs` beside `pendingIdentifiers`. A pass whose scope carries
+`everyItemID`, the id of every row in the store, now cancels any armed alarm
+whose id is outside that set. Only `reconcilePendingReminders` (launch,
+foreground and iCloud apply) passes it, because only it fetches every row.
+What the sweep finds belongs to no row at all; an alarm keyed to a row that is
+open, done or archived is left to the pass's own teardown. The set is kept
+apart from the scope's `itemIDs` and from `replacesAllSpeakItReminders` on
+purpose. Loading sample data (`synchronizeAllReminders`) also replaces every
+notification, but its `itemIDs` names only rows with a future reminder, and an
+alarm still ringing or snoozed past its time belongs to an open row outside
+that set. A sweep keyed to either would silence it.
 
 The two teardown tests in `CaptureOperationTests` now hold the scheduler queue
 behind a pass that cannot finish, which reproduces the permission prompt

@@ -93,21 +93,30 @@ struct ReminderSynchronizationScope: Equatable, Sendable {
     var itemIDs: Set<UUID>
     var captureSessionIDs: Set<UUID>
     var replacesAllSpeakItReminders: Bool
+    /// The id of every row in the store, when the caller has fetched them
+    /// all. Only then may a pass cancel an armed alarm no row names, so it is
+    /// separate from `itemIDs`, which is what the pass tears down and may
+    /// leave out rows that still want an alarm, such as one ringing or
+    /// snoozed past its time. `nil` means no sweep.
+    var everyItemID: Set<UUID>?
 
     init(
         itemIDs: Set<UUID> = [],
         captureSessionIDs: Set<UUID> = [],
-        replacesAllSpeakItReminders: Bool = false
+        replacesAllSpeakItReminders: Bool = false,
+        everyItemID: Set<UUID>? = nil
     ) {
         self.itemIDs = itemIDs
         self.captureSessionIDs = captureSessionIDs
         self.replacesAllSpeakItReminders = replacesAllSpeakItReminders
+        self.everyItemID = everyItemID
     }
 
     init(requests: [ReminderScheduleRequest]) {
         itemIDs = Set(requests.map(\.itemID))
         captureSessionIDs = Set(requests.compactMap(\.captureSessionID))
         replacesAllSpeakItReminders = false
+        everyItemID = nil
     }
 
     mutating func include(_ requests: [ReminderScheduleRequest]) {
@@ -1073,8 +1082,8 @@ enum ReminderScheduler {
         for itemID in resolvedScope.itemIDs {
             cancel(itemID: itemID)
         }
-        if resolvedScope.replacesAllSpeakItReminders {
-            cancelOrphanedAlarms(keeping: resolvedScope.itemIDs)
+        if let everyItemID = resolvedScope.everyItemID {
+            cancelOrphanedAlarms(keeping: everyItemID)
         }
         await clearExistingNotifications(scope: resolvedScope)
 
@@ -1098,12 +1107,13 @@ enum ReminderScheduler {
 
     /// Cancels every armed alarm whose item is outside `itemIDs`.
     ///
-    /// Only a whole-library pass may call this, because only then does
-    /// `itemIDs` name every row that could still want an alarm. The ones inside
-    /// it were already cancelled by the caller and are re-armed later in the
-    /// same pass when their row still asks to ring. Anything else belongs to a row that is
-    /// gone, done or archived, such as one deleted while its teardown was
-    /// still queued, which is what a kill in that window used to leave armed.
+    /// `itemIDs` must name every row in the store (`everyItemID`), not the
+    /// rows this pass schedules: an alarm keyed to any row, open, done or
+    /// archived, is left to the pass's own teardown. What remains belongs to
+    /// no row at all, such as one deleted while its teardown was still queued,
+    /// which is what a kill in that window used to leave armed. A scope built
+    /// from future requests alone would sweep an alarm still ringing or
+    /// snoozed past its time, because its row is not scheduled again.
     private static func cancelOrphanedAlarms(keeping itemIDs: Set<UUID>) {
         for alarmID in delivery.armedAlarmIDs() where !itemIDs.contains(alarmID) {
             delivery.cancelAlarm(alarmID)
