@@ -283,7 +283,10 @@ final class SpeechTranscriber: ObservableObject {
                     guard let self else { return }
                     // A level queued by a tap that has since been removed
                     // belongs to a run that is over. The state check alone
-                    // lets it into the next run's meter.
+                    // lets it into the next run's meter. No test covers this
+                    // guard: it runs inside a live AVAudioEngine tap, which the
+                    // unit tests have no seam for. Its failure is cosmetic, a
+                    // stale level briefly moving the newer run's meter.
                     guard activeRunID == startID else { return }
                     guard state == .requestingPermission
                             || state == .listening
@@ -300,10 +303,14 @@ final class SpeechTranscriber: ObservableObject {
 
             audioEngine.prepare()
             try audioEngine.start()
-            guard activeStartID == startID else {
-                resetRecognitionResources()
-                return
-            }
+            // Nothing between adopting the backend and here suspends, so this
+            // run still owns the capture and the guard cannot fail today. Were
+            // an await added above, a run found stale here would release
+            // nothing: whatever it installed was already reset by the start
+            // that superseded it, and resetting now would tear down that newer
+            // run's microphone (LIF-7), the way the stale branch in
+            // `adoptStartedBackend` used to.
+            guard activeStartID == startID else { return }
             audioInputReadyTimeout?.cancel()
             audioInputReadyTimeout = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.audioInputReadyGracePeriod)
@@ -941,7 +948,11 @@ final class SpeechTranscriber: ObservableObject {
         audioInputReadyTimeout?.cancel()
         audioInputReadyTimeout = nil
         // A finalization deadline belongs to the backend being released here.
-        // Left running, it would outlive its run by up to two seconds.
+        // Left running, it would outlive its run by up to two seconds: stop
+        // a recording, then start another before its finalization settles,
+        // and the old deadline could force-complete a finalization that
+        // belongs to nobody. The other cancels of this deadline do not make
+        // this one redundant.
         finalizationTimeout?.cancel()
         finalizationTimeout = nil
         lastEndpointingSignature = ""
