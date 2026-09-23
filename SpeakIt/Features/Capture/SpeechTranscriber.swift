@@ -75,6 +75,12 @@ enum SpeechFinalizationPath: String, CaseIterable, Sendable {
 /// What asked a voice capture to stop listening. The raw values are the
 /// `stop_trigger` analytics vocabulary. There is none when the recognizer
 /// ended its own result, or an error ended the capture, before anything asked.
+///
+/// Only values the capture screen can send are listed: `speech_capture_quality`
+/// is emitted from `CaptureView` alone, reading its own transcriber. The Siri
+/// and Shortcuts capture's 60 s cap runs on `BackgroundCaptureCoordinator`'s
+/// transcriber, which sends no event, so it has no value here; one belongs
+/// with an event for that path, not before it.
 enum SpeechStopTrigger: String, CaseIterable, Sendable {
     /// The person tapped to finish, or chose Save & Close.
     case manual
@@ -83,8 +89,6 @@ enum SpeechStopTrigger: String, CaseIterable, Sendable {
     /// Natural-pause endpointing closed the capture after spending its audio
     /// deferrals while voice activity was still arriving.
     case autoPauseDeferralsSpent = "auto_pause_deferrals_spent"
-    /// The Siri and Shortcuts capture's 60 s cap.
-    case maxDuration = "max_duration"
 }
 
 enum SpeechCaptureDiagnosticsStore {

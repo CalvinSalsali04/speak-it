@@ -6321,7 +6321,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             Set(SpeechStopTrigger.allCases.map(\.rawValue)),
-            ["manual", "auto_pause", "auto_pause_deferrals_spent", "max_duration"]
+            ["manual", "auto_pause", "auto_pause_deferrals_spent"]
         )
         XCTAssertEqual(
             Set(CaptureAudioRecoveryEnding.allCases.map(\.rawValue)),

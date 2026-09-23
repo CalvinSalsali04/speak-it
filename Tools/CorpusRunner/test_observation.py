@@ -879,7 +879,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         no literal, because every expected value is a snake_case label
         with no space and the one private-message fixture, `"The user
         typed a private thought here"`, was already in
-        `SwiftDataThoughtRepositoryTests`. What the test
+        `SwiftDataThoughtRepositoryTests`. 4068 -> 4068 on 2026-09-23,
+        from the diagnostics' truthfulness fixes: dropping `max_duration`
+        from the pinned `stop_trigger` set removes a snake_case label,
+        not a multi-word literal. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —

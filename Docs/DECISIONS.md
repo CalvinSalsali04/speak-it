@@ -19,16 +19,17 @@ What changed, all closed enums with no free text:
 - `speech_capture_quality` gains `finalized_by` (`recognizer_final`,
   `grace_timeout`, `error_with_partial`, `route_change_with_partial`,
   `interruption_with_partial`) and `stop_trigger` (`manual`, `auto_pause`,
-  `auto_pause_deferrals_spent`, `max_duration`). Words that came from the
+  `auto_pause_deferrals_spent`). Words that came from the
   recognizer's final result report `recognizer_final` whichever callback ran
   last, because the question is whether the saved words could be missing a
   tail. `interruption_with_partial` is one value beyond the audit's four: the
   route-change path also handles an audio interruption and a media-services
   reset, and filing a phone call under "route change" would repeat the
   mislabelling this entry fixes. `stop_trigger` is absent when the
-  recognizer or an error ended the capture before anything asked it to stop;
-  both keys are absent when the transcriber did not finalize (no speech, or
-  words recovered from the recording).
+  recognizer or an error ended the capture before anything asked it to stop
+  (the recognizer's own final result, or an error after partial words, while
+  still listening); both keys are absent when the transcriber did not
+  finalize (no speech, or words recovered from the recording).
 - A new `capture_recovery` event (`path`: `live_audio`, `launch_audio`;
   `outcome`: `final`, `partial_on_error`, `partial_on_timeout`, `failed`;
   `failure_kind`, the `CaptureRecoveryFailureKind` case in snake case, only
@@ -56,8 +57,11 @@ path has to be found. If `grace_timeout` and `recognizer_final` never differ
 in how often testers report cut-offs, the grace timer is not the loss.
 
 **Not covered.** Siri, Shortcuts and Back Tap captures send no analytics
-today, so `max_duration` is recorded by the transcriber but is not emitted
-until that path sends `speech_capture_quality`. Share imports and launch
+today. Their 60 s cap is therefore not a `stop_trigger` value: an earlier
+draft of this change listed `max_duration`, but `speech_capture_quality` is
+sent only from the capture screen's transcriber, so the value could never
+appear and would have read as "the cap never fires". It belongs with an
+event for that path, if one is added. Share imports and launch
 audio recovery send `capture_saved`, and they get the same swap as the
 in-app capture: a session that ends `.failed` sends `capture_failed` with
 `organization` instead. The founder dashboard's saved count and its
