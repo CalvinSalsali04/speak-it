@@ -1624,6 +1624,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         alarm for 7:30 AM to take my vitamins"` (the attempt, `"Set an
         alarm for 7 AM to take my pills"`, was already counted), and
         seven assertion messages, two of them preconditions.
+        4113 -> 4113 on 2026-09-23, from that change's third grading: a
+        doc comment in `LocationReminderTests` was corrected to name the
+        three tests that reach the scoped fetch, and a comment holds no
+        literal, so none came in or went out.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1826,6 +1830,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         in the second merge rehearsal: measured from the merged tree,
         not taken from either side (4720 on the candidate, 4190 on #132,
         4182 at their merge base; #132 adds 8 and removes 0, 0 of its
+        additions were already on the candidate). 4728 -> 4728 on
+        2026-09-23, re-merging #135 at `39fd13c` into the V1 candidate
+        in the second merge rehearsal: measured from the merged tree,
+        not taken from either side (4728 on the candidate, 4113 on #135,
+        4113 at their merge base; #135 adds 0 and removes 0, 0 of its
         additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
