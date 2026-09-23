@@ -1159,6 +1159,15 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
     ROOT = pathlib.Path(__file__).resolve().parents[2]
     SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
     HOME = pathlib.Path("Shared") / "SharedCaptureInbox.swift"
+    #: Both ways Swift can ask VoiceOver to speak: UIKit's
+    #: `UIAccessibility.post(notification:argument:)` and SwiftUI's
+    #: `AccessibilityNotification.Announcement(_:).post()`. Whitespace,
+    #: newlines included, may sit around the dot, so a call broken across two
+    #: lines is still one call.
+    POSTS = (
+        re.compile(r"UIAccessibility\s*\.\s*post\s*\("),
+        re.compile(r"AccessibilityNotification\s*\.\s*Announcement\s*\("),
+    )
 
     @staticmethod
     def code(line):
@@ -1185,18 +1194,48 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
                     if lines[i].startswith("    }"))
         return [self.code(line) for line in lines[first:last]]
 
-    def test_every_announcement_goes_through_the_one_helper(self):
-        posting = []
+    def posts(self, text):
+        """The line number of every announcement posted in `text`, with
+        trailing comments removed first."""
+        code = "\n".join(self.code(line) for line in text.splitlines())
+        return sorted(code.count("\n", 0, found.start()) + 1
+                      for pattern in self.POSTS for found in pattern.finditer(code))
+
+    def announcer_lines(self):
+        """The first and last line of `VoiceOverAnnouncer` in `HOME`: from its
+        declaration to the first closing brace in column zero."""
+        lines = (self.ROOT / self.HOME).read_text(
+            encoding="utf-8", errors="replace").splitlines()
+        first = self.only(lines, "final class VoiceOverAnnouncer")
+        last = next(i for i in range(first + 1, len(lines)) if lines[i] == "}")
+        return first + 1, last + 1
+
+    def all_posts(self):
+        found = []
         for top in self.SOURCES:
             for swift in sorted((self.ROOT / top).rglob("*.swift")):
-                for number, line in enumerate(
-                        swift.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                    if "UIAccessibility.post(" in self.code(line):
-                        posting.append((swift.relative_to(self.ROOT), number))
+                text = swift.read_text(encoding="utf-8", errors="replace")
+                found += [(swift.relative_to(self.ROOT), n) for n in self.posts(text)]
+        return found
+
+    def test_every_announcement_goes_through_the_one_helper(self):
+        first, last = self.announcer_lines()
+        outside = [(path, n) for path, n in self.all_posts()
+                   if not (path == self.HOME and first <= n <= last)]
         self.assertEqual(
-            [path for path, _n in posting], [self.HOME],
-            f"announcements posted outside VoiceOverAnnouncer: {posting}. Each one "
-            "is spoken whether or not a microphone is open.")
+            outside, [],
+            f"announcements posted outside VoiceOverAnnouncer ({self.HOME}, "
+            f"lines {first}-{last}): {outside}. Each one is spoken whether or "
+            "not a microphone is open.")
+
+    def test_the_scan_knows_both_apis_and_a_broken_line(self):
+        """Falsifier for the scan itself: with only the UIKit spelling, or
+        with a per-line search, one of these three is missed."""
+        self.assertEqual(self.posts(
+            "UIAccessibility.post(notification: .announcement, argument: m)\n"
+            "AccessibilityNotification.Announcement(m).post()\n"
+            "UIAccessibility\n    .post(notification: .announcement, argument: m)\n"
+            "// UIAccessibility.post( in a comment is not a call\n"), [1, 2, 3])
 
     def test_the_microphone_opens_straight_after_the_wait(self):
         lines = self.transcriber()
@@ -1235,9 +1274,10 @@ class NothingSpeakItSaysReachesAnOpenMicrophone(unittest.TestCase):
     def test_there_is_something_to_check(self):
         """Without this the first test passes when the helper is renamed or
         moved: nothing posts anywhere, and `[HOME]` becomes `[]`."""
-        home = (self.ROOT / self.HOME).read_text(encoding="utf-8", errors="replace")
-        self.assertIn("final class VoiceOverAnnouncer", home)
-        self.assertIn("UIAccessibility.post(", home)
+        first, last = self.announcer_lines()
+        inside = [n for path, n in self.all_posts()
+                  if path == self.HOME and first <= n <= last]
+        self.assertGreaterEqual(len(inside), 1)
 
 
 if __name__ == "__main__":
