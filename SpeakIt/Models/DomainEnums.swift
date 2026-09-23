@@ -202,14 +202,18 @@ struct RecurrenceRule: Codable, Equatable, Sendable {
             )
         case .weekly:
             if interval == 1, !weekdays.isEmpty {
+                // The stated clock wins over the previous instant's, as in
+                // `snappingToWallClock`: read from the instant alone, one
+                // daylight-saving nudge (2:30 on a spring-forward Sunday
+                // fires at 3:00) would become every later week's time.
                 let time = calendar.dateComponents([.hour, .minute, .second], from: base)
                 let candidates = weekdays.compactMap { weekday in
                     calendar.nextDate(
                         after: completedAt,
                         matching: DateComponents(
-                            hour: time.hour,
-                            minute: time.minute,
-                            second: time.second,
+                            hour: preferredWallClock?.hour ?? time.hour,
+                            minute: preferredWallClock?.minute ?? time.minute,
+                            second: preferredWallClock == nil ? time.second : 0,
                             weekday: weekday
                         ),
                         matchingPolicy: .nextTime,
