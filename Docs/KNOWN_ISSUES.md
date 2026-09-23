@@ -28,10 +28,10 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
-## A held row arms nothing, and three edges of that remain
+## A held row arms nothing, and four edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or
-geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
+geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
 
 - **Saving counts as confirming.** A held row saved in the editor with Needs
   review still on arms what the editor showed, because every editor save marks
@@ -45,11 +45,20 @@ geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
 - **A list is still timed by a held row's proposal.** A held shopping row is
   listed in Needs review and its list row says `Reminder not set · …`
   (Docs/DECISIONS.md, 2026-09-23, "Needs review lists what the receipt says
-  it does"). The Today list card and the morning brief still time a list by
-  its earliest date, held rows included, so a list whose only timed row is
-  held sits under that proposed time with no "not set". Nothing fires on it.
-  A held place row with a live blocker shows the blocker label instead,
-  which is already true.
+  it does"). The Today list card still times a list by its earliest date, held
+  rows included, so a list whose only timed row is held sits under that
+  proposed time with no "not set". Nothing fires on it. The morning brief
+  no longer does this, because it reads the hold. A held place row with a
+  live blocker shows the blocker label instead, which is already true.
+- **A restore can hold a reading it never saw.** `applyICloudSnapshot` writes
+  `needsClarification` from the snapshot even when the snapshot carries no
+  intents, so the hold lands on this device's own readings. If the person had
+  edited the time here while the place stayed as parsed, the place still
+  arms, because `mayArmPlace` reads either mark. Reaching it needs an iCloud
+  restore of a row held on another device, and a restore already does not
+  re-plan places until the next foreground. The fix that fails closed is to
+  clear the marks of the intents a snapshot does not carry when it sets the
+  hold. It is left out because it would also drop a mark the person set.
 
 ## A considered thought and a committed one look the same once stored
 
