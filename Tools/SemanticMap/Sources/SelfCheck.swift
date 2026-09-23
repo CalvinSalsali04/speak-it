@@ -22,6 +22,7 @@ enum SelfCheck {
         _ quote: String,
         type: ItemType = .note,
         reminder: Date? = nil,
+        place: LocationIntent? = nil,
         person: String? = nil,
         review: Bool = false,
         state: SemanticState = .resolved,
@@ -43,6 +44,7 @@ enum SelfCheck {
                 reminderDelivery: reminder == nil ? .none : .notification,
                 recurrenceRule: nil,
                 needsClarification: review,
+                locationIntent: place,
                 state: state
             ),
             confidence: 1,
@@ -387,14 +389,47 @@ enum SelfCheck {
         expect(contentWithdrawn.items.last?.organization.reminderDate == nil
                && contentWithdrawn.decisions.contains { $0.reason == .messageContentExecutes },
                "a message's contents never schedule on their own row")
+        // One row carrying the message and its contents: the contents' time
+        // ("late at six") must not schedule it.
         let messageRow = [thought(message, type: .task, reminder: reminder)]
-        let messageKept = Arbiter.arbitrate(
+        let contentTimed = Arbiter.arbitrate(
             transcript: message, rules: (messageRow, []), map: messageMap,
             policy: noSplits,
             referenceDate: referenceDate, calendar: calendar
         )
-        expect(messageKept.items == messageRow && messageKept.decisions.contains { $0.reason == .messageContentAlreadyInside },
-               "the message row keeps its reminder to send the message")
+        expect(contentTimed.items.first?.organization.reminderDate == nil
+               && contentTimed.decisions.contains { $0.reason == .messageContentTimesRow && $0.effect == .withdrewExecution },
+               "a row timed by its message's contents is withdrawn: \(contentTimed.decisions.map(\.reason.rawValue))")
+        // The same row with the time in the speaker's own words is kept, and
+        // is not called agreement.
+        let matrixTimed = "at five text Sam that I am late"
+        let matrixRow = [thought(matrixTimed, type: .task, reminder: reminder)]
+        let matrixKept = Arbiter.arbitrate(
+            transcript: matrixTimed, rules: (matrixRow, []),
+            map: map(atoms: 8, units: [span(0, 3), span(4, 7)],
+                     relations: [UnitRelation(kind: .isMessageContentOf, from: 1, to: 0)]),
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(matrixKept.items == matrixRow
+               && matrixKept.decisions.contains { $0.reason == .messageRowTimedOutsideContent && $0.verdict == .unresolved },
+               "a message row timed outside its contents keeps its reminder, unresolved: \(matrixKept.decisions.map(\.reason.rawValue))")
+
+        // A place trigger is how the rules honour "when I get to": the
+        // condition relation leaves it alone even when the row holds both.
+        let costco = "when I get to Costco buy milk"
+        let trigger = LocationIntent(event: .arrive, place: .named("Costco"))
+        let costcoRow = [thought(costco, type: .shopping, place: trigger)]
+        let costcoResult = Arbiter.arbitrate(
+            transcript: costco, rules: (costcoRow, []),
+            map: map(atoms: 7, units: [span(0, 4), span(5, 6)],
+                     relations: [UnitRelation(kind: .isConditionFor, from: 0, to: 1)]),
+            policy: noSplits,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(costcoResult.items.first?.organization.locationIntent == trigger
+               && costcoResult.decisions.contains { $0.reason == .conditionEncodedInRow && $0.verdict == .agree },
+               "a place trigger that encodes its condition is kept: \(costcoResult.decisions.map(\.reason.rawValue))")
 
         // An accepted split, the arbiter's main power. Both pieces are plain
         // parser input; a refusal here means splitting is inert.
@@ -425,18 +460,26 @@ enum SelfCheck {
         expect(Arbiter.executablesAreSubset(rows, of: rows), "the rules reading is a subset of itself")
         let invented = [thought("call the bank", type: .task, reminder: reminder.addingTimeInterval(60))]
         expect(!Arbiter.executablesAreSubset(invented, of: rows), "a reminder the rules never produced is caught")
-        let copied = [thought("call the bank", type: .task, reminder: reminder), thought("at three", type: .task, reminder: reminder)]
-        expect(Arbiter.executablesAreSubset(copied, of: rows) && Arbiter.executingRowsAdded(copied, over: rows) == 1,
-               "an existing instant on a second row passes the set check and is counted instead")
+        // Executing rows are counted per rules row, so a copied instant in
+        // one place and a withdrawal in another are two findings, not zero.
+        let ruleRows = [Arbiter.Row(item: rows[0], span: span(0, 7)),
+                        Arbiter.Row(item: thought("buy milk", type: .shopping, reminder: reminder), span: span(8, 11))]
+        let copied = [Arbiter.Row(item: thought("call the bank", type: .task, reminder: reminder), span: span(0, 3)),
+                      Arbiter.Row(item: thought("at three", type: .task, reminder: reminder), span: span(4, 7)),
+                      Arbiter.Row(item: thought("buy milk", type: .shopping), span: span(8, 11))]
+        expect(Arbiter.executablesAreSubset(copied.map(\.item), of: rows), "a copied instant passes the set check")
+        let change = Arbiter.executingRowChange(copied, over: ruleRows)
+        expect(change.added == 1 && change.removed == 1, "one row added and one removed are both counted")
 
         // Every path above: nothing executable outside the rules reading.
         for (result, source) in [(withdrawn, rows), (quotedCut, quotedRow), (danglingCut, danglingRow),
                                  (merged, twoRows), (organization, bankRow), (abstained, bankRow),
                                  (oneRowWithdrawn, oneRow), (repairedResult, repairedRow), (heldApart, conditionRows),
                                  (heldTogether, conditionRow), (heldByRules, alreadyHeld),
-                                 (contentWithdrawn, contentRows), (messageKept, messageRow), (splitResult, joinedRow)] {
+                                 (contentWithdrawn, contentRows), (contentTimed, messageRow), (matrixKept, matrixRow),
+                                 (costcoResult, costcoRow), (splitResult, joinedRow)] {
             expect(Arbiter.executablesAreSubset(result.items, of: source), "arbitration created no new instant")
-            expect(Arbiter.executingRowsAdded(result.items, over: source) == 0, "arbitration added no executing row")
+            expect(!result.decisions.contains { $0.reason == .executingRowsAdded }, "arbitration added no executing row")
             expect(result.decisions.contains { $0.reason == .noNewInstantHeld }
                    || result.decisions.contains { $0.reason == .operationOwnedByRules },
                    "every arbitrated capture has the guarantee checked")
@@ -485,6 +528,24 @@ enum SelfCheck {
         expect(prompt?.count == 1 && trace.outcome == .accepted, "an answer inside the budget is used")
         let shadowed = ProductionRoute.decide(judged: [thought("x")], eligible: false, into: &trace)
         expect(shadowed == nil && trace.outcome == .notInvoked, "a shadow answer never becomes the result")
+
+        // The asked arm on a shadow generation that threw: no answer to judge,
+        // and the outcome is what production would have recorded.
+        let threw = ProductionTrace(
+            characters: 10, policy: .noRowNeedsReview, shouldRefine: false, policyDrift: false, availability: nil,
+            outcome: .notInvoked, unbudgeted: .generationFailed, latencyMilliseconds: 2_500, generationError: "timeout",
+            validation: nil, validatorDrift: nil, modelItems: nil, rulesItems: 1, instructionsFingerprint: ""
+        )
+        let asked = ProductionRoute.rejudge(
+            threw, transcript: "x", rules: ([thought("x")], []), treatAsEligible: true,
+            referenceDate: referenceDate, calendar: calendar
+        )
+        expect(asked.0.outcome == .budgetExpired && asked.final == [thought("x")],
+               "a late failed shadow generation reads as budgetExpired when asked, with the rules reading")
+        let unasked = ProductionRoute.rejudge(
+            threw, transcript: "x", rules: ([thought("x")], []), referenceDate: referenceDate, calendar: calendar
+        )
+        expect(unasked.0.outcome == .notInvoked, "the production arm keeps notInvoked for a capture the policy skips")
     }
 
     // MARK: Fingerprints and records

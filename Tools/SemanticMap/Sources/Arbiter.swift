@@ -102,6 +102,17 @@ enum DecisionReason: String, Codable, CaseIterable, Sendable {
     case conditionModelOnly
     case messageContentAlreadyInside
     case messageContentExecutes
+    /// One row carries a message and its contents, and its instant is not in
+    /// the words outside the contents: the contents timed it ("text Sam that
+    /// I'll be late at six"). Withdrawn: a message's contents never schedule.
+    case messageContentTimesRow
+    /// The same, with an instant the words outside the contents carry on
+    /// their own ("at five text Sam that I'm late"). Kept, never agreed with.
+    case messageRowTimedOutsideContent
+    /// A row carrying its own condition executes only as the condition says:
+    /// a place trigger for "when I get to", or an instant the condition's own
+    /// words give. Kept.
+    case conditionEncodedInRow
     case relationNotActedOn
     case relationTargetsUnlocated
     // entity
@@ -126,6 +137,9 @@ enum DecisionReason: String, Codable, CaseIterable, Sendable {
     /// with `count`, never silently: a split that puts the same instant on
     /// two rows passes the no-new-instant check and schedules twice.
     case executingRowsAdded
+    /// Rules rows that executed and no longer do. Counted beside
+    /// `executingRowsAdded` so one cannot hide the other in a net figure.
+    case executingRowsRemoved
 }
 
 enum DecisionEffect: String, Codable, Sendable {
@@ -246,7 +260,7 @@ enum Arbiter {
         if let units = map.units, let relations = map.relations {
             rows = arbitrateRelations(
                 rows, units: units, relations: relations, transcript: transcript, atoms: atoms,
-                policy: policy, decisions: &decisions
+                policy: policy, referenceDate: referenceDate, calendar: calendar, decisions: &decisions
             )
         }
 
@@ -259,6 +273,7 @@ enum Arbiter {
         }
 
         let items = rows.map(\.item)
+        let rulesRows = zip(rules.items, located).map { Row(item: $0.0, span: $0.1) }
         // The structural guarantee: no instant, place or recurrence that the
         // rules did not already produce. It is a set check, so it cannot see
         // an existing instant copied onto a second row; that is counted below.
@@ -269,10 +284,15 @@ enum Arbiter {
             return with(unchanged, decisions)
         }
         decisions.append(decision(.finalInvariant, .agree, .noNewInstantHeld, .none))
-        let added = executingRowsAdded(items, over: rules.items)
-        if added > 0 {
+        let change = executingRowChange(rows, over: rulesRows)
+        if change.added > 0 {
             var note = decision(.finalInvariant, .unresolved, .executingRowsAdded, .none)
-            note.count = added
+            note.count = change.added
+            decisions.append(note)
+        }
+        if change.removed > 0 {
+            var note = decision(.finalInvariant, .agree, .executingRowsRemoved, .none)
+            note.count = change.removed
             decisions.append(note)
         }
         return ArbitrationResult(
@@ -518,9 +538,24 @@ enum Arbiter {
         transcript: String,
         atoms: [SemanticAtom],
         policy: ArbitrationPolicy,
+        referenceDate: Date,
+        calendar: Calendar,
         decisions: inout [ArbitrationDecision]
     ) -> [Row] {
         var rows = rows
+        /// Whether the rules, reading `text` alone, execute anything.
+        func executesAlone(_ text: String) -> Bool {
+            RuleBasedThoughtExtractor.process(
+                text, referenceDate: referenceDate, calendar: calendar, permitsOperations: false
+            ).items.contains(where: isExecutable)
+        }
+        /// The row's words outside `span`, in order, as one string.
+        func words(of row: Row, outside span: AtomSpan) -> String {
+            (row.span.first ... row.span.last)
+                .filter { $0 < span.first || $0 > span.last }
+                .map { String(transcript[atoms[$0].range]) }
+                .joined(separator: " ")
+        }
         for relation in relations {
             guard relation.from < units.count, relation.to < units.count else { continue }
             let source = units[relation.from]
@@ -571,12 +606,34 @@ enum Arbiter {
                 // condition: a row holding "if X, do Y" that executes with a
                 // resolved state has run the condition's action unconditionally.
                 let affected = rows.indices.filter { rows[$0].span.overlaps(target) }
+                let conditionText = Atoms.slice(transcript, atoms, source)
+                // A row holding its condition may already honour it: a place
+                // trigger is execution on arrival, which is what "when I get
+                // to Costco" asks for, and an instant the condition's own
+                // words give is the condition's time. Withdrawing either
+                // would remove the correct answer.
+                let encoded = affected.filter { index in
+                    let row = rows[index]
+                    guard row.span.overlaps(source) else { return false }
+                    let organization = row.item.organization
+                    if organization.locationIntent != nil, organization.reminderDate == nil,
+                       organization.dueDate == nil, organization.recurrenceRule == nil {
+                        return true
+                    }
+                    guard let conditionText, organization.locationIntent == nil else { return false }
+                    let instants = RuleBasedThoughtExtractor.process(
+                        conditionText, referenceDate: referenceDate, calendar: calendar, permitsOperations: false
+                    ).items.flatMap { [$0.organization.reminderDate, $0.organization.dueDate].compactMap { $0 } }
+                    let own = [organization.reminderDate, organization.dueDate].compactMap { $0 }
+                    return !own.isEmpty && own.allSatisfy { instants.contains($0) }
+                }
                 let unheld = affected.filter {
                     isExecutable(rows[$0].item) && rows[$0].item.organization.state.kind == .resolved
+                        && !encoded.contains($0)
                 }
                 if unheld.isEmpty {
                     note.verdict = .agree
-                    note.reason = .conditionAlreadyHeld
+                    note.reason = encoded.isEmpty ? .conditionAlreadyHeld : .conditionEncodedInRow
                 } else {
                     let first = min(source.first, target.first)
                     let last = max(source.last, target.last)
@@ -595,22 +652,39 @@ enum Arbiter {
 
             case .isMessageContentOf:
                 // The content's own rows, where they are not part of the row
-                // that carries the message. A row spanning both is the message
-                // row itself ("text Sam that I'll be late at six"): its
-                // reminder is to send the message, which is the user's action,
-                // so it is left alone and is not evidence either way.
-                let affected = rows.indices.filter { rows[$0].span.overlaps(source) && !rows[$0].span.overlaps(target) }
-                if affected.isEmpty || !affected.contains(where: { isExecutable(rows[$0].item) }) {
-                    note.verdict = .agree
-                    note.reason = .messageContentAlreadyInside
-                } else {
-                    note.reason = .messageContentExecutes
+                // that carries the message, never execute.
+                let own = rows.indices.filter { rows[$0].span.overlaps(source) && !rows[$0].span.overlaps(target) }
+                // A row carrying both the message and its contents executes
+                // only if its instant is in the words outside the contents
+                // ("at five text Sam that I'm late"). The contents are what
+                // `ClauseScope.read` finds as the complement, or where it
+                // finds none, the model's span.
+                var timedByContent: [Int] = []
+                var timedOutside: [Int] = []
+                for index in rows.indices where rows[index].span.overlaps(source) && rows[index].span.overlaps(target)
+                    && isExecutable(rows[index].item) {
+                    guard let text = Atoms.slice(transcript, atoms, rows[index].span) else { continue }
+                    let reading = ClauseScope.read(text)
+                    let outside = reading.complementRange != nil ? reading.matrix : words(of: rows[index], outside: source)
+                    if executesAlone(outside) {
+                        timedOutside.append(index)
+                    } else {
+                        timedByContent.append(index)
+                    }
+                }
+                let exposed = own.filter { isExecutable(rows[$0].item) } + timedByContent
+                if !exposed.isEmpty {
+                    note.reason = own.contains(where: { isExecutable(rows[$0].item) })
+                        ? .messageContentExecutes : .messageContentTimesRow
                     if policy.withdrawOn.contains(.isMessageContentOf) {
-                        for index in affected where isExecutable(rows[index].item) {
-                            rows[index].item = withdrawn(rows[index].item)
-                        }
+                        for index in exposed { rows[index].item = withdrawn(rows[index].item) }
                         note.effect = .withdrewExecution
                     }
+                } else if !timedOutside.isEmpty {
+                    note.reason = .messageRowTimedOutsideContent
+                } else {
+                    note.verdict = .agree
+                    note.reason = .messageContentAlreadyInside
                 }
 
             case .givesContextTo, .continues, .unclear:
@@ -771,10 +845,22 @@ enum Arbiter {
         }
     }
 
-    /// How many more rows execute than in the rules reading. The set check
-    /// above cannot see an existing instant copied onto a second row.
-    static func executingRowsAdded(_ items: [ExtractedThought], over rules: [ExtractedThought]) -> Int {
-        max(0, items.filter(isExecutable).count - rules.filter(isExecutable).count)
+    /// Executing rows added and removed, per rules row: every output row
+    /// lies inside one rules row's span (a split divides a span, a merge joins
+    /// only rows that never execute), so a withdrawal in one place cannot
+    /// cancel a copied instant in another the way a net count would.
+    static func executingRowChange(_ rows: [Row], over rules: [Row]) -> (added: Int, removed: Int) {
+        var added = 0
+        var removed = 0
+        for rule in rules {
+            let inside = rows.filter {
+                $0.span.first >= rule.span.first && $0.span.last <= rule.span.last && isExecutable($0.item)
+            }.count
+            let before = isExecutable(rule.item) ? 1 : 0
+            added += max(0, inside - before)
+            if before == 1, inside == 0 { removed += 1 }
+        }
+        return (added, removed)
     }
 
     // MARK: Plumbing

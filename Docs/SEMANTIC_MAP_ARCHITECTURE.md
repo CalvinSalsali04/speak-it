@@ -182,9 +182,16 @@ Two rules about evidence the grader of #118 sharpened:
   sides still executes. For `replaces` and `cancels` that row is withdrawn
   unless the parser repaired it (the correction was applied in place); for
   `isConditionFor` a row holding its own condition that executes with a
-  resolved state is withdrawn (`spanningRowStillExecutes`). For
-  `isMessageContentOf` a row spanning both is the message row itself, whose
-  reminder is to send the message, so it is left alone.
+  resolved state is withdrawn (`spanningRowStillExecutes`), unless the row
+  already encodes the condition: a place trigger for "when I get to Costco",
+  or an instant the condition's own words give (`conditionEncodedInRow`).
+  For `isMessageContentOf`, a row carrying both a message and its contents
+  keeps its instant only when the words outside the contents carry it on
+  their own ("at five text Sam that I'm late"), and that is recorded as
+  `unresolved`, not agreement; otherwise the contents timed it ("text Sam
+  that I'll be late at six") and it is withdrawn (`messageContentTimesRow`).
+  The contents are `ClauseScope.read`'s complement, or the model's span where
+  it finds none.
 - A person is cleared only when the model gives a positive non-person kind
   and `PersonMentionResolver.entityKind(in:)` also gives one. The model's
   `unknown` is an abstention (`modelAbstained`), and a deterministic
@@ -215,7 +222,7 @@ Written before any device run. Each names the result that kills it.
 | M4. Factoring fixes Phase B's refusal rate | a job's refusal rate on `rambling` is near Phase B's 59/85 |
 | M5. The model finds coherent long thoughts the parser split | `merge/mergedMemory` stays at zero while `mergeNotClean` or `mergeWouldHideAction` fire, i.e. the merge power is inert; category D shows no gain on the fresh slice |
 | S1. No arbitration outcome creates a new instant | `executionOutsideRulesReading` ever fires, or an unsafe count on the map arm exceeds the rules arm |
-| S2. No arbitration outcome schedules an existing instant twice | `executingRowsAdded` fires on any capture |
+| S2. No arbitration outcome schedules an existing instant twice | `executingRowsAdded` fires on any capture (counted per rules row, beside `executingRowsRemoved`, so a withdrawal cannot net it away) |
 
 Development sets are for killing claims, not for supporting them. Only the
 fresh slice supports one.

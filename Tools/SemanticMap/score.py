@@ -398,6 +398,9 @@ def trace(args):
     if doubled:
         print(f"  EXECUTING ROWS ADDED on {len(doubled)} capture(s), {sum(doubled)} row(s): an existing instant"
               " now schedules more than once (S2).")
+    removed = [d.get("count") or 0 for d in decisions if d["reason"] == "executingRowsRemoved"]
+    if removed:
+        print(f"  executing rows removed (withdrawals): {sum(removed)} on {len(removed)} capture(s)")
     return 0
 
 
@@ -893,9 +896,10 @@ def diagnostic(args):
               + (f" ({', '.join(f'{k} {v}' for k, v in validation.most_common())})" if validation else "")
               + f", guard {guard}")
         added = sum(d.get("count") or 0 for d in decisions if d["reason"] == "executingRowsAdded")
+        removed = sum(d.get("count") or 0 for d in decisions if d["reason"] == "executingRowsRemoved")
         broke = sum(1 for d in decisions if d["reason"] == "executionOutsideRulesReading")
-        if added or broke:
-            print(f"  EXECUTION: {added} executing row(s) added by splits; structural guarantee fired {broke}")
+        print(f"  execution              rows added {added} (S2, must be 0), rows removed {removed},"
+              f" structural guarantee fired {broke}")
 
         totals = []
         for m in maps:

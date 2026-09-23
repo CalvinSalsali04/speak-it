@@ -291,7 +291,20 @@ enum ProductionRoute {
         // An operation capture never reaches the model in production, and a
         // shadow run never asks about one, so it stays out of `asked` too.
         let eligible = recorded.policy == .eligible || (treatAsEligible && rules.operations.isEmpty)
-        guard let raw = recorded.rawResponse else { return (trace, rules.items, rules.operations) }
+        guard let raw = recorded.rawResponse else {
+            // No answer to judge. When the capture is newly treated as asked,
+            // its outcome is what production would have recorded: the model
+            // was unavailable, or the generation threw (late or not).
+            if eligible, recorded.policy != .eligible {
+                if recorded.availability != nil {
+                    trace.outcome = .modelUnavailable
+                } else if recorded.generationError != nil {
+                    let late = (recorded.latencyMilliseconds ?? 0) > productionBudgetMilliseconds
+                    trace.outcome = late ? .budgetExpired : .generationFailed
+                }
+            }
+            return (trace, rules.items, rules.operations)
+        }
 #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *),
            let content = try? GeneratedContent(json: raw) {
