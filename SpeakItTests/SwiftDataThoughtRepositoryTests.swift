@@ -2613,6 +2613,15 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         let notificationsAuthorized = await grantProvisionalNotificationAuthorization()
         let (session, _, openRow) = try captureWithCompletedFirstRow()
         let openID = openRow.id
+        if notificationsAuthorized {
+            // Shown, not derived: the time is on the completed half, so the
+            // open survivor has nothing pending before the merge. Without
+            // this, a fixture that gave the open half a time of its own would
+            // make the pending assertion below pass with no re-arm at all.
+            await drainReminderScheduler()
+            let before = await pendingNotificationRequests(for: openID)
+            XCTAssertEqual(before.count, 0, "precondition: the open row has nothing pending before the merge")
+        }
 
         try repository.merge(session.items)
 

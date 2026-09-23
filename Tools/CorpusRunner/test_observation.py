@@ -904,6 +904,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         simulator"`, both in `TemporalFullPathTests`. The merged sentence the
         fixture's doc comment quotes spans two lines, so it is not one literal
         and counts for nothing.
+
+        4084 -> 4085 on 2026-09-23, from the grade of that change: the merge
+        test now shows its starting point instead of leaving it derivable,
+        with one assertion message, `"precondition: the open row has nothing
+        pending before the merge"`.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -913,7 +918,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4084)
+        self.assertEqual(len(space), 4085)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
