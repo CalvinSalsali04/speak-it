@@ -944,7 +944,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the number acted on` (used twice, counted once), `the prompt
         counts Memory rows from an old record` and `the prompt counts a
         row that is now a note`. Typing #131's three placeholders as
-        tasks added a helper and four preconditions and no literal. What the test
+        tasks added a helper and four preconditions and no literal.
+        4124 -> 4125 the same day, in review of #150: a fifth knowledge
+        row for the DEL-25 tests, an `.unclear` safety row held for review
+        in a finished capture, so that only its kind can leave it out. One
+        literal, its words, `Something I never finished saying`, recounted
+        from the tree rather than incremented. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -958,7 +963,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4124)
+        self.assertEqual(len(space), 4125)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

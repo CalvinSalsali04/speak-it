@@ -8,10 +8,10 @@ list stored for the prompt was `CaptureTargetMatcher.activeItems` over every
 other capture, which leaves out only completed and archived rows. So a
 confirmed broad cancel deleted Memory's notes, ideas and people facts along
 with the tasks, and `delete` took each capture's transcript with its last
-row. The single-target search has refused Memory since "cancel my milk
-reminder" deleted "Sarah likes oat milk"; the broad list never got the same
-line. Found by reading, in the V1 audit of decisions on reach and obligation
-(Q-A).
+row. The single-target search has refused rows in Memory
+(`belongsInMemory`) since "cancel my milk reminder" deleted "Sarah likes oat
+milk"; the broad list had no line at all. Found by reading, in the V1 audit
+of decisions on reach and obligation (Q-A).
 
 **The invariant.** A broad request reaches only rows that are the kind of
 thing Today is for: an actionable type (task, shopping, person follow-up,
@@ -19,8 +19,12 @@ event) or a row carrying a reminder the person asked for. That is
 `CapturedItem.isActionKind`, which is now the one expression `belongsInToday`
 and `belongsInMemory` split on, not a second classification beside them. It
 is drawn by kind rather than by live placement, so a knowledge row waiting in
-Needs review (which is in neither destination) is left out too, and a note
-with a reminder (on Today, by the person's own request) is reached.
+Needs review (which is in neither destination) is left out, and a note with a
+reminder (on Today, by the person's own request) is reached. That makes the
+broad line stricter than the single-target one, not the same: the
+single-target search asks `belongsInMemory`, which a held knowledge row does
+not satisfy, so a single-target cancel can still reach one. This entry covers
+the broad path only.
 `SwiftDataThoughtRepository.broadOperationCandidates(in:)` applies it. The
 prompt's "Cancel N items?" and the confirmation both read the stored list
 again through `heldCandidates` (below), so the number confirmed is the

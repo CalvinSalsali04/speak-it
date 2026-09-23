@@ -120,8 +120,12 @@ final class CaptureOperationTests: XCTestCase {
         /// A knowledge row waiting in Needs review: not in Memory yet, and
         /// still not a commitment.
         let heldNote: UUID
+        /// The safety row the extractor writes for reported speech or a
+        /// point it cannot identify: `.unclear`, held for review, in a
+        /// finished capture, so only its kind can leave it out.
+        let heldUnclear: UUID
 
-        var all: Set<UUID> { [note, idea, person, heldNote] }
+        var all: Set<UUID> { [note, idea, person, heldNote, heldUnclear] }
     }
 
     private func insertMemoryRows() throws -> MemoryRows {
@@ -129,7 +133,12 @@ final class CaptureOperationTests: XCTestCase {
             note: try insertFinishedRow("The spare key is under the blue pot", type: .note),
             idea: try insertFinishedRow("A podcast about city parks", type: .idea),
             person: try insertFinishedRow("Sarah likes oat milk", type: .note, personName: "Sarah"),
-            heldNote: try insertFinishedRow("Something about the lease", type: .note, needsClarification: true)
+            heldNote: try insertFinishedRow("Something about the lease", type: .note, needsClarification: true),
+            heldUnclear: try insertFinishedRow(
+                "Something I never finished saying",
+                type: .unclear,
+                needsClarification: true
+            )
         )
         for id in [rows.note, rows.idea, rows.person] {
             let row = try XCTUnwrap(try allItems().first { $0.id == id })
@@ -313,11 +322,12 @@ final class CaptureOperationTests: XCTestCase {
     /// transcript with its last row.
     ///
     /// Falsifiers: listing broad candidates from `activeItems` alone names the
-    /// four knowledge rows, fails the outcome's list and the stored record the
+    /// five knowledge rows, fails the outcome's list and the stored record the
     /// prompt counts, and deletes them on confirmation; drawing the line with
-    /// `!belongsInMemory` instead of by kind names the held note. A fix that
-    /// also left out a note carrying a reminder (Today's, by the person's own
-    /// request) fails on the birthday.
+    /// `!belongsInMemory` instead of by kind names the two held rows, the note
+    /// and the `.unclear` safety row. A fix that also left out a note carrying
+    /// a reminder (Today's, by the person's own request) fails on the
+    /// birthday.
     func testAConfirmedBroadCancelNeverReachesMemory() async throws {
         let milkID = try await capture("Buy milk").primaryItem.id
         let momID = try await capture("Call Mom on Friday").primaryItem.id
@@ -347,7 +357,13 @@ final class CaptureOperationTests: XCTestCase {
 
         XCTAssertEqual(Set(try allItems().map(\.id)), memory.all, "confirming reached past the rows it counted")
         let words = Set(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).map(\.originalTranscription))
-        for kept in ["The spare key is under the blue pot", "A podcast about city parks", "Sarah likes oat milk", "Something about the lease"] {
+        for kept in [
+            "The spare key is under the blue pot",
+            "A podcast about city parks",
+            "Sarah likes oat milk",
+            "Something about the lease",
+            "Something I never finished saying",
+        ] {
             XCTAssertTrue(words.contains(kept), "the transcript went with its row: \(kept)")
         }
     }
@@ -389,13 +405,13 @@ final class CaptureOperationTests: XCTestCase {
     /// and cancels only the action row.
     ///
     /// Falsifier: a confirm-time check that trusts the stored list counts
-    /// five and deletes the four knowledge rows.
+    /// six and deletes the five knowledge rows.
     func testConfirmingARecordHeldBeforeTheScopeSkipsItsMemoryRows() async throws {
         let milkID = try await capture("Buy milk").primaryItem.id
         let memory = try insertMemoryRows()
         let broad = try await capture("Cancel all my reminders")
         let reviewRow = try XCTUnwrap(try allItems().first { $0.captureSession?.id == broad.session.id })
-        let legacy = [milkID, memory.note, memory.idea, memory.person, memory.heldNote]
+        let legacy = [milkID, memory.note, memory.idea, memory.person, memory.heldNote, memory.heldUnclear]
         PendingOperationStore.set(operation: .cancel, candidateIDs: legacy, for: reviewRow.id)
 
         let counted = repository.pendingOperationCandidateIDs(for: reviewRow)
@@ -413,7 +429,7 @@ final class CaptureOperationTests: XCTestCase {
     /// cancel. With only Memory rows in the store it names nothing, and
     /// confirming it resolves the review row and nothing else.
     ///
-    /// Falsifier: any list that reaches Memory names the three rows here and
+    /// Falsifier: any list that reaches Memory names the five rows here and
     /// deletes them on confirmation.
     func testABroadRequestWithOnlyMemoryRowsNamesNothing() async throws {
         let memory = try insertMemoryRows()
@@ -436,7 +452,7 @@ final class CaptureOperationTests: XCTestCase {
     /// completion today, but the confirm path carries one (and the
     /// interpretation bridge can report one), so it is driven here directly.
     ///
-    /// Falsifier: a scope applied to cancel alone marks the four knowledge
+    /// Falsifier: a scope applied to cancel alone marks the five knowledge
     /// rows done, which moves them out of Memory into Completed.
     func testAConfirmedBroadCompleteNeverReachesMemory() async throws {
         let milkID = try await capture("Buy milk").primaryItem.id

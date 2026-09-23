@@ -1410,12 +1410,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// are about commitments. The list used to be every active row, so
     /// confirming one deleted Memory's notes, ideas and people facts with the
     /// tasks, and a capture's transcript went with its last row. The
-    /// single-target search has never reached Memory
-    /// (`CaptureTargetMatcher.candidates`); this is the same line, drawn by
-    /// kind rather than by live placement, so a knowledge row waiting in Needs
-    /// review is left out too. The parser keeps no noun for a broad request
-    /// (`target` is nil, so "reminders", "tasks" and "notes" all read the
-    /// same), and nothing narrower than the action side can be read from it.
+    /// single-target search (`CaptureTargetMatcher.candidates`) refuses only
+    /// rows that are in Memory now (`belongsInMemory`). This line is drawn by
+    /// kind instead, so it is the stricter of the two: a knowledge row waiting
+    /// in Needs review is in neither destination, and it is left out here.
+    /// That exclusion is this path's alone; it says nothing about what a
+    /// single-target cancel can reach. The parser keeps no noun for a broad
+    /// request (`target` is nil, so "reminders", "tasks" and "notes" all read
+    /// the same), and nothing narrower than the action side can be read from
+    /// it.
     ///
     /// Nothing unorganized. Such a row is a placeholder whose capture still
     /// holds words nobody has organized, and `delete` removes a capture with
