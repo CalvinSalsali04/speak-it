@@ -1077,7 +1077,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         to the one-shot branch just as much. A reworded message is a fall
         and a rise, not a zero, and it only nets to zero when both sides
         clear twelve characters.
-        What the test
+        4068 -> 4071 on 2026-09-23, from the
+        widget snapshot holding for review what Today holds: one test in
+        `LocationReminderTests`, three literals, enumerated rather than
+        assumed. Two are assertion messages (`"a row in review is not
+        counted as due"`, `"the ordinary row is next, and the held one is
+        never offered"`) and one is the App Shortcut's phrase quoted in the
+        test's doc comment, `"Complete my next item"`, the hazard above
+        once more. Both capture fixtures add nothing: `"Remind me to take
+        out the garbage when I get home"` is already in this file and
+        `"I need to implement calendar integration tomorrow"` in
+        `SwiftDataThoughtRepositoryTests`. 4071 -> 4075 on 2026-09-23, from
+        the grade of that change: the widget's queued tap on a held row is
+        dropped, one test with four literals, three assertion messages
+        (`"a tap from a stale widget does not complete a held row"`, `"an
+        ordinary row's tap is still applied"`, `"the dropped tap is not
+        retried forever"`) and one skip message (`"the shared app group
+        container is unavailable on this simulator"`). 4075 -> 4074 on
+        2026-09-23, from the second grade: the test queues its taps in a
+        folder of its own through the queue's new directory overloads, so it
+        can no longer skip, and that skip message is gone. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1180,7 +1199,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #141 into the V1 candidate: measured from the merged tree, not
         taken from either side (4206 on the candidate, 4085 on #141,
         4068 at their merge base; #141 adds 17 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4223 -> 4229 on
+        2026-09-23, merging #142 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4223 on the
+        candidate, 4074 on #142, 4068 at their merge base; #142 adds 6
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1190,7 +1214,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4223)
+        self.assertEqual(len(space), 4229)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
