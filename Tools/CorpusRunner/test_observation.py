@@ -1225,14 +1225,30 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
         return (self.ROOT / self.HOME).read_text(
             encoding="utf-8", errors="replace").splitlines()
 
+    #: The launch work either sits in `body`'s `.task` closure or, since the
+    #: merged V1 fixes made `body` too long to type-check, in a method whose
+    #: only caller is that `.task`.
+    LAUNCH_METHOD = "performLaunchWork"
+
     def launch_task(self, lines):
-        """(first, last) line indices of the `.task` that holds the
-        once-per-process maintenance guard, braces included."""
+        """(first, last) line indices of the `.task` closure, or the
+        `.task`-only method, that holds the once-per-process maintenance
+        guard, braces included."""
         guards = [i for i, line in enumerate(lines)
                   if "guard !hasPerformedMaintenance" in self.code(line)]
         self.assertEqual(len(guards), 1, "expected one maintenance guard")
+        method = f"private func {self.LAUNCH_METHOD}() async {{"
         first = next(i for i in range(guards[0], -1, -1)
-                     if self.code(lines[i]).strip() == ".task {")
+                     if self.code(lines[i]).strip() in (".task {", method))
+        if self.code(lines[first]).strip() == method:
+            use = re.compile(r"\b" + self.LAUNCH_METHOD + r"\b")
+            callers = [self.code(line).strip() for i, line in enumerate(lines)
+                       if i != first and use.search(self.code(line))]
+            self.assertEqual(
+                callers, [f".task {{ await {self.LAUNCH_METHOD}() }}"],
+                f"`{self.LAUNCH_METHOD}` must be called only by the root "
+                "view's `.task`; any other caller can run the launch passes "
+                "while a capture is being recorded.")
         indent = lines[first][:len(lines[first]) - len(lines[first].lstrip())]
         last = next(i for i in range(first + 1, len(lines))
                     if lines[i].rstrip() == indent + "}")
