@@ -985,7 +985,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         read as either a string or an attributed string: one test method
         and one literal, an assertion message, `"a report in the attributed
         form did not match what was posted"`. Its fixture, `"Listening"`, is
-        one word and adds nothing.
+        one word and adds nothing. 4179 -> 4181 on 2026-09-23, when the
+        lost-finish-report test came to wait for its own task for at most
+        five seconds instead of hanging under its falsifier: no new method
+        and two literals, enumerated: the expectation's description, `"the
+        allowance ran out and the microphone could open"`, and an assertion
+        message, `"a lost finish report held the microphone shut"`. The
+        description avoids the word `wait` on purpose: a test literal
+        carrying it moves the `wait` figures pinned in
+        `TheMotivatingFiguresAtTheTopAreRecomputed`.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1000,7 +1008,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4179)
+        self.assertEqual(len(space), 4181)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -847,9 +847,14 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseTask?.cancel()
         isWaitingForContinuation = false
         markSpeechEndpointDetectedIfNeeded()
+        // The microphone closes before the state says finalizing, because
+        // entering finalizing is announced ("Saving your thought") and the
+        // announcer must already have the claim back. `stopAudioInput` reads
+        // nothing of `state`, and every callback it can trigger reaches this
+        // actor as a new task, so the order is otherwise free.
+        stopAudioInput()
         state = .finalizing
         finalization = completion
-        stopAudioInput()
         recognitionBackend?.endAudio()
 
         finalizationTimeout?.cancel()

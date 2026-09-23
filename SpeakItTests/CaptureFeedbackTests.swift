@@ -1056,8 +1056,13 @@ final class CaptureFeedbackTests: XCTestCase {
 }
 
 extension CaptureVoiceStatus {
-    /// Every state, so a check that must hold for all of them cannot quietly
-    /// miss one that is added later.
+    /// Every state as this list was written, with both values of each
+    /// associated `Bool`. It is written by hand: the associated values keep
+    /// `CaptureVoiceStatus` from synthesizing `CaseIterable`, and nothing
+    /// puts a case added later on this list. The exhaustive switch in
+    /// `spokenChange` fails to compile on a new case, but it can be satisfied
+    /// without touching this list, so a check over `everyState` says nothing
+    /// about a case missing from it. Add any new case here by hand.
     static var everyState: [CaptureVoiceStatus] {
         [
             .idle,
@@ -1191,6 +1196,7 @@ final class VoiceOverAnnouncementTests: XCTestCase {
     private var voiceOverRunning = true
     private var spoken: [String] = []
     private var microphoneOpened = false
+    private var silentAfter: Duration?
 
     private func makeAnnouncer(allowance: Duration = .seconds(30)) -> VoiceOverAnnouncer {
         VoiceOverAnnouncer(
@@ -1363,16 +1369,26 @@ final class VoiceOverAnnouncementTests: XCTestCase {
     }
 
     /// Falsifier: remove the timeout task from `untilSilent`, and a finish
-    /// report VoiceOver never sends holds the microphone shut for good (this
-    /// test then never returns). The lower bound catches the opposite
-    /// mutation, a wait that does not wait at all.
-    func testALostFinishReportHoldsTheMicrophoneOnlyForItsAllowance() async {
+    /// report VoiceOver never sends holds the microphone shut for good. The
+    /// wait runs in its own task and this test waits for it for five
+    /// seconds at most, so that mutation fails here rather than hanging the
+    /// suite; the stranded task is left suspended. The lower bound catches
+    /// the opposite mutation, a wait that does not wait at all.
+    func testALostFinishReportHoldsTheMicrophoneOnlyForItsAllowance() async throws {
         let announcer = makeAnnouncer(allowance: .milliseconds(80))
         let started = ContinuousClock.now
         announcer.announce("Listening")
 
-        await announcer.untilSilent()
-        XCTAssertGreaterThanOrEqual(started.duration(to: .now), .milliseconds(80))
+        let silent = expectation(description: "the allowance ran out and the microphone could open")
+        Task { @MainActor in
+            await announcer.untilSilent()
+            self.silentAfter = started.duration(to: .now)
+            silent.fulfill()
+        }
+        await fulfillment(of: [silent], timeout: 5)
+
+        let waited = try XCTUnwrap(silentAfter, "a lost finish report held the microphone shut")
+        XCTAssertGreaterThanOrEqual(waited, .milliseconds(80))
         XCTAssertEqual(announcer.unfinished, [])
     }
 
