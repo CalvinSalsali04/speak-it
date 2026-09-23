@@ -880,8 +880,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `"Relaunch must cancel an alarm whose row is gone"`. The capture
         they share, `"Set an alarm for 7 AM to take my pills"`, was
         already in `CaptureOperationTests` and adds nothing, and every
-        phrase their doc comments quote is in backticks. What the test
-        is actually
+        phrase their doc comments quote is in backticks. 4069 -> 4076 on
+        2026-09-23, from repeating AlarmKit alarms: six
+        `TemporalFullPathTests` methods and seven literals, enumerated
+        rather than assumed. Five are the names an inexpressible-rule test
+        gives its cases (`"first Monday every month"`, `"every other
+        Tuesday"`, `"every 2 days"`, `"every 3 hours"`, `"a day after
+        completion"`) and two are assertion messages. Two more case names,
+        `"every month"` and `"every year"`, add nothing because they are
+        under twelve characters. The first draft quoted phrases in its doc
+        comments and measured 4078, one of the two extras being
+        `", every Tuesday for "`: a quotation opened on one line and
+        closed on the next pairs with the wrong mark and counts the prose
+        between two quotes as a literal. Those comments use backticks now.
+        What the test is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
         is the assertion above, and it is unaffected.
@@ -894,7 +906,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4069)
+        self.assertEqual(len(space), 4076)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

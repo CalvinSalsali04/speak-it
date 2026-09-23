@@ -42,6 +42,11 @@ Entries before September 2026 were reconstructed from the commit history and
   `Tools/` for the first submission.
 - A date used as a vague topic ("that Thursday thing") is kept for review
   without inventing a deadline. Explicitly timed actions keep their dates.
+- A recurring alarm ("wake me up every weekday at 6:30 with an alarm") now
+  repeats by itself on iOS 26. It used to ring once and arm nothing for the
+  next day until Speak It was opened again. Daily and weekly-on-named-days
+  series repeat; monthly, every-other-week and every-few-hours series still
+  ring once per app run (see `Docs/KNOWN_ISSUES.md`).
 
 - Tapping the morning brief opens Today and clears its unanswered count, even
   for an older brief. Dismissal does not count as an answer.

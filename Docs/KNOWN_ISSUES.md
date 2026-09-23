@@ -434,6 +434,47 @@ The consequence elsewhere has not been measured. Every remaining `.accessibility
 
 What remains open is coverage, not plumbing: `TemporalCommitment` is still the only producer of a non-resolved state, so `ambiguousTemporalScope` is the only gap any capture currently records. The other six are storable, round-trip, and have review copy, and will start appearing as more of the pipeline reports what it could not settle. Until then most flagged rows still reach review through the old derivation.
 
+## Some recurring alarms still ring once per app run
+
+*2026-09-23, DEL-13; see `DECISIONS.md`.* On iOS 26 a recurring item delivered
+as an AlarmKit alarm repeats by itself only when AlarmKit's relative schedule
+can express its rule: daily, or weekly on named days ("every weekday at 6:30",
+"every Monday", "every week"). Every other rule is still armed as a one-shot
+`.fixed` alarm, rings once, and gets its next occurrence only when Speak It is
+opened again and the foreground pass re-arms it. **If the person is woken by
+it and does not open the app, the next occurrence does not ring.** The rules
+this applies to:
+
+- an `interval` above 1: "every other Tuesday", "every 2 days", "every 3 weeks";
+- monthly and yearly rules, including ordinal weekdays ("the first Monday
+  every month");
+- elapsed-time rules ("every 3 hours");
+- completion-anchored rules, whose next date does not exist until the
+  occurrence is completed.
+
+AlarmKit's `Alarm.Schedule.Relative.Recurrence` has only `.never` and
+`.weekly([Locale.Weekday])`, so none of these has a repeating form to move to;
+the alternative is arming several future occurrences as separate alarms, which
+needs alarm IDs that are not the item ID and is not built.
+
+Even an expressible series starts as a one-shot in three cases, and repeats
+from its next re-arm: its first occurrence is later than the next weekday match
+(created today for next week, or completed before it rang, which moves the
+next occurrence past the match that is still to come today); it rings in under a minute; and the repeating hour and
+minute are read from the occurrence's fire date, so an occurrence daylight
+saving moved out of a skipped hour ("every day at 2:30 AM" on the
+spring-forward night) repeats at the moved time until the next foreground
+re-arms it at 2:30. A relative alarm also follows the device's time zone, so
+travelling moves it with the clock, which is the documented default for
+recurring reminders below.
+
+Not verified on an iPhone: that a relative weekly alarm rings twice without the
+app being opened in between, that stopping it leaves it `.scheduled` for the
+next occurrence (so the orphan sweep keeps protecting it), and that
+`cancel(id:)` removes the whole series. A snoozed occurrence of a repeating
+alarm (PR #129) is not reconciled with the series yet; see the follow-up in
+`DECISIONS.md`.
+
 ## Temporal intent is stored; two kinds of trigger are still missing
 
 Schema version 2 records what a person said about time (`TemporalIntent`) beside the instant it resolved to, so `dateOnly`, `exactDateTime`, `relativeDuration`, `calendarRecurrence`, and `durationRecurrence` are now distinct all the way into storage. Named time zones are stored as identifiers. What is still not modelled:
