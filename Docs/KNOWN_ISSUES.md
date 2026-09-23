@@ -541,6 +541,15 @@ The specifics:
   Preferring the place instead was also wrong — it fires on a 2pm arrival that
   "tonight" explicitly ruled out. Neither half alone is what was asked for, so
   the request waits rather than being silently halved.
+- **The Today widget can lag a permission change until Speak It runs.** The
+  widget snapshot now holds a place reminder in review exactly when Today does
+  (2026-09-23), but it is rebuilt only by the app: on a save, on foreground,
+  and on an authorization change while the app is running. Revoke location
+  access in Settings and look at the widget before opening Speak It, and it
+  can still count the reminder and show its complete button, because the file
+  was written under the old access. "Complete my next item" is not affected:
+  it rebuilds the snapshot against the live authorization before choosing.
+  Tapping a stale row on the widget completes the row that was tapped.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

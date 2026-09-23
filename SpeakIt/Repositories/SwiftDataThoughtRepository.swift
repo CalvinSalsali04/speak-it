@@ -694,37 +694,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func publishSharedTodaySnapshot() {
-        // The store narrows to live items, then `belongsInToday` decides
-        // membership. Restating that rule as a `#Predicate` would both exceed
-        // the type-checker's budget and risk drifting from the model.
-        let descriptor = FetchDescriptor<CapturedItem>(
-            predicate: #Predicate { item in
-                item.isArchived == false &&
-                    item.completedAt == nil &&
-                    item.needsClarification == false
-            }
-        )
         let now = Date.now
-        guard let candidates = try? modelContext.fetch(descriptor) else { return }
-        var count = 0
-        var first: [CapturedItem] = []
-        for item in candidates where item.belongsInToday && item.isWithinTodayHorizon(relativeTo: now) {
-            count += 1
-            let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
-            if insertion < 8 {
-                first.insert(item, at: insertion)
-                if first.count > 8 { first.removeLast() }
-            }
-        }
-        let snapshot = SharedTodaySnapshot(
-            generatedAt: now,
-            openCount: count,
-            items: first.map {
-                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
-                                isUrgent: $0.priority == .urgent)
-            },
-            showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
-        )
+        guard let snapshot = makeSharedTodaySnapshot(
+            authorization: LocationReminderMonitor.shared.authorization,
+            now: now
+        ) else { return }
         if let previous = lastPublishedToday,
            previous.openCount == snapshot.openCount, previous.items == snapshot.items,
            previous.showsTaskNamesOnLockScreen == snapshot.showsTaskNamesOnLockScreen,
@@ -733,6 +707,56 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             lastPublishedToday = snapshot
             WidgetCenter.shared.reloadTimelines(ofKind: "SpeakItToday")
         }
+    }
+
+    /// What the widget, the Lock Screen summary and "Complete my next item"
+    /// are allowed to see, judged against one authorization answer.
+    ///
+    /// Membership is `belongsOnTodaySurface(authorization:relativeTo:)`, the
+    /// predicate Today itself partitions on, and nothing restated beside it.
+    /// This used to read the stored `belongsInToday` with a stored
+    /// `needsClarification == false` prefilter, which knows what the sentence
+    /// left open but not what the device lacks: a place reminder with location
+    /// permission denied sat in Today's Needs review while the widget counted
+    /// it, offered it a complete button, and let the App Shortcut complete it
+    /// as the next item. A row held for review is neither counted nor offered.
+    ///
+    /// Takes the authorization rather than reading it so a test can pin the
+    /// device state; `publishSharedTodaySnapshot()` passes the live one, as
+    /// every other non-UI caller of `LocationReminderMonitor` does.
+    func makeSharedTodaySnapshot(
+        authorization: LocationAuthorization,
+        now: Date
+    ) -> SharedTodaySnapshot? {
+        // The store narrows to live items; the model decides membership.
+        // Restating that rule as a `#Predicate` would both exceed the
+        // type-checker's budget and risk drifting from the model.
+        let descriptor = FetchDescriptor<CapturedItem>(
+            predicate: #Predicate { item in
+                item.isArchived == false && item.completedAt == nil
+            }
+        )
+        guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
+        var count = 0
+        var first: [CapturedItem] = []
+        for item in candidates
+        where item.belongsOnTodaySurface(authorization: authorization, relativeTo: now) {
+            count += 1
+            let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
+            if insertion < 8 {
+                first.insert(item, at: insertion)
+                if first.count > 8 { first.removeLast() }
+            }
+        }
+        return SharedTodaySnapshot(
+            generatedAt: now,
+            openCount: count,
+            items: first.map {
+                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
+                                isUrgent: $0.priority == .urgent)
+            },
+            showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
+        )
     }
 
 

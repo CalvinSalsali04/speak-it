@@ -874,7 +874,17 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4071 on 2026-09-23, from the
+        widget snapshot holding for review what Today holds: one test in
+        `LocationReminderTests`, three literals, enumerated rather than
+        assumed. Two are assertion messages (`"a row in review is not
+        counted as due"`, `"the ordinary row is next, and the held one is
+        never offered"`) and one is the App Shortcut's phrase quoted in the
+        test's doc comment, `"Complete my next item"`, the hazard above
+        once more. Both capture fixtures add nothing: `"Remind me to take
+        out the garbage when I get home"` is already in this file and
+        `"I need to implement calendar integration tomorrow"` in
+        `SwiftDataThoughtRepositoryTests`. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +898,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4071)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

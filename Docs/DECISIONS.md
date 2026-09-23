@@ -1,5 +1,38 @@
 # Decisions
 
+## 2026-09-23 — The widget holds for review what Today holds for review
+
+The shared Today snapshot, which feeds the Today widget, the Lock Screen
+count and the "Complete my next item" App Shortcut, chose its rows from the
+stored `belongsInToday` behind a stored `needsClarification == false` filter.
+Today partitions on `belongsOnTodaySurface(authorization:relativeTo:)`, which
+also asks whether a place reminder is blocked by what the device lacks. The
+two disagreed on exactly the rows `requiresReview(authorization:)` exists
+for: a place reminder with location permission denied has
+`needsClarification == false`, sits in Needs review on Today, and was
+counted by the widget, given a complete button, and completed by the App
+Shortcut as the next item. That last one is a wrong-item action: it finished
+a task the person had been asked to look at.
+
+- **One predicate.** `makeSharedTodaySnapshot(authorization:now:)` selects
+  with `belongsOnTodaySurface` and nothing restated beside it, so there is no
+  third definition of "held". The store still narrows to live rows; the
+  model decides membership. `publishSharedTodaySnapshot()` passes
+  `LocationReminderMonitor.shared.authorization`, the same read every other
+  non-UI path uses (the morning brief, reminder reconciliation).
+- **Authorization is a reason to republish.** Today recomputes on every
+  render; the snapshot is a file. The authorization-change handler in
+  `RootView` now republishes it beside the region reconciliation.
+- **The App Shortcut chooses from a fresh snapshot.** It drains the widget's
+  queued completions and rebuilds the snapshot against the live
+  authorization before taking the first row, rather than trusting a file that
+  may predate a permission revoked in Settings. A store that cannot be read
+  is reported as an error, not as "all clear".
+
+Shopping entries were left as they are. Today shows a shopping list as one
+card, and the widget still lists its entries individually; that is a
+different question from review and is not changed here.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
