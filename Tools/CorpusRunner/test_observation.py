@@ -1652,6 +1652,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         expected value is a snake_case label with no space and the one
         private-message fixture, `"The user typed a private thought
         here"`, was already in `SwiftDataThoughtRepositoryTests`.
+        4068 -> 4068 on 2026-09-23, from the diagnostics' truthfulness
+        fixes: dropping `max_duration` from the pinned `stop_trigger` set
+        removes a snake_case label, not a multi-word literal.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1899,7 +1902,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #132 with #135): `deleteCapture` re-plans the region budget, and
         the region-freeing test gains a step for it. Two in (`Remind me
         to bring the umbrella every time I get home`, `replacing an
-        attempt`), none out: 4773 + 2 - 0 = 4775. 4775 -> 4797 on
+        attempt`), none out: 4773 + 2 - 0 = 4775. 4775 -> 4775 on
+        2026-09-23, merging #148 at `373ddc5` into the V1 candidate in
+        the rehearsal-2 follow-up: measured from the merged tree, not
+        taken from either side (4775 on the candidate, 4068 on #148,
+        4068 at their merge base `666eb1e`; #148 adds 0 and removes 0, 0
+        of its additions were already on the candidate). 4775 -> 4778 on
+        2026-09-23, a candidate commit of the rehearsal-2 follow-up (#148
+        with #123, #139 and #144): partial recovery passes get failure
+        kinds of their own and an empty VoiceOver finish sends nothing.
+        Three in, all phrases quoted in the new tests' doc comments, the
+        hazard above once more (`VoiceOver is on`, `stopped after partial
+        words`, `timed out having read nothing`), none out: 4775 + 3 - 0
+        = 4778. The tests' fixture, `buy milk and call`, was already in
+        `DurabilityTests`, and every expected value is a snake_case label. 4778 -> 4800 on
         2026-09-23, from DEL-23 (the launch and foreground reconcile
         leaves a ringing alarm alone): four `DurabilityTests` tests and one
         `TemporalFullPathTests` decision test. Twenty-two in, all assertion
@@ -1921,7 +1937,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         out. The fixtures add nothing: `Set an alarm for 7 AM to take my
         pills` and `Set an alarm every day at 6:30 AM` were already here,
         `a notification` already was too, and `Alarm` is under twelve
-        characters: 4775 + 22 - 0 = 4797.
+        characters: 4778 + 22 - 0 = 4800, measured from the tree after merging the candidate at `026a78a` into #153 (DEL-23 was written at 4775 -> 4797).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1931,7 +1947,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4797)
+        self.assertEqual(len(space), 4800)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

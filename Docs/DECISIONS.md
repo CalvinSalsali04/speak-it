@@ -1826,7 +1826,10 @@ deleted the recording, so the tail of a long capture was lost with the only
 copy of it. Now only a final result is a success (`CaptureAudioRecovery.outcome`):
 a timeout after partial text fails as `timedOut`, and an error after partial
 text fails as `unknown` rather than `noSpeechDetected`, because words were
-found and another attempt must stay on offer. The words that pass did read are
+found and another attempt must stay on offer. (In the V1 candidate, with
+#148, these became kinds of their own, `timedOutAfterPartial` and
+`stoppedAfterPartial`, with the same copy and the same retry; see #148's
+entry.) The words that pass did read are
 kept on the draft beside the recording (`CaptureDraftStore.keepRecoveredWords`,
 never shrinking a longer checkpoint). When the capture screen switches to
 typing after such a pass, it offers those words in place of the live
@@ -2450,16 +2453,17 @@ What changed, all closed enums with no free text:
 - `speech_capture_quality` gains `finalized_by` (`recognizer_final`,
   `grace_timeout`, `error_with_partial`, `route_change_with_partial`,
   `interruption_with_partial`) and `stop_trigger` (`manual`, `auto_pause`,
-  `auto_pause_deferrals_spent`, `max_duration`). Words that came from the
+  `auto_pause_deferrals_spent`). Words that came from the
   recognizer's final result report `recognizer_final` whichever callback ran
   last, because the question is whether the saved words could be missing a
   tail. `interruption_with_partial` is one value beyond the audit's four: the
   route-change path also handles an audio interruption and a media-services
   reset, and filing a phone call under "route change" would repeat the
   mislabelling this entry fixes. `stop_trigger` is absent when the
-  recognizer or an error ended the capture before anything asked it to stop;
-  both keys are absent when the transcriber did not finalize (no speech, or
-  words recovered from the recording).
+  recognizer or an error ended the capture before anything asked it to stop
+  (the recognizer's own final result, or an error after partial words, while
+  still listening); both keys are absent when the transcriber did not
+  finalize (no speech, or words recovered from the recording).
 - A new `capture_recovery` event (`path`: `live_audio`, `launch_audio`;
   `outcome`: `final`, `partial_on_error`, `partial_on_timeout`, `failed`;
   `failure_kind`, the `CaptureRecoveryFailureKind` case in snake case, only
@@ -2487,8 +2491,11 @@ path has to be found. If `grace_timeout` and `recognizer_final` never differ
 in how often testers report cut-offs, the grace timer is not the loss.
 
 **Not covered.** Siri, Shortcuts and Back Tap captures send no analytics
-today, so `max_duration` is recorded by the transcriber but is not emitted
-until that path sends `speech_capture_quality`. Share imports and launch
+today. Their 60 s cap is therefore not a `stop_trigger` value: an earlier
+draft of this change listed `max_duration`, but `speech_capture_quality` is
+sent only from the capture screen's transcriber, so the value could never
+appear and would have read as "the cap never fires". It belongs with an
+event for that path, if one is added. Share imports and launch
 audio recovery send `capture_saved`, and they get the same swap as the
 in-app capture: a session that ends `.failed` sends `capture_failed` with
 `organization` instead. The founder dashboard's saved count and its
@@ -2504,14 +2511,42 @@ offline are lost.
 **In the V1 candidate (merged with #123, 2026-09-23).** A recording
 recovery that reads only part of the recording fails there instead of
 saving the partial words (`stoppedEarly`, `timedOutAfterPartial`), so the
-recording is never deleted with its tail unread. `capture_recovery` then
-reports it as `failed`, with `failure_kind` `unknown` (stopped early) or
-`timed_out`, and `partial_on_error` and `partial_on_timeout` are declared
-but not sent (`CaptureAudioRecovery.reportedOutcome`). The recovery entry
+recording is never deleted with its tail unread. The recovery entry
 points keep #144's typed-words join and #123's kept partial words:
-`transcribeReportingEnding` joins, `transcribeRecordingReportingEnding` is
-the capture screen's spoken-only reading. The live finalization paths
-(`finalized_by`) are unaffected.
+`transcribeReportingEnding` and `transcribe` both join through
+`transcribe(_:reading:)`, the seam the join's tests call, and
+`transcribeRecordingReportingEnding` is the capture screen's spoken-only
+reading. The live finalization paths (`finalized_by`) are unaffected.
+
+**Rehearsal-2 follow-up in the candidate (2026-09-23).** Three things the
+grade of that merge found only exist where #148 meets #123, #139 and #144,
+so they are fixed in a candidate commit rather than on #148:
+
+- With #123, no path could send `partial_on_error` or `partial_on_timeout`,
+  and a partial pass was reported as `failed` with `timed_out` or `unknown`,
+  the same rows as "timed out having read nothing" and an unclassified
+  error. The two outcomes are removed, so `outcome` is `final` or `failed`,
+  and `CaptureRecoveryFailureKind` gains `timedOutAfterPartial` and
+  `stoppedAfterPartial` (`failure_kind` `timed_out_after_partial`,
+  `stopped_after_partial`). The kind is stored on the draft as a `String`
+  and decoded with `?? .unknown`, so the new raw values are additive; each
+  shows the copy of the kind it replaced and keeps offering another attempt
+  (`stopsPromisingRecovery` is false). The falsifier's "partial outcome"
+  reads, in the candidate, as those two failure kinds.
+- #139 made an empty Finish with VoiceOver on end the attempt through the
+  same function as the ten-second no-speech timeout, so both sent
+  `capture_failed(speech)`. The person chose to finish; that is not a
+  failure. It now sends nothing, and the timeout keeps `speech` and its
+  quality sample (`CaptureWordlessEnding`). A category of its own was
+  rejected: the branch exists only while VoiceOver is on, so any value it
+  sent, however content-free, would say "VoiceOver is on" against the
+  per-install id. For the same reason the quality sample is not sent there
+  either, and no VoiceOver-gated branch may send analytics. An empty Finish
+  with recorded audio still recovers it, and that recovery reports as any
+  other `live_audio` recovery does.
+- `transcribe(_:)` now delegates to `transcribe(_:reading:)` with the real
+  recognizer, and `transcribeReportingEnding` does too, so there is one
+  typed-and-spoken join and the tests reach it. The text is unchanged.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

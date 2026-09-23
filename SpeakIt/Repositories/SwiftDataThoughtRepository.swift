@@ -1052,14 +1052,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.isArchived == false && item.completedAt == nil
             }
         )
-        // On a failed fetch there is no snapshot, so nothing is written over
-        // the one already published: a stale Today on the widget, never an
-        // empty one made from a store that could not be read.
+        // On a failed fetch there is no snapshot, never an empty one made from
+        // a store that could not be read. What `nil` means is the caller's:
+        // publishing keeps the widget's last snapshot, and "Complete my next
+        // item" reports the store unavailable, so the log names only the cause.
         let candidates: [CapturedItem]
         do {
             candidates = try modelContext.fetch(descriptor)
         } catch {
-            Self.reminderLog.fault("Today snapshot could not fetch its rows; the widget keeps the last one")
+            Self.reminderLog.fault("Today snapshot could not fetch its rows")
             return nil
         }
         var count = 0

@@ -681,7 +681,16 @@ enum CaptureRecoveryFailureKind: String, Codable, Sendable {
     /// send the recording to Apple's speech service, which every string that
     /// names a protected recording promises never happens.
     case onDeviceRecognitionUnavailable
+    /// The recovery pass ran out of time having read nothing.
     case timedOut
+    /// The recovery pass ran out of time after reading part of the recording.
+    /// Those words are kept on the draft beside the recording (#123), so the
+    /// person keeps most of their thought; the recording stays retryable.
+    case timedOutAfterPartial
+    /// The recognizer stopped with an error after reading part of the
+    /// recording. The words read are kept on the draft, as above. Never
+    /// `noSpeechDetected`: words were found, so another attempt stays on offer.
+    case stoppedAfterPartial
     case cancelled
     case storageUnavailable
     case unknown
@@ -776,13 +785,13 @@ enum CaptureRecoveryPresentation {
             "Speech Recognition is unavailable right now. The recording is still safe."
         case .onDeviceRecognitionUnavailable:
             "This language can’t be read on this iPhone, and Speak It won’t send the recording to Apple. It stays safe here."
-        case .timedOut:
+        case .timedOut, .timedOutAfterPartial:
             "Recovery took too long to finish. The recording is still safe."
         case .cancelled:
             "Recovery stopped before it finished. The recording is still safe."
         case .storageUnavailable:
             "Local storage is unavailable, so nothing could be saved. The recording is still safe."
-        case .unknown:
+        case .unknown, .stoppedAfterPartial:
             "Recovery didn’t finish. The recording is still safe."
         }
     }
@@ -799,13 +808,13 @@ enum CaptureRecoveryPresentation {
             "Speech Recognition is unavailable"
         case .onDeviceRecognitionUnavailable:
             "Recovery would leave this iPhone"
-        case .timedOut:
+        case .timedOut, .timedOutAfterPartial:
             "Recovery took too long"
         case .cancelled:
             "Recovery stopped"
         case .storageUnavailable:
             "Storage is unavailable"
-        case .unknown:
+        case .unknown, .stoppedAfterPartial:
             "Recovery didn’t finish"
         }
     }
@@ -827,7 +836,7 @@ enum CaptureRecoveryPresentation {
             "This language has no on-device speech model, so recovering the recording would send it to Apple’s speech service. It stays safe here instead. You can type the thought yourself, or delete the recording."
         case .storageUnavailable:
             "Nothing could be saved just now, and the recording is still safe. Try again in a moment."
-        case .timedOut, .cancelled, .unknown:
+        case .timedOut, .timedOutAfterPartial, .stoppedAfterPartial, .cancelled, .unknown:
             "The recording is still safe. Try again, or type the thought yourself."
         }
     }
