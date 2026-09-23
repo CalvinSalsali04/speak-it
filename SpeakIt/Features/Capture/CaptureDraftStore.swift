@@ -477,6 +477,33 @@ enum CaptureDraftStore {
         return kept
     }
 
+    /// Today's immediate save of the words `deleteRecordingKeepingTypedWords`
+    /// kept. The caller releases `kept` after this returns.
+    ///
+    /// The launch text pass is the fallback for the same draft, and two
+    /// things stop the pair from storing the words twice. The handoff is the
+    /// first: a kill after the commit leaves the draft naming a committed
+    /// session, and the launch releases it rather than replaying it. The
+    /// second is that both commit as typing under the recording's start
+    /// time, `kept.startedAt`, so a replay the handoff did not stop lands in
+    /// the in-app deduplication window and returns this session.
+    @discardableResult
+    static func commitKeptTypedWords(
+        _ kept: Draft,
+        to repository: any ThoughtRepository
+    ) async throws -> CaptureCreationResult {
+        try await handOff(draftID: kept.id, transcript: kept.transcript) { sessionID in
+            try await repository.createCaptureResult(
+                text: kept.transcript,
+                source: .inAppText,
+                createdAt: kept.startedAt,
+                schedulesReminders: true,
+                performance: nil,
+                sessionID: sessionID
+            )
+        }
+    }
+
     static func isDeleted(_ id: UUID) -> Bool {
         deletedIDs().contains(id)
     }

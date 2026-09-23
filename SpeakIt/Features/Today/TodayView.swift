@@ -1918,9 +1918,12 @@ struct CaptureHistoryView: View {
             recoveringDraftID = nil
         }
         reloadDrafts()
-        showSuccess("Recording deleted")
         if let keptTypedWords {
+            // One notice for one action: the save below says the recording
+            // went as well as where the typed words went.
             saveTypedWords(keptBy: keptTypedWords)
+        } else {
+            showSuccess("Recording deleted")
         }
     }
 
@@ -1928,22 +1931,13 @@ struct CaptureHistoryView: View {
     /// is released only after they are stored; if storage is unavailable or
     /// the save fails, it stays and the next launch's text pass saves them.
     private func saveTypedWords(keptBy kept: CaptureDraftStore.Draft) {
-        guard let repository else { return }
+        guard let repository else {
+            showSuccess("Recording deleted")
+            return
+        }
         Task { @MainActor in
             do {
-                _ = try await CaptureDraftStore.handOff(
-                    draftID: kept.id,
-                    transcript: kept.transcript
-                ) { sessionID in
-                    try await repository.createCaptureResult(
-                        text: kept.transcript,
-                        source: .inAppText,
-                        createdAt: kept.startedAt,
-                        schedulesReminders: true,
-                        performance: nil,
-                        sessionID: sessionID
-                    )
-                }
+                try await CaptureDraftStore.commitKeptTypedWords(kept, to: repository)
                 CaptureDraftStore.clear(id: kept.id)
                 showSuccess("Recording deleted. Your typed words were saved")
             } catch {

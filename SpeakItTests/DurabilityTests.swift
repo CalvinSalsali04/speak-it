@@ -1263,6 +1263,67 @@ final class DurabilityTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.draft(id: kept.id))
     }
 
+    /// Today's Delete saves the kept typed words at once, through
+    /// `commitKeptTypedWords`, and the launch text pass is the fallback for
+    /// the same draft. Whatever happens between the two, the words are
+    /// stored once: one session, not two. Two things make that true, and
+    /// each is exercised here rather than assumed.
+    ///
+    /// The handoff. Killed after Today's commit and before it releases the
+    /// draft, the draft names a committed session, and the launch releases
+    /// it before the text pass can replay it.
+    ///
+    /// Deduplication. A replay the handoff did not stop, here the kept draft
+    /// as it was before its handoff was recorded, is committed as typing
+    /// under the same start time as Today's save, so it lands in the in-app
+    /// window and returns the session already stored. The kept draft is
+    /// dated a minute back, so the text pass's twelve-second floor is not
+    /// what keeps it from replaying.
+    ///
+    /// Falsifier: make `releaseHandedOffCaptureDrafts` release nothing and
+    /// the draft is still there after the release step. Have
+    /// `commitKeptTypedWords` commit under `.now` rather than
+    /// `kept.startedAt`, or as `.inAppVoice`, and the replay stores a second
+    /// session.
+    func testTodaysSaveOfKeptTypedWordsAndTheLaunchFallbackStoreThemOnce() async throws {
+        let (draft, _) = try seedTypedThenSpokenDraft(typed: "Call Dana", spokenSoFar: "about the")
+        let kept = try XCTUnwrap(CaptureDraftStore.deleteRecordingKeepingTypedWords(
+            id: draft.id,
+            at: Date().addingTimeInterval(-60)
+        ))
+        XCTAssertEqual(kept.startedAt, draft.startedAt)
+
+        // Today's save, then a kill before it releases the draft.
+        let saved = try await CaptureDraftStore.commitKeptTypedWords(kept, to: repository)
+        XCTAssertTrue(saved.createdNewCapture)
+        XCTAssertEqual(saved.session.originalTranscription, "Call Dana")
+        XCTAssertEqual(CaptureDraftStore.draft(id: kept.id)?.handedOffSessionID, saved.session.id)
+
+        // The launch, one step at a time: the release comes first.
+        repository = nil
+        let launched = makeRepository()
+        launched.releaseHandedOffCaptureDrafts()
+        XCTAssertNil(
+            CaptureDraftStore.draft(id: kept.id),
+            "The launch must release a kept draft whose words reached a committed session"
+        )
+        launched.recoverInterruptedCaptureDraft()
+        repository = launched
+        XCTAssertEqual(try allSessions().map(\.id), [saved.session.id])
+
+        // A replay the handoff does not stop reaches the text pass and is
+        // folded into the stored session.
+        CaptureDraftStore.restore([kept])
+        XCTAssertNil(CaptureDraftStore.draft(id: kept.id)?.handedOffSessionID)
+        relaunch()
+        XCTAssertNil(CaptureDraftStore.draft(id: kept.id), "The text pass never replayed the kept draft")
+        XCTAssertEqual(
+            try allSessions().map(\.id),
+            [saved.session.id],
+            "Today's save and the launch fallback stored the kept words twice"
+        )
+    }
+
     /// A recording with nothing typed before it is deleted outright, as
     /// before. Words typed before speaking and then erased stay erased, both
     /// when the person erases the editor and stops there, and when they
