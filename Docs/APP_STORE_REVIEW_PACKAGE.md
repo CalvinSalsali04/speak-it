@@ -168,7 +168,7 @@ property keys are a closed allowlist (`allowedPropertyKeys`).
 | Usage Data — Other Usage Data | Not collected | — | — | Everything sent is covered by Product Interaction. |
 | Diagnostics — Crash Data | Not collected | — | — | No crash reporter; Apple's opt-in crash reports are Apple's collection. |
 | Diagnostics — Performance Data | **Collected** | No | No | Analytics. `capture_performance` latency buckets (`capture_ready_ms`, `transcription_ms`, `persistence_ms`, and so on) and `speech_capture_quality` audio-level buckets (`rms_bucket`, `peak_bucket`, `clipping_bucket`, `duration_bucket`). No audio content. |
-| Diagnostics — Other Diagnostic Data | **Collected** | No | No | Analytics. `capture_failed` with a closed `error_category` (`storage`, `organization`, `speech`, `network`, `unknown`). |
+| Diagnostics — Other Diagnostic Data | **Collected** | No | No | Analytics. `capture_failed` with a closed `error_category` (`storage`, `organization`, `speech`, `network`, `unknown`); which code path ended a voice capture (`speech_capture_quality`'s closed `finalized_by` and `stop_trigger`); and `capture_recovery` with a closed `path`, `outcome` and `failure_kind`. No words, audio or error messages. |
 | Surroundings — Environment Scanning | Not collected | — | — | — |
 | Body — Hands / Head | Not collected | — | — | — |
 | Other Data | Not collected | — | — | — |

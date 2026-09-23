@@ -874,7 +874,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4068 on 2026-09-23, from
+        the capture diagnostics: six new tests and two extended ones add
+        no literal, because every expected value is a snake_case label
+        with no space and the one private-message fixture, `"The user
+        typed a private thought here"`, was already in
+        `SwiftDataThoughtRepositoryTests`. 4068 -> 4068 on 2026-09-23,
+        from the diagnostics' truthfulness fixes: dropping `max_duration`
+        from the pinned `stop_trigger` set removes a snake_case label,
+        not a multi-word literal. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —

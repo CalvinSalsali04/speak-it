@@ -73,6 +73,21 @@ enum AnalyticsSearchResultBucket: String, Sendable {
     }
 }
 
+/// Which recording recovery a `capture_recovery` event describes.
+enum AnalyticsRecoveryPath: String, CaseIterable, Sendable {
+    /// The capture screen recovering its own recording after live speech failed.
+    case liveAudio = "live_audio"
+    /// The launch pass recovering an interrupted recording.
+    case launchAudio = "launch_audio"
+}
+
+/// How a recording recovery ended: which branch produced the words, or the
+/// closed reason it produced none. Never the words or the recognizer's message.
+enum AnalyticsRecoveryOutcome: Equatable, Sendable {
+    case recovered(CaptureAudioRecoveryEnding)
+    case failed(CaptureRecoveryFailureKind)
+}
+
 enum SpeakItAnalyticsEvent: Sendable {
     case appInstalled
     case appOpened(plan: AnalyticsPlan)
@@ -92,7 +107,20 @@ enum SpeakItAnalyticsEvent: Sendable {
     case captureSaved(source: AnalyticsCaptureSource, itemCount: Int, needsReviewCount: Int, plan: AnalyticsPlan)
     case captureFailed(source: AnalyticsCaptureSource, category: String)
     case capturePerformance(CaptureLatencySample)
-    case speechCaptureQuality(SpeechCaptureAudioQuality, producedWords: Bool)
+    /// `finalizedBy` and `stopTrigger` are both `nil` when the transcriber did
+    /// not finalize this capture (no speech, or words recovered from the
+    /// recording). `stopTrigger` alone is also `nil` on two paths that do
+    /// finalize, because nothing asked the capture to stop: the recognizer
+    /// delivered its own final result while still listening, or an error
+    /// arrived after partial words while still listening. Those send
+    /// `finalized_by` without `stop_trigger`.
+    case speechCaptureQuality(
+        SpeechCaptureAudioQuality,
+        producedWords: Bool,
+        finalizedBy: SpeechFinalizationPath? = nil,
+        stopTrigger: SpeechStopTrigger? = nil
+    )
+    case captureRecovery(path: AnalyticsRecoveryPath, outcome: AnalyticsRecoveryOutcome)
     case freeLimitReached(used: Int)
     case paywallViewed(context: AnalyticsPaywallContext)
     case planSelected(AnalyticsPlan)
@@ -128,6 +156,7 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .captureFailed: "capture_failed"
         case .capturePerformance: "capture_performance"
         case .speechCaptureQuality: "speech_capture_quality"
+        case .captureRecovery: "capture_recovery"
         case .freeLimitReached: "free_limit_reached"
         case .paywallViewed: "paywall_viewed"
         case .planSelected: "plan_selected"
@@ -184,16 +213,15 @@ enum SpeakItAnalyticsEvent: Sendable {
             ["source": source.rawValue, "error_category": Self.safeCategory(category)]
         case .capturePerformance(let sample):
             Self.performanceProperties(sample)
-        case .speechCaptureQuality(let quality, let producedWords):
-            [
-                "recognizer": quality.recognitionEngine?.rawValue ?? "unknown",
-                "audio_profile": quality.profile.rawValue,
-                "rms_bucket": Self.rmsBucket(quality.rmsDecibels),
-                "peak_bucket": Self.peakBucket(quality),
-                "clipping_bucket": Self.clippingBucket(quality.clippedSampleFraction),
-                "duration_bucket": Self.durationBucket(quality.durationMilliseconds),
-                "output_present": producedWords
-            ]
+        case .speechCaptureQuality(let quality, let producedWords, let finalizedBy, let stopTrigger):
+            Self.speechQualityProperties(
+                quality,
+                producedWords: producedWords,
+                finalizedBy: finalizedBy,
+                stopTrigger: stopTrigger
+            )
+        case .captureRecovery(let path, let outcome):
+            Self.recoveryProperties(path: path, outcome: outcome)
         case .freeLimitReached(let used):
             ["free_captures_used": max(0, used)]
         case .paywallViewed(let context):
@@ -229,7 +257,8 @@ enum SpeakItAnalyticsEvent: Sendable {
         "transcription_ms", "semantic_parsing_ms", "temporal_resolution_ms",
         "persistence_ms", "render_ms", "capture_total_ms", "pipeline_complete",
         "requires_review", "recognizer", "audio_profile", "rms_bucket", "peak_bucket",
-        "clipping_bucket", "duration_bucket", "output_present"
+        "clipping_bucket", "duration_bucket", "output_present",
+        "finalized_by", "stop_trigger", "path", "outcome", "failure_kind"
     ]
 
     private static let allowedErrorCategories: Set<String> = [
@@ -242,6 +271,77 @@ enum SpeakItAnalyticsEvent: Sendable {
 
     private static func safeCategory(_ category: String) -> String {
         allowedErrorCategories.contains(category) ? category : "unknown"
+    }
+
+    /// The `capture_failed` stage for an error thrown by `createCaptureResult`.
+    /// Organization never throws: it marks the session failed and returns, so
+    /// a thrown error means the words did not become durable. Anything the
+    /// repository does not name as a storage failure is `unknown`, not a guess.
+    static func captureFailureCategory(forSaveError error: Error) -> String {
+        guard let repositoryError = error as? RepositoryError else { return "unknown" }
+        switch repositoryError {
+        case .storageUnavailable, .saveFailed:
+            return "storage"
+        case .emptyCapture, .emptyTitle, .invalidSplit, .invalidMerge:
+            return "unknown"
+        }
+    }
+
+    private static func speechQualityProperties(
+        _ quality: SpeechCaptureAudioQuality,
+        producedWords: Bool,
+        finalizedBy: SpeechFinalizationPath?,
+        stopTrigger: SpeechStopTrigger?
+    ) -> [String: Any] {
+        var properties: [String: Any] = [
+            "recognizer": quality.recognitionEngine?.rawValue ?? "unknown",
+            "audio_profile": quality.profile.rawValue,
+            "rms_bucket": rmsBucket(quality.rmsDecibels),
+            "peak_bucket": peakBucket(quality),
+            "clipping_bucket": clippingBucket(quality.clippedSampleFraction),
+            "duration_bucket": durationBucket(quality.durationMilliseconds),
+            "output_present": producedWords
+        ]
+        if let finalizedBy {
+            properties["finalized_by"] = finalizedBy.rawValue
+        }
+        if let stopTrigger {
+            properties["stop_trigger"] = stopTrigger.rawValue
+        }
+        return properties
+    }
+
+    private static func recoveryProperties(
+        path: AnalyticsRecoveryPath,
+        outcome: AnalyticsRecoveryOutcome
+    ) -> [String: Any] {
+        switch outcome {
+        case .recovered(let ending):
+            return ["path": path.rawValue, "outcome": ending.rawValue]
+        case .failed(let kind):
+            return [
+                "path": path.rawValue,
+                "outcome": "failed",
+                "failure_kind": recoveryFailureKindValue(kind)
+            ]
+        }
+    }
+
+    /// The persisted raw values are camelCase and must not change, so the
+    /// analytics spelling is mapped here. Exhaustive on purpose: a new kind
+    /// cannot reach analytics until it is named in this vocabulary.
+    static func recoveryFailureKindValue(_ kind: CaptureRecoveryFailureKind) -> String {
+        switch kind {
+        case .noSpeechDetected: "no_speech_detected"
+        case .missingRecording: "missing_recording"
+        case .permissionRequired: "permission_required"
+        case .recognizerUnavailable: "recognizer_unavailable"
+        case .onDeviceRecognitionUnavailable: "on_device_recognition_unavailable"
+        case .timedOut: "timed_out"
+        case .cancelled: "cancelled"
+        case .storageUnavailable: "storage_unavailable"
+        case .unknown: "unknown"
+        }
     }
 
     private static func safeCollection(_ collection: String) -> String {
