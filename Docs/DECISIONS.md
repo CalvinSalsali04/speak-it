@@ -91,9 +91,10 @@ confidence below 0.82 to it. Every other constructor defaults it to
 old behaviour, which errs toward no list and never toward a wrong one. The
 default is safe only because the field's one reader, the shopping pass, runs
 before any site that copies a reading (the pronoun copy runs after it); a
-later reader placed after a copy would see the default. The shopping pass names a row in review only when
-`isHeldOnlyForPlaceAndTime` is true. A held row still lends no fire moment to
-the trip-clause fold, because it rings at no time.
+later reader placed after a copy would see the default. The shopping pass
+names a row in review only when `isHeldOnlyForPlaceAndTime` is true. A held
+row still lends no fire moment to the trip-clause fold, because it rings at no
+time.
 `SwiftDataThoughtRepositoryTests.testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`
 pins this. **Falsifier:** a shopping row in review for another reason, with
 or without the hold beside it, that is named for the store. The other
