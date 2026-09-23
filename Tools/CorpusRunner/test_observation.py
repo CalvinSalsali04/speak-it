@@ -957,7 +957,25 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         4072 the same day, from dropping this change's own alarm sweep, which
         duplicated #127's: two `DurabilityTests` messages go with their
         tests, that one and `"Relaunch must cancel an alarm that no row asks
-        for"`, and none is added. What the test
+        for"`, and none is added. 4068 -> 4073 on 2026-09-23, from
+        the row's bell and the scheduler reading one delivery function:
+        three tests in `ItemPresentationTests`, five literals, all
+        assertion messages — `"precondition: the wording asks for no
+        alert"`, `"a future reminder date is scheduled whatever the
+        wording says"`, `"the row must not deny an alert iOS is
+        holding"`, `"precondition: the alarm was given a moment"` and
+        `"precondition: the day was heard"`. Both fixtures add nothing,
+        `"Call the accountant tomorrow"` being in `DurabilityTests` and
+        `"Set an alarm for 6:45 tomorrow"` in `SemanticCorpusDataC`, and
+        a phrase the doc comment first quoted was put in backticks
+        instead. 4073 -> 4074 the same day, from the review of that change:
+        three more tests in `ItemPresentationTests` (the receipt counting a
+        hand-set reminder once, its kind label matching the scheduler's
+        delivery, and a past reminder date armed with no request) add one
+        fixture, `"Set an alarm for 6:45 and call the accountant
+        tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
+        the wording asks for no alert"` are reused, and their doc comments
+        quote in backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1008,7 +1026,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #145 into the V1 candidate: measured from the merged tree, not
         taken from either side (4150 on the candidate, 4072 on #145,
         4068 at their merge base; #145 adds 6 and removes 2, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4154 -> 4160 on
+        2026-09-23, merging #122 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4154 on the
+        candidate, 4074 on #122, 4068 at their merge base; #122 adds 6
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1018,7 +1041,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4154)
+        self.assertEqual(len(space), 4160)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

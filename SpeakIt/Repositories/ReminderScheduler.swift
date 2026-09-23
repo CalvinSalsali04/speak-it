@@ -30,11 +30,13 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     init?(item: CapturedItem) {
         guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
         let originalText = item.originalTextSegment
-        // The same memoized reading the rows render from. Today rebuilds these
-        // requests on every render pass to keep its scheduling signature live,
-        // which made two fresh `ThoughtOrganizer` parses per reminder item here
-        // the single largest cost of scrolling that screen.
-        let wordedDelivery = ItemPresentation.effectiveReminderDelivery(for: item)
+        // The same function the row's bell reads, so what a row says is armed
+        // and what iOS is handed cannot disagree. It is memoized underneath:
+        // Today rebuilds these requests on every render pass to keep its
+        // scheduling signature live, which made two fresh `ThoughtOrganizer`
+        // parses per reminder item here the single largest cost of scrolling
+        // that screen.
+        let scheduledDelivery = ItemPresentation.scheduledDelivery(for: item)
 
         itemID = item.id
         captureSessionID = item.captureSession?.id
@@ -42,7 +44,7 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             from: item.displayTitle == originalText ? originalText : item.displayTitle
         )
         self.fireDate = fireDate
-        delivery = wordedDelivery == .alarm ? .alarm : .notification
+        delivery = scheduledDelivery
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
             fireDate: fireDate
@@ -923,12 +925,11 @@ enum ReminderScheduler {
 
     @MainActor
     private static func deliveryKindLabel(for item: CapturedItem) -> String {
-        guard item.reminderDate != nil else { return "Timeline" }
-        let delivery = ThoughtOrganizer.organize(
-            item.originalTextSegment,
-            referenceDate: item.createdAt
-        ).reminderDelivery
-        return delivery == .alarm ? "Alarm" : "Reminder"
+        switch ItemPresentation.scheduledDelivery(for: item) {
+        case .none: return "Timeline"
+        case .alarm: return "Alarm"
+        case .notification: return "Reminder"
+        }
     }
 
     private static func schedule(
