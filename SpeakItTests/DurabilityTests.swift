@@ -437,6 +437,124 @@ final class DurabilityTests: XCTestCase {
         )
     }
 
+    /// A broad request listed every active row as its candidates, the
+    /// placeholder of an unfinished capture included, and confirming it
+    /// deleted that capture with its last row, transcript and all. The
+    /// finished capture is still cancelled; the unfinished one is not named,
+    /// the prompt counts one item, and the capture is organized at relaunch.
+    ///
+    /// Falsifiers: listing broad candidates from `activeItems` alone fails the
+    /// outcome's candidates and the stored record; with the check at
+    /// confirmation gone as well, the session, its words and the two rows at
+    /// relaunch fail too (the next test covers that check alone); a fix that
+    /// also left out finished rows fails on "Buy milk".
+    func testAConfirmedBroadCancelLeavesAnUnfinishedCaptureAndItsWords() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let sessionID = try killAfterRawPersistence(twoThoughts, status: .failed)
+        let placeholderID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+
+        let broad = try await capture("Cancel every reminder")
+
+        guard case let .needsConfirmation(operation, candidateIDs) = try XCTUnwrap(broad.operationOutcome) else {
+            return XCTFail("A broad cancel must be held for confirmation")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertEqual(candidateIDs, [milkID], "an unorganized capture was named for deletion")
+        let reviewRow = try XCTUnwrap(try rows(inSession: broad.session.id).first)
+        XCTAssertEqual(PendingOperationStore.record(for: reviewRow.id)?.candidateIDs, [milkID])
+        XCTAssertEqual(
+            repository.pendingOperationCandidateIDs(for: reviewRow), [milkID],
+            "the prompt would count a capture confirming leaves alone"
+        )
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        XCTAssertNil(try allItems().first { $0.id == milkID }, "the finished capture was not cancelled")
+        XCTAssertNil(try allItems().first { $0.id == reviewRow.id }, "the review row is resolved")
+        XCTAssertEqual(
+            try storedSession(sessionID).originalTranscription, twoThoughts,
+            "the unfinished capture and its words were deleted"
+        )
+        let untouched = try rows(inSession: sessionID)
+        XCTAssertEqual(untouched.map(\.id), [placeholderID])
+        XCTAssertEqual(untouched.first?.isCompleted, false)
+        XCTAssertEqual(untouched.first?.isReviewed, false)
+
+        relaunch()
+
+        XCTAssertEqual(
+            try rows(inSession: sessionID).count, 2,
+            "recovery must still split the capture the cancel never reached"
+        )
+        XCTAssertEqual(try storedSession(sessionID).processingStatus, .complete)
+    }
+
+    /// The list is fixed when the request is held, and a capture can be
+    /// unfinished by the time it is confirmed: a record written before this
+    /// exclusion existed, or a session `Organize again` left `.failed`. Such a
+    /// record names the placeholder directly here, with a complete, which
+    /// would stamp the mark recovery reads as the person's hand and close the
+    /// capture unorganized.
+    ///
+    /// Falsifier: confirmation or the prompt count reading the stored list
+    /// without checking each row again fails the count, the placeholder's
+    /// `isCompleted`, and the two rows at relaunch.
+    func testConfirmingAHeldBroadRequestSkipsARowWhoseCaptureIsUnfinishedNow() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let broad = try await capture("Cancel every reminder")
+        let reviewRow = try XCTUnwrap(try rows(inSession: broad.session.id).first)
+        let sessionID = try killAfterRawPersistence(twoThoughts)
+        let placeholderID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+        PendingOperationStore.set(
+            operation: .complete,
+            candidateIDs: [milkID, placeholderID],
+            for: reviewRow.id
+        )
+
+        XCTAssertEqual(repository.pendingOperationCandidateIDs(for: reviewRow), [milkID])
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        XCTAssertEqual(try allItems().first { $0.id == milkID }?.isCompleted, true)
+        let untouched = try rows(inSession: sessionID)
+        XCTAssertEqual(untouched.map(\.id), [placeholderID])
+        XCTAssertEqual(untouched.first?.isCompleted, false, "the placeholder was marked done")
+        XCTAssertNil(PendingOperationStore.record(for: reviewRow.id))
+
+        relaunch()
+
+        XCTAssertEqual(
+            try rows(inSession: sessionID).count, 2,
+            "recovery must still organize the capture the confirmation skipped"
+        )
+    }
+
+    /// The control: a row of the same shape and words (the whole transcript,
+    /// unreviewed, needing clarification) whose capture is `.complete` is
+    /// named and cancelled like any other.
+    ///
+    /// Falsifier: an exclusion keyed on how the row looks rather than on its
+    /// capture's state (needs clarification, zero confidence, a segment equal
+    /// to the transcript) keeps this row and fails every assertion below.
+    func testABroadCancelStillReachesAPlaceholderShapedRowOfAFinishedCapture() async throws {
+        let milkID = try await capture("Buy milk").primaryItem.id
+        let sessionID = try killAfterRawPersistence(twoThoughts, status: .complete)
+        let rowID = try XCTUnwrap(try rows(inSession: sessionID).first).id
+
+        let broad = try await capture("Cancel every reminder")
+
+        guard case let .needsConfirmation(_, candidateIDs) = try XCTUnwrap(broad.operationOutcome) else {
+            return XCTFail("A broad cancel must be held for confirmation")
+        }
+        XCTAssertEqual(Set(candidateIDs), [milkID, rowID])
+        let reviewRow = try XCTUnwrap(try rows(inSession: broad.session.id).first)
+        XCTAssertEqual(Set(repository.pendingOperationCandidateIDs(for: reviewRow)), [milkID, rowID])
+
+        try repository.confirmPendingOperation(reviewRow)
+
+        XCTAssertTrue(try allItems().isEmpty, "everything the confirmed request named is cancelled")
+    }
+
     /// Recovery re-reads the words with the rules-only extractor while the live
     /// path uses the full one. If those two disagree about whether a sentence is
     /// an operation, a kill turns "cancel the dentist reminder" into a task
