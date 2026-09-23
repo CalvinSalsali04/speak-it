@@ -28,29 +28,50 @@
 > citations in the animacy entry were correct until the commit that wrote this
 > paragraph grew a docstring above them, and nothing said so.
 
-## A held row arms nothing, and three edges of that remain
+## A held row arms nothing, and four edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or
-geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
+geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
 
-- **Saving counts as confirming.** A held row saved in the editor with Needs
-  review still on arms what the editor showed, because every editor save marks
-  the intent `isUserEdited` and the manual toggle looks the same in storage.
-  Telling them apart needs a stored marker.
+- **Saving counts as confirming, for the time and the place.** A held row
+  saved in the editor with Needs review still on arms what the editor showed,
+  because every editor save marks the temporal intent `isUserEdited` and
+  marks a place it leaves present the same way, and the manual toggle looks
+  the same in storage. Telling them apart needs a stored marker. The cost:
+  `apply` never re-reads a hand-set place, so a place saved once is fixed
+  against every later re-read (Organize again, split, merge, undo). Once a
+  re-read also keeps a hand-set time (#143), the rule is "an editor save
+  confirms the row's time and place; re-reads never change them". That is a
+  product-level choice and a reversible default for the owner's decision
+  batch. For the editor screen the place half is not new, because it has
+  always sent a present place back as an edit, which marks it; what is new is
+  `update(_:with:)` marking a place its caller left unchanged, which in the
+  app today is the voice reschedule.
 - **A held series that is not a single native trigger goes stale.** A
   weekday, interval or ordinal series held for review spawns no successor and
   is not rolled forward, so it waits in Needs review with a past proposed
   date. Once confirmed, the next foreground continues the series; the save
   itself arms nothing, because the date has passed.
-- **A restore can hold a reading it never saw.** `applyICloudSnapshot` writes
-  `needsClarification` from the snapshot even when the snapshot carries no
-  intents, so the hold lands on this device's own readings. If the person had
-  edited the time here while the place stayed as parsed, the place still
-  arms, because `mayArmPlace` reads either mark. Reaching it needs an iCloud
-  restore of a row held on another device, and a restore already does not
-  re-plan places until the next foreground. The fix that fails closed is to
-  clear the marks of the intents a snapshot does not carry when it sets the
-  hold. It is left out because it would also drop a mark the person set.
+- **A restore can hold a reading it never saw, and arms only a place
+  confirmed here.** `applyICloudSnapshot` writes `needsClarification` from
+  the snapshot even when the snapshot carries no intents, so the hold lands on
+  this device's own readings. `mayArmPlace` reads only the location mark, so a
+  place this device parsed stays unwatched under that hold, whatever was done
+  to the time here. What remains: a snapshot without portable semantics does
+  not carry a place, so a place the person confirmed on this device keeps its
+  mark and still arms under a hold set on another device. That place is the
+  person's own, as a time edited here is, and the time half is unchanged. A
+  snapshot with portable semantics writes both intents and the hold from one
+  reading, so it cannot mix them. Reaching any of this needs an iCloud restore
+  of a row held on another device, and a restore already does not re-plan
+  places until the next foreground.
+- **A row saved before this build may hold its place until saved again.** A
+  save that left a present place unchanged did not mark it before this build,
+  so such a row carries the time's mark and not the place's. If the system
+  holds it, its place is not watched until the person saves or resolves it.
+  The editor screen always marked a present place, so in practice this is a
+  row last moved by voice. It is the safe direction: a place reminder waits,
+  and nothing unconfirmed is watched.
 
 ## A considered thought and a committed one look the same once stored
 

@@ -1462,7 +1462,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         var locationChanged = false
         switch edits.locationIntent {
         case .unchanged:
-            break
+            // A save confirms the place it left alone, exactly as the temporal
+            // intent above is marked on every save. `mayArmPlace` reads only
+            // this mark, so without it turning Needs review on by hand would
+            // silence a place the person kept (E19). The trigger is not
+            // changed, so the revision and `firedAt` stay and no region moves.
+            // Written back even when already marked, as `.update` is, so the
+            // trigger kind the temporal write above just set is put back to
+            // the place.
+            if var kept = item.locationIntent {
+                kept.isUserEdited = true
+                item.locationIntent = kept
+            }
         case var .update(intent):
             if let previous = item.locationIntent {
                 let triggerChanged = intent.event != previous.event

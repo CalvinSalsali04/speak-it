@@ -740,9 +740,12 @@ final class LocationReminderTests: XCTestCase {
     /// on in the editor marks the saved intent `isUserEdited`, so the place
     /// stays watched and a crossing still delivers.
     ///
+    /// The save leaves the place `.unchanged`, and `update(_:with:)` stamps a
+    /// present place it leaves alone, as it stamps the time.
+    ///
     /// Falsifier: make `mayArmPlace` read `!needsClarification` alone, or
-    /// the location mark only (the save leaves an unchanged place unmarked),
-    /// and the person's own toggle silences their place reminder.
+    /// remove the stamping of an unchanged place from `update(_:with:)`, and
+    /// the person's own toggle silences their place reminder.
     func testAPlaceRowThePersonHoldsIsStillDelivered() async throws {
         setHome()
         let item = try repository.createCapture(
@@ -768,6 +771,100 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertTrue(item.hasLivePlaceTrigger)
         await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
         XCTAssertNotNil(item.locationIntent?.firedAt, "the person's own hold does not silence them")
+    }
+
+    /// A row the system held, saved in the editor with Needs review left on
+    /// and the place left `.unchanged`, arms the place the editor showed, as
+    /// the same save arms the time ("Saving counts as confirming" in
+    /// KNOWN_ISSUES). `mayArmPlace` reads only the location mark, so the
+    /// stamp `update(_:with:)` puts on a present, unchanged place is all
+    /// that releases it. The stamp confirms the trigger without changing it:
+    /// the revision stays, so iOS keeps the same region.
+    ///
+    /// Falsifier: remove the stamping of an unchanged place from
+    /// `update(_:with:)` and the place keeps no mark, so the saved row is
+    /// neither watched nor delivered.
+    func testSavingAHeldPlaceRowWithThePlaceUnchangedArmsThePlace() async throws {
+        setHome()
+        let text = "Remind me to take the bins out when I get home"
+        let reading = ThoughtOrganizer.organize(text)
+        let item = CapturedItem(
+            originalTextSegment: text,
+            displayTitle: "Take the bins out",
+            itemType: .task,
+            processingConfidence: 0.64,
+            needsClarification: true,
+            temporalIntent: reading.temporalIntent,
+            locationIntent: reading.locationIntent
+        )
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        XCTAssertFalse(item.hasLivePlaceTrigger, "precondition: the system holds it")
+        let revision = try XCTUnwrap(item.locationIntent?.triggerRevision)
+
+        try repository.update(item, with: ItemEdits(
+            title: item.displayTitle,
+            itemType: item.itemType,
+            category: item.category,
+            dueDate: item.dueDate,
+            reminderDate: item.reminderDate,
+            priority: item.priority,
+            personName: item.personName,
+            needsClarification: true
+        ))
+
+        XCTAssertTrue(item.needsClarification)
+        XCTAssertEqual(item.locationIntent?.isUserEdited, true, "the save confirmed the place it showed")
+        XCTAssertEqual(item.locationIntent?.triggerRevision, revision, "confirming is not a new trigger")
+        XCTAssertTrue(item.hasLivePlaceTrigger)
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertNotNil(item.locationIntent?.firedAt, "the saved place is delivered")
+    }
+
+    /// A place nobody confirmed is not released by the time's mark. The
+    /// sequence that reaches it: the person clears the time and removes the
+    /// parsed place in the editor, which marks the empty time; Organize again,
+    /// once a re-read keeps a hand-set time with its mark, re-reads the place
+    /// and the hold. This branch's `apply` rewrites the temporal intent, so the
+    /// row is built in the state that sequence leaves (a restore carrying no
+    /// intents can leave it too): the time's mark, a parsed place with none,
+    /// held. The time is empty so the place is not a combined request, which
+    /// would keep it unwatched by another rule.
+    ///
+    /// Falsifier: let `mayArmPlace` read the temporal mark as well (the
+    /// either-mark rule) and the re-read place is watched and delivered.
+    func testTheTimesMarkDoesNotReleaseAPlaceNobodyConfirmed() async throws {
+        setHome()
+        let text = "Remind me to take the bins out when I get home"
+        let reading = ThoughtOrganizer.organize(text)
+        let item = CapturedItem(
+            originalTextSegment: text,
+            displayTitle: "Take the bins out",
+            itemType: .task,
+            needsClarification: true,
+            temporalIntent: TemporalIntent.userEdited(
+                dueDate: nil,
+                reminderDate: nil,
+                recurrence: nil,
+                sourceText: text,
+                calendar: .autoupdatingCurrent
+            ),
+            locationIntent: reading.locationIntent
+        )
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        XCTAssertTrue(item.temporalIntent?.isUserEdited == true, "precondition: the time carries the mark")
+        XCTAssertFalse(item.locationIntent?.isUserEdited == true, "precondition: the place does not")
+        XCTAssertFalse(item.constrainsBothPlaceAndTime, "precondition: a place alone")
+        XCTAssertNil(item.locationBlocker(authorization: authorized))
+
+        XCTAssertFalse(ItemPresentation.mayArmPlace(item))
+        XCTAssertFalse(item.hasLivePlaceTrigger)
+        let reconciliation = repository.reconcileLocationReminders()
+        XCTAssertFalse(reconciliation.monitored.contains(item.id))
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertNil(item.locationIntent?.firedAt, "a place nobody confirmed is not delivered")
+        XCTAssertFalse(ItemPresentation.make(for: item, authorization: authorized).reminderState.isArmed)
     }
 
     // MARK: Firing exactly once

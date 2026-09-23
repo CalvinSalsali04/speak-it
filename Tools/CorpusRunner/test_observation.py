@@ -941,7 +941,18 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         single-item receipt loop, and one `"got \\(result.receiptContext)"`.
         The transcripts that loop captures add nothing, because each is
         already in this directory, and the doc comments quote in backticks.
-        What the test
+        4140 -> 4148 the same day, from merging the place half of the hold
+        reading only the place's mark (4121 -> 4129 on its own branch): two
+        tests in `LocationReminderTests` add eight literals, none of them
+        already on this branch, counted by diffing this census before and
+        after the merge. Seven are assertion messages, `"the save confirmed
+        the place it showed"`, `"confirming is not a new trigger"`, `"the
+        saved place is delivered"`, `"precondition: the time carries the
+        mark"`, `"precondition: the place does not"`, `"precondition: a place
+        alone"` and `"a place nobody confirmed is not delivered"`; the eighth
+        is a KNOWN_ISSUES heading a doc comment quotes, `"Saving counts as
+        confirming"`. The transcript, the title and `"precondition: the
+        system holds it"` were already here. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -955,7 +966,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4140)
+        self.assertEqual(len(space), 4148)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

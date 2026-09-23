@@ -72,17 +72,32 @@ The rule has one half per trigger, both in `ItemPresentation`:
 
 - `mayArmTime`, which is true unless `needsClarification` is set and the
   temporal intent is not `isUserEdited`;
-- `mayArmPlace`, which is true unless `needsClarification` is set and neither
-  intent is `isUserEdited`.
+- `mayArmPlace`, which is true unless `needsClarification` is set and the
+  location intent is not `isUserEdited`.
 
-Every save in the editor marks the temporal intent `isUserEdited`, so the
-manual Needs review toggle keeps its reminder and its place armed, and so does
-any edited reminder. The halves differ because a reorganize (`apply`) rewrites
-the temporal intent, wiping its mark, and keeps a hand-set place with its mark.
-A single rule that read either mark let a confirmed place release a guessed
-time, the failure this entry exists to stop. The place half still reads the
-temporal mark, because the save does not mark a place it did not change, and
-without it the manual toggle would silence the person's own place reminder.
+Each trigger is released only by the person's confirmation of that trigger.
+Every save in the editor marks the temporal intent `isUserEdited`, and
+`update(_:with:)` marks a place it leaves present the same way, so the manual
+Needs review toggle keeps its reminder and its place armed, and so does any
+edited reminder. A single rule that read either mark let a confirmed place
+release a guessed time, because a reorganize (`apply`) rewrites the temporal
+intent, wiping its mark, and keeps a hand-set place with its mark. The place
+half first read either mark too, because a save that left the place unchanged
+did not mark it, and without the time's mark the manual toggle would have
+silenced the person's own place reminder. That rested on no re-read keeping
+the time's mark, and #143 keeps a hand-set time with its mark: a person who
+cleared the time and removed the parsed place, then chose Organize again,
+would get the place re-read under a re-imposed hold and watched through the
+time's mark. So the unchanged place is now marked at the save instead, and
+the place half reads its own mark alone. The editor screen already sent a
+present place back as an edit, which marks it, so for that screen only the
+reason changed; the voice reschedule is the caller that newly marks one. The
+cost is that a place saved once is never re-read again (Organize again, split,
+merge, undo), which with #143 makes "an editor save confirms the row's time
+and place; re-reads never change them" the rule. It is a product-level choice
+and a reversible default, listed for the owner's decision batch. A row saved
+before this build through a path that left its place unchanged holds that
+place until it is saved again, which is the safe direction.
 The same save is how a hold is resolved, and `update` already reschedules
 after it; it now also re-reconciles regions when the save changed whether a
 place row may arm. `markReviewed` resynchronizes the same way.
@@ -139,7 +154,9 @@ person saved. No SemanticCorpus row's expected delivery changes, because the
 corpus reads the parser's `reminderDelivery`, not scheduling. Pinned by
 `ItemPresentationTests`, `TemporalFullPathTests`
 (`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed`),
-`LocationReminderTests`, `SwiftDataThoughtRepositoryTests`
+`LocationReminderTests` (`testSavingAHeldPlaceRowWithThePlaceUnchangedArmsThePlace`,
+`testTheTimesMarkDoesNotReleaseAPlaceNobodyConfirmed`),
+`SwiftDataThoughtRepositoryTests`
 (`testAHandSetPlaceDoesNotReleaseAGuessedTimeAfterReorganizing`),
 `MorningBriefTests` and `DurabilityTests`.
 
