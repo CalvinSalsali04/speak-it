@@ -3215,6 +3215,150 @@ private extension String {
     }
 }
 
+/// Returns what `work` produces, or `nil` once `budget` has passed, whichever
+/// comes first, and cancels the one that lost.
+///
+/// A task group cannot do this. `withTaskGroup` waits for every child before
+/// it returns, `cancelAll()` included, so a timer child that wins only sets a
+/// flag the model call may not look at for a while, and the capture waits for
+/// the model anyway. Here the losing work is cancelled and left to finish on
+/// its own; nothing waits for it, and its result is dropped.
+enum BudgetedWork {
+    static func firstResult<T: Sendable>(
+        within budget: Duration,
+        _ work: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        let race = BudgetRace<T>()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+                let worker = Task {
+                    let value = await work()
+                    race.settle(value)
+                }
+                let timer = Task {
+                    try? await Task.sleep(for: budget)
+                    race.settle(nil)
+                }
+                race.wait(continuation) {
+                    worker.cancel()
+                    timer.cancel()
+                }
+            }
+        } onCancel: {
+            // A capture that is itself cancelled stops waiting at once.
+            race.settle(nil)
+        }
+    }
+
+    /// The same race, admitting one piece of work at a time. The budget
+    /// stops the capture waiting, not the work, so an abandoned call can
+    /// still be running when the next capture arrives; that capture gets
+    /// `nil` at once instead of starting a second call beside it. The token
+    /// is released when the work itself ends, not when the race does.
+    static func firstResult<T: Sendable>(
+        within budget: Duration,
+        oneAtATime token: InFlightToken,
+        _ work: @escaping @Sendable () async -> T?
+    ) async -> T? {
+        // Checked before the claim: once claimed, the work must run, because
+        // only the work releases the token.
+        guard !Task.isCancelled, let claim = token.claim() else { return nil }
+        return await firstResult(within: budget) {
+            defer { token.release(claim) }
+            return await work()
+        }
+    }
+}
+
+/// Admits one holder at a time; `claim` answers at once and never waits.
+///
+/// A claim older than `staleAfter` counts as free. Only the work releases a
+/// claim, so a call that never returns would otherwise hold it for the rest
+/// of the process. Each claim is numbered, and a late release from the
+/// holder that was taken over does not free the one that replaced it.
+final class InFlightToken: @unchecked Sendable {
+    struct Claim: Equatable, Sendable {
+        fileprivate let number: UInt64
+    }
+
+    private let lock = NSLock()
+    private let staleAfter: Duration
+    private let onTakeover: (@Sendable () -> Void)?
+    private var current: (claim: Claim, at: ContinuousClock.Instant)?
+    private var issued: UInt64 = 0
+
+    /// `onTakeover` runs, outside the lock, each time a stale claim is taken
+    /// over, so a deadline that is too short or a call that really hangs can
+    /// be seen rather than guessed at.
+    init(staleAfter: Duration, onTakeover: (@Sendable () -> Void)? = nil) {
+        self.staleAfter = staleAfter
+        self.onTakeover = onTakeover
+    }
+
+    func claim() -> Claim? {
+        lock.lock()
+        let now = ContinuousClock.now
+        if let current, now - current.at < staleAfter {
+            lock.unlock()
+            return nil
+        }
+        let tookOver = current != nil
+        issued += 1
+        let claim = Claim(number: issued)
+        current = (claim, now)
+        lock.unlock()
+        if tookOver { onTakeover?() }
+        return claim
+    }
+
+    func release(_ claim: Claim) {
+        lock.lock()
+        defer { lock.unlock() }
+        if current?.claim == claim { current = nil }
+    }
+}
+
+/// The first `settle` wins. Either the continuation or the outcome can arrive
+/// first, since the two tasks start before `wait` stores the continuation.
+private final class BudgetRace<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var outcome: T??
+    private var continuation: CheckedContinuation<T?, Never>?
+    private var cancelLosers: (@Sendable () -> Void)?
+
+    func settle(_ value: T?) {
+        lock.lock()
+        guard outcome == nil else {
+            lock.unlock()
+            return
+        }
+        outcome = .some(value)
+        let waiting = continuation
+        let cancel = cancelLosers
+        continuation = nil
+        cancelLosers = nil
+        lock.unlock()
+        waiting?.resume(returning: value)
+        cancel?()
+    }
+
+    func wait(
+        _ continuation: CheckedContinuation<T?, Never>,
+        cancelling cancelLosers: @escaping @Sendable () -> Void
+    ) {
+        lock.lock()
+        if let outcome {
+            lock.unlock()
+            continuation.resume(returning: outcome)
+            cancelLosers()
+            return
+        }
+        self.continuation = continuation
+        self.cancelLosers = cancelLosers
+        lock.unlock()
+    }
+}
+
 #if canImport(FoundationModels)
 @available(iOS 26.0, *)
 enum IntelligentThoughtExtractor {
@@ -3272,20 +3416,19 @@ enum IntelligentThoughtExtractor {
         RefinementPolicy.shouldRefine(transcript, fallback: fallback)
     }
 
+    /// Nothing else serialises model calls: `extract` builds a new
+    /// `LanguageModelSession` each time. A call still running ten budgets
+    /// after it began is treated as hung, so one stuck call cannot turn
+    /// refinement off until the next launch.
+    private static let modelInFlight = InFlightToken(staleAfter: .seconds(20)) {
+        CapturePerformanceSignposts.event("RefinementClaimTakenOver")
+    }
+
     static func extractWithinBudget(
         _ transcript: String, referenceDate: Date, calendar: Calendar
     ) async -> [ExtractedThought]? {
-        await withTaskGroup(of: [ExtractedThought]?.self) { group in
-            group.addTask {
-                await extract(transcript, referenceDate: referenceDate, calendar: calendar)
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(2))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
+        await BudgetedWork.firstResult(within: .seconds(2), oneAtATime: modelInFlight) {
+            await extract(transcript, referenceDate: referenceDate, calendar: calendar)
         }
     }
 

@@ -1637,6 +1637,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         hand"`, `"already in review"`), three interpolated messages read
         as literal text (`"\\(name): review flag changed"` and two
         siblings) and 16 other assertion messages.
+        4068 -> 4074 on 2026-09-23, from `BudgetedWorkTests`: six new
+        literals, all assertion messages, none a fixture, enumerated by
+        diffing the literal sets rather than counted from the tests.
+        4074 -> 4079 the same day, from the two tests the grade asked
+        for (one model call at a time, and a cancelled capture): five
+        more assertion messages, no fixture. 4079 -> 4083 from the
+        second round's two (a capture cancelled mid-call, and the claim
+        deadline): four assertion messages. 4083 -> 4085 from the third
+        round: the claimed-path precondition and the takeover being
+        observable, two assertion messages.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -1849,7 +1859,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         in the second merge rehearsal: measured from the merged tree,
         not taken from either side (4728 on the candidate, 4190 on #136,
         4167 at their merge base; #136 adds 23 and removes 0, 1 of its
-        additions was already on the candidate).
+        additions was already on the candidate). 4750 -> 4767 on
+        2026-09-23, merging #146 at `8d50b6c` into the V1 candidate in
+        the second merge rehearsal: measured from the merged tree, not
+        taken from either side (4750 on the candidate, 4085 on #146,
+        4068 at their merge base; #146 adds 17 and removes 0, 0 of its
+        additions were already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1859,7 +1874,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4750)
+        self.assertEqual(len(space), 4767)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
