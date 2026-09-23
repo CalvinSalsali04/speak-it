@@ -1012,7 +1012,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         and two literals, both assertion messages, `"this no longer
         reproduces the failed state the typing fallback reads"` and `"a
         failed run has no Live Activity left to end"`. The error domain is
-        one word and adds nothing.
+        one word and adds nothing. 4184 stays 4184 the same day, when that
+        test's last assertion was found to be entailed by the one above it
+        (`joined` with an empty second argument returns the first) and was
+        removed: one assertion message out, `"the spoken words were saved a
+        second time after the editor that already held them"`, and one in,
+        `"the transcriber kept words the editor already holds, for the next
+        save to add again"`, now on the empty-transcript assertion that can
+        fail. `"buy milk"`, which went with it, was under the floor.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly

@@ -358,9 +358,15 @@ final class CaptureFeedbackTests: XCTestCase {
     /// and that is the state the forgetting used to skip: the next Save &
     /// Close joined those words after an editor that already held them.
     ///
+    /// Save & Close is modelled by hand, not run: `CaptureView` is a SwiftUI
+    /// view this suite cannot drive. The model is that a later save reads
+    /// `transcriber.transcript` and `joined` adds nothing for an empty one,
+    /// so what is pinned is the transcriber's edge, that nothing is left for
+    /// a later save to read, and not the screen.
+    ///
     /// Falsifier: move `releaseTranscript()` in `stopForTyping` back inside
-    /// the `else if state != .idle` branch and the `.idle` half fails, on the
-    /// joined words as well as on the empty transcript.
+    /// the `else if state != .idle` branch and the `.idle` half fails on the
+    /// empty transcript.
     ///
     /// The typing fallback after a voice failure goes through the same call,
     /// from `.failed`, where the run is still open. Falsifier: delete the
@@ -368,7 +374,6 @@ final class CaptureFeedbackTests: XCTestCase {
     /// nothing closes the run or settles the state.
     func testTypeInsteadForgetsTheSpokenWordsInEveryState() {
         let transcriber = SpeechTranscriber(reportsAudioLevel: false)
-        let typed = "buy milk"
 
         // A finished run: the final result closes it and hands its words on.
         let finished = transcriber.beginRunWithoutAudioForTesting()
@@ -380,13 +385,11 @@ final class CaptureFeedbackTests: XCTestCase {
         XCTAssertNil(transcriber.activeRunIDForTesting)
         XCTAssertEqual(transcriber.transcript, spoken, "this no longer reproduces the idle state that kept its words")
 
-        let editor = CaptureDraftStore.joined(typedBeforeSpeaking: typed, spoken: spoken)
         XCTAssertFalse(transcriber.stopForTyping(), "a finished run has no Live Activity to end")
-        XCTAssertEqual(transcriber.transcript, "")
         XCTAssertEqual(
-            CaptureDraftStore.joined(typedBeforeSpeaking: editor, spoken: transcriber.transcript),
-            editor,
-            "the spoken words were saved a second time after the editor that already held them"
+            transcriber.transcript,
+            "",
+            "the transcriber kept words the editor already holds, for the next save to add again"
         )
 
         // A run still listening: cancelled, and its words forgotten likewise.
