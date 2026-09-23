@@ -1654,9 +1654,18 @@ final class LocationReminderTests: XCTestCase {
     /// `reminderTriggerKindRawValue == "location"`, and this reminder is never
     /// fetched, so it is neither monitored nor blocked.
     ///
-    /// It is also the only test that the scoped `#Predicate` translates in the
-    /// store at all. A predicate that does not translate fails at fetch time,
-    /// the reconcile returns an empty plan, and this assertion fails.
+    /// It is one of three tests that would see the scoped `#Predicate` fail to
+    /// translate in the store. A predicate that does not translate fails at
+    /// fetch time, and the reconcile returns an empty plan. This assertion
+    /// fails on that plan, and so do
+    /// `testReconcileAccountsForEveryLocationReminder`, which needs both of its
+    /// reminders accounted for, and
+    /// `testAFiredOneShotIsNotReArmedByTheNextReconcile`, which needs its
+    /// repeating reminder still accounted for after firing. The other tests
+    /// that call the reconcile assert only what an empty plan also satisfies:
+    /// that a reminder is not monitored or not blocked, or has not fired. The
+    /// rest of this file's `monitored` checks read
+    /// `LocationReminderMonitor.plan(for:)` directly and never reach the fetch.
     func testALivePlaceWithNoTriggerKindIsStillPlanned() throws {
         setHome()
         let item = try repository.createCapture(

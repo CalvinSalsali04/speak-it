@@ -948,7 +948,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         assertion messages, enumerated by diffing the set against the
         committed head. Their fixtures add nothing: `"Call the dentist"` is
         in eight other files already, and the bins, garbage and badge-in sentences
-        were in this one. What the test
+        were in this one. 4113 -> 4113 on 2026-09-23, from that change's
+        third grading: a doc comment in `LocationReminderTests` was
+        corrected to name the three tests that reach the scoped fetch, and
+        a comment holds no literal, so none came in or went out. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
