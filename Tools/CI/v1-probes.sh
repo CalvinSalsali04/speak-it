@@ -16,13 +16,17 @@
 #   build            Tools/PipelineProbe, built from this tree
 #   dec24            december-24.txt through the probe: report, JSON and a
 #                    table (dec24.tsv). Recorded, not judged: GATE-1 waits on
-#                    the owner's Q5. PASS means the probe answered every line
+#                    the owner's Q5. PASS means the probe exited 0 and gave
+#                    exactly one answer per sentence (count.py)
 #   151-held         reported-speech-held.txt: every capture gives exactly one
 #                    row, held for review, gap reportedSpeech, no due date, no
 #                    reminder. A verdict
 #   151-unchanged    reported-speech-unchanged.txt: every capture's rows are
 #                    identical here and on the candidate just before #151 was
-#                    merged (BEFORE_151 below). A verdict
+#                    merged (BEFORE_151 below). A verdict, and FAIL before any
+#                    probe runs if BEFORE_151 is not this tree's first parent:
+#                    then the tree is not the #151 merge, and the comparison
+#                    would charge a later merge's changes to #151
 #   136-conditional  Tools/CorpusRunner/devsets/conditional-intent-score.sh (72 rows)
 #   136-cancellation Tools/CorpusRunner/devsets/cancellation-scope-score.sh (187 rows)
 #   136-timing       #136's R1 timing: one long unpunctuated capture, 200 times,
@@ -55,7 +59,9 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 BEFORE_CAP=11c93d79301c89c66c485b8b7963afa80cf0253d
 CAP_ONLY=26e69c0c4c40553d326d21e89376f2550d1ae16e
 # The candidate's first parent in "Merge #151 ... into the V1 candidate"
-# (5f2c2d3): the candidate as it was just before #151.
+# (5f2c2d3): the candidate as it was just before #151. Checked against the
+# tree's own HEAD^1 before it is used: when the rc pin moves past that merge,
+# 151-unchanged fails and says this constant needs updating.
 BEFORE_151=a9f75173ba44b60a85d9a358089ac78f90749bf0
 LONG_CAPTURE="Remind me when I get home from the long weekend away with the whole family and the dog and our neighbours from the cottage down the road Friday to call Mom"
 
@@ -128,6 +134,16 @@ for n, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
             when(item.get("due")), when(item.get("reminder")), item.get("delivery", "-"),
             item.get("state", "-"), item.get("stateGap") or "-",
             item.get("unsupportedTrigger") or "-", ops, capture["text"]]))
+PY
+
+cat > "$SCRATCH/count.py" <<'PY'
+# One probe answer per input sentence, the sentences filtered the way the
+# probe filters them (blank lines and lines starting with '#' skipped).
+import sys
+inputs = [l for l in open(sys.argv[1], encoding="utf-8") if l.strip() and not l.startswith("#")]
+got = [l for l in open(sys.argv[2], encoding="utf-8") if l.strip()]
+print(f"{len(got)}/{len(inputs)}")
+sys.exit(0 if len(got) == len(inputs) else 1)
 PY
 
 cat > "$SCRATCH/held.py" <<'PY'
@@ -312,7 +328,11 @@ if [ -n "$PROBE" ] \
   && "$PROBE" "$INPUTS/december-24.txt" > "$OUT/dec24-report.txt" 2>&1 \
   && "$PROBE" --json "$INPUTS/december-24.txt" > "$OUT/dec24.jsonl" 2> "$OUT/dec24.err" \
   && python3 "$SCRATCH/table.py" "$OUT/dec24.jsonl" > "$OUT/dec24.tsv" 2>> "$OUT/dec24.err"; then
-  record dec24 PASS "$(grep -c . "$OUT/dec24.jsonl") captures recorded in dec24.tsv; read, not judged"
+  if answered="$(python3 "$SCRATCH/count.py" "$INPUTS/december-24.txt" "$OUT/dec24.jsonl" 2>> "$OUT/dec24.err")"; then
+    record dec24 PASS "$answered sentences answered, recorded in dec24.tsv; read, not judged"
+  else
+    record dec24 FAIL "the probe answered ${answered:-an unreadable number of} sentences (answers/sentences); see dec24.jsonl"
+  fi
   [ -s "$OUT/dec24.err" ] || rm -f "$OUT/dec24.err"
 else
   record dec24 FAIL "see dec24.err"
@@ -334,8 +354,11 @@ else
 fi
 
 # --- 151-unchanged -----------------------------------------------------------
+TREE_PARENT="$(git -C "$TREE" rev-parse --verify --quiet 'HEAD^1' || echo none)"
 if [ -z "$PROBE" ]; then
   record 151-unchanged FAIL "no probe"
+elif [ "$TREE_PARENT" != "$BEFORE_151" ]; then
+  record 151-unchanged FAIL "the tree's first parent is ${TREE_PARENT:0:7}, not BEFORE_151 ${BEFORE_151:0:7}: the RC has moved past #151's merge, so this comparison would charge later merges to #151. The constant BEFORE_151 in Tools/CI/v1-probes.sh needs updating (and the step rethinking: against this tree's first parent it would isolate the latest merge, not #151)"
 elif ! historical_probe "$BEFORE_151" before-151; then
   record 151-unchanged FAIL "could not check out or build ${BEFORE_151:0:7}; see before-151-checkout.log or before-151-build.log"
 elif "$PROBE" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/151-unchanged.jsonl" 2> "$OUT/151-unchanged.err" \
