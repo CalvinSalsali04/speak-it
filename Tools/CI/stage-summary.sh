@@ -12,7 +12,10 @@
 # same three for UI_) are the counts `unit-tests.sh` read from the result
 # bundle, printed beside the verdict: one word hides whether a red selection is
 # the NaturalLanguage diagnostic failing on purpose or a rule failing by
-# accident. Writes to stdout and, on CI, to the job summary.
+# accident. GATE_BLOCKING is the corpus gate's BLOCKING(crit+beh) count, which
+# the gate step reads back out of the gate's own log, for the same reason: a
+# bare FAIL cannot tell one known blocking row from forty regressions. Writes to
+# stdout and, on CI, to the job summary.
 set -euo pipefail
 
 verdict() {
@@ -39,6 +42,22 @@ tested() {
   fi
 }
 
+# The gate's verdict with its blocking count. A gate that ran but left no
+# count (it stopped before corpus-run printed one) says so rather than showing
+# a number it does not have.
+gated() {
+  local outcome="$1" blocking="$2"
+  case "$outcome" in
+    success|failure) ;;
+    *) verdict "$outcome"; return ;;
+  esac
+  if [ -n "$blocking" ]; then
+    echo "$(verdict "$outcome") ($blocking blocking)"
+  else
+    echo "$(verdict "$outcome") (no blocking count: the gate stopped before corpus-run reported one; see the step log)"
+  fi
+}
+
 commit="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 xcode="$(xcodebuild -version 2>/dev/null | tr '\n' ' ' || true)"
 table="$(cat <<TABLE
@@ -46,7 +65,7 @@ table="$(cat <<TABLE
 |---|---|
 | commit | \`${commit}\` |
 | toolchain | ${xcode:-unknown} |
-| corpus gate | $(verdict "${GATE:-}") |
+| corpus gate | $(gated "${GATE:-}" "${GATE_BLOCKING:-}") |
 | Swift compiled (app, extensions, test bundles) | $(verdict "${COMPILE:-}") |
 | tests: ${SELECTION:-SpeakItTests} | $(tested "${UNIT:-}" "${UNIT_PASSED:-}" "${UNIT_FAILED:-}" "${UNIT_SKIPPED:-}") |
 | Release build (separate Release compile, not gated on the one above) | $(verdict "${RELEASE:-}") |
