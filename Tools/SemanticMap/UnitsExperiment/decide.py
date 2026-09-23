@@ -27,6 +27,9 @@ MULTI_UNIT_SHARE = 0.5     # of captures whose gold has >= 2 units, view `any`
 # primarily "dropped" and must still count as a cut (grader round 8, F1).
 # Filler-only is silent too: nothing at runtime knows which atoms are filler.
 SILENT_CUT_CLASSES = {"over-split", "absorbed", "wrong-boundaries", "filler-only"}
+# The guarded-family gate is about separating content from its carrier, so a
+# unit that is only filler counts there only when it also cuts content (round 9).
+GUARDED_CUT_CLASSES = {"over-split", "absorbed", "wrong-boundaries"}
 MAX_SILENT_CUTS = 3        # captures, view `any`
 MAX_BROKEN_SINGLES = 2     # captures the one-unit answer gets exact and the candidate does not
 NO_SILENT_CUT_FAMILIES = {"reported-speech", "message-content", "deliberation-decision"}
@@ -91,7 +94,8 @@ def gates(arm, table, own_table, golds_any, golds_own, families, inputs):
 
     multi = su.multi_ids(golds_any)
     silent = [r["id"] for r in table if arm in r and set(r[arm][1]) & SILENT_CUT_CLASSES]
-    risky = [cid for cid in silent if set(families.get(cid, [])) & NO_SILENT_CUT_FAMILIES]
+    risky = [r["id"] for r in table if arm in r and set(r[arm][1]) & GUARDED_CUT_CLASSES
+             and set(families.get(r["id"], [])) & NO_SILENT_CUT_FAMILIES]
     broken = [r["id"] for r in table if r["one-unit"][0] == "exact" and arm in r and r[arm][0] != "exact"]
     values = {
         "exact_any": exact(table), "exact_own": exact(own_table),
@@ -112,9 +116,9 @@ def gates(arm, table, own_table, golds_any, golds_own, families, inputs):
         ("multi-unit recovery, view any",
          values["multi_exact"] >= MULTI_UNIT_SHARE * values["multi_total"],
          f"{values['multi_exact']} >= {MULTI_UNIT_SHARE} x {values['multi_total']}"),
-        ("silent wrong cuts (over-split, absorbed, wrong-boundaries)",
+        ("silent wrong cuts (over-split, absorbed, wrong-boundaries, filler-only)",
          len(silent) <= MAX_SILENT_CUTS, f"{len(silent)} <= {MAX_SILENT_CUTS}: {', '.join(silent) or 'none'}"),
-        ("no silent cut in reported speech, message content or deliberation",
+        ("no content cut in reported speech, message content or deliberation",
          not risky, ", ".join(risky) or "none"),
         ("single-unit captures broken",
          len(broken) <= MAX_BROKEN_SINGLES, f"{len(broken)} <= {MAX_BROKEN_SINGLES}: {', '.join(broken) or 'none'}"),
@@ -274,6 +278,22 @@ def selftest():
             masked = [(a, a + (b - a) // 2 - 1), (a + (b - a) // 2 + 1, b)] + spans[1:]
             run = replace(perfect_r, {cid}, lambda i, m=masked: ranges_record(i, m))
             expect(f"guarded cut masked by a dropped atom ({cid})", run + whole_l, "C")
+    # A filler-only unit: one extra start on a filler line. It spends the silent
+    # budget but, alone, is not a content cut in a guarded family.
+    def extra_filler_start(item):
+        for gold in golds_any[item["id"]]:
+            for first, last in item["lines"]:
+                if first and set(range(first, last + 1)) <= gold.filler:
+                    return perfect_starts(item) | {first}
+        return None
+    filler_ids = [i["id"] for i in inputs if extra_filler_start(i) is not None]
+    guarded = [c for c in filler_ids if set(families.get(c, [])) & NO_SILENT_CUT_FAMILIES]
+    unguarded = [c for c in filler_ids if c not in guarded]
+    if guarded:
+        run = replace(perfect_l, {guarded[0]}, lambda i: labels_record(i, extra_filler_start(i)))
+        expect(f"one filler-only unit in a guarded family ({guarded[0]}) does not disqualify", whole_r + run, "B")
+    run = replace(perfect_l, set(unguarded[:4]), lambda i: labels_record(i, extra_filler_start(i)))
+    expect("four filler-only units exceed the silent budget", whole_r + run, "C")
     # Outright wins inside both-qualify.
     expect("A outright: labels all-continues on 4 multi-unit captures",
            perfect_r + replace(perfect_l, set(multi[:4]), lambda i: labels_record(i, set())), "A")
@@ -307,7 +327,8 @@ def main():
     outcome, lines = decide(*load(options))
     print("\n".join(lines))
     print()
-    print(f"OUTCOME {outcome}")
+    clear = " (no clear winner)" if any(line.startswith("NO CLEAR WINNER") for line in lines) else ""
+    print(f"OUTCOME {outcome}{clear}")
     return 0
 
 
