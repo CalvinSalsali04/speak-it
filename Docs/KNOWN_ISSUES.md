@@ -537,6 +537,17 @@ The specifics:
   rather than the pin, and the editor says *Off while a date is set* until the
   date is turned off again.
 
+  So there are two routes into this held state — a place and a date in the
+  same capture, and a date turned on in the editor for a live place reminder —
+  and both show the place reminder as off while a date is set. They differ
+  elsewhere. The captured one is also marked `needsClarification` and waits in
+  Needs review; the editor one keeps its review state and stays an ordinary
+  dated row. And only the place half is held: the clock scheduler does not read
+  `constrainsBothPlaceAndTime`, so an item that carries a `reminderDate` still
+  rings at that time. "When I get home tonight" stores a due date and no
+  `reminderDate`, so nothing rings; `Remind me` turned on in the editor stores
+  one, and the row shows that reminder armed because iOS is holding it.
+
   This replaced an earlier design that kept both halves live independently. That
   version scheduled the 8pm notification *and* monitored the region, so the
   person would have been told at 8pm whether or not they were home, and told

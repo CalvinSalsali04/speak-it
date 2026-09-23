@@ -908,7 +908,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         written as 4068 -> 4076 on its own branch, before it was stacked
         on the delivery change above; the two sets of additions do not
         overlap, so the merged tree was measured at 4082 rather than
-        either side's figure being kept. What the test
+        either side's figure being kept. 4082 -> 4088 on 2026-09-23, from
+        that change's review: one more `LocationReminderTests` method, the
+        sibling that turns on `Remind me` rather than `Has a due date`, so
+        the held item carries a `reminderDate` the clock scheduler still
+        arms. Six literals, all assertion or failure messages
+        (`"precondition: the wording names no alert of its own"`, `"a held
+        item's reminder date is still scheduled"`, `"the row must show the
+        reminder iOS is holding for a held place"`, `"the row's time is the
+        time that fires"`, `"the row's bell is the alert that fires"`, and
+        the `XCTFail` text `"a held item with a reminder is shown by its
+        time, got \\(state)"`, which counts with its interpolation
+        unexpanded). Its fixture is the same bins sentence as the test
+        before it and adds nothing, and its doc comment quotes in
+        backticks. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -922,7 +935,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4082)
+        self.assertEqual(len(space), 4088)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
