@@ -439,4 +439,249 @@ final class PersonMentionTests: XCTestCase {
         XCTAssertEqual(person("Let Priya know the trip is cancelled"), "Priya")
         XCTAssertNil(person("let me know when you land"))
     }
+
+    // MARK: - Entity context: what the words around a name say it is
+
+    /// A motion or arrival frame reaches a **destination**, and reading its
+    /// object as a human is how "when I get to <shop>" filed a person.
+    ///
+    /// The discriminator is the particle and nothing else: these verbs do
+    /// address people, but through one ("get back to", "reach out to", "walk
+    /// over to"), and a bare "to" after them is a place. No list of shops is
+    /// consulted, so a destination nobody has heard of is read the same way a
+    /// famous one is — which is the point, because the previous answer came
+    /// from whether Apple's name tagger happened to carry an entry.
+    func testAMotionFrameReachesAPlaceAndNeverAPerson() {
+        let destinations = [
+            "when I get to Sobeys",
+            "remind me to buy stamps when I get to Shoppers",
+            "walk to Riverdale after dinner",
+        ]
+        for utterance in destinations {
+            XCTAssertNil(
+                PersonMentionResolver.primary(in: utterance),
+                "\(utterance) named \(PersonMentionResolver.mentions(in: utterance).map(\.label))"
+            )
+            XCTAssertEqual(PersonMentionResolver.entityKind(in: utterance), .place, utterance)
+        }
+    }
+
+    /// The other half of the same rule, which is what keeps it from being a
+    /// deletion: with a particle these verbs still reach the person behind it.
+    func testAParticleStillCarriesAMotionVerbToAPerson() {
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "get back to Alex about the quote")?.label, "Alex"
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "reach out to Priya tomorrow")?.label, "Priya"
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "walk over to Sam and ask")?.label, "Sam"
+        )
+        // Unchanged control: the verbs that were never motion verbs.
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "follow up with Dana on Friday")?.label, "Dana"
+        )
+    }
+
+    /// Three rules can produce a person — the object of an address verb, the
+    /// subject of a fact, and the owner of something — and only the first
+    /// consulted any non-person evidence. So the identical phrase was refused
+    /// in one frame and filed in another, one function away.
+    func testTheSameEntityEvidenceAppliesWhereverANameCanArrive() {
+        // The address rule, which already refused these. The control.
+        XCTAssertNil(PersonMentionResolver.primary(in: "Call Sterling Bank about the transfer"))
+        // The fact subject, which did not.
+        XCTAssertNil(
+            PersonMentionResolver.primary(in: "Sterling Bank needs my signature by Friday"),
+            "a bank is not somebody, in whichever slot it is said"
+        )
+        // The owner of something, which did not either.
+        XCTAssertNil(
+            PersonMentionResolver.primary(in: "Lakeshore Dental's policy is twenty-four hours")
+        )
+        // And a person in the same two shapes, so this is evidence and not a
+        // rule that has stopped reading subjects and owners at all.
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Marguerite needs my signature by Friday")?.label,
+            "Marguerite"
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Marguerite's flight is at six")?.label,
+            "Marguerite"
+        )
+    }
+
+    /// A department written as an acronym collides with an ordinary word once
+    /// its case is folded away, and the collision threw the target out twice:
+    /// the name rules refused "IT" correctly, and the *described* reader then
+    /// refused it too — so a perfectly clear errand was held for review asking
+    /// who to message.
+    ///
+    /// Paired with the shape that really does name nobody, so the assertion
+    /// cannot pass by the frame simply not being a follow-up.
+    func testADepartmentAcronymIsATargetAndNotAPronoun() throws {
+        XCTAssertEqual(
+            PersonMentionResolver.followUpTarget(in: "message IT support about the printer"),
+            .described("IT support")
+        )
+        XCTAssertNil(PersonMentionResolver.primary(in: "message IT support about the printer"))
+        XCTAssertEqual(
+            PersonMentionResolver.entityKind(in: "message IT support about the printer"), .role
+        )
+
+        let named = try repository.createCapture(text: "message IT support about the printer")
+        XCTAssertNotEqual(
+            named.clarificationRequirement, .person,
+            "the capture says who to message"
+        )
+
+        XCTAssertEqual(
+            PersonMentionResolver.followUpTarget(in: "message them about the printer"), .missing
+        )
+        let unnamed = try repository.createCapture(text: "message them about the printer")
+        XCTAssertEqual(
+            unnamed.clarificationRequirement, .person,
+            "control: the same frame with nobody in it still asks who"
+        )
+    }
+
+    /// An overdraft, a premium or a prescription refill is a relationship held
+    /// with an institution, and a human is not on the other end of one. The
+    /// evidence is the complement, not the name, so an unfamiliar company is
+    /// read the same way a famous one is.
+    ///
+    /// The cost of a wrong call is bounded and chosen: the target stays on the
+    /// row as words and nothing is asked — only the filing under People is
+    /// withheld. That is why this fires without asking the name tagger, which
+    /// reads most companies as surnames because most of them are.
+    func testAnAccountIsHeldWithAnInstitutionAndNotWithAPerson() throws {
+        try XCTSkipUnless(
+            PersonMentionResolver.primary(in: "call Vestara about the overdraft")?.label == "Vestara",
+            "control: the recognizer already refuses this name in this process, "
+                + "so the contrast between the two complements cannot be read here"
+        )
+        XCTAssertNil(
+            PersonMentionResolver.primary(in: "call Vestara about my overdraft"),
+            "an overdraft is held with an institution"
+        )
+        // Kinship is exempt, and it is exempt before any of this is read.
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "call Mom about my prescription")?.label, "Mom"
+        )
+        // A noun a person can own just as easily keeps its person.
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "text Jess about my card")?.label, "Jess"
+        )
+    }
+
+    /// The whole contrast, on one invented name, in four frames. If any of
+    /// these answers came from a list of companies or places the name would
+    /// have to be in it, and it is in nothing.
+    func testTheSameNameChangesKindWithTheFrameAroundIt() throws {
+        try XCTSkipIf(
+            PersonMentionResolver.nameEvidence(for: "Marlowe").organization,
+            "control: the name tagger reads this name as an organization in this "
+                + "process, so the person row cannot be read here"
+        )
+        XCTAssertEqual(PersonMentionResolver.entityKind(in: "call Marlowe on Friday"), .person)
+        XCTAssertEqual(
+            PersonMentionResolver.entityKind(in: "when I get to Marlowe pick up the order"), .place
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.entityKind(in: "call Marlowe Dental on Friday"), .organization
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.entityKind(in: "message Marlowe support about the outage"), .role
+        )
+    }
+
+    /// `walk` is a motion verb and a social noun in the same file — "a walk
+    /// with Priya tomorrow" is how people record who they are seeing — and the
+    /// first version of the motion rule vetoed its connector rather than its
+    /// destination, so "walk with Sam" named nobody.
+    ///
+    /// The second assertion is why that mattered more than a missing name.
+    /// `ThoughtExtractor`'s boundary rules ask the person layer whether the
+    /// left conjunct names somebody, so losing Sam collapsed a two-errand
+    /// capture into one row and **the Friday errand was gone**. Losing a
+    /// thought the person just spoke is the failure this app cannot have.
+    func testAccompanimentIsNotADestination() {
+        XCTAssertEqual(PersonMentionResolver.primary(in: "walk with Sam tomorrow")?.label, "Sam")
+        XCTAssertEqual(PersonMentionResolver.primary(in: "a walk with Priya tomorrow")?.label, "Priya")
+        // The destination reading is unchanged: "to" is what the veto is
+        // written against, and "with" never marks one.
+        XCTAssertNil(PersonMentionResolver.primary(in: "walk to Riverdale after dinner"))
+
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules(
+                "Walk with Sam tomorrow and Priya Friday",
+                referenceDate: referenceDate,
+                calendar: calendar
+            ).items.count,
+            2,
+            "the Friday errand is a second thought and must survive"
+        )
+    }
+
+    /// A head noun beside a name belongs to the target — "Northwind
+    /// accounting" — but behind a possessive it is the thing possessed, and it
+    /// belongs to nobody but the owner. Reading it as the owner's head took
+    /// the person off the row in every shape where somebody owns a thing with
+    /// an institutional word in its name.
+    ///
+    /// Nothing caught this. The suite's other possessive case is
+    /// "Marguerite's flight is at six", and `flight` is in none of the head
+    /// lists, so it passed and read as assurance.
+    func testAPossessedNounIsNotTheOwnersHead() {
+        XCTAssertEqual(PersonMentionResolver.primary(in: "Return Sam's library book")?.label, "Sam")
+        XCTAssertEqual(PersonMentionResolver.primary(in: "Sign Alex's school forms")?.label, "Alex")
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Grab Priya's medical records")?.label, "Priya"
+        )
+        XCTAssertEqual(
+            PersonMentionResolver.primary(in: "Email Dana's team about the change")?.label, "Dana"
+        )
+        // The control, so the scan is not simply switched off: a head noun
+        // that is *not* behind a possessive still types the phrase.
+        XCTAssertNil(PersonMentionResolver.primary(in: "Call Sterling Bank about the transfer"))
+    }
+
+    /// The frames the name tagger is asked in are not supposed to contain the
+    /// answer, and the two this file used to build did: "I spoke with <name>"
+    /// and "<name> said hello" are constructions only a human is grammatical
+    /// in. For a bare company name that tag is the *only* evidence there is —
+    /// there is no head noun beside it to read — so a leading question there
+    /// decides the whole case.
+    ///
+    /// **This test measures consistency, not correctness.** It pins the one
+    /// property that must hold, that the replacement frames do not lose a real
+    /// person, and prints the organization comparison rather than asserting
+    /// it: whether the frame was what decided those is a measurement, and
+    /// pinning an expectation to it here would be writing the answer down
+    /// before reading it. If the printed pairs are identical, the frame was
+    /// not the cause and only a model can type those words.
+    func testTheTaggerFrameIsNotALeadingQuestion() throws {
+        let controls = ["Sarah", "Priya", "Catherine"]
+        try XCTSkipUnless(
+            controls.contains { PersonMentionResolver.leadingFrameEvidence(for: $0).personal },
+            "NLTagger produced no personal-name tag for any control name in this "
+                + "process, so nothing here can answer either way"
+        )
+        for name in controls where PersonMentionResolver.leadingFrameEvidence(for: name).personal {
+            XCTAssertTrue(
+                PersonMentionResolver.nameEvidence(for: name).personal,
+                "the neutral frames must not cost a real person their tag: \(name)"
+            )
+        }
+        for name in ["Costco", "Shopify", "Loblaws", "Telus", "Lululemon", "Amex"] {
+            let leading = PersonMentionResolver.leadingFrameEvidence(for: name)
+            let neutral = PersonMentionResolver.nameEvidence(for: name)
+            print(
+                "entity-frame-comparison \(name) leading(personal:\(leading.personal),"
+                    + "organization:\(leading.organization)) "
+                    + "neutral(personal:\(neutral.personal),organization:\(neutral.organization))"
+            )
+        }
+    }
 }
