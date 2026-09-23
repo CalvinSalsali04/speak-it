@@ -49,7 +49,9 @@ hold it for the rest of the process and turn refinement off until the next
 launch, silently. So a claim older than twenty seconds, ten budgets, counts
 as free, and claims are numbered so the hung call's eventual release cannot
 free the claim that replaced it. The cost of a truly hung call is then two
-model calls in flight for a while, and refinement stays available. The grade of this change found
+model calls in flight for a while, and refinement stays available. Each
+takeover emits a `RefinementClaimTakenOver` signpost, so whether twenty
+seconds is long enough can be read off a device rather than assumed. The grade of this change found
 both (`/mnt/project-files/v1/pr146-fm-budget-grade.md`, F1 and F2).
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it

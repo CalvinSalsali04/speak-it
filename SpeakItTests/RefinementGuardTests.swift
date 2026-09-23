@@ -421,6 +421,9 @@ final class BudgetedWorkTests: XCTestCase {
             }
         }
         try? await Task.sleep(for: .milliseconds(50))
+        // Otherwise the cancellation could land before the claim, and the
+        // test would pass without ever taking the path it is about.
+        XCTAssertNil(token.claim(), "The call had not claimed the token before the cancellation")
         waiting.cancel()
         let result = await waiting.value
         XCTAssertNil(result)
@@ -437,12 +440,15 @@ final class BudgetedWorkTests: XCTestCase {
 
     /// A call that never returns must not turn refinement off for good.
     func testAClaimThatNeverEndsIsTakenOverAfterItsDeadline() async {
-        let token = InFlightToken(staleAfter: .seconds(1))
+        let takeovers = EventRecorder()
+        let token = InFlightToken(staleAfter: .seconds(3)) {
+            _ = Task { await takeovers.record() }
+        }
         let stuck = token.claim()
         XCTAssertNotNil(stuck)
         XCTAssertNil(token.claim(), "A second claim was admitted beside a live one")
 
-        try? await Task.sleep(for: .milliseconds(1_200))
+        try? await Task.sleep(for: .milliseconds(3_200))
         let fresh = token.claim()
         XCTAssertNotNil(fresh, "A call that never ended held the token for good")
         if let stuck { token.release(stuck) }
@@ -450,6 +456,13 @@ final class BudgetedWorkTests: XCTestCase {
             token.claim(),
             "A late release from the abandoned call freed its replacement's claim"
         )
+        var polls = 0
+        while !(await takeovers.happened), polls < 40 {
+            polls += 1
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let observed = await takeovers.happened
+        XCTAssertTrue(observed, "A takeover happened and nothing could see it")
     }
 }
 

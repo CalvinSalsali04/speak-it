@@ -882,6 +882,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         cancelled capture): five more assertion messages, no fixture.
         4079 -> 4083 from the second round's two (a capture cancelled
         mid-call, and the claim deadline): four assertion messages.
+        4083 -> 4085 from the third round: the claimed-path precondition
+        and the takeover being observable, two assertion messages.
         What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
@@ -896,7 +898,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4083)
+        self.assertEqual(len(space), 4085)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

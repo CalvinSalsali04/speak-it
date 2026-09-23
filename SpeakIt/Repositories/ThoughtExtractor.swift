@@ -2973,21 +2973,31 @@ final class InFlightToken: @unchecked Sendable {
 
     private let lock = NSLock()
     private let staleAfter: Duration
+    private let onTakeover: (@Sendable () -> Void)?
     private var current: (claim: Claim, at: ContinuousClock.Instant)?
     private var issued: UInt64 = 0
 
-    init(staleAfter: Duration) {
+    /// `onTakeover` runs, outside the lock, each time a stale claim is taken
+    /// over, so a deadline that is too short or a call that really hangs can
+    /// be seen rather than guessed at.
+    init(staleAfter: Duration, onTakeover: (@Sendable () -> Void)? = nil) {
         self.staleAfter = staleAfter
+        self.onTakeover = onTakeover
     }
 
     func claim() -> Claim? {
         lock.lock()
-        defer { lock.unlock() }
         let now = ContinuousClock.now
-        if let current, now - current.at < staleAfter { return nil }
+        if let current, now - current.at < staleAfter {
+            lock.unlock()
+            return nil
+        }
+        let tookOver = current != nil
         issued += 1
         let claim = Claim(number: issued)
         current = (claim, now)
+        lock.unlock()
+        if tookOver { onTakeover?() }
         return claim
     }
 
@@ -3100,7 +3110,9 @@ enum IntelligentThoughtExtractor {
     /// `LanguageModelSession` each time. A call still running ten budgets
     /// after it began is treated as hung, so one stuck call cannot turn
     /// refinement off until the next launch.
-    private static let modelInFlight = InFlightToken(staleAfter: .seconds(20))
+    private static let modelInFlight = InFlightToken(staleAfter: .seconds(20)) {
+        CapturePerformanceSignposts.event("RefinementClaimTakenOver")
+    }
 
     static func extractWithinBudget(
         _ transcript: String, referenceDate: Date, calendar: Calendar
