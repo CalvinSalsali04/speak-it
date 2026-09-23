@@ -8,11 +8,12 @@ import UserNotifications
 ///
 /// `reminderDate` is carried for a different reason: it is how the brief knows
 /// whether an item is going to announce itself anyway. An item with a future
-/// reminder rings on its own, with its own name and its own buttons
-/// (`ReminderScheduleRequest.init(item:)` returns nil without one). An overdue
-/// item's reminder has already fired, and a date-only item usually never had
-/// one — those are the items the brief is the only warning for, so those are
-/// the ones it leads with.
+/// reminder rings on its own, with its own name and its own buttons. An
+/// overdue item's reminder has already fired, and a date-only item usually
+/// never had one — those are the items the brief is the only warning for, so
+/// those are the ones it leads with. A recurring series whose alert has fired
+/// stays armed (`ReminderScheduleRequest.forScheduling`), but only for the
+/// occurrences after this one, so for today it is overdue like any other.
 struct MorningBriefItem: Equatable, Sendable {
     var dueDate: Date?
     var isDateOnly: Bool

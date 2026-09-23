@@ -639,7 +639,9 @@ private enum ExternalCaptureWriter {
                 needsInterpretationConfirmation: capture.needsInterpretationConfirmation
             )
         }
-        let requests = capture.items.compactMap(ReminderScheduleRequest.init(item:))
+        // `forScheduling`, like every scheduling pass: a series whose fire has
+        // already passed still arms its repeating trigger (DEL-12).
+        let requests = capture.items.compactMap { ReminderScheduleRequest.forScheduling($0) }
         if !requests.isEmpty {
             let schedulingResults = await ReminderScheduler.synchronizeAndVerify(
                 requests,

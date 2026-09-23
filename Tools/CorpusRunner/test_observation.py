@@ -975,7 +975,83 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         fixture, `"Set an alarm for 6:45 and call the accountant
         tomorrow"`; `"Call the accountant tomorrow"` and `"precondition:
         the wording asks for no alert"` are reused, and their doc comments
-        quote in backticks. What the test
+        quote in backticks. 4068 -> 4077 on 2026-09-23, from
+        snoozing a recurring reminder no longer retiming its series: three
+        `TemporalFullPathTests` tests, nine literals, enumerated rather than
+        assumed, and all nine are assertion messages --
+        `"Precondition: the series alerts at its due time"` (used twice,
+        counted once), `"Precondition: this does not recur"`, `"a repeating
+        trigger built from the snoozed minute retimes the series on the
+        phone"`, `"a snooze belongs to the occurrence it was pressed on"`,
+        `"a snooze moves the alert, not the occurrence"`, `"only a series
+        has an alert of its own to protect"`, `"the occurrence after a
+        snoozed one fires at the series' own time"`, `"the occurrence after
+        the moved one is back on the series' clock"` and `"tomorrow means
+        tomorrow at the series' time, not at the snoozed minute"`. The three
+        fixtures add nothing, because each was already in this directory:
+        `"Remind me every Monday at 9 am to take the bins out"` and `"Remind
+        me in 20 minutes to switch the laundry"` in
+        `SwiftDataThoughtRepositoryTests`, `"Remind me every day at 8 am to
+        take my meds"` in `ReleaseReadinessTests`. Reused on purpose, so
+        the change adds no sentence to this population. 4077 -> 4083 the
+        same day, when review found that change left a snoozed series with
+        nothing armed after the snooze fired, and the fix arms the series'
+        own repeating trigger beside the one-shot: one new
+        `TemporalFullPathTests` test, one new `SwiftDataThoughtRepositoryTests`
+        test and two added assertions, six literals, enumerated rather than
+        assumed, all of them assertion or failure messages -- `"a snoozed
+        occurrence needs its one-shot and its series"`, `"an occurrence back
+        on its series' alert needs no second trigger"`, `"the one-shot fires
+        at the snooze"`, `"the series must be armed as a repeating
+        trigger"`, `"the series' first match must be the next occurrence,
+        not this one again"` and `"the snoozed fire must be a one-shot"`.
+        The one fixture is reused again, and the identifier test's doc
+        comment keeps its names in backticks, so neither adds anything.
+        4083 -> 4088 the same day again, from that change's grading: a
+        series whose alert had fired was disarmed by any scheduling pass
+        that included it, a snooze record could fail without a word, and a
+        failed add left a one-shot armed alone. Four new tests, five
+        literals, enumerated rather than assumed, all assertion messages --
+        `"Precondition: the alert has fired"`, `"Precondition: the snoozed
+        one-shot has fired"`, `"Today still counts only alerts ahead"`, `"a
+        snooze with nowhere to record must make somewhere, not skip the
+        record"` and `"after the snooze fires, the series trigger is all
+        that is left to arm"`. One more message, `"the series must be armed
+        as a repeating trigger"`, is used again and was already here, and
+        the rollback test's identifiers (`"one-shot"`, `"series"`) are under
+        twelve characters, so they were never in this population.
+        4088 -> 4088 the same day, and a swap is worth a line for the same
+        reason a zero was: a hosted Mac in UTC failed the scheduler
+        assertions these tests made under the Toronto pin, so they moved
+        into two machine-zone helpers. One message left, `"a repeating
+        trigger built from the snoozed minute retimes the series on the
+        phone"`, and one arrived, `"the repeating match must be the series'
+        own clock, not the snooze's"`. `"the series' first match must be
+        the next occurrence, not this one again"` moved into a helper and
+        still counts once. One out and one in, enumerated rather than
+        assumed: an unchanged count here is a different population.
+        4088 -> 4093 on 2026-09-23, from the second round of that
+        change's grading. Two tests arrived. One snoozes a recurring place
+        reminder that has no intent blob and checks it stays a place
+        reminder: `"Precondition: a place reminder"`, `"Precondition: no
+        intent blob"`, `"the backfill a snooze makes must not turn a place
+        reminder into a clock reminder"`. The other reads what a scheduling
+        pass selects to arm: `"Remind me tomorrow at 9 am to call the
+        dentist"`, `"a series whose alert has fired must still be armed by
+        the pass"`. They also reuse the weekly bins sentence and
+        `"Precondition: the alert has fired"`, which were already here.
+        4093 -> 4100 on 2026-09-23, from the third round of that
+        change's grading, eight in and one out. The launch backfill test
+        brought `"Remind me tomorrow at 10 am to water the plants"`, `"not
+        an intent"`, `"Precondition: data that will not decode"`, `"the
+        backfill must not re-derive the trigger"`, `"a row with no intent
+        data is still backfilled"` and `"intent data that will not decode
+        must be kept, not replaced"`. The pass read from the notification
+        center brought `"the pass must leave the series armed, not only
+        cancel it"`. One message was false once Today stopped reading
+        `init?(item:)`: `"Today still counts only alerts ahead"` went, and
+        `"an alert that has fired is no longer still ahead"` came.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1031,7 +1107,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the merged tree, not taken from either side (4154 on the
         candidate, 4074 on #122, 4068 at their merge base; #122 adds 6
         and removes 0, 0 of its additions were already on the
-        candidate).
+        candidate). 4160 -> 4192 on 2026-09-23, merging #129 into the V1
+        candidate: measured from the merged tree, not taken from either
+        side (4160 on the candidate, 4100 on #129, 4068 at their merge
+        base; #129 adds 32 and removes 0, 0 of its additions were
+        already on the candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1041,7 +1121,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4160)
+        self.assertEqual(len(space), 4192)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
