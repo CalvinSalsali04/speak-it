@@ -16,7 +16,7 @@
 # in SUMMARY.md for each row whose pin is not its branch's tip, so evidence
 # about a commit a branch has moved past says so itself. Only the manifest's
 # rows are checked: a commit an extra command checks out for itself (the rc
-# row's probes build three fixed historical commits) is not a row and is not
+# row's probes check out up to four fixed historical commits) is not a row and is not
 # compared with anything.
 #
 # Each row is checked out into its own fresh worktree at the exact commit the

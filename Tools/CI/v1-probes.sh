@@ -9,7 +9,8 @@
 # The inputs (Tools/CI/v1-probes/*.txt) live beside this script in the
 # qualification checkout, not in the tree, because they are the qualification's
 # questions and the rc pin predates them. The tools that answer (the probe and
-# the scorers) are always the tree's own.
+# the scorers) are the tree's own, except where a step names fixed commits
+# (151-unchanged, 136-timing), which build their own probes.
 #
 # Steps, one line each in steps.txt (step, PASS or FAIL, detail):
 #
@@ -21,12 +22,15 @@
 #   151-held         reported-speech-held.txt: every capture gives exactly one
 #                    row, held for review, gap reportedSpeech, no due date, no
 #                    reminder. A verdict
-#   151-unchanged    reported-speech-unchanged.txt: every capture's rows are
-#                    identical here and on the candidate just before #151 was
-#                    merged (BEFORE_151 below). A verdict, and FAIL before any
-#                    probe runs if BEFORE_151 is not this tree's first parent:
-#                    then the tree is not the #151 merge, and the comparison
-#                    would charge a later merge's changes to #151
+#   151-unchanged    reported-speech-unchanged.txt: #151 changes only the
+#                    sentences it means to, measured at its merge. Every
+#                    capture's rows are identical at AFTER_151 (the merge) and
+#                    BEFORE_151 (its first parent), both fixed below, so the
+#                    answer is #151's isolated effect whatever lands on the
+#                    candidate later; what the candidate does with reported
+#                    speech is 151-held, run at the tree. A verdict, and FAIL
+#                    before any probe runs if AFTER_151's first parent is not
+#                    BEFORE_151 or AFTER_151 is not in this tree's history
 #   136-conditional  Tools/CorpusRunner/devsets/conditional-intent-score.sh (72 rows)
 #   136-cancellation Tools/CorpusRunner/devsets/cancellation-scope-score.sh (187 rows)
 #   136-timing       #136's R1 timing: one long unpunctuated capture, 200 times,
@@ -37,7 +41,7 @@
 #                    (never the held-out set) and five ineligible controls.
 #                    Recorded
 #
-# The three fixed commits below are not manifest rows, so --check-pins does not
+# The four fixed commits below are not manifest rows, so --check-pins does not
 # look at them. They do not need it: each is a historical commit chosen for what
 # it lacks, not a branch tip, and a commit never moves. Each is checked out into
 # a temporary worktree of the tree's repository and removed on exit.
@@ -58,10 +62,10 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 # phrase's last five words (R1)", and that commit alone.
 BEFORE_CAP=11c93d79301c89c66c485b8b7963afa80cf0253d
 CAP_ONLY=26e69c0c4c40553d326d21e89376f2550d1ae16e
-# The candidate's first parent in "Merge #151 ... into the V1 candidate"
-# (5f2c2d3): the candidate as it was just before #151. Checked against the
-# tree's own HEAD^1 before it is used: when the rc pin moves past that merge,
-# 151-unchanged fails and says this constant needs updating.
+# "Merge #151 ... into the V1 candidate" and its first parent: the candidate
+# with and without #151 and nothing else. 151-unchanged checks that the one is
+# the other's first parent and that the merge is in the tree's history.
+AFTER_151=5f2c2d3b297d0b96796a7b7b13816bfe0ed74025
 BEFORE_151=a9f75173ba44b60a85d9a358089ac78f90749bf0
 LONG_CAPTURE="Remind me when I get home from the long weekend away with the whole family and the dog and our neighbours from the cottage down the road Friday to call Mom"
 
@@ -101,6 +105,7 @@ for path in sys.argv[1:]:
 PY
   echo "before the place-name cap $BEFORE_CAP"
   echo "the place-name cap alone $CAP_ONLY"
+  echo "#151's merge into the candidate $AFTER_151"
   echo "the candidate before #151 $BEFORE_151"
 } > "$OUT/identity.txt"
 
@@ -178,12 +183,12 @@ sys.exit(1 if bad else 0)
 PY
 
 cat > "$SCRATCH/unchanged.py" <<'PY'
-# #151: every capture's rows are identical at the rc pin and before #151.
+# #151: every capture's rows are identical at #151's merge and before it.
 import json, sys
 before = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8")]
 after = [json.loads(l) for l in open(sys.argv[2], encoding="utf-8")]
 if len(before) != len(after):
-    sys.exit(f"{len(before)} answers before #151 but {len(after)} at the rc pin")
+    sys.exit(f"{len(before)} answers before #151 but {len(after)} at its merge")
 bad = 0
 for b, a in zip(before, after):
     if b["text"] != a["text"]:
@@ -193,7 +198,7 @@ for b, a in zip(before, after):
     print(f"{'SAME' if same else 'CHANGED'}\t{a['text']}")
     if not same:
         print(f"  before #151: {json.dumps(b, sort_keys=True)}")
-        print(f"  at rc pin:   {json.dumps(a, sort_keys=True)}")
+        print(f"  with #151:   {json.dumps(a, sort_keys=True)}")
 print(f"# {len(after) - bad}/{len(after)} unchanged by #151")
 sys.exit(1 if bad else 0)
 PY
@@ -354,23 +359,37 @@ else
 fi
 
 # --- 151-unchanged -----------------------------------------------------------
-TREE_PARENT="$(git -C "$TREE" rev-parse --verify --quiet 'HEAD^1' || echo none)"
-if [ -z "$PROBE" ]; then
-  record 151-unchanged FAIL "no probe"
-elif [ "$TREE_PARENT" != "$BEFORE_151" ]; then
-  record 151-unchanged FAIL "the tree's first parent is ${TREE_PARENT:0:7}, not BEFORE_151 ${BEFORE_151:0:7}: the RC has moved past #151's merge, so this comparison would charge later merges to #151. The constant BEFORE_151 in Tools/CI/v1-probes.sh needs updating (and the step rethinking: against this tree's first parent it would isolate the latest merge, not #151)"
-elif ! historical_probe "$BEFORE_151" before-151; then
-  record 151-unchanged FAIL "could not check out or build ${BEFORE_151:0:7}; see before-151-checkout.log or before-151-build.log"
-elif "$PROBE" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/151-unchanged.jsonl" 2> "$OUT/151-unchanged.err" \
-  && "$WT/Tools/PipelineProbe/build/probe" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/151-unchanged-before.jsonl" 2>> "$OUT/151-unchanged.err"; then
-  if python3 "$SCRATCH/unchanged.py" "$OUT/151-unchanged-before.jsonl" "$OUT/151-unchanged.jsonl" > "$OUT/151-unchanged.txt" 2>> "$OUT/151-unchanged.err"; then
-    record 151-unchanged PASS "$(tail -n 1 "$OUT/151-unchanged.txt" | sed 's/^# //')"
-  else
-    record 151-unchanged FAIL "$(tail -n 1 "$OUT/151-unchanged.txt" 2>/dev/null | sed 's/^# //'); see 151-unchanged.txt"
-  fi
-  [ -s "$OUT/151-unchanged.err" ] || rm -f "$OUT/151-unchanged.err"
+# Both sides are fixed commits, never the tree, so a later merge into the
+# candidate cannot be charged to #151.
+AFTER_PARENT="$(git -C "$TREE" rev-parse --verify --quiet "$AFTER_151^1" || echo none)"
+if [ "$AFTER_PARENT" != "$BEFORE_151" ]; then
+  record 151-unchanged FAIL "AFTER_151 ${AFTER_151:0:7}'s first parent is ${AFTER_PARENT:0:7}, not BEFORE_151 ${BEFORE_151:0:7}: the pair is not one merge and its first parent, so it would not isolate #151. Fix the constants in Tools/CI/v1-probes.sh"
+elif ! git -C "$TREE" merge-base --is-ancestor "$AFTER_151" HEAD 2>/dev/null; then
+  record 151-unchanged FAIL "AFTER_151 ${AFTER_151:0:7} is not in the tree's history: the candidate being qualified does not contain this #151 merge, so its effect measured there says nothing about this tree"
 else
-  record 151-unchanged FAIL "a probe failed; see 151-unchanged.err"
+  after_probe=""
+  before_probe=""
+  if [ "$(git -C "$TREE" rev-parse HEAD)" = "$AFTER_151" ] && [ -n "$PROBE" ]; then
+    after_probe="$PROBE"
+  elif historical_probe "$AFTER_151" after-151; then
+    after_probe="$WT/Tools/PipelineProbe/build/probe"
+  fi
+  if historical_probe "$BEFORE_151" before-151; then
+    before_probe="$WT/Tools/PipelineProbe/build/probe"
+  fi
+  if [ -z "$after_probe" ] || [ -z "$before_probe" ]; then
+    record 151-unchanged FAIL "could not check out or build ${AFTER_151:0:7} or ${BEFORE_151:0:7}; see after-151-*.log and before-151-*.log"
+  elif "$after_probe" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/151-unchanged.jsonl" 2> "$OUT/151-unchanged.err" \
+    && "$before_probe" --json "$INPUTS/reported-speech-unchanged.txt" > "$OUT/151-unchanged-before.jsonl" 2>> "$OUT/151-unchanged.err"; then
+    if python3 "$SCRATCH/unchanged.py" "$OUT/151-unchanged-before.jsonl" "$OUT/151-unchanged.jsonl" > "$OUT/151-unchanged.txt" 2>> "$OUT/151-unchanged.err"; then
+      record 151-unchanged PASS "$(tail -n 1 "$OUT/151-unchanged.txt" | sed 's/^# //'), at its merge ${AFTER_151:0:7} against ${BEFORE_151:0:7}"
+    else
+      record 151-unchanged FAIL "$(tail -n 1 "$OUT/151-unchanged.txt" 2>/dev/null | sed 's/^# //'); see 151-unchanged.txt"
+    fi
+    [ -s "$OUT/151-unchanged.err" ] || rm -f "$OUT/151-unchanged.err"
+  else
+    record 151-unchanged FAIL "a probe failed; see 151-unchanged.err"
+  fi
 fi
 
 # --- 136-conditional, 136-cancellation ---------------------------------------

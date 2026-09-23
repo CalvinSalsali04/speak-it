@@ -1,6 +1,6 @@
-# #151 (reported-speech case 4). Each capture's rows must be identical at the
-# rc pin and on the candidate just before #151 was merged: #151 must not
-# change them.
+# #151 (reported-speech case 4). Each capture's rows must be identical at
+# #151's merge into the candidate and at that merge's first parent: #151 must
+# not change them. Measured at the merge, not at the candidate being qualified.
 Sarah said the meeting is off
 Sarah said Mike needs to call the bank
 Sarah said Mike should call the bank tomorrow at 3
