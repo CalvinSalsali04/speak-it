@@ -986,7 +986,37 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         4076 -> 4077 the same day, from `"buy milkshake"`, the fixture
         pinning that the kept words must carry on by whole words.
         The doc comments use backticks, and the development-set overlap
-        stayed at 114. What the test
+        stayed at 114.
+        4068 -> 4076 on 2026-09-23, from
+        launch recovery leaving a capture the person has touched alone:
+        three `DurabilityTests` tests, eight literals, enumerated rather
+        than assumed. One is a fixture, the edited title `Call the plumber
+        about the kitchen leak`, and seven are assertion messages
+        interpolating the processing status, each counted once: `left open,
+        it is re-read at every launch`, `recovery must neither delete the
+        edited row nor add rows beside it`, `recovery must still split the
+        capture it never finished`, `recovery reset the review`, `the
+        hand-picked date was reverted`, `the placeholder was left
+        unorganized`, and `the typed title was reverted`. The two-thought
+        sentence and `The original words are never rewritten` were already
+        in `DurabilityTests` and add nothing. Review of the same change
+        moved it 4076 -> 4090 that day, with three more tests (a spoken
+        move and a spoken cancel held rather than acted on an unorganized
+        placeholder, and each mark keeping recovery off alone) and
+        fourteen more literals. Three are fixtures, `Move the plumber to
+        Friday` and the table names `time set by hand` and `place set by
+        hand`. One is the hazard above once more, `book the car service`
+        quoted in two doc comments and counted once. Ten are assertion
+        messages: `A move whose only match is an unorganized placeholder
+        must be held`, the same with `A cancel`, `recovery must still
+        split the capture the move never reached`, the same with `the
+        cancel`, `the held move stays as a review row`, `the held move
+        was lost at relaunch`, `the placeholder was marked as the
+        person's`, `the placeholder was moved`, and two interpolating the
+        mark's name, `recovery re-read a capture the person had marked`
+        and `the row must carry this mark alone`. `Cancel the plumber
+        reminder` was already in `CaptureOperationTests` and adds
+        nothing. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
