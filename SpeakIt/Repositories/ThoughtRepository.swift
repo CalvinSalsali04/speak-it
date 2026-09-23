@@ -12,6 +12,18 @@ enum LocationIntentEdit: Equatable, Sendable {
     case unchanged
     case update(LocationIntent)
     case remove
+
+    /// What the item editor's Save sends for the place. A place the editor
+    /// showed always comes back as `.update`, changed or not, and that is what
+    /// marks it the person's: `mayArmPlace` releases a held row's place on
+    /// that mark alone, so an editor that skipped an unchanged place would
+    /// silently stop a held row the person saved from arming it (E19). The
+    /// editor cannot add a place, so a row that had none sends `.unchanged`.
+    static func fromEditor(hadPlace: Bool, showing place: LocationIntent?) -> LocationIntentEdit {
+        guard hadPlace else { return .unchanged }
+        guard let place else { return .remove }
+        return .update(place)
+    }
 }
 
 struct ItemEdits {

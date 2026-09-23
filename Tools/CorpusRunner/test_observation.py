@@ -1420,7 +1420,63 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         assertion messages, enumerated by diffing the set against the
         committed head. Their fixtures add nothing: `"Call the dentist"` is
         in eight other files already, and the bins, garbage and badge-in sentences
-        were in this one. What the test
+        were in this one. 4074 -> 4107 on 2026-09-23 again, from rows the
+        system holds for review arming nothing: ten tests across
+        `ItemPresentationTests`, `TemporalFullPathTests`,
+        `LocationReminderTests` and `SwiftDataThoughtRepositoryTests`,
+        thirty-three literals, enumerated by diffing this census against
+        `HEAD` rather than counted from the tests. Six are fixtures or
+        expected output: a transcript, `"Remind me every weekday at 8 except
+        holidays"`; two hand-built titles, `"Take the bins out"` and
+        `"Weekday check-in"`; and three renderings of the withheld trigger,
+        `"Reminder not set · "`, `"Reminder not set · Next time you arrive
+        at Home"` and the interpolated `"Reminder not set · \\(timing)"`,
+        which counts as its source text. Twenty-seven are assertion
+        messages, and five of those appear twice and count once. The other
+        transcripts add nothing, because each is already in this directory:
+        the vague-time and series-exception rows in `SemanticCorpusDataE`
+        and `SemanticCorpusDataD`, `"Remind me to call mom tomorrow at 5pm"`
+        in `ItemPresentationTests`, and both Home transcripts in
+        `LocationReminderTests`. 4107 -> 4117 the same day, from the review
+        of that change: three more tests, one each in
+        `SwiftDataThoughtRepositoryTests` (a hand-set place not releasing a
+        guessed time), `MorningBriefTests` (a held row keeping the brief's
+        lead) and `DurabilityTests` (a whole-store pass cancelling a held
+        row's alarm), add ten literals, all assertion messages. Every
+        fixture they use was already here: `"Remind me to take out the
+        garbage when I get home"`, `"Set an alarm for 6:45 tomorrow"`,
+        `"Pick up the keys"` and `"Private words"`, and so were two of the
+        messages, `"precondition: the system holds it"` and `"the counts
+        are unchanged by the order"`. 4117 -> 4121 the same day, from
+        nothing held being timed by its proposal: `MorningBriefTests`'
+        held-row test is rewritten so the task leads, and one test is added
+        for a list whose only dated entry is held. Five assertion messages
+        are added, `"the held list is not timed by its proposal"`, `"the
+        held list is not counted as due"`, `"a held proposal does not time
+        its list"`, `"the held entry is still on the list"` and `"a held
+        proposal creates no morning"`, and one is removed, `"the held list
+        is the silent one"`, whose claim is no longer true. Every fixture
+        was already here. 4121 -> 4129 the same day, from the place half
+        of the hold reading only the place's mark: two tests in
+        `LocationReminderTests` add eight literals, enumerated by diffing
+        this census. Seven are assertion messages, `"the save confirmed the
+        place it showed"`, `"confirming is not a new trigger"`, `"the saved
+        place is delivered"`, `"precondition: the time carries the mark"`,
+        `"precondition: the place does not"`, `"precondition: a place
+        alone"` and `"a place nobody confirmed is not delivered"`; the
+        eighth is a KNOWN_ISSUES heading a doc comment quotes, `"Saving
+        counts as confirming"`. The transcript, the title and
+        `"precondition: the system holds it"` were already here. 4129 ->
+        4132 the same day, from a save that leaves the place out no longer
+        confirming it: one test in `LocationReminderTests` adds three
+        assertion messages, `"precondition: a place was read"`,
+        `"precondition: nobody confirmed it"` and `"a place the save never
+        named is not confirmed"`, and none is removed. 4132 -> 4134 the
+        same day, from pinning that the editor sends every place it shows
+        back as an edit: one test in `LocationReminderTests` adds two
+        assertion messages, `"a place the editor showed comes back as an
+        edit"` and `"the editor cannot add a place"`, and none is removed.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -1579,7 +1635,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         #135 into the V1 candidate: measured from the merged tree, not
         taken from either side (4485 on the candidate, 4113 on #135,
         4088 at their merge base; #135 adds 25 and removes 0, 0 of its
-        additions were already on the candidate).
+        additions were already on the candidate). 4510 -> 4570 on
+        2026-09-23, merging #138 into the V1 candidate: measured from
+        the merged tree, not taken from either side (4510 on the
+        candidate, 4134 on #138, 4074 at their merge base; #138 adds 60
+        and removes 0, 0 of its additions were already on the
+        candidate).
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -1589,7 +1650,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4510)
+        self.assertEqual(len(space), 4570)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -7,13 +7,19 @@ import UserNotifications
 /// the brief is planned with names allowed — see `MorningBriefPlanner.plan`.
 ///
 /// `reminderDate` is carried for a different reason: it is how the brief knows
-/// whether an item is going to announce itself anyway. An item with a future
-/// reminder rings on its own, with its own name and its own buttons. An
-/// overdue item's reminder has already fired, and a date-only item usually
-/// never had one — those are the items the brief is the only warning for, so
-/// those are the ones it leads with. A recurring series whose alert has fired
-/// stays armed (`ReminderScheduleRequest.forScheduling`), but only for the
-/// occurrences after this one, so for today it is overdue like any other.
+/// whether an item is going to announce itself anyway, so it is the date that
+/// will actually be armed, not the stored one. An item with a future reminder
+/// rings on its own, with its own name and its own buttons.
+/// `ReminderScheduleRequest.init(item:)` returns nil in two cases, and the
+/// builders in `projectedItems` pass `nil` for both: no `reminderDate`, and a
+/// row the system holds for review (`ItemPresentation.mayArmTime`), whose
+/// proposed date is kept but never scheduled. An overdue item's reminder has
+/// already fired, and a date-only item usually never had one — those, and a
+/// held row, are the items the brief is the only warning for, so those are the
+/// ones it leads with.
+/// A recurring series whose alert has fired stays armed
+/// (`ReminderScheduleRequest.forScheduling`), but only for the occurrences
+/// after this one, so for today it is overdue like any other.
 struct MorningBriefItem: Equatable, Sendable {
     var dueDate: Date?
     var isDateOnly: Bool
@@ -127,10 +133,13 @@ enum MorningBriefPlanner {
                 isDateOnly: $0.isDateOnly,
                 calendarDay: $0.isDateOnly ? $0.temporalIntent?.day : nil,
                 title: $0.displayTitle,
-                reminderDate: $0.reminderDate
+                reminderDate: armedReminderDate(of: $0)
             )
         }
-        let lists = ShoppingListProjection.groupSummaries(in: items).compactMap { group -> MorningBriefItem? in
+        let lists = ShoppingListProjection.groupSummaries(
+            in: items,
+            authorization: authorization
+        ).compactMap { group -> MorningBriefItem? in
             guard let item = group.timingItem else { return nil }
             return MorningBriefItem(
                 dueDate: item.reminderDate ?? item.dueDate,
@@ -140,10 +149,24 @@ enum MorningBriefPlanner {
                 // "Groceries" is what the person would recognise, and naming
                 // one entry would also disclose more than the Today card does.
                 title: group.name,
-                reminderDate: item.reminderDate
+                reminderDate: armedReminderDate(of: item)
             )
         }
         return rows + lists
+    }
+
+    /// The reminder that will actually ring: the stored date, unless the
+    /// system holds the row for review, when nothing is scheduled for it and
+    /// the brief must not count on it announcing itself.
+    ///
+    /// Neither build site above passes a held row today: ordinary rows are
+    /// filtered by `belongsOnTopLevelToday`, and a list is timed only by
+    /// entries out of review (`groupSummaries(in:authorization:)`). Both
+    /// exclude `requiresReview`, which includes every row this would withhold.
+    /// It stays so that admitting held rows later cannot rank one as ringing.
+    @MainActor
+    private static func armedReminderDate(of item: CapturedItem) -> Date? {
+        ItemPresentation.mayArmTime(item) ? item.reminderDate : nil
     }
 
     /// - Parameter includesNames: whether this plan may put the person's own

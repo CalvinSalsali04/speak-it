@@ -75,6 +75,8 @@ Entries before September 2026 were reconstructed from the commit history and
   row kept its pin and the editor said Active. The row now shows the date, the
   editor says the place is off while a date is set, and removing the date
   brings the place reminder back.
+- A row Speak It holds for review no longer rings, alarms or geofences until
+  you confirm it, and its Needs review row shows the time or place it would use.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.

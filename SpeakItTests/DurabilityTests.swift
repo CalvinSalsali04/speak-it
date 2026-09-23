@@ -655,6 +655,44 @@ final class DurabilityTests: XCTestCase {
         )
     }
 
+    /// An AlarmKit alarm armed before its row was held for review (by an
+    /// earlier build, or before a reorganize held it) must be cancelled by
+    /// every whole-store pass. `synchronizeAllReminders`, which loading the
+    /// sample captures runs, scoped its cancellation on the requests it built,
+    /// and a held row builds none, so its alarm survived that pass. It is
+    /// scoped on the fetched rows now, as the other two passes are.
+    ///
+    /// Falsifier: scope `synchronizeAllReminders` on `requests.map(\.itemID)`
+    /// again and the seeded alarm is never cancelled.
+    func testAWholeStorePassCancelsTheAlarmOfARowHeldForReview() async throws {
+        let session = CaptureSession(
+            originalTranscription: "Set an alarm for 6:45 tomorrow",
+            captureSource: .inAppText,
+            processingStatus: .complete
+        )
+        let held = CapturedItem(
+            originalTextSegment: session.originalTranscription,
+            displayTitle: "Alarm",
+            itemType: .task,
+            reminderDate: Date().addingTimeInterval(24 * 60 * 60),
+            needsClarification: true,
+            captureSession: session
+        )
+        container.mainContext.insert(session)
+        container.mainContext.insert(held)
+        try container.mainContext.save()
+        delivery.seedAlarm(held.id)
+        XCTAssertNil(ReminderScheduleRequest(item: held), "precondition: held, so no request")
+
+        _ = try repository.loadSampleData()
+        await drainScheduler()
+
+        XCTAssertFalse(
+            delivery.scheduledAlarms.contains(held.id),
+            "a held row's alarm must not outlive a whole-store pass"
+        )
+    }
+
     /// The kill window inside `delete`: the row is saved before the notification
     /// is torn down. Relaunch has to close that gap on its own.
     func testRelaunchDisarmsANotificationWhoseRowIsAlreadyGone() async throws {

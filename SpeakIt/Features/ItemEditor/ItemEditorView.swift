@@ -979,9 +979,7 @@ struct ItemEditorView: View {
 
     /// What Save should do to the stored trigger.
     private var locationIntentEdit: LocationIntentEdit {
-        guard hadLocationIntent else { return .unchanged }
-        guard let editedLocationIntent else { return .remove }
-        return .update(editedLocationIntent)
+        LocationIntentEdit.fromEditor(hadPlace: hadLocationIntent, showing: editedLocationIntent)
     }
 
     /// True for a resolved "here" that has no name yet. A saved place already

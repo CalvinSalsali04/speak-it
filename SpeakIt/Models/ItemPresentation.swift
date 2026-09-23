@@ -68,16 +68,24 @@ struct ItemPresentation: Equatable, Sendable {
         /// between those two. Carrying delivery here, rather than inferring
         /// "has a date" as "will alert", is what lets a surface tell those two
         /// rows apart. See Docs/FINAL_RELEASE_AUDIT.md B-1/C-1.
+        /// `delivery` is also `.none` for a row the system is holding for
+        /// review: its proposed date is shown, and nothing fires on it until
+        /// the person confirms it (`ItemPresentation.mayArmTime`).
         case time(Date, isDateOnly: Bool, delivery: ReminderDelivery)
         case place(LocationIntent)
         case blockedPlace(LocationIntent, LocationReminderBlocker)
+        /// A place trigger that could be watched, and is not, because the
+        /// system is holding the row for review (`ItemPresentation.mayArmPlace`).
+        /// Distinct from `blockedPlace` because nothing on the device is
+        /// missing: the person has not yet confirmed what was heard.
+        case heldPlace(LocationIntent)
 
         /// True only when something is genuinely armed. The editor's "Remind me"
         /// control reads this, so it can stop claiming a live place reminder is
         /// switched off.
         var isArmed: Bool {
             switch self {
-            case .none, .blockedPlace: false
+            case .none, .blockedPlace, .heldPlace: false
             case let .time(_, _, delivery): delivery != .none
             case .place: true
             }
@@ -99,6 +107,7 @@ struct ItemPresentation: Equatable, Sendable {
             case .none, .time: nil
             case let .place(intent): intent
             case let .blockedPlace(intent, _): intent
+            case let .heldPlace(intent): intent
             }
         }
     }
@@ -117,6 +126,11 @@ struct ItemPresentation: Equatable, Sendable {
     var reminderState: ReminderState
     /// The repeat rule's name, when one applies.
     var recurrenceSummary: String?
+    /// What a row the system is holding for review would arm once the person
+    /// confirms it (`Reminder not set · 8:00 PM`), or `nil` when nothing is
+    /// being withheld. The Needs review row shows it so a proposed time or
+    /// place cannot read as one that is already set.
+    var withheldTriggerText: String?
 
     var requiresReview: Bool { destination == .needsReview }
 
@@ -162,6 +176,11 @@ struct ItemPresentation: Equatable, Sendable {
         let blocker = item.locationBlocker(authorization: authorization)
         let reminderState = reminderState(for: item, blocker: blocker)
         let recurrence = RecurrenceStore.rule(for: item.id)?.displayName
+        let timing = primaryTimingText(
+            for: reminderState,
+            now: now,
+            calendar: calendar
+        )
 
         return ItemPresentation(
             destination: destination(
@@ -170,15 +189,17 @@ struct ItemPresentation: Equatable, Sendable {
                 now: now,
                 calendar: calendar
             ),
-            primaryTimingText: primaryTimingText(
-                for: reminderState,
-                now: now,
-                calendar: calendar
-            ),
+            primaryTimingText: timing,
             triggerSummary: triggerSummary(for: reminderState, recurrence: recurrence),
             reviewRequirement: reviewRequirement(for: item, blocker: blocker),
             reminderState: reminderState,
-            recurrenceSummary: recurrence
+            recurrenceSummary: recurrence,
+            withheldTriggerText: withheldTriggerText(
+                for: item,
+                state: reminderState,
+                timing: timing,
+                recurrence: recurrence
+            )
         )
     }
 
@@ -199,6 +220,15 @@ struct ItemPresentation: Equatable, Sendable {
         // with no place, since only the clock half can be scheduled.
         if let locationIntent = item.locationIntent, !item.constrainsBothPlaceAndTime {
             if let blocker { return .blockedPlace(locationIntent, blocker) }
+            // Order: a combined place-and-time row never reaches this branch
+            // (the `constrainsBothPlaceAndTime` guard above sends it to its
+            // date, the half iOS holds), then the blocker, then this hold, then
+            // `.place`. A combined row is under review for another reason.
+            //
+            // The same rule the location monitor's request builder reads
+            // (`CapturedItem.hasLivePlaceTrigger`), so a place that is not
+            // being watched is never shown as armed.
+            guard mayArmPlace(item) else { return .heldPlace(locationIntent) }
             return .place(locationIntent)
         }
         if let date = item.reminderDate ?? item.dueDate {
@@ -225,6 +255,65 @@ struct ItemPresentation: Equatable, Sendable {
     nonisolated(unsafe) private static var deliveryCache:
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
 
+    /// Whether this item's *time* may arm: a notification or an alarm. **One
+    /// of the two halves of the rule for held rows**, with `mayArmPlace`.
+    /// Everything that arms a clock reaches it: `scheduledDelivery` below (so
+    /// the row's bell, the receipt's label and every `ReminderScheduleRequest`
+    /// builder), the successor decisions in `advanceOverdueRecurrences` and
+    /// `setCompleted`, and the morning brief's "rings on its own".
+    ///
+    /// A row the *system* holds for review arms nothing until the person
+    /// resolves it. A vague `later today` carries a guessed 8 PM, and `every
+    /// Friday at five … except this Friday` carries a weekly alert whose first
+    /// firing is the excluded Friday; both used to ring from Needs review
+    /// while the row showed no time and no bell (Docs/DECISIONS.md,
+    /// 2026-09-23, "A row the system holds for review arms nothing").
+    ///
+    /// A row the *person* holds still arms. Every save in the editor marks the
+    /// temporal intent `isUserEdited`, unconditionally, so a reminder the
+    /// person set, edited, or saved while turning Needs review on by hand is
+    /// theirs, and it fires. Resolving a system hold goes through that same
+    /// save, which is why it arms at once.
+    ///
+    /// Only the temporal mark counts here. A reorganize (`apply`) rewrites the
+    /// temporal intent, wiping its mark, and keeps a hand-set place with its
+    /// mark; reading either mark let a confirmed place release a guessed time.
+    ///
+    /// `SemanticState.permitsAction` is not read: the vague-time and
+    /// series-exception holds are stored as `.resolved`, and a row the person
+    /// confirmed keeps its recorded gap, so it would miss the first and
+    /// silence the second.
+    static func mayArmTime(_ item: CapturedItem) -> Bool {
+        guard item.needsClarification else { return true }
+        return item.temporalIntent?.isUserEdited == true
+    }
+
+    /// Whether this item's *place* may be watched and delivered, the other
+    /// half of the rule. Read by `CapturedItem.hasLivePlaceTrigger` (the
+    /// location monitor's reconcile filter and both crossing-handler guards)
+    /// and by `.heldPlace` here.
+    ///
+    /// Only the location mark counts, as only the temporal mark counts for
+    /// `mayArmTime`: each trigger is released by the person's confirmation of
+    /// that trigger and nothing else. The editor sends every place it shows
+    /// back as an edit, which marks it `isUserEdited`, as every save marks
+    /// the time, so a person who turns Needs review on by hand keeps their
+    /// place reminder (E19). `apply` keeps a hand-set place with its mark
+    /// and re-reads any other, so the mark always belongs to the place it
+    /// sits on.
+    ///
+    /// The time's mark is not read here, because it can sit beside a place
+    /// nobody confirmed. The person clears the time and removes the parsed
+    /// place in the editor, which marks the empty time; Organize again, once a
+    /// re-read keeps a hand-set time with its mark, re-reads the place and the
+    /// hold. Reading the time's mark would then watch that re-read place on a
+    /// row held for review. (Beside a time that is set, a place is a combined
+    /// request, which is never watched whatever this returns.)
+    static func mayArmPlace(_ item: CapturedItem) -> Bool {
+        guard item.needsClarification else { return true }
+        return item.locationIntent?.isUserEdited == true
+    }
+
     /// The alert kind that will fire for a timed item, and the only answer to
     /// that question: the row's bell, the receipt's label and
     /// `ReminderScheduleRequest` all read it. A stored `reminderDate` is what
@@ -232,11 +321,20 @@ struct ItemPresentation: Equatable, Sendable {
     /// alarm and a notification. A date set by hand in the editor, or by
     /// voice-moving an item that had none, carries wording with no alert word
     /// in it, and reading that wording as `.none` hid a notification iOS was
-    /// holding (Docs/DECISIONS.md, 2026-09-23).
+    /// holding (Docs/DECISIONS.md, 2026-09-23). A row the system holds for
+    /// review is `.none` whatever it carries (`mayArmTime`).
     ///
     /// Whether the date is still ahead is deliberately not asked here: a past
     /// `reminderDate` produces no request but still reads as armed on the row.
     static func scheduledDelivery(for item: CapturedItem) -> ReminderDelivery {
+        guard mayArmTime(item) else { return .none }
+        return proposedDelivery(for: item)
+    }
+
+    /// What would fire once nothing holds the row: `scheduledDelivery`
+    /// without the review gate. Only a surface describing a withheld trigger
+    /// may read this; anything that arms reads `scheduledDelivery`.
+    private static func proposedDelivery(for item: CapturedItem) -> ReminderDelivery {
         guard item.reminderDate != nil else { return .none }
         return effectiveReminderDelivery(for: item) == .alarm ? .alarm : .notification
     }
@@ -316,7 +414,7 @@ struct ItemPresentation: Equatable, Sendable {
         case .none:
             return nil
 
-        case let .place(intent), let .blockedPlace(intent, _):
+        case let .place(intent), let .blockedPlace(intent, _), let .heldPlace(intent):
             // The place, never a date. A place reminder has no clock time to
             // report, and printing one would be a guess presented as a fact.
             return intent.place.displayName
@@ -381,8 +479,40 @@ struct ItemPresentation: Equatable, Sendable {
         case let .place(intent):
             return placeSentence(for: intent)
 
-        case let .blockedPlace(intent, _):
+        case let .blockedPlace(intent, _), let .heldPlace(intent):
             return placeSentence(for: intent)
+        }
+    }
+
+    /// `Reminder not set · 8:00 PM`, `Alarm not set · Sep 25, 6:45 AM ·
+    /// Weekly`, `Reminder not set · Next time you arrive at Home`: the kind,
+    /// that it is not set, and what it would be once confirmed. `nil` when the
+    /// row may arm, and when there is no alert to withhold; a due date alone
+    /// is not listed, because nothing would fire on it once confirmed either.
+    private static func withheldTriggerText(
+        for item: CapturedItem,
+        state: ReminderState,
+        timing: String?,
+        recurrence: String?
+    ) -> String? {
+        switch state {
+        case let .heldPlace(intent):
+            // `.heldPlace` is only built when `mayArmPlace` is false.
+            return "Reminder not set · \(placeSentence(for: intent))"
+        case .time:
+            guard !mayArmTime(item), let timing else { return nil }
+            let kind: String
+            switch proposedDelivery(for: item) {
+            case .none: return nil
+            case .alarm: kind = "Alarm"
+            case .notification: kind = "Reminder"
+            }
+            guard let recurrence else { return "\(kind) not set · \(timing)" }
+            return "\(kind) not set · \(timing) · \(recurrence)"
+        case .none, .place, .blockedPlace:
+            // A blocked place already names what it is waiting for, and that
+            // label leads the row. `.place` is not reached for a held row.
+            return nil
         }
     }
 
