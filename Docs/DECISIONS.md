@@ -42,15 +42,56 @@ with it when a save fails. `RecurrenceStore` does neither for a new field.
 The record is set only on items that recur, so a one-off reminder snoozes
 and moves to tomorrow exactly as before.
 
-**What it costs.** A snoozed occurrence of a daily or single-weekday series
-is now armed as an exact one-shot, because the repeating match no longer
-describes it. Until the app next runs and rolls the row forward, nothing is
-armed for the occurrences after the snooze. Before this change, iOS kept
-firing them, at the wrong minute. See `KNOWN_ISSUES.md`.
+**A snoozed occurrence arms two notifications.** The first build of this
+change armed a snoozed occurrence as an exact one-shot and nothing else,
+because a repeating match at the series' clock does not describe the snooze.
+Once the one-shot fired, nothing was armed for the series until the app next
+ran. Someone who snoozed and did not open Speak It would miss the next
+occurrences completely, which is worse than the drift this entry set out to
+fix. So a displaced occurrence now carries `seriesContinuation` on its
+`ReminderScheduleRequest`, and `scheduleNotification` adds a second request
+beside the one-shot: the series' own repeating calendar trigger.
 
-Covered by three tests in `TemporalFullPathTests`, pinned to the fixture
-zone: a weekly snooze followed by completion, snooze then Tomorrow on a
-daily series, and a one-off reminder as the unchanged control.
+- **First fire.** A repeating calendar trigger first fires at the first
+  match after it is added. That is what the existing native-series path
+  already relies on when it compares `nextTriggerDate()` with the
+  occurrence. A snooze is pressed on the occurrence's own alert, so that
+  slot has passed and the first match is the next occurrence.
+  `seriesContinuationTrigger` refuses the one case where it would not be:
+  a first match within a minute of the displaced alert.
+- **Identifier.** `SpeakIt.reminder.<item>.series`
+  (`seriesNotificationIdentifier(for:)`) is derived from the item alone.
+  `cancel(itemID:)` removes it next to the item's own identifier, which
+  covers completion, archive and delete. A scoped pass removes it through
+  `notificationIdentifiersToRemove`. A full reconcile removes it with every
+  other `SpeakIt.reminder.` prefix, and re-adds it only while the row is
+  still displaced. Every pass removes before it adds, and a
+  `UNNotificationRequest` added under an existing identifier replaces it, so
+  there is at most one.
+- **Done on a later occurrence.** The series notification carries the
+  item's id, so Done, 10 min and Tomorrow act on the row. Done completes the
+  row and generates the next occurrence, whose own trigger replaces both.
+- **Result.** `.scheduled` is reported only when both requests are pending.
+
+**Alarms are not covered.** An `.alarm` item is armed through AlarmKit with
+`.fixed(fireDate)`, a one-shot for every occurrence, snoozed or not. A
+recurring alarm has never repeated without the app running, and this change
+does not start doing so. Speak It's alarm alert offers Stop and no snooze,
+so the notification actions reach an alarm item only after it has fallen
+back to a notification. At that point it gets both requests like any other
+notification. See `KNOWN_ISSUES.md`.
+
+Covered by four tests in `TemporalFullPathTests`, pinned to the fixture
+zone:
+
+- a weekly snooze followed by completion;
+- the scheduler's plan for a snoozed weekly occurrence, which holds the
+  one-shot at the snooze and the series trigger at the next occurrence;
+- snooze then Tomorrow on a daily series;
+- a one-off reminder, as the unchanged control.
+
+A fifth test, in `SwiftDataThoughtRepositoryTests`, checks that the series
+identifier is removed with its item.
 
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 

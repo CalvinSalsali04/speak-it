@@ -892,7 +892,21 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         me in 20 minutes to switch the laundry"` in
         `SwiftDataThoughtRepositoryTests`, `"Remind me every day at 8 am to
         take my meds"` in `ReleaseReadinessTests`. Reused on purpose, so
-        the change adds no sentence to this population. What the test
+        the change adds no sentence to this population. 4077 -> 4083 the
+        same day, when review found that change left a snoozed series with
+        nothing armed after the snooze fired, and the fix arms the series'
+        own repeating trigger beside the one-shot: one new
+        `TemporalFullPathTests` test, one new `SwiftDataThoughtRepositoryTests`
+        test and two added assertions, six literals, enumerated rather than
+        assumed, all of them assertion or failure messages -- `"a snoozed
+        occurrence needs its one-shot and its series"`, `"an occurrence back
+        on its series' alert needs no second trigger"`, `"the one-shot fires
+        at the snooze"`, `"the series must be armed as a repeating
+        trigger"`, `"the series' first match must be the next occurrence,
+        not this one again"` and `"the snoozed fire must be a one-shot"`.
+        The one fixture is reused again, and the identifier test's doc
+        comment keeps its names in backticks, so neither adds anything.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -906,7 +920,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4077)
+        self.assertEqual(len(space), 4083)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

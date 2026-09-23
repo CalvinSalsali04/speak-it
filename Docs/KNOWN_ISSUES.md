@@ -478,22 +478,28 @@ Schema version 2 records what a person said about time (`TemporalIntent`) beside
   9 and "meeting at 7" the next 7.
 - **The date-only alert hour is a setting now.** *Resolved 2026-09-08.* `TemporalResolver.dateOnlyAlertHour` reads the **Default reminder time** under Settings → Capture & reminders (`ReminderDefaults`, shared app-group defaults, 9:00 until changed). It is the moment "remind me tomorrow" alerts at; "tomorrow morning" and "first thing" stay on `TemporalResolver.morningHour`, which is 9 AM and not a preference. The distinction the constant enforced still holds: *"buy milk tomorrow"* schedules nothing at all, while *"remind me to buy milk tomorrow"* alerts at the default time, and neither writes a time into the intent. A reminder already scheduled keeps the moment it was given; the setting applies to captures organized from then on.
 
-## A snoozed recurring reminder is not repeated by iOS until the app runs
+## A snooze keeps its series armed, except for alarms and one stale-row case
 
 Since 2026-09-23 a snooze moves one occurrence and leaves the series at its
-own time (see `DECISIONS.md`). The snoozed fire is armed as an exact
-one-shot, because a daily or weekly repeating trigger at the series' clock
-does not describe it. After that one-shot fires, the series has nothing armed
-until the app next comes to the foreground, when the self-healing pass rolls
-the row forward and re-arms the repeating trigger at the right time. Someone
-who snoozes and then does not open Speak It for days misses those days'
-alerts. Before the fix they were still alerted, but at the snoozed minute.
-Arming both a one-shot and the series' repeating trigger for a single row
-would close this, and it is not built.
+own time. A snoozed notification occurrence arms both the one-shot at the
+snooze and the series' own repeating trigger (see `DECISIONS.md`). What that
+does not cover:
 
-Series snoozed before this build are not repaired. That drift was written
-into `reminderDate` with no record of what it replaced. The person has to
-fix the time once in the editor.
+- **Alarms.** AlarmKit delivery is a `.fixed` one-shot for every occurrence.
+  A recurring alarm, snoozed or not, rings once and then waits for the app to
+  run and roll the row forward. Speak It's alarm alert has no snooze, so this
+  gap is not caused by snoozing. It is the existing state of recurring
+  alarms. Closing it means scheduling AlarmKit's own repeating schedule.
+- **A sibling's scoped pass while the row is stale.** Once a snooze has fired
+  and the app has not yet run, the row's `reminderDate` is in the past and
+  it yields no `ReminderScheduleRequest`. A notification action on a
+  different item in the same capture then re-schedules that capture's
+  reminders, removes this row's triggers, and re-adds nothing for it. The
+  series is re-armed on the next foreground. A natively repeating row whose
+  alert has fired has the same exposure, so snoozing did not introduce it.
+- **Series snoozed before this build are not repaired.** That drift was
+  written into `reminderDate` with no record of what it replaced. The person
+  has to fix the time once in the editor.
 
 ## The free capture ledger is per-device, not per-person
 
