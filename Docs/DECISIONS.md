@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-09-23 — A broad cancel or complete leaves out captures not yet organized
+
+A confirmed "cancel every reminder" listed every active row, and the
+placeholder of a capture launch recovery has not organized yet is an active
+row. `delete` removes a capture with its last row, so confirming deleted that
+capture and its original transcript; a confirmed broad complete stamped the
+mark recovery reads as the person's hand and closed the capture unorganized.
+Broad candidates now leave out any row whose session is not `.complete`, the
+same `awaitsOrganization` test the single-target hold uses. The row is dropped
+here rather than holding the whole request, as the single-target path does,
+because a broad request is always held for confirmation and dropping a row
+cannot make another look certain. Confirmation reads each named row again and
+skips one whose capture is unfinished by then (a record written by an earlier
+build, or a capture `Organize again` left `.failed`), and the prompt counts
+that same list, so the number the person confirms is the number acted on. A
+broad request names no reschedule, and the pronoun path ("cancel it") lists
+every active row only to count them in the receipt and never acts on the
+list, so neither changed.
+
 ## 2026-09-23 — Launch recovery closes a capture the person has already touched
 
 `recoverUnorganizedCaptures` re-reads every session that is not `.complete`,

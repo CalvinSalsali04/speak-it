@@ -111,7 +111,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
     /// Whether a row belongs to a capture launch recovery has yet to organize.
     /// Such a row is the durable placeholder (or an organized row of a save
-    /// that failed), and recovery may still replace it.
+    /// that failed), and recovery may still replace it. A single-target
+    /// operation holds on it; a broad one leaves it out of what it names (see
+    /// `broadOperationCandidates`).
     private static func awaitsOrganization(_ item: CapturedItem) -> Bool {
         guard let session = item.captureSession else { return false }
         return session.processingStatus != .complete
@@ -1210,7 +1212,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // Broad destructive requests are never executed, at any confidence.
         // The capture stays as a review row, which is where confirmation lives.
         if request.isBroad {
-            let candidateIDs = CaptureTargetMatcher.activeItems(searchable).map(\.id)
+            let candidateIDs = Self.broadOperationCandidates(in: searchable).map(\.id)
             holdOperation(request, in: session, preserving: preservingItemIDs)
             // The review row itself is a generic placeholder (see
             // `beginCapture`), so what it would do if confirmed has nowhere
@@ -1378,7 +1380,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func confirmPendingOperation(_ item: CapturedItem) throws {
         guard let record = PendingOperationStore.record(for: item.id) else { return }
         for candidateID in record.candidateIDs {
-            guard let candidate = try findItem(withID: candidateID) else { continue }
+            // Read one at a time, as each earlier delete may have taken a row.
+            guard let candidate = try heldCandidate(candidateID) else { continue }
             switch record.operation {
             case .cancel:
                 LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
@@ -1393,6 +1396,45 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         PendingOperationStore.remove(item.id)
         try delete(item)
+    }
+
+    func pendingOperationCandidateIDs(for item: CapturedItem) -> [UUID] {
+        guard let record = PendingOperationStore.record(for: item.id) else { return [] }
+        return ((try? heldCandidates(of: record)) ?? []).map(\.id)
+    }
+
+    /// What a broad request may act on: every active row except those of a
+    /// capture launch recovery has yet to organize.
+    ///
+    /// Such a row is a placeholder whose capture still holds words nobody has
+    /// organized, and `delete` removes a capture with its last row, so a
+    /// confirmed "cancel all my reminders" used to delete the unfinished
+    /// capture and its transcript; a confirmed complete stamped the mark that
+    /// makes recovery close it unorganized. Unlike the single-target search,
+    /// dropping the row here makes nothing else look certain: a broad request
+    /// is always held, and nothing it names is touched until the person
+    /// confirms a count that now leaves the row out.
+    private static func broadOperationCandidates(in items: [CapturedItem]) -> [CapturedItem] {
+        CaptureTargetMatcher.activeItems(items).filter { !awaitsOrganization($0) }
+    }
+
+    /// The rows a held broad request still names, read again at confirmation.
+    ///
+    /// The list was fixed when the request was held, and a capture can become
+    /// unfinished after that: `Organize again` leaves a session `.failed` when
+    /// its save fails, and a record written before candidates excluded
+    /// unorganized captures may still name one. The prompt's count and the
+    /// confirmation both read this, so the number the person confirms is the
+    /// number acted on. Rows deleted since are skipped, as before.
+    private func heldCandidates(
+        of record: PendingOperationStore.StoredPendingOperation
+    ) throws -> [CapturedItem] {
+        try record.candidateIDs.compactMap { try heldCandidate($0) }
+    }
+
+    private func heldCandidate(_ id: UUID) throws -> CapturedItem? {
+        guard let item = try findItem(withID: id), !Self.awaitsOrganization(item) else { return nil }
+        return item
     }
 
     /// Declines a held broad cancel or complete. Nothing the request would

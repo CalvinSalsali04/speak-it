@@ -661,7 +661,11 @@ struct ItemEditorView: View {
     private func pendingOperationTitle(
         _ pending: PendingOperationStore.StoredPendingOperation
     ) -> String {
-        let count = pending.candidateIDs.count
+        // Counted from what confirming would act on now, not from the list
+        // fixed when the request was held: a capture that is not organized
+        // is left out, and the person must be told the number that happens.
+        let count = repository?.pendingOperationCandidateIDs(for: item).count
+            ?? pending.candidateIDs.count
         let subject = count == 1 ? "1 item" : "\(count) items"
         switch pending.operation {
         case .cancel: return "Cancel \(subject)?"

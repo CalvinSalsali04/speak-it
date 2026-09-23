@@ -903,7 +903,20 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         mark's name, `recovery re-read a capture the person had marked`
         and `the row must carry this mark alone`. `Cancel the plumber
         reminder` was already in `CaptureOperationTests` and adds
-        nothing. What the test
+        nothing. 4090 -> 4099 on 2026-09-23, from broad operations leaving
+        out the rows of an unorganized capture: three `DurabilityTests`
+        tests, nine literals, enumerated rather than assumed, and all nine
+        are assertion messages: `A broad cancel must be held for
+        confirmation`, `an unorganized capture was named for deletion`,
+        `everything the confirmed request named is cancelled`, `recovery
+        must still organize the capture the confirmation skipped`, `the
+        finished capture was not cancelled`, `the placeholder was marked
+        done`, `the prompt would count a capture confirming leaves alone`,
+        `the review row is resolved`, and `the unfinished capture and its
+        words were deleted`. `Cancel every reminder`, the two-thought
+        sentence and `recovery must still split the capture the cancel
+        never reached` were already here, and `Buy milk`, quoted in a doc
+        comment, is under twelve characters and never counted. What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -917,7 +930,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4090)
+        self.assertEqual(len(space), 4099)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
