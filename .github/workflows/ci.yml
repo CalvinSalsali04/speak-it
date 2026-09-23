@@ -340,8 +340,10 @@ jobs:
       # untouched and its exit status is the step's. An absent count (the gate
       # stopped before corpus-run printed one) stays absent. The first match is
       # the verdict: on failure corpus-gate.sh re-runs corpus-run --verbose,
-      # whose dump prints a second BLOCKING line, so `head -n 1` is
-      # load-bearing and `tail -n 1` would read the diagnostic instead.
+      # whose summary carries a second BLOCKING line. Today that dump is cut
+      # at CORPUS_GATE_FAILURE_LINES (300) before its summary, so only one
+      # line reaches the log; `head -n 1` keeps the count right if that limit
+      # is raised, where `tail -n 1` would read the diagnostic instead.
       - name: Corpus gate (rules path, no simulator)
         id: gate
         run: |
