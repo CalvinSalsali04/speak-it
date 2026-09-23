@@ -1170,7 +1170,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // Broad destructive requests are never executed, at any confidence.
         // The capture stays as a review row, which is where confirmation lives.
         if request.isBroad {
-            let candidateIDs = CaptureTargetMatcher.activeItems(searchable).map(\.id)
+            let candidateIDs = Self.broadOperationCandidates(in: searchable).map(\.id)
             holdOperation(request, in: session, preserving: preservingItemIDs)
             // The review row itself is a generic placeholder (see
             // `beginCapture`), so what it would do if confirmed has nowhere
@@ -1339,6 +1339,24 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         PendingOperationStore.remove(item.id)
         try delete(item)
+    }
+
+    /// What a broad request may act on: every active row on Today's action
+    /// side, and nothing in Memory.
+    ///
+    /// "Cancel all my reminders" and "delete all my tasks" are about
+    /// commitments. The list used to be every active row, so confirming one
+    /// deleted Memory's notes, ideas and people facts with the tasks, and a
+    /// capture's transcript went with its last row. The single-target search
+    /// has never reached Memory (`CaptureTargetMatcher.candidates`); this is
+    /// the same line, drawn by kind rather than by live placement, so a
+    /// knowledge row waiting in Needs review is left out too. The parser keeps
+    /// no noun for a broad request (`target` is nil, so "reminders", "tasks"
+    /// and "notes" all read the same), and nothing narrower than the action
+    /// side can be read from it. The prompt counts the list stored from this,
+    /// and confirmation acts on that list.
+    private static func broadOperationCandidates(in items: [CapturedItem]) -> [CapturedItem] {
+        CaptureTargetMatcher.activeItems(items).filter(\.isActionKind)
     }
 
     /// Declines a held broad cancel or complete. Nothing the request would

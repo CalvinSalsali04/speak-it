@@ -1,5 +1,70 @@
 # Decisions
 
+## 2026-09-23 — A broad request reaches Today's action rows and never Memory (DEL-25)
+
+"Cancel all my reminders" and "delete all my tasks" are held for
+confirmation, and that part was right. What they would act on was not: the
+list stored for the prompt was `CaptureTargetMatcher.activeItems` over every
+other capture, which leaves out only completed and archived rows. So a
+confirmed broad cancel deleted Memory's notes, ideas and people facts along
+with the tasks, and `delete` took each capture's transcript with its last
+row. The single-target search has refused Memory since "cancel my milk
+reminder" deleted "Sarah likes oat milk"; the broad list never got the same
+line. Found by reading, in the V1 audit of decisions on reach and obligation
+(Q-A).
+
+**The invariant.** A broad request reaches only rows that are the kind of
+thing Today is for: an actionable type (task, shopping, person follow-up,
+event) or a row carrying a reminder the person asked for. That is
+`CapturedItem.isActionKind`, which is now the one expression `belongsInToday`
+and `belongsInMemory` split on, not a second classification beside them. It
+is drawn by kind rather than by live placement, so a knowledge row waiting in
+Needs review (which is in neither destination) is left out too, and a note
+with a reminder (on Today, by the person's own request) is reached.
+`SwiftDataThoughtRepository.broadOperationCandidates(in:)` applies it. The
+prompt's "Cancel N items?" counts the stored list this produces, and
+confirmation acts on that list, so the number confirmed is the number acted
+on. Cancel and complete read the same list. What confirming does to a row
+(delete for cancel) is unchanged: delete versus archive is the owner's open
+decision in Q-A, and this is only about reach.
+
+**The noun is not narrowed, because the parser does not keep it.** The rules
+path builds a broad request with `target: nil`, so "cancel all my
+reminders", "delete all my tasks" and "delete all my notes" are the same
+request. Reading "reminders" as "rows with a reminder" would be the more
+conservative reading, but it would have to be re-parsed from `sourceQuote` in
+the repository, which is a second parser. So every broad request reaches the
+whole action side, and "delete all my notes" now names nothing rather than
+everything. Keeping the noun on `CaptureOperationRequest` is the follow-up if
+the owner wants "reminders" to mean less than "tasks".
+
+**Hypothesis.** Every row a confirmed broad cancel or complete destroys or
+marks done was on Today's action side when the request was held, and no row
+`belongsInMemory` is ever in the stored list.
+
+**Falsifier.** A `CaptureOperationTests` case in which a confirmed broad
+cancel or complete removes or completes a `.note`, `.idea` or person note, or
+a held knowledge row, or in which the stored list's count differs from the
+number of rows acted on. `testAConfirmedBroadCancelNeverReachesMemory`,
+`testABroadRequestWithOnlyMemoryRowsNamesNothing` and
+`testAConfirmedBroadCompleteNeverReachesMemory` are those cases, and each
+fails if the list goes back to `activeItems` alone. The first also fails if
+the line is drawn with `!belongsInMemory` (the held note) or excludes a note
+with a reminder.
+
+**How it composes with #131.** #131 (captures not yet organized stay out of a
+broad request) introduces a function with the same name at the same place,
+filtering `awaitsOrganization`, and re-reads each held row at confirmation
+(`heldCandidate`). Whichever lands second takes both filters in
+`broadOperationCandidates` and should add `isActionKind` to `heldCandidate`
+as well, so a row edited into a note between hold and confirm is skipped and
+counted out; until then that edge follows the list stored at hold. #131's
+control test `testABroadCancelStillReachesAPlaceholderShapedRowOfAFinishedCapture`
+uses an `.unclear` review row, which this rule leaves out by kind; that test's
+row needs an action type, or its expectation changes, when both are on main.
+A record stored before this change can still name a Memory row until it is
+confirmed or declined.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts

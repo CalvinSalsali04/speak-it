@@ -7,6 +7,11 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- A confirmed broad request such as "cancel all my reminders" reaches only
+  Today's action rows (tasks, errands, follow-ups, events, and anything with
+  a reminder). Memory's notes, ideas and people facts, and knowledge rows
+  waiting in Needs review, are no longer counted or deleted with them. The
+  noun is not read, so "reminders" and "tasks" reach the same rows (DEL-25).
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a

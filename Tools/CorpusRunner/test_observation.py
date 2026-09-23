@@ -874,7 +874,22 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4087 on 2026-09-23, from
+        DEL-25 (a confirmed "cancel all my reminders" reaching Memory):
+        three tests in `CaptureOperationTests`, nineteen literals,
+        enumerated rather than assumed. Six are fixtures: three spoken
+        requests (`"Cancel all my reminders"`, `"Delete all my notes"`,
+        `"Mark all my tasks done"`) and three Memory rows (`"The spare key
+        is under the blue pot"`, `"A podcast about city parks"`,
+        `"Something about the lease"`). The fourth Memory row, `"Sarah
+        likes oat milk"`, was already here, and `"Priya's birthday"` too.
+        Twelve are assertion messages, two of them interpolated. The last
+        is the doc-comment hazard once more, in a `//` comment this time:
+        the editor's prompt quoted as `"Cancel N items?"` counts like a
+        fixture, and is left quoted. One message, `"A broad cancel must be
+        held for confirmation"`, is also in #131's `DurabilityTests`, so
+        the two branches together add one fewer than their deltas sum to.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +903,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4087)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
