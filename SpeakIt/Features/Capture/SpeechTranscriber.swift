@@ -113,6 +113,9 @@ final class SpeechTranscriber: ObservableObject {
     private var finalization: ((String) -> Void)?
     private var automaticFinalization: ((String) -> Void)?
     private var hasInstalledTap = false
+    /// Whether this transcriber has told `VoiceOverAnnouncer` its microphone
+    /// is open, so it closes exactly what it opened.
+    private var holdsMicrophone = false
     private var recoveryAudioFile: AVAudioFile?
     private var activeStartID: UUID?
     /// Which recognition run the transcriber is currently willing to hear from.
@@ -174,6 +177,7 @@ final class SpeechTranscriber: ObservableObject {
         contextualPhrases: [String] = [],
         prefersEnhancedRecognition: Bool = false,
         forcesLegacyRecognitionForBenchmark: Bool = false,
+        listeningCue: String? = nil,
         onAutomaticFinalization: @escaping (String) -> Void
     ) async {
         guard state != .requestingPermission, state != .listening else { return }
@@ -301,6 +305,21 @@ final class SpeechTranscriber: ObservableObject {
             }
             hasInstalledTap = true
 
+            // The microphone opens here and nowhere else, so this is where
+            // VoiceOver must already be quiet. With VoiceOver on, `listeningCue`
+            // is spoken now and finished — along with anything Speak It posted
+            // before it — before the engine starts; with it off this returns
+            // at once. There is no suspension between this await and
+            // `audioEngine.start()`, and while the microphone is open
+            // `VoiceOverAnnouncer` withholds everything, so nothing Speak It
+            // asks VoiceOver to say reaches the recognizer. (A11Y-3)
+            await VoiceOverAnnouncer.shared.waitUntilMicrophoneMayOpen(cue: listeningCue)
+            // Abandoned while VoiceOver spoke. `cancel` and `resetAfterFailure`
+            // have already released this run's tap and backend, and a newer
+            // run may own the engine now, so nothing is torn down here.
+            guard activeStartID == startID else { return }
+            VoiceOverAnnouncer.shared.microphoneWillOpen()
+            holdsMicrophone = true
             audioEngine.prepare()
             try audioEngine.start()
             guard activeStartID == startID else {
@@ -830,6 +849,10 @@ final class SpeechTranscriber: ObservableObject {
         if hasInstalledTap {
             audioEngine.inputNode.removeTap(onBus: 0)
             hasInstalledTap = false
+        }
+        if holdsMicrophone {
+            holdsMicrophone = false
+            VoiceOverAnnouncer.shared.microphoneDidClose()
         }
         // `finish` closes submissions and synchronously drains already-copied
         // buffers. `beginFinalization` calls `endAudio` only after this returns,

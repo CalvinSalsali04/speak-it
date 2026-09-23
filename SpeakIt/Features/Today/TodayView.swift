@@ -1872,6 +1872,9 @@ struct CaptureHistoryView: View {
 
         recoveringDraftID = draft.id
         CaptureDraftStore.markProcessing(id: draft.id)
+        // The row's title changes to "Recovering your words…"; say so, since
+        // transcription can take several seconds (A11Y-4).
+        VoiceOverAnnouncer.shared.announce("Recovering your words")
         Task { @MainActor in
             do {
                 let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
@@ -1984,6 +1987,10 @@ struct CaptureHistoryView: View {
         withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
             successNotice = message
         }
+        // The toast lasts 2.4 s and the recovered row has already left, taking
+        // VoiceOver's focus with it, so without this a rescued capture was
+        // saved in silence (A11Y-4).
+        VoiceOverAnnouncer.shared.announce(message)
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.4))
             withAnimation(.easeOut(duration: 0.2)) {

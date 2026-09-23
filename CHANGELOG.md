@@ -7,6 +7,16 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- With VoiceOver on, Speak It says what happened: the save result
+  ("Remembered", "Can you clarify?"), that a recording stopped because nothing
+  was heard, that voice failed or recovery is running, a capture recovered on
+  Today or at launch, and whether a share reached Speak It. It never says any
+  of it while the microphone is open. There is no echo cancellation, so
+  "Listening" and "Still listening", which used to be spoken into the open
+  microphone, could have become part of the person's original words.
+  "Listening" is now spoken before the microphone opens, and the microphone
+  waits for it to finish. "Still listening" is now a haptic. With VoiceOver
+  off, nothing waits.
 - The voice screen no longer says "Tap to speak" while it is still saving the
   thought you just spoke. Finishing a recording returns the recognizer to idle
   before the save starts, and the orb, the heading and the button's VoiceOver
