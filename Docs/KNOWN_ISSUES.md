@@ -567,10 +567,15 @@ The specifics:
     phrasings sit in the corpus beside the day-first rows (see
     `DECISIONS.md`, 2026-09-23). A name that still ends in a time the
     grammar cannot read keeps the whole phrase as a named place.
-  - **Rows captured before the fix keep their alert.** No launch pass
-    re-reads them, and `ReminderScheduleRequest` does not consult
-    `constrainsBothPlaceAndTime`. Such a row fires once at its stored time.
-    Its region stays unwatched, as before.
+  - *Resolved the same day for rows that kept their place.* A row captured
+    before the fix still carries its 9 AM alert, and no launch pass re-reads
+    it, but `ReminderScheduleRequest` now refuses any row that constrains a
+    place and a time until the person has decided (`isReviewed`, or either
+    intent marked `isUserEdited`). Such a row stays silent and unwatched.
+    Nothing moves it into Needs review, though: its stored
+    `needsClarification` is still false, so it sits on Today with its day
+    and no alert, and nothing tells the person that the alert they were
+    given is gone.
 - **Region monitoring is unverified on hardware.** Everything below CoreLocation
   is tested on the simulator, but geofence entry/exit, background wake, and
   Always-permission behaviour need a physical device.

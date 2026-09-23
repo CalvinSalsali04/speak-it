@@ -1923,6 +1923,120 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertEqual(item.clarificationRequirement, .combinedTimeAndPlace)
     }
 
+    // MARK: The scheduler refuses a place beside a time (second layer)
+
+    /// A row stored before the hold still carries the 9 AM clock it was given.
+    /// No launch pass re-reads it, so the scheduler must refuse it until the
+    /// person has decided.
+    ///
+    /// Every date here is built in the machine's zone, never under a fixture
+    /// zone pin, because `ReminderScheduleRequest` compares against the real
+    /// clock the notification centre would use.
+    ///
+    /// Falsifier: `ReminderScheduleRequest` asks only whether a future
+    /// `reminderDate` exists. Then the unreviewed row produces a request, and
+    /// on a phone it rings at 9 AM tomorrow whether or not the person is home.
+    func testSchedulerRefusesAStoredPlaceAndTimeRowUntilThePersonDecides() throws {
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let fire = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        let row = CapturedItem(
+            originalTextSegment: "Remind me to call Mom when I get home tomorrow",
+            displayTitle: "Call Mom",
+            itemType: .personFollowUp,
+            createdAt: .now,
+            dueDate: Calendar.current.startOfDay(for: tomorrow),
+            reminderDate: fire,
+            needsClarification: false,
+            isReviewed: false,
+            temporalIntent: TemporalIntent(kind: .dateOnly),
+            locationIntent: LocationIntent(event: .arrive, place: .home)
+        )
+        container.mainContext.insert(row)
+        try container.mainContext.save()
+        XCTAssertTrue(row.constrainsBothPlaceAndTime, "fixture must be the stored DEL-11 shape")
+
+        XCTAssertNil(
+            ReminderScheduleRequest(item: row),
+            "an unreviewed place-and-time row must not ring at its stored clock"
+        )
+
+        row.isReviewed = true
+        XCTAssertNotNil(
+            ReminderScheduleRequest(item: row),
+            "once the person has reviewed the row, its clock is theirs"
+        )
+    }
+
+    /// Either intent marked as set by hand counts as the person deciding, the
+    /// same marks launch recovery reads.
+    func testSchedulerAcceptsAPlaceAndTimeRowWhoseIntentThePersonEdited() throws {
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let fire = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        func row(temporalEdited: Bool, locationEdited: Bool) -> CapturedItem {
+            let item = CapturedItem(
+                originalTextSegment: "Remind me to call Mom when I get home tomorrow",
+                displayTitle: "Call Mom",
+                itemType: .personFollowUp,
+                reminderDate: fire,
+                temporalIntent: TemporalIntent(kind: .dateOnly, isUserEdited: temporalEdited),
+                locationIntent: LocationIntent(event: .arrive, place: .home, isUserEdited: locationEdited)
+            )
+            container.mainContext.insert(item)
+            return item
+        }
+
+        XCTAssertNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: false)))
+        XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: true, locationEdited: false)))
+        XCTAssertNotNil(ReminderScheduleRequest(item: row(temporalEdited: false, locationEdited: true)))
+    }
+
+    /// The editor's way out still arms. Setting a time on a held row goes
+    /// through `update`, which marks the row reviewed and the time as set by
+    /// hand, so the refusal above lets it through.
+    ///
+    /// Falsifier: the refusal read a mark that `update` does not set, and a
+    /// person who resolved the question by choosing the clock never hears it.
+    func testChoosingTheClockInTheEditorStillArmsTheReminder() throws {
+        setHome()
+        let item = try repository.createCapture(
+            text: "Remind me to call Mom when I get home tomorrow",
+            source: .inAppText,
+            createdAt: .now,
+            schedulesReminder: true
+        )
+        XCTAssertNil(ReminderScheduleRequest(item: item), "held at capture")
+
+        let tomorrow = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: .now))
+        let chosen = try XCTUnwrap(
+            Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow)
+        )
+        try repository.update(
+            item,
+            with: ItemEdits(
+                title: item.displayTitle,
+                itemType: item.itemType,
+                category: item.category,
+                dueDate: item.dueDate,
+                reminderDate: chosen,
+                priority: item.priority,
+                personName: item.personName,
+                needsClarification: false,
+                recurrenceRule: RecurrenceStore.rule(for: item.id),
+                locationIntent: .unchanged,
+                dueDateHasTime: false
+            )
+        )
+
+        XCTAssertTrue(item.isReviewed)
+        XCTAssertEqual(item.temporalIntent?.isUserEdited, true)
+        XCTAssertTrue(item.constrainsBothPlaceAndTime, "the place is still there, only the clock was chosen")
+        XCTAssertEqual(ReminderScheduleRequest(item: item)?.fireDate, chosen)
+    }
+
     /// The hold is a post-condition on a finished reading, not a step in one
     /// branch, so it is checked here on values the parser never produced.
     ///

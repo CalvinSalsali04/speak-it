@@ -241,6 +241,26 @@ final class CapturedItem: Identifiable {
         isLocationTriggered && (temporalKind ?? .none) != .none
     }
 
+    /// True while a place-and-time request is still waiting for the person to
+    /// choose a half.
+    ///
+    /// The person's hand is read from the same marks launch recovery reads:
+    /// `isReviewed`, which `update` and `markReviewed` set, and `isUserEdited`
+    /// on either intent, which an edit stamps. Setting a time in the editor is
+    /// how a person commits to the clock half, and that path goes through
+    /// `update`, so a row the person resolved still arms.
+    ///
+    /// `ReminderScheduleRequest` refuses these. The capture-time hold already
+    /// gives them no reminder date, so this is the second layer, for rows that
+    /// carry one anyway: rows stored before the hold existed, and any producer
+    /// outside `ThoughtOrganizer.organize`.
+    var awaitsPlaceOrTimeChoice: Bool {
+        constrainsBothPlaceAndTime
+            && !isReviewed
+            && temporalIntent?.isUserEdited != true
+            && locationIntent?.isUserEdited != true
+    }
+
     /// Whether this item is waiting on the person for anything at all.
     ///
     /// **The one predicate Today and the editor must both use.** They used to

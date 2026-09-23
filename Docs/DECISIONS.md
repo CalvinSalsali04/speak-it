@@ -1,5 +1,33 @@
 # Decisions
 
+## 2026-09-23 — The scheduler refuses a place beside a time the person has not chosen between
+
+The capture-time hold (below) gives a new "…when I get home tomorrow" no
+reminder date. It does nothing for a row that already has one.
+`ReminderScheduleRequest.init?(item:)` asked only whether a future
+`reminderDate` existed, so every such row stored on a TestFlight phone before
+the hold would ring once at 9 AM, wherever the person was.
+
+**The decision.** `ReminderScheduleRequest` now also refuses a row for which
+`CapturedItem.awaitsPlaceOrTimeChoice` is true: the row constrains both a
+place and a time (`constrainsBothPlaceAndTime`), and nothing shows the
+person decided. The marks are the ones launch recovery reads for "the
+person's hand is on this row": `isReviewed`, or `isUserEdited` on either
+intent. The editor's way out is setting a time. That goes through
+`SwiftDataThoughtRepository.update`, which sets `isReviewed` and stamps the
+temporal intent `isUserEdited`, so a row the person resolved still arms.
+
+This is a second layer, not the fix the entry below rejected. The capture
+hold still asks the question. The refusal covers stored rows and any
+producer outside `organize`, and asks nothing, which is why it cannot be
+the only layer.
+
+**Falsifier.** A stored place-and-time row, unreviewed and unedited, with a
+future reminder date, that produces a `ReminderScheduleRequest`; or the same
+row, reviewed or edited by hand, that does not. Both are in
+`LocationReminderTests`, with dates built in the machine's zone, and so is
+the editor path through `update`.
+
 ## 2026-09-23 — The place name ends where the temporal grammar finds a time
 
 **DEL-11, reached through the place grammar.** "Remind me to call Mom when I
@@ -122,7 +150,9 @@ Rejected alternatives:
   covers them already.
 - **Refusing the clock in `ReminderScheduleRequest`.** That stops the
   notification but still asks nothing, so the person never learns that the
-  request was not understood.
+  request was not understood. *Added later the same day as a second layer,
+  not instead of the hold; see "The scheduler refuses a place beside a time"
+  above.*
 
 ### What could move, and what cannot
 
