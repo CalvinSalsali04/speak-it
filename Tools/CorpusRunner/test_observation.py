@@ -1193,10 +1193,12 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
     failed if that stopped being true.
 
     Two facts, then. Each pass has one caller, in the launch task. And the
-    launch task does not suspend above the prune in a shipping build, except
-    for the one `Task.yield()` it has always had, which the capture screen
-    cannot use: it has to be presented, and its own `.task` sleeps 180 ms
-    before it begins a draft. `#if DEBUG` lines are left out, because the
+    launch task does not suspend above either pass in a shipping build except
+    where it always has: the one `Task.yield()` above the prune, which the
+    capture screen cannot use (it has to be presented, and its own `.task`
+    sleeps 180 ms before it begins a draft), and, above the text pass only,
+    `recoverInterruptedAudioDrafts()`, whose length is the text pass's 12 s
+    margin in Known Issues. `#if DEBUG` lines are left out, because the
     example loaders there await before the prune on purpose and Known Issues
     says so; their `#else` branches are shipping code and are kept.
 
@@ -1209,8 +1211,9 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
     SOURCES = ("SpeakIt", "Shared", "SpeakItShareExtension", "SpeakItLiveActivity")
     HOME = pathlib.Path("SpeakIt") / "App" / "RootView.swift"
     PASSES = ("recoverInterruptedCaptureDraft", "pruneEmptyTextDrafts")
-    #: The one suspension above the prune that the argument above allows.
-    ALLOWED = ["await Task.yield()"]
+    #: The suspensions above each pass that the argument above allows.
+    ALLOWED_ABOVE_PRUNE = ["await Task.yield()"]
+    ALLOWED_ABOVE_TEXT_PASS = ["await Task.yield()", "await recoverInterruptedAudioDrafts()"]
 
     @staticmethod
     def code(line):
@@ -1281,21 +1284,37 @@ class TheLaunchPassesRunBeforeAnyCaptureCanBegin(unittest.TestCase):
                 f"`{name}` is called at RootView.swift:{number}, outside the "
                 "launch task, where a capture may already be under way.")
 
-    def test_nothing_suspends_above_the_prune_in_a_shipping_build(self):
+    def suspensions_above(self, call):
+        """Every shipping `await` in the launch task above the one line
+        that calls `call`."""
         lines = self.root_view()
         first, last = self.launch_task(lines)
-        prune = [i for i in range(first, last)
-                 if "CaptureDraftStore.pruneEmptyTextDrafts()" in self.code(lines[i])]
-        self.assertEqual(len(prune), 1)
-        above = self.shipping(lines[first:prune[0]])
-        suspending = [self.code(line).strip() for line in above
-                      if re.search(r"\bawait\b", self.code(line))]
+        found = [i for i in range(first, last) if call in self.code(lines[i])]
+        self.assertEqual(len(found), 1, f"expected one `{call}` in the launch task")
+        above = self.shipping(lines[first:found[0]])
+        return [self.code(line).strip() for line in above
+                if re.search(r"\bawait\b", self.code(line))]
+
+    def test_nothing_suspends_above_the_prune_in_a_shipping_build(self):
         self.assertEqual(
-            suspending, self.ALLOWED,
+            self.suspensions_above("CaptureDraftStore.pruneEmptyTextDrafts()"),
+            self.ALLOWED_ABOVE_PRUNE,
             "the launch task suspends before `pruneEmptyTextDrafts()`, so the "
             "capture screen can begin a recording first and the prune can "
             "delete it before its first buffer lands. Move the new work below "
             "the launch passes.")
+
+    def test_nothing_new_suspends_above_the_text_pass_in_a_shipping_build(self):
+        """The window between the prune and the text pass already holds the
+        audio pass, the one unbounded suspension in the task; a second one
+        there eats the same 12 s margin."""
+        self.assertEqual(
+            self.suspensions_above("repository?.recoverInterruptedCaptureDraft()"),
+            self.ALLOWED_ABOVE_TEXT_PASS,
+            "the launch task gained a suspension before "
+            "`recoverInterruptedCaptureDraft()`, so a recording begun meanwhile "
+            "that carries typed words can be committed by the text pass as if "
+            "it had been interrupted. Move the new work below the launch passes.")
 
     def test_there_is_something_to_check(self):
         """The two tests above already refuse an empty answer: a renamed pass

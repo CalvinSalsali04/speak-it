@@ -373,8 +373,9 @@ recording. The ordering is pinned by a source guard, not by a Swift test.
   in `Tools/CorpusRunner/test_observation.py` fails if `pruneEmptyTextDrafts`
   or `recoverInterruptedCaptureDraft` gains a second use anywhere in the app,
   the Share extension or the Live Activity, if either call leaves `RootView`'s
-  launch task, or if a shipping line of that task above the prune suspends
-  other than the one `Task.yield()`. It reads source; it does not run the
+  launch task, or if a shipping line of that task suspends above the prune
+  other than the one `Task.yield()`, or above the text pass other than that
+  and `recoverInterruptedAudioDrafts()`. It reads source; it does not run the
   launch. `#if DEBUG` lines are left out of the suspension check on purpose,
   so a new DEBUG await there is not caught; nor is a pass wrapped in a nested
   `Task` or closure inside the launch task, which would run it later.
