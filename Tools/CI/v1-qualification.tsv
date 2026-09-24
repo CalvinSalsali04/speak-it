@@ -36,7 +36,7 @@ baseline	fbb6f909ad7309491b267256e3291925e2836b0f	main	-	yes	yes	-
 #   extra    Tools/CI/v1-probes.sh from this checkout: the December 24 family
 #            and #151's sentences through the probe, #136's two scorers and
 #            its R1 timing, and the typed inputs for the handoff's M3.
-rc	3df9cb3790996bac65ccfcd7486130e77cc8a695	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
+rc	da45e478a67c7ac6127a0a87c7dbed06bea8dbd7	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
 #
 # The former third row, `semantic-units` (#118's units experiment at 09a9eed),
 # ran on 2026-09-24 and is done: OUTCOME C, recorded on the semantic-map branch
