@@ -1,0 +1,1629 @@
+{
+ "author": "independent gold-author thread session (not the experiment author, not a grader of #118)",
+ "written_at": "2026-09-23",
+ "independence": "Written from the transcript text in gold-input/captures.jsonl only. Not read while writing: any model output (runs.jsonl, map.jsonl, asked.jsonl, diag.zip), the bottleneck, six-rejection and whole-list reports, the #118 grade files, the experiment thread's messages, and Candidate 1 or 2 outputs or schemas. Disclosure: the project memory loaded into this session names some of these capture ids and summarises failure mechanisms at family level (for example that some production answers dropped a deliberation); it holds no per-capture units or model outputs. The unit definition was hashed before any transcript was received. Families for the \"dropped-intention\" and \"correct complex control\" buckets are not assigned here: they depend on past system behaviour this author deliberately did not see, so the experiment thread supplies them.",
+ "captures": [
+  {
+   "id": "RB13R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I could drive to the airport Sunday or take the bus actually no take the bus to the airport on Sunday",
+       0
+      ]
+     ],
+     "gloss": "take the bus to the airport on Sunday (drive considered, then corrected)"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB14C",
+   "families": [
+    "coherent single thought"
+   ],
+   "note": "single simple action",
+   "units": [
+    {
+     "spans": [
+      [
+       "give Dimitri the blue chair",
+       0
+      ]
+     ],
+     "gloss": "give Dimitri the blue chair"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB16R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "there's a morning session and an afternoon one and honestly the afternoon is better so book the afternoon session",
+       0
+      ]
+     ],
+     "gloss": "book the afternoon session (two sessions weighed)"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB17R",
+   "families": [
+    "mixed action + Memory",
+    "reported speech"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I need to book the service before then",
+       0
+      ]
+     ],
+     "gloss": "book the furnace service before the warranty ends"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ],
+    [
+     "so",
+     1
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "the guy said the furnace warranty expires in November which is sooner than I thought",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ]
+  },
+  {
+   "id": "RB19R",
+   "families": [
+    "mixed action + Memory",
+    "reported speech"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I should draft the renewal at some point",
+       0
+      ]
+     ],
+     "gloss": "draft the lease renewal at some point"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "the property manager mentioned the tenant's lease ends in March",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ]
+  },
+  {
+   "id": "RB21R",
+   "families": [
+    "rambling multiple tasks"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "drop the donation bags off",
+       0
+      ]
+     ],
+     "gloss": "drop the donation bags off"
+    },
+    {
+     "spans": [
+      [
+       "while I'm out there fill the car up",
+       0
+      ]
+     ],
+     "gloss": "fill the car up while out"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB28C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I need to move the bikes out of the way before he arrives",
+       0
+      ]
+     ],
+     "gloss": "move the bikes before the contractor arrives"
+    },
+    {
+     "spans": [
+      [
+       "I should also get a second quote from the company Rosa used because his first number seemed high",
+       0
+      ]
+     ],
+     "gloss": "get a second quote from the company Rosa used, because the first seemed high"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ],
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "the contractor is coming Tuesday morning to look at the back steps",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    },
+    {
+     "span": [
+      "the deck boards need pricing separately",
+      0
+     ],
+     "owners": [
+      "own",
+      2
+     ],
+     "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+    }
+   ]
+  },
+  {
+   "id": "RB28R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I need to like move the bikes out of the way before he arrives",
+       0
+      ]
+     ],
+     "gloss": "move the bikes before the contractor arrives"
+    },
+    {
+     "spans": [
+      [
+       "I should also get a second quote from the company Rosa used because honestly his first number seemed high",
+       0
+      ]
+     ],
+     "gloss": "get a second quote from the company Rosa used, because the first seemed high"
+    }
+   ],
+   "filler": [
+    [
+     "okay so um",
+     0
+    ],
+    [
+     "so",
+     1
+    ],
+    [
+     "and uh",
+     0
+    ],
+    [
+     "and yeah",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "the contractor is coming Tuesday morning to look at the back steps",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    },
+    {
+     "span": [
+      "the deck boards need pricing separately",
+      0
+     ],
+     "owners": [
+      "own",
+      2
+     ],
+     "reason": "a new clause that reads either as its own pricing task or as an instruction for the second quote"
+    }
+   ]
+  },
+  {
+   "id": "RB29C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "the school sent the trip form home today and it needs signing",
+       0
+      ]
+     ],
+     "gloss": "sign the trip form the school sent home"
+    },
+    {
+     "spans": [
+      [
+       "the payment is due by the end of the month",
+       0
+      ]
+     ],
+     "gloss": "trip payment due by end of month"
+    },
+    {
+     "spans": [
+      [
+       "I want to ask whether Nadia can sit with Priya on the coach because last year she was on her own the whole way",
+       0
+      ]
+     ],
+     "gloss": "ask whether Nadia can sit with Priya on the coach, and why"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB29R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "the school sent the trip form home today and it um it needs signing",
+       0
+      ]
+     ],
+     "gloss": "sign the trip form the school sent home"
+    },
+    {
+     "spans": [
+      [
+       "the payment is due by the end of the month",
+       0
+      ]
+     ],
+     "gloss": "trip payment due by end of month"
+    },
+    {
+     "spans": [
+      [
+       "I also want to ask whether Nadia can sit with Priya on the coach because you know last year she was on her own the whole way",
+       0
+      ]
+     ],
+     "gloss": "ask whether Nadia can sit with Priya on the coach, and why"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ],
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "I think",
+      0
+     ],
+     "owners": [
+      2,
+      "filler"
+     ],
+     "reason": "epistemic hedge at the unit's edge; it qualifies the claim but carries no content of its own"
+    }
+   ]
+  },
+  {
+   "id": "RB30C",
+   "families": [
+    "clean multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "book a follow up with Doctor Adeyemi",
+       0
+      ]
+     ],
+     "gloss": "book a follow up with Doctor Adeyemi"
+    },
+    {
+     "spans": [
+      [
+       "start the supplements again",
+       0
+      ]
+     ],
+     "gloss": "start the supplements again"
+    },
+    {
+     "spans": [
+      [
+       "I should tell Mum because hers was the same thing two years ago",
+       0
+      ]
+     ],
+     "gloss": "tell Mum, because hers was the same"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ],
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ]
+   ],
+   "shared": [
+    {
+     "span": [
+      "I need to",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    }
+   ],
+   "ambiguous": [
+    {
+     "span": [
+      "I picked up the blood work results and the iron is low again",
+      0
+     ],
+     "owners": [
+      "own",
+      1,
+      2
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ]
+  },
+  {
+   "id": "RB30R",
+   "families": [
+    "rambling multiple tasks",
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "book a follow up with Doctor Adeyemi",
+       0
+      ]
+     ],
+     "gloss": "book a follow up with Doctor Adeyemi"
+    },
+    {
+     "spans": [
+      [
+       "start the supplements again",
+       0
+      ]
+     ],
+     "gloss": "start the supplements again"
+    },
+    {
+     "spans": [
+      [
+       "I should probably tell Mum because I mean hers was the same thing two years ago",
+       0
+      ]
+     ],
+     "gloss": "tell Mum, because hers was the same"
+    }
+   ],
+   "filler": [
+    [
+     "right so",
+     0
+    ],
+    [
+     "so",
+     1
+    ],
+    [
+     "and uh",
+     0
+    ],
+    [
+     "and",
+     2
+    ]
+   ],
+   "shared": [
+    {
+     "span": [
+      "I need to",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    }
+   ],
+   "ambiguous": [
+    {
+     "span": [
+      "I picked up the blood work results and um the iron is low again",
+      0
+     ],
+     "owners": [
+      "own",
+      1,
+      2
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ]
+  },
+  {
+   "id": "RB31C",
+   "families": [
+    "coherent single thought"
+   ],
+   "note": "long single Memory explanation",
+   "units": [
+    {
+     "spans": [
+      [
+       "the reason the back steps are rotting is that the downspout empties straight onto them rather than into the drain so every time it rains the bottom two boards sit in water for a day and the contractor said that is why replacing them without moving the downspout would just start the whole thing over",
+       0
+      ]
+     ],
+     "gloss": "why the back steps rot and why the downspout must move"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB31R",
+   "families": [
+    "coherent single thought"
+   ],
+   "note": "long single Memory explanation",
+   "units": [
+    {
+     "spans": [
+      [
+       "the reason the back steps are rotting is that you know the downspout empties straight onto them rather than into the drain so basically every time it rains the bottom two boards sit in water for a day and the contractor said that's why I mean replacing them without moving the downspout would just start the whole thing over",
+       0
+      ]
+     ],
+     "gloss": "why the back steps rot and why the downspout must move"
+    }
+   ],
+   "filler": [
+    [
+     "um so",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB33R",
+   "families": [
+    "rambling multiple tasks",
+    "deliberation + final decision"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "order the projector bulb",
+       0
+      ]
+     ],
+     "gloss": "order the projector bulb"
+    },
+    {
+     "spans": [
+      [
+       "I could pay the framing invoice now or wait for the purchase order, no, now, so pay the framing invoice",
+       0
+      ]
+     ],
+     "gloss": "pay the framing invoice now (waiting considered, then rejected)"
+    }
+   ],
+   "filler": [
+    [
+     "and then,",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB38C",
+   "families": [
+    "coherent single thought"
+   ],
+   "note": "single Memory explanation",
+   "units": [
+    {
+     "spans": [
+      [
+       "the reason the nursery keeps asking for the second form is that the funding year restarts in April and the one on file was signed against the old year",
+       0
+      ]
+     ],
+     "gloss": "why the nursery keeps asking for the second form"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB41R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I could do the Tuesday slot with the physio or the Friday one and Tuesday is better so book the Tuesday slot with the physio because I'm off that afternoon anyway",
+       0
+      ]
+     ],
+     "gloss": "book the Tuesday physio slot (Friday weighed), because off that afternoon"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB43R",
+   "families": [
+    "deliberation + final decision",
+    "rambling multiple tasks"
+   ],
+   "note": "one deliberation resolves into two calls; the deliberation, the verb and the deadline are shared",
+   "units": [
+    {
+     "spans": [
+      [
+       "the dentist",
+       1
+      ]
+     ],
+     "gloss": "call the dentist before they shut"
+    },
+    {
+     "spans": [
+      [
+       "the optician",
+       1
+      ]
+     ],
+     "gloss": "call the optician before they shut"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ],
+    [
+     "and then",
+     0
+    ]
+   ],
+   "shared": [
+    {
+     "span": [
+      "I thought it was the dentist or the optician today but there's time for both",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    },
+    {
+     "span": [
+      "call",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    },
+    {
+     "span": [
+      "before they shut",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    }
+   ],
+   "ambiguous": []
+  },
+  {
+   "id": "RB44R",
+   "families": [
+    "deliberation + final decision",
+    "rambling multiple tasks"
+   ],
+   "note": "one deliberation resolves into two actions; the deliberation is shared",
+   "units": [
+    {
+     "spans": [
+      [
+       "book the van for Saturday",
+       0
+      ]
+     ],
+     "gloss": "book the van for Saturday"
+    },
+    {
+     "spans": [
+      [
+       "ask Theo to help me load it",
+       0
+      ]
+     ],
+     "gloss": "ask Theo to help load it"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ],
+    [
+     "and",
+     1
+    ]
+   ],
+   "shared": [
+    {
+     "span": [
+      "I can't decide if I need the van or just Theo's car and thinking about it it's both",
+      0
+     ],
+     "owners": [
+      1,
+      2
+     ]
+    }
+   ],
+   "ambiguous": []
+  },
+  {
+   "id": "RB45R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "note": "deliberation with no decision; one thought",
+   "units": [
+    {
+     "spans": [
+      [
+       "I keep going back and forth on whether to do the March intake or wait for September and I genuinely don't know yet",
+       0
+      ]
+     ],
+     "gloss": "undecided between the March intake and September"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB46R",
+   "families": [
+    "deliberation + final decision"
+   ],
+   "note": "uncertain diagnosis resolved into one action",
+   "units": [
+    {
+     "spans": [
+      [
+       "the chimney needs repointing or maybe it's the whole gable that needs re-rendering and I'll have to get someone to look before I can call it",
+       0
+      ]
+     ],
+     "gloss": "get someone to look at the chimney or gable before deciding"
+    }
+   ],
+   "filler": [
+    [
+     "so",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RB17C",
+   "families": [
+    "mixed action + Memory"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "I need to book the service before then",
+       0
+      ]
+     ],
+     "gloss": "book the furnace service before then"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "the furnace warranty expires in November",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a recall-worthy fact that also motivates or anchors the action after it; it can stand as its own unit or be the action's context"
+    }
+   ]
+  },
+  {
+   "id": "RB21C",
+   "families": [
+    "clean multiple tasks"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "drop the donation bags off",
+       0
+      ]
+     ],
+     "gloss": "drop the donation bags off"
+    },
+    {
+     "spans": [
+      [
+       "fill the car up",
+       0
+      ]
+     ],
+     "gloss": "fill the car up"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "CM04",
+   "families": [
+    "message content"
+   ],
+   "note": "both clauses are the message's content",
+   "units": [
+    {
+     "spans": [
+      [
+       "text Dana that I am running late and will call after",
+       0
+      ]
+     ],
+     "gloss": "text Dana: running late, will call after"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "CM06",
+   "families": [
+    "message content",
+    "clean multiple tasks"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "text Mike that the meeting is cancelled",
+       0
+      ]
+     ],
+     "gloss": "text Mike that the meeting is cancelled"
+    },
+    {
+     "spans": [
+      [
+       "remind me to call Sarah",
+       0
+      ]
+     ],
+     "gloss": "remind me to call Sarah"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "CM07",
+   "families": [
+    "message content",
+    "clean multiple tasks"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "tell Priya I will be late",
+       0
+      ]
+     ],
+     "gloss": "tell Priya I will be late"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ]
+   ],
+   "shared": [],
+   "ambiguous": [
+    {
+     "span": [
+      "book the room",
+      0
+     ],
+     "owners": [
+      "own",
+      1
+     ],
+     "reason": "a bare imperative after a message complement: the user's own task, or part of what Priya is told"
+    }
+   ]
+  },
+  {
+   "id": "RS03",
+   "families": [
+    "reported speech"
+   ],
+   "note": "",
+   "units": [
+    {
+     "spans": [
+      [
+       "Mike told me the deal closed and the team is celebrating",
+       0
+      ]
+     ],
+     "gloss": "Mike's news: deal closed, team celebrating"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "RS04",
+   "families": [
+    "reported speech"
+   ],
+   "note": "a reported command; whether it is the user's task is a destination question, not a span question",
+   "units": [
+    {
+     "spans": [
+      [
+       "Sarah said call Mike tomorrow",
+       0
+      ]
+     ],
+     "gloss": "Sarah said call Mike tomorrow"
+    }
+   ],
+   "filler": [],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "CAP14",
+   "families": [
+    "clean multiple tasks",
+    "capacity"
+   ],
+   "note": "capacity stress: 14 separate units",
+   "units": [
+    {
+     "spans": [
+      [
+       "Call person1",
+       0
+      ]
+     ],
+     "gloss": "call person1"
+    },
+    {
+     "spans": [
+      [
+       "Call person2",
+       0
+      ]
+     ],
+     "gloss": "call person2"
+    },
+    {
+     "spans": [
+      [
+       "Call person3",
+       0
+      ]
+     ],
+     "gloss": "call person3"
+    },
+    {
+     "spans": [
+      [
+       "Call person4",
+       0
+      ]
+     ],
+     "gloss": "call person4"
+    },
+    {
+     "spans": [
+      [
+       "Call person5",
+       0
+      ]
+     ],
+     "gloss": "call person5"
+    },
+    {
+     "spans": [
+      [
+       "Call person6",
+       0
+      ]
+     ],
+     "gloss": "call person6"
+    },
+    {
+     "spans": [
+      [
+       "Call person7",
+       0
+      ]
+     ],
+     "gloss": "call person7"
+    },
+    {
+     "spans": [
+      [
+       "Call person8",
+       0
+      ]
+     ],
+     "gloss": "call person8"
+    },
+    {
+     "spans": [
+      [
+       "Call person9",
+       0
+      ]
+     ],
+     "gloss": "call person9"
+    },
+    {
+     "spans": [
+      [
+       "Call person10",
+       0
+      ]
+     ],
+     "gloss": "call person10"
+    },
+    {
+     "spans": [
+      [
+       "Call person11",
+       0
+      ]
+     ],
+     "gloss": "call person11"
+    },
+    {
+     "spans": [
+      [
+       "Call person12",
+       0
+      ]
+     ],
+     "gloss": "call person12"
+    },
+    {
+     "spans": [
+      [
+       "Call person13",
+       0
+      ]
+     ],
+     "gloss": "call person13"
+    },
+    {
+     "spans": [
+      [
+       "Call person14",
+       0
+      ]
+     ],
+     "gloss": "call person14"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ],
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ],
+    [
+     "and",
+     3
+    ],
+    [
+     "and",
+     4
+    ],
+    [
+     "and",
+     5
+    ],
+    [
+     "and",
+     6
+    ],
+    [
+     "and",
+     7
+    ],
+    [
+     "and",
+     8
+    ],
+    [
+     "and",
+     9
+    ],
+    [
+     "and",
+     10
+    ],
+    [
+     "and",
+     11
+    ],
+    [
+     "and",
+     12
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  },
+  {
+   "id": "CAP25",
+   "families": [
+    "clean multiple tasks",
+    "capacity"
+   ],
+   "note": "capacity stress: 25 separate units",
+   "units": [
+    {
+     "spans": [
+      [
+       "Call person1",
+       0
+      ]
+     ],
+     "gloss": "call person1"
+    },
+    {
+     "spans": [
+      [
+       "Call person2",
+       0
+      ]
+     ],
+     "gloss": "call person2"
+    },
+    {
+     "spans": [
+      [
+       "Call person3",
+       0
+      ]
+     ],
+     "gloss": "call person3"
+    },
+    {
+     "spans": [
+      [
+       "Call person4",
+       0
+      ]
+     ],
+     "gloss": "call person4"
+    },
+    {
+     "spans": [
+      [
+       "Call person5",
+       0
+      ]
+     ],
+     "gloss": "call person5"
+    },
+    {
+     "spans": [
+      [
+       "Call person6",
+       0
+      ]
+     ],
+     "gloss": "call person6"
+    },
+    {
+     "spans": [
+      [
+       "Call person7",
+       0
+      ]
+     ],
+     "gloss": "call person7"
+    },
+    {
+     "spans": [
+      [
+       "Call person8",
+       0
+      ]
+     ],
+     "gloss": "call person8"
+    },
+    {
+     "spans": [
+      [
+       "Call person9",
+       0
+      ]
+     ],
+     "gloss": "call person9"
+    },
+    {
+     "spans": [
+      [
+       "Call person10",
+       0
+      ]
+     ],
+     "gloss": "call person10"
+    },
+    {
+     "spans": [
+      [
+       "Call person11",
+       0
+      ]
+     ],
+     "gloss": "call person11"
+    },
+    {
+     "spans": [
+      [
+       "Call person12",
+       0
+      ]
+     ],
+     "gloss": "call person12"
+    },
+    {
+     "spans": [
+      [
+       "Call person13",
+       0
+      ]
+     ],
+     "gloss": "call person13"
+    },
+    {
+     "spans": [
+      [
+       "Call person14",
+       0
+      ]
+     ],
+     "gloss": "call person14"
+    },
+    {
+     "spans": [
+      [
+       "Call person15",
+       0
+      ]
+     ],
+     "gloss": "call person15"
+    },
+    {
+     "spans": [
+      [
+       "Call person16",
+       0
+      ]
+     ],
+     "gloss": "call person16"
+    },
+    {
+     "spans": [
+      [
+       "Call person17",
+       0
+      ]
+     ],
+     "gloss": "call person17"
+    },
+    {
+     "spans": [
+      [
+       "Call person18",
+       0
+      ]
+     ],
+     "gloss": "call person18"
+    },
+    {
+     "spans": [
+      [
+       "Call person19",
+       0
+      ]
+     ],
+     "gloss": "call person19"
+    },
+    {
+     "spans": [
+      [
+       "Call person20",
+       0
+      ]
+     ],
+     "gloss": "call person20"
+    },
+    {
+     "spans": [
+      [
+       "Call person21",
+       0
+      ]
+     ],
+     "gloss": "call person21"
+    },
+    {
+     "spans": [
+      [
+       "Call person22",
+       0
+      ]
+     ],
+     "gloss": "call person22"
+    },
+    {
+     "spans": [
+      [
+       "Call person23",
+       0
+      ]
+     ],
+     "gloss": "call person23"
+    },
+    {
+     "spans": [
+      [
+       "Call person24",
+       0
+      ]
+     ],
+     "gloss": "call person24"
+    },
+    {
+     "spans": [
+      [
+       "Call person25",
+       0
+      ]
+     ],
+     "gloss": "call person25"
+    }
+   ],
+   "filler": [
+    [
+     "and",
+     0
+    ],
+    [
+     "and",
+     1
+    ],
+    [
+     "and",
+     2
+    ],
+    [
+     "and",
+     3
+    ],
+    [
+     "and",
+     4
+    ],
+    [
+     "and",
+     5
+    ],
+    [
+     "and",
+     6
+    ],
+    [
+     "and",
+     7
+    ],
+    [
+     "and",
+     8
+    ],
+    [
+     "and",
+     9
+    ],
+    [
+     "and",
+     10
+    ],
+    [
+     "and",
+     11
+    ],
+    [
+     "and",
+     12
+    ],
+    [
+     "and",
+     13
+    ],
+    [
+     "and",
+     14
+    ],
+    [
+     "and",
+     15
+    ],
+    [
+     "and",
+     16
+    ],
+    [
+     "and",
+     17
+    ],
+    [
+     "and",
+     18
+    ],
+    [
+     "and",
+     19
+    ],
+    [
+     "and",
+     20
+    ],
+    [
+     "and",
+     21
+    ],
+    [
+     "and",
+     22
+    ],
+    [
+     "and",
+     23
+    ]
+   ],
+   "shared": [],
+   "ambiguous": []
+  }
+ ]
+}

@@ -57,6 +57,7 @@ restart optimization.
 | [LANGUAGE_BASELINE.md](LANGUAGE_BASELINE.md) | The measured numbers a language change is judged against, and where the room actually is |
 | [CHOICE_FAMILY_EVALUATION.md](CHOICE_FAMILY_EVALUATION.md) | What counts as an open alternative and a later resolution, frozen before the examples were collected |
 | [FOUNDATION_MODELS_ARCHITECTURE.md](FOUNDATION_MODELS_ARCHITECTURE.md) | The proposed iOS 27 shape: the model decides what was said, the deterministic pipeline decides what Speak It does about it — with what is and is not measured |
+| [SEMANTIC_MAP_ARCHITECTURE.md](SEMANTIC_MAP_ARCHITECTURE.md) | A grounded semantic map from three small model jobs, an evidence arbiter that can only take execution away, and a trace of every exit production's model route takes — a probe, not on the capture path |
 | [SEGMENTATION_ARCHITECTURE.md](SEGMENTATION_ARCHITECTURE.md) | Why clause splitting cannot find a boundary between two statements, and the two signals the app already has and discards |
 | [SEMANTIC_CORPUS_EXPANSION.md](SEMANTIC_CORPUS_EXPANSION.md) | The corpus growing from 182 to 439 cases and the hardening it forced |
 | [SEMANTIC_CORPUS_FINDINGS.md](SEMANTIC_CORPUS_FINDINGS.md) | **Historical.** The 182-case release gate |

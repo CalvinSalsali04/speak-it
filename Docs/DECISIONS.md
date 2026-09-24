@@ -3230,3 +3230,32 @@ that row.
 **No cost-ledger row is owed.** Nothing here changes an executable line of the
 engine — the skips are test-side, and INC58 is a development row whose answer
 the next language dispatch reports — so no sealed measure can move.
+
+## 2026-09-22 — The semantic map is measured beside production before anything routes on it
+
+Production asks Apple's model about a capture only when a rules row needs
+review, the capture is under 1,500 characters, the model answers inside two
+seconds and the whole answer survives validation and `RefinementGuard`
+(`Docs/SEMANTIC_MAP_ARCHITECTURE.md` lists each exit with its line). None of
+those exits is recorded, so the question "how often does a hard capture never
+reach the model?" had no answer, and a confident wrong rules reading is by
+construction never checked.
+
+**Decision: build the next interpretation layer as a probe first
+(`Tools/SemanticMap/`), not as a production edit.** It traces production's
+own route (policy, availability, budget, validation, guard) with production's
+code, cut out of `ThoughtExtractor.swift` at build time rather than copied by
+hand; it asks three small model jobs for units, relations and entity kinds as
+atom indexes and closed tokens only; and an arbiter applies four powers, each
+of which can only split, merge Memory rows, take execution away or clear an
+unconfirmed person. Nothing can create an operation, a date, a reminder, a
+place trigger, a name or text, and a final structural check falls back to the
+rules reading whole if anything did.
+
+Why not edit production now: hybrid arbitration and the interpretation prompts
+are the interfaces other work was told not to touch while PR #117 is graded,
+and a probe answers the questions that decide whether this should ship at all
+(preregistered as P1–P3, M1–M4 and S1 in the architecture document) without
+putting an unmeasured model path in front of a user. Promotion, if the fresh
+slice supports it, also needs a product decision: three generations cannot sit
+on the capture path, so the map would revise rows after save.

@@ -91,6 +91,7 @@ jobs:
               - 'Tools/LanguageMutations/**'
               - 'Tools/PipelineProbe/**'
               - 'Tools/InterpretationProbe/**'
+              - 'Tools/SemanticMap/**'
               - 'Tools/CI/**'
               - '.github/workflows/ci.yml'
             # The leak check walks EVERY Markdown file in the repository, not
@@ -233,6 +234,11 @@ jobs:
       # on Linux, on every pull request, rather than on a Mac by dispatch.
       - name: The interpretation path is on-device only
         run: python3 Tools/CorpusRunner/test_interpretation_isolation.py
+      # The semantic-map scorer is pure Python, and its self-test checks its
+      # per-capture reading against heldout/score.py's aggregates, so a drift
+      # between the two notions of failure is caught on the pull request.
+      - name: Semantic-map scorer self-tests
+        run: python3 Tools/SemanticMap/score.py selftest
       # Receipt-only: compares the device-baseline manifest with Candidate47's
       # and the receipt with both. Three frozen files, no working tree, so this
       # cannot redden when main legitimately moves. It catches the one mistake
@@ -457,3 +463,25 @@ jobs:
       - name: Interpretation selfcheck (no model needed)
         if: always()
         run: Tools/InterpretationProbe/build/interpret --selfcheck
+
+      # The semantic-map probe (Tools/SemanticMap), for the same reasons: its
+      # only compile check, and a selfcheck that needs no model. The census is
+      # production's routing of the four development sets with no model at
+      # all -- which exit each capture takes, and which rules failures never
+      # reach the model -- and `|| true` because a measurement must not decide
+      # whether the run went green.
+      - name: Build the semantic-map probe
+        if: always()
+        run: Tools/SemanticMap/build.sh
+
+      - name: Semantic-map selfcheck (no model needed)
+        if: always()
+        run: Tools/SemanticMap/build/semantic-map --selfcheck
+
+      - name: Semantic-map availability on this runner
+        if: always()
+        run: Tools/SemanticMap/build/semantic-map --availability
+
+      - name: Production route census of the development sets (no model)
+        if: always()
+        run: Tools/SemanticMap/census-devsets.sh || true

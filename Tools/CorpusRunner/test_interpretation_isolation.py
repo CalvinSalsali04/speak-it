@@ -38,6 +38,9 @@ SOURCES = [
     ROOT / "SpeakIt" / "Interpretation",
     ROOT / "Tools" / "InterpretationProbe",
     ROOT / "Tools" / "PipelineProbe",
+    # The semantic-map probe runs production's model route and three model
+    # jobs over whatever file it is handed, sealed or not.
+    ROOT / "Tools" / "SemanticMap",
 ]
 
 #: Directory names skipped while walking. `build/` holds generated source slices
