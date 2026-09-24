@@ -2079,6 +2079,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         strings (`an interval series reads the spoken five and puts it in
         the afternoon`, `an interval series takes the named-day rule
         too`, which two rows share). None out: 4937 + 5 - 0 = 4942.
+        4942 -> 4946 the same day, the third commit of that fix: four rows
+        join the corpus's `recurrence` family. Four in, all of them the
+        rows' notes, enumerated by diffing `swift_literals` before and
+        after (`Remind me Friday at 5 is 17:00, so every Friday at 5 is
+        too. The series fired at 05:00.`, `A daily bare 1 to 7 is the
+        afternoon, and this evening's six is still ahead.`, `An ordinal
+        weekday lands on the same clock. August's first Monday is the
+        capture's own day.`, `An explicit meridiem outranks the afternoon
+        default.`). The four utterances were already here as family-table
+        fixtures. None out: 4942 + 4 - 0 = 4946.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2088,7 +2098,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4942)
+        self.assertEqual(len(space), 4946)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

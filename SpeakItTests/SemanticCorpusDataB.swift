@@ -226,6 +226,25 @@ enum SemanticCorpusB {
                    remind: [CorpusDate(month: 8, day: 4, hour: 7)],
                    recurs: [CorpusRecurrence(frequency: .daily, interval: 1)],
                    note: "The series owns its clock: seven means the seven it repeats at, not the next seven."),
+        // A series' bare hour takes the half of the day the same words get on
+        // a named day. Found by hosted run 35935740134; see Docs/DECISIONS.md,
+        // 2026-09-24.
+        corpusCase(.recurrence, "Remind me every Friday at 5 to send the invoice", count: 1,
+                   remind: [CorpusDate(month: 8, day: 7, hour: 17)],
+                   recurs: [CorpusRecurrence(frequency: .weekly, interval: 1, weekdays: [6])],
+                   note: "Remind me Friday at 5 is 17:00, so every Friday at 5 is too. The series fired at 05:00."),
+        corpusCase(.recurrence, "every day at 6 take the pills", count: 1,
+                   due: [CorpusDate(month: 8, day: 3, hour: 18)],
+                   recurs: [CorpusRecurrence(frequency: .daily, interval: 1)],
+                   note: "A daily bare 1 to 7 is the afternoon, and this evening's six is still ahead."),
+        corpusCase(.recurrence, "Remind me the first Monday of every month at 4 to pay the nanny", count: 1,
+                   remind: [CorpusDate(month: 8, day: 3, hour: 16)],
+                   recurs: [CorpusRecurrence(frequency: .monthly, interval: 1)],
+                   note: "An ordinal weekday lands on the same clock. August's first Monday is the capture's own day."),
+        corpusCase(.recurrence, "Remind me every Friday at 5 AM to send the invoice", count: 1,
+                   remind: [CorpusDate(month: 8, day: 7, hour: 5)],
+                   recurs: [CorpusRecurrence(frequency: .weekly, interval: 1, weekdays: [6])],
+                   note: "An explicit meridiem outranks the afternoon default."),
     ]
 
     // MARK: - Location

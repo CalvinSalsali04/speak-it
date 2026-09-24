@@ -87,6 +87,14 @@ gone. The family table gained three interval rows. An explicit clock reads
 as before: "Remind me every four days at 9 am" stays 09:00
 (`SwiftDataThoughtRepositoryTests.testOrganizerUnderstandsIntervalAndCompletionAnchoredRecurrence`).
 
+**Corpus rows, a third commit.** The `recurrence` family is the corpus's
+one family that asserts a series' time, so four rows join it at the fixed
+frame (Monday 3 August 2026, 10:00 Toronto): "Remind me every Friday at 5
+to send the invoice" at Friday 17:00, "every day at 6 take the pills" due
+today at 18:00, "Remind me the first Monday of every month at 4 to pay the
+nanny" today at 16:00, and "Remind me every Friday at 5 AM to send the
+invoice" at 05:00. No other row's expectation changed.
+
 **Moved by reading.** No corpus row asserts a time this moves. Five corpus
 rows assert a series time: two at nine, two at seven with "morning", and one
 alarm at 6 with "morning". The named-day rule leaves each in the morning.
