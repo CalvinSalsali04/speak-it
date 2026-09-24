@@ -2055,7 +2055,19 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the fixture's Friday: a run just before a Friday alert, a clock
         change that week, or this machine's zone puts the Friday alert on
         another local weekday, so production's one-shot fallback
-        applies`): 4891 + 1 - 1 = 4891.
+        applies`): 4891 + 1 - 1 = 4891. 4891 -> 4933 on 2026-09-24, the
+        phase 13 `app`-path export (`WholeCaptureExportTests`, a new
+        test-only file). Forty-two in, enumerated by diffing
+        `swift_literals` against `HEAD`, none out. Three are the
+        self-check's toy captures, written for it and taken from no
+        corpus (`buy blue paint tomorrow at 3`, `the lighthouse cat is
+        called Biscuit`, `cancel the kite lesson reminder`). One is a
+        doc-comment placeholder (`<the spoken target>`) and one the
+        probe's place rendering, copied from `rowreport.swift`. The other
+        thirty-seven are messages: twenty-six assertion messages
+        (nineteen of them `\\(id): ...`), the two halves of the skip
+        message, seven export and input-error texts, and the two halves
+        of the summary line: 4891 + 42 - 0 = 4933.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2065,7 +2077,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4891)
+        self.assertEqual(len(space), 4933)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
