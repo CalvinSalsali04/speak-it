@@ -55,8 +55,12 @@ those builds were cut, and some notes merged for this build sit below the
   used the time it was saved. "5 AM", an alarm ("wake me every weekday at 6") and
   "every morning at 7" keep the morning. A series also keeps the time of its
   first occurrence after it is completed: "Every Monday at 3 call Mom" could
-  come due at 3 AM once and at 3 PM every week after. Series saved before
-  this build keep the time they were given.
+  come due at 3 AM once and at 3 PM every week after. Most series saved
+  before this build keep the time they were given. One saved before
+  repeating reminders stored their reading is re-read at launch: it can ring
+  once more at the old hour and then move to the afternoon (Known issues:
+  "An old repeating reminder at a bare hour can move to the afternoon at
+  launch").
 - Build 20.
 
 - Opening the app no longer erases a repeating reminder's saved timing
