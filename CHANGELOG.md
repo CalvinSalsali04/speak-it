@@ -7,6 +7,45 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+## Build 20 — 2026-09-24
+
+The V1 candidate. A summary first; the notes after it were written change by
+change for builds 18 to 20. Their "Build 18." and "Build 19." lines mark where
+those builds were cut, and some notes merged for this build sit below the
+"Build 19." line.
+
+- A spoken cancel archives instead of deleting. "Cancel the dentist reminder"
+  stops the reminder at once and moves the row to Archive, where Restore
+  brings it back with its original words. A confirmed "cancel all my
+  reminders" does the same to each row it names, and its prompt now says so
+  instead of "This cannot be undone."
+- A row Speak It holds for review arms nothing (no notification, alarm or
+  place) until you confirm it, and its Needs review row, shopping rows
+  included, shows the time or place it would use.
+- Removing an item cancels its alarm straight away instead of waiting behind
+  other scheduling work, an AlarmKit alarm whose row is gone is cancelled at
+  the next launch, and opening the app no longer stops an alarm that rang in
+  the last 30 minutes (not yet observed on an iPhone).
+- Repeating reminders: daily and weekly alarm series repeat by themselves on
+  iOS 26, a snooze moves one occurrence and not the series, and an overdue
+  series keeps its saved timing when this version cannot read it.
+- Spoken cancel, complete and move act only where they are sure. A broad
+  request reaches only Today's action rows, never Memory. One whose only match
+  is a knowledge row held for review, or a capture not yet organized, waits in
+  Needs review. A store that cannot be read holds the request instead of
+  filing it as a new task.
+- Advice somebody else gave you ("Sarah said I should call Mike") waits in
+  Needs review as "Someone else's words", with no date and nothing armed.
+- Captures keep their words through more interruptions: typed words before
+  "Speak instead", speaking after typing, and a cancelled recording that can
+  no longer leak into the next one.
+- Place reminders iOS is not watching say so in Needs review, and a date
+  added to a place reminder shows that the place is paused.
+- With VoiceOver on, Speak It says what happened, never while the
+  microphone is open. The
+  capture review list and receipt say what each item will actually do.
+- A second reading by Apple Intelligence waits at most its two-second budget.
+- Beta analytics tell capture endings apart, still without any content.
 - A repeating reminder at a bare hour now fires in the same half of the day
   as the same words without the repeat. "Every Friday at five remind me to
   submit the report" fired at 5 AM every Friday; it now fires at 5 PM, as
@@ -18,6 +57,8 @@ Entries before September 2026 were reconstructed from the commit history and
   first occurrence after it is completed: "Every Monday at 3 call Mom" could
   come due at 3 AM once and at 3 PM every week after. Series saved before
   this build keep the time they were given.
+- Build 20.
+
 - Opening the app no longer erases a repeating reminder's saved timing
   details when this version cannot read them. The launch pass that moves an
   overdue series to its next occurrence wrote over them, and so did a restore

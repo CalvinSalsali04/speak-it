@@ -497,7 +497,11 @@ final class DurabilityTests: XCTestCase {
 
         try repository.confirmPendingOperation(reviewRow)
 
-        XCTAssertNil(try allItems().first { $0.id == milkID }, "the finished capture was not cancelled")
+        // A confirmed cancel archives (Docs/DECISIONS.md, 2026-09-24).
+        XCTAssertEqual(
+            try allItems().first { $0.id == milkID }?.isArchived, true,
+            "the finished capture was not cancelled"
+        )
         XCTAssertNil(try allItems().first { $0.id == reviewRow.id }, "the review row is resolved")
         XCTAssertEqual(
             try storedSession(sessionID).originalTranscription, twoThoughts,
@@ -590,7 +594,13 @@ final class DurabilityTests: XCTestCase {
 
         try repository.confirmPendingOperation(reviewRow)
 
-        XCTAssertTrue(try allItems().isEmpty, "everything the confirmed request named is cancelled")
+        // A confirmed cancel archives (Docs/DECISIONS.md, 2026-09-24): both
+        // named rows are in Archive with their words, and only the review row
+        // is gone.
+        let items = try allItems()
+        XCTAssertEqual(Set(items.map(\.id)), [milkID, rowID], "only the review row may be deleted")
+        XCTAssertTrue(items.allSatisfy(\.isArchived), "everything the confirmed request named is cancelled")
+        XCTAssertEqual(try storedSession(sessionID).originalTranscription, twoThoughts)
     }
 
     /// Recovery re-reads the words with the rules-only extractor while the live
@@ -628,16 +638,26 @@ final class DurabilityTests: XCTestCase {
         _ = try await capture("Remind me about the dentist on Friday")
         _ = try await capture("Buy milk")
         let before = try allItems().count
+        let liveBefore = try liveItems().count
 
         _ = try await capture("Cancel the dentist reminder", createdAt: .now)
         let afterFirst = try allItems().count
+        let archivedAfterFirst = try allItems().filter(\.isArchived).map(\.id)
         let second = try await capture(
             "Cancel the dentist reminder",
             createdAt: Date().addingTimeInterval(60)
         )
 
-        XCTAssertEqual(afterFirst, before - 1)
+        // A cancel archives (Docs/DECISIONS.md, 2026-09-24): the row leaves
+        // the live set once and stays in the store.
+        XCTAssertEqual(afterFirst, before, "a cancel neither adds nor deletes a row")
+        XCTAssertEqual(archivedAfterFirst.count, 1)
+        XCTAssertEqual(try liveItems().count, liveBefore - 1)
         XCTAssertEqual(try allItems().count, afterFirst, "The second cancellation must change nothing")
+        XCTAssertEqual(
+            try allItems().filter(\.isArchived).map(\.id), archivedAfterFirst,
+            "The second cancellation must change nothing"
+        )
         guard case .notFound = try XCTUnwrap(second.operationOutcome) else {
             return XCTFail("A second cancellation has nothing to act on")
         }

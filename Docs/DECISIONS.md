@@ -115,6 +115,175 @@ language run to say.
 - Rows saved before this change keep the clock they were given until the
   person edits the time or uses Organize again, which re-reads the words.
 
+## 2026-09-24 — V1 owner decisions, 2026-09-24
+
+Calvin delegated the pending V1 decision batch on 2026-09-24 ("u can do
+everything yourself"). The recommended option was taken on every item, and
+each one is reversible: nothing below deletes data, changes the schema or
+publishes anything. Only items 1, 3 and 8 needed code or data here; the rest
+keep what the candidate already does.
+
+1. **B. A spoken cancel archives instead of deleting.** See "A spoken cancel
+   archives instead of deleting" below. The tier-2 verb and noun lists stay
+   as they are, so "remove the dentist appointment" is still a capture and
+   `DO03` stays a declared miss.
+2. **M. A sentence with no obligation stays a Memory note**, with nothing
+   dated and nothing armed ("I wonder if the gym is open late", "maybe I'll
+   paint the fence someday"). Two edges ruled with it:
+   - "Maybe I'll paint the fence Saturday" stays what it is today, a dated
+     Today row with nothing armed.
+   - A reported *strong* modal ("Sarah said I need to call Mike", "…I have
+     to…") is case 5 of the 2026-09-16 reported-speech ruling, the person's
+     own errand, and is unchanged. The hold in "Reported advice is held for
+     review, not read as the speaker's own" (#151) covers advice modals only:
+     should, could, ought to.
+3. **A. "Remind me before the office closes December 24" stays held.** See
+   "A deadline before a closing time nobody stated stays held" below.
+4. **a–f: every current default is kept.**
+   - a. A row the system holds for review arms nothing; rows the person set or
+     toggled still arm ("A row the system holds for review arms nothing").
+   - b. A named place beside a time is held, not armed on the clock ("A named
+     place beside a time is held too (DEL-18)").
+   - c. Place-and-time rows written by older builds are held, not armed on
+     the clock (the F7 fix on #136; `awaitsPlaceOrTimeChoice` in
+     `ItemPresentation.mayArmTime`).
+   - d. A queued widget completion of a held row is dropped, not retried ("The
+     widget holds for review what Today holds for review").
+   - e. An alarm word in one segment still makes its sibling items alarms, and
+     the receipt says so (#122).
+   - f. A place beside a date is held, not narrowed to a time window ("A place
+     and a time together are held, not halved", 2026-08-14).
+5. **An editor save confirms a row's time and place**, and later re-reads never
+   change them ("A place-only save confirms the time the editor showed (#138 ×
+   #143)"). Alternative B, marking only a trigger the person changed or one
+   already live, was not taken. The past-time edge of the reminder picker (a
+   held row whose guessed time has passed) is still unverified on a device.
+6. **Rule 3 and the grounding sentence stay held** out of the Foundation
+   Models isolation guard, as they have been since 2026-09-17.
+7. **Merge history A.** The candidate lands on `main` as one merge commit
+   through one pull request, and only on Calvin's word. The stacked pull
+   requests are then closed as landed through the candidate.
+8. **The build number is bumped on the candidate**, 19 to 20, so the tree that
+   is qualified is the tree that is tagged. No tag is created by this change.
+9. **`IOS_RUNNER` stays off for V1.** Pull requests keep the Linux checks and
+   the warning that no Swift was compiled; the iOS job runs when dispatched.
+10. **The diagnostics screen's privacy answer (DIAG-5) is deferred** to App
+    Store submission, which is outside V1.
+11. **Try Again on a recording too long to re-read** (#123 F3) keeps its
+    current behaviour.
+12. **A recovered draft's transcript field** (#123 × #144 F4) keeps its
+    current contents. No words are lost either way.
+13. **The two-second refinement budget** is decided after the Mac measurement
+    D19 ("The refinement budget ends the wait, not just the model call").
+
+## 2026-09-24 — A spoken cancel archives instead of deleting
+
+Owner decision 1 B (above). "Cancel the dentist reminder", when it names
+exactly one action row of another capture, used to call `delete`: the row went
+at once, with no confirmation and no undo, and when it was the capture's last
+row the `CaptureSession` and its original transcript went with it. A confirmed
+broad cancel did the same to every row it named. That contradicted "Archive is
+the normal removal path. Permanent deletion is available only in the editor and
+requires explicit confirmation" ("Archive is reversible; delete is confirmed",
+2026-08-03) and the rule that the original wording is never destroyed.
+
+**The change.** Both call sites, the single-match `.cancel` in
+`applyCaptureOperation` and the `.cancel` branch of `confirmPendingOperation`,
+now call `archiveForSpokenCancel`: `setArchived(item, archived: true)`, then
+`LocationReminderMonitor.stopMonitoring` for the row, as deletion's callers
+did. The row, its capture and the transcript stay, and Restore in Memory's
+Archive puts the same row back. The receipt still reads "Cancelled · <title>".
+The broad confirmation's message said "This cannot be undone." It now says the
+items move to Archive and stop reminding the person, and that they can be
+restored there. The review row that carried a broad request is still deleted
+when it is confirmed or declined, as before; it is the request, not a thought.
+
+**Everything deletion stopped, checked on the archive path (by reading):**
+- *Notifications and alarms.* `setArchived` saves, then calls
+  `ReminderScheduler.cancel(itemID:)` synchronously, which removes the per-item
+  notification and the AlarmKit alarm before any queued pass runs (the DEL-22
+  guarantee). Its session pass arms only rows that are neither archived nor
+  completed. A kill between the save and that call is healed at the next
+  launch by `reconcilePendingReminders`, whose pass names every row, arms no
+  archived one, and never leaves an archived row's alarm alone
+  (`alarmMayBeAlerting` is false for it). #127's orphan sweep no longer covers
+  this case, since the row still exists; the main pass does.
+- *Geofences.* Stopped explicitly after the archive saves. The reconcile
+  fetch and `hasLivePlaceTrigger` also exclude archived rows.
+- *A recurring series.* The rule stays in `RecurrenceStore`, so Restore brings
+  the series back. While archived nothing reads it to arm or advance:
+  `advanceOverdueRecurrences` skips archived rows, and every scheduling pass
+  filters them out before building requests. The morning brief's projection
+  filters them too.
+- *Widgets and the Live Activity.* `persistChanges` republishes the shared
+  Today snapshot, which fetches only unarchived, uncompleted rows, and reloads
+  the widget when the snapshot changed. The Live Activity is the capture in progress and names no
+  stored row.
+- *The pending-operation store.* Only a broad request's review row has a
+  record, and that row is still deleted with its record. A row a held broad
+  request names can now be archived (by voice or by hand) before the request
+  is confirmed and is still found by its id, so `heldCandidate` now skips
+  archived and completed rows. The prompt's count and the confirmation read
+  the same list, so the number confirmed is still the number acted on.
+- *Analytics.* No event names a cancel, a delete or an archive, so nothing
+  changes and nothing is added.
+- *Today and Memory.* Both `@Query`s filter `isArchived == false`, and
+  Memory's Archive collection lists every archived row whatever its type, so a
+  cancelled task is findable there. DEL-25 ("a confirmed cancel-all reached
+  Memory rows") is already fixed on the candidate (#150, `a73a960`, which
+  came in with #152's merge `aadc4b4`): `broadOperationCandidates` takes only `isActionKind` rows of
+  organized captures, and `heldCandidate` asks again at confirmation. With
+  this change a confirmed broad cancel archives those rows rather than
+  deleting them.
+- *iCloud.* An archive syncs as `isArchived`, not as a deletion tombstone.
+
+What deletion also removed and archiving keeps on purpose: the recurrence
+rule, the shopping group and the idea stage, so a restored row is the same row.
+`setArchived` unpins a pinned row, as a hand archive does.
+
+**Tests.** The `CaptureOperationTests` and `DurabilityTests` cases that
+asserted deletion (a count that drops, an empty store, a removed rule, a nil
+row) now assert that the row is archived, the transcript survives, and delivery
+is torn down; no teardown assertion was weakened. The two DEL-22 teardown tests
+still hold the scheduler queue and name `setArchived` as their falsifier.
+`testASpokenCancelArchivesTheRowKeepsItsWordsAndArmsNothing` is the
+regression test, and `testCancellingARecurringItemArchivesTheSeriesSoItNeverArmsOrRollsForward`
+pins the series. Written without a Swift toolchain; nothing here has run.
+
+**Hypothesis.** A spoken cancel, single or confirmed broad, never deletes a
+row or a transcript, and stops everything the row had armed as `delete` did.
+
+**Falsifier.** A spoken or confirmed cancel after which the named row or its
+`CaptureSession` is missing from the store, or its notification, alarm or
+region survives, or an archived series is rolled forward or armed.
+
+## 2026-09-24 — A deadline before a closing time nobody stated stays held
+
+Owner decision 3 A. **The rule:** a deadline tied to a closing time Speak It
+does not know, on a date with no time ("Remind me before the office closes
+December 24"), is held in Needs review. No time is invented and nothing is
+armed. The candidate already does this (the Candidate47 condition hold:
+`unsupportedTrigger == .condition` returns no due date, no reminder date,
+delivery `.none` and review on, with "Trigger not supported" on the row), so
+no code changed. The only 9 AM on offer would be the app's default date-only
+hour, which has nothing to do with when the office closes and may fall after
+it.
+
+The gating corpus row (`SemanticCorpusDataE.swift`, GATE-1) expected
+`.notification`, which only that policy hour could satisfy, and was the one
+known blocking row. It now expects the held reading the candidate produces, as
+traced by reading in the V1 audit of this sentence: count 1, route Today (the corpus
+route counts any actionable row as Today, held or not), delivery `.none`, no
+due date, no reminder date, needs review. It is labelled in the row as this
+ruling, not a fit. No other corpus row, development set, held-out or fresh
+file was touched. The 2026-08-21 entry's list ("→ Today") is amended to point
+here.
+
+The day survives only in the title and the transcript; the editor opens with
+no date, so the person enters it again. Option B (hold, keep December 24 as
+the due date, and ask for the time) remains the smallest improvement if this is
+revisited. See `KNOWN_ISSUES.md`.
+
 ## 2026-09-23 — #138's held-series test captures in the week it arms
 
 Found by the hosted run on f6c5bd2 (run 35927571971).
@@ -609,7 +778,8 @@ prompt's "Cancel N items?" and the confirmation both read the stored list
 again through `heldCandidates` (below), so the number confirmed is the
 number acted on. Cancel and complete read the same list. What confirming
 does to a row (delete for cancel) is unchanged: delete versus archive is the owner's open
-decision in Q-A, and this is only about reach.
+decision in Q-A, and this is only about reach. (Decided 2026-09-24: a confirmed
+cancel archives; see "A spoken cancel archives instead of deleting".)
 
 **The noun is not narrowed, because the parser does not keep it.** The rules
 path builds a broad request with `target: nil`, so "cancel all my
@@ -4307,7 +4477,9 @@ shape:
 
 - "The office closes December 24" → Memory / Reference
 - "Remember the office closes December 24" → Memory / Reference
-- "Remind me before the office closes December 24" → Today
+- "Remind me before the office closes December 24" → Today (amended 2026-09-24:
+  held in Needs review with no time and nothing armed; see "A deadline before a
+  closing time nobody stated stays held")
 - "I need to go to the office before it closes December 24" → Today
 
 Implemented as a narrow descriptive-verb family — a thing opening, closing,

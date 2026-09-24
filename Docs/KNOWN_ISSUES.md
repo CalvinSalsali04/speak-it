@@ -696,6 +696,9 @@ the same date. Three things are left, and none is verified on a device.
 - **The kill window before the synchronous cancel.** A kill after `delete`'s
   save and before its cancel leaves the alarm armed until the next launch or
   foreground, where #127's orphan sweep cancels it. Without #127 it would ring.
+  A spoken cancel archives since 2026-09-24, so its row survives and the
+  orphan sweep does not reach it; the main reconcile pass cancels an archived
+  row's alarm instead.
 - **The recorder sees teardown only.** Arming goes to `AlarmManager` and
   `UNUserNotificationCenter` directly, not through `ReminderDeliverySink`, so a
   test cannot see a pass re-arm something. The post-drain assertions show the
@@ -1379,13 +1382,13 @@ both sides.
 
 `erase` is the verb a reader expects to find in that list and it is
 deliberately absent, for the same reason `appointment` is absent from the
-nouns: admitting it would make "erase the gym reminder" destroy a stored row
-where today it is an ordinary capture. `ThoughtExtractor` does read `erase`,
+nouns: admitting it would make "erase the gym reminder" act on a stored row
+(archive it, since 2026-09-24) where today it is an ordinary capture. `ThoughtExtractor` does read `erase`,
 in a rule that carves words out of a sentence rather than one that deletes a
 row, so its presence there is not a precedent. Adding it is the same kind of
 decision as the one below.
 
-**Open, and a product decision rather than a defect: reach.** "Remove the
+**Decided 2026-09-24 (owner decision 1 B): reach stays as it is.** "Remove the
 dentist appointment" is still not recognised, and no amount of noun-phrase
 reading changes that: `appointment` has never been a container noun. Behind it
 is a real inconsistency between two tiers of destructive verb:
@@ -1397,10 +1400,13 @@ is a real inconsistency between two tiers of destructive verb:
 
 So "cancel the dentist appointment" acts on stored data and "remove the dentist
 appointment" does not. Making the second tier read the first tier's evidence
-would close the gap, and it would also widen what can destroy a person's rows.
-That is Calvin's call, not the implementation's. `DO03` in
-`Tools/CorpusRunner/devsets/routed.tsv` stays expected-to-fail until it is
-made; `DO02` no longer is.
+would close the gap, and it would also widen what a spoken sentence can act
+on. Calvin kept both lists as they are for V1, and took the other half of the
+question instead: a spoken cancel now archives rather than deletes, so a wrong
+match is restorable from Archive with its words (see "A spoken cancel
+archives, and the receipt does not say where" below). `DO03` in
+`Tools/CorpusRunner/devsets/routed.tsv` stays expected-to-fail; `DO02` no
+longer is.
 
 **What has been run.** The change was written in a Linux container with no
 Swift toolchain, so every Swift number comes from a macOS runner. The corpus
@@ -1439,6 +1445,43 @@ Reusing #150's confirmation for it does not work: `heldCandidate` filters
 by `isActionKind`, so a record naming a held knowledge row would count zero,
 say "Nothing to cancel", and confirm nothing. A chooser for this hold needs
 a second predicate of its own. See `Docs/DECISIONS.md`, 2026-09-23 (DEL-26).
+
+## A spoken cancel archives, and the receipt does not say where
+
+*2026-09-24, owner decision 1 B; see `DECISIONS.md`.* "Cancel the dentist
+reminder", and a confirmed "cancel all my reminders", archive the rows they
+name instead of deleting them. The reminder stops at once and the row keeps
+its words. What is left, all by reading, none run on a device:
+
+- **The receipt still reads "Cancelled · <title>"** and offers no Undo. The
+  row is in Memory → Archive, where Restore puts it back; nothing on the
+  receipt says so. Only the broad confirmation's message mentions Archive.
+- **Restoring re-arms.** A restored row's reminder is scheduled again if it
+  is still ahead, and a restored series resumes (its rule is kept while it is
+  archived). That is the point of Restore, but a person restoring a row to
+  read it may not expect the bell.
+- **Archive fills up.** Every spoken cancel now leaves a row behind. Archive
+  has no bulk delete; rows are deleted one at a time.
+- **A broad request's own words still go.** Confirming or declining "cancel
+  every reminder" deletes its review row, and with it that capture's
+  transcript, as before. Only the rows it names are archived.
+- **A kill between the archive's save and its synchronous cancel** leaves the
+  alarm armed until the next launch or foreground, where the main reconcile
+  pass cancels it because the row is archived. #127's orphan sweep does not
+  apply: the row still exists.
+
+## "Before the office closes December 24" keeps its day only in the title
+
+*2026-09-24, owner decision 3 A; see `DECISIONS.md`.* "Remind me before the
+office closes December 24" is held in Needs review as "Trigger not supported",
+with no due date, no reminder date and nothing armed. That is the ruling: no
+time is invented for a closing hour nobody stated. The cost is that the day
+survives only in the title and the original transcript. The editor opens with
+no date, so the person has to enter December 24 again, and the label says
+"Trigger not supported" although what is missing is a time. The same hold
+drops the day from "Remind me to call Mira before the meeting December 24".
+Keeping the day as a due date and asking only for the time (option B) is the
+smallest improvement if the ruling is revisited.
 
 ## A verb with no object is not read as an unfinished thought
 
