@@ -2055,7 +2055,26 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the fixture's Friday: a run just before a Friday alert, a clock
         change that week, or this machine's zone puts the Friday alert on
         another local weekday, so production's one-shot fallback
-        applies`): 4891 + 1 - 1 = 4891. 4891 -> 4922 on 2026-09-24,
+        applies`): 4891 + 1 - 1 = 4891. 4891 -> 4933 on 2026-09-24, the
+        phase 13 `app`-path export (`WholeCaptureExportTests`, a new
+        test-only file). Forty-two in, enumerated by diffing
+        `swift_literals` against `HEAD`, none out. Three are the
+        self-check's toy captures, written for it and taken from no
+        corpus (`buy blue paint tomorrow at 3`, `the lighthouse cat is
+        called Biscuit`, `cancel the kite lesson reminder`). One is a
+        doc-comment placeholder (`<the spoken target>`) and one the
+        probe's place rendering, copied from `rowreport.swift`. The other
+        thirty-seven are messages: twenty-six assertion messages
+        (nineteen of them `\\(id): ...`), the two halves of the skip
+        message, seven export and input-error texts, and the two halves
+        of the summary line: 4891 + 42 - 0 = 4933. 4933 -> 4941 on
+        2026-09-24, the export self-check reaching a place and a repeat
+        (#155 grade F-2): two more toy captures written for it and taken
+        from no corpus (`remind me to water the ferns when I get home`,
+        `every Tuesday at 7 PM put the bins out`), the scorer's place
+        pattern, and five assertion messages: 4933 + 8 - 0 = 4941. The V1 owner
+        decisions (#154), recounted on b6ae30c as 4891 -> 4922 on
+        2026-09-24,
         from the V1 owner decisions: a spoken cancel archives instead of
         deleting (decision 1 B), and the December 24 corpus row expects the
         held reading (decision 3 A). Measured by diffing `swift_literals`
@@ -2092,7 +2111,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         `left the live set` uses backticks: 4891 + 33 - 2 = 4922. 4922 ->
         4924 on 2026-09-24, #154's grade F-3: the two survivor checks that
         name archiving (`a row the cancel did not name was archived`, `a
-        held cancellation archived the row it named`): 4922 + 2 - 0 = 4924.
+        held cancellation archived the row it named`): 4922 + 2 - 0 = 4924. Merged over
+        the app-path export, measured on the merged tree: 4941 + 33 - 2 + 2 =
+        4974.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2102,7 +2123,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4924)
+        self.assertEqual(len(space), 4974)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
