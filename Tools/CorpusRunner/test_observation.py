@@ -2149,7 +2149,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         default.`). The four utterances were already here as family-table
         fixtures. None out: 4942 + 4 - 0 = 4946. Merged over
         the candidate at 4974, measured on the merged tree: 4974 + 55 - 0 =
-        5029.
+        5029. 5029 -> 5035 on 2026-09-24, advice that names an alarm keeps
+        its reported-speech state (#158). Six in, enumerated by diffing
+        `swift_literals` before and after: three test sentences (`Mike told
+        me I should set an alarm for 6`, `Sarah said we should set an alarm
+        for 7`, `I should set an alarm for 6`), the frame row `Mike told
+        me`, an assertion message (`the split armed an alarm for somebody
+        else's advice`) and a doc-comment quote (`somebody else's words`).
+        None out: 5029 + 6 - 0 = 5035.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2159,7 +2166,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 5029)
+        self.assertEqual(len(space), 5035)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
