@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 env:
-  RC_PIN: b5893e18086d01cb44480b7f2fb15f9ce5bb0df4
+  RC_PIN: 2def46eba036c491211f83fa48ba9724f7593e6c
 
 jobs:
   probes:
@@ -79,5 +79,5 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: v1-probes-b5893e1
+          name: v1-probes-2def46e
           path: ${{ runner.temp }}/probes
