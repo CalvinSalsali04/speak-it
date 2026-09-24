@@ -254,6 +254,11 @@ final class RefinementGuardTests: XCTestCase {
         let action = refined("call Mike tomorrow")
         // The dangerous answer, or the rejection proves nothing.
         XCTAssertNotNil(action.organization.dueDate)
+        // And a frame row the resolved check alone would accept, or the
+        // rejection could be that check's rather than the net's.
+        let frame = refined("Don't")
+        XCTAssertFalse(frame.organization.itemType.isActionable)
+        XCTAssertNil(frame.organization.personName)
         XCTAssertFalse(
             RefinementGuard.preservesEverything(in: [refined("Don't"), action], found: rules),
             "the split turned a negation into a dated errand"
@@ -274,6 +279,22 @@ final class RefinementGuardTests: XCTestCase {
         XCTAssertTrue(RefinementGuard.preservesEverything(
             in: [refined("Don't"), stillHeld], found: rules
         ))
+    }
+
+    /// A row that matches no rules row at all is the last way in: a quote of
+    /// filler alone, grounded because "Don't" normalizes to "don t", carrying
+    /// the errand in its context. Beside a held row it may not arm anything.
+    func testAnUnmatchedRowCannotArmACaptureTheSafetyNetHeld() throws {
+        let rules = rulesReading(of: "Don't call Mike tomorrow")
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertEqual(rules.count, 1)
+
+        let smuggled = refined("t", context: "call Mike tomorrow")
+        XCTAssertNotNil(smuggled.organization.dueDate)
+        XCTAssertFalse(
+            RefinementGuard.preservesEverything(in: [held, smuggled], found: rules),
+            "a filler row carried a dated errand past the held negation"
+        )
     }
 
     // MARK: The corpus, replayed through the seam

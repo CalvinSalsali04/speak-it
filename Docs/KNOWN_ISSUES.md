@@ -1375,10 +1375,10 @@ reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
   `RefinementGuard` asks the net's own test of each held row and rejects any
   refinement that would date, remind, repeat, place or confidently action a
   row matching it, so the model cannot turn "Don't call Mike tomorrow" into a
-  dated errand by splitting off "Don't". Still open, and no worse than before
-  #151: a refined row that matches no rules row at all is not checked by
-  either guard. Read from the code; no Apple Intelligence run has shown the
-  model producing either split.
+  dated errand by splitting off "Don't", and when a capture holds anything
+  for safety or for somebody else's words, a refined row that matches no
+  rules row may not commit the person either. Read from the code; no Apple
+  Intelligence run has shown the model producing any of these splits.
 
 ## Removal requests: one defect closed, one decision open
 

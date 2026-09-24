@@ -2160,7 +2160,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         guard asks the safety net's own test (#158): three in, enumerated
         the same way (`Don't call Mike tomorrow`, `call Mike tomorrow`, and
         the assertion message `the split turned a negation into a dated
-        errand`). None out: 5035 + 3 - 0 = 5038.
+        errand`). None out: 5035 + 3 - 0 = 5038. 5038 -> 5039 the same
+        day, an unmatched refined row may not arm a held capture (#158):
+        one in, the assertion message `a filler row carried a dated errand
+        past the held negation`. None out: 5038 + 1 - 0 = 5039.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2170,7 +2173,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 5038)
+        self.assertEqual(len(space), 5039)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -92,6 +92,7 @@ enum RefinementGuard {
         guard refined.filter({ $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }).count >= independentActions.count else { return false }
         let quotes = rules.map { tokens(in: $0.sourceQuote) }
         let refinedQuotes = refined.map { tokens(in: $0.sourceQuote) }
+        var matched = Set<Int>()
         for (index, rule) in rules.enumerated() {
             let own = quotes[index]
             let others = quotes.enumerated().filter { $0.offset != index }
@@ -104,6 +105,7 @@ enum RefinementGuard {
                     : !quote.isDisjoint(with: distinctive)
             }
             guard !matching.isEmpty else { return false }
+            matched.formUnion(matching)
             let covered = matching.reduce(into: Set<String>()) {
                 $0.formUnion(refinedQuotes[$1])
             }
@@ -154,7 +156,7 @@ enum RefinementGuard {
             // confident task armed for 3. No row about this one may come back
             // dated, reminding, repeating, placed, or resolved and
             // actionable. See `Docs/DECISIONS.md`, 2026-09-23.
-            if rule.organization.state == .underspecified(.reportedSpeech) {
+            if heldForSomebodyElse(rule) {
                 guard !matching.contains(where: { candidate in
                     commitsThePerson(refined[candidate].organization)
                 }) else { return false }
@@ -167,16 +169,36 @@ enum RefinementGuard {
             // add an armed row beside it: "Don't" plus "call Mike tomorrow"
             // turns a negation into a dated errand. Asked with the net's own
             // test, so the two cannot drift apart.
-            if rule.needsReview,
-               rule.organization.itemType == .unclear,
-               RuleBasedThoughtExtractor.shouldKeepAsOneSafetyItem(rule.analysisText) {
+            if heldBySafetyNet(rule) {
                 guard !matching.contains(where: { candidate in
                     commitsThePerson(refined[candidate].organization)
                 }) else { return false }
             }
         }
 
+        // A refined row that matches no rules row is checked by nothing above.
+        // Beside a held row it can still arm what the rules held: a quote of
+        // filler alone ("t", which "Don't" normalizes to) carrying "call Mike
+        // tomorrow" as its context. So when the capture holds anything for
+        // safety or for somebody else's words, no unmatched row may commit
+        // the person either.
+        if rules.contains(where: { heldForSomebodyElse($0) || heldBySafetyNet($0) }) {
+            guard !refined.indices.contains(where: { candidate in
+                !matched.contains(candidate) && commitsThePerson(refined[candidate].organization)
+            }) else { return false }
+        }
+
         return true
+    }
+
+    private static func heldForSomebodyElse(_ rule: ExtractedThought) -> Bool {
+        rule.organization.state == .underspecified(.reportedSpeech)
+    }
+
+    private static func heldBySafetyNet(_ rule: ExtractedThought) -> Bool {
+        rule.needsReview
+            && rule.organization.itemType == .unclear
+            && RuleBasedThoughtExtractor.shouldKeepAsOneSafetyItem(rule.analysisText)
     }
 
     /// Whether a refined row would put something on the person that a row
