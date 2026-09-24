@@ -10,8 +10,10 @@ Entries before September 2026 were reconstructed from the commit history and
 - A repeating reminder at a bare hour now fires in the same half of the day
   as the same words without the repeat. "Every Friday at five remind me to
   submit the report" fired at 5 AM every Friday; it now fires at 5 PM, as
-  "remind me Friday at five" does. The same goes for every day and for a
-  weekday of the month. "5 AM", an alarm ("wake me every weekday at 6") and
+  "remind me Friday at five" does. The same goes for every day, for a
+  weekday of the month, and for every few days, weeks or months; that last
+  kind also ignored an hour said as a word ("every other day at five") and
+  used the time it was saved. "5 AM", an alarm ("wake me every weekday at 6") and
   "every morning at 7" keep the morning. A series also keeps the time of its
   first occurrence after it is completed: "Every Monday at 3 call Mom" could
   come due at 3 AM once and at 3 PM every week after. Series saved before

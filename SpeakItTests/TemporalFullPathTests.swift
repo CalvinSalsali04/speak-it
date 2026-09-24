@@ -306,7 +306,10 @@ final class TemporalFullPathTests: XCTestCase {
     /// row the named-day rule moves out of the morning fails, the bare 1 to 7
     /// rows and the dinner row, with the Friday at five on 05:00. The rows
     /// the rule leaves in the morning, the explicit AM, the alarm and the
-    /// daypart pass either way.
+    /// daypart pass either way. Give the interval shapes back their own
+    /// reader of digits after "at", and the three interval rows fail: the
+    /// two digit rows at 05:00 and 04:00, and the spoken five at 10:00, the
+    /// minute of the capture, because that reader could not read it.
     func testASeriesBareHourTakesTheNamedDayMeridiemInEveryShape() throws {
         let rows: [(text: String, month: Int, day: Int, hour: Int, alerts: Bool, rule: String)] = [
             // Weekly, a bare 1 to 6: the afternoon.
@@ -342,6 +345,13 @@ final class TemporalFullPathTests: XCTestCase {
              "today's 9 AM has passed, so the series starts on March's first Monday"),
             ("every month on the 1st at 4 pay rent", 2, 1, 16, false,
              "control: a named date already took the one-off resolver"),
+            // An interval counts from the capture, and lands on the same clock.
+            ("Remind me every other day at five to water the fern", 2, 3, 17, true,
+             "an interval series reads the spoken five and puts it in the afternoon"),
+            ("Remind me every two weeks at 5 to pay the cleaner", 2, 15, 17, true,
+             "an interval series takes the named-day rule too"),
+            ("Remind me every three months at 4 to change the filter", 5, 1, 16, true,
+             "an interval series takes the named-day rule too"),
             // What the grammar or the sentence already decided stands.
             ("Remind me every Friday at 5 AM to send the invoice", 2, 5, 5, true,
              "an explicit meridiem wins"),

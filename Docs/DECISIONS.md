@@ -33,7 +33,8 @@ weekday assertion before the hour passed. A Mac with the lexical model reads
 the same 05:00.
 
 **Family.** Every series whose first occurrence is landed on the series'
-own clock: weekly on named days, daily, and a monthly ordinal weekday.
+own clock: weekly on named days, daily, a monthly ordinal weekday, and
+(second commit, below) an interval counted from the capture.
 "Every Monday at 3 call Mom" was Monday 03:00, "every day at 6 take the
 pills" 06:00, and "Remind me the first Monday of every month at 4" 04:00. A
 monthly series on a named date ("every month on the 1st at 4 pay rent") uses
@@ -68,12 +69,23 @@ AM, is 06:00 to it and 18:00 to the series.
 - (c) A series' second occurrence lands on another clock than its first.
 
 `TemporalFullPathTests.testASeriesBareHourTakesTheNamedDayMeridiemInEveryShape`
-pins (a) and (b) on 20 rows: weekly, daily and monthly, bare 1–6 and 7–11,
-an explicit AM, an alarm, two appointment words, an evening noun, a daypart,
-and a past-hour roll to the next occurrence rather than to the other half
-of the day. `testASeriesCapturedBeforeItsHourRepeatsAtTheClockItFirstLandedOn`
+pins (a) and (b) on 23 rows: weekly, daily, monthly and interval, bare 1–6
+and 7–11, an explicit AM, an alarm, two appointment words, an evening noun,
+a daypart, and a past-hour roll to the next occurrence rather than to the
+other half of the day. `testASeriesCapturedBeforeItsHourRepeatsAtTheClockItFirstLandedOn`
 pins (c). None of this has run: there is no Swift toolchain where it was
 written.
+
+**The interval shapes, a second commit.** A series that counts an interval
+from the capture ("every other day", "every two weeks", "every three
+months") took its clock from a third reader, `timeComponents`: digits after
+"at", with no meridiem rule. "Every other day at 6" landed at 06:00, and
+"every other day at five", which it could not read, at the minute of the
+capture. That branch now lands on `statedWallClock` like every other shape
+and hands the clock to the intent the same way, and `timeComponents` is
+gone. The family table gained three interval rows. An explicit clock reads
+as before: "Remind me every four days at 9 am" stays 09:00
+(`SwiftDataThoughtRepositoryTests.testOrganizerUnderstandsIntervalAndCompletionAnchoredRecurrence`).
 
 **Moved by reading.** No corpus row asserts a time this moves. Five corpus
 rows assert a series time: two at nine, two at seven with "morning", and one

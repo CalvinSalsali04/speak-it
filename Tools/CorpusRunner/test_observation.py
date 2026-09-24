@@ -2070,7 +2070,15 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the clock the first landed on`, and three that open on
         `\\(row.text): `). One is a phrase quoted in a doc comment, the
         hazard above once more (`every day at 6`). None out: 4891 + 46 -
-        0 = 4937.
+        0 = 4937. 4937 -> 4942 the same day, the second commit of that
+        fix: the interval shapes read the same clock. Five in, enumerated
+        by diffing `swift_literals` before and after: three family-table
+        fixtures (`Remind me every other day at five to water the fern`,
+        `Remind me every two weeks at 5 to pay the cleaner`, `Remind me
+        every three months at 4 to change the filter`) and two rule-column
+        strings (`an interval series reads the spoken five and puts it in
+        the afternoon`, `an interval series takes the named-day rule
+        too`, which two rows share). None out: 4937 + 5 - 0 = 4942.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2080,7 +2088,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4937)
+        self.assertEqual(len(space), 4942)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

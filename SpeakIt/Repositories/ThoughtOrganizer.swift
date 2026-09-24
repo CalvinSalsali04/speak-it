@@ -2055,18 +2055,22 @@ enum RecurrenceIntentParser {
         case .monthly: component = .month
         case .yearly: component = .year
         }
-        guard var result = calendar.date(byAdding: component, value: rule.interval, to: referenceDate) else {
+        guard let result = calendar.date(byAdding: component, value: rule.interval, to: referenceDate) else {
             return parsedDate.map { SeriesStart(date: $0, statedClock: nil) }
         }
 
-        if let time = timeComponents(in: text),
+        // The same clock as every other shape. This used to be a third
+        // reader, digits after "at" with no meridiem rule: "every other day
+        // at 6" landed at 06:00, and "every other day at five", which it could
+        // not read at all, at the minute of the capture.
+        if let stated,
            let adjusted = calendar.date(
-               bySettingHour: time.hour ?? 9,
-               minute: time.minute ?? 0,
+               bySettingHour: stated.hour,
+               minute: stated.minute,
                second: 0,
                of: result
            ) {
-            result = adjusted
+            return SeriesStart(date: adjusted, statedClock: stated)
         }
         return SeriesStart(date: result, statedClock: nil)
     }
@@ -2192,17 +2196,6 @@ enum RecurrenceIntentParser {
         }
 
         return nil
-    }
-
-    private static func timeComponents(in text: String) -> DateComponents? {
-        guard let values = match(
-            in: text,
-            pattern: #"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b"#
-        ), values.count >= 4, var hour = Int(values[1]) else { return nil }
-        let minute = Int(values[2]) ?? 0
-        if values[3] == "pm", hour < 12 { hour += 12 }
-        if values[3] == "am", hour == 12 { hour = 0 }
-        return DateComponents(hour: hour, minute: minute)
     }
 
     private static func number(_ value: String) -> Int? {
