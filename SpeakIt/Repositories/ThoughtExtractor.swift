@@ -92,6 +92,7 @@ enum RefinementGuard {
         guard refined.filter({ $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }).count >= independentActions.count else { return false }
         let quotes = rules.map { tokens(in: $0.sourceQuote) }
         let refinedQuotes = refined.map { tokens(in: $0.sourceQuote) }
+        var matched = Set<Int>()
         for (index, rule) in rules.enumerated() {
             let own = quotes[index]
             let others = quotes.enumerated().filter { $0.offset != index }
@@ -104,6 +105,7 @@ enum RefinementGuard {
                     : !quote.isDisjoint(with: distinctive)
             }
             guard !matching.isEmpty else { return false }
+            matched.formUnion(matching)
             let covered = matching.reduce(into: Set<String>()) {
                 $0.formUnion(refinedQuotes[$1])
             }
@@ -154,14 +156,49 @@ enum RefinementGuard {
             // confident task armed for 3. No row about this one may come back
             // dated, reminding, repeating, placed, or resolved and
             // actionable. See `Docs/DECISIONS.md`, 2026-09-23.
-            if rule.organization.state == .underspecified(.reportedSpeech) {
+            if heldForSomebodyElse(rule) {
+                guard !matching.contains(where: { candidate in
+                    commitsThePerson(refined[candidate].organization)
+                }) else { return false }
+            }
+            // Every other row the pipeline's safety net held is emptied and
+            // unarmed for the same reason: a negation, a question, a
+            // destructive command, an ambiguous cancellation. The net leaves
+            // it `.unclear` and `.resolved`, so the resolved check above only
+            // asks that one refined row keep its empty fields, and a split can
+            // add an armed row beside it: "What are my" plus "reminders for
+            // tomorrow" read as a dated errand turns a question into one.
+            // Asked with the net's own test, so the two cannot drift apart.
+            if heldBySafetyNet(rule) {
                 guard !matching.contains(where: { candidate in
                     commitsThePerson(refined[candidate].organization)
                 }) else { return false }
             }
         }
 
+        // A refined row that matches no rules row is checked by nothing above.
+        // Beside a held row it can still arm what the rules held: a quote of
+        // filler alone ("um", which leaves no token to match) carrying a
+        // dated errand. So when the capture holds anything for
+        // safety or for somebody else's words, no unmatched row may commit
+        // the person either.
+        if rules.contains(where: { heldForSomebodyElse($0) || heldBySafetyNet($0) }) {
+            guard !refined.indices.contains(where: { candidate in
+                !matched.contains(candidate) && commitsThePerson(refined[candidate].organization)
+            }) else { return false }
+        }
+
         return true
+    }
+
+    private static func heldForSomebodyElse(_ rule: ExtractedThought) -> Bool {
+        rule.organization.state == .underspecified(.reportedSpeech)
+    }
+
+    private static func heldBySafetyNet(_ rule: ExtractedThought) -> Bool {
+        rule.needsReview
+            && rule.organization.itemType == .unclear
+            && RuleBasedThoughtExtractor.shouldKeepAsOneSafetyItem(rule.analysisText)
     }
 
     /// Whether a refined row would put something on the person that a row
@@ -925,6 +962,14 @@ enum RuleBasedThoughtExtractor {
                 && shouldKeepAsOneSafetyItem(segment.analysisText)
             let cannotIdentifyPoint = segment.forcesReview
             if safetyAmbiguity || cannotIdentifyPoint {
+                // The net may empty the row, but not erase why it is held when
+                // the organizer already knows: advice somebody else gave that
+                // names a reminder or an alarm ("Sarah said I should set an
+                // alarm for 7") reaches the net through its reported-speech
+                // test and would otherwise leave as `.resolved`. That state is
+                // what `RefinementGuard` reads to keep the model from arming
+                // somebody else's advice, and what the review row shows.
+                let keepsReportedSpeech = organization.state == .underspecified(.reportedSpeech)
                 organization = OrganizedThought(
                     itemType: .unclear,
                     category: .general,
@@ -934,7 +979,8 @@ enum RuleBasedThoughtExtractor {
                     reminderDate: nil,
                     reminderDelivery: .none,
                     recurrenceRule: nil,
-                    needsClarification: true
+                    needsClarification: true,
+                    state: keepsReportedSpeech ? .underspecified(.reportedSpeech) : .resolved
                 )
             }
 
@@ -3155,7 +3201,7 @@ enum RuleBasedThoughtExtractor {
         return rebuilt
     }
 
-    private static func shouldKeepAsOneSafetyItem(_ text: String) -> Bool {
+    static func shouldKeepAsOneSafetyItem(_ text: String) -> Bool {
         let lowercase = text.lowercased()
         if CaptureContentScope.explicitlyMemory(text) { return false }
         if SelfCorrectionResolver.hasUnresolvedOrdinalReference(text)

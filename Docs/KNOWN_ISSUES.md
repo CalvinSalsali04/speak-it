@@ -1363,6 +1363,23 @@ reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
   model cannot undo the hold. A merge the model makes across a held row and
   the person's own commitment is rejected with it, and the rules reading
   stands.
+- **Other rows the safety net holds say nothing about why.** Advice that names
+  an alarm or a reminder ("Sarah said I should set an alarm for 7") is held
+  by the pipeline's safety net rather than the organizer alone, and until
+  2026-09-24 the net rebuilt it as `.resolved`, so the guard above did not
+  apply to it (the V1 qualification probe found it; fixed on the candidate).
+  The net still rebuilds every other row it holds (a question, a negation, a
+  destructive command, a report with no advice modal such as "Jordan said
+  remind me at five to call him") as an `.unclear` row in the `.resolved`
+  state, so their review rows name no reason. Since the same date
+  `RefinementGuard` asks the net's own test of each held row and rejects any
+  refinement that would date, remind, repeat, place or confidently action a
+  row matching it, so the model cannot turn "What are my reminders for
+  tomorrow" into a dated errand by splitting off "What are my", and when a
+  capture holds anything
+  for safety or for somebody else's words, a refined row that matches no
+  rules row may not commit the person either. Read from the code; no Apple
+  Intelligence run has shown the model producing any of these splits.
 
 ## Removal requests: one defect closed, one decision open
 
