@@ -1590,8 +1590,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// confident match. Zero matches reports nothing found rather than
     /// inventing an item to satisfy the sentence; several matches, a vague
     /// target, or a broad destructive request all keep the capture as a Needs
-    /// review row so the person decides. Guessing here deletes the wrong
+    /// review row so the person decides. Guessing here silences the wrong
     /// reminder, and the person may not find out until it fails to arrive.
+    ///
+    /// A cancel archives rather than deletes (`archiveForSpokenCancel`): the
+    /// reminder stops at once, and the row and its capture's original words
+    /// stay, restorable from Archive.
     @discardableResult
     func applyCaptureOperation(
         _ request: CaptureOperationRequest,
@@ -1684,8 +1688,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // not a commitment: its segment is the whole transcript, so "move
             // the plumber to Friday" matches "Call the plumber and book the
             // car service". Acting on it would stamp the marks that launch
-            // recovery reads as the person's hand (and a cancel would delete
-            // the whole capture with its transcript), so the other thought
+            // recovery reads as the person's hand (and a cancel would archive
+            // the only row carrying the capture's words), so the other thought
             // would never be organized. It is held for the person instead.
             // Not dropped from the search: as the only match, dropping it
             // would report nothing found and drop the request, and beside
@@ -1710,11 +1714,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             do {
                 switch request.operation {
                 case .cancel:
-                    // `delete` already tears down notifications, recurrence and
-                    // pin metadata; the place monitor is stopped explicitly
-                    // because a region outlives the row that asked for it.
-                    LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
-                    try delete(item)
+                    try archiveForSpokenCancel(item)
                 case .complete:
                     try setCompleted(item, completed: true)
                     LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
@@ -1804,7 +1804,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// explicitly confirmed it from the review row.
     ///
     /// Applies the same per-item actions the exact-match single-target path
-    /// already uses — cancelling stops location monitoring and deletes,
+    /// already uses — cancelling archives (`archiveForSpokenCancel`),
     /// completing marks done and stops monitoring — so a confirmed broad
     /// request behaves exactly like the same operation performed one item at a
     /// time. The review row itself was only ever the confirmation vehicle, so
@@ -1813,12 +1813,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func confirmPendingOperation(_ item: CapturedItem) throws {
         guard let record = PendingOperationStore.record(for: item.id) else { return }
         for candidateID in record.candidateIDs {
-            // Read one at a time, as each earlier delete may have taken a row.
+            // Read one at a time, as each earlier action may have changed a row.
             guard let candidate = try heldCandidate(candidateID) else { continue }
             switch record.operation {
             case .cancel:
-                LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
-                try delete(candidate)
+                try archiveForSpokenCancel(candidate)
             case .complete:
                 try setCompleted(candidate, completed: true)
                 LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
@@ -1882,8 +1881,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try record.candidateIDs.compactMap { try heldCandidate($0) }
     }
 
+    /// A row archived or completed since the hold is skipped as well. A
+    /// cancel archives rather than deletes, so a row cancelled since (by
+    /// voice or by hand) is still found by its id; counted, the prompt would
+    /// name a row confirming leaves as it is.
     private func heldCandidate(_ id: UUID) throws -> CapturedItem? {
         guard let item = try findItem(withID: id),
+              !item.isArchived, !item.isCompleted,
               item.isActionKind,
               !Self.awaitsOrganization(item) else { return nil }
         return item
@@ -2132,6 +2136,24 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // the existing permission UI explain a missing grant.
         synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: false)
         reconcileLocationReminders(ifTouchingPlaces: item.locationIntent != nil)
+    }
+
+    /// What a spoken cancel does to the row it names, alone or confirmed as
+    /// part of a broad request (owner decision 1 B, Docs/DECISIONS.md
+    /// 2026-09-24). It archives: `setArchived` saves, then cancels the row's
+    /// notification and alarm synchronously and reconciles its session, and
+    /// every path that arms or rolls a series forward skips an archived row.
+    /// The place monitor is stopped here as `delete`'s callers stopped it,
+    /// once the archive has saved, so a refused save leaves the row live and
+    /// still watched.
+    ///
+    /// Nothing else `delete` did is wanted. The row, its capture and the
+    /// original transcript stay; its recurrence rule, shopping group and idea
+    /// stage stay too, so Restore brings back the same row. Restoring it
+    /// re-arms a reminder that is still ahead.
+    private func archiveForSpokenCancel(_ item: CapturedItem) throws {
+        try setArchived(item, archived: true)
+        LocationReminderMonitor.shared.stopMonitoring(itemID: item.id)
     }
 
     func setArchived(_ item: CapturedItem, archived: Bool) throws {

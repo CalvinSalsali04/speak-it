@@ -2055,7 +2055,41 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the fixture's Friday: a run just before a Friday alert, a clock
         change that week, or this machine's zone puts the Friday alert on
         another local weekday, so production's one-shot fallback
-        applies`): 4891 + 1 - 1 = 4891.
+        applies`): 4891 + 1 - 1 = 4891. 4891 -> 4922 on 2026-09-24,
+        from the V1 owner decisions: a spoken cancel archives instead of
+        deleting (decision 1 B), and the December 24 corpus row expects the
+        held reading (decision 3 A). Measured by diffing `swift_literals`
+        over `SpeakItTests` before and after. Thirty-three in, enumerated:
+        one fixture, `Remind me to call the landlord tomorrow at 3 PM`; one
+        corpus `note:`, the ruling's own (`The interruption is asked for out
+        loud, but before a closing time nobody stated. Ruled 2026-09-24:
+        held for review, no invented time, nothing armed; the day survives
+        only in the title and the transcript.`); and thirty-one assertion
+        messages across `CaptureOperationTests` and `DurabilityTests`
+        (`Precondition: a live row of this shape is rolled forward by the
+        launch pass`, `Restore changed the reminder`, `Restore did not bring
+        the row back`, `a cancel archives; it neither adds nor deletes a
+        row`, `a cancel archives; the row was deleted`, `a cancel is not a
+        completion`, `a cancel neither adds nor deletes a row`, `a cancelled
+        row lost its transcript`, `a confirmed cancel archives; it deletes
+        only the review row`, `a confirmed cancel deleted a row`, `a counted
+        row was not archived`, `a named row was not archived`, `a pass
+        re-armed the archived row`, `a row edited into a note was archived`,
+        `a spoken cancel deleted the row`, `an archived row is still on
+        Today`, `an archived series generated another occurrence`, `an
+        archived series was rolled forward`, `control: a restored series is
+        live again and the same pass moves it forward`, `only the review row
+        may be deleted`, `precondition: the two captures left rows to name`,
+        `the action row was not archived`, `the alarm outlived the cancel`,
+        `the cancelled alarm's row is archived, not deleted`, `the cancelled
+        row is archived, not deleted`, `the cancelled row is not in
+        Archive`, `the cancelled series was not archived`, `the notification
+        outlived the cancel`, `the original words went with the cancel`,
+        `the row is not in Archive`, `the rule is kept so Restore brings the
+        series back`). Two out: the row's old note, `The interruption is
+        asked for out loud.`, and `a row edited into a note was deleted`,
+        whose premise decision 1 ended. A comment that would have quoted
+        `left the live set` uses backticks: 4891 + 33 - 2 = 4922.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2065,7 +2099,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4891)
+        self.assertEqual(len(space), 4922)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

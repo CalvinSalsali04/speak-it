@@ -221,7 +221,10 @@ final class CaptureOperationTests: XCTestCase {
         let result = try await capture("Cancel the dentist reminder")
 
         XCTAssertTrue(result.items.isEmpty, "A cancellation is not a new thought")
-        XCTAssertEqual(try allItems().count, before - 1)
+        // A cancel archives (Docs/DECISIONS.md, 2026-09-24): the count holds,
+        // and the one row there was is the one now in Archive.
+        XCTAssertEqual(try allItems().count, before, "a cancel archives; it neither adds nor deletes a row")
+        XCTAssertEqual(try allItems().filter(\.isArchived).count, 1, "the cancelled row is not in Archive")
     }
 
     func testCancellationNeverReachesIntoMemory() async throws {
@@ -394,7 +397,11 @@ final class CaptureOperationTests: XCTestCase {
         }
         XCTAssertEqual(operation, .cancel)
         XCTAssertEqual(itemID, taskID)
-        XCTAssertNil(try allItems().first { $0.id == taskID }, "the reminder was not cancelled")
+        let cancelled = try XCTUnwrap(
+            try allItems().first { $0.id == taskID },
+            "a cancel archives; the row was deleted"
+        )
+        XCTAssertTrue(cancelled.isArchived, "the reminder was not cancelled")
     }
 
     func testCancelWithNoMatchInventsNothing() async throws {
@@ -440,12 +447,20 @@ final class CaptureOperationTests: XCTestCase {
         )
         XCTAssertEqual(reviewRow.clarificationRequirement, .pendingOperation)
 
+        let named = Set(try allItems().filter { $0.id != reviewRow.id }.map(\.id))
+        XCTAssertFalse(named.isEmpty, "precondition: the two captures left rows to name")
+
         try repository.confirmPendingOperation(reviewRow)
 
-        // Everything the request named is gone, and so is the review row
-        // itself — it was only ever the confirmation vehicle, not a thought
-        // worth keeping once its request is resolved.
-        XCTAssertTrue(try allItems().isEmpty)
+        // Everything the request named is archived, with its words, and the
+        // review row itself is gone — it was only ever the confirmation
+        // vehicle, not a thought worth keeping once its request is resolved.
+        let items = try allItems()
+        XCTAssertEqual(Set(items.map(\.id)), named, "a confirmed cancel archives; it deletes only the review row")
+        XCTAssertTrue(items.allSatisfy(\.isArchived), "a named row was not archived")
+        let words = Set(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).map(\.originalTranscription))
+        XCTAssertTrue(words.isSuperset(of: ["Buy milk", "Call Mom on Friday"]), "a cancelled row lost its transcript")
+        XCTAssertTrue(try activeTitles().isEmpty)
         XCTAssertNil(PendingOperationStore.record(for: reviewRow.id))
     }
 
@@ -508,9 +523,17 @@ final class CaptureOperationTests: XCTestCase {
 
         try repository.confirmPendingOperation(reviewRow)
 
-        XCTAssertEqual(Set(try allItems().map(\.id)), memory.all, "confirming reached past the rows it counted")
+        // A confirmed cancel archives (2026-09-24), so what it reached is what
+        // left the live set, and nothing it reached was deleted.
+        let items = try allItems()
+        let live = Set(items.filter { !$0.isArchived }.map(\.id))
+        XCTAssertEqual(live, memory.all, "confirming reached past the rows it counted")
+        XCTAssertEqual(Set(items.filter(\.isArchived).map(\.id)), actions, "a counted row was not archived")
+        XCTAssertEqual(Set(items.map(\.id)), memory.all.union(actions), "a confirmed cancel deleted a row")
         let words = Set(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).map(\.originalTranscription))
         for kept in [
+            "Buy milk",
+            "Call Mom on Friday",
             "The spare key is under the blue pot",
             "A podcast about city parks",
             "Sarah likes oat milk",
@@ -547,8 +570,9 @@ final class CaptureOperationTests: XCTestCase {
 
         try repository.confirmPendingOperation(reviewRow)
 
-        let remaining = Set(try allItems().map(\.id))
-        XCTAssertTrue(remaining.contains(milkID), "a row edited into a note was deleted")
+        // A confirmed cancel archives, so `acted on` means `left the live set`.
+        let remaining = Set(try allItems().filter { !$0.isArchived }.map(\.id))
+        XCTAssertTrue(remaining.contains(milkID), "a row edited into a note was archived")
         let actedOn = held.filter { !remaining.contains($0) }
         XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
     }
@@ -572,8 +596,12 @@ final class CaptureOperationTests: XCTestCase {
 
         try repository.confirmPendingOperation(reviewRow)
 
-        let remaining = Set(try allItems().map(\.id))
+        let remaining = Set(try allItems().filter { !$0.isArchived }.map(\.id))
         XCTAssertEqual(remaining, memory.all, "confirming an old record reached Memory")
+        XCTAssertEqual(
+            try allItems().first { $0.id == milkID }?.isArchived, true,
+            "the action row was not archived"
+        )
         let actedOn = legacy.filter { !remaining.contains($0) }
         XCTAssertEqual(actedOn.count, counted.count, "the number confirmed is not the number acted on")
     }
@@ -674,17 +702,69 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertEqual(try activeTitles(), ["Buy milk"])
     }
 
-    func testCancellingARecurringItemRemovesItsRule() async throws {
-        _ = try await capture("Remind me every Friday to submit my timesheet")
+    /// A cancel archives (Docs/DECISIONS.md, 2026-09-24), so a cancelled
+    /// series keeps its row and its rule, and what stops it is that nothing
+    /// arms or rolls forward an archived row. This used to assert the rule was
+    /// removed, which `delete` did.
+    ///
+    /// The series is captured two weeks back, so its occurrence is overdue and
+    /// the launch pass (`reconcilePendingReminders`) would roll a live row
+    /// forward. Restoring the row is the control: the same pass then moves it
+    /// into the future, the way `testADailyRecurringReminderAdvancesPastAMissWithoutCompletion`
+    /// shows for a row that was never cancelled.
+    ///
+    /// Falsifier: drop `!item.isArchived` from `advanceOverdueRecurrences`
+    /// and the archived row's reminder moves; remove the rule on cancel and
+    /// the restored row stops being a series.
+    func testCancellingARecurringItemArchivesTheSeriesSoItNeverArmsOrRollsForward() async throws {
+        let reference = try XCTUnwrap(Calendar.autoupdatingCurrent.date(byAdding: .day, value: -14, to: .now))
+        let transcript = "Remind me every Friday to submit my timesheet"
+        _ = try await repository.createCaptureResult(
+            text: transcript,
+            source: .inAppText,
+            createdAt: reference,
+            schedulesReminders: false
+        )
         let item = try XCTUnwrap(try allItems().first { $0.displayTitle.localizedCaseInsensitiveContains("timesheet") })
         let itemID = item.id
-        XCTAssertNotNil(RecurrenceStore.rule(for: itemID), "Precondition: the rule exists")
+        let rule = try XCTUnwrap(RecurrenceStore.rule(for: itemID), "Precondition: the rule exists")
+        let fireDate = try XCTUnwrap(item.reminderDate)
+        XCTAssertLessThan(fireDate, .now, "Precondition: the occurrence is already overdue")
+        XCTAssertNotNil(
+            ReminderScheduleRequest.repeatingComponents(rule: rule, fireDate: fireDate),
+            "Precondition: a live row of this shape is rolled forward by the launch pass"
+        )
+        let identifier = ReminderScheduler.notificationIdentifier(for: itemID)
+        delivery.seedNotification(identifier)
 
-        _ = try await capture("Cancel the timesheet reminder")
+        let result = try await capture("Cancel the timesheet reminder")
 
-        XCTAssertNil(
-            RecurrenceStore.rule(for: itemID),
-            "A cancelled repeat must not keep firing"
+        guard case let .performed(operation, performedID, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Expected the cancellation to be performed")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertEqual(performedID, itemID)
+        XCTAssertTrue(item.isArchived, "the cancelled series was not archived")
+        XCTAssertFalse(delivery.pendingNotifications.contains(identifier), "A cancelled repeat must not keep firing")
+        XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
+
+        repository.reconcilePendingReminders()
+
+        XCTAssertEqual(item.reminderDate, fireDate, "an archived series was rolled forward")
+        XCTAssertEqual(
+            try allItems().filter { $0.displayTitle.localizedCaseInsensitiveContains("timesheet") }.map(\.id),
+            [itemID],
+            "an archived series generated another occurrence"
+        )
+        XCTAssertFalse(delivery.pendingNotifications.contains(identifier), "A cancelled repeat must not keep firing")
+        XCTAssertNotNil(RecurrenceStore.rule(for: itemID), "the rule is kept so Restore brings the series back")
+
+        try repository.setArchived(item, archived: false)
+        repository.reconcilePendingReminders()
+
+        XCTAssertGreaterThan(
+            try XCTUnwrap(item.reminderDate), Date.now,
+            "control: a restored series is live again and the same pass moves it forward"
         )
     }
 
@@ -958,7 +1038,7 @@ extension CaptureOperationTests {
     }
 
     /// Queues a pass that cannot finish until `delivery.release()`, so every
-    /// pass queued after it (the one `delete` queues included) is stuck
+    /// pass queued after it (the one `setArchived` queues included) is stuck
     /// behind it, as it is behind a pass waiting on a permission prompt.
     ///
     /// Drains first, so call it before seeding: the tail is static, and a pass
@@ -978,18 +1058,21 @@ extension CaptureOperationTests {
     }
 
     /// A cancelled reminder must stop *arriving*, which is a different claim
-    /// from its row being deleted. This asserts the exact pending request for
+    /// from its row being archived. This asserts the exact pending request for
     /// the item is the one removed, and that a neighbouring reminder is
     /// untouched — an over-broad removal would be invisible to a row-count
     /// assertion and very visible to a person.
     ///
     /// The first assertion runs while the scheduler queue is held, so only a
-    /// teardown that `delete` performs itself can satisfy it. Falsifier: drop
-    /// the synchronous `ReminderScheduler.cancel(itemID:)` from
-    /// `SwiftDataThoughtRepository.delete` and it fails every run, because the
-    /// queued pass cannot run until after it. No zone pin: nothing here reads
-    /// a wall-clock result, and notification assertions stay in the machine's
-    /// zone.
+    /// teardown the cancel performs itself can satisfy it. A spoken cancel
+    /// archives since 2026-09-24 (`archiveForSpokenCancel`), so the teardown
+    /// is `setArchived`'s. Falsifier: drop the synchronous
+    /// `ReminderScheduler.cancel(itemID:)` from
+    /// `SwiftDataThoughtRepository.setArchived` and it fails every run,
+    /// because the queued pass cannot run until after it. The archived row is
+    /// still in the store, so an assertion that only counted rows could no
+    /// longer see this at all. No zone pin: nothing here reads a wall-clock
+    /// result, and notification assertions stay in the machine's zone.
     func testCancellingRemovesTheExactPendingNotification() async throws {
         _ = try await capture("Remind me about the dentist on Friday")
         _ = try await capture("Remind me about the passport on Friday")
@@ -1032,6 +1115,8 @@ extension CaptureOperationTests {
             delivery.pendingNotifications.contains(passportIdentifier),
             "The queued pass must not reach past the cancelled reminder"
         )
+        XCTAssertTrue(dentist.isArchived, "the cancelled row is archived, not deleted")
+        XCTAssertFalse(passport.isArchived)
     }
 
     /// The alarm equivalent. An alarm that survives its item is worse than a
@@ -1042,7 +1127,8 @@ extension CaptureOperationTests {
     /// the queued pass that did the teardown and failed intermittently on
     /// hosted runners. The first assertion now runs with the queue held.
     /// Falsifier: drop the synchronous `ReminderScheduler.cancel(itemID:)`
-    /// from `SwiftDataThoughtRepository.delete` and it fails every run.
+    /// from `SwiftDataThoughtRepository.setArchived`, which a spoken cancel
+    /// goes through since 2026-09-24, and it fails every run.
     func testCancellingAnAlarmTearsDownTheAlarmKitAlarm() async throws {
         _ = try await capture("Set an alarm for 7 AM to take my pills")
 
@@ -1075,8 +1161,10 @@ extension CaptureOperationTests {
         await drainScheduler()
 
         // The recorder sees teardown only; arming goes to AlarmManager itself.
-        // The pass `delete` queues carries no requests, so what this checks is
-        // that the item stays disarmed and the pass reaches nothing else.
+        // The pass `setArchived` queues arms only the session's live rows, and
+        // the one row here is archived, so it carries no requests: what this
+        // checks is that the item stays disarmed and the pass reaches nothing
+        // else.
         XCTAssertFalse(
             delivery.scheduledAlarms.contains(item.id),
             "After the queued pass the cancelled alarm must still be gone"
@@ -1085,6 +1173,7 @@ extension CaptureOperationTests {
             delivery.scheduledAlarms.contains(unrelated),
             "The queued pass must not cancel an alarm it was not asked about"
         )
+        XCTAssertTrue(item.isArchived, "the cancelled alarm's row is archived, not deleted")
     }
 
     /// Completion also has to stop delivery. Marking something done while its
@@ -1103,6 +1192,68 @@ extension CaptureOperationTests {
             return XCTFail("Expected the completion to be performed")
         }
         XCTAssertFalse(delivery.pendingNotifications.contains(identifier))
+    }
+
+    /// Owner decision 1 B (Docs/DECISIONS.md, 2026-09-24): a spoken cancel
+    /// of one match archives. The reminder stops before any queued pass runs,
+    /// and the row, its capture and the original words stay, in Archive,
+    /// where Restore puts the same row back on Today.
+    ///
+    /// Falsifier: call `delete` from the single-match `.cancel` again and
+    /// the row, its session and its transcript are gone; archive without the
+    /// synchronous cancel in `setArchived` and the notification and alarm
+    /// are still there while the queue is held.
+    func testASpokenCancelArchivesTheRowKeepsItsWordsAndArmsNothing() async throws {
+        let transcript = "Remind me to call the landlord tomorrow at 3 PM"
+        let created = try await capture(transcript)
+        let rowID = created.primaryItem.id
+        let sessionID = created.session.id
+        let row = try XCTUnwrap(try allItems().first { $0.id == rowID })
+        XCTAssertTrue(row.isActionKind, "precondition: the reminder is an action row")
+        let reminderDate = row.reminderDate
+        let identifier = ReminderScheduler.notificationIdentifier(for: rowID)
+        await holdTheSchedulerQueue()
+        delivery.seedNotification(identifier)
+        delivery.seedAlarm(rowID)
+
+        let result = try await capture("Stop reminding me about the landlord")
+
+        guard case let .performed(operation, itemID, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("a cancel naming one action row must act")
+        }
+        XCTAssertEqual(operation, .cancel)
+        XCTAssertEqual(itemID, rowID)
+        XCTAssertFalse(delivery.pendingNotifications.contains(identifier), "the notification outlived the cancel")
+        XCTAssertFalse(delivery.scheduledAlarms.contains(rowID), "the alarm outlived the cancel")
+
+        let kept = try XCTUnwrap(try allItems().first { $0.id == rowID }, "a spoken cancel deleted the row")
+        XCTAssertTrue(kept.isArchived)
+        XCTAssertNotNil(kept.archivedAt)
+        XCTAssertFalse(kept.isCompleted, "a cancel is not a completion")
+        XCTAssertEqual(kept.captureSession?.id, sessionID)
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(
+            sessions.first { $0.id == sessionID }?.originalTranscription, transcript,
+            "the original words went with the cancel"
+        )
+        XCTAssertTrue(MemoryCollection.archive.contains(kept, pinnedIDs: []), "the row is not in Archive")
+        XCTAssertFalse(kept.belongsInToday, "an archived row is still on Today")
+        XCTAssertFalse(try activeTitles().contains { $0.localizedCaseInsensitiveContains("landlord") })
+
+        delivery.release()
+        await drainScheduler()
+        repository.reconcilePendingReminders()
+        await drainScheduler()
+
+        XCTAssertFalse(delivery.pendingNotifications.contains(identifier), "a pass re-armed the archived row")
+        XCTAssertFalse(delivery.scheduledAlarms.contains(rowID), "a pass re-armed the archived row")
+        XCTAssertFalse(ReminderScheduler.alarmMayBeAlerting(kept, now: .now))
+
+        try repository.setArchived(kept, archived: false)
+
+        XCTAssertFalse(kept.isArchived, "Restore did not bring the row back")
+        XCTAssertEqual(kept.reminderDate, reminderDate, "Restore changed the reminder")
+        XCTAssertTrue(try activeTitles().contains { $0.localizedCaseInsensitiveContains("landlord") })
     }
 
     func testSuccessfulCancellationKeepsIndependentShoppingItem() async throws {
