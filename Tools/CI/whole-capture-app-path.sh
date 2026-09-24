@@ -23,9 +23,12 @@
 #   SPEAKIT_ALLOW_BLIND_TAGGER=1   accept an export read with a blind lexical
 #                                  tagger (by default that exits 4: it describes
 #                                  the degraded policy, not a phone)
+#   SPEAKIT_ALLOW_ERROR_LINES=1    accept an export with error lines (by default
+#                                  that exits 5: each is a capture the harness
+#                                  could not save, and scoring is one-shot)
 #
 # Exit: 0 complete; 1 the test run failed; 2 usage; 3 ids missing, repeated or
-# unexpected; 4 read with a blind tagger.
+# unexpected; 4 read with a blind tagger; 5 error lines.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -119,17 +122,22 @@ if unreadable_input or unreadable_output or duplicate_input:
 print("  tagger: " + (", ".join(f"{k} {v}" for k, v in sorted(taggers.items())) or "no reading"))
 if missing or repeated or unexpected or unreadable_output or duplicate_input or unreadable_input:
     sys.exit(3)
-if taggers.get("blind"):
+# An error line scores as incorrect, so an export with any is complete but not
+# a clean reading of the app, and a scoring receipt is one-shot. An export made
+# only of error lines also leaves `taggers` empty, so the blind check below
+# cannot stand in for this one.
+if errors and os.environ.get("SPEAKIT_ALLOW_ERROR_LINES") != "1":
+    print("  ERROR LINES: the harness could not save every capture. Read the test's")
+    print("  console output before scoring, or set SPEAKIT_ALLOW_ERROR_LINES=1 to keep")
+    print("  the export with those captures counted incorrect.")
+    sys.exit(5)
+if taggers.get("blind") and os.environ.get("SPEAKIT_ALLOW_BLIND_TAGGER") != "1":
     print("  BLIND TAGGER: this simulator's lexical tagger answered nothing, so these rows")
     print("  describe the degraded policy, not what a phone does. Run on a machine whose")
     print("  tagger answers, or set SPEAKIT_ALLOW_BLIND_TAGGER=1 to keep it as that.")
     sys.exit(4)
 PY
 
-if [ "$check" = "4" ] && [ "${SPEAKIT_ALLOW_BLIND_TAGGER:-}" = "1" ]; then
-  echo "whole-capture-app-path.sh: kept a blind-tagger export because SPEAKIT_ALLOW_BLIND_TAGGER=1" >&2
-  check=0
-fi
 if [ "$status" != "0" ]; then
   echo "whole-capture-app-path.sh: the test run exited $status" >&2
   exit 1

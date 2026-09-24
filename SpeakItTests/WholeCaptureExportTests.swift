@@ -183,13 +183,17 @@ final class WholeCaptureExportTests: XCTestCase {
         let input = directory.appendingPathComponent("toy.jsonl")
         let output = directory.appendingPathComponent("actual.jsonl")
 
-        // Three ordinary captures, one of them an operation against the empty
-        // store, and a blank one the repository refuses, which is how the
-        // error line is exercised. The extra key shows other keys are ignored.
+        // Ordinary captures, one of them an operation against the empty store,
+        // one with a place and one with a repeat (the two values the scorer
+        // parses most narrowly), and a blank one the repository refuses, which
+        // is how the error line is exercised. The extra key shows other keys
+        // are ignored.
         let toy: [[String: Any]] = [
             ["id": "toy-paint", "utterance": "buy blue paint tomorrow at 3", "family": "single-task"],
             ["id": "toy-cat", "utterance": "the lighthouse cat is called Biscuit"],
             ["id": "toy-kite", "utterance": "cancel the kite lesson reminder"],
+            ["id": "toy-ferns", "utterance": "remind me to water the ferns when I get home"],
+            ["id": "toy-bins", "utterance": "every Tuesday at 7 PM put the bins out"],
             ["id": "toy-blank", "utterance": "   "],
         ]
         let inputText = try toy.map { row -> String in
@@ -209,12 +213,14 @@ final class WholeCaptureExportTests: XCTestCase {
         XCTAssertEqual(summary.lines, toy.count)
         XCTAssertEqual(
             records.compactMap { $0["id"] as? String }.sorted(),
-            ["toy-blank", "toy-cat", "toy-kite", "toy-paint"],
+            ["toy-bins", "toy-blank", "toy-cat", "toy-ferns", "toy-kite", "toy-paint"],
             "one line per input id, each exactly once"
         )
 
         var itemsChecked = 0
         var operationsChecked = 0
+        var placesChecked = 0
+        var rulesChecked = 0
         for record in records {
             let id = record["id"] as? String ?? "?"
             for key in ["id", "text", "items", "operations"] {
@@ -240,6 +246,25 @@ final class WholeCaptureExportTests: XCTestCase {
             for item in items {
                 itemsChecked += 1
                 assertItemShape(item, id: id)
+                if let location = item["location"] as? String, location != "nil" {
+                    placesChecked += 1
+                    // score.py's place_ok: `(arrive|leave) (named(<name>)|<word>)`.
+                    XCTAssertNotNil(
+                        location.range(
+                            of: #"^(arrive|leave) (named\(.*\)|\S+)"#,
+                            options: .regularExpression
+                        ),
+                        "\(id): location \(location) is not in the form the scorer parses"
+                    )
+                }
+                if let rule = item["recurrenceRule"] as? [String: Any] {
+                    rulesChecked += 1
+                    // score.py compares weekdays as Calendar numbers (1 = Sunday).
+                    let weekdays = try XCTUnwrap(
+                        rule["weekdays"] as? [Int], "\(id): weekdays is a list of Calendar numbers"
+                    )
+                    XCTAssertTrue(weekdays.allSatisfy { (1...7).contains($0) }, "\(id): weekdays \(weekdays)")
+                }
             }
             for operation in operations {
                 operationsChecked += 1
@@ -252,6 +277,8 @@ final class WholeCaptureExportTests: XCTestCase {
         // and an operation to look at, the two loops above check nothing.
         XCTAssertGreaterThan(itemsChecked, 0, "the item-shape check saw no row")
         XCTAssertGreaterThan(operationsChecked, 0, "the operation-shape check saw no operation")
+        XCTAssertGreaterThan(placesChecked, 0, "the place-form check saw no place")
+        XCTAssertGreaterThan(rulesChecked, 0, "the weekday-form check saw no repeat")
     }
 
     /// The keys and value forms `score.py`'s `item_mismatches` reads.
@@ -784,6 +811,10 @@ final class WholeCaptureExportTests: XCTestCase {
     /// handing it the calendar for that same zone. The async twin of
     /// `TemporalFullPathTests.withFixtureClock`: the pin and the calendar come
     /// from one constant, and the pin is scoped to the capture and its reading.
+    /// Unlike that twin, it holds the process-wide `NSTimeZone.default` across
+    /// `await`, the model's two-second budget included. That is safe only
+    /// because the script runs this class's export test on its own: a test that
+    /// ran beside it would read Toronto as its zone while the pin is held.
     private func withFixtureClock<T>(_ body: (Calendar) async throws -> T) async rethrows -> T {
         let previous = NSTimeZone.default
         NSTimeZone.default = TimeZone(identifier: Self.fixtureTimeZoneIdentifier)!
