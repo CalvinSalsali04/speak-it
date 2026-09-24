@@ -124,6 +124,20 @@ things follow from that rule and neither is resolved:
   a capture with no words is not in the data and cannot be. That question
   belongs to device QA and the owner handoff.
 
+## An old repeating reminder at a bare hour can move to the afternoon at launch
+
+This affects a repeating reminder saved at a bare hour 1–7 before Speak It
+stored timing details, such as "every Friday at five" saved as 5 AM. Since
+build 20 the rows are re-read in the afternoon, and the launch backfill
+re-reads the words to rebuild those details. It checks only the day, so the
+row keeps its 5 AM dates and takes a 5 PM clock. It rings once more at 5 AM,
+and then the launch pass moves the series to 5 PM with no notice. 5 PM is
+what the words meant. The fix, to compare the clock as well as the day, or
+to keep the stored hour for a calendar repeat, changes stored rows, so it
+waits until after V1. Newer rows keep their clock until the person edits the
+time or uses Organize again. (DECISIONS, 2026-09-24, "A series' bare hour
+takes the one-off named-day meridiem".)
+
 ## Timing data this build cannot read stays on the device that wrote it
 
 A row's temporal intent is stored as encoded bytes. A build that cannot

@@ -287,6 +287,152 @@ final class TemporalFullPathTests: XCTestCase {
         }
     }
 
+    /// A series' bare hour takes the half of the day the one-off resolver
+    /// gives the same words on a named day, in every shape of series.
+    ///
+    /// Hosted run 35935740134 found the defect. A weekly series at a bare
+    /// five fired at 5 AM every Friday, while the same words without the
+    /// repeat fire at 5 PM. The series read its clock through
+    /// `statedWallClock`, which applied a daypart and nothing else, so a bare
+    /// 1 to 7 stayed in the morning. Each row is captured on Monday 1
+    /// February 2027 at 10:00 in the fixture zone and names the rule that
+    /// decides it. The intent's clock is asserted beside the first
+    /// occurrence because it is what every later occurrence is computed
+    /// from; the test after this one captures at the hour where the two
+    /// could part. The monthly row on the 1st is a control: that series
+    /// already took the one-off resolver's instant.
+    ///
+    /// Falsifier: give `statedWallClock` back its daypart-only rule, and every
+    /// row the named-day rule moves out of the morning fails, the bare 1 to 7
+    /// rows and the dinner row, with the Friday at five on 05:00. The rows
+    /// the rule leaves in the morning, the explicit AM, the alarm and the
+    /// daypart pass either way. Give the interval shapes back their own
+    /// reader of digits after "at", and the three interval rows fail: the
+    /// two digit rows at 05:00 and 04:00, and the spoken five at 10:00, the
+    /// minute of the capture, because that reader could not read it.
+    func testASeriesBareHourTakesTheNamedDayMeridiemInEveryShape() throws {
+        let rows: [(text: String, month: Int, day: Int, hour: Int, alerts: Bool, rule: String)] = [
+            // Weekly, a bare 1 to 6: the afternoon.
+            ("Remind me every Friday at 5 to send the invoice", 2, 5, 17, true,
+             "a bare 1 to 7 on a named day is the afternoon"),
+            ("Every Friday at five remind me to submit the report", 2, 5, 17, true,
+             "the spoken hour takes the same rule as the digit"),
+            ("Every Monday at 3 call Mom", 2, 1, 15, false,
+             "the afternoon three is still ahead today, so the series starts today"),
+            ("Remind me every Wednesday at 1 to call the bank", 2, 3, 13, true,
+             "a bare 1 to 7 on a named day is the afternoon"),
+            // Weekly, 7 to 11: 7 is the last afternoon hour, 8 onward the morning.
+            ("Remind me every Thursday at 7 to put the bins out", 2, 4, 19, true,
+             "seven is still inside the afternoon band"),
+            ("Remind me every Tuesday at 9 to water the plants", 2, 2, 9, true,
+             "8 onward is the morning"),
+            ("Remind me every Monday at 8 to review the budget", 2, 8, 8, true,
+             "today's 8 AM has passed, so the series starts next Monday, not at 8 PM tonight"),
+            ("Remind me every Saturday at 11 to mow the lawn", 2, 6, 11, true,
+             "8 onward is the morning"),
+            // Daily.
+            ("every day at 6 take the pills", 2, 1, 18, false,
+             "a bare 1 to 7 is the afternoon every day, not the next six"),
+            ("Remind me every day at 2 to stretch", 2, 1, 14, true,
+             "a bare 1 to 7 is the afternoon"),
+            ("Remind me every day at 11 to drink water", 2, 1, 11, true,
+             "8 onward is the morning, and today's 11 AM is still ahead"),
+            // Monthly: an ordinal weekday lands on the series' own clock; a
+            // day of the month is the one-off resolver's instant.
+            ("Remind me the first Monday of every month at 4 to pay the nanny", 2, 1, 16, true,
+             "a bare 1 to 7 is the afternoon, and February's first Monday is today"),
+            ("Remind me the first Monday of every month at 9 to send the rent", 3, 1, 9, true,
+             "today's 9 AM has passed, so the series starts on March's first Monday"),
+            ("every month on the 1st at 4 pay rent", 2, 1, 16, false,
+             "control: a named date already took the one-off resolver"),
+            // An interval counts from the capture, and lands on the same clock.
+            ("Remind me every other day at five to water the fern", 2, 3, 17, true,
+             "an interval series reads the spoken five and puts it in the afternoon"),
+            ("Remind me every two weeks at 5 to pay the cleaner", 2, 15, 17, true,
+             "an interval series takes the named-day rule too"),
+            ("Remind me every three months at 4 to change the filter", 5, 1, 16, true,
+             "an interval series takes the named-day rule too"),
+            // What the grammar or the sentence already decided stands.
+            ("Remind me every Friday at 5 AM to send the invoice", 2, 5, 5, true,
+             "an explicit meridiem wins"),
+            ("Wake me every weekday at 6", 2, 2, 6, true,
+             "an alarm's bare 4 to 11 is the morning, and today's six has passed"),
+            ("Remind me every Thursday at 3 about the doctor's appointment", 2, 4, 15, true,
+             "an appointment at 3 is in business hours, the afternoon"),
+            ("Remind me every Tuesday at 8 about the dentist appointment", 2, 2, 8, true,
+             "an appointment at 8 is in business hours, the morning"),
+            ("Remind me every Friday at 8 to book dinner", 2, 5, 20, true,
+             "an evening noun puts a bare 5 to 11 in the evening"),
+            ("Remind me every Sunday morning at 7 to go for a run", 2, 7, 7, true,
+             "a stated daypart outranks the afternoon default"),
+        ]
+
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2027, month: 2, day: 1, hour: 10, calendar: calendar)
+            XCTAssertEqual(calendar.component(.weekday, from: createdAt), 2, "precondition: captured on a Monday")
+
+            for row in rows {
+                let item = try repository.createCapture(
+                    text: row.text,
+                    source: .inAppText,
+                    createdAt: createdAt,
+                    schedulesReminder: false
+                )
+                XCTAssertEqual(item.temporalKind, .calendarRecurrence, "precondition: a series, \(row.text)")
+                let expected = makeDate(
+                    year: 2027, month: row.month, day: row.day, hour: row.hour, calendar: calendar
+                )
+                XCTAssertEqual(item.dueDate, expected, "\(row.text): \(row.rule)")
+                if row.alerts {
+                    XCTAssertEqual(item.reminderDate, expected, "\(row.text): the alert is the first occurrence")
+                }
+                XCTAssertEqual(
+                    item.temporalIntent?.time,
+                    WallClockTime(hour: row.hour, minute: 0),
+                    "\(row.text): the repeats are computed from the clock the first occurrence landed on"
+                )
+            }
+        }
+    }
+
+    /// The occurrence after the first keeps the first one's clock.
+    ///
+    /// Captured at 5 AM, "every day at 6" is 06:00 to the one-off pass, the
+    /// next six, and 18:00 to the series. The first occurrence is the
+    /// series', and the intent's clock is what `nextRecurrenceDate` hands on
+    /// as `preferredWallClock`, so the two have to agree or the series moves
+    /// twelve hours after its first day.
+    ///
+    /// Falsifier: drop the `seriesClock` assignment from
+    /// `ThoughtOrganizer.finalIntent`, and the intent keeps 06:00, so the
+    /// occurrence completing the first one generates lands at 6 AM.
+    func testASeriesCapturedBeforeItsHourRepeatsAtTheClockItFirstLandedOn() throws {
+        try withFixtureClock { calendar in
+            let createdAt = makeDate(year: 2027, month: 2, day: 1, hour: 5, calendar: calendar)
+            let first = try repository.createCapture(
+                text: "every day at 6 take the pills",
+                source: .inAppText,
+                createdAt: createdAt,
+                schedulesReminder: false
+            )
+            XCTAssertEqual(
+                first.dueDate,
+                makeDate(year: 2027, month: 2, day: 1, hour: 18, calendar: calendar),
+                "precondition: the series starts on the afternoon six"
+            )
+            XCTAssertEqual(first.temporalIntent?.time, WallClockTime(hour: 18, minute: 0))
+
+            try repository.setCompleted(first, completed: true)
+            let nextID = try XCTUnwrap(RecurrenceStore.generatedNextItemID(for: first.id))
+            let next = try loadItem(withID: nextID)
+            XCTAssertEqual(
+                next.dueDate,
+                makeDate(year: 2027, month: 2, day: 2, hour: 18, calendar: calendar),
+                "the second occurrence repeats at the clock the first landed on"
+            )
+        }
+    }
+
     // MARK: Invariants
 
     /// Resolving an intent must never modify the intent. Asserted over every

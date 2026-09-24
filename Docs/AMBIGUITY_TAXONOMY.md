@@ -254,7 +254,11 @@ Saturday" (two).
   and "…for 6:30 every weekday" both gave 09:00, discarding an hour that had
   already been parsed. "Remind me weekly on Sundays" fired Monday, because the
   weekday pattern matched only the singular. "I go to the gym every day except
-  Sunday" read as weekly on Sundays. All fixed.
+  Sunday" read as weekly on Sundays. All fixed. *By reading, 2026-09-24* — a
+  series kept a bare 1–7 in the morning, because `statedWallClock` applied a
+  daypart and not the named-day default: "Every Friday at five" fired at 05:00.
+  It now resolves the hour with `defaultedBareHourOnNamedDay`; see
+  `DECISIONS.md`.
 - **Still open:** "Daily at 9 take the meds" resolves a due time but leaves
   `delivery: none`, so it never alerts. That is a delivery-selection defect, not
   a clock one.

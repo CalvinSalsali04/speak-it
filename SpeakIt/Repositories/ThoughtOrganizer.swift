@@ -1097,8 +1097,8 @@ enum ThoughtOrganizer {
             )
         }
 
-        let recurringDate = recurrenceRule.flatMap {
-            RecurrenceIntentParser.initialDate(
+        let seriesStart = recurrenceRule.flatMap {
+            RecurrenceIntentParser.seriesStart(
                 for: $0,
                 in: lowercase,
                 parsedDate: timing.dueDate,
@@ -1106,11 +1106,12 @@ enum ThoughtOrganizer {
                 calendar: calendar
             )
         }
+        let recurringDate = seriesStart?.date
         let dueDate = recurringDate ?? timing.dueDate
         // "Remind me every morning" asks for a reminder but, on its own,
         // resolves no clock — the one-off pass above correctly has nothing to
         // hang a delivery on and reports `.none`. The recurrence rule is what
-        // supplies that clock (see `RecurrenceIntentParser.initialDate`), so a
+        // supplies that clock (see `RecurrenceIntentParser.seriesStart`), so a
         // request that would otherwise be silently dropped is rescued here
         // instead. See Docs/FINAL_RELEASE_AUDIT.md H-1.
         let wantsRecurringReminder = timing.wantsReminder && timing.delivery == .none && recurringDate != nil
@@ -1244,6 +1245,7 @@ enum ThoughtOrganizer {
         let resolvedIntent = finalIntent(
             timing: timing,
             recurrenceRule: recurrenceRule,
+            seriesClock: seriesStart?.statedClock,
             resolvedDate: dueDate,
             sourceText: lowercase,
             calendar: calendar
@@ -1305,9 +1307,18 @@ enum ThoughtOrganizer {
     /// Folds a recurrence rule into the parsed intent. A repeating thought is
     /// still one of two distinct kinds — a wall clock that repeats, or an
     /// elapsed interval that repeats — and which one it is has to survive.
+    ///
+    /// `seriesClock` is the stated clock the series landed its first
+    /// occurrence on (`RecurrenceIntentParser.SeriesStart.statedClock`). It
+    /// replaces the one-off pass's clock, because the intent's clock is what
+    /// every later occurrence is computed from, and the one-off pass reads a
+    /// bare hour its own way: "every day at 6", captured at 5 AM, is the next
+    /// six to it (06:00) and 18:00 to the series. Without this the first
+    /// occurrence and the repeats could land twelve hours apart.
     private static func finalIntent(
         timing: ParsedTiming,
         recurrenceRule: RecurrenceRule?,
+        seriesClock: WallClockTime?,
         resolvedDate: Date?,
         sourceText: String,
         calendar: Calendar
@@ -1325,6 +1336,9 @@ enum ThoughtOrganizer {
         }
 
         intent.kind = .calendarRecurrence
+        if let seriesClock {
+            intent.time = seriesClock
+        }
         // A repeating wall clock needs a clock. When the wording gave one, the
         // parse already captured it; otherwise fall back to the resolved date's
         // own time so the series has something consistent to repeat at.
@@ -1986,13 +2000,29 @@ enum RecurrenceIntentParser {
         return RecurrenceRule(frequency: frequency(for: match[2]), interval: interval, anchor: anchor)
     }
 
-    static func initialDate(
+    /// Where a series starts, and the clock it was landed on.
+    struct SeriesStart: Equatable {
+        /// The first occurrence.
+        let date: Date
+        /// The clock the person stated, when the series itself landed `date`
+        /// on it. `ThoughtOrganizer.finalIntent` makes it the intent's clock,
+        /// which is the clock every later occurrence is computed from
+        /// (`preferredWallClock`), so the first occurrence and the repeats
+        /// cannot read the same words two ways.
+        ///
+        /// `nil` when no clock was stated, and when the first occurrence is
+        /// the one-off resolver's instant (`parsedDate`): that intent already
+        /// carries the clock the instant was built from.
+        let statedClock: WallClockTime?
+    }
+
+    static func seriesStart(
         for rule: RecurrenceRule,
         in text: String,
         parsedDate: Date?,
         referenceDate: Date,
         calendar: Calendar
-    ) -> Date? {
+    ) -> SeriesStart? {
         // The series owns its clock, and the first occurrence is computed from
         // the recurrence rule rather than from a single resolved instant.
         //
@@ -2001,20 +2031,21 @@ enum RecurrenceIntentParser {
         // 9 PM tonight" — a correct answer to a question nobody asked. A daily
         // series does not start at the next nine; it repeats at nine, and its
         // first occurrence is the next time that clock comes round.
+        let stated = TemporalIntentParser.statedWallClock(in: text)
         if let first = firstOccurrence(
             of: rule,
-            wallClock: seriesWallClock(in: text),
+            wallClock: seriesWallClock(stated: stated, in: text),
             after: referenceDate,
             calendar: calendar
         ) {
-            return first
+            return SeriesStart(date: first, statedClock: stated)
         }
 
         if rule.frequency == .weekly, !rule.weekdays.isEmpty, let parsedDate {
-            return parsedDate
+            return SeriesStart(date: parsedDate, statedClock: nil)
         }
         if rule.interval == 1, let parsedDate {
-            return parsedDate
+            return SeriesStart(date: parsedDate, statedClock: nil)
         }
 
         let component: Calendar.Component
@@ -2024,20 +2055,24 @@ enum RecurrenceIntentParser {
         case .monthly: component = .month
         case .yearly: component = .year
         }
-        guard var result = calendar.date(byAdding: component, value: rule.interval, to: referenceDate) else {
-            return parsedDate
+        guard let result = calendar.date(byAdding: component, value: rule.interval, to: referenceDate) else {
+            return parsedDate.map { SeriesStart(date: $0, statedClock: nil) }
         }
 
-        if let time = timeComponents(in: text),
+        // The same clock as every other shape. This used to be a third
+        // reader, digits after "at" with no meridiem rule: "every other day
+        // at 6" landed at 06:00, and "every other day at five", which it could
+        // not read at all, at the minute of the capture.
+        if let stated,
            let adjusted = calendar.date(
-               bySettingHour: time.hour ?? 9,
-               minute: time.minute ?? 0,
+               bySettingHour: stated.hour,
+               minute: stated.minute,
                second: 0,
                of: result
            ) {
-            result = adjusted
+            return SeriesStart(date: adjusted, statedClock: stated)
         }
-        return result
+        return SeriesStart(date: result, statedClock: nil)
     }
 
     /// The ordinal weekday a monthly series lands on, if it names one.
@@ -2067,14 +2102,17 @@ enum RecurrenceIntentParser {
     ///
     /// A bare hour follows the same rule the rest of the app uses for a named
     /// day — 1 through 7 are afternoon, 8 onward are morning — because "every
-    /// day at nine" and "call Catherine Tuesday at nine" mean the same nine.
-    private static func seriesWallClock(in text: String) -> WallClockTime? {
+    /// day at nine" and "call Catherine Tuesday at nine" mean the same nine,
+    /// and "every Friday at five" and "Friday at five" the same five. That
+    /// rule is applied by `statedWallClock`, which hands this the clock as
+    /// `stated`; this only supplies the hour when no clock was stated.
+    private static func seriesWallClock(stated: WallClockTime?, in text: String) -> WallClockTime {
         // Ask the app's one clock grammar first. It already knows spoken clock
         // faces, meridiems, compact digits and the alarm conventions, and it is
         // the reader every non-repeating sentence goes through — so a series
         // that repeats an hour now lands on the same hour the same words would
         // produce without the repetition.
-        if let stated = TemporalIntentParser.statedWallClock(in: text) {
+        if let stated {
             return stated
         }
 
@@ -2158,17 +2196,6 @@ enum RecurrenceIntentParser {
         }
 
         return nil
-    }
-
-    private static func timeComponents(in text: String) -> DateComponents? {
-        guard let values = match(
-            in: text,
-            pattern: #"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b"#
-        ), values.count >= 4, var hour = Int(values[1]) else { return nil }
-        let minute = Int(values[2]) ?? 0
-        if values[3] == "pm", hour < 12 { hour += 12 }
-        if values[3] == "am", hour == 12 { hour = 0 }
-        return DateComponents(hour: hour, minute: minute)
     }
 
     private static func number(_ value: String) -> Int? {
@@ -3125,7 +3152,8 @@ private enum TemporalIntentParser {
     /// Reads a stated daypart, or a noun that names one, when the sentence
     /// named no day.
     ///
-    /// `defaultedBareHourOnNamedDay` is only reachable once a day is known, so
+    /// On the one-off path `defaultedBareHourOnNamedDay` is only reachable once
+    /// a day is known (a series' stated clock is its other caller), so
     /// a sentence with a daypart and no day never consulted it. Worse,
     /// `committedAlarmHour` deliberately stands aside when a daypart is present
     /// — on the reasoning that the daypart has already decided — and on this
@@ -3795,19 +3823,29 @@ private enum TemporalIntentParser {
     /// Every one of those is a missed alarm, and the hour was sitting there
     /// already parsed. One grammar, so a clock cannot mean two things depending
     /// on whether the sentence also happens to repeat.
+    ///
+    /// The same holds for the half of the day. A series names its day by
+    /// repeating it, so its bare hour is resolved by the one-off resolver for
+    /// a named day, `defaultedBareHourOnNamedDay`, rather than by a rule of
+    /// its own: a stated daypart decides ("every night at 10" is 22:00), an
+    /// evening noun decides ("dinner every Friday at 8" is 20:00), and
+    /// otherwise 1 through 7 are the afternoon and 8 onward the morning.
+    /// Everything `time(in:)` already pinned passes through untouched: an
+    /// explicit meridiem, a 24-hour or zero-padded clock, and an alarm's bare
+    /// hour, which `committedAlarmHour` has already put in the morning.
+    ///
+    /// This used to apply the daypart and nothing else, so a series kept a
+    /// bare 1 to 7 in the morning while the same words without the repeat
+    /// moved it to the afternoon. "Every Friday at five remind me to submit
+    /// the report" fired at 5 AM every Friday; "remind me Friday at five" fires
+    /// at 5 PM. Found by hosted run 35935740134, whose simulator runs in UTC:
+    /// `testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed` read Friday 05:00
+    /// Toronto where its precondition expects 17:00. See Docs/DECISIONS.md,
+    /// 2026-09-24.
     static func statedWallClock(in text: String) -> WallClockTime? {
         guard let parsed = time(in: text, allowsBareClock: true) else { return nil }
-        // A stated daypart still disambiguates a bare hour, the same way it
-        // does on a one-off sentence. "Every night at 10" is 22:00; without
-        // this the hour arrives with no meridiem and the series fires twelve
-        // hours early. Only a bare 1-to-12 is eligible — anything the grammar
-        // has already pinned to a half of the day keeps its answer.
-        guard !parsed.hasMeridiem,
-              (1...12).contains(parsed.hour),
-              let daypart = DaypartHint(in: text) else {
-            return WallClockTime(hour: parsed.hour, minute: parsed.minute)
-        }
-        return WallClockTime(hour: daypart.hour(for: parsed.hour), minute: parsed.minute)
+        let resolved = defaultedBareHourOnNamedDay(parsed, in: text)
+        return WallClockTime(hour: resolved.hour, minute: resolved.minute)
     }
 
     /// The month-and-day readers as a yes/no, for the router. See

@@ -2113,7 +2113,43 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         name archiving (`a row the cancel did not name was archived`, `a
         held cancellation archived the row it named`): 4922 + 2 - 0 = 4924. Merged over
         the app-path export, measured on the merged tree: 4941 + 33 - 2 + 2 =
-        4974.
+        4974. The series-hour
+        fix (#156), recounted on b6ae30c as 4891 -> 4937 on 2026-09-24, the
+        fix for hosted run 35935740134 (a series' bare hour takes the
+        one-off named-day meridiem): two `TemporalFullPathTests` tests.
+        Forty-six in, enumerated by diffing `swift_literals` before and
+        after. Twenty are fixtures, the family table's twenty rows (the
+        repeat test reuses `every day at 6 take the pills`), none of them
+        already here. Eighteen are the table's rule column (`an explicit
+        meridiem wins`, `a bare 1 to 7 on a named day is the afternoon`
+        and sixteen more). Seven are assertion messages, four of them
+        interpolated (`precondition: a series, \\(row.text)`,
+        `precondition: captured on a Monday`, `precondition: the series
+        starts on the afternoon six`, `the second occurrence repeats at
+        the clock the first landed on`, and three that open on
+        `\\(row.text): `). One is a phrase quoted in a doc comment, the
+        hazard above once more (`every day at 6`). None out: 4891 + 46 -
+        0 = 4937. 4937 -> 4942 the same day, the second commit of that
+        fix: the interval shapes read the same clock. Five in, enumerated
+        by diffing `swift_literals` before and after: three family-table
+        fixtures (`Remind me every other day at five to water the fern`,
+        `Remind me every two weeks at 5 to pay the cleaner`, `Remind me
+        every three months at 4 to change the filter`) and two rule-column
+        strings (`an interval series reads the spoken five and puts it in
+        the afternoon`, `an interval series takes the named-day rule
+        too`, which two rows share). None out: 4937 + 5 - 0 = 4942.
+        4942 -> 4946 the same day, the third commit of that fix: four rows
+        join the corpus's `recurrence` family. Four in, all of them the
+        rows' notes, enumerated by diffing `swift_literals` before and
+        after (`Remind me Friday at 5 is 17:00, so every Friday at 5 is
+        too. The series fired at 05:00.`, `A daily bare 1 to 7 is the
+        afternoon, and this evening's six is still ahead.`, `An ordinal
+        weekday lands on the same clock. August's first Monday is the
+        capture's own day.`, `An explicit meridiem outranks the afternoon
+        default.`). The four utterances were already here as family-table
+        fixtures. None out: 4942 + 4 - 0 = 4946. Merged over
+        the candidate at 4974, measured on the merged tree: 4974 + 55 - 0 =
+        5029.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2123,7 +2159,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4974)
+        self.assertEqual(len(space), 5029)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

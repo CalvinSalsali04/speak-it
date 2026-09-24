@@ -1,5 +1,130 @@
 # Decisions
 
+## 2026-09-24 — A series' bare hour takes the one-off named-day meridiem
+
+Found by hosted run 35935740134 on `b6ae30c`, whose simulator runs in UTC.
+`testASeriesHeldForItsExceptionArmsOnlyOnceConfirmed` failed its
+precondition: "Every Friday at five remind me to submit the report, except
+this Friday", captured on a Monday at 10:00 inside the Toronto pin, first
+alerted on Friday at 05:00 Toronto instead of 17:00. The precondition is
+right and is unchanged. "Remind me tomorrow at 5" is 17:00 and "Doctor
+Thursday at 3" is 15:00 in the corpus, so the same words with a repeat
+should land in the same half of the day.
+
+**Hypothesis.** The series reads its clock on a path of its own that skips
+the waking-hours default. By reading: `organize` takes the series date
+over the one-off pass's date for both the due date and the reminder. That
+date comes from `RecurrenceIntentParser.firstOccurrence`, landed on
+`seriesWallClock`, which asks `TemporalIntentParser.statedWallClock`.
+`statedWallClock` ran `time(in:)`, which pins an explicit meridiem, a 24-hour
+or zero-padded clock and an alarm's 4–11, and then applied a daypart and
+nothing else. A one-off named day goes through `defaultedBareHourOnNamedDay`
+instead: a daypart, then an evening noun, then 1–7 moved to the afternoon.
+So the one-off pass read Friday at five as 17:00 and the series overwrote
+it with 05:00. `seriesWallClock`'s own comment said the series followed the
+named-day rule. The code did not.
+
+**Not a tagger artefact.** The hosted simulator's `NLTagger` answers
+`OtherWord` for every token. Nothing between `time(in:)` and
+`firstOccurrence` asks it: every step is a regular expression or Foundation
+calendar arithmetic. The tagger can only decide whether a series forms at
+all, through `ActionabilityReader` and the clause scope. Here it formed: the
+weekday assertion before the hour passed. A Mac with the lexical model reads
+the same 05:00.
+
+**Family.** Every series whose first occurrence is landed on the series'
+own clock: weekly on named days, daily, a monthly ordinal weekday, and
+(second commit, below) an interval counted from the capture.
+"Every Monday at 3 call Mom" was Monday 03:00, "every day at 6 take the
+pills" 06:00, and "Remind me the first Monday of every month at 4" 04:00. A
+monthly series on a named date ("every month on the 1st at 4 pay rent") uses
+the one-off resolver's instant and was already 16:00. What the grammar
+already pinned was right and stays: "Every Friday at 5 AM", "wake me every
+weekday at 6" (06:00), "every night at 10" (22:00).
+
+The same path had a second split. The intent's clock came from the one-off
+pass, and the first occurrence came from the series. `nextRecurrenceDate`
+computes every later occurrence from the intent's clock
+(`preferredWallClock`), so "Every Monday at 3 call Mom" was due Monday 03:00
+and, once completed, every Monday at 15:00 after that. Fixing only the
+meridiem would have moved that gap, not closed it. The one-off pass reads a
+bare hour with no day as the next one, so "every day at 6", captured at 5
+AM, is 06:00 to it and 18:00 to the series.
+
+**Change.**
+- `statedWallClock` resolves its bare hour with `defaultedBareHourOnNamedDay`,
+  the one-off named-day resolver, instead of a rule of its own. The daypart
+  it used to apply is that resolver's first rule, so nothing it decided
+  moves.
+- `initialDate` is now `seriesStart`. It also returns the stated clock when
+  the series landed its first occurrence on it. `finalIntent` makes that the
+  intent's clock. When the first occurrence is the one-off resolver's
+  instant, the intent keeps the clock that instant was built from, as
+  before.
+
+**Falsifier.**
+- (a) A series with a bare 1–7 and no daypart, alarm or meridiem lands in
+  the morning.
+- (b) An explicit AM, an alarm's 4–11, a daypart, or a bare 8–11 moves.
+- (c) A series' second occurrence lands on another clock than its first.
+
+`TemporalFullPathTests.testASeriesBareHourTakesTheNamedDayMeridiemInEveryShape`
+pins (a) and (b) on 23 rows: weekly, daily, monthly and interval, bare 1–6
+and 7–11, an explicit AM, an alarm, two appointment words, an evening noun,
+a daypart, and a past-hour roll to the next occurrence rather than to the
+other half of the day. `testASeriesCapturedBeforeItsHourRepeatsAtTheClockItFirstLandedOn`
+pins (c). None of this has run: there is no Swift toolchain where it was
+written.
+
+**The interval shapes, a second commit.** A series that counts an interval
+from the capture ("every other day", "every two weeks", "every three
+months") took its clock from a third reader, `timeComponents`: digits after
+"at", with no meridiem rule. "Every other day at 6" landed at 06:00, and
+"every other day at five", which it could not read, at the minute of the
+capture. That branch now lands on `statedWallClock` like every other shape
+and hands the clock to the intent the same way, and `timeComponents` is
+gone. The family table gained three interval rows. An explicit clock reads
+as before: "Remind me every four days at 9 am" stays 09:00
+(`SwiftDataThoughtRepositoryTests.testOrganizerUnderstandsIntervalAndCompletionAnchoredRecurrence`).
+
+**Corpus rows, a third commit.** The `recurrence` family is the corpus's
+one family that asserts a series' time, so four rows join it at the fixed
+frame (Monday 3 August 2026, 10:00 Toronto): "Remind me every Friday at 5
+to send the invoice" at Friday 17:00, "every day at 6 take the pills" due
+today at 18:00, "Remind me the first Monday of every month at 4 to pay the
+nanny" today at 16:00, and "Remind me every Friday at 5 AM to send the
+invoice" at 05:00. No other row's expectation changed.
+
+**Moved by reading.** No corpus row asserts a time this moves. Five corpus
+rows assert a series time: two at nine, two at seven with "morning", and one
+alarm at 6 with "morning". The named-day rule leaves each in the morning.
+Two rows that assert no time now land at 17:00: the held series above and
+"Every other Friday at five, remind me to submit the report and pay the
+contractor". The held-out and sealed sets were not read. Whether a sealed
+measure moved, and so whether a cost-ledger row is owed, is for the Mac
+language run to say.
+
+**Not covered, found on the way.**
+- A series with no calendar landmark at interval 1 ("every week at 5",
+  "every month at 4") takes the one-off pass's instant, which reads a bare
+  hour with no day as the next one. It starts at 17:00 at ten in the
+  morning and at 05:00 at four.
+- The series clock does not read a conventional anchor. "Remind me every
+  day after work to call Mom" starts at the default alert time, 09:00, and
+  repeats at 17:00, the anchor the one-off pass read.
+- Most rows saved before this change keep the clock they were given until
+  the person edits the time or uses Organize again, which re-reads the words.
+  A row saved before the intent column existed is the exception (#156 grade,
+  finding 1). `backfillTemporalIntents()` re-reads its words at launch
+  (`reconstructedIntent`, and the same on a snooze), and its trust check
+  compares days only. So an "every Friday at five" row keeps its 05:00 dates
+  but takes a 17:00 intent. It rings once more at 05:00, and then
+  `advanceOverdueRecurrences` rolls it to 17:00 with no notice. 17:00 is what
+  the person meant, but the row is inconsistent until then and moves on a
+  launch pass. The guard would compare the clock as well as the day, or keep
+  the stored hour for a calendar recurrence. That guard changes stored rows,
+  so it is left for after V1 and recorded in `KNOWN_ISSUES.md`.
+
 ## 2026-09-24 — V1 owner decisions, 2026-09-24
 
 Calvin delegated the pending V1 decision batch on 2026-09-24 ("u can do
