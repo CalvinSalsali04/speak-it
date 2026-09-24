@@ -1,0 +1,21 @@
+ranges (candidate 1): does not qualify
+  FAIL  material gain over one-unit, view any: 12 - 16 >= 4
+  FAIL  material gain over one-unit, view own: 9 - 12 >= 4
+  FAIL  multi-unit recovery, view any: 0 >= 0.5 x 14
+  pass  silent wrong cuts (over-split, absorbed, wrong-boundaries, filler-only): 2 <= 3: RB21R, CAP14
+  pass  no content cut in reported speech, message content or deliberation: none
+  FAIL  single-unit captures broken: 4 <= 2: RB17R, RB31C, RB31R, RB41R
+  pass  beats every-line in both views: 12 > 5, 9 > 5
+labels (candidate 2): does not qualify
+  FAIL  material gain over one-unit, view any: 16 - 16 >= 4
+  FAIL  material gain over one-unit, view own: 12 - 12 >= 4
+  FAIL  multi-unit recovery, view any: 0 >= 0.5 x 14
+  pass  silent wrong cuts (over-split, absorbed, wrong-boundaries, filler-only): 0 <= 3: none
+  pass  no content cut in reported speech, message content or deliberation: none
+  pass  single-unit captures broken: 0 <= 2: none
+  pass  beats every-line in both views: 16 > 5, 12 > 5
+  pass  clause lines can express the gold, both views: 30, 30 >= 29 of 30
+
+Neither candidate passes every gate.
+
+OUTCOME C

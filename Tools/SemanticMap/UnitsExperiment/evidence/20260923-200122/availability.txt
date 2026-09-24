@@ -1,0 +1,14 @@
+foundation-models: framework present
+locale:            en_CA
+availability:      available
+context size:      4096
+token counting:    available
+sampling:          greedy
+commit:            09a9eed13c58
+units prompt:      3d3b2192
+relations prompt:  252db215
+entities prompt:   24bf5efa
+production prompt: cf9a6e93
+ranges prompt:     df4c6e25
+labels prompt:     71e026b5
+thought cap:       20 (ranges arm)

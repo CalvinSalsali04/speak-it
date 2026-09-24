@@ -1,0 +1,21 @@
+PASS clean tree
+PASS hash Tools/SemanticMap/UnitsExperiment/gold/gold.json
+PASS hash Tools/SemanticMap/UnitsExperiment/gold/UNIT_DEFINITION.md
+PASS hash Tools/SemanticMap/UnitsExperiment/captures.jsonl
+PASS hash Tools/SemanticMap/UnitsExperiment/inputs.jsonl
+PASS hash Tools/SemanticMap/UnitsExperiment/families.json
+PASS hash Tools/SemanticMap/UnitsExperiment/clause_lines.py
+PASS hash Tools/SemanticMap/UnitsExperiment/make_inputs.py
+PASS hash Tools/SemanticMap/UnitsExperiment/score_units.py
+PASS hash Tools/SemanticMap/UnitsExperiment/decide.py
+PASS hash Tools/SemanticMap/UnitsExperiment/DECISION_PLAN.md
+PASS hash Tools/SemanticMap/Sources/UnitsExperiment.swift
+PASS inputs regenerate identically
+PASS scorer selftest
+PASS decision selftest
+PASS precheck
+PASS build
+PASS model available
+PASS generation wrote 60 records
+PASS score
+PASS decision: OUTCOME C
