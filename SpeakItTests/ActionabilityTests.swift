@@ -1108,6 +1108,33 @@ extension ActionabilityTests {
         XCTAssertEqual(item.organization.reminderDelivery, .none)
     }
 
+    /// Advice that names an alarm or a reminder takes a different road: the
+    /// pipeline's safety net keeps it as one held row, and that net used to
+    /// rebuild the row as `.resolved`, so it lost "somebody else's words" and
+    /// with it `RefinementGuard`'s protection. Held, with nothing armed, and
+    /// still marked as reported speech after the whole rules pipeline. Found
+    /// by the V1 qualification probe on the first sentence; the others are the
+    /// same family in words the probe never used.
+    func testReportedAdviceNamingAnAlarmKeepsItsReportedSpeechStateThroughThePipeline() throws {
+        for text in [
+            "Sarah said I should set an alarm for 7",
+            "Mike told me I should set an alarm for 6",
+            "Sarah said we should set an alarm for 7",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .advised, text)
+            let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(result.operations.isEmpty, text)
+            XCTAssertEqual(result.items.count, 1, text)
+            let item = try XCTUnwrap(result.items.first, text)
+            XCTAssertEqual(item.rawQuote, text)
+            XCTAssertTrue(item.needsReview, text)
+            XCTAssertEqual(item.organization.state, .underspecified(.reportedSpeech), text)
+            XCTAssertNil(item.organization.dueDate, text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertEqual(item.organization.reminderDelivery, .none, text)
+        }
+    }
+
     /// The boundary with case 3 is the modal. A bare infinitive after "me" is
     /// an instruction handed to the person and stays an errand with its time;
     /// the same verb with "I should" behind it is advice.

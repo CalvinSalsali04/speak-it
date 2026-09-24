@@ -925,6 +925,14 @@ enum RuleBasedThoughtExtractor {
                 && shouldKeepAsOneSafetyItem(segment.analysisText)
             let cannotIdentifyPoint = segment.forcesReview
             if safetyAmbiguity || cannotIdentifyPoint {
+                // The net may empty the row, but not erase why it is held when
+                // the organizer already knows: advice somebody else gave that
+                // names a reminder or an alarm ("Sarah said I should set an
+                // alarm for 7") reaches the net through its reported-speech
+                // test and would otherwise leave as `.resolved`. That state is
+                // what `RefinementGuard` reads to keep the model from arming
+                // somebody else's advice, and what the review row shows.
+                let keepsReportedSpeech = organization.state == .underspecified(.reportedSpeech)
                 organization = OrganizedThought(
                     itemType: .unclear,
                     category: .general,
@@ -934,7 +942,8 @@ enum RuleBasedThoughtExtractor {
                     reminderDate: nil,
                     reminderDelivery: .none,
                     recurrenceRule: nil,
-                    needsClarification: true
+                    needsClarification: true,
+                    state: keepsReportedSpeech ? .underspecified(.reportedSpeech) : .resolved
                 )
             }
 

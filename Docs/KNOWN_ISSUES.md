@@ -1363,6 +1363,20 @@ reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
   model cannot undo the hold. A merge the model makes across a held row and
   the person's own commitment is rejected with it, and the rules reading
   stands.
+- **Other rows the safety net holds say nothing about why.** Advice that names
+  an alarm or a reminder ("Sarah said I should set an alarm for 7") is held
+  by the pipeline's safety net rather than the organizer alone, and until
+  2026-09-24 the net rebuilt it as `.resolved`, so the guard above did not
+  apply to it (the V1 qualification probe found it; fixed on the candidate).
+  The net still rebuilds every other row it holds (a question, a negation, a
+  destructive command, a report with no advice modal such as "Jordan said
+  remind me at five to call him") as an `.unclear` row in the `.resolved`
+  state. Those rows are held, empty and unarmed on the rules path. On an
+  Apple Intelligence device `RefinementGuard`'s resolved check only asks that
+  one refined row about the action keep the held row's empty fields, so a
+  split that adds a second, armed row is not rejected by it. Whether the model
+  ever returns such a split for these rows is not measured: read from the
+  code, not observed.
 
 ## Removal requests: one defect closed, one decision open
 

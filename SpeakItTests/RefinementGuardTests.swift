@@ -219,6 +219,27 @@ final class RefinementGuardTests: XCTestCase {
         ))
     }
 
+    /// The same split on advice that names an alarm. The rules hold it through
+    /// the pipeline's safety net rather than the organizer alone, and the net
+    /// used to hand the row back as `.resolved`, which this guard does not
+    /// read as somebody else's words; the resolved check then accepted the
+    /// split because the frame row matched the held row's empty fields.
+    func testRefinementCannotArmHeldAdviceThatNamesAnAlarm() throws {
+        let rules = rulesReading(of: "Mike told me I should set an alarm for 6")
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertEqual(held.organization.state, .underspecified(.reportedSpeech))
+
+        let action = refined("I should set an alarm for 6")
+        // The canned answer has to be the dangerous one, or the rejection
+        // below proves nothing about the guard.
+        XCTAssertNotNil(action.organization.reminderDate)
+        XCTAssertFalse(
+            RefinementGuard.preservesEverything(in: [refined("Mike told me"), action], found: rules),
+            "the split armed an alarm for somebody else's advice"
+        )
+    }
+
     // MARK: The corpus, replayed through the seam
 
     /// The rules' own reading must always satisfy the guard.
