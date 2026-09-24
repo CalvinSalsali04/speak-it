@@ -1,0 +1,83 @@
+# The rc row's probe cell from Tools/CI/v1-qualification.sh, on GitHub-hosted
+# macOS, for the frozen V1 candidate.
+#
+# Why here: every simulator on the owner's Mac turned out to have the same
+# blind NLTagger as the hosted simulator (2026-09-24), so the Mac run would add
+# nothing but these probes. The probes run on the macOS host, not a simulator,
+# and the hosted host's tagger is sighted (the corpus gate scores clean there),
+# so they answer the same questions they would on the Mac. 136-timing is
+# recorded on hosted hardware and is not comparable with a laptop's figures.
+#
+# The tree is the candidate pin itself, checked out alone; the script and its
+# inputs come from this branch (the qualification checkout), exactly as
+# v1-qualification.sh arranges them. Runs on a push to this branch only.
+name: V1 probes
+
+on:
+  push:
+    branches: [claude/v1-reliability-nyngoe-probes]
+
+permissions:
+  contents: read
+
+env:
+  RC_PIN: 2def46eba036c491211f83fa48ba9724f7593e6c
+
+jobs:
+  probes:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: qual
+
+      # Full history: 151-unchanged and 136-timing check out fixed historical
+      # commits into temporary worktrees of this repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RC_PIN }}
+          path: tree
+          fetch-depth: 0
+
+      - name: Select Xcode 26.6
+        run: echo "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Say what ran
+        run: |
+          sw_vers
+          xcodebuild -version
+          echo "tree: $(git -C tree rev-parse HEAD)"
+          echo "qualification checkout: $(git -C qual rev-parse HEAD)"
+          test "$(git -C tree rev-parse HEAD)" = "$RC_PIN"
+
+      - name: Probes
+        working-directory: tree
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/probes"
+          "$GITHUB_WORKSPACE/qual/Tools/CI/v1-probes.sh" "$RUNNER_TEMP/probes"
+          echo "v1-probes.sh exit: $?" | tee "$RUNNER_TEMP/probes/exit.txt"
+
+      # To the log as well as the artifact: the log is the one place every
+      # reader can already see. Every file here comes from development inputs;
+      # nothing reads a sealed or held-out set.
+      - name: Print the evidence
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/probes" || exit 0
+          ls -la
+          for f in exit.txt steps.txt dec24.tsv; do
+            [ -f "$f" ] && { echo "===== $f"; cat "$f"; }
+          done
+          for f in *.txt *.tsv; do
+            case "$f" in exit.txt|steps.txt|dec24.tsv) continue ;; esac
+            echo "===== $f ($(wc -l < "$f") lines)"
+            head -n 60 "$f"
+          done
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: v1-probes-2def46e
+          path: ${{ runner.temp }}/probes
