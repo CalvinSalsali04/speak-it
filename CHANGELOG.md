@@ -27,15 +27,18 @@ those builds were cut, and some notes merged for this build sit below the
   the next launch, and opening the app no longer stops an alarm that rang in
   the last 30 minutes (not yet observed on an iPhone).
 - Repeating reminders: daily and weekly alarm series repeat by themselves on
-  iOS 26, a snooze moves one occurrence and not the series, and an overdue
-  series keeps its saved timing when this version cannot read it.
+  iOS 26, a snooze moves one occurrence and not the series (not yet observed
+  on an iPhone), and an overdue series keeps its saved timing when this
+  version cannot read it.
 - Spoken cancel, complete and move act only where they are sure. A broad
   request reaches only Today's action rows, never Memory. One whose only match
   is a knowledge row held for review, or a capture not yet organized, waits in
   Needs review. A store that cannot be read holds the request instead of
   filing it as a new task.
 - Advice somebody else gave you ("Sarah said I should call Mike") waits in
-  Needs review as "Someone else's words", with no date and nothing armed.
+  Needs review as "Someone else's words", with no date and nothing armed
+  (rules path; the Mac qualification probes and the Apple Intelligence path
+  are still to confirm it).
 - Captures keep their words through more interruptions: typed words before
   "Speak instead", speaking after typing, and a cancelled recording that can
   no longer leak into the next one.
@@ -44,7 +47,9 @@ those builds were cut, and some notes merged for this build sit below the
 - With VoiceOver on, Speak It says what happened, never while the
   microphone is open. The
   capture review list and receipt say what each item will actually do.
-- A second reading by Apple Intelligence waits at most its two-second budget.
+- A second reading by Apple Intelligence is given a two-second budget. That
+  the save's wait stays within it is not yet measured on a model-capable
+  Simulator.
 - Beta analytics tell capture endings apart, still without any content.
 - A repeating reminder at a bare hour now fires in the same half of the day
   as the same words without the repeat. "Every Friday at five remind me to

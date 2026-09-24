@@ -155,10 +155,10 @@ leave them alone (Docs/DECISIONS.md, 2026-09-23). Three limits remain:
 - **Organize again replaces them.** A re-read writes the organizer's reading
   over them, as it would over any reading the person did not set by hand.
 
-## A held row arms nothing, and four edges of that remain
+## A held row arms nothing, and three edges of that remain
 
 *2026-09-23.* Rows the system holds for review no longer schedule, alarm or
-geofence (Docs/DECISIONS.md, 2026-09-23). Four edges ship:
+geofence (Docs/DECISIONS.md, 2026-09-23). Three edges ship:
 
 - **Saving counts as confirming, for the time and the place.** A held row
   saved in the editor with Needs review still on arms what the editor showed,
@@ -1337,8 +1337,9 @@ date and nothing armed. These edges ship open. Each is written up with its
 reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
 
 - **Reported strong modals keep their errand.** "Sarah said I need to call
-  Mike" is still a confident task. Whether a reported obligation on the person
-  is case 3 or case 4 has not been ruled on.
+  Mike" is still a confident task. That is the ruling, not a gap: the
+  2026-09-24 decision batch (Docs/DECISIONS.md, item 2) makes a reported
+  strong modal case 5, the person's own errand.
 - **Gerunds and subjectless frames are not read.** "Sarah suggested calling
   Mike" and a dictated "said I should call Mike" keep their old reading. So do
   colloquial frames ("Sarah was like I should call Mike", "Sarah goes I
@@ -1832,8 +1833,8 @@ A merge or undo that mixes done and open rows now keeps an open row (see
 - **Place regions are not re-planned by Merge or Undo** (REV-10). A region
   left behind by a merged-away row is stopped the first time it is crossed
   and dropped at the next foreground reconcile; until then it holds one of
-  the region slots. Open PR #135 adds the reconcile to `merge`, not to
-  `undoOrganization`.
+  the region slots. #135 (merged) added the reconcile to `merge`, not to
+  `undoOrganization`, so Undo still leaves it.
 - **Merge still discards hand edits** on the rows it joins (REV-8), except
   what stays on the surviving row: its pin, idea stage and hand-set place.
   The survivor may be a later row, so a pin on an earlier, closed row is
