@@ -2055,7 +2055,22 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         the fixture's Friday: a run just before a Friday alert, a clock
         change that week, or this machine's zone puts the Friday alert on
         another local weekday, so production's one-shot fallback
-        applies`): 4891 + 1 - 1 = 4891.
+        applies`): 4891 + 1 - 1 = 4891. 4891 -> 4937 on 2026-09-24, the
+        fix for hosted run 35935740134 (a series' bare hour takes the
+        one-off named-day meridiem): two `TemporalFullPathTests` tests.
+        Forty-six in, enumerated by diffing `swift_literals` before and
+        after. Twenty are fixtures, the family table's twenty rows (the
+        repeat test reuses `every day at 6 take the pills`), none of them
+        already here. Eighteen are the table's rule column (`an explicit
+        meridiem wins`, `a bare 1 to 7 on a named day is the afternoon`
+        and sixteen more). Seven are assertion messages, four of them
+        interpolated (`precondition: a series, \\(row.text)`,
+        `precondition: captured on a Monday`, `precondition: the series
+        starts on the afternoon six`, `the second occurrence repeats at
+        the clock the first landed on`, and three that open on
+        `\\(row.text): `). One is a phrase quoted in a doc comment, the
+        hazard above once more (`every day at 6`). None out: 4891 + 46 -
+        0 = 4937.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2065,7 +2080,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4891)
+        self.assertEqual(len(space), 4937)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
