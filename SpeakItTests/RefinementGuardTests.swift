@@ -221,9 +221,9 @@ final class RefinementGuardTests: XCTestCase {
 
     /// The same split on advice that names an alarm. The rules hold it through
     /// the pipeline's safety net rather than the organizer alone, and the net
-    /// used to hand the row back as `.resolved`, which this guard does not
-    /// read as somebody else's words; the resolved check then accepted the
-    /// split because the frame row matched the held row's empty fields.
+    /// used to hand the row back as `.resolved`, which this guard did not
+    /// read as somebody else's words, and the resolved check could accept a
+    /// split in which any one row kept the held row's empty fields.
     func testRefinementCannotArmHeldAdviceThatNamesAnAlarm() throws {
         let rules = rulesReading(of: "Mike told me I should set an alarm for 6")
         let held = try XCTUnwrap(rules.first)
@@ -238,6 +238,42 @@ final class RefinementGuardTests: XCTestCase {
             RefinementGuard.preservesEverything(in: [refined("Mike told me"), action], found: rules),
             "the split armed an alarm for somebody else's advice"
         )
+    }
+
+    /// Every other hold of the safety net, the same way. A negation the net
+    /// keeps as one empty row must not come back from the model as a dated
+    /// errand beside a row that keeps the empty fields.
+    func testRefinementCannotArmAnythingTheSafetyNetHeld() throws {
+        let rules = rulesReading(of: "Don't call Mike tomorrow")
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertEqual(rules.count, 1)
+        XCTAssertTrue(held.needsReview)
+        XCTAssertEqual(held.organization.itemType, .unclear)
+        XCTAssertNil(held.organization.dueDate)
+
+        let action = refined("call Mike tomorrow")
+        // The dangerous answer, or the rejection proves nothing.
+        XCTAssertNotNil(action.organization.dueDate)
+        XCTAssertFalse(
+            RefinementGuard.preservesEverything(in: [refined("Don't"), action], found: rules),
+            "the split turned a negation into a dated errand"
+        )
+
+        // The control: the same split with nothing armed on either row is a
+        // re-reading the guard still lets through.
+        let stillHeld = ExtractedThought(
+            sourceQuote: action.sourceQuote,
+            rawQuote: action.rawQuote,
+            wasRepaired: action.wasRepaired,
+            analysisText: action.analysisText,
+            suggestedTitle: nil,
+            organization: held.organization,
+            confidence: 0.9,
+            needsReview: true
+        )
+        XCTAssertTrue(RefinementGuard.preservesEverything(
+            in: [refined("Don't"), stillHeld], found: rules
+        ))
     }
 
     // MARK: The corpus, replayed through the seam

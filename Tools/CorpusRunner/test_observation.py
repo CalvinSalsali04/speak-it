@@ -2156,7 +2156,11 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         for 7`, `I should set an alarm for 6`), the frame row `Mike told
         me`, an assertion message (`the split armed an alarm for somebody
         else's advice`) and a doc-comment quote (`somebody else's words`).
-        None out: 5029 + 6 - 0 = 5035.
+        None out: 5029 + 6 - 0 = 5035. 5035 -> 5038 the same day, the
+        guard asks the safety net's own test (#158): three in, enumerated
+        the same way (`Don't call Mike tomorrow`, `call Mike tomorrow`, and
+        the assertion message `the split turned a negation into a dated
+        errand`). None out: 5035 + 3 - 0 = 5038.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2166,7 +2170,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 5035)
+        self.assertEqual(len(space), 5038)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -1371,12 +1371,14 @@ reason in `Docs/DECISIONS.md` under the same date, or in the grade of #151.
   The net still rebuilds every other row it holds (a question, a negation, a
   destructive command, a report with no advice modal such as "Jordan said
   remind me at five to call him") as an `.unclear` row in the `.resolved`
-  state. Those rows are held, empty and unarmed on the rules path. On an
-  Apple Intelligence device `RefinementGuard`'s resolved check only asks that
-  one refined row about the action keep the held row's empty fields, so a
-  split that adds a second, armed row is not rejected by it. Whether the model
-  ever returns such a split for these rows is not measured: read from the
-  code, not observed.
+  state, so their review rows name no reason. Since the same date
+  `RefinementGuard` asks the net's own test of each held row and rejects any
+  refinement that would date, remind, repeat, place or confidently action a
+  row matching it, so the model cannot turn "Don't call Mike tomorrow" into a
+  dated errand by splitting off "Don't". Still open, and no worse than before
+  #151: a refined row that matches no rules row at all is not checked by
+  either guard. Read from the code; no Apple Intelligence run has shown the
+  model producing either split.
 
 ## Removal requests: one defect closed, one decision open
 

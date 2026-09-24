@@ -159,6 +159,21 @@ enum RefinementGuard {
                     commitsThePerson(refined[candidate].organization)
                 }) else { return false }
             }
+            // Every other row the pipeline's safety net held is emptied and
+            // unarmed for the same reason: a negation, a question, a
+            // destructive command, an ambiguous cancellation. The net leaves
+            // it `.unclear` and `.resolved`, so the resolved check above only
+            // asks that one refined row keep its empty fields, and a split can
+            // add an armed row beside it: "Don't" plus "call Mike tomorrow"
+            // turns a negation into a dated errand. Asked with the net's own
+            // test, so the two cannot drift apart.
+            if rule.needsReview,
+               rule.organization.itemType == .unclear,
+               RuleBasedThoughtExtractor.shouldKeepAsOneSafetyItem(rule.analysisText) {
+                guard !matching.contains(where: { candidate in
+                    commitsThePerson(refined[candidate].organization)
+                }) else { return false }
+            }
         }
 
         return true
@@ -3164,7 +3179,7 @@ enum RuleBasedThoughtExtractor {
         return rebuilt
     }
 
-    private static func shouldKeepAsOneSafetyItem(_ text: String) -> Bool {
+    static func shouldKeepAsOneSafetyItem(_ text: String) -> Bool {
         let lowercase = text.lowercased()
         if CaptureContentScope.explicitlyMemory(text) { return false }
         if SelfCorrectionResolver.hasUnresolvedOrdinalReference(text)
