@@ -158,9 +158,15 @@ enum SemanticCorpusE {
         corpusCase(.datedFacts, "Remember the office closes December 24", count: 1,
                    type: [.note], route: [.memory], person: [nil], remind: [nil],
                    note: "Asking to keep it changes nothing about whether there is anything to do."),
+        // Owner ruling of 2026-09-24 (decision 3 A, Docs/DECISIONS.md), not a
+        // fit to the output: a deadline tied to a closing time nobody stated,
+        // on a day with no time, is held in Needs review with no invented
+        // time and nothing armed. The row used to expect `.notification`,
+        // which only a policy hour (9 AM on the day) could satisfy.
         corpusCase(.datedFacts, "Remind me before the office closes December 24", count: 1,
-                   route: [.today], delivery: [.notification],
-                   note: "The interruption is asked for out loud."),
+                   route: [.today], delivery: [.none],
+                   due: [nil], remind: [nil], review: [true],
+                   note: "The interruption is asked for out loud, but before a closing time nobody stated. Ruled 2026-09-24: held for review, no invented time, nothing armed; the day survives only in the title and the transcript."),
         corpusCase(.datedFacts, "I need to go to the office before it closes December 24", count: 1,
                    route: [.today],
                    note: "An errand of the person's own, stated as an obligation. The closure is now context for a task rather than the whole sentence."),
