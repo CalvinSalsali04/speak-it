@@ -1,7 +1,7 @@
 # V1 qualification manifest, read by v1-qualification.sh. Tab-separated.
 # label	commit	branch the pin must be the tip of	focused classes (comma-separated, or -)	whole suite (yes/no)	release build (yes/no)	extra command run in the tree (or -)
 #
-# Three rows, three kinds of pin. Pin full commits, never branch names: a
+# Two rows, two kinds of pin. Pin full commits, never branch names: a
 # branch moves, and evidence about a moved branch is evidence about nothing.
 # Keep this file and Docs/V1_OWNER_HANDOFF.md in step.
 #
@@ -36,9 +36,9 @@ baseline	fbb6f909ad7309491b267256e3291925e2836b0f	main	-	yes	yes	-
 #   extra    Tools/CI/v1-probes.sh from this checkout: the December 24 family
 #            and #151's sentences through the probe, #136's two scorers and
 #            its R1 timing, and the typed inputs for the handoff's M3.
-rc	5f2c2d3b297d0b96796a7b7b13816bfe0ed74025	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
+rc	3df9cb3790996bac65ccfcd7486130e77cc8a695	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
 #
-# 3. `semantic-units`: the semantic-map lane's units experiment (#118, stacked
-# on #117), at its own pin. That lane owns this row, its pin, its run.sh and its
-# outputs; nothing here changes them.
-semantic-units	09a9eed13c5841f2f924c46c9e44e3c0153070c0	claude/semantic-map-xklzll	-	no	no	./Tools/SemanticMap/UnitsExperiment/run.sh "$QUALIFICATION_ROW_DIR/units-experiment"
+# The former third row, `semantic-units` (#118's units experiment at 09a9eed),
+# ran on 2026-09-24 and is done: OUTCOME C, recorded on the semantic-map branch
+# at eb13cd7 (RESULT.md). Running it again would be a replicate nobody asked
+# for, so it is no longer a row.

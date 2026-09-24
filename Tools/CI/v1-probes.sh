@@ -16,8 +16,10 @@
 #
 #   build            Tools/PipelineProbe, built from this tree
 #   dec24            december-24.txt through the probe: report, JSON and a
-#                    table (dec24.tsv). Recorded, not judged: GATE-1 waits on
-#                    the owner's Q5. PASS means the probe exited 0 and gave
+#                    table (dec24.tsv). Recorded, not judged: the family's
+#                    answer (held, no date, nothing armed; the 2026-09-24
+#                    ruling in Docs/DECISIONS.md) is judged by the corpus
+#                    gate's GATE-1 row. PASS means the probe exited 0 and gave
 #                    exactly one answer per sentence (count.py)
 #   151-held         reported-speech-held.txt: every capture gives exactly one
 #                    row, held for review, gap reportedSpeech, no due date, no
