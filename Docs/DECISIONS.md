@@ -112,8 +112,18 @@ language run to say.
 - The series clock does not read a conventional anchor. "Remind me every
   day after work to call Mom" starts at the default alert time, 09:00, and
   repeats at 17:00, the anchor the one-off pass read.
-- Rows saved before this change keep the clock they were given until the
-  person edits the time or uses Organize again, which re-reads the words.
+- Most rows saved before this change keep the clock they were given until
+  the person edits the time or uses Organize again, which re-reads the words.
+  A row saved before the intent column existed is the exception (#156 grade,
+  finding 1). `backfillTemporalIntents()` re-reads its words at launch
+  (`reconstructedIntent`, and the same on a snooze), and its trust check
+  compares days only. So an "every Friday at five" row keeps its 05:00 dates
+  but takes a 17:00 intent. It rings once more at 05:00, and then
+  `advanceOverdueRecurrences` rolls it to 17:00 with no notice. 17:00 is what
+  the person meant, but the row is inconsistent until then and moves on a
+  launch pass. The guard would compare the clock as well as the day, or keep
+  the stored hour for a calendar recurrence. That guard changes stored rows,
+  so it is left for after V1 and recorded in `KNOWN_ISSUES.md`.
 
 ## 2026-09-24 — V1 owner decisions, 2026-09-24
 

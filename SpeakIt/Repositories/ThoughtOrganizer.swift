@@ -3152,7 +3152,8 @@ private enum TemporalIntentParser {
     /// Reads a stated daypart, or a noun that names one, when the sentence
     /// named no day.
     ///
-    /// `defaultedBareHourOnNamedDay` is only reachable once a day is known, so
+    /// On the one-off path `defaultedBareHourOnNamedDay` is only reachable once
+    /// a day is known (a series' stated clock is its other caller), so
     /// a sentence with a daypart and no day never consulted it. Worse,
     /// `committedAlarmHour` deliberately stands aside when a daypart is present
     /// — on the reasoning that the daypart has already decided — and on this
