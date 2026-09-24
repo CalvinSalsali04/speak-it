@@ -624,7 +624,7 @@ struct ItemEditorView: View {
                 Spacer()
 
                 // With nothing left to act on, a destructive button would
-                // only remove the review row while promising "cannot be undone".
+                // only remove the review row while promising to act.
                 if count > 0 {
                     Button(role: .destructive) {
                         showsPendingOperationConfirmation = true
@@ -665,7 +665,7 @@ struct ItemEditorView: View {
                 }
                 Button("Never mind", role: .cancel) {}
             } message: {
-                Text("This cannot be undone.")
+                Text(pendingOperationMessage(pending, count: count))
             }
             .repositoryErrorAlert($errorMessage)
         }
@@ -690,6 +690,25 @@ struct ItemEditorView: View {
         case .cancel: return count == 0 ? "Nothing to cancel" : "Cancel \(subject)?"
         case .complete: return count == 0 ? "Nothing to complete" : "Mark \(subject) complete?"
         case .reschedule, .create, .retract: return "Confirm this?"
+        }
+    }
+
+    /// What confirming does, said plainly. A confirmed cancel archives
+    /// (Docs/DECISIONS.md, 2026-09-24), so this used to say "This cannot be
+    /// undone" about something Archive's Restore undoes.
+    private func pendingOperationMessage(
+        _ pending: PendingOperationStore.StoredPendingOperation,
+        count: Int
+    ) -> String {
+        switch pending.operation {
+        case .cancel:
+            return count == 1
+                ? "The item moves to Archive and stops reminding you. You can restore it from there."
+                : "The items move to Archive and stop reminding you. You can restore them from there."
+        case .complete:
+            return count == 1 ? "The item moves to Completed." : "The items move to Completed."
+        case .reschedule, .create, .retract:
+            return ""
         }
     }
 
