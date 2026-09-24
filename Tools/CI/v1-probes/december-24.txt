@@ -1,0 +1,33 @@
+# December 24 disposition (GATE-1, Q5): the Candidate47 condition-hold family.
+# Probed on the rules path at the rc row's pin. Nothing here is a verdict: the
+# rows are recorded (route, review flag, due, reminder, delivery, title, state)
+# for the session that reads the evidence. The audit expects path P for the
+# first block: Needs review, trigger not supported, no due date, no delivery.
+#
+# The gate row itself, and its fronted form.
+Remind me before the office closes December 24
+Before the office closes December 24, remind me
+# The rest of the family table, with a day.
+Remind me to call Mira before the meeting December 24
+Remind me to call Mira before the meeting tomorrow afternoon
+I need to go to the office before it closes December 24
+Make sure I stop at the bank before it closes today
+# No day.
+Remind me before the store closes
+Remind me before the meeting
+# Development-set rows the audit names (route-only there, so a hold is invisible).
+say goodbye to the neighbours before we move
+I need to finish the grant narrative before the portal closes and it still needs the budget table and the two letters
+okay so um the contractor is coming Tuesday morning to look at the back steps so I need to like move the bikes out of the way before he arrives and uh I should also get a second quote from the company Rosa used because honestly his first number seemed high and yeah the deck boards need pricing separately
+I thought it was the dentist or the optician today but there's time for both so call the dentist and then the optician before they shut
+okay so the renewal's gone up which means I need to shop around before it auto-renews
+remind me not to eat before the blood test
+# Probable but unconfirmed in the audit: "weekend" and "autumn" are not in the
+# temporal-adjunct whitelist, so these probably take path P too.
+buy a card for Nadia and post it before the weekend
+oh I should buy a card for Nadia and uh post it before the weekend
+the gutter's blocked again so I need to get someone out before the autumn
+# Contrasts: an event offset (P2, held as time not settled) and a whitelisted
+# adjunct (P3, date only).
+Remind me an hour before the meeting
+Remind me to renew the permit before Friday

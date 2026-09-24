@@ -1,0 +1,15 @@
+# #151 (reported-speech case 4). Each capture must give exactly ONE row, held
+# for review, with state gap reportedSpeech and no due date and no reminder.
+Sarah said I should call Mike
+Sarah said I should call Mike tomorrow at 3
+Sarah told me I should call Mike
+Sarah thinks I ought to call Mike
+Sarah told me I might want to call Mike
+My doctor says I should book a follow-up
+My doctor says I should exercise every day
+Sarah said I should set an alarm for 7
+Sarah suggested I call Mike
+Sarah advised me to call Mike
+According to Sarah, I should call Mike
+I was told I should renew my passport
+Priya said I should call the landlord

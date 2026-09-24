@@ -1,0 +1,44 @@
+# V1 qualification manifest, read by v1-qualification.sh. Tab-separated.
+# label	commit	branch the pin must be the tip of	focused classes (comma-separated, or -)	whole suite (yes/no)	release build (yes/no)	extra command run in the tree (or -)
+#
+# Two rows, two kinds of pin. Pin full commits, never branch names: a
+# branch moves, and evidence about a moved branch is evidence about nothing.
+# Keep this file and Docs/V1_OWNER_HANDOFF.md in step.
+#
+# The branch column is what makes a stale pin visible rather than something to
+# remember: it names the branch (on origin, without the `origin/` prefix) whose
+# tip the pin is meant to be. It cannot be inferred, because a pin sits on many
+# branches. `v1-qualification.sh --check-pins` fetches and exits non-zero when
+# any pin is not its branch's tip, and every run records the same check in each
+# row's identity.txt and in SUMMARY.md.
+#
+# 1. `baseline`: main, the tree before any V1 change. It is the row the rc
+# row's whole-suite failures and blocking gate rows are compared with, so it
+# must stay a separate commit: comparing the candidate with itself would call
+# nothing NEW. It runs every stage the rc row runs, Release included, so every
+# stage has a baseline to be read against. It moves only if main does.
+baseline	fbb6f909ad7309491b267256e3291925e2836b0f	main	-	yes	yes	-
+#
+# 2. `rc`: the V1 candidate, and every check the per-PR rows used to run, at
+# ONE commit. This line is the one place its pin lives: to repin, put
+# `git rev-parse origin/claude/v1-reliability-nyngoe-rc` in the commit column
+# and change the handoff's commit list to match. Merging anything into the
+# candidate after this pin (#121 included) moves the branch past it, and
+# --check-pins then says STALE until this line is repinned.
+#   focused  the tests the handoff reads by name, with their own result bundle
+#            and console log: PersonMentionTests (#117's entity-frame-comparison
+#            lines and its skips), TemporalFullPathTests (#129's pass-level
+#            test and F1's snoozed-series tests, where a skip is not a pass),
+#            LocationReminderTests' #Predicate test (#135), and the one UI test
+#            that reaches TodayView.needsReview (#140; UI tests are not in CI).
+#            Every other class a per-PR row focused on is in the whole suite at
+#            the same commit.
+#   extra    Tools/CI/v1-probes.sh from this checkout: the December 24 family
+#            and #151's sentences through the probe, #136's two scorers and
+#            its R1 timing, and the typed inputs for the handoff's M3.
+rc	2def46eba036c491211f83fa48ba9724f7593e6c	claude/v1-reliability-nyngoe-rc	SpeakItTests/PersonMentionTests,SpeakItTests/TemporalFullPathTests,SpeakItTests/LocationReminderTests/testALivePlaceWithNoTriggerKindIsStillPlanned,SpeakItUITests/SpeakItUITests/testAHeldShoppingCaptureIsListedInNeedsReviewAndKeepsItsListCard	yes	yes	"$QUALIFICATION_CHECKOUT/Tools/CI/v1-probes.sh" "$QUALIFICATION_ROW_DIR/probes"
+#
+# The former third row, `semantic-units` (#118's units experiment at 09a9eed),
+# ran on 2026-09-24 and is done: OUTCOME C, recorded on the semantic-map branch
+# at eb13cd7 (RESULT.md). Running it again would be a replicate nobody asked
+# for, so it is no longer a row.

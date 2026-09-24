@@ -27,6 +27,7 @@ Latest continuation review: [September 9 findings and verification](CONTINUATION
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Platform, layers, persistence, speech, and the understanding pipeline |
 | [DECISIONS.md](DECISIONS.md) | Dated decision log. Add an entry whenever behaviour, limits, or pricing change |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Limitations that ship, with the reasoning |
+| [V1_OWNER_HANDOFF.md](V1_OWNER_HANDOFF.md) | Every V1 check that needs the owner's Mac or a physical iPhone, and the one command that runs the Mac half |
 | [BACKLOG.md](BACKLOG.md) | Done / Next / Later |
 | [VOICE_ENDPOINTING_DECISION.md](VOICE_ENDPOINTING_DECISION.md) | Adaptive endpointing: why a finished sentence gets 1.9 seconds |
 | [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) | Capture performance targets and measurements |
