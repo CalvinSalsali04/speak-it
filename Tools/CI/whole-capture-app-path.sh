@@ -126,12 +126,16 @@ if missing or repeated or unexpected or unreadable_output or duplicate_input or 
 # a clean reading of the app, and a scoring receipt is one-shot. An export made
 # only of error lines also leaves `taggers` empty, so the blind check below
 # cannot stand in for this one.
-if errors and os.environ.get("SPEAKIT_ALLOW_ERROR_LINES") != "1":
+if errors and os.environ.get("SPEAKIT_ALLOW_ERROR_LINES") == "1":
+    print(f"  kept {errors} error lines because SPEAKIT_ALLOW_ERROR_LINES=1")
+elif errors:
     print("  ERROR LINES: the harness could not save every capture. Read the test's")
     print("  console output before scoring, or set SPEAKIT_ALLOW_ERROR_LINES=1 to keep")
     print("  the export with those captures counted incorrect.")
     sys.exit(5)
-if taggers.get("blind") and os.environ.get("SPEAKIT_ALLOW_BLIND_TAGGER") != "1":
+if taggers.get("blind") and os.environ.get("SPEAKIT_ALLOW_BLIND_TAGGER") == "1":
+    print("  kept a blind-tagger export because SPEAKIT_ALLOW_BLIND_TAGGER=1")
+elif taggers.get("blind"):
     print("  BLIND TAGGER: this simulator's lexical tagger answered nothing, so these rows")
     print("  describe the degraded policy, not what a phone does. Run on a machine whose")
     print("  tagger answers, or set SPEAKIT_ALLOW_BLIND_TAGGER=1 to keep it as that.")

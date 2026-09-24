@@ -264,6 +264,10 @@ final class WholeCaptureExportTests: XCTestCase {
                         rule["weekdays"] as? [Int], "\(id): weekdays is a list of Calendar numbers"
                     )
                     XCTAssertTrue(weekdays.allSatisfy { (1...7).contains($0) }, "\(id): weekdays \(weekdays)")
+                    if id == "toy-bins" {
+                        // A range admits an offset numbering; Tuesday is 3 only in Calendar's.
+                        XCTAssertEqual(weekdays, [3], "\(id): weekdays \(weekdays)")
+                    }
                 }
             }
             for operation in operations {
@@ -813,8 +817,10 @@ final class WholeCaptureExportTests: XCTestCase {
     /// from one constant, and the pin is scoped to the capture and its reading.
     /// Unlike that twin, it holds the process-wide `NSTimeZone.default` across
     /// `await`, the model's two-second budget included. That is safe only
-    /// because the script runs this class's export test on its own: a test that
-    /// ran beside it would read Toronto as its zone while the pin is held.
+    /// because no test runs beside the one holding it: the scheme sets
+    /// `parallelizable = "NO"` and each shard is its own process, and the
+    /// script runs the export test on its own. A test that ran concurrently
+    /// would read Toronto as its zone while the pin is held.
     private func withFixtureClock<T>(_ body: (Calendar) async throws -> T) async rethrows -> T {
         let previous = NSTimeZone.default
         NSTimeZone.default = TimeZone(identifier: Self.fixtureTimeZoneIdentifier)!
