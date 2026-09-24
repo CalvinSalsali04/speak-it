@@ -26,6 +26,9 @@ This is development evidence on 30 existing captures, not launch accuracy.
 - `score.txt` and `decision.txt` were recomputed from `results.jsonl` in a
   second environment. The body of `score.txt` below its hash header and all of
   `decision.txt` came out byte for byte identical.
+- An independent grader recomputed validity, scoring, the decision and every
+  claim here from the raw files, and all of it passed (round 11 in
+  `/mnt/project-files/pr118-semantic-map-grade.md`).
 
 ## Whole-capture exactness
 
@@ -79,10 +82,12 @@ It passed every safety gate, and representability was 30/30.
 
 ## Latency and tokens
 
-| arm | latency p50 | latency p90 | latency max | response tokens p50 / max |
+| arm | latency p50 (scorer's nearest-rank) | latency p90 | latency max | response tokens p50 / max |
 |---|---|---|---|---|
 | ranges | 1,067 ms | 2,697 ms | 6,802 ms | 19 / 304 |
 | labels | 2,161 ms | 3,782 ms | 7,175 ms | 76 / 319 |
+
+The p50 is the scorer's nearest-rank percentile. The interpolated median for ranges is 1,130.5 ms.
 
 ## Capacity
 
@@ -97,8 +102,8 @@ It passed every safety gate, and representability was 30/30.
 - Given this segmentation job alone, the on-device model does not recover
   semantic units on this set. In either representation it defaults to "the
   whole capture is one thought".
-- Every gate that failed is a recovery gate. No safety gate failed except
-  ranges breaking four single units.
+- Candidate 2 failed only recovery gates. Candidate 1 also failed the
+  single-unit safety gate.
 - `DECISION_PLAN.md` §4 applies:
   - Production is unchanged.
   - No production semantic change is expected before the V1 freeze.
