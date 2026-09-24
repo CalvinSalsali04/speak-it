@@ -240,60 +240,83 @@ final class RefinementGuardTests: XCTestCase {
         )
     }
 
-    /// Every other hold of the safety net, the same way. A negation the net
+    /// Every other hold of the safety net, the same way. A question the net
     /// keeps as one empty row must not come back from the model as a dated
     /// errand beside a row that keeps the empty fields.
+    ///
+    /// The premise is the corpus's own case (`SemanticCorpusE.assistant`):
+    /// the net's question test holds it as one row, whole, on every host.
+    /// A negation like "Don't call Mike tomorrow" is the wrong premise —
+    /// the rules read it as a cancel operation and return no row at all.
     func testRefinementCannotArmAnythingTheSafetyNetHeld() throws {
-        let rules = rulesReading(of: "Don't call Mike tomorrow")
-        let held = try XCTUnwrap(rules.first)
+        let transcript = "What are my reminders for tomorrow"
+        let rules = rulesReading(of: transcript)
         XCTAssertEqual(rules.count, 1)
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertEqual(held.sourceQuote, transcript)
         XCTAssertTrue(held.needsReview)
         XCTAssertEqual(held.organization.itemType, .unclear)
         XCTAssertNil(held.organization.dueDate)
+        XCTAssertNil(held.organization.reminderDate)
 
-        let action = refined("call Mike tomorrow")
+        // A frame row that keeps the held fields, so the resolved check alone
+        // accepts the split and the rejection has to be the net's.
+        let frame = row(quoting: "What are my", organized: held.organization)
+        let action = row(quoting: "reminders for tomorrow", organized: organizing("call Mike tomorrow"))
         // The dangerous answer, or the rejection proves nothing.
         XCTAssertNotNil(action.organization.dueDate)
-        // And a frame row the resolved check alone would accept, or the
-        // rejection could be that check's rather than the net's.
-        let frame = refined("Don't")
-        XCTAssertFalse(frame.organization.itemType.isActionable)
-        XCTAssertNil(frame.organization.personName)
         XCTAssertFalse(
-            RefinementGuard.preservesEverything(in: [refined("Don't"), action], found: rules),
-            "the split turned a negation into a dated errand"
+            RefinementGuard.preservesEverything(in: [frame, action], found: rules),
+            "the split turned a question into a dated errand"
         )
 
         // The control: the same split with nothing armed on either row is a
         // re-reading the guard still lets through.
-        let stillHeld = ExtractedThought(
-            sourceQuote: action.sourceQuote,
-            rawQuote: action.rawQuote,
-            wasRepaired: action.wasRepaired,
-            analysisText: action.analysisText,
-            suggestedTitle: nil,
-            organization: held.organization,
-            confidence: 0.9,
-            needsReview: true
-        )
-        XCTAssertTrue(RefinementGuard.preservesEverything(
-            in: [refined("Don't"), stillHeld], found: rules
-        ))
+        let stillHeld = row(quoting: "reminders for tomorrow", organized: held.organization)
+        XCTAssertTrue(RefinementGuard.preservesEverything(in: [frame, stillHeld], found: rules))
     }
 
     /// A row that matches no rules row at all is the last way in: a quote of
-    /// filler alone, grounded because "Don't" normalizes to "don t", carrying
-    /// the errand in its context. Beside a held row it may not arm anything.
+    /// filler alone ("um" leaves no token to match) carrying a dated errand.
+    /// Beside a held row it may not arm anything.
     func testAnUnmatchedRowCannotArmACaptureTheSafetyNetHeld() throws {
-        let rules = rulesReading(of: "Don't call Mike tomorrow")
-        let held = try XCTUnwrap(rules.first)
+        let rules = rulesReading(of: "What are my reminders for tomorrow")
         XCTAssertEqual(rules.count, 1)
+        let held = try XCTUnwrap(rules.first)
+        XCTAssertTrue(held.needsReview)
+        XCTAssertEqual(held.organization.itemType, .unclear)
 
-        let smuggled = refined("t", context: "call Mike tomorrow")
+        let smuggled = row(quoting: "um", organized: organizing("call Mike tomorrow"))
         XCTAssertNotNil(smuggled.organization.dueDate)
         XCTAssertFalse(
             RefinementGuard.preservesEverything(in: [held, smuggled], found: rules),
-            "a filler row carried a dated errand past the held negation"
+            "a filler row carried a dated errand past the held question"
+        )
+
+        // The control: the same unmatched row with nothing armed is let
+        // through, so the rejection above is the unmatched-row check's.
+        let harmless = row(quoting: "um", organized: held.organization)
+        XCTAssertTrue(RefinementGuard.preservesEverything(in: [held, harmless], found: rules))
+    }
+
+    private func organizing(_ text: String) -> OrganizedThought {
+        ThoughtOrganizer.organize(
+            text,
+            referenceDate: CorpusEvaluator.referenceDate,
+            calendar: CorpusEvaluator.calendar
+        )
+    }
+
+    private func row(quoting quote: String, organized organization: OrganizedThought) -> ExtractedThought {
+        ExtractedThought(
+            sourceQuote: quote,
+            rawQuote: quote,
+            wasRepaired: false,
+            analysisText: quote,
+            suggestedTitle: nil,
+            organization: organization,
+            confidence: 0.9,
+            needsReview: false
         )
     }
 

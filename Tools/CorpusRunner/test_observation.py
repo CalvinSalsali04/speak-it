@@ -2163,7 +2163,16 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         errand`). None out: 5035 + 3 - 0 = 5038. 5038 -> 5039 the same
         day, an unmatched refined row may not arm a held capture (#158):
         one in, the assertion message `a filler row carried a dated errand
-        past the held negation`. None out: 5038 + 1 - 0 = 5039.
+        past the held negation`. None out: 5038 + 1 - 0 = 5039. 5039 ->
+        5040 the same day, both net tests moved to a premise the rules really
+        hold (#158; "Don't call Mike tomorrow" is a cancel operation with no
+        row, so the old premise failed on GitHub's Mac): three in
+        (`reminders for tomorrow`, `the split turned a question into a dated
+        errand`, `a filler row carried a dated errand past the held
+        question`), two out (the two `...held negation` / `...a negation...`
+        messages above). `Don't call Mike tomorrow` stays, now quoted in the
+        doc comment that says why it was the wrong premise:
+        5039 + 3 - 2 = 5040.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2173,7 +2182,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 5039)
+        self.assertEqual(len(space), 5040)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

@@ -166,9 +166,9 @@ enum RefinementGuard {
             // destructive command, an ambiguous cancellation. The net leaves
             // it `.unclear` and `.resolved`, so the resolved check above only
             // asks that one refined row keep its empty fields, and a split can
-            // add an armed row beside it: "Don't" plus "call Mike tomorrow"
-            // turns a negation into a dated errand. Asked with the net's own
-            // test, so the two cannot drift apart.
+            // add an armed row beside it: "What are my" plus "reminders for
+            // tomorrow" read as a dated errand turns a question into one.
+            // Asked with the net's own test, so the two cannot drift apart.
             if heldBySafetyNet(rule) {
                 guard !matching.contains(where: { candidate in
                     commitsThePerson(refined[candidate].organization)
@@ -178,8 +178,8 @@ enum RefinementGuard {
 
         // A refined row that matches no rules row is checked by nothing above.
         // Beside a held row it can still arm what the rules held: a quote of
-        // filler alone ("t", which "Don't" normalizes to) carrying "call Mike
-        // tomorrow" as its context. So when the capture holds anything for
+        // filler alone ("um", which leaves no token to match) carrying a
+        // dated errand. So when the capture holds anything for
         // safety or for somebody else's words, no unmatched row may commit
         // the person either.
         if rules.contains(where: { heldForSomebodyElse($0) || heldBySafetyNet($0) }) {
