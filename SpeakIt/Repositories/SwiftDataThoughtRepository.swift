@@ -201,7 +201,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// on the intents it wrote), `setCompleted` sets `completedAt`, and
     /// `setArchived` sets `isArchived`. No automatic path sets any of them on
     /// a session that is still unfinished: a spoken operation from another
-    /// capture could, through `setCompleted` or `update`, so it holds for
+    /// capture could, through `setCompleted`, `setArchived` (a spoken cancel
+    /// archives) or `update`, so it holds for
     /// review instead (see `awaitsOrganization`). `lastModifiedAt` is
     /// deliberately not used: the organizer and the fallback row stamp it too.
     private static func carriesPersonsDecision(_ item: CapturedItem) -> Bool {

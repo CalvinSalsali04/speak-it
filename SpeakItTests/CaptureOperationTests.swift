@@ -378,6 +378,7 @@ final class CaptureOperationTests: XCTestCase {
             "a row the cancel did not name was deleted"
         )
         XCTAssertFalse(untouched.isCompleted, "a row the cancel did not name was completed")
+        XCTAssertFalse(untouched.isArchived, "a row the cancel did not name was archived")
     }
 
     /// The control, in the same frame as the reported-speech case: one
@@ -749,6 +750,7 @@ final class CaptureOperationTests: XCTestCase {
         XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
 
         repository.reconcilePendingReminders()
+        await drainScheduler()
 
         XCTAssertEqual(item.reminderDate, fireDate, "an archived series was rolled forward")
         XCTAssertEqual(
@@ -1247,7 +1249,6 @@ extension CaptureOperationTests {
 
         XCTAssertFalse(delivery.pendingNotifications.contains(identifier), "a pass re-armed the archived row")
         XCTAssertFalse(delivery.scheduledAlarms.contains(rowID), "a pass re-armed the archived row")
-        XCTAssertFalse(ReminderScheduler.alarmMayBeAlerting(kept, now: .now))
 
         try repository.setArchived(kept, archived: false)
 

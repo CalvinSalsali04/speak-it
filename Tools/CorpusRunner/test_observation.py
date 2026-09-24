@@ -2089,7 +2089,10 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         series back`). Two out: the row's old note, `The interruption is
         asked for out loud.`, and `a row edited into a note was deleted`,
         whose premise decision 1 ended. A comment that would have quoted
-        `left the live set` uses backticks: 4891 + 33 - 2 = 4922.
+        `left the live set` uses backticks: 4891 + 33 - 2 = 4922. 4922 ->
+        4924 on 2026-09-24, #154's grade F-3: the two survivor checks that
+        name archiving (`a row the cancel did not name was archived`, `a
+        held cancellation archived the row it named`): 4922 + 2 - 0 = 4924.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -2099,7 +2102,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4922)
+        self.assertEqual(len(space), 4924)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

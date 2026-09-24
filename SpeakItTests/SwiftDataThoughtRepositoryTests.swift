@@ -8924,7 +8924,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     ///
     /// Falsifier: return `result.operations` unchanged from
     /// `DegradedLanguagePolicy.applying` (drop `heldForReview`), and the
-    /// cancellation is performed and the plumber row is deleted. The
+    /// cancellation is performed and the plumber row is archived. The
     /// preconditions prove it would have been: read usable, the request does
     /// not ask for review and names exactly that one row.
     func testABlindTaggerHoldsASingleCandidateCancellation() async throws {
@@ -8964,6 +8964,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             try allStoredItems().first { $0.id == plumberID },
             "a held cancellation deleted the row it named"
         )
+        XCTAssertFalse(survivor.isArchived, "a held cancellation archived the row it named")
         XCTAssertNil(survivor.completedAt)
         XCTAssertFalse(result.items.isEmpty, "the capture's words stay as a review row")
         XCTAssertTrue(result.items.allSatisfy(\.needsClarification))

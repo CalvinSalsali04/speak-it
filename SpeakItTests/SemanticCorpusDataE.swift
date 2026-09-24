@@ -168,7 +168,7 @@ enum SemanticCorpusE {
                    due: [nil], remind: [nil], review: [true],
                    note: "The interruption is asked for out loud, but before a closing time nobody stated. Ruled 2026-09-24: held for review, no invented time, nothing armed; the day survives only in the title and the transcript."),
         corpusCase(.datedFacts, "I need to go to the office before it closes December 24", count: 1,
-                   route: [.today],
+                   route: [.today], due: [nil], remind: [nil], review: [true],
                    note: "An errand of the person's own, stated as an obligation. The closure is now context for a task rather than the whole sentence."),
         corpusCase(.datedFacts, "Application closes Friday", count: 1,
                    route: [.today], due: [CorpusDate(month: 8, day: 7, hour: nil)],
