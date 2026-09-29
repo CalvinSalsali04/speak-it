@@ -437,16 +437,11 @@ struct TodayView: View {
                     reminderPermissionCard
                 }
 
-                if shouldShowProDiscovery {
-                    ProDiscoveryCard(
-                        itemCount: allItems.count,
-                        onExplore: { showsSpeakItPro = true },
-                        onDismiss: { hasDismissedProDiscovery = true }
-                    )
-                }
-
-                if shouldShowCaptureAnywhereDiscovery {
-                    doubleTapCard
+                // Status, not a suggestion: the allowance is about to run out,
+                // and this is the first place the count appears outside the
+                // receipt. Before this point Today says nothing about it.
+                if shouldShowLowCapturesNotice {
+                    lowCapturesNotice
                 }
 
                 if !needsReview.isEmpty {
@@ -493,6 +488,22 @@ struct TodayView: View {
 
                 if !completedToday.isEmpty {
                     completedTodayLink
+                }
+
+                // At most one suggestion, and only after the person's own
+                // work. Today is for action; the first thing on it should be
+                // theirs, not two things the app wants.
+                switch todaySuggestion {
+                case .captureAnywhere:
+                    doubleTapCard
+                case .pro:
+                    ProDiscoveryCard(
+                        itemCount: allItems.count,
+                        onExplore: { showsSpeakItPro = true },
+                        onDismiss: { hasDismissedProDiscovery = true }
+                    )
+                case nil:
+                    EmptyView()
                 }
             }
                 .padding(.horizontal, 22)
@@ -707,6 +718,78 @@ struct TodayView: View {
             !hasDismissedProDiscovery
     }
 
+    /// The one suggestion card Today may show, if any. Capture Anywhere comes
+    /// first because it makes the free product better; Pro waits until it is
+    /// set up or dismissed, and never shows beside the low-captures notice,
+    /// which already says what Pro does.
+    private var todaySuggestion: TodaySuggestion? {
+        if shouldShowCaptureAnywhereDiscovery { return .captureAnywhere }
+        if shouldShowProDiscovery, !shouldShowLowCapturesNotice { return .pro }
+        return nil
+    }
+
+    private enum TodaySuggestion {
+        case captureAnywhere
+        case pro
+    }
+
+    /// Below this many free captures, Today starts saying how many are left.
+    static let lowCapturesNoticeThreshold = 3
+
+    private var shouldShowLowCapturesNotice: Bool {
+        !subscriptionStore.hasProAccess
+            && subscriptionStore.freeCapturesRemaining < Self.lowCapturesNoticeThreshold
+    }
+
+    private var lowCapturesNotice: some View {
+        let remaining = subscriptionStore.freeCapturesRemaining
+        let title: String
+        let detail: String
+        switch remaining {
+        case 0:
+            title = "No free captures left"
+            detail = "Everything you saved stays here. Pro lets you keep capturing."
+        case 1:
+            title = "1 free capture left"
+            detail = "One capture can hold a whole list. Pro removes the limit."
+        default:
+            title = "\(remaining) free captures left"
+            detail = "One capture can hold a whole list. Pro removes the limit."
+        }
+        return Button {
+            showsSpeakItPro = true
+        } label: {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(Color.speakMuted)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.speakMuted)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.speakDivider, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.speakIt)
+        .accessibilityHint("Opens Speak It Pro")
+        .accessibilityIdentifier("today.lowCaptures")
+    }
+
     private var shouldShowCaptureAnywhereDiscovery: Bool {
         !shortcutSetupCompleted &&
             !hasDismissedCaptureAnywhereDiscovery &&
@@ -878,22 +961,22 @@ struct TodayView: View {
                 HStack(spacing: 15) {
                     ZStack {
                         Circle()
-                            .stroke(Color.speakInverseInk.opacity(0.16), lineWidth: 1)
+                            .stroke(Color.speakDivider, lineWidth: 1)
                             .frame(width: 48, height: 48)
 
                         Image(systemName: shortcutSetupCompleted ? "checkmark" : "waveform")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color.speakInverseInk)
+                            .foregroundStyle(Color.speakInk)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(shortcutSetupCompleted ? "Quick capture is ready" : "Capture from anywhere")
                             .font(.headline)
-                            .foregroundStyle(Color.speakInverseInk)
+                            .foregroundStyle(Color.speakInk)
 
                         Text(shortcutSetupCompleted ? "Use your chosen iPhone trigger to speak." : "Lock Screen, Action Button, or Back Tap. Pick one and test it.")
                             .font(.subheadline)
-                            .foregroundStyle(Color.speakInverseInk.opacity(0.62))
+                            .foregroundStyle(Color.speakMuted)
                             .multilineTextAlignment(.leading)
                     }
 
@@ -901,7 +984,7 @@ struct TodayView: View {
 
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.speakInverseInk.opacity(0.45))
+                        .foregroundStyle(Color.speakMuted)
                 }
                 .padding(17)
                 .padding(.trailing, 28)
@@ -912,7 +995,7 @@ struct TodayView: View {
             Button(action: dismissCaptureAnywhereDiscovery) {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.speakInverseInk.opacity(0.7))
+                    .foregroundStyle(Color.speakMuted)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -923,9 +1006,13 @@ struct TodayView: View {
             .padding(.trailing, 4)
         }
         .background(
-            Color.speakInverseSurface,
+            Color.speakSurface,
             in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.speakDivider, lineWidth: 1)
+        }
         .accessibilityIdentifier("today.doubleTapSetup")
         .accessibilityHint(shortcutSetupCompleted ? "Reopens the setup guide" : "Opens the one-time setup guide")
     }
@@ -937,7 +1024,7 @@ struct TodayView: View {
             Text("Capture anything on your mind. Speak It will decide whether it belongs here or in Memory.")
                 .foregroundStyle(Color.speakMuted)
 
-            Text("Try saying “Buy toothpaste” or “Call Mom tomorrow at 5.”")
+            Text("Try saying “Buy milk, eggs, and toothpaste” or “Remind me to call Mom tomorrow at 6.”")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.speakInk)
 

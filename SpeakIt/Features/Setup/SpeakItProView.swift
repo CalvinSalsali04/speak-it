@@ -64,11 +64,15 @@ struct SpeakItProView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query private var allItems: [CapturedItem]
+    @Query(SpeakItProView.recentSessionsDescriptor) private var recentSessions: [CaptureSession]
 
     @State private var selectedProductID = SubscriptionStore.annualProductID
     @State private var showsPrivacy = false
     @State private var showsCodeRedemption = false
     @State private var hadProAccessBeforeRedemption = false
+    /// The first-capture sheet opens on what the capture became. Plans are
+    /// one tap away, never the first thing on it.
+    @State private var showsPlansAfterCaptureProof = false
 #if DEBUG
     @State private var selectedDeveloperPlan = DeveloperTestPlan.annual
 #endif
@@ -77,6 +81,23 @@ struct SpeakItProView: View {
 
     init(context: ProPresentationContext = .account) {
         self.context = context
+    }
+
+    private static var recentSessionsDescriptor: FetchDescriptor<CaptureSession> {
+        var descriptor = FetchDescriptor<CaptureSession>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 5
+        return descriptor
+    }
+
+    /// The capture the first-capture sheet describes: the newest one that
+    /// produced something. `nil` falls back to the ordinary Pro screen.
+    private var provenSession: CaptureSession? {
+        guard context == .firstCapture,
+              !subscriptionStore.hasProAccess,
+              !showsPlansAfterCaptureProof else { return nil }
+        return recentSessions.first { !$0.items.isEmpty }
     }
 
     private var completedCount: Int {
@@ -92,23 +113,32 @@ struct SpeakItProView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
-                    hero
-
-                    if subscriptionStore.hasProAccess {
-                        activeSubscriptionCard
+                    if let provenSession {
+                        CaptureProofView(
+                            session: provenSession,
+                            remainingFreeCaptures: subscriptionStore.freeCapturesRemaining,
+                            onContinue: { dismiss() },
+                            onSeePlans: { showsPlansAfterCaptureProof = true }
+                        )
                     } else {
-                        valueSummary
-                        plans
-                        purchaseControls
-                        benefits
-                    }
+                        hero
 
-                    if ReferralProgramConfiguration.isEnabled {
-                        referralCard
+                        if subscriptionStore.hasProAccess {
+                            activeSubscriptionCard
+                        } else {
+                            valueSummary
+                            plans
+                            purchaseControls
+                            benefits
+                        }
+
+                        if ReferralProgramConfiguration.isEnabled {
+                            referralCard
+                        }
+                        codeRedemptionCard
+                        trustNote
+                        legalControls
                     }
-                    codeRedemptionCard
-                    trustNote
-                    legalControls
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 12)
@@ -116,7 +146,7 @@ struct SpeakItProView: View {
             }
             .scrollIndicators(.hidden)
             .background(Color.speakBackground.ignoresSafeArea())
-            .navigationTitle("Speak It Pro")
+            .navigationTitle(provenSession == nil ? "Speak It Pro" : "Your capture")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -159,7 +189,7 @@ struct SpeakItProView: View {
                     .fill(Color.speakInverseSurface)
                     .frame(width: 58, height: 58)
 
-                Image(systemName: "sparkles")
+                Image(systemName: "waveform")
                     .font(.system(size: 24, weight: .medium))
                     .foregroundStyle(Color.speakInverseInk)
             }
@@ -185,7 +215,7 @@ struct SpeakItProView: View {
         case .runningLow:
             return "\(subscriptionStore.freeCapturesRemaining) free \(captureNoun) left."
         case .account:
-            return "More clarity from every thought."
+            return "Capture without counting."
         }
     }
 
@@ -317,14 +347,14 @@ struct SpeakItProView: View {
             .frame(maxWidth: .infinity, minHeight: 78)
         } else if subscriptionStore.products.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Pro is being prepared")
+                Text("Plans didn’t load")
                     .font(.headline)
                     .foregroundStyle(Color.speakInk)
-                Text("Everything you already saved remains available. Plans will appear here as soon as the App Store products are connected.")
+                Text("Check your connection and try again. Everything you saved is still here.")
                     .font(.subheadline)
                     .foregroundStyle(Color.speakMuted)
 
-                Button("Check again") {
+                Button("Try again") {
                     Task { await subscriptionStore.loadProducts(force: true) }
                 }
                 .font(.subheadline.weight(.semibold))
@@ -539,19 +569,12 @@ struct SpeakItProView: View {
 
     private var summerSaleHeader: some View {
         VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                Text("SUMMER LAUNCH SALE")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1.1)
-                Text("50% OFF ANNUAL")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.4)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .background(Color.speakInverseSurface, in: Capsule())
-            }
-            Text("Annual launch pricing ends \(SummerLaunchSale.endDateText).")
+            // No season: the window runs into autumn, and "summer" on the
+            // one screen that asks for trust made the app look unattended.
+            Text("Launch price · half off annual")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+            Text("Until \(SummerLaunchSale.endDateText).")
                 .font(.footnote)
                 .foregroundStyle(Color.speakMuted)
         }
@@ -563,7 +586,7 @@ struct SpeakItProView: View {
             return "\(isAnnual ? "Annual" : "Monthly"), \(product.displayPrice) per \(isAnnual ? "year" : "month")"
         }
         let value = subscriptionStore.annualIsBestValue ? ", best value" : ""
-        return "Annual, summer launch price \(product.displayPrice) per year, standard annual price \(SummerLaunchSale.regularAnnualUSPrice), 50 percent off\(value)"
+        return "Annual, launch price \(product.displayPrice) per year, standard annual price \(SummerLaunchSale.regularAnnualUSPrice), half off\(value)"
     }
 
     @ViewBuilder
@@ -687,7 +710,7 @@ struct SpeakItProView: View {
             return "$2.99 per month. Auto-renews until cancelled."
         }
         if SummerLaunchSale.isActive() {
-            return "Summer launch price · $14.99 per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+            return "Launch price · $14.99 per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "$29.99 per year. Auto-renews until cancelled."
     }
@@ -706,7 +729,7 @@ struct SpeakItProView: View {
     private var purchaseButtonTitle: String {
         // Customer- and reviewer-facing. "in this build" is our word for
         // our problem, on the screen that asks them to pay.
-        guard let selectedProduct else { return "Pro is being prepared" }
+        guard let selectedProduct else { return "Plans unavailable" }
         return selectedProduct.id == SubscriptionStore.annualProductID
             ? "Choose Annual · \(selectedProduct.displayPrice)"
             : "Choose Monthly · \(selectedProduct.displayPrice)"
@@ -727,7 +750,7 @@ struct SpeakItProView: View {
            showsLaunchOffer(for: product) {
             // The deadline applies to joining the offer. Price preservation
             // must be configured separately in App Store Connect.
-            return "Summer launch price · \(product.displayPrice) per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
+            return "Launch price · \(product.displayPrice) per year. Offer ends \(SummerLaunchSale.endDateText). Auto-renews until cancelled."
         }
         return "\(product.displayPrice) per \(period). Auto-renews until cancelled."
     }
@@ -931,7 +954,7 @@ struct ProDiscoveryCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkles")
+                Image(systemName: "waveform")
                     .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(Color.speakInverseInk)
                     .frame(width: 42, height: 42)
@@ -971,6 +994,142 @@ struct ProDiscoveryCard: View {
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.speakDivider, lineWidth: 1)
+        }
+    }
+}
+
+/// The first-capture sheet: what the person said, and what it became.
+///
+/// The first real capture is the one moment before the wall where the offer can
+/// point at something the person has seen work. A stat block reading
+/// "1 organized · 0 completed" was the weakest number the app would ever show,
+/// so this opens on the capture itself and keeps the plans one tap away.
+/// Everything shown is already on the phone: the capture's original words and
+/// the items it produced.
+struct CaptureProofView: View {
+    let session: CaptureSession
+    let remainingFreeCaptures: Int
+    let onContinue: () -> Void
+    let onSeePlans: () -> Void
+
+    /// Rows past this are summarized, so a long list cannot push the buttons
+    /// off the first screen.
+    private static let visibleItemLimit = 4
+
+    private var items: [CapturedItem] {
+        session.items.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    private var closingLine: String {
+        let words = items.count == 1 ? "Your exact words stay with it." : "Your exact words stay with each one."
+        let allowance = remainingFreeCaptures == 1
+            ? "1 free capture left"
+            : "\(remainingFreeCaptures) free captures left"
+        return "\(words) \(allowance), and Pro removes the limit whenever you want."
+    }
+
+    var body: some View {
+        let items = self.items
+        let visible = items.prefix(Self.visibleItemLimit)
+        let hidden = items.count - visible.count
+
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Here’s what Speak It did.")
+                .font(.title.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("YOU SAID")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.1)
+                    .foregroundStyle(Color.speakMuted)
+                Text("“\(session.originalTranscription)”")
+                    .font(.body)
+                    .foregroundStyle(Color.speakInk)
+                    .lineLimit(8)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.speakDivider, lineWidth: 1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("pro.captureProof.original")
+
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Array(visible.enumerated()), id: \.element.id) { index, item in
+                    if index > 0 {
+                        Divider().overlay(Color.speakDivider)
+                    }
+                    HStack(alignment: .top, spacing: 12) {
+                        Circle()
+                            .stroke(Color.speakInk, lineWidth: 1.5)
+                            .frame(width: 18, height: 18)
+                            .padding(.top, 1)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.displayTitle)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(Color.speakInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(ReminderScheduler.confirmationContext(for: item))
+                                .font(.footnote)
+                                .foregroundStyle(Color.speakMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                if hidden > 0 {
+                    Text(hidden == 1 ? "and 1 more" : "and \(hidden) more")
+                        .font(.footnote)
+                        .foregroundStyle(Color.speakMuted)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.speakDivider, lineWidth: 1)
+            }
+            .accessibilityIdentifier("pro.captureProof.items")
+
+            Text(closingLine)
+                .font(.subheadline)
+                .foregroundStyle(Color.speakMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: 6) {
+                Button(action: onContinue) {
+                    Text("Keep going")
+                        .font(.headline)
+                        .foregroundStyle(Color.speakInverseInk)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.speakIt)
+                .accessibilityIdentifier("pro.dismiss")
+
+                Button(action: onSeePlans) {
+                    Text("See Pro plans")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.speakInk)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.speakIt)
+                .accessibilityIdentifier("pro.seePlans")
+            }
         }
     }
 }

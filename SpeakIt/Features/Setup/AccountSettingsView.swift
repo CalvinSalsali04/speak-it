@@ -61,7 +61,7 @@ struct AccountSettingsView: View {
                     } label: {
                         HStack(spacing: 14) {
                             settingsSymbol(
-                                subscriptionStore.hasProAccess ? "checkmark.seal.fill" : "sparkles"
+                                subscriptionStore.hasProAccess ? "checkmark.seal.fill" : "waveform"
                             )
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(subscriptionStore.hasProAccess ? "Speak It Pro" : "Speak It Free")
@@ -81,22 +81,15 @@ struct AccountSettingsView: View {
                     .accessibilityIdentifier("settings.plan")
 
                     if !subscriptionStore.hasProAccess {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ProgressView(
-                                value: Double(subscriptionStore.freeCapturesUsed),
-                                total: Double(FreePlanAllowance.lifetimeCaptureLimit)
-                            )
-                            .tint(Color.speakInk)
-
-                            HStack {
-                                Text("\(subscriptionStore.freeCapturesRemaining) captures remaining")
-                                Spacer()
-                                Text("Free captures do not renew")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(Color.speakMuted)
-                        }
+                        // The row above already says the count in words; the
+                        // bar only shows it, so it is not read twice.
+                        ProgressView(
+                            value: Double(subscriptionStore.freeCapturesUsed),
+                            total: Double(FreePlanAllowance.lifetimeCaptureLimit)
+                        )
+                        .tint(Color.speakInk)
                         .padding(.vertical, 4)
+                        .accessibilityHidden(true)
                     }
 
                     if ReferralProgramConfiguration.isEnabled {
@@ -120,7 +113,7 @@ struct AccountSettingsView: View {
                 }
 
                 Section("Capture") {
-                    settingsButton("Make Speak It ready", symbol: "checklist") {
+                    settingsButton("Setup checklist", symbol: "checklist") {
                         showsReadiness = true
                     }
                     settingsButton("Capture anywhere", symbol: "waveform") {
@@ -340,7 +333,7 @@ struct AccountSettingsView: View {
     private var planDetail: String {
         if subscriptionStore.hasProAccess { return "Unlimited capture is active" }
         let remaining = subscriptionStore.freeCapturesRemaining
-        return "\(remaining) of \(FreePlanAllowance.lifetimeCaptureLimit) free captures remaining"
+        return "\(remaining) of \(FreePlanAllowance.lifetimeCaptureLimit) free captures left"
     }
 
     /// "Remind me tomorrow" names a day and no moment; this is the moment.
