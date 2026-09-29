@@ -1,6 +1,22 @@
 import Foundation
 import SwiftData
 
+/// What `setSnoozedFromReminderDate` did. Every case but `recorded` and
+/// `unchanged` means the series alert was *not* written, and a caller
+/// recording a snooze must not treat that as success.
+enum SnoozeRecordOutcome: String {
+    case recorded
+    /// The intent already held this value, as on a second snooze.
+    case unchanged
+    /// The row has no intent blob to hold the record.
+    case noIntent
+    /// The blob is there but does not decode, so it is not rewritten.
+    case unreadableIntent
+    case unencodable
+
+    var isWritten: Bool { self == .recorded || self == .unchanged }
+}
+
 @Model
 final class CapturedItem: Identifiable {
     @Attribute(.unique) var id: UUID
@@ -406,6 +422,62 @@ final class CapturedItem: Identifiable {
     /// they want to be interrupted. A `dueDate` needs no such rescue, because
     /// every type that can carry a deadline is already `isActionable`.
     var isTimeCommitted: Bool { reminderDate != nil }
+
+    /// The alert this occurrence has in its series, which a snooze does not
+    /// move: `reminderDate` itself unless a snooze has displaced it, in which
+    /// case the instant it was displaced from. Every step that carries a
+    /// recurring series forward — the next occurrence's offset from its due
+    /// date, and the clock a native repeating trigger matches — reads this
+    /// rather than `reminderDate`, so moving one occurrence cannot retime the
+    /// rest. See `TemporalIntent.snoozedFromReminderDate`.
+    var seriesReminderDate: Date? {
+        guard reminderDate != nil else { return nil }
+        return temporalIntent?.snoozedFromReminderDate ?? reminderDate
+    }
+
+    /// Gives a row with no intent blob the intent reconstructed for it, and
+    /// leaves the trigger it already has alone.
+    ///
+    /// The `temporalIntent` setter re-derives the trigger. Any intent whose
+    /// kind is not `.none` becomes a time trigger, so a recurring place
+    /// reminder reached this way ("when I get home, every Monday") would turn
+    /// into a clock reminder. This writes the blob and the kind it
+    /// denormalizes, the way `setSnoozedFromReminderDate` writes its own
+    /// record. It sets a time trigger only on a row that records no trigger
+    /// at all, which is what the setter would have done there. A place
+    /// trigger stays.
+    @discardableResult
+    func backfillTemporalIntentKeepingTrigger(_ intent: TemporalIntent) -> Bool {
+        guard let data = try? JSONEncoder().encode(intent) else { return false }
+        temporalIntentData = data
+        temporalKindRawValue = intent.kind.rawValue
+        if reminderTriggerKindRawValue == nil, intent.kind != .none {
+            reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
+        }
+        return true
+    }
+
+    /// Records, or clears with `nil`, the series alert a snooze displaced.
+    ///
+    /// Writes the encoded intent directly rather than through `temporalIntent`,
+    /// whose setter also re-derives the denormalized kind and trigger. Neither
+    /// changes here, and re-deriving the trigger would turn a place reminder
+    /// that also carries a time intent into a time reminder.
+    ///
+    /// Reports what happened rather than returning quietly. The snooze decides
+    /// to record from `RecurrenceStore`, which lives in UserDefaults, while the
+    /// record lives in this row's intent blob. If the two ever disagree, a
+    /// quiet no-op would let the snoozed time become the series' time again.
+    @discardableResult
+    func setSnoozedFromReminderDate(_ date: Date?) -> SnoozeRecordOutcome {
+        guard temporalIntentData != nil else { return .noIntent }
+        guard var intent = temporalIntent else { return .unreadableIntent }
+        guard intent.snoozedFromReminderDate != date else { return .unchanged }
+        intent.snoozedFromReminderDate = date
+        guard let data = try? JSONEncoder().encode(intent) else { return .unencodable }
+        temporalIntentData = data
+        return .recorded
+    }
 
     /// Today is for action. Written as the exact complement of `belongsInMemory`
     /// so no live item can ever fall out of both destinations.

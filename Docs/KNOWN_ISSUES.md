@@ -478,6 +478,29 @@ Schema version 2 records what a person said about time (`TemporalIntent`) beside
   9 and "meeting at 7" the next 7.
 - **The date-only alert hour is a setting now.** *Resolved 2026-09-08.* `TemporalResolver.dateOnlyAlertHour` reads the **Default reminder time** under Settings → Capture & reminders (`ReminderDefaults`, shared app-group defaults, 9:00 until changed). It is the moment "remind me tomorrow" alerts at; "tomorrow morning" and "first thing" stay on `TemporalResolver.morningHour`, which is 9 AM and not a preference. The distinction the constant enforced still holds: *"buy milk tomorrow"* schedules nothing at all, while *"remind me to buy milk tomorrow"* alerts at the default time, and neither writes a time into the intent. A reminder already scheduled keeps the moment it was given; the setting applies to captures organized from then on.
 
+## A snooze keeps its series armed, except for alarms
+
+Since 2026-09-23 a snooze moves one occurrence and leaves the series at its
+own time. A snoozed notification occurrence arms both the one-shot at the
+snooze and the series' own repeating trigger. A series whose alert has
+fired, snoozed or not, keeps its repeating trigger through every scheduling
+pass (DEL-12, closed the same day; see `DECISIONS.md`). What that does not
+cover:
+
+- **Alarms.** AlarmKit delivery is a `.fixed` one-shot for every occurrence.
+  A recurring alarm, snoozed or not, rings once and then waits for the app to
+  run and roll the row forward. The DEL-12 fix does not reach alarms either.
+  Speak It's alarm alert has no snooze, so this gap is not caused by
+  snoozing. It is the existing state of recurring alarms. Closing it means
+  scheduling AlarmKit's own repeating schedule.
+- **Only daily and single-weekday series repeat natively.** Every weekday,
+  every other week, the first Monday of the month, and elapsed-time series
+  have no repeating trigger to keep armed. They still depend on the app
+  running to generate the next occurrence, as they did before.
+- **Series snoozed before this build are not repaired.** That drift was
+  written into `reminderDate` with no record of what it replaced. The person
+  has to fix the time once in the editor.
+
 ## The free capture ledger is per-device, not per-person
 
 `FreeCaptureLedger` writes the lifetime count to the Keychain, which survives deleting and reinstalling Speak It, and the higher of Keychain and `UserDefaults` always wins so the count cannot move backwards. That closes the ordinary reinstall path.

@@ -129,6 +129,20 @@ struct TemporalIntent: Codable, Equatable, Sendable {
     /// stops being authoritative the moment someone corrects the date. Nothing
     /// may reparse the sentence and overwrite the correction afterwards.
     var isUserEdited: Bool
+    /// Where the series itself put this occurrence's alert, recorded only
+    /// while a snooze has moved `reminderDate` away from it.
+    ///
+    /// A recurring item has one `reminderDate`, and the notification actions
+    /// used to overwrite it. Everything that carries a series forward reads its
+    /// alert from that field — the offset each next occurrence keeps from its
+    /// due date, and the clock iOS's repeating trigger matches — so snoozing
+    /// "every Monday at 9" by ten minutes made the series "every Monday at
+    /// 9:10" for good. This keeps the alert the series asked for beside the
+    /// displaced one. It belongs to one occurrence: `carriedIntent` clears it
+    /// on the next, and any edit writes a fresh intent without it. Always `nil`
+    /// for an item that does not recur, and for every intent written before
+    /// the field existed.
+    var snoozedFromReminderDate: Date?
 
     static let none = TemporalIntent(kind: .none)
 
@@ -142,7 +156,8 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         recurrence: RecurrenceRule? = nil,
         sourceText: String? = nil,
         unsupportedTrigger: UnsupportedTrigger? = nil,
-        isUserEdited: Bool = false
+        isUserEdited: Bool = false,
+        snoozedFromReminderDate: Date? = nil
     ) {
         self.kind = kind
         self.day = day
@@ -154,6 +169,7 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         self.sourceText = sourceText
         self.unsupportedTrigger = unsupportedTrigger
         self.isUserEdited = isUserEdited
+        self.snoozedFromReminderDate = snoozedFromReminderDate
     }
 
     /// Older stores hold intents written before a field existed. Decoding
@@ -176,6 +192,10 @@ struct TemporalIntent: Codable, Equatable, Sendable {
             forKey: .unsupportedTrigger
         )
         isUserEdited = try container.decodeIfPresent(Bool.self, forKey: .isUserEdited) ?? false
+        snoozedFromReminderDate = try container.decodeIfPresent(
+            Date.self,
+            forKey: .snoozedFromReminderDate
+        )
     }
 
     /// The intent produced by an explicit edit in the item editor.
