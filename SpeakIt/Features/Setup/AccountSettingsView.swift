@@ -154,27 +154,33 @@ struct AccountSettingsView: View {
 
                 Section("Privacy") {
                     Toggle(isOn: $showsLockScreenTaskNames) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Show task names on the Lock Screen")
-                                .foregroundStyle(Color.speakInk)
-                            // Still names every surface the promise covers
-                            // (Lock Screen, StandBy, capture receipts) and the
-                            // two that always show names, just in fewer words.
-                            Text("When off, a locked iPhone shows only how many things are open, including in StandBy and on capture receipts. Home Screen widgets and reminder notifications still name the task.")
-                                .font(.footnote)
-                                .foregroundStyle(Color.speakMuted)
+                        HStack(alignment: .top, spacing: 14) {
+                            settingsSymbol("lock")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Show task names on the Lock Screen")
+                                    .foregroundStyle(Color.speakInk)
+                                // Still names every surface the promise covers
+                                // (Lock Screen, StandBy, capture receipts) and the
+                                // two that always show names, just in fewer words.
+                                Text("When off, a locked iPhone shows only how many things are open, including in StandBy and on capture receipts. Home Screen widgets and reminder notifications still name the task.")
+                                    .font(.footnote)
+                                    .foregroundStyle(Color.speakMuted)
+                            }
                         }
                     }
                     .tint(Color.speakToggleTint)
                     .accessibilityIdentifier("settings.lock-screen-task-names")
 
                     Toggle(isOn: $analyticsEnabled) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Share anonymous app analytics")
-                                .foregroundStyle(Color.speakInk)
-                            Text("Helps improve reliability and understand which features are useful. Never includes what you say or type.")
-                                .font(.footnote)
-                                .foregroundStyle(Color.speakMuted)
+                        HStack(alignment: .top, spacing: 14) {
+                            settingsSymbol("chart.bar")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Share anonymous app analytics")
+                                    .foregroundStyle(Color.speakInk)
+                                Text("Helps improve reliability and understand which features are useful. Never includes what you say or type.")
+                                    .font(.footnote)
+                                    .foregroundStyle(Color.speakMuted)
+                            }
                         }
                     }
                     .tint(Color.speakToggleTint)
@@ -185,7 +191,7 @@ struct AccountSettingsView: View {
                             showsICloudSync = true
                         }
                     }
-                    settingsButton("Privacy", symbol: "hand.raised") {
+                    settingsButton("How Speak It handles your data", symbol: "hand.raised") {
                         showsPrivacy = true
                     }
                 }
