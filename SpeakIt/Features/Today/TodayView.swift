@@ -681,7 +681,9 @@ struct TodayView: View {
             Button {
                 showsAccountSettings = true
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: subscriptionStore.hasProAccess
+                      ? "person.crop.circle.fill.badge.checkmark"
+                      : "person.crop.circle")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(Color.speakInk)
                     .frame(width: 44, height: 44)

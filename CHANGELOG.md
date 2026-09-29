@@ -9,8 +9,7 @@ Entries before September 2026 were reconstructed from the commit history and
 
 - Settings replaces "Account & Settings". The optional profile (a name and
   email that nothing in the app used) is gone, and launch clears what earlier
-  builds stored. The top-right button on Today and Memory is a gear. Settings
-  is regrouped as Plan, Capture, Reminders, Appearance, Privacy, History and
+  builds stored. Settings is regrouped as Plan, Capture, Reminders, Appearance, Privacy, History and
   Help, and the Lock Screen names footnote is shorter.
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark

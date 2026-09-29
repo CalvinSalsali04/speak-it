@@ -3145,9 +3145,10 @@ the subscription and every other setting are untouched. The `profile_created`
 analytics event is retired with it; the founder dashboard's count keeps its
 history and stops growing.
 
-With no account behind it, a person icon pointed at nothing, so the button is a
-gear. Pro status, which the icon's badge used to carry, is still the first row
-inside, under Plan.
+The top-right button keeps its person icon (with the Pro checkmark badge).
+A gear was tried and screenshotted; Calvin preferred the person icon as the
+familiar way into the app's own settings, even with no account behind it. Its
+accessibility label now says "Settings".
 
 The screen is regrouped by what a person reaches for: Plan, Capture, Reminders,
 Appearance, Privacy, History, Help. "Capture & reminders" had grown to seven
