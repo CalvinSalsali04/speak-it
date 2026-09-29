@@ -192,6 +192,244 @@ enum RefinementPolicy {
     }
 }
 
+/// What the pipeline does with a reading taken while the lexical tagger is
+/// blind (`LinguisticHealth`).
+///
+/// Most rules fail safe without the tagger: fewer actions, more merging, dates
+/// dropped. A few do not, and they cannot be told apart from correct readings
+/// row by row, so the policy is applied to every row of the capture:
+///
+/// 1. **Nothing is dropped and nothing new is added.** Rows keep their words,
+///    their order and their count. The raw transcript was committed before
+///    extraction ran; this only changes what the rows say about themselves.
+/// 2. **Every row goes to Needs Review**, recorded as
+///    `.underspecified(.languageAnalysisUnavailable)`, so no guess is presented
+///    as a settled task or memory.
+/// 3. **A row keeps a time, a series or a place only if its own words state
+///    it.** Review alone does not stop a notification
+///    (`ReminderScheduleRequest.init(item:)` asks only whether a future
+///    `reminderDate` exists), and blindness is exactly what lets a fact clause
+///    inherit a shared "remind me every Friday" prefix. "States it" is asked of
+///    the resolver that read the time in the first place
+///    (`ThoughtOrganizer.statesATime`, `RecurrenceIntentParser`,
+///    `LocationIntentParser`), over the row's own words, so the check cannot
+///    fall behind the resolver. The resolver's one tagger read
+///    (`ordinalContinuesWithAVerb`) can only add a reading, and blind it says
+///    no, as it did when the row's date was read.
+/// 4. **No operation runs.** Every operation comes back with `needsReview`
+///    set, so the repository holds it instead of acting on it. The detectors
+///    are lexical, but the guards deciding whose words an operation is are
+///    not: `withdrawalBelongsToSomeoneElse` and `localCancellationReference`
+///    ask `ClauseScope.read`, whose message-body test needs a verb, and blind
+///    an unmarked message body reads as the speaker's own words. An operation
+///    already resolved inside the capture (a scoped withdrawal, a sibling
+///    cancellation) has removed words from the rows before this runs, so for
+///    those the rows are read again without operations and every clause comes
+///    back as a row.
+enum DegradedLanguagePolicy {
+    /// - Parameter rereadWithoutOperations: the rules reading of the same
+    ///   transcript with `permitsOperations: false`. Asked for only when an
+    ///   operation was resolved inside the capture. `nil` keeps the rows as
+    ///   they came.
+    static func applying(
+        to result: ThoughtExtractionResult,
+        transcript: String,
+        rereadWithoutOperations: (() -> [ExtractedThought])? = nil
+    ) -> ThoughtExtractionResult {
+        let items: [ExtractedThought]
+        if result.operations.contains(where: \.isScoped), let rereadWithoutOperations {
+            // A scoped operation took its clauses out of the rows on a reading
+            // this device could not make. Reading again without operations
+            // puts them back as rows, and the scoped request, now held, stays
+            // in `operations`, where `pendingOperation` keeps it away from the
+            // repository while any row exists.
+            let whole = rereadWithoutOperations()
+            items = whole.isEmpty ? result.items : whole
+        } else {
+            items = result.items
+        }
+        let spans = ownWords(of: items, in: transcript)
+        let held = zip(items, spans).map { item, words in
+            holding(item, ownWords: words)
+        }
+        return ThoughtExtractionResult(
+            items: held,
+            operations: result.operations.map(heldForReview),
+            method: result.method
+        )
+    }
+
+    /// One operation, unchanged except that it now asks first.
+    ///
+    /// `SwiftDataThoughtRepository.applyCaptureOperation` holds a request that
+    /// needs review instead of acting on it: cancel, complete and reschedule at
+    /// the target guard, a withdrawal before it discards anything.
+    static func heldForReview(_ request: CaptureOperationRequest) -> CaptureOperationRequest {
+        CaptureOperationRequest(
+            operation: request.operation,
+            polarity: request.polarity,
+            target: request.target,
+            sourceQuote: request.sourceQuote,
+            needsReview: true,
+            isBroad: request.isBroad,
+            newTimingText: request.newTimingText,
+            isScoped: request.isScoped
+        )
+    }
+
+    /// One row, held for review, with whatever its own words did not state
+    /// taken off it.
+    static func holding(_ item: ExtractedThought, ownWords: String) -> ExtractedThought {
+        let organization = item.organization
+        let keeps = ownsItsTriggers(item, ownWords: ownWords)
+        let held = OrganizedThought(
+            itemType: organization.itemType,
+            category: organization.category,
+            priority: organization.priority,
+            personName: organization.personName,
+            dueDate: keeps ? organization.dueDate : nil,
+            reminderDate: keeps ? organization.reminderDate : nil,
+            reminderDelivery: keeps ? organization.reminderDelivery : .none,
+            recurrenceRule: keeps ? organization.recurrenceRule : nil,
+            needsClarification: true,
+            // An inherited intent describes a time these words never named.
+            // Kept, the row would read "every Friday" and schedule nothing.
+            temporalIntent: keeps ? organization.temporalIntent : .none,
+            locationIntent: keeps ? organization.locationIntent : nil,
+            state: .underspecified(.languageAnalysisUnavailable)
+        )
+        return ExtractedThought(
+            sourceQuote: item.sourceQuote,
+            rawQuote: item.rawQuote,
+            wasRepaired: item.wasRepaired,
+            analysisText: item.analysisText,
+            suggestedTitle: item.suggestedTitle,
+            organization: held,
+            confidence: item.confidence,
+            needsReview: true,
+            shoppingGroup: item.shoppingGroup
+        )
+    }
+
+    /// Whether every trigger on the row is stated by its own words.
+    ///
+    /// All or nothing on purpose. A row that borrowed any part of its schedule
+    /// is a row whose schedule was assembled by a rule that could not see, and
+    /// keeping half of it would fire at a time nobody chose.
+    static func ownsItsTriggers(_ item: ExtractedThought, ownWords: String) -> Bool {
+        let organization = item.organization
+        let carriesTime = organization.dueDate != nil
+            || organization.reminderDate != nil
+            || organization.recurrenceRule != nil
+            || organization.temporalIntent.kind != .none
+        let carriesPlace = organization.locationIntent != nil
+        guard carriesTime || carriesPlace else { return true }
+
+        let evidence = [ownWords, item.sourceQuote]
+        if carriesTime, !evidence.contains(where: statesItsOwnTiming) { return false }
+        if organization.recurrenceRule != nil,
+           !evidence.contains(where: { RecurrenceIntentParser.parse(asThePipelineReadsIt($0)) != nil }) {
+            return false
+        }
+        if carriesPlace, !evidence.contains(where: { LocationIntentParser.parse($0) != nil }) {
+            return false
+        }
+        // The shape of the inherited prefix itself: the text the row was read
+        // from asks for a reminder, and the words the row was spoken with do
+        // not. Catches a fact that happens to mention a time of its own.
+        if ReminderPhrasing.requestsReminder(item.analysisText),
+           !evidence.contains(where: ReminderPhrasing.requestsReminder) {
+            return false
+        }
+        return true
+    }
+
+    /// Whether these words, read alone, name a day, a clock, a delay or a
+    /// series. Narrow in where it looks: a row's own words, never its analysis
+    /// text.
+    ///
+    /// Asked of the resolver itself rather than of a list beside it. A list
+    /// here was a second, shorter copy of the resolver's grammar, and it
+    /// stripped times the resolver reads: "on the 15th pay the rent", "rent is
+    /// due on the first", "by eod", "first thing", "in forty five minutes".
+    static func statesItsOwnTiming(_ text: String) -> Bool {
+        let read = asThePipelineReadsIt(text)
+        if RecurrenceIntentParser.parse(read) != nil { return true }
+        return ThoughtOrganizer.statesATime(read)
+    }
+
+    /// A row's own words are cut from the raw transcript, and the resolver
+    /// read the repaired one. The timing repairs are run first ("in 45 mins",
+    /// "by COB", "annually", "at 1700"), in the pipeline's order, so the
+    /// question is asked of the words the resolver saw. All three are regular
+    /// expressions.
+    static func asThePipelineReadsIt(_ text: String) -> String {
+        SpokenShorthandRepair.twentyFourHourClock(
+            SpokenShorthandRepair.repaired(ClockDigitRepair.repaired(text))
+        ).lowercased()
+    }
+
+    /// The words each row was spoken with, found in the transcript in order.
+    ///
+    /// A row's own words are its quote plus whatever sits between the
+    /// previous row's quote and it. So the first row owns the words in front
+    /// of it — which is the shared command it was split from, and the only
+    /// row the splitter always gives that command to — and every later row
+    /// owns only the connective in front of its quote. The words after the
+    /// last row belong to the last row.
+    ///
+    /// A quote that cannot be found (a repair reworded it, or rows came back
+    /// out of order) breaks the chain: that row, and every row after it, owns
+    /// its quote alone. That can only take a trigger away, never lend one.
+    /// Consecutive rows cut from one span (the products of a spoken list,
+    /// which share the parent's `rawQuote`) share that span's words.
+    static func ownWords(of items: [ExtractedThought], in transcript: String) -> [String] {
+        let spoken = collapsingWhitespace(transcript)
+        var cursor = spoken.startIndex
+        var chainIntact = true
+        var previous: (raw: String, words: String)?
+        var spans: [String] = []
+
+        for item in items {
+            let raw = collapsingWhitespace(item.rawQuote.isEmpty ? item.sourceQuote : item.rawQuote)
+            if chainIntact, let previous, previous.raw == raw {
+                spans.append(previous.words)
+                continue
+            }
+            guard chainIntact, !raw.isEmpty,
+                  let found = spoken.range(
+                      of: raw,
+                      options: [.caseInsensitive],
+                      range: cursor..<spoken.endIndex
+                  ) else {
+                chainIntact = false
+                previous = nil
+                spans.append(item.sourceQuote)
+                continue
+            }
+            let words = String(spoken[cursor..<found.upperBound])
+            spans.append(words)
+            previous = (raw, words)
+            cursor = found.upperBound
+        }
+
+        if chainIntact, let last = spans.indices.last, cursor < spoken.endIndex {
+            // Every row sharing the last span gets the tail, so a list's
+            // products stay alike.
+            let tail = String(spoken[cursor...])
+            let shared = spans[last]
+            for index in spans.indices where spans[index] == shared {
+                spans[index] += tail
+            }
+        }
+        return spans
+    }
+
+    private static func collapsingWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+}
+
 enum ThoughtExtractionEngine {
     static func extract(
         _ transcript: String,
@@ -209,6 +447,10 @@ enum ThoughtExtractionEngine {
             permitsOperations: permitsOperations
         )
         let fallback = processed.items
+        // Read after the rules ran, so the first capture has already paid for
+        // loading the model the probe asks about, and always after the raw
+        // words were committed by the caller.
+        let tagger = LinguisticHealth.effective
 
         // An operation is a rules-level reading of what the person wants done.
         // The refinement model proposes items, so it has nothing to add here
@@ -218,15 +460,21 @@ enum ThoughtExtractionEngine {
         // may cancel one thing and create another, and discarding the created
         // half here would lose it just as surely as the parser used to.
         if !processed.operations.isEmpty {
-            return ThoughtExtractionResult(
-                items: processed.items,
-                operations: processed.operations,
-                method: .rules
+            return finished(
+                ThoughtExtractionResult(
+                    items: processed.items,
+                    operations: processed.operations,
+                    method: .rules
+                ),
+                transcript: transcript,
+                referenceDate: referenceDate,
+                calendar: calendar,
+                tagger: tagger
             )
         }
 
 #if canImport(FoundationModels)
-        if permitsOnDeviceIntelligence,
+        if refinementIsPermitted(requested: permitsOnDeviceIntelligence, tagger: tagger),
            #available(iOS 26.0, *),
            IntelligentThoughtExtractor.shouldRefine(transcript, fallback: fallback),
            let refined = await IntelligentThoughtExtractor.extractWithinBudget(
@@ -249,11 +497,58 @@ enum ThoughtExtractionEngine {
         }
 #endif
 
-        return ThoughtExtractionResult(
-            items: fallback,
-            operations: processed.operations,
-            method: .rules
+        return finished(
+            ThoughtExtractionResult(
+                items: fallback,
+                operations: processed.operations,
+                method: .rules
+            ),
+            transcript: transcript,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            tagger: tagger
         )
+    }
+
+    /// Whether the refinement model may be asked at all.
+    ///
+    /// Never while the tagger is blind. The model's output is retyped through
+    /// the same `ThoughtOrganizer.organize` the rules use, so it inherits the
+    /// blindness rather than repairing it, and every degraded row needs review,
+    /// which would otherwise send every capture to the model and spend up to
+    /// its two-second budget on each one.
+    static func refinementIsPermitted(
+        requested: Bool,
+        tagger: LinguisticHealth.Tagger
+    ) -> Bool {
+        requested && tagger == .usable
+    }
+
+    /// Both engines end here, so no reading leaves the pipeline without the
+    /// degraded policy having been considered.
+    private static func finished(
+        _ result: ThoughtExtractionResult,
+        transcript: String,
+        referenceDate: Date,
+        calendar: Calendar,
+        tagger: LinguisticHealth.Tagger
+    ) -> ThoughtExtractionResult {
+        switch tagger {
+        case .usable: return result
+        case .blind:
+            return DegradedLanguagePolicy.applying(
+                to: result,
+                transcript: transcript,
+                rereadWithoutOperations: {
+                    RuleBasedThoughtExtractor.process(
+                        transcript,
+                        referenceDate: referenceDate,
+                        calendar: calendar,
+                        permitsOperations: false
+                    ).items
+                }
+            )
+        }
     }
 
     static func extractWithRules(
@@ -270,10 +565,16 @@ enum ThoughtExtractionEngine {
             calendar: calendar,
             permitsOperations: permitsOperations
         )
-        return ThoughtExtractionResult(
-            items: processed.items,
-            operations: processed.operations,
-            method: .rules
+        return finished(
+            ThoughtExtractionResult(
+                items: processed.items,
+                operations: processed.operations,
+                method: .rules
+            ),
+            transcript: transcript,
+            referenceDate: referenceDate,
+            calendar: calendar,
+            tagger: LinguisticHealth.effective
         )
     }
 }
