@@ -80,7 +80,7 @@
 - First launch teaches **Tap → Speak → Pause**, then provides an action example that can be spoken or inserted without guessing what to say. The practice banner explicitly says that natural wording is accepted and exposes **End tutorial** instead of a generic X.
 - The two practice captures run through the production organizer but use a tutorial source, schedule no interruptions, create no iCloud payloads, and consume zero free captures.
 - The action mission spotlights its exact row in Today with all four outline edges inside the row bounds, opens the production editor, highlights the title field, names type/timing/person as editable, then spotlights the same item inside Maya’s production People profile.
-- The idea mission accepts conversational wording such as “I had an idea…”, persists a non-empty content title, spotlights its exact row in Ideas, and opens the production stage picker with a concrete suggested choice; completing the picker advances to readiness.
+- The idea mission accepts conversational wording such as “I had an idea…”, persists a non-empty content title, spotlights its exact row in Ideas, and its card's button advances to Capture Anywhere without opening the stage picker.
 - Relaunching resumes the exact tutorial phase and item. Missing practice data restarts only the affected mission.
 - **Make Speak It ready** reports live status and explains microphone/speech, notifications, Home, location reminders, alarms, and Capture Anywhere. Each action invokes the production permission or setup flow; all setup remains optional.
 - Finishing or ending practice deletes only tutorial sessions and all of their auxiliary metadata, is idempotent, preserves real captures, and leaves the lifetime free allowance unchanged.

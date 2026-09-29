@@ -1184,41 +1184,13 @@ private enum MemorySortOption: String, CaseIterable, Identifiable {
 }
 
 private struct IdeaStagePickerSheet: View {
-    @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
     let item: CapturedItem
     let selectedStage: IdeaStage
-    /// Set only while the tutorial sent the person here. This sheet covers the
-    /// tutorial banner, so it has to carry the step itself.
-    let tutorialStep: TutorialStep?
     let onSelect: (IdeaStage) -> Void
-
-    private var showsTutorialGuidance: Bool { tutorialStep != nil }
 
     var body: some View {
         NavigationStack {
             List {
-                if let tutorialStep {
-                    Section {
-                        Label {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Choose a stage")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Choose Promising, or pick the stage that fits. Either one continues the tutorial.")
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.speakMuted)
-                            }
-                        } icon: {
-                            Image(systemName: "hand.tap")
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("tutorial.ideaStage.guidance")
-                    } header: {
-                        TutorialStepHeader(step: tutorialStep, style: .compact)
-                            .textCase(nil)
-                            .padding(.bottom, 4)
-                    }
-                }
-
                 Section {
                     ForEach(IdeaStage.allCases) { stage in
                         Button {
@@ -1246,14 +1218,6 @@ private struct IdeaStagePickerSheet: View {
                                     Image(systemName: "checkmark")
                                         .font(.subheadline.weight(.bold))
                                         .foregroundStyle(Color.speakInk)
-                                } else if showsTutorialGuidance, stage == .promising {
-                                    Text("TRY THIS")
-                                        .font(.system(size: badgeFontSize, weight: .bold))
-                                        .tracking(0.7)
-                                        .foregroundStyle(Color.speakInverseInk)
-                                        .padding(.horizontal, 7)
-                                        .padding(.vertical, 4)
-                                        .background(Color.speakInverseSurface, in: Capsule())
                                 }
                             }
                             .contentShape(Rectangle())
@@ -1298,7 +1262,6 @@ private struct MemoryCollectionView: View {
     @State private var selectedItem: CapturedItem?
     @State private var stagePickerItem: CapturedItem?
     @State private var tutorialPersonName: String?
-    @State private var tutorialOpenedStagePicker = false
     @State private var errorMessage: String?
     @State private var libraryUndo: LibraryUndo?
     @AppStorage("SpeakIt.memoryCompactRows") private var usesCompactRows = false
@@ -1389,7 +1352,7 @@ private struct MemoryCollectionView: View {
                         .id(item.id)
                         .tutorialSpotlight(
                             spotlight(for: item),
-                            onPrimary: { openStagePicker(item) },
+                            onPrimary: onTutorialPrimary,
                             onEndPractice: onEndTutorial
                         )
                 }
@@ -1445,11 +1408,10 @@ private struct MemoryCollectionView: View {
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
         }
-        .sheet(item: $stagePickerItem, onDismiss: tutorialStagePickerDidDismiss) { item in
+        .sheet(item: $stagePickerItem) { item in
             IdeaStagePickerSheet(
                 item: item,
-                selectedStage: stage(for: item),
-                tutorialStep: spotlight(for: item)?.step
+                selectedStage: stage(for: item)
             ) { stage in
                 setStage(stage, for: item)
                 stagePickerItem = nil
@@ -1790,15 +1752,7 @@ private struct MemoryCollectionView: View {
     }
 
     private func openStagePicker(_ item: CapturedItem) {
-        tutorialOpenedStagePicker = tutorialSpotlight?.placement == .idea
-            && tutorialSpotlight?.itemID == item.id
         stagePickerItem = item
-    }
-
-    private func tutorialStagePickerDidDismiss() {
-        guard tutorialOpenedStagePicker else { return }
-        tutorialOpenedStagePicker = false
-        onTutorialPrimary()
     }
 
     private func peopleSpotlight(for profile: MemoryPersonProfile) -> TutorialSpotlight? {

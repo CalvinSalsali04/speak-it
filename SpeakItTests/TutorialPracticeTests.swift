@@ -9,7 +9,7 @@ import XCTest
 /// The tutorial used to anchor to whatever the capture happened to produce
 /// (`?? result.items.first`), so an off-script sentence sent it to a screen the
 /// row was not on. No teaching card rendered there, the only control left was
-/// Exit, and the walkthrough ended at step 2 of 8 without saying anything.
+/// Exit, and the walkthrough ended at step 2 without saying anything.
 ///
 /// `TutorialCaptureMission.satisfiedItem(in:)` is the one definition of "the
 /// practice worked". `RootView` uses it to decide whether to advance and
@@ -70,11 +70,11 @@ final class TutorialPracticeTests: XCTestCase {
         let anchor = TutorialCaptureMission.idea.satisfiedItem(in: result)
 
         XCTAssertNotNil(anchor, "the step's own example must always pass its own check")
-        XCTAssertEqual(anchor?.itemType, .idea, "step 6 opens the idea stage picker")
+        XCTAssertEqual(anchor?.itemType, .idea, "step 5 shows the idea in Memory under Ideas")
     }
 
-    /// The practice screen says "Say it naturally, or use your own words", so
-    /// the check has to be loose enough to honour that invitation. A person who
+    /// The practice screen invites the person's own task as long as it names
+    /// someone, so the check has to be loose enough to honour that invitation. A person who
     /// drops the time, or leads with "remind me to", is still doing the lesson.
     func testTheActionStepAcceptsThePersonsOwnWording() async throws {
         for text in [
@@ -115,7 +115,7 @@ final class TutorialPracticeTests: XCTestCase {
         let result = try await practiceResult("Tomorrow at 9, ask Maya about the proposal.")
         XCTAssertNil(
             TutorialCaptureMission.idea.satisfiedItem(in: result),
-            "step 6 opens the stage picker, which only exists on an idea"
+            "step 5 shows the row in Ideas, which only holds ideas"
         )
     }
 
@@ -134,7 +134,7 @@ final class TutorialPracticeTests: XCTestCase {
             )
             XCTAssertNil(
                 TutorialCaptureMission.idea.satisfiedItem(in: result),
-                "“\(text)” left no idea for the stage picker in step 6"
+                "“\(text)” left no idea for Ideas to show in step 5"
             )
         }
     }

@@ -885,6 +885,12 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         from the count: two expected accessibility labels (`"This week: 1
         active day"`, `"This week: 2 active days"`) and one assertion message
         (`"Saturday the 5th is last week"`). None was a language fixture.
+        4065 -> 4064 on 2026-09-29, from trimming the first-run tutorial to
+        seven steps. `TutorialPracticeTests` rewords three assertion messages
+        that named step 6 and the stage picker, and a doc comment no longer
+        quotes the old practice hint `"Say it naturally, or use your own
+        words"`; four literals out, three in, enumerated by diffing against
+        `origin/main`. None was a language fixture.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -894,7 +900,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4065)
+        self.assertEqual(len(space), 4064)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

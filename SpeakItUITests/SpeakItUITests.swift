@@ -321,6 +321,10 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(useExample.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
         assertTutorialStep(app, number: 1, title: "Practice a task")
+        XCTAssertTrue(
+            app.staticTexts["tutorial.practiceFree"].exists,
+            "Practice has to say it is free before the person speaks"
+        )
         captureFlowScreenshot("02-action-practice")
         tapInsideWideButton(useExample, horizontalFraction: 0.12)
         XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 4))
@@ -374,7 +378,7 @@ final class SpeakItUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.staticTexts["The follow-up is here"].waitForExistence(timeout: 8))
-        assertTutorialStep(app, number: 4, title: "The follow-up")
+        assertTutorialStep(app, number: 3, title: "Find the person")
         captureFlowScreenshot("07-maya-follow-up")
         tapInsideWideButton(
             app.buttons["tutorial.spotlight.primary"],
@@ -384,7 +388,7 @@ final class SpeakItUITests: XCTestCase {
         let useIdeaExample = app.buttons["tutorial.useExample"]
         XCTAssertTrue(useIdeaExample.waitForExistence(timeout: 6))
         XCTAssertTrue(app.staticTexts["tutorial.missionExample"].exists)
-        assertTutorialStep(app, number: 5, title: "Practice an idea")
+        assertTutorialStep(app, number: 4, title: "Practice an idea")
         captureFlowScreenshot("08-idea-practice")
         tapInsideWideButton(useIdeaExample, horizontalFraction: 0.88)
         XCTAssertTrue(
@@ -400,25 +404,22 @@ final class SpeakItUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.staticTexts["Your idea is in Memory"].waitForExistence(timeout: 8))
-        assertTutorialStep(app, number: 6, title: "Idea stages")
+        assertTutorialStep(app, number: 5, title: "Where ideas go")
         captureFlowScreenshot("09-ideas-placement")
         tapInsideWideButton(
             app.buttons["tutorial.spotlight.primary"],
             horizontalFraction: 0.88
         )
-        XCTAssertTrue(app.navigationBars["Idea stage"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.descendants(matching: .any)["tutorial.ideaStage.guidance"].exists)
-        assertTutorialStep(app, number: 6, title: "Idea stages")
-        captureFlowScreenshot("10-real-stage-picker")
-        let promising = app.buttons["ideaStagePicker.promising"]
-        XCTAssertTrue(promising.waitForExistence(timeout: 3))
-        promising.tap()
+        XCTAssertFalse(
+            app.navigationBars["Idea stage"].exists,
+            "The idea step continues the tutorial without asking for a stage"
+        )
 
         let actionButtonMethod = app.buttons["captureAnywhere.method.actionButton"]
         XCTAssertTrue(actionButtonMethod.waitForExistence(timeout: 8))
         if !actionButtonMethod.isSelected { actionButtonMethod.tap() }
         XCTAssertTrue(actionButtonMethod.isSelected)
-        assertTutorialStep(app, number: 7, title: "Capture anywhere")
+        assertTutorialStep(app, number: 6, title: "Capture anywhere")
         captureFlowScreenshot("11-capture-anywhere-top")
 
         let otherMethods = app.buttons["captureAnywhere.otherMethods"]
@@ -442,7 +443,7 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(doneWithCaptureAnywhere.isHittable)
         doneWithCaptureAnywhere.tap()
         XCTAssertTrue(app.staticTexts["Choose what Speak It can use"].waitForExistence(timeout: 8))
-        assertTutorialStep(app, number: 8, title: "Finish setup")
+        assertTutorialStep(app, number: 7, title: "Finish setup")
         captureFlowScreenshot("14-readiness")
 
         let finish = app.buttons["readiness.finish"]
@@ -452,7 +453,7 @@ final class SpeakItUITests: XCTestCase {
         tapInsideWideButton(finish, horizontalFraction: 0.12)
 
         XCTAssertTrue(app.staticTexts["Practice examples removed"].waitForExistence(timeout: 6))
-        XCTAssertTrue(app.staticTexts["10 free captures ready"].exists)
+        XCTAssertTrue(app.staticTexts["Your 10 free captures start now."].exists)
         XCTAssertTrue(app.staticTexts["Tutorial complete"].exists)
         captureFlowScreenshot("16-practice-removed")
         tapInsideWideButton(app.buttons["tutorial.finished"], horizontalFraction: 0.88)
@@ -1150,7 +1151,7 @@ final class SpeakItUITests: XCTestCase {
         )
         let labels = headers.allElementsBoundByIndex.map(\.label)
         XCTAssertTrue(
-            labels.contains { $0.contains("Step \(number) of 8") && $0.contains(title) },
+            labels.contains { $0.contains("Step \(number) of 7") && $0.contains(title) },
             "Expected step \(number) (\(title)). Found: \(labels)",
             file: file,
             line: line

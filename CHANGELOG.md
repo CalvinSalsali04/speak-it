@@ -7,6 +7,13 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- The first-run tutorial is seven steps instead of eight. People and the
+  person's page are one step, and the idea step shows where the idea went and
+  continues without asking for a stage. The practice card now says before the
+  first recording that practice is free and when the free captures start, the
+  task step no longer invites wording it would then reject, and the finish
+  screen states the allowance once. The unused four-part `FirstCaptureGuideView`
+  is removed.
 - The seven week dots beside the date on Today are removed, along with the
   `week_row_shown` analytics event. The morning brief and the All clear line
   are unchanged.

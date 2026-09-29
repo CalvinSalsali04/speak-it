@@ -186,7 +186,6 @@ enum TutorialStep: Int, CaseIterable, Equatable, Sendable {
     case practiceTask
     case seeToday
     case findPerson
-    case seeFollowUp
     case practiceIdea
     case seeIdea
     case captureAnywhere
@@ -194,7 +193,7 @@ enum TutorialStep: Int, CaseIterable, Equatable, Sendable {
 
     static var count: Int { allCases.count }
 
-    /// One-based, because it is only ever shown or spoken as "Step 3 of 8".
+    /// One-based, because it is only ever shown or spoken as "Step 3 of 7".
     var number: Int { rawValue + 1 }
 
     /// Two or three words. It shares one line with the step count at every
@@ -204,9 +203,8 @@ enum TutorialStep: Int, CaseIterable, Equatable, Sendable {
         case .practiceTask: "Practice a task"
         case .seeToday: "Where it landed"
         case .findPerson: "Find the person"
-        case .seeFollowUp: "The follow-up"
         case .practiceIdea: "Practice an idea"
-        case .seeIdea: "Idea stages"
+        case .seeIdea: "Where ideas go"
         case .captureAnywhere: "Capture anywhere"
         case .finishSetup: "Finish setup"
         }
@@ -358,15 +356,15 @@ enum FirstRunTutorialPhase: String, CaseIterable {
     /// Where this phase sits in the numbering the person sees.
     ///
     /// `readiness` covers two consecutive full-screen setups, so those two
-    /// screens name their own step rather than sharing this one. Everything
-    /// else maps one to one.
+    /// screens name their own step rather than sharing this one. People and
+    /// the person's page are one lesson, finding the person the task belongs
+    /// to, so they share a step across the two screens it takes.
     var step: TutorialStep? {
         switch self {
         case .inactive, .complete: nil
         case .captureAction: .practiceTask
         case .showToday: .seeToday
-        case .showPeople: .findPerson
-        case .showPerson: .seeFollowUp
+        case .showPeople, .showPerson: .findPerson
         case .captureIdea: .practiceIdea
         case .showIdea: .seeIdea
         case .readiness: .captureAnywhere
@@ -385,8 +383,7 @@ enum TutorialSpotlightPlacement: Equatable {
     var step: TutorialStep {
         switch self {
         case .today: .seeToday
-        case .people: .findPerson
-        case .person: .seeFollowUp
+        case .people, .person: .findPerson
         case .idea: .seeIdea
         }
     }
@@ -472,7 +469,7 @@ struct TutorialSpotlight: Equatable {
         case .person:
             "This is the same thought from Today—not a duplicate."
         case .idea:
-            "Ideas start at New. Change the stage as they develop."
+            "Ideas start at New. Tap the stage anytime to move one along as it develops."
         }
     }
 
@@ -481,15 +478,14 @@ struct TutorialSpotlight: Equatable {
         case .today: "Change this thought"
         case .people: "Open \(personLabel)"
         case .person: "Try an idea"
-        case .idea: "Change its stage"
+        case .idea: "Continue"
         }
     }
 
     /// Says out loud what the button does and that the tutorial is what is
-    /// asking. Every one of these buttons opens something real — an editor, a
-    /// person, a stage picker — so without this line "Change this thought"
-    /// reads as the app making a demand rather than the tutorial offering the
-    /// next step.
+    /// asking. Most of these buttons open something real — an editor, a
+    /// person — so without this line "Change this thought" reads as the app
+    /// making a demand rather than the tutorial offering the next step.
     var primaryDetail: String {
         switch placement {
         case .today:
@@ -499,7 +495,7 @@ struct TutorialSpotlight: Equatable {
         case .person:
             "Starts the second practice capture."
         case .idea:
-            "Opens the stage picker. Choosing a stage continues the tutorial."
+            "Moves on to the last two setup steps."
         }
     }
 
@@ -774,638 +770,6 @@ struct FirstCapturePlacementSummary: Codable, Equatable {
     }
 }
 
-private enum FirstCaptureTutorialStep: Int, CaseIterable {
-    case placement
-    case systemMap
-    case permissions
-    case quickAccess
-}
-
-/// A resumable, four-part product tutorial. The first three parts live here;
-/// the final part reuses CaptureAnywhereSetupView so setup instructions and its
-/// real external-capture verification never diverge.
-struct FirstCaptureGuideView: View {
-    let summary: FirstCapturePlacementSummary
-    let onCompleted: () -> Void
-    let onSkip: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("SpeakIt.firstCaptureTutorialStep") private var stepRawValue = 0
-
-    @State private var notificationAuthorization: UNAuthorizationStatus = .notDetermined
-    @State private var permissionRefreshToken = UUID()
-    @State private var isRequestingPermission = false
-
-    private var step: FirstCaptureTutorialStep {
-        FirstCaptureTutorialStep(rawValue: stepRawValue) ?? .placement
-    }
-
-    var body: some View {
-        Group {
-            if step == .quickAccess {
-                CaptureAnywhereSetupView(
-                    showsOnboardingProgress: true,
-                    onFinished: onCompleted
-                )
-            } else {
-                ZStack {
-                    Color.speakBackground.ignoresSafeArea()
-
-                    VStack(spacing: 0) {
-                        tutorialHeader
-
-                        ScrollView {
-                            Group {
-                                switch step {
-                                case .placement: placementPage
-                                case .systemMap: systemMapPage
-                                case .permissions: permissionsPage
-                                case .quickAccess: EmptyView()
-                                }
-                            }
-                            .frame(maxWidth: 430)
-                            .padding(.horizontal, 22)
-                            .padding(.top, 26)
-                            .padding(.bottom, 24)
-                            .id(step)
-                        }
-                        .scrollIndicators(.hidden)
-
-                        tutorialControls
-                    }
-                    .foregroundStyle(Color.speakInk)
-                }
-            }
-        }
-        .task { await refreshPermissionState() }
-        .onAppear {
-#if DEBUG
-            if let argument = ProcessInfo.processInfo.arguments.first(
-                where: { $0.hasPrefix("--tutorial-step=") }
-            ), let requested = Int(argument.split(separator: "=").last ?? "") {
-                stepRawValue = min(
-                    max(requested, 0),
-                    FirstCaptureTutorialStep.allCases.count - 1
-                )
-            }
-#endif
-        }
-        .onChange(of: stepRawValue, initial: true) { _, _ in
-            SpeakItAnalytics.track(.onboardingTutorialStepViewed(analyticsStep))
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Task { await refreshPermissionState() }
-        }
-    }
-
-    private var tutorialHeader: some View {
-        VStack(spacing: 14) {
-            HStack {
-                SpeakItWordmark()
-                Spacer()
-                Button("Skip tutorial", action: onSkip)
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.speakIt)
-                    .accessibilityIdentifier("firstCaptureGuide.done")
-            }
-
-            HStack(spacing: 7) {
-                ForEach(0..<4, id: \.self) { index in
-                    Capsule()
-                        .fill(index <= step.rawValue ? Color.speakInk : Color.speakDivider)
-                        .frame(height: 4)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(step.rawValue + 1) of 4")
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 16)
-    }
-
-    private var placementPage: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(Color.speakInverseInk)
-                .frame(width: 76, height: 76)
-                .background(Color.speakInverseSurface, in: Circle())
-
-            VStack(spacing: 9) {
-                Text(summary.itemCount > 1 ? "Your thoughts are organized." : "Your first thought is safe.")
-                    .font(.title.weight(.semibold))
-                    .multilineTextAlignment(.center)
-
-                Text("Speak It kept your original words, then organized the useful result.")
-                    .font(.body)
-                    .foregroundStyle(Color.speakMuted)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                Label(
-                    placementHeadline,
-                    systemImage: summary.primary.symbol
-                )
-                .font(.title3.weight(.semibold))
-                .accessibilityIdentifier("firstCaptureGuide.placement")
-
-                Text(summary.primary.reason)
-                    .font(.body)
-                    .foregroundStyle(Color.speakMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !summary.secondary.isEmpty {
-                    Divider()
-                    Text(secondaryPlacementText)
-                        .font(.subheadline.weight(.medium))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Color.speakSurface,
-                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.speakDivider, lineWidth: 1)
-            }
-
-            Label(
-                "Tap any thought later to change its type, timing, person, or wording.",
-                systemImage: "slider.horizontal.3"
-            )
-            .font(.footnote)
-            .foregroundStyle(Color.speakMuted)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var placementHeadline: String {
-        if summary.itemCount > 1 {
-            return "Saved in \(([summary.primary] + summary.secondary).map(\.shortTitle).joined(separator: ", "))"
-        }
-        return "Saved to \(summary.primary.title)"
-    }
-
-    private var secondaryPlacementText: String {
-        if summary.itemCount == 1, summary.secondary.count == 1,
-           let secondary = summary.secondary.first {
-            return "Also appears in \(secondary.title). One thought can be actionable in Today and still stay connected to a person."
-        }
-        return "Other saved destinations: \(summary.secondary.map(\.title).joined(separator: ", "))."
-    }
-
-    private var systemMapPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            pageTitle(
-                eyebrow: "THE WHOLE SYSTEM",
-                title: "One capture. The right kind of memory.",
-                detail: "You speak normally. Speak It decides what should stay actionable, what should stay findable, and what should get your attention later."
-            )
-
-            flowBeat(
-                number: 1,
-                symbol: "waveform",
-                title: "Capture",
-                detail: "Speak or type one thought—or several. The original words remain recoverable."
-            )
-            flowConnector
-            flowBeat(
-                number: 2,
-                symbol: "sparkles",
-                title: "Understand",
-                detail: "Speak It reads actions, timing, people, shopping, ideas, and reference facts."
-            )
-            flowConnector
-
-            HStack(alignment: .top, spacing: 10) {
-                destinationMapCard(
-                    symbol: "checkmark.circle",
-                    title: "Today",
-                    detail: "Tasks\nShopping lists\nReminders"
-                )
-                destinationMapCard(
-                    symbol: "books.vertical",
-                    title: "Memory",
-                    detail: "Ideas\nPeople\nReference"
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("WHEN IT SHOULD COME BACK")
-                    .font(.caption.weight(.medium))
-                    .tracking(1.4)
-                    .foregroundStyle(Color.speakMuted)
-
-                featureConnection(
-                    symbol: "bell",
-                    title: "Notification",
-                    example: "“Remind me to call Mom tomorrow.”"
-                )
-                featureConnection(
-                    symbol: "alarm",
-                    title: "Alarm",
-                    example: "“Set an alarm for 6 AM.”"
-                )
-                featureConnection(
-                    symbol: "location",
-                    title: "Location",
-                    example: "“Remind me when I get home.”"
-                )
-            }
-
-            Label(
-                "Speak It never requires special commands. Those words simply make your intent explicit.",
-                systemImage: "text.bubble"
-            )
-            .font(.footnote)
-            .foregroundStyle(Color.speakMuted)
-        }
-    }
-
-    private var permissionsPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            pageTitle(
-                eyebrow: "PREPARE THIS IPHONE",
-                title: "Set up only what needs permission.",
-                detail: "Ideas, People, Reference, Today, shopping, and typing already work. iPhone asks you before voice or anything that can interrupt you. Location is asked for only when you create a place reminder."
-            )
-
-            VStack(spacing: 11) {
-                voicePermissionRow
-                notificationPermissionRow
-                alarmPermissionRow
-            }
-            .id(permissionRefreshToken)
-
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "hand.raised")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Color.speakInk.opacity(0.07), in: Circle())
-
-                Text("Speak It cannot silently grant these permissions. You stay in control, and anything you leave for later is requested again only when a feature genuinely needs it.")
-                    .font(.footnote)
-                    .foregroundStyle(Color.speakMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 4)
-        }
-    }
-
-    private var voicePermissionRow: some View {
-        let speech = SFSpeechRecognizer.authorizationStatus()
-        let microphone = AVAudioApplication.shared.recordPermission
-        let isReady = speech == .authorized && microphone == .granted
-        let isDenied = speech == .denied || speech == .restricted || microphone == .denied
-        return permissionCard(
-            symbol: "mic",
-            title: "Voice capture",
-            detail: "Microphone hears only during capture; speech recognition turns it into text.",
-            status: isReady ? "Ready" : (isDenied ? "Off in Settings" : "Not set up"),
-            isReady: isReady,
-            actionTitle: isReady ? nil : (isDenied ? "Open Settings" : "Allow voice"),
-            capability: .voice
-        ) {
-            if isDenied { openAppSettings() }
-            else { Task { await requestVoiceAccess() } }
-        }
-    }
-
-    private var notificationPermissionRow: some View {
-        let isReady: Bool = switch notificationAuthorization {
-        case .authorized, .provisional, .ephemeral: true
-        default: false
-        }
-        let isDenied = notificationAuthorization == .denied
-        return permissionCard(
-            symbol: "bell",
-            title: "Notifications",
-            detail: "Used when you say “remind me” and for location reminders when they fire.",
-            status: isReady ? "Ready" : (isDenied ? "Off in Settings" : "Not set up"),
-            isReady: isReady,
-            actionTitle: isReady ? nil : (isDenied ? "Open Settings" : "Allow notifications"),
-            capability: .notifications
-        ) {
-            if isDenied { openNotificationSettings() }
-            else { Task { await requestNotificationAccess() } }
-        }
-    }
-
-    @ViewBuilder
-    private var alarmPermissionRow: some View {
-        if #available(iOS 26.0, *) {
-            let authorization = AlarmManager.shared.authorizationState
-            let isReady = authorization == .authorized
-            let isDenied = authorization == .denied
-            permissionCard(
-                symbol: "alarm",
-                title: "Alarms",
-                detail: "Only explicit alarm wording uses a full system alarm. Ordinary reminders stay notifications.",
-                status: isReady ? "Ready" : (isDenied ? "Off in Settings" : "Not set up"),
-                isReady: isReady,
-                actionTitle: isReady ? nil : (isDenied ? "Open Settings" : "Allow alarms"),
-                capability: .alarms
-            ) {
-                if isDenied { openAppSettings() }
-                else { Task { await requestAlarmAccess() } }
-            }
-        } else {
-            permissionCard(
-                symbol: "alarm",
-                title: "Alarms",
-                detail: "On this iOS version, alarm requests arrive as normal timed notifications.",
-                status: "Uses notifications",
-                isReady: true,
-                actionTitle: nil,
-                capability: .alarms,
-                action: {}
-            )
-        }
-    }
-
-    private func permissionCard(
-        symbol: String,
-        title: String,
-        detail: String,
-        status: String,
-        isReady: Bool,
-        actionTitle: String?,
-        capability: AnalyticsPermissionCapability,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(Color.speakInk.opacity(0.07), in: Circle())
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                    Text(detail)
-                        .font(.subheadline)
-                        .foregroundStyle(Color.speakMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 4)
-            }
-
-            HStack {
-                Label(status, systemImage: isReady ? "checkmark.circle.fill" : "circle.dashed")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isReady ? Color.green : Color.speakMuted)
-
-                Spacer()
-
-                if let actionTitle {
-                    Button(actionTitle) {
-                        SpeakItAnalytics.track(.onboardingPermissionAction(capability))
-                        action()
-                    }
-                        .font(.subheadline.weight(.semibold))
-                        .buttonStyle(.speakIt)
-                        .disabled(isRequestingPermission)
-                        .accessibilityIdentifier("firstCaptureGuide.permission.\(capability.rawValue)")
-                }
-            }
-        }
-        .padding(16)
-        .background(
-            Color.speakSurface,
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.speakDivider, lineWidth: 1)
-        }
-    }
-
-    private func pageTitle(eyebrow: String, title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(eyebrow)
-                .font(.caption.weight(.medium))
-                .tracking(1.5)
-                .foregroundStyle(Color.speakMuted)
-            Text(title)
-                .font(.title.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            Text(detail)
-                .font(.body)
-                .foregroundStyle(Color.speakMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func flowBeat(number: Int, symbol: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(Color.speakInverseSurface)
-                    .frame(width: 44, height: 44)
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.speakInverseInk)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(number). \(title)")
-                    .font(.headline)
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.speakMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var flowConnector: some View {
-        Rectangle()
-            .fill(Color.speakDivider)
-            .frame(width: 1, height: 18)
-            .padding(.leading, 21)
-    }
-
-    private func destinationMapCard(symbol: String, title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .semibold))
-            Text(title)
-                .font(.headline)
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(Color.speakMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
-        .background(
-            Color.speakSurface,
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.speakDivider, lineWidth: 1)
-        }
-    }
-
-    private func featureConnection(symbol: String, title: String, example: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .frame(width: 36, height: 36)
-                .background(Color.speakInk.opacity(0.07), in: Circle())
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(example)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.speakMuted)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var tutorialControls: some View {
-        HStack(spacing: 12) {
-            if step != .placement {
-                Button {
-                    setStep(step.rawValue - 1)
-                } label: {
-                    Text("Back")
-                        .font(.headline)
-                        .foregroundStyle(Color.speakInk)
-                        .frame(minWidth: 88, minHeight: 54)
-                        .contentShape(Rectangle())
-                }
-                    .buttonStyle(.speakIt)
-                    .background(
-                        Color.speakSurface,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.speakDivider, lineWidth: 1)
-                    }
-            }
-
-            Button {
-                setStep(step.rawValue + 1)
-            } label: {
-                Text(step == .permissions ? "Choose quick access" : "Continue")
-                    .font(.headline)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.speakIt)
-            .background(
-                Color.speakInverseSurface,
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .accessibilityIdentifier("firstCaptureGuide.continue")
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .background(.ultraThinMaterial)
-    }
-
-    private func setStep(_ rawValue: Int) {
-        let clamped = min(max(rawValue, 0), FirstCaptureTutorialStep.allCases.count - 1)
-        if reduceMotion { stepRawValue = clamped }
-        else {
-            withAnimation(.easeInOut(duration: 0.22)) {
-                stepRawValue = clamped
-            }
-        }
-    }
-
-    private var analyticsStep: AnalyticsOnboardingTutorialStep {
-        switch step {
-        case .placement: .placement
-        case .systemMap: .systemMap
-        case .permissions: .permissions
-        case .quickAccess: .quickAccess
-        }
-    }
-
-    @MainActor
-    private func refreshPermissionState() async {
-        notificationAuthorization = await UNUserNotificationCenter.current()
-            .notificationSettings().authorizationStatus
-        permissionRefreshToken = UUID()
-    }
-
-    @MainActor
-    private func requestVoiceAccess() async {
-        guard !isRequestingPermission else { return }
-        isRequestingPermission = true
-        defer { isRequestingPermission = false }
-
-        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
-            await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { _ in continuation.resume() }
-            }
-        }
-        if AVAudioApplication.shared.recordPermission == .undetermined {
-            await withCheckedContinuation { continuation in
-                AVAudioApplication.requestRecordPermission { _ in continuation.resume() }
-            }
-        }
-        await refreshPermissionState()
-    }
-
-    @MainActor
-    private func requestNotificationAccess() async {
-        guard !isRequestingPermission else { return }
-        isRequestingPermission = true
-        _ = await ReminderScheduler.requestNotificationAuthorizationIfNeeded()
-        isRequestingPermission = false
-        await refreshPermissionState()
-    }
-
-    @available(iOS 26.0, *)
-    @MainActor
-    private func requestAlarmAccess() async {
-        guard !isRequestingPermission else { return }
-        isRequestingPermission = true
-        _ = try? await AlarmManager.shared.requestAuthorization()
-        isRequestingPermission = false
-        permissionRefreshToken = UUID()
-    }
-
-    private func openAppSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
-    }
-
-    private func openNotificationSettings() {
-        guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else {
-            openAppSettings()
-            return
-        }
-        UIApplication.shared.open(url)
-    }
-}
-
-struct FirstCaptureGuideView_Previews: PreviewProvider {
-    static var previews: some View {
-        FirstCaptureGuideView(
-            summary: .init(primary: .today, secondary: [.people]),
-            onCompleted: {},
-            onSkip: {}
-        )
-    }
-}
-
 /// One readiness center for capabilities that iOS owns. These are status rows
 /// and actions—not fake switches—because an app cannot truthfully toggle a
 /// system permission off or back on. A denied row routes to Settings; a fresh
@@ -1417,7 +781,7 @@ struct SpeakItReadinessView: View {
     /// Set only while the first-run tutorial owns this screen. `isOnboarding`
     /// is not the same question: this screen is also the resume point for
     /// somebody who made a first capture without walking the tutorial, and that
-    /// person is not on step 8 of anything.
+    /// person is not on step 7 of anything.
     let tutorialStep: TutorialStep?
     let onFinished: () -> Void
 
@@ -1842,15 +1206,14 @@ struct TutorialFinishedView: View {
     let remainingFreeCaptures: Int
     let onContinue: () -> Void
 
-    private var captureNoun: String {
-        remainingFreeCaptures == 1 ? "capture" : "captures"
-    }
-
+    /// The one line about the allowance, said once. Practice never touched
+    /// it, so the finish line is where the free captures begin.
     private var allowanceDetail: String {
         if remainingFreeCaptures > 0 {
-            return "Your next capture is your first real one. It will use 1 of \(remainingFreeCaptures) only after it is safely saved."
+            let noun = remainingFreeCaptures == 1 ? "capture starts" : "captures start"
+            return "Your \(remainingFreeCaptures) free \(noun) now."
         }
-        return "Practice did not change your allowance. You can still open everything you saved, and Pro enables unlimited new captures."
+        return "Practice didn’t use any captures. Everything you saved stays open, and Pro unlocks new ones."
     }
 
     var body: some View {
@@ -1882,9 +1245,6 @@ struct TutorialFinishedView: View {
                         .font(.largeTitle.weight(.semibold))
                     Text("Practice examples removed")
                         .font(.headline)
-                    Text("\(remainingFreeCaptures) free \(captureNoun) ready")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(Color.speakMuted)
                 }
                 .multilineTextAlignment(.center)
 
