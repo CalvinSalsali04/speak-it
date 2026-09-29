@@ -29,6 +29,12 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     @MainActor
     init?(item: CapturedItem) {
         guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
+        // A clock beside a place the person has not chosen between is not a
+        // clock to fire. Capture holds these with no reminder date; this
+        // catches the rows that have one anyway, such as "…when I get home
+        // tomorrow" stored before the hold, which would otherwise ring at
+        // 9 AM wherever the person is.
+        guard !item.awaitsPlaceOrTimeChoice else { return nil }
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these
         // requests on every render pass to keep its scheduling signature live,

@@ -153,8 +153,11 @@ enum SemanticCorpusR {
     // decides whether "remind me at …" names a place with a dozen clock shapes
     // of its own, so anything outside them became an arrival trigger for a
     // place that exists nowhere. It is closed by the rules above rather than by
-    // a longer list: the timing flow reads the time first and drops a
-    // searchable place whenever a time resolved.
+    // a longer list: the timing flow read the time first and dropped a
+    // searchable place whenever a time resolved. Since 2026-09-23 (DEL-18) a
+    // named place beside a time is held for review instead, so the place
+    // grammar now asks the temporal grammar about the object of that
+    // preposition before taking it as a place. The rows below are unchanged.
     static let internationalClock: [CorpusCase] = [
 
         // Zero-padded mornings.

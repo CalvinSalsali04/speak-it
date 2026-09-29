@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import os
 import SwiftData
 import WidgetKit
 
@@ -74,7 +75,91 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
-        resolveCombinedPlaceAndTimeHoldouts()
+        // A named place held beside a time is not released here any more.
+        // Since 2026-09-23 (DEL-18) capture holds it on purpose, as it holds a
+        // saved place beside a time, and a launch pass that re-armed its clock
+        // would undo that on every start. The pass below asks about a stored
+        // place-and-time row instead of releasing it. It runs after the
+        // backfill, because the backfill can give an old row the time that
+        // makes it one.
+        holdUnaskedPlaceAndTimeRowsForReview()
+    }
+
+    /// Content-free diagnostics for launch maintenance. Messages name a
+    /// state, never an item's words, and nothing here reaches analytics.
+    private static let launchMaintenanceLog = Logger(
+        subsystem: "com.calvinwak.SpeakIt",
+        category: "LaunchMaintenance"
+    )
+
+    /// Puts into review a stored place-and-time row that the scheduler
+    /// refuses and nothing asks about.
+    ///
+    /// `ReminderScheduleRequest` declines a row whose
+    /// `awaitsPlaceOrTimeChoice` is true, so its clock does not fire, and a
+    /// place beside a time is never monitored. Capture asks about every such
+    /// row by holding it in review. Rows stored before that hold (DEL-11,
+    /// DEL-18) carry `needsClarification == false`: they stay in Today while
+    /// nothing is armed and nothing asks. This pass
+    /// gives them the same question capture asks, and the editor's one save
+    /// (`update`, which marks the row reviewed and the time as set by hand)
+    /// answers it.
+    ///
+    /// Only the review flag and the modification date change. The words, the
+    /// place, the dates and the recurrence stay as stored, so choosing the
+    /// clock in the editor gives back exactly the reminder the row had.
+    ///
+    /// Selects exactly: not archived, not completed, not already in review,
+    /// not reviewed, a place beside a time, and a time not set by hand
+    /// (`isSelectedByUnaskedPlaceAndTimePass`). Idempotent, because a row it
+    /// moves is then in review and is no longer selected. A failed fetch
+    /// skips the pass until the next launch.
+    private func holdUnaskedPlaceAndTimeRowsForReview() {
+        let descriptor = FetchDescriptor<CapturedItem>(
+            predicate: #Predicate { item in
+                item.isArchived == false &&
+                    item.completedAt == nil &&
+                    item.needsClarification == false &&
+                    item.isReviewed == false
+            }
+        )
+        let candidates: [CapturedItem]
+        do {
+            candidates = try modelContext.fetch(descriptor)
+        } catch {
+            Self.launchMaintenanceLog.error(
+                "Place-and-time review pass could not fetch rows; skipped until the next launch"
+            )
+            return
+        }
+
+        var changed = false
+        for item in candidates where Self.isSelectedByUnaskedPlaceAndTimePass(item) {
+            item.needsClarification = true
+            item.lastModifiedAt = .now
+            changed = true
+        }
+        guard changed else { return }
+        do {
+            try persistChanges()
+        } catch {
+            // `persistChanges` rolls the context back, so the rows stay as
+            // stored, still refused by the scheduler, and the next launch
+            // selects them again.
+            Self.launchMaintenanceLog.error(
+                "Place-and-time review pass could not save; retried at the next launch"
+            )
+        }
+    }
+
+    /// The whole selection rule of `holdUnaskedPlaceAndTimeRowsForReview`,
+    /// including the part its fetch predicate already applies, so a test can
+    /// read the rule without a store.
+    static func isSelectedByUnaskedPlaceAndTimePass(_ item: CapturedItem) -> Bool {
+        !item.isArchived
+            && !item.isCompleted
+            && !item.needsClarification
+            && item.awaitsPlaceOrTimeChoice
     }
 
     private func recoverOrganization(of session: CaptureSession) {
@@ -118,51 +203,6 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         session.processingError = CaptureRecoveryAttemptLedger.quarantineMessage
         CaptureRecoveryAttemptLedger.quarantine(session.id)
         try? persistChanges()
-    }
-
-    /// Releases items that older builds held in review for naming a *named*
-    /// place and a time together ("when I go to Sobeys, remind me … in one
-    /// hour").
-    ///
-    /// A named place cannot be geofenced, so for those sentences the stated
-    /// time wins at capture, and legacy holdouts are re-derived the same way:
-    /// reparse the untouched original wording, keep the timed reading, drop
-    /// the unenforceable place trigger. A reminder whose moment has already
-    /// passed lands as an honest overdue row rather than staying stuck.
-    ///
-    /// A combination built on a *saved* place — "when I get home tonight" —
-    /// is deliberately left alone: it is held for review at capture on
-    /// purpose, because Speak It can enforce either half and must ask which.
-    /// A place the person set by hand in the editor is never touched either.
-    private func resolveCombinedPlaceAndTimeHoldouts() {
-        guard let items = try? modelContext.fetch(FetchDescriptor<CapturedItem>()) else { return }
-        var changed = false
-
-        for item in items
-        where !item.isArchived
-            && !item.isCompleted
-            && item.locationIntent.map({ intent in
-                if case .named = intent.place { true } else { false }
-            }) == true
-            && item.locationIntent?.isUserEdited != true
-            && (item.temporalKind ?? TemporalKind.none) != TemporalKind.none {
-            let reparsed = ThoughtOrganizer.organize(
-                item.originalTextSegment,
-                referenceDate: item.createdAt
-            )
-            item.locationIntent = nil
-            if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
-            if item.dueDate == nil { item.dueDate = reparsed.dueDate }
-            item.temporalIntent = reparsed.temporalIntent
-            item.needsClarification = reparsed.needsClarification
-            item.lastModifiedAt = .now
-            changed = true
-        }
-
-        guard changed else { return }
-        // Best effort, idempotent: an interrupted pass leaves the rest for the
-        // next launch. Scheduling happens in `reconcilePendingReminders`.
-        try? modelContext.save()
     }
 
     /// Gives rows written before schema version 2 the temporal intent they were

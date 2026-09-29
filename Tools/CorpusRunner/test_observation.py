@@ -622,7 +622,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
+    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (60, 18, 32, 32)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -874,7 +874,104 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         would have missed all three directions at once. The development-set overlap stayed at 114,
         so — unlike #79 — not one of the twenty-one is verbatim a devset
         row; that was checked by regenerating `LANGUAGE_BASELINE.md`,
-        not assumed from the wording. What the test
+        not assumed from the wording. 4068 -> 4109 on 2026-09-23, from
+        DEL-11, a saved place beside a bare day: forty-one literals,
+        enumerated rather than assumed. Nineteen are captures: eighteen
+        `corpusCase` rows added to `SemanticCorpusB.location`, plus the one
+        `LocationReminderTests` capture, `"Remind me to call Mom when I get
+        home tomorrow"`, which its three new tests share and which counts
+        once. Thirteen are `note:` arguments on those rows and nine are
+        assertion messages. One of the nine interpolates a place and a
+        temporal kind, and it counts once however many iterations print
+        it. The quoted "tonight" in the new comments is under twelve
+        characters and counts nothing. The development-set overlap stayed
+        at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        4109 -> 4145 on 2026-09-23, from the review of that change (the
+        place name ending where a time begins, the scheduler refusal, and a
+        named place beside a time held too): forty-eight added and twelve
+        removed, enumerated rather than assumed by diffing this population
+        at both commits. Added: eight `corpusCase` captures in
+        `SemanticCorpusB.location` (`"Remind me to call Mom when I get home
+        Friday"`, `"When I get home Friday, remind me to call Mom"`, `"When
+        I get to work Friday remind me to submit my timesheet"`, `"When I
+        get to work next Monday remind me to submit my timesheet"`, and
+        `"Remind me to water the plants when I get home"` followed by `on
+        the 15th`, `this weekend`, `August 20th` and `the day after
+        tomorrow`); four `note:` arguments, one of them on the Costco row
+        that moved; six test captures (`"Remind me at Costco tomorrow to
+        buy batteries"`, `"Remind me to bring the snacks when I get to
+        Sunday school"`, `"Remind me to buy bread when I get to the Monday
+        market"`, `"Remind me to get eggs, bread, and cheese in one hour"`,
+        `"Remind me to stretch when I get to the gym"`, `"When I go to
+        Sobeys in an hour, remind me to get eggs"`); two expected place
+        names, `"monday market"` and `"sunday school"`; twenty-five
+        assertion messages; and three phrases quoted in doc comments,
+        `"sobeys in an hour"`, `"work next monday"` and `"when I go to
+        Sobeys in an hour…"`, the hazard named above, hit once more. The development-set overlap
+        stayed at 114, checked by regenerating `LANGUAGE_BASELINE.md`.
+        Removed: the Costco row's old note and eleven assertion messages
+        from the tests that asserted the time won over a named place.
+        Three of the new assertion messages said "wait", and the `wait`
+        bullet pinned in `TheMotivatingFiguresAtTheTopAreRecomputed` counts
+        any utterance in this directory that contains the word, assertion
+        messages included: it moved from 58 rows to 60 on prose nobody
+        would say. The messages were first reworded to say "held" and
+        "stays" rather than the bullet repinned. Review called that what it
+        is, test prose edited to keep a figure, so on 2026-09-23 the three
+        messages were restored word for word and the bullet repinned from
+        (58, 18, 30, 33) to (60, 18, 32, 32), in `MOTIVATING` and in the
+        `observation.py` docstring. That this census reads assertion
+        messages as utterances is a defect in the instrument, left visible
+        rather than hidden. The count here does not move: three literals
+        out, the same three back.
+        4145 -> 4154 on 2026-09-23, from the second review of that change
+        (names that end in a number or a weekday): nine added, none
+        removed, enumerated by diffing this population at both commits.
+        Four test captures (`"Remind me to get a coffee when I get to gate
+        5"`, `"Remind me to drop off the forms when I get to room 204"`,
+        `"Remind me to grab a table when I get to TGI Fridays"`, `"Remind
+        me to grab napkins when I get to Ruby Tuesday"`), each also a
+        `corpusCase` in `SemanticCorpusB.location` except the room; three
+        `note:` arguments on those rows; and two phrases quoted in a doc
+        comment, `"Ruby Tuesday"` and `"Costco Tuesday"`. The
+        development-set overlap stayed at 114.
+        4154 -> 4155 on 2026-09-23, from aligning the scheduler refusal
+        with #138 (a place set by hand no longer releases the time beside
+        it): one assertion message added, `"a place set by hand does not
+        confirm the time beside it"`, none removed, found by diffing this
+        population at both commits. The overlap stayed at 114.
+        4155 -> 4159 on 2026-09-23, from making DEL-18's shift visible:
+        four added, none removed, found by diffing this population at both
+        commits. Two `corpusCase` captures in `SemanticCorpusB.location`
+        (`"Remind me to take my pills when I go to bed tonight"`, `"Remind me
+        to mute my phone when I'm in a meeting tomorrow"`) and their two
+        `note:` arguments. The overlap stayed at 114. Still 4159 on
+        2026-09-23 after the round-3 grade: those two notes each gained a
+        sentence saying the place they pin (bed, meeting) is a false place a
+        later fix should move, so two literals were replaced by two and the
+        count did not change.
+        4159 -> 4167 on 2026-09-23, from keeping the store list on a
+        shopping row held only by DEL-18's place-and-time hold: eight added,
+        none removed, found by diffing this population at both commits. One
+        test, `testOnlyThePlaceAndTimeHoldKeepsAReviewRowOnTheStoreList`,
+        brought its capture (`"When I get to Costco tomorrow, buy milk"`),
+        a trip fixture's quote and title (`"go to Costco"`, `"Go to
+        Costco"`) and five assertion messages (`"fixture: the hold puts the
+        row in review"`, `"the hold alone keeps the store's list"`, `"a row
+        in review for another reason names no list"`, `"the hold beside
+        another question names no list"`, `"the dated trip keeps its
+        reminder beside a held list"`). Its `"buy milk"` and `"Buy milk"`
+        were already in the population.
+        4167 -> 4190 on 2026-09-23, from the launch pass that moves a
+        stored place-and-time row nobody was asked about into review (F7):
+        23 added, none removed, found by diffing this population at both
+        commits. Three tests in `SwiftDataThoughtRepositoryTests` brought a
+        title (`"Take out the garbage"`), a phrase quoted in a doc comment
+        (`"when I get home tomorrow"`), two row names (`"time set by
+        hand"`, `"already in review"`), three interpolated messages read
+        as literal text (`"\\(name): review flag changed"` and two
+        siblings) and 16 other assertion messages.
+        What the test
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
@@ -888,7 +985,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4190)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
