@@ -322,4 +322,29 @@ final class ReleaseReadinessTests: XCTestCase {
             )
         }
     }
+
+    /// The profile screen was removed, and with it the only way to see or
+    /// delete the name and email it kept. Launch clears what earlier builds
+    /// stored, and leaves every other setting alone.
+    func testRetiredProfileDetailsAreClearedWithoutTouchingOtherSettings() throws {
+        let suiteName = "ReleaseReadinessTests.retiredProfile.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: "SpeakIt.account.hasProfile")
+        defaults.set("Maya", forKey: "SpeakIt.account.name")
+        defaults.set("maya@example.com", forKey: "SpeakIt.account.email")
+        defaults.set("dark", forKey: "SpeakIt.appearance")
+
+        RetiredAccountProfile.clearStoredDetails(in: defaults)
+
+        for key in RetiredAccountProfile.keys {
+            XCTAssertNil(defaults.object(forKey: key), key)
+        }
+        XCTAssertEqual(defaults.string(forKey: "SpeakIt.appearance"), "dark")
+
+        // A second launch finds nothing to clear and changes nothing.
+        RetiredAccountProfile.clearStoredDetails(in: defaults)
+        XCTAssertEqual(defaults.string(forKey: "SpeakIt.appearance"), "dark")
+    }
 }

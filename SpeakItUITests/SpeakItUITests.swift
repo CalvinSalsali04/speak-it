@@ -35,7 +35,7 @@ final class SpeakItUITests: XCTestCase {
         let todayAccount = app.buttons["today.account"]
         assertMinimumTouchTarget(todayAccount)
         todayAccount.coordinate(withNormalizedOffset: CGVector(dx: 0.12, dy: 0.5)).tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
         app.navigationBars.buttons["Done"].tap()
 
         let memoryTab = app.buttons["dock.memory"]
@@ -52,7 +52,7 @@ final class SpeakItUITests: XCTestCase {
         let memoryAccount = app.buttons["memory.account"]
         assertMinimumTouchTarget(memoryAccount)
         memoryAccount.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.5)).tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
     }
 
     func testShoppingListOpensAndRemainsResponsive() {
@@ -564,7 +564,13 @@ final class SpeakItUITests: XCTestCase {
         let app = launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
+        // Learn Speak It lives in Help, the last section, so it can start
+        // below the fold.
         let learn = app.buttons["settings.learn-speak-it"]
+        for _ in 0..<8 where !learn.exists {
+            app.swipeUp()
+        }
         XCTAssertTrue(learn.waitForExistence(timeout: 4))
         learn.tap()
 
@@ -592,13 +598,14 @@ final class SpeakItUITests: XCTestCase {
         )
     }
 
-    func testShareInvitationLivesWithPlanWithoutRewardLanguage() {
+    func testShareInvitationLivesInHelpWithoutRewardLanguage() {
         let app = launchApp("--ui-testing-skip-welcome", "--show-account")
 
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Create your profile"].exists)
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        // The optional profile was removed; nothing offers to create one.
+        XCTAssertFalse(app.buttons["Create your profile"].exists)
         let share = app.buttons["settings.share-speak-it"]
-        for _ in 0..<3 where !share.exists {
+        for _ in 0..<8 where !share.exists {
             app.swipeUp()
         }
         XCTAssertTrue(share.waitForExistence(timeout: 4))
@@ -615,7 +622,7 @@ final class SpeakItUITests: XCTestCase {
             "--show-account"
         )
 
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
         let referrals = app.buttons["settings.referrals"]
         for _ in 0..<3 where !referrals.exists {
             app.swipeUp()
@@ -637,7 +644,7 @@ final class SpeakItUITests: XCTestCase {
         let app = launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
         let light = app.buttons["Light"]
         XCTAssertTrue(light.waitForExistence(timeout: 3))
         XCTAssertTrue(light.isSelected)
@@ -664,7 +671,7 @@ final class SpeakItUITests: XCTestCase {
             : launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
         switch mode {
         case "system":
             let light = app.buttons["Light"]
@@ -697,7 +704,7 @@ final class SpeakItUITests: XCTestCase {
         let app = launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
 
         let captureAnywhere = app.buttons["settings.capture-anywhere"]
         for _ in 0..<3 where !captureAnywhere.exists {
@@ -716,7 +723,7 @@ final class SpeakItUITests: XCTestCase {
         let app = launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
 
         let picker = app.descendants(matching: .any)["settings.default-reminder-time"].firstMatch
         for _ in 0..<6 where !picker.exists {
@@ -733,7 +740,7 @@ final class SpeakItUITests: XCTestCase {
         let app = launchApp("--ui-testing-skip-welcome")
 
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
 
         // The settings list is lazy, so the row has to be scrolled into being.
         let toggle = app.switches["settings.lock-screen-task-names"]
@@ -783,7 +790,7 @@ final class SpeakItUITests: XCTestCase {
         )
         waitForLaunchWorkToFinish(in: app)
         app.buttons["today.account"].tap()
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 6))
         app.buttons["settings.plan"].tap()
         XCTAssertTrue(app.navigationBars["Speak It Pro"].waitForExistence(timeout: 6))
 

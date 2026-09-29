@@ -173,6 +173,7 @@ struct SpeakItApp: App {
             UserDefaults.standard.set(true, forKey: "SpeakIt.hasCompletedWelcome")
         }
 #endif
+        RetiredAccountProfile.clearStoredDetails()
         let container = PersistenceController.shared
         modelContainer = container
         repository = SwiftDataThoughtRepository(modelContext: container.mainContext)

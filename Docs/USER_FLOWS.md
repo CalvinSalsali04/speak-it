@@ -3,7 +3,7 @@
 ## First launch
 
 1. See the promise, the explicit **Tap → Speak → Pause** interaction, and that no account is required or command vocabulary has to be learned.
-2. Start in Light appearance. System and Dark remain explicit choices in Account & Settings and persist once chosen.
+2. Start in Light appearance. System and Dark remain explicit choices in Settings and persist once chosen.
 3. Choose **Try it now** to enter a resumable practice journey, or **Skip for now** to enter the empty real product. The journey is eight numbered steps, and every tutorial surface carries the same **TUTORIAL** badge, the same **Step N of 8** count, and the same eight-segment bar: the two practice captures, the four teaching cards on the real Today and Memory screens, Capture Anywhere, and the readiness centre. While a step is happening inside the real app, a tutorial bar stays pinned above Today and Memory so a teaching card next to the person's own rows can never be mistaken for the app itself, and **Exit** is always in the same place. Practice provides one concrete action example and always leaves **Type this example** available; microphone and speech permission are requested only if the person actually starts listening. Every practice capture uses a visible **End tutorial** action instead of an ambiguous X, and ending enters the empty real product without consuming a capture.
 4. A practice capture is checked against the step it belongs to before the journey advances. Each step has one definition of what it needs — a task naming a person for the first, an idea for the second — and the person's own wording satisfies it: "ask Maya about the proposal" passes without a time. When the capture cannot carry the step, the confirmation reads **Almost — one more go**, shows what their words actually became, names what the step needs, and offers **Try again** and **Use this example**. The attempt is deleted rather than left in the real library, and it spends no free capture. Nothing advances on a capture that would send a teaching card to a screen its row is not on, which is what used to end the journey at step 2 with only Exit on screen.
 5. Save “Tomorrow at 9, ask Maya about the proposal” through the real capture pipeline. Mark its session as tutorial data, schedule no real interruption, and spend none of the ten free captures.
@@ -18,7 +18,7 @@
 
 ## Learn Speak It
 
-1. Open Account & Settings and choose **Learn Speak It** at any time.
+1. Open Settings and choose **Learn Speak It** at any time.
 2. Browse short lessons for getting started, routing, correcting results, multi-thought captures, reminders, places, capture anywhere, Calendar handoff, privacy, recovery, and the Free/Pro boundary.
 3. Use concrete example phrases without needing to repeat onboarding or reset app state.
 
@@ -32,7 +32,7 @@
 ## Lock Screen glance
 
 1. The Speak It Today widget shows how many things are open, in the inline, circular, or rectangular slot.
-2. Task names stay hidden until the user turns on **Show task names on the Lock Screen** in Account & Settings, so a locked iPhone shows only a count. The rectangular slot then lists the next three tasks under its header, each on its own marked row. The first row is the soonest due: it is set in bold and shows its clock time. The other two are lighter names only. The inline slot shows the next task, and the count still carries everything beyond the three.
+2. Task names stay hidden until the user turns on **Show task names on the Lock Screen** in Settings, so a locked iPhone shows only a count. The rectangular slot then lists the next three tasks under its header, each on its own marked row. The first row is the soonest due: it is set in bold and shows its clock time. The other two are lighter names only. The inline slot shows the next task, and the count still carries everything beyond the three.
 3. Tapping the widget opens Today. Completion is deliberately not offered on the Lock Screen; it remains on the Home Screen families.
 
 ## Manual capture

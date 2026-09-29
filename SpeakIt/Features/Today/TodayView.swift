@@ -693,7 +693,7 @@ struct TodayView: View {
                     }
             }
             .buttonStyle(.speakIt)
-            .accessibilityLabel("Account and settings")
+            .accessibilityLabel("Settings")
             .accessibilityIdentifier("today.account")
         }
     }

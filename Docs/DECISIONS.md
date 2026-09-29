@@ -3129,3 +3129,35 @@ that row.
 **No cost-ledger row is owed.** Nothing here changes an executable line of the
 engine — the skips are test-side, and INC58 is a development row whose answer
 the next language dispatch reports — so no sealed measure can move.
+
+## 2026-09-29 — Settings, not an account
+
+The top-right button on Today and Memory opened "Account & Settings", whose
+first row was an optional profile: a name and an email kept in `UserDefaults`.
+Nothing read them. They did not sign in, sync, unlock Pro or appear anywhere
+else, and the form said so itself. A privacy-first app asking for an email and
+giving nothing back is a cost with no return, so the profile is removed.
+
+Launch clears the three keys earlier builds wrote
+(`RetiredAccountProfile.clearStoredDetails`). Leaving them would keep an email
+address on the phone that the person can no longer see or delete. Thoughts,
+the subscription and every other setting are untouched. The `profile_created`
+analytics event is retired with it; the founder dashboard's count keeps its
+history and stops growing.
+
+The top-right button keeps its person icon (with the Pro checkmark badge).
+A gear was tried and screenshotted; Calvin preferred the person icon as the
+familiar way into the app's own settings, even with no account behind it. Its
+accessibility label now says "Settings".
+
+The screen is regrouped by what a person reaches for: Plan, Capture, Reminders,
+Appearance, Privacy, History, Help. "Capture & reminders" had grown to seven
+rows mixing links with inline controls, and "Learn Speak It" sat alone near the
+top. Completed and Capture history are the person's own things, so they sit
+together under History rather than among preferences.
+
+Not changed here: most rows still open a sheet while Learn Speak It and the
+referral row push, though every row shows the same chevron. Converting the
+sheets means checking each child view's own navigation stack and Done button
+on a simulator, so it is left for a change that can be run.
+

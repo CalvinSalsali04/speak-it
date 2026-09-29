@@ -247,7 +247,7 @@ enum TemporalResolver {
     /// The time used to alert about a day that carries no time of day. It is a
     /// property of the *notification*, never of the intent, so a date-only item
     /// still knows it has no time even when it alerts at 9 AM. The person sets
-    /// it under Settings → Capture & reminders; see `ReminderDefaults`.
+    /// it under Settings → Reminders; see `ReminderDefaults`.
     static var dateOnlyAlertHour: Int { ReminderDefaults.alertTime.hour }
     static var dateOnlyAlertMinute: Int { ReminderDefaults.alertTime.minute }
 
