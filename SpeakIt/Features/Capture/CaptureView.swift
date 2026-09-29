@@ -338,6 +338,7 @@ struct CaptureView: View {
             case .unavailable:
                 noSpeechTimeoutTask?.cancel()
                 Task { await CaptureActivityManager.cancelListening() }
+                SpeakItAnalytics.track(.captureFailed(source: .voice, category: "speech"))
                 continueByTyping(
                     notice: "Voice recognition isn’t available here. You can keep going by typing."
                 )
@@ -347,6 +348,7 @@ struct CaptureView: View {
                 if hasRecoverableActiveAudio {
                     recoverActiveAudio()
                 } else {
+                    SpeakItAnalytics.track(.captureFailed(source: .voice, category: "speech"))
                     continueByTyping(
                         notice: "Voice had trouble starting. Your thought can still be saved by typing."
                     )
@@ -1097,11 +1099,20 @@ struct CaptureView: View {
 
         Task { @MainActor in
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                let recovered = try await CaptureAudioRecovery.transcribeReportingEnding(draft)
                 isRecoveringAudio = false
-                save(recoveredText, source: .inAppVoice)
+                SpeakItAnalytics.track(.captureRecovery(
+                    path: .liveAudio,
+                    outcome: .recovered(recovered.ending)
+                ))
+                save(recovered.text, source: .inAppVoice)
             } catch {
                 isRecoveringAudio = false
+                SpeakItAnalytics.track(.captureRecovery(
+                    path: .liveAudio,
+                    outcome: .failed(CaptureRecoveryFailureKind(error: error))
+                ))
+                SpeakItAnalytics.track(.captureFailed(source: .voice, category: "speech"))
                 CaptureDraftStore.markFailed(id: draft.id, error: error)
                 continueByTyping(
                     notice: "Your recording is safe. Type this thought now, or recover it later from Today."
@@ -1125,6 +1136,7 @@ struct CaptureView: View {
             } else {
                 transcriber.cancel()
                 discardActiveDraft()
+                SpeakItAnalytics.track(.captureFailed(source: .voice, category: "speech"))
                 if let quality = transcriber.lastAudioQuality, quality.isVeryQuiet {
                     voiceNotice = "That was very quiet. Bring the iPhone closer and try once more."
                 } else if let quality = transcriber.lastAudioQuality, quality.isLikelyClipped {
@@ -1216,7 +1228,12 @@ struct CaptureView: View {
         }
         if source == .inAppVoice {
             if let quality = transcriber.lastAudioQuality {
-                SpeakItAnalytics.track(.speechCaptureQuality(quality, producedWords: true))
+                SpeakItAnalytics.track(.speechCaptureQuality(
+                    quality,
+                    producedWords: true,
+                    finalizedBy: transcriber.lastFinalizationPath,
+                    stopTrigger: transcriber.lastStopTrigger
+                ))
             }
             performance?.updateSource(.voice)
             let finalizedAt = transcriber.finalTranscriptAt ?? CapturePerformanceClock.now
@@ -1290,12 +1307,22 @@ struct CaptureView: View {
                         subscriptionStore.recordSuccessfulCapture()
                     }
                     if tutorialMission == nil {
-                        SpeakItAnalytics.track(.captureSaved(
-                            source: source == .inAppVoice ? .voice : .text,
-                            itemCount: result.itemCount,
-                            needsReviewCount: result.needsReviewCount,
-                            plan: subscriptionStore.hasProAccess ? .pro : .free
-                        ))
+                        // The words are durable either way. A capture whose
+                        // organization failed is reported under that stage
+                        // rather than counted as saved and organized.
+                        if result.session.processingStatus == .failed {
+                            SpeakItAnalytics.track(.captureFailed(
+                                source: source == .inAppVoice ? .voice : .text,
+                                category: "organization"
+                            ))
+                        } else {
+                            SpeakItAnalytics.track(.captureSaved(
+                                source: source == .inAppVoice ? .voice : .text,
+                                itemCount: result.itemCount,
+                                needsReviewCount: result.needsReviewCount,
+                                plan: subscriptionStore.hasProAccess ? .pro : .free
+                            ))
+                        }
                     }
                 }
                 if replacesRetrySource, let retrySource {
@@ -1397,7 +1424,7 @@ struct CaptureView: View {
                 closesAfterSave = false
                 SpeakItAnalytics.track(.captureFailed(
                     source: source == .inAppVoice ? .voice : .text,
-                    category: "organization"
+                    category: SpeakItAnalyticsEvent.captureFailureCategory(forSaveError: error)
                 ))
                 errorMessage = error.localizedDescription
             }
