@@ -57,6 +57,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
+                // An unfinished capture's rows are on screen before recovery
+                // reaches them: a `.failed` row waits in Needs review, and an
+                // interrupted placeholder is visible from the first frame
+                // while audio drafts recover. Once the person has put a hand
+                // on one of them, the rows are theirs. Re-reading the words
+                // would write the organizer's answer over their edit, and
+                // could delete the row or add others beside it, so the
+                // session is closed as it stands instead. The transcript is
+                // kept, and `Organize again` is still there to ask for it.
+                if session.items.contains(where: { Self.carriesPersonsDecision($0) }) {
+                    CaptureRecoveryAttemptLedger.finish(session.id)
+                    closeSession(session)
+                    continue
+                }
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
                 // every launch until the app is deleted. The launch is counted
@@ -75,6 +89,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         polishPersistedDisplayTitles()
         backfillTemporalIntents()
         resolveCombinedPlaceAndTimeHoldouts()
+    }
+
+    /// Whether a row holds something only the person could have put there.
+    ///
+    /// Every hand on a row leaves one of these marks: `update` and
+    /// `markReviewed` set `isReviewed` (and an edit also stamps `isUserEdited`
+    /// on the intents it wrote), `setCompleted` sets `completedAt`, and
+    /// `setArchived` sets `isArchived`. No automatic path sets any of them on
+    /// a session that is still unfinished: a spoken operation from another
+    /// capture could, through `setCompleted` or `update`, so it holds for
+    /// review instead (see `awaitsOrganization`). `lastModifiedAt` is
+    /// deliberately not used: the organizer and the fallback row stamp it too.
+    private static func carriesPersonsDecision(_ item: CapturedItem) -> Bool {
+        item.isReviewed
+            || item.isCompleted
+            || item.isArchived
+            || item.temporalIntent?.isUserEdited == true
+            || item.locationIntent?.isUserEdited == true
+    }
+
+    /// Whether a row belongs to a capture launch recovery has yet to organize.
+    /// Such a row is the durable placeholder (or an organized row of a save
+    /// that failed), and recovery may still replace it.
+    private static func awaitsOrganization(_ item: CapturedItem) -> Bool {
+        guard let session = item.captureSession else { return false }
+        return session.processingStatus != .complete
     }
 
     private func recoverOrganization(of session: CaptureSession) {
@@ -1217,6 +1257,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         case 1:
             let item = candidates[0]
             let itemID = item.id
+            // A row of a capture that was never organized is a placeholder,
+            // not a commitment: its segment is the whole transcript, so "move
+            // the plumber to Friday" matches "Call the plumber and book the
+            // car service". Acting on it would stamp the marks that launch
+            // recovery reads as the person's hand (and a cancel would delete
+            // the whole capture with its transcript), so the other thought
+            // would never be organized. It is held for the person instead.
+            // Not dropped from the search: as the only match, dropping it
+            // would report nothing found and drop the request, and beside
+            // another match it would make that one look certain.
+            guard !Self.awaitsOrganization(item) else {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: request.operation, candidateIDs: [itemID])
+            }
             let title = item.displayTitle
             do {
                 switch request.operation {
