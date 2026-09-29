@@ -422,6 +422,46 @@ Today's collapsed disclosure sections were fixed by not building their rows whil
 
 The consequence elsewhere has not been measured. Every remaining `.accessibilityHidden(true)` in the app hides a decorative image — `CapturedItemRow`, `ShoppingListView`, `PlaceSetupView`, `ItemEditorView`, `RootView` — and on this OS none of them is likely to be doing what it says. XCUITest and VoiceOver read the same tree but are not the same client, so whether these images are actually *spoken* needs the hands-on VoiceOver pass, not another automated run. Nothing hidden this way carries an action, so the risk is verbosity rather than a wrong tap.
 
+## Organize again keeps only the time and the place a person set
+
+*2026-09-23.* A re-read (Organize again, split, merge, undo, launch
+recovery) keeps the due date, reminder date, temporal intent and repeat
+rule of a row saved in the editor, as it already kept a place set there (see
+`DECISIONS.md`). What it
+still does not keep:
+
+- **The other editor fields.** Title, type, category, priority and person
+  have no per-field mark, so a re-read replaces them. A title typed by hand
+  is recorded in `HandEditedTitleStore`, which launch title polish honours
+  and `apply` does not. The dialog says so.
+- **The mark means "saved in the editor", not "a time set in the
+  editor".** `update(_:with:)` stamps `isUserEdited` on the temporal intent
+  on every editor save, even one that changed only the title or the
+  priority. So once a row has been saved in the editor, no later re-read
+  updates its time again. That includes a re-read after the person has
+  corrected the words: the corrected sentence is read, but the time stays
+  where it was, and only setting the time in the editor changes it. Keeping
+  too much is the safer mistake here, but it is a mistake.
+- **Row identity is positional.** The kept time stays on whichever row the
+  re-read puts at the same position. When the re-read splits the capture
+  differently, the time can sit on a different thought, exactly as a kept
+  place already could. Split always keeps the original row as part 0, so a
+  hand-set time stays on part 0 even when the words that carry a time go to
+  part 1; `testSplitKeepsATimeSetByHandOnPartZeroEvenWhenTheTimeWordsMoveToPartOne`
+  pins this as it is, not as it should be.
+- **The repeat rule goes with the kept time, even onto a fragment.** The
+  time family is kept whole, so the `RecurrenceStore` rule is not re-read
+  either. After a split, part 0 keeps a repeat rule that was read from the
+  whole original sentence, although its words are now only a fragment of
+  it. A kept place never carried a repeat rule, so this is new with the
+  kept time rather than inherited from it.
+- **The re-read verdict still flags the row.** `needsClarification` and
+  `semanticState` refresh, so a row whose time the person set can still ask
+  about its time (`ambiguousTemporalScope`) after Organize again.
+- **Not yet compiled or run.** The change and its six tests in
+  `SwiftDataThoughtRepositoryTests` were written without a Swift toolchain;
+  the unit suite and release build on a Mac have not run them.
+
 ## Clarification reasons are inferred, not recorded
 
 `CapturedItem.needsClarification` is a single `Bool`, so the reason extraction had at capture time is discarded. `ThoughtOrganizer` knows when it wanted a reminder and could not parse a time, `ThoughtExtractor` knows when it kept a capture whole because splitting it looked unsafe, and the on-device model path knows when it was simply unconfident — all three collapse into one flag.
