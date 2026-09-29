@@ -109,11 +109,11 @@ final class AppStoreScreenshotTests: XCTestCase {
         app.terminate()
     }
 
-    /// 06: Account & Settings scrolled to the default reminder time picker.
+    /// 06: Settings scrolled to the default reminder time picker.
     private func captureDefaultReminderTime(appearance: String, into directory: URL) {
         let app = launchApp(appearance: appearance, "--show-account")
 
-        XCTAssertTrue(app.navigationBars["Account & Settings"].waitForExistence(timeout: 10), "settings")
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10), "settings")
         let picker = app.descendants(matching: .any)["settings.default-reminder-time"].firstMatch
         for _ in 0..<8 where !picker.exists {
             app.swipeUp()

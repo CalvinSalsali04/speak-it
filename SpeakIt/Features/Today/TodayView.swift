@@ -681,9 +681,7 @@ struct TodayView: View {
             Button {
                 showsAccountSettings = true
             } label: {
-                Image(systemName: subscriptionStore.hasProAccess
-                      ? "person.crop.circle.fill.badge.checkmark"
-                      : "person.crop.circle")
+                Image(systemName: "gearshape")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(Color.speakInk)
                     .frame(width: 44, height: 44)
@@ -693,7 +691,7 @@ struct TodayView: View {
                     }
             }
             .buttonStyle(.speakIt)
-            .accessibilityLabel("Account and settings")
+            .accessibilityLabel("Settings")
             .accessibilityIdentifier("today.account")
         }
     }

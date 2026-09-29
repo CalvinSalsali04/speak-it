@@ -4,10 +4,23 @@ extension Notification.Name {
     static let speakItUseTestPrompt = Notification.Name("SpeakIt.useTestPrompt")
 }
 
-enum AccountProfileKeys {
-    static let hasProfile = "SpeakIt.account.hasProfile"
-    static let name = "SpeakIt.account.name"
-    static let email = "SpeakIt.account.email"
+/// Speak It once offered an optional on-device "profile": a name and an email
+/// kept in `UserDefaults`. Nothing ever read them — no sign-in, sync or Pro
+/// depended on them — so the screen was removed. What earlier builds stored is
+/// cleared at launch so a phone does not keep an email address the person can
+/// no longer see or delete. Thoughts and the subscription are untouched.
+enum RetiredAccountProfile {
+    static let keys = [
+        "SpeakIt.account.hasProfile",
+        "SpeakIt.account.name",
+        "SpeakIt.account.email",
+    ]
+
+    static func clearStoredDetails(in defaults: UserDefaults = .standard) {
+        for key in keys where defaults.object(forKey: key) != nil {
+            defaults.removeObject(forKey: key)
+        }
+    }
 }
 
 struct AccountSettingsView: View {
@@ -15,9 +28,6 @@ struct AccountSettingsView: View {
     @Environment(\.thoughtRepository) private var repository
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
-    @AppStorage(AccountProfileKeys.hasProfile) private var hasProfile = false
-    @AppStorage(AccountProfileKeys.name) private var profileName = ""
-    @AppStorage(AccountProfileKeys.email) private var profileEmail = ""
     @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
     @State private var defaultReminderTime = ReminderDefaults.alertDate()
     @State private var morningBriefEnabled = HabitDefaults.morningBriefEnabled
@@ -28,7 +38,6 @@ struct AccountSettingsView: View {
     @AppStorage(LockScreenTodayVisibility.showsTaskNamesKey)
     private var showsLockScreenTaskNames = false
 
-    @State private var showsAccountSetup = false
     @State private var showsPro = false
     @State private var showsCaptureSetup = false
     @State private var showsReadiness = false
@@ -39,46 +48,13 @@ struct AccountSettingsView: View {
     @State private var showsPlaces = false
     @State private var showsICloudSync = false
     @State private var showsPrivacy = false
-    @State private var confirmsProfileRemoval = false
 
     var body: some View {
         NavigationStack {
+            // Ordered by how often each part is reached for: the plan first,
+            // then how capture and reminders behave, then how the app looks,
+            // what it reveals, what it has done, and help last.
             List {
-                Section {
-                    accountHeader
-
-                    if hasProfile {
-                        Button("Edit profile") { showsAccountSetup = true }
-                        Button("Remove profile from this iPhone", role: .destructive) {
-                            confirmsProfileRemoval = true
-                        }
-                    } else {
-                        Button {
-                            showsAccountSetup = true
-                        } label: {
-                            Label("Create your profile", systemImage: "person.crop.circle.badge.plus")
-                        }
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        LearnSpeakItView()
-                    } label: {
-                        HStack(spacing: 14) {
-                            settingsSymbol("book.closed")
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Learn Speak It")
-                                    .foregroundStyle(Color.speakInk)
-                                Text("Examples and short guides you can revisit anytime")
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.speakMuted)
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("settings.learn-speak-it")
-                }
-
                 Section("Plan") {
                     Button {
                         showsPro = true
@@ -140,7 +116,107 @@ struct AccountSettingsView: View {
                             }
                         }
                         .accessibilityIdentifier("settings.referrals")
-                    } else {
+                    }
+                }
+
+                Section("Capture") {
+                    settingsButton("Make Speak It ready", symbol: "checklist") {
+                        showsReadiness = true
+                    }
+                    settingsButton("Capture anywhere", symbol: "waveform") {
+                        showsCaptureSetup = true
+                    }
+                    settingsButton("Names & phrases", symbol: "textformat.abc") {
+                        showsVocabulary = true
+                    }
+                    settingsButton("Places", symbol: "house") {
+                        showsPlaces = true
+                    }
+                }
+
+                Section("Reminders") {
+                    defaultReminderTimeRow
+                    morningBriefRow
+                    settingsButton("Reminder check", symbol: "bell") {
+                        showsReminderSettings = true
+                    }
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearanceRawValue) {
+                        ForEach(SpeakItAppearance.allCases) { appearance in
+                            Label(appearance.title, systemImage: appearance.symbol)
+                                .tag(appearance.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("Privacy") {
+                    Toggle(isOn: $showsLockScreenTaskNames) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Show task names on the Lock Screen")
+                                .foregroundStyle(Color.speakInk)
+                            // Still names every surface the promise covers
+                            // (Lock Screen, StandBy, capture receipts) and the
+                            // two that always show names, just in fewer words.
+                            Text("When off, a locked iPhone shows only how many things are open, including in StandBy and on capture receipts. Home Screen widgets and reminder notifications still name the task.")
+                                .font(.footnote)
+                                .foregroundStyle(Color.speakMuted)
+                        }
+                    }
+                    .tint(Color.speakToggleTint)
+                    .accessibilityIdentifier("settings.lock-screen-task-names")
+
+                    Toggle(isOn: $analyticsEnabled) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Share anonymous app analytics")
+                                .foregroundStyle(Color.speakInk)
+                            Text("Helps improve reliability and understand which features are useful. Never includes what you say or type.")
+                                .font(.footnote)
+                                .foregroundStyle(Color.speakMuted)
+                        }
+                    }
+                    .tint(Color.speakToggleTint)
+                    .accessibilityIdentifier("settings.anonymous-analytics")
+
+                    if ICloudSyncState.isCapabilityConfigured {
+                        settingsButton("iCloud sync", symbol: "icloud") {
+                            showsICloudSync = true
+                        }
+                    }
+                    settingsButton("Privacy", symbol: "hand.raised") {
+                        showsPrivacy = true
+                    }
+                }
+
+                Section("History") {
+                    settingsButton("Completed", symbol: "checkmark.circle") {
+                        showsCompleted = true
+                    }
+                    settingsButton("Capture history", symbol: "clock.arrow.circlepath") {
+                        showsCaptureHistory = true
+                    }
+                }
+
+                Section("Help") {
+                    NavigationLink {
+                        LearnSpeakItView()
+                    } label: {
+                        HStack(spacing: 14) {
+                            settingsSymbol("book.closed")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Learn Speak It")
+                                    .foregroundStyle(Color.speakInk)
+                                Text("Examples and short guides you can revisit anytime")
+                                    .font(.footnote)
+                                    .foregroundStyle(Color.speakMuted)
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("settings.learn-speak-it")
+
+                    if !ReferralProgramConfiguration.isEnabled {
                         ShareLink(
                             item: SpeakItSharing.message,
                             subject: Text("Speak It")
@@ -163,84 +239,6 @@ struct AccountSettingsView: View {
                         }
                         .accessibilityIdentifier("settings.share-speak-it")
                     }
-                }
-
-                Section("Appearance") {
-                    Picker("Theme", selection: $appearanceRawValue) {
-                        ForEach(SpeakItAppearance.allCases) { appearance in
-                            Label(appearance.title, systemImage: appearance.symbol)
-                                .tag(appearance.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section("Capture & reminders") {
-                    settingsButton("Make Speak It ready", symbol: "checklist") {
-                        showsReadiness = true
-                    }
-                    settingsButton("Capture anywhere", symbol: "waveform") {
-                        showsCaptureSetup = true
-                    }
-                    settingsButton("Reminder check", symbol: "bell") {
-                        showsReminderSettings = true
-                    }
-                    settingsButton("Names & phrases", symbol: "textformat.abc") {
-                        showsVocabulary = true
-                    }
-                    settingsButton("Places", symbol: "house") {
-                        showsPlaces = true
-                    }
-                    defaultReminderTimeRow
-                    morningBriefRow
-                }
-
-                Section("Activity") {
-                    settingsButton("Completed", symbol: "checkmark.circle") {
-                        showsCompleted = true
-                    }
-                    settingsButton("Capture history", symbol: "clock.arrow.circlepath") {
-                        showsCaptureHistory = true
-                    }
-                }
-
-                Section("Data & privacy") {
-                    if ICloudSyncState.isCapabilityConfigured {
-                        settingsButton("iCloud sync", symbol: "icloud") {
-                            showsICloudSync = true
-                        }
-                    }
-                    settingsButton("Privacy", symbol: "hand.raised") {
-                        showsPrivacy = true
-                    }
-
-                    Toggle(isOn: $analyticsEnabled) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Share anonymous app analytics")
-                                .foregroundStyle(Color.speakInk)
-                            Text("Helps improve reliability and understand which features are useful. Never includes what you say or type.")
-                                .font(.footnote)
-                                .foregroundStyle(Color.speakMuted)
-                        }
-                    }
-                    .tint(Color.speakToggleTint)
-                    .accessibilityIdentifier("settings.anonymous-analytics")
-
-                    Toggle(isOn: $showsLockScreenTaskNames) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Show task names on the Lock Screen")
-                                .foregroundStyle(Color.speakInk)
-                            // Names every surface the promise actually covers.
-                            // It used to say only "the Lock Screen widget",
-                            // while StandBy, the capture receipt and Siri each
-                            // read task text on a locked phone.
-                            Text("Off by default. On the Lock Screen, in StandBy, and on capture receipts, Speak It shows only how many things are open — so a locked iPhone never reveals what they are. Home Screen widgets always show names, and a reminder notification shows the task it is reminding you about; iOS decides whether that is visible while locked.")
-                                .font(.footnote)
-                                .foregroundStyle(Color.speakMuted)
-                        }
-                    }
-                    .tint(Color.speakToggleTint)
-                    .accessibilityIdentifier("settings.lock-screen-task-names")
                 }
 
 #if DEBUG
@@ -274,7 +272,7 @@ struct AccountSettingsView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Color.speakBackground)
-            .navigationTitle("Account & Settings")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -300,9 +298,6 @@ struct AccountSettingsView: View {
             SpeakItAnalytics.recordAppOpen(
                 plan: subscriptionStore.hasProAccess ? .pro : .free
             )
-        }
-        .sheet(isPresented: $showsAccountSetup) {
-            AccountSetupView()
         }
         .sheet(isPresented: $showsPro) {
             SpeakItProView(context: .account)
@@ -334,46 +329,6 @@ struct AccountSettingsView: View {
         .sheet(isPresented: $showsPrivacy) {
             SpeakItPrivacyView()
         }
-        .confirmationDialog(
-            "Remove this profile?",
-            isPresented: $confirmsProfileRemoval,
-            titleVisibility: .visible
-        ) {
-            Button("Remove profile", role: .destructive, action: removeProfile)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your thoughts and subscription will not be deleted.")
-        }
-    }
-
-    private var accountHeader: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.speakInverseSurface)
-                    .frame(width: 58, height: 58)
-                if hasProfile, let initial = profileName.first {
-                    Text(String(initial).uppercased())
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(Color.speakInverseInk)
-                } else {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 21, weight: .medium))
-                        .foregroundStyle(Color.speakInverseInk)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(hasProfile ? profileName : "Your Speak It")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.speakInk)
-                Text(hasProfile ? profileEmail : "Create an optional profile after you’ve tried the app.")
-                    .font(.subheadline)
-                    .foregroundStyle(Color.speakMuted)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 8)
     }
 
     private var planDetail: String {
@@ -503,12 +458,6 @@ struct AccountSettingsView: View {
             .background(Color.speakInk.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
     }
 
-    private func removeProfile() {
-        hasProfile = false
-        profileName = ""
-        profileEmail = ""
-    }
-
 #if DEBUG
     private func useTestPrompt(_ prompt: String) {
         dismiss()
@@ -518,93 +467,6 @@ struct AccountSettingsView: View {
         }
     }
 #endif
-}
-
-private struct AccountSetupView: View {
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage(AccountProfileKeys.hasProfile) private var hasProfile = false
-    @AppStorage(AccountProfileKeys.name) private var storedName = ""
-    @AppStorage(AccountProfileKeys.email) private var storedEmail = ""
-
-    @State private var name: String
-    @State private var email: String
-    @FocusState private var focusedField: Field?
-
-    private enum Field {
-        case name
-        case email
-    }
-
-    init() {
-        _name = State(initialValue: UserDefaults.standard.string(forKey: AccountProfileKeys.name) ?? "")
-        _email = State(initialValue: UserDefaults.standard.string(forKey: AccountProfileKeys.email) ?? "")
-    }
-
-    private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            email.contains("@") && email.contains(".")
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Name", text: $name)
-                        .textContentType(.name)
-                        .textInputAutocapitalization(.words)
-                        .focused($focusedField, equals: .name)
-                    TextField("Email", text: $email)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .email)
-                } header: {
-                    Text(hasProfile ? "Your profile" : "Create your profile")
-                } footer: {
-                    // The behaviour is permanent, so it is stated as permanent.
-                    // "During this beta" was the only use of the word in the
-                    // app, on a screen App Review reaches on the way to Restore
-                    // Purchases.
-                    Text("Profile details stay on this iPhone. Purchases and iCloud remain securely connected through your Apple Account.")
-                }
-
-                Section {
-                    Button(hasProfile ? "Save changes" : "Create profile") {
-                        // Read before the write below flips it, so edits to an
-                        // existing profile do not count as new profiles.
-                        let isFirstTimeCreation = !hasProfile
-
-                        storedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        storedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        hasProfile = true
-
-                        if isFirstTimeCreation {
-                            SpeakItAnalytics.track(.profileCreated)
-                        }
-                        dismiss()
-                    }
-                    .disabled(!canSave)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.speakBackground)
-            .navigationTitle(hasProfile ? "Edit Profile" : "Create Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focusedField = nil }
-                }
-            }
-            .onAppear {
-                if !hasProfile { focusedField = .name }
-            }
-        }
-    }
 }
 
 #if DEBUG
@@ -1197,9 +1059,6 @@ private struct TestCustomerJourneyView: View {
     }
 
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
-    @AppStorage(AccountProfileKeys.hasProfile) private var hasProfile = false
-    @AppStorage(AccountProfileKeys.name) private var profileName = ""
-    @AppStorage(AccountProfileKeys.email) private var profileEmail = ""
     @AppStorage("SpeakIt.hasDismissedProDiscovery") private var dismissedDiscovery = false
     @AppStorage(SpeechCaptureAudioProfile.selectionDefaultsKey)
     private var speechAudioProfileRawValue = SpeechCaptureAudioProfile.spokenAudio.rawValue
@@ -1255,9 +1114,6 @@ private struct TestCustomerJourneyView: View {
 
             Section("Start") {
                 Button {
-                    hasProfile = false
-                    profileName = ""
-                    profileEmail = ""
                     dismissedDiscovery = false
                     subscriptionStore.startDeveloperCustomerJourney()
                 } label: {
@@ -1457,7 +1313,7 @@ private struct LearnSpeakItLesson: Identifiable, Hashable {
             symbol: "iphone.radiowaves.left.and.right",
             title: "Capture from anywhere",
             summary: "Reach Speak It without finding the app first.",
-            detail: "Open Account & Settings → Capture anywhere to choose one method and test it. Speak It recommends the Action Button on supported iPhones and the Lock Screen everywhere else. Control Center, a Home Screen Capture widget, and Back Tap are also available.",
+            detail: "Open Settings → Capture anywhere to choose one method and test it. Speak It recommends the Action Button on supported iPhones and the Lock Screen everywhere else. Control Center, a Home Screen Capture widget, and Back Tap are also available.",
             examples: []
         ),
         .init(
@@ -1466,7 +1322,7 @@ private struct LearnSpeakItLesson: Identifiable, Hashable {
             symbol: "rectangle.grid.2x2",
             title: "Widgets",
             summary: "Capture quickly or see Today at a glance.",
-            detail: "Add Speak It Capture to the Home Screen or Lock Screen for one-tap voice capture. Add Speak It Today to see open tasks and complete them from supported Home Screen widgets. Lock Screen task names stay hidden unless you explicitly turn them on in Account & Settings.",
+            detail: "Add Speak It Capture to the Home Screen or Lock Screen for one-tap voice capture. Add Speak It Today to see open tasks and complete them from supported Home Screen widgets. Lock Screen task names stay hidden unless you explicitly turn them on in Settings.",
             examples: []
         ),
         .init(

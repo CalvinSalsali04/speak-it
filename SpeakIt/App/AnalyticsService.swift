@@ -85,9 +85,6 @@ enum SpeakItAnalyticsEvent: Sendable {
     case firstCaptureGuideCompleted
     case learnSpeakItOpened
     case captureAnywhereDiscoveryDismissed
-    /// The optional on-device profile was created for the first time. Carries
-    /// no properties: the name and email never leave the phone.
-    case profileCreated
     case captureStarted(mode: AnalyticsCaptureMode, entry: AnalyticsCaptureEntry)
     case captureSaved(source: AnalyticsCaptureSource, itemCount: Int, needsReviewCount: Int, plan: AnalyticsPlan)
     case captureFailed(source: AnalyticsCaptureSource, category: String)
@@ -122,7 +119,6 @@ enum SpeakItAnalyticsEvent: Sendable {
         case .firstCaptureGuideCompleted: "first_capture_guide_completed"
         case .learnSpeakItOpened: "learn_speak_it_opened"
         case .captureAnywhereDiscoveryDismissed: "capture_anywhere_discovery_dismissed"
-        case .profileCreated: "profile_created"
         case .captureStarted: "capture_started"
         case .captureSaved: "capture_saved"
         case .captureFailed: "capture_failed"
@@ -169,8 +165,6 @@ enum SpeakItAnalyticsEvent: Sendable {
             ["tutorial_step": step.rawValue]
         case .onboardingPermissionAction(let capability):
             ["capability": capability.rawValue]
-        case .profileCreated:
-            [:]
         case .captureStarted(let mode, let entry):
             ["mode": mode.rawValue, "entry": entry.rawValue]
         case .captureSaved(let source, let itemCount, let needsReviewCount, let plan):

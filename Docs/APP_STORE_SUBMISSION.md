@@ -194,7 +194,7 @@ xcodebuild ... SPEAKIT_ANALYTICS_KEY=phc_your_project_key
 
 Analytics defaults to enabled when a key is present
 (`SpeakItAnalytics.configuration` writes `true` when the preference is unset),
-with a user-facing off switch in Account & Settings.
+with a user-facing off switch in Settings.
 
 Your App Privacy answers must match
 `SpeakIt/PrivacyInfo.xcprivacy`, which already declares:
@@ -284,12 +284,11 @@ use advertising SDKs.
 
 ---
 
-## 5. Profile naming — done
+## 5. Profile — removed
 
-The optional name and email stored locally in `UserDefaults` are consistently
-called a profile. Speak It no longer offers to “Create account,” so the UI
-matches the no-account product and avoids implying server-side account creation
-or deletion requirements that do not apply.
+Speak It no longer offers a profile. The optional name and email it once kept
+in `UserDefaults` were never read by anything, and launch now clears them, so
+there is no account creation or deletion requirement to meet.
 
 ## 6. Store listing — todo
 

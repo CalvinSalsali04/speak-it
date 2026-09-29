@@ -783,9 +783,7 @@ struct LibraryView: View {
             Button {
                 showsAccountSettings = true
             } label: {
-                Image(systemName: subscriptionStore.hasProAccess
-                      ? "person.crop.circle.fill.badge.checkmark"
-                      : "person.crop.circle")
+                Image(systemName: "gearshape")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(Color.speakInk)
                     .frame(width: 44, height: 44)
@@ -793,7 +791,7 @@ struct LibraryView: View {
                     .overlay { Circle().stroke(Color.speakDivider, lineWidth: 1) }
             }
             .buttonStyle(.speakIt)
-            .accessibilityLabel("Account and settings. \(memoryItems.count) saved memories")
+            .accessibilityLabel("Settings. \(memoryItems.count) saved memories")
             .accessibilityIdentifier("memory.account")
         }
     }

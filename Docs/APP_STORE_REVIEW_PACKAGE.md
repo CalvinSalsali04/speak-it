@@ -59,19 +59,19 @@ FREE ALLOWANCE AND PRO
 - Ten captures are free in total (a one-time lifetime allowance, not monthly). Practice, completing, cancelling and editing existing items never spend a capture.
 - After the first counted capture, a dismissible "Speak It Pro" sheet appears once ("Continue using Speak It free" keeps the free plan). It appears once more when three free captures remain.
 - The eleventh capture attempt shows the Pro screen with the plan cards, "Not now", "Restore Purchases", "Privacy Policy" and "Terms" (Apple's standard EULA). "Not now" returns to the app; everything saved stays readable and editable.
-- Speak It Pro is a standard auto-renewable subscription in one group: Monthly (com.calvinwak.SpeakIt.pro.monthly) and Annual (com.calvinwak.SpeakIt.pro.annual). Prices come from StoreKit. Account & Settings > Plan opens the same Pro screen, which also offers "Manage Subscription" (Apple's subscriptions page) and "Redeem Code" (Apple's redemption sheet). No Speak It server is involved in purchases.
+- Speak It Pro is a standard auto-renewable subscription in one group: Monthly (com.calvinwak.SpeakIt.pro.monthly) and Annual (com.calvinwak.SpeakIt.pro.annual). Prices come from StoreKit. Settings > Plan opens the same Pro screen, which also offers "Manage Subscription" (Apple's subscriptions page) and "Redeem Code" (Apple's redemption sheet). No Speak It server is involved in purchases.
 
 BACKGROUND MODE: AUDIO
 The audio background mode exists for one reason: a capture the person started keeps recording and transcribing if they swipe home or lock the phone mid-sentence, so their words are not cut off. The audio session is active only during a capture. Speak It plays no audio and records nothing outside a capture the person began.
 
 LOCATION
-Location is never requested at launch or by onboarding. When In Use is requested only if the person taps "Use my current location" while setting a Home or Work place (dragging the map or searching an address needs no permission). Always is requested only inside a place reminder ("remind me when I get home") after When In Use, with an in-app explanation, because a geofence must fire while the app is closed. Declining keeps the reminder; its row reads "Needs location permission" and the editor offers the way to Settings. No location is transmitted to us. To test: Account & Settings > Capture & reminders > Places, set Home by dragging the map, then capture "remind me to take the bins out when I get home".
+Location is never requested at launch or by onboarding. When In Use is requested only if the person taps "Use my current location" while setting a Home or Work place (dragging the map or searching an address needs no permission). Always is requested only inside a place reminder ("remind me when I get home") after When In Use, with an in-app explanation, because a geofence must fire while the app is closed. Declining keeps the reminder; its row reads "Needs location permission" and the editor offers the way to Settings. No location is transmitted to us. To test: Settings > Capture > Places, set Home by dragging the map, then capture "remind me to take the bins out when I get home".
 
 OTHER NOTES
 - Back Tap is optional: the app cannot assign it and only guides the person to Settings > Accessibility > Touch > Back Tap using the included "Speak It Capture" shortcut.
 - Live transcription uses Apple's Speech framework and may be processed by Apple; the app's own interrupted-capture recovery runs on-device only.
 - The referral program ("Give a month. Get a month.") is not live in this build; the Plan section shows a plain "Share Speak It" share sheet instead.
-- Anonymous analytics are opt-out in Account & Settings > Data & privacy and never contain what the person said or typed.
+- Anonymous analytics are opt-out in Settings > Privacy and never contain what the person said or typed.
 
 ---
 
@@ -141,8 +141,8 @@ property keys are a closed allowlist (`allowedPropertyKeys`).
 
 | Apple data type | Collected? | Linked to identity? | Used for tracking? | Purpose and evidence |
 | --- | --- | --- | --- | --- |
-| Contact Info — Name | Not collected | — | — | The optional profile name lives in `UserDefaults` on device and is never sent. |
-| Contact Info — Email Address | Not collected | — | — | Same as name. |
+| Contact Info — Name | Not collected | — | — | Speak It does not ask for a name. Earlier builds kept an optional profile name on device only; launch now clears it. |
+| Contact Info — Email Address | Not collected | — | — | Not asked for; any email an earlier build kept on device is cleared at launch. |
 | Contact Info — Phone Number | Not collected | — | — | Never requested. |
 | Contact Info — Physical Address | Not collected | — | — | Home/Work places stay on device; Apple Maps search is Apple's processing, not ours. |
 | Contact Info — Other User Contact Info | Not collected | — | — | — |
