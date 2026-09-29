@@ -125,6 +125,18 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The line under the example. It used to say "or use your own words"
+    /// for every step, but the task step only continues when those words name
+    /// a person, so a first-time user following it could be asked to try
+    /// again for doing exactly what the card said.
+    var wordingHint: String {
+        switch self {
+        case .action: "Say it naturally, or use your own task as long as it names someone."
+        case .idea: "Say it naturally, or share an idea of your own."
+        case .quickAccess: "Say it naturally, or use your own words."
+        }
+    }
+
     /// Why this capture cannot carry the step, in the person's terms.
     ///
     /// Names what the step needs rather than what they did wrong. The capture
@@ -135,7 +147,7 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
         case .action:
             "The next steps follow a task to the person it belongs to, so this one needs a name and something to do."
         case .idea:
-            "The next step opens the idea stages, so this one needs something you are thinking about rather than a task."
+            "The next step shows where ideas go in Memory, so this one needs something you are thinking about rather than a task."
         case .quickAccess:
             ""
         }
@@ -920,10 +932,24 @@ struct CaptureView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("tutorial.missionExample")
 
-                Text("Say it naturally, or use your own words.")
+                Text(tutorialMission.wordingHint)
                     .font(.footnote)
                     .foregroundStyle(Color.speakMuted)
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Said before the person speaks, not only on the receipt
+                // afterwards, so nobody holds back during practice to save
+                // their allowance. The remaining count rather than the
+                // plan's ten: the ledger
+                // survives a reinstall, and a returning person walking the
+                // tutorial again may have fewer left.
+                if !subscriptionStore.hasProAccess, subscriptionStore.freeCapturesRemaining > 0 {
+                    Text(practiceAllowanceNote)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Color.speakMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("tutorial.practiceFree")
+                }
 
                 // Always offered, whatever is on screen.
                 //
@@ -972,6 +998,12 @@ struct CaptureView: View {
         .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("tutorial.practiceBanner")
+    }
+
+    private var practiceAllowanceNote: String {
+        let remaining = subscriptionStore.freeCapturesRemaining
+        let noun = remaining == 1 ? "capture starts" : "captures start"
+        return "Practice is free. Your \(remaining) free \(noun) after the tutorial."
     }
 
     private func endTutorial() {

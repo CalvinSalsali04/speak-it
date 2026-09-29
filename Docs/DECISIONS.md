@@ -3188,3 +3188,35 @@ vocabulary. Earlier builds may leave one stale date under
 user content and nothing reads it.
 
 The morning brief and the "All clear for today" line are unchanged.
+
+## 2026-09-29 — A seven-step tutorial that says practice is free up front
+
+Calvin asked for an honest look at the first-run tutorial. The first answer
+proposed replacing it with one real, unscripted capture; he disagreed. A new
+user should be guided on what to say and see how the product works, practice
+must never count toward the ten free captures, and the free captures start once
+the tutorial ends, which the person should be told. Within that, five changes:
+
+- The practice card says "Practice is free. Your N free captures start after
+  the tutorial." before the person speaks. It used to be said only on the
+  receipt afterwards. N is the remaining count, not the plan's ten, because the
+  ledger survives a reinstall.
+- The task step's hint said "or use your own words", but it only continues on
+  words that name a person, so following the card could be answered with "one
+  more go". Each mission now has its own hint.
+- People and the person's page share step 3, "Find the person", because they
+  are one lesson across two screens. The idea step ("Where ideas go") shows the
+  row in Ideas and continues on its button; changing a stage is left for later
+  use, and the stage picker no longer carries tutorial guidance. Seven steps.
+- The finish screen said the allowance twice; it now says "Your N free captures
+  start now." once.
+- `FirstCaptureGuideView` and its private step enum were referenced only by
+  their own preview and are removed.
+
+He also floated a walkthrough that drives itself, where the app does each part
+for the person. Not taken: the two practice recordings and a handful of taps are
+what make the person trust where things land, and the trimmed tutorial is
+already shorter. A self-driving tour over the real Today and Memory screens
+would also depend on scripted scrolling and presentation timing that has broken
+the spotlight steps before.
+
