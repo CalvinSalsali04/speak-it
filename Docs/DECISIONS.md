@@ -1,5 +1,66 @@
 # Decisions
 
+## 2026-09-23 — The refinement budget ends the wait, not just the model call
+
+`IntelligentThoughtExtractor.extractWithinBudget` raced the model call against
+a two-second timer inside `withTaskGroup`. A task group does not return until
+every child has returned, `cancelAll()` included, so a timer that won only
+cancelled the model call and then waited for it to finish. How long the
+capture waited was set by how quickly the model call noticed it had been
+cancelled, which nothing here controls. The V1 performance audit found this
+by reading (`/mnt/project-files/v1/audits/performance.md`, item 2). It fits
+the earlier measurement on the owner's Mac, where the refinement ran past its
+budget on 17 of 21 complex captures. That run timed the model's own answer
+with no budget applied (every answer of two or more items took over two
+seconds), so this change sets how long a capture waits, not what it gets:
+an answer that arrives after the budget was dropped before and still is
+(`/mnt/project-files/v1/audits/fm-budget-effect.md`).
+
+`BudgetedWork.firstResult(within:_:)` replaces the group. The model call and
+the timer run as two unstructured tasks, the first to settle resumes the
+capture, and the loser is cancelled and not awaited. An answer that arrives
+after the budget is dropped, as before. A capture that is itself cancelled
+stops waiting at once.
+
+**Hypothesis:** a capture sent for refinement waits at most the budget plus
+scheduling slack, whatever the model call does with cancellation.
+**Falsifier:** `BudgetedWorkTests`, whose stand-in work ignores cancellation
+and answers after five seconds. Under the task group the first and fourth
+tests wait the full five seconds and fail; here they must return within two. The
+token tests pin the cap, the cancelled capture, the token coming back from
+a capture cancelled mid-call, and the deadline.
+On a device, a `SemanticParsing` signpost interval well above 2.1 seconds on
+a capture that was sent for refinement falsifies it.
+
+**What this does not change.** The budget is still two seconds, the capture
+still keeps the rules reading when the model is late, and the refinement gate
+(Needs Review, 1,500 characters) is untouched.
+
+**One call at a time, now on purpose.** The old wait capped model calls at
+one in flight by accident: the capture could not return until the call did.
+With the wait bounded, a late call keeps running until it notices its
+cancellation, and nothing else serialises calls (`extract` builds a new
+`LanguageModelSession` each time), so quick captures could each leave one
+running. `InFlightToken` restores the cap: while an abandoned call runs, the
+next capture skips refinement at once and keeps the rules reading. The token
+is released when the call itself ends. That costs a capture its refinement
+at worst, never its words. A capture already cancelled when it reaches the
+refinement no longer starts a call at all.
+
+Because only the call releases the token, a call that never returns would
+hold it for the rest of the process and turn refinement off until the next
+launch, silently. So a claim older than twenty seconds, ten budgets, counts
+as free, and claims are numbered so the hung call's eventual release cannot
+free the claim that replaced it. The cost of a truly hung call is then two
+model calls in flight for a while, and refinement stays available. Each
+takeover emits a `RefinementClaimTakenOver` signpost, so whether twenty
+seconds is long enough can be checked with Instruments attached to a device
+rather than assumed. A signpost is not retained, so this is a lab check, not
+a field count. A capture refused because a call is still running emits
+nothing; that is the case that costs a person a refinement, and counting it
+belongs with the beta diagnostics, not here. The grade of this change found
+both (`/mnt/project-files/v1/pr146-fm-budget-grade.md`, F1 and F2).
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
