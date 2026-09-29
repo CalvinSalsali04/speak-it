@@ -537,6 +537,9 @@ struct RootView: View {
             // old access, so those are retried too.
             LocationReminderMonitor.shared.clearMonitoringFailures()
             repository?.reconcileLocationReminders()
+            // Today's Needs review follows authorization, so the widget's
+            // count and its "next" item have to be rebuilt with it.
+            repository?.publishSharedTodaySnapshot()
         }
         // iOS refused a region after accepting the call to monitor it. What the
         // app believes it is watching is now wrong, so the monitored set is

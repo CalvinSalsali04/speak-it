@@ -597,10 +597,52 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func reconcileSharedTodayActions() {
-        for pending in SharedTodayStore.pendingActions() {
+        reconcileSharedTodayActions(
+            authorization: LocationReminderMonitor.shared.authorization,
+            now: .now
+        )
+    }
+
+    /// Applies the widget's queued taps, except a completion of a row Today
+    /// now holds for review.
+    ///
+    /// The widget draws from a file written the last time the app ran. A
+    /// permission revoked in Settings while the app was closed reaches no
+    /// delegate and republishes nothing, so the file can still offer a row
+    /// Today would now hold, and a tap on it is queued here. Applying it would
+    /// complete the row the person is about to be asked about, through the
+    /// widget rather than the shortcut. So the queued tap is dropped and the
+    /// row waits in Needs review. Dropping loses a tap the person made;
+    /// keeping it would re-apply forever or complete a held row, and the
+    /// person can still finish it from Needs review in one tap. A dropped tap
+    /// is not an outcome either, so the morning brief does not count it as
+    /// something finished away from the app.
+    ///
+    /// `actionsIn` names the queue's folder for a test; `nil` is the app
+    /// group's, which is what every caller in the app uses.
+    func reconcileSharedTodayActions(
+        authorization: LocationAuthorization,
+        now: Date,
+        actionsIn directory: URL? = nil
+    ) {
+        let pendingActions = directory.map { SharedTodayStore.pendingActions(in: $0) }
+            ?? SharedTodayStore.pendingActions()
+        for pending in pendingActions {
             do {
                 switch pending.action.kind {
                 case .complete:
+                    if let item = try findItem(withID: pending.action.itemID),
+                       item.requiresReview(authorization: authorization) {
+                        SharedTodayStore.removeAction(at: pending.url)
+                        // `continue` moves on to the next queued tap. The
+                        // `break` in the catch below is not its twin: it sits
+                        // outside the `switch`, so as an unlabeled `break` it
+                        // leaves the whole loop (inside the `switch` it would
+                        // only end the `switch`). The model store failing to
+                        // answer a read or a write stops the drain, and every
+                        // remaining tap is retried at the next one.
+                        continue
+                    }
                     try performReminderAction(
                         itemIDs: [pending.action.itemID],
                         action: .complete
@@ -694,37 +736,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func publishSharedTodaySnapshot() {
-        // The store narrows to live items, then `belongsInToday` decides
-        // membership. Restating that rule as a `#Predicate` would both exceed
-        // the type-checker's budget and risk drifting from the model.
-        let descriptor = FetchDescriptor<CapturedItem>(
-            predicate: #Predicate { item in
-                item.isArchived == false &&
-                    item.completedAt == nil &&
-                    item.needsClarification == false
-            }
-        )
         let now = Date.now
-        guard let candidates = try? modelContext.fetch(descriptor) else { return }
-        var count = 0
-        var first: [CapturedItem] = []
-        for item in candidates where item.belongsInToday && item.isWithinTodayHorizon(relativeTo: now) {
-            count += 1
-            let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
-            if insertion < 8 {
-                first.insert(item, at: insertion)
-                if first.count > 8 { first.removeLast() }
-            }
-        }
-        let snapshot = SharedTodaySnapshot(
-            generatedAt: now,
-            openCount: count,
-            items: first.map {
-                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
-                                isUrgent: $0.priority == .urgent)
-            },
-            showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
-        )
+        guard let snapshot = makeSharedTodaySnapshot(
+            authorization: LocationReminderMonitor.shared.authorization,
+            now: now
+        ) else { return }
         if let previous = lastPublishedToday,
            previous.openCount == snapshot.openCount, previous.items == snapshot.items,
            previous.showsTaskNamesOnLockScreen == snapshot.showsTaskNamesOnLockScreen,
@@ -733,6 +749,56 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             lastPublishedToday = snapshot
             WidgetCenter.shared.reloadTimelines(ofKind: "SpeakItToday")
         }
+    }
+
+    /// What the widget, the Lock Screen summary and "Complete my next item"
+    /// are allowed to see, judged against one authorization answer.
+    ///
+    /// Membership is `belongsOnTodaySurface(authorization:relativeTo:)`, the
+    /// predicate Today itself partitions on, and nothing restated beside it.
+    /// This used to read the stored `belongsInToday` with a stored
+    /// `needsClarification == false` prefilter, which knows what the sentence
+    /// left open but not what the device lacks: a place reminder with location
+    /// permission denied sat in Today's Needs review while the widget counted
+    /// it, offered it a complete button, and let the App Shortcut complete it
+    /// as the next item. A row held for review is neither counted nor offered.
+    ///
+    /// Takes the authorization rather than reading it so a test can pin the
+    /// device state; `publishSharedTodaySnapshot()` passes the live one, as
+    /// every other non-UI caller of `LocationReminderMonitor` does.
+    func makeSharedTodaySnapshot(
+        authorization: LocationAuthorization,
+        now: Date
+    ) -> SharedTodaySnapshot? {
+        // The store narrows to live items; the model decides membership.
+        // Restating that rule as a `#Predicate` would both exceed the
+        // type-checker's budget and risk drifting from the model.
+        let descriptor = FetchDescriptor<CapturedItem>(
+            predicate: #Predicate { item in
+                item.isArchived == false && item.completedAt == nil
+            }
+        )
+        guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
+        var count = 0
+        var first: [CapturedItem] = []
+        for item in candidates
+        where item.belongsOnTodaySurface(authorization: authorization, relativeTo: now) {
+            count += 1
+            let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
+            if insertion < 8 {
+                first.insert(item, at: insertion)
+                if first.count > 8 { first.removeLast() }
+            }
+        }
+        return SharedTodaySnapshot(
+            generatedAt: now,
+            openCount: count,
+            items: first.map {
+                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
+                                isUrgent: $0.priority == .urgent)
+            },
+            showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
+        )
     }
 
 

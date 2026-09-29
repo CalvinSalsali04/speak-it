@@ -138,17 +138,32 @@ struct CompleteNextSpeakItItemIntent: AppIntent {
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let item = SharedTodayStore.load().items.first else {
-            return .result(dialog: "You’re all clear.")
-        }
-        try await MainActor.run {
+        // The file on disk was written the last time something saved, which
+        // can predate a permission revoked in Settings: a place reminder Today
+        // now holds in Needs review would still be first in it. So the choice
+        // is made from a snapshot rebuilt here, against the store and the live
+        // authorization, after draining the widget's queued completions so a
+        // task already finished from the widget cannot come back as "next".
+        let item: SharedTodayItem? = try await MainActor.run {
             let repository = SwiftDataThoughtRepository(
                 modelContext: PersistenceController.shared.mainContext
             )
+            repository.reconcileSharedTodayActions()
+            // A store that cannot be read is an error, not an empty Today:
+            // falling back to the file would reintroduce the stale choice.
+            guard let snapshot = repository.makeSharedTodaySnapshot(
+                authorization: LocationReminderMonitor.shared.authorization,
+                now: .now
+            ) else { throw RepositoryError.storageUnavailable }
+            guard let next = snapshot.items.first else { return nil }
             try repository.performReminderAction(
-                itemIDs: [item.id],
+                itemIDs: [next.id],
                 action: .complete
             )
+            return next
+        }
+        guard let item else {
+            return .result(dialog: "You’re all clear.")
         }
         return .result(dialog: "Completed \(item.title).")
     }
