@@ -285,7 +285,13 @@ struct CaptureView: View {
         .sheet(isPresented: $showsCaptureReview) {
             if let savedResult {
                 NavigationStack {
-                    CaptureSessionReviewView(session: savedResult.session)
+                    CaptureSessionReviewView(
+                        session: savedResult.session,
+                        // Merge and Undo delete rows this screen's
+                        // `savedResult` still holds. Without this the receipt
+                        // behind the sheet read them on its next render.
+                        onStructuralChange: { refreshSavedResultFromSession() }
+                    )
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("Done") { showsCaptureReview = false }
@@ -1463,6 +1469,30 @@ struct CaptureView: View {
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
             return "This needs a quick review. Your original words are safe."
         }
+    }
+
+    /// Re-reads the saved capture's rows after the review sheet reshapes them.
+    ///
+    /// `savedResult.items` is the array taken when the save returned. Split
+    /// inserts rows it does not hold; Merge and Undo delete rows it does, and
+    /// may keep a later row rather than the first. The receipt renders
+    /// `primaryItem` and counts from those items, and "Try saying it again"
+    /// deletes them, so a stale array had this screen reading and deleting
+    /// models that were already gone. The session is still the same one; only
+    /// which of its rows exist changed.
+    private func refreshSavedResultFromSession() {
+        guard let savedResult else { return }
+        let session = savedResult.session
+        let items = session.items.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        self.savedResult = CaptureCreationResult(
+            session: session,
+            items: items,
+            createdNewCapture: savedResult.createdNewCapture,
+            operationOutcome: savedResult.operationOutcome
+        )
     }
 
     /// True when the interpreter said the sentence itself stopped, rather than

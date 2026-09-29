@@ -1672,9 +1672,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             throw RepositoryError.invalidMerge
         }
 
-        let target = uniqueItems[0]
+        let target = survivingRow(of: uniqueItems)
         let previousRecurrences = RecurrenceStore.snapshots()
-        let removed = Array(uniqueItems.dropFirst())
+        let removed = uniqueItems.filter { $0.id != target.id }
         let sourceText = uniqueItems.map(\.originalTextSegment).joined(separator: " and ")
         let title = uniqueItems.map(\.displayTitle).joined(separator: " & ")
         let organization = ThoughtOrganizer.organize(
@@ -1693,7 +1693,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             confidence: 1,
             needsReview: organization.needsClarification
         )
-        apply(candidate, to: target, createdAt: target.createdAt, reviewed: true)
+        // The first row's slot, so the joined words keep their place in the
+        // list even when a later row is the one that survives.
+        apply(candidate, to: target, createdAt: uniqueItems[0].createdAt, reviewed: true)
         let removedIDs = removed.map(\.id)
         removed.forEach(modelContext.delete)
         session.processingStatus = .complete
@@ -1718,8 +1720,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let previousRecurrences = RecurrenceStore.snapshots()
         ensureFallbackItem(for: session)
         let ordered = orderedItems(in: session)
-        guard let target = ordered.first else { return }
-        let removed = Array(ordered.dropFirst())
+        guard !ordered.isEmpty else { return }
+        let target = survivingRow(of: ordered)
+        let removed = ordered.filter { $0.id != target.id }
         let rawOrganization = OrganizedThought(
             itemType: .unclear,
             category: .general,
@@ -2206,6 +2209,27 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             do { try persistChanges() } catch { return }
         }
         defaults.set(Self.titlePolishVersion, forKey: Self.titlePolishVersionKey)
+    }
+
+    /// The row a merge or an undo keeps, when it folds several rows into one.
+    ///
+    /// The earliest row that is still open: not completed, not archived. Only
+    /// when every row is closed does the earliest row survive as it is. The
+    /// survivor's `completedAt` and `isArchived` are never written by `apply`,
+    /// so choosing the survivor *is* choosing the result's state. Taking the
+    /// earliest row regardless folded open work into a row already marked done
+    /// or archived: it left Today, `synchronizeReminders` skipped it, and its
+    /// reminder was cancelled with nothing re-armed. A done row resurfacing as
+    /// open costs a tap; open work buried under a done one costs the reminder.
+    /// Decided 2026-09-23 in `Docs/DECISIONS.md`.
+    ///
+    /// The survivor is picked rather than the first row reopened, because
+    /// reopening in place would bypass `setCompleted`, which owns the link to a
+    /// completed series occurrence's generated successor.
+    ///
+    /// `ordered` must be non-empty and in `itemOrder`.
+    private func survivingRow(of ordered: [CapturedItem]) -> CapturedItem {
+        ordered.first(where: { !$0.isCompleted && !$0.isArchived }) ?? ordered[0]
     }
 
     private func orderedItems(in session: CaptureSession) -> [CapturedItem] {

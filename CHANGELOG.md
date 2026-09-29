@@ -12,6 +12,11 @@ Entries before September 2026 were reconstructed from the commit history and
   builds stored. Settings is regrouped as Plan, Capture, Reminders, Appearance, Privacy, History and
   Help, and the Lock Screen names footnote is shorter.
 - Build 19.
+- Merge and Undo in Capture details no longer fold open rows into one already
+  ticked done or archived. The result stays open unless every row was
+  closed, and a merged reminder is scheduled again. The capture
+  screen also re-reads its rows after a Split, Merge or Undo instead of
+  showing ones that were deleted.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
   light window in place until the next launch.
