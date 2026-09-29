@@ -10,6 +10,9 @@ all (the brief is a switch under Capture & reminders, beside the default
 reminder time), no weekly nudge, and the brief's settings in `HabitDefaults`
 rather than `UserPreferences`. Phases 3 and 4 remain proposals.
 
+2026-09-29: the week row is removed (`Docs/DECISIONS.md`, "No week dots on
+Today"). The morning brief and the All clear line stay.
+
 ## Recommendation in one paragraph
 
 Do not copy Duolingo. Copy the two things that make Duolingo work — a reward

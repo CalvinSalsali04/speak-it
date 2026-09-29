@@ -878,7 +878,13 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         is actually
         guarding — that the two readings of "multi-word" still agree exactly
         and in both directions —
-        is the assertion above, and it is unaffected.
+        is the assertion above, and it is unaffected. 4068 -> 4065 on
+        2026-09-29, from removing the week dots on Today with their test
+        file, `ActivityLedgerTests`. The three literals it took with it were
+        enumerated by diffing this set against `origin/main`, not inferred
+        from the count: two expected accessibility labels (`"This week: 1
+        active day"`, `"This week: 2 active days"`) and one assertion message
+        (`"Saturday the 5th is last week"`). None was a language fixture.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -888,7 +894,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4068)
+        self.assertEqual(len(space), 4065)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
