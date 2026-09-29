@@ -6246,7 +6246,6 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             .taskCompletionChanged(completed: true),
             .memoryCollectionOpened(collection: "ideas"),
             .memorySearchPerformed(results: .oneToFive),
-            .weekRowShown(activeDays: 4),
             .morningBriefEnabled(source: .settings),
             .morningBriefDisabled(source: .autoStop)
         ]

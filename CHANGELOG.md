@@ -7,6 +7,9 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- The seven week dots beside the date on Today are removed, along with the
+  `week_row_shown` analytics event. The morning brief and the All clear line
+  are unchanged.
 - Settings replaces "Account & Settings". The optional profile (a name and
   email that nothing in the app used) is gone, and launch clears what earlier
   builds stored. Settings is regrouped as Plan, Capture, Reminders, Appearance, Privacy, History and

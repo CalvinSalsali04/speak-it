@@ -2383,6 +2383,8 @@ was told they had.
 
 ## 2026-09-08 — The habit loop is seven dots and one silent note
 
+The seven dots were removed on 2026-09-29; see "No week dots on Today".
+
 Speak It gets the two things that make Duolingo work and none of the rest
 (`Docs/GAMIFICATION_PROPOSAL.md`). A first cut shipped more than this and was
 trimmed the same day after an honest look at the screen: the first action on
@@ -3161,3 +3163,28 @@ referral row push, though every row shows the same chevron. Converting the
 sheets means checking each child view's own navigation stack and Done button
 on a simulator, so it is left for a change that can be run.
 
+## 2026-09-29 — No week dots on Today
+
+The seven dots beside Today's date are removed. Calvin asked whether the app
+should have a streak at all, looked at three alternatives (the same dots with a
+caption and a "kept up" count, a lifetime count on Memory, a classic daily
+streak) and liked none of them, then chose removal over keeping the dots as
+they were.
+
+The reason is that the row did little. At seven points wide with no words, a
+person had no way to learn what a filled dot meant, so it was neither a
+motivator nor information. It was also the one thing on Today that was not
+something to do, and Today is for action. A classic streak stays refused for
+the reasons in `Docs/GAMIFICATION_PROPOSAL.md`: it turns a missed day into a
+loss, and ten lifetime free captures cannot sustain one.
+
+Nothing is lost: the dots were derived from `CaptureSession.createdAt` and
+`CapturedItem.completedAt` every time and stored nothing but the day they were
+last reported to analytics. `WeekRowView`, `ActivityLedger` and their tests are
+gone; `HabitDefaults` keeps the morning brief's settings in its own file. The
+`week_row_shown` event and its `active_days` property leave the analytics
+vocabulary. Earlier builds may leave one stale date under
+`SpeakIt.habit.lastWeekRowAnalyticsDay` in the app-group defaults; it is not
+user content and nothing reads it.
+
+The morning brief and the "All clear for today" line are unchanged.

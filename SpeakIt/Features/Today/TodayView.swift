@@ -175,9 +175,6 @@ struct TodayView: View {
     ) private var captureSessions: [CaptureSession]
     @Query(sort: \CaptureSession.createdAt, order: .reverse)
     private var allCaptureSessions: [CaptureSession]
-    /// Derived from the store on appear, on foreground, on save, on
-    /// completion, and at the day change; never stored.
-    @State private var weekActivity: WeekActivity?
 
     let onCapture: () -> Void
     let onDockVisibilityChange: (Bool) -> Void
@@ -589,7 +586,6 @@ struct TodayView: View {
         }
         .onAppear {
             referenceNow = .now
-            refreshActivity()
             reloadRecoveryAudioDrafts()
             reportsDockVisible = true
             onDockVisibilityChange(true)
@@ -607,15 +603,6 @@ struct TodayView: View {
         }
         .onReceive(minuteTimer) { date in
             referenceNow = date
-        }
-        .onChange(of: referenceNow) { previous, current in
-            // The dots move at midnight, not when the clock ticks.
-            if !Calendar.autoupdatingCurrent.isDate(previous, inSameDayAs: current) {
-                refreshActivity()
-            }
-        }
-        .onChange(of: allCaptureSessions.count) { _, _ in
-            refreshActivity()
         }
         // Three signals, because none of them covers the others. The minute
         // timer only runs while the app is awake; `NSCalendarDayChanged` is the
@@ -638,7 +625,6 @@ struct TodayView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             referenceNow = .now
-            refreshActivity()
             // Notification permission can be revoked in Settings while Speak It
             // is suspended. Re-reading it here is what turns the permission card
             // back on for reminders that are saved but can no longer alert.
@@ -660,16 +646,9 @@ struct TodayView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                // The week's dots share the eyebrow line with the date, so the
-                // habit loop costs the first action on Today no height at all.
-                HStack(spacing: 12) {
-                    Text(referenceNow.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
-                        .font(SpeakItTypography.eyebrow)
-                        .foregroundStyle(Color.speakMuted)
-                    if let weekActivity, weekActivity.isVisible {
-                        WeekRowView(activity: weekActivity)
-                    }
-                }
+                Text(referenceNow.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                    .font(SpeakItTypography.eyebrow)
+                    .foregroundStyle(Color.speakMuted)
 
                 Text("Today")
                     .font(SpeakItTypography.screenTitle)
@@ -698,26 +677,7 @@ struct TodayView: View {
         }
     }
 
-    // MARK: Habit loop
-
-    /// Recomputes the week's dots from what is already loaded. Cheap: two
-    /// date maps over arrays the screen holds anyway, and the result only
-    /// changes state when it differs.
-    private func refreshActivity() {
-        let calendar = Calendar.autoupdatingCurrent
-        let days = ActivityLedger.activeDays(
-            captureDates: allCaptureSessions.map(\.createdAt),
-            completionDates: allItems.compactMap(\.completedAt),
-            calendar: calendar
-        )
-        let activity = ActivityLedger.weekActivity(activeDays: days, now: referenceNow, calendar: calendar)
-        if activity != weekActivity {
-            weekActivity = activity
-        }
-        if activity.isVisible, HabitDefaults.shouldReportWeekRow(on: referenceNow, calendar: calendar) {
-            SpeakItAnalytics.track(.weekRowShown(activeDays: activity.activeDayCount))
-        }
-    }
+    // MARK: All clear
 
     /// Now holds nothing: the calmest reward there is, because it is the
     /// absence of work. Shown only when the day is clear but the app is not
@@ -1514,7 +1474,6 @@ struct TodayView: View {
             }
             SpeakItAnalytics.track(.taskCompletionChanged(completed: completed))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            refreshActivity()
             if offersUndo { showCompletionUndo(for: item) }
         } catch {
             errorMessage = error.localizedDescription
