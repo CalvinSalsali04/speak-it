@@ -1,5 +1,53 @@
 # Decisions
 
+## 2026-09-23 — Removing an item stops its delivery before anything is queued
+
+**Finding DEL-22.** Saying "cancel the pills alarm" deletes the item, and
+`delete` tore its alarm down only inside the pass it queued with
+`ReminderScheduler.synchronize`. Passes run one after another behind a static
+`synchronizationTail`, so the teardown waited for every earlier pass, which can
+be one sitting on an alarm permission prompt. If the app was killed in that
+window, nothing cancelled the alarm later: relaunch reconciled notification
+identifiers only, and the only `AlarmManager` calls were stop, cancel,
+authorization and schedule. A cancelled alarm could still ring.
+`testCancellingAnAlarmTearsDownTheAlarmKitAlarm` checked straight after the
+capture returned, so it raced the same pass. It failed in hosted CI run
+35828944609 and passed in 35857098574 on identical code.
+
+`setCompleted`, `setArchived`, `merge`, `undoOrganization`, the extras that
+reorganizing drops, and tutorial cleanup already called
+`ReminderScheduler.cancel(itemID:)` synchronously. The paths that did not now do:
+
+- **`delete`**, so every caller: the spoken cancel, confirming or dismissing a
+  held broad operation, the editor, and the capture screen.
+- **`discardCaptureItems`**, used for retraction and for recovery's not-found
+  case. No scheduling pass follows it at all.
+- **Reopening a recurring item**, which deletes the next occurrence it had
+  generated. That row has already left the session, so the session-scoped pass
+  after it could not name it.
+- **Applying an iCloud snapshot**, for rows another device deleted.
+
+Each call comes after the save succeeds, so a failed save leaves delivery as it
+was. The queued pass is kept exactly where it was, because it re-cancels
+anything an earlier pass arms after the synchronous call. `split` removes no
+row, so it has nothing to cancel.
+
+**The kill window is healed at relaunch by #127, not here.** A kill after
+the save and before the synchronous cancel still leaves the alarm armed. #127
+(`cancelOrphanedAlarms(accountedFor:)` after `reconcilePendingReminders`)
+cancels every non-alerting AlarmKit alarm whose id names no row, reading the
+rows after the alarm list, so this PR does not add a sweep of its own. A first
+version did, and it duplicated #127's with a weaker design: it swept alerting
+alarms too and read the rows before the list.
+
+The two teardown tests in `CaptureOperationTests` now hold the scheduler queue
+behind a pass that cannot finish, which reproduces the permission prompt
+deterministically, assert straight away, then release, drain and assert again.
+Without the synchronous cancel in `delete` they fail on every run, not
+intermittently. Both test recorders are now locked, because the queued pass
+writes to them off the main actor while the test reads. What is left is in
+`KNOWN_ISSUES.md` under "Removing an item".
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
