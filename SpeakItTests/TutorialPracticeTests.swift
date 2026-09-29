@@ -70,7 +70,7 @@ final class TutorialPracticeTests: XCTestCase {
         let anchor = TutorialCaptureMission.idea.satisfiedItem(in: result)
 
         XCTAssertNotNil(anchor, "the step's own example must always pass its own check")
-        XCTAssertEqual(anchor?.itemType, .idea, "step 5 shows the idea in Memory › Ideas")
+        XCTAssertEqual(anchor?.itemType, .idea, "step 5 shows the idea in Memory under Ideas")
     }
 
     /// The practice screen invites the person's own task as long as it names
