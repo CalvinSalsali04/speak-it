@@ -1,5 +1,70 @@
 # Decisions
 
+## 2026-09-23 — A fetch that fails is not an empty store
+
+Four `#Predicate` fetches in `SwiftDataThoughtRepository` turned a failure
+into an ordinary answer. A predicate the store cannot translate fails at
+fetch time, not at compile time, so this is a real failure mode and not a
+theoretical one. The place-reminder reconcile got a logged `do`/`catch` in
+#135; these are the rest.
+
+- **Full reminder sync** (`synchronizeAllReminders`, reached from loading the
+  test examples). `try? ... ?? []` read a failure as "no timed rows". Its
+  scope sets `replacesAllSpeakItReminders`, and
+  `ReminderScheduler.notificationIdentifiersToRemove` removes every pending
+  `SpeakIt.reminder.` and `SpeakIt.session.` request under that flag before
+  anything is added. So a failed fetch removed every pending time reminder
+  on the phone and armed none, without a trace. It now logs a fault and
+  returns before the pass, keeping what iOS already holds.
+- **Capture deduplication** (`recentDuplicate`). This one used `try`, so a
+  failure aborted the capture before anything was written. A lookup that
+  exists to absorb a double tap must not be able to lose the words, and a
+  Siri, Shortcut or Share capture has no draft to fall back on. A failure is
+  now logged and read as "no duplicate": at worst the same words are stored
+  twice, which the person can delete.
+- **Launch recovery** of unfinished sessions and the **Today widget
+  snapshot**. Both already failed safe, by skipping recovery until the next
+  launch and by keeping the last published snapshot. They only gain the log.
+
+Every message is content-free: it names the pass, never a title or a
+transcript. On a successful fetch nothing changes.
+
+**Hypothesis.** Where a store read feeds a pass that removes or replaces
+OS-side state, a failed read must stop the pass, and a failed read on the
+capture path must never cost the capture.
+
+**Falsifier.** A fetch failure during the full sync that still leaves a
+`SpeakIt.reminder.` request removed, or a dedup fetch failure that still
+leaves no row for the words. Neither is tested: `modelContext` is a concrete
+`ModelContext` with no seam that makes one fetch throw, and adding one means
+putting a protocol in front of every store read in the repository. That is
+recorded rather than papered over with a test of a helper.
+
+Two unfiltered fetches read a failure as empty in a way that costs more
+than a skipped pass, so they are in this change too, although no predicate
+reaches them:
+
+- **iCloud sync** (`makeICloudSnapshot`). Both fetches were `try? ?? []`.
+  The merge is a union, so an empty local side merges to the cloud copy
+  alone, and `applyICloudSnapshot` deletes every local row that copy does
+  not hold: everything captured since the last upload. `applyICloudSnapshot`
+  reads the store again with `try`, so a failure that persists stops it
+  there; a failure that clears between the two reads deletes. The items
+  fetch failing while the sessions fetch succeeds does the same to the
+  rows under sessions it kept. `makeICloudSnapshot` now throws, and the sync
+  reports "couldn't read this iPhone's library" and changes nothing.
+- **Spoken operations** (`applyCaptureOperation`). A failure read as "no
+  row matches" reached `.notFound`, and the caller files "cancel my dentist"
+  as a new task while the dentist reminder stays armed. It is now held for
+  review with no candidates, the way an operation that could not be applied
+  already is.
+
+**Not covered.** The other unfiltered `try?` fetches in the file carry no
+predicate and return early on failure; `reconcilePendingReminders`, which
+uses the same replace-everything scope, is one of those. A logged fault is
+visible in Console and sysdiagnoses only; nothing tells the person, except
+the iCloud sync, whose failure is reported like any other sync failure.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
