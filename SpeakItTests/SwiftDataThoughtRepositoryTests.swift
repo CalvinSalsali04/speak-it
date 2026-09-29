@@ -5191,6 +5191,60 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(components.minute, 0)
     }
 
+    /// A weekly series that names its days used to be the one shape that
+    /// ignored the intended clock: it matched on the previous instant's hour
+    /// and minute, so "every Sunday at 2:30 AM" fired at 3:00 on the
+    /// spring-forward Sunday and then at 3:00 every week after.
+    ///
+    /// Falsifier: match on the previous instant's clock in the weekly branch
+    /// of `RecurrenceRule.nextDate` again, and the week after stays at 3:00.
+    /// The control shows the same rule without an intended clock still
+    /// follows the instant, so the fix is the preferred clock and nothing else.
+    func testANamedWeekdaySeriesReturnsToItsClockAfterASpringForward() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        // Sunday is weekday 1; 2027-03-14 is the spring-forward Sunday.
+        let rule = RecurrenceRule(frequency: .weekly, weekdays: [1])
+        let weekBefore = makeDate(year: 2027, month: 3, day: 7, hour: 2, minute: 30, calendar: calendar)
+        let intended = WallClockTime(hour: 2, minute: 30)
+
+        let transitionDay = try XCTUnwrap(
+            rule.nextDate(
+                scheduledDate: weekBefore,
+                completedAt: weekBefore,
+                calendar: calendar,
+                preferredWallClock: intended
+            )
+        )
+        let transition = calendar.dateComponents([.month, .day, .hour], from: transitionDay)
+        XCTAssertEqual(transition.month, 3)
+        XCTAssertEqual(transition.day, 14)
+        XCTAssertNotEqual(transition.hour, 2, "2:30 does not exist that night")
+
+        let weekAfter = try XCTUnwrap(
+            rule.nextDate(
+                scheduledDate: transitionDay,
+                completedAt: transitionDay,
+                calendar: calendar,
+                preferredWallClock: intended
+            )
+        )
+        let after = calendar.dateComponents([.day, .hour, .minute, .second], from: weekAfter)
+        XCTAssertEqual(after.day, 21)
+        XCTAssertEqual(after.hour, 2)
+        XCTAssertEqual(after.minute, 30)
+        XCTAssertEqual(after.second, 0)
+
+        // Control: without the intended clock the instant is the only input.
+        let drifted = try XCTUnwrap(
+            rule.nextDate(scheduledDate: transitionDay, completedAt: transitionDay, calendar: calendar)
+        )
+        XCTAssertEqual(
+            calendar.dateComponents([.hour], from: drifted).hour,
+            calendar.dateComponents([.hour], from: transitionDay).hour
+        )
+    }
+
     func testAnOrdinaryRecurringTimeIsUnaffectedByTheSnappingPolicy() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Toronto")!
