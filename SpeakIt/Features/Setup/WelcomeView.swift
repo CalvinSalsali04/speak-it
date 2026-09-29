@@ -131,8 +131,10 @@ private struct WelcomeExampleCard: View {
 
             Divider().overlay(Color.speakDivider)
 
-            row(title: "Call the dentist", detail: "Thursday morning")
-            row(title: "Ask Maya about the proposal", detail: "When you have time · Maya")
+            // Exactly what the app makes of the sentence above, checked in the
+            // simulator and with Tools/PipelineProbe. Keep them in step.
+            row(title: "Call the dentist Thursday morning", detail: "Thu 9:00 AM")
+            row(title: "Ask Maya about the proposal", detail: "When you have time")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,7 +146,7 @@ private struct WelcomeExampleCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "Example. You say: call the dentist Thursday morning, and ask Maya about the proposal. "
-                + "Speak It keeps two things: Call the dentist, Thursday morning. "
+                + "Speak It keeps two things: Call the dentist Thursday morning, Thursday at 9 AM. "
                 + "Ask Maya about the proposal, when you have time."
         )
     }

@@ -867,8 +867,10 @@ final class SpeakItUITests: XCTestCase {
         if saleIsRunning {
             // The offer cutoff is known; preservation of a subscriber's future
             // renewal price is not configured or verified in App Store Connect.
+            // The header above the plans also begins "Launch price ·", so the
+            // footnote is the one that states the renewal terms.
             let footnote = app.staticTexts.containing(
-                NSPredicate(format: "label BEGINSWITH 'Launch price ·'")
+                NSPredicate(format: "label BEGINSWITH 'Launch price ·' AND label CONTAINS 'Auto-renews'")
             ).firstMatch
             XCTAssertTrue(footnote.waitForExistence(timeout: 3))
             XCTAssertEqual(

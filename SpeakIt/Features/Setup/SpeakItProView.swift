@@ -205,9 +205,15 @@ struct SpeakItProView: View {
         }
     }
 
+    /// Once the first-capture sheet has shown the capture, the plans behind
+    /// "See Pro plans" should not open by describing it a second time.
+    private var heroContext: ProPresentationContext {
+        context == .firstCapture && showsPlansAfterCaptureProof ? .account : context
+    }
+
     private var heroTitle: String {
         if subscriptionStore.hasProAccess { return "Your thoughts stay in motion." }
-        switch context {
+        switch heroContext {
         case .freeLimit:
             return "You’ve used your \(FreePlanAllowance.lifetimeCaptureLimit) free captures."
         case .firstCapture:
@@ -237,7 +243,7 @@ struct SpeakItProView: View {
         if subscriptionStore.hasProAccess {
             return "Speak It Pro is active on this Apple Account."
         }
-        switch context {
+        switch heroContext {
         case .freeLimit:
             return "Everything you saved is still yours. You’ve used all \(FreePlanAllowance.lifetimeCaptureLimit) free captures — upgrade for unlimited capture."
         case .firstCapture:
