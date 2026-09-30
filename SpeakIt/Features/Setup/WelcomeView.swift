@@ -11,6 +11,7 @@ struct WelcomeView: View {
     let onLoadExamples: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasAppeared = false
 
     var body: some View {
@@ -21,60 +22,30 @@ struct WelcomeView: View {
                 let isCompact = geometry.size.height < 700
 
                 ScrollView {
-                    VStack(spacing: 0) {
-                    HStack {
-                        SpeakItWordmark()
-                        Spacer()
-                        Text("NO ACCOUNT")
-                            .font(.caption)
-                            .foregroundStyle(Color.speakMuted)
-                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                    Spacer(minLength: isCompact ? 12 : 36)
 
-                    Spacer(minLength: isCompact ? 8 : 18)
-
-                    VStack(spacing: isCompact ? 10 : 18) {
-                        ListeningOrb(phase: .ready, level: 0)
-                            .scaleEffect(hasAppeared ? (isCompact ? 0.82 : 0.92) : 0.76)
-                            .opacity(hasAppeared ? 1 : 0)
-                            .frame(height: isCompact ? 178 : 212)
-
-                        VStack(spacing: 10) {
-                            Text("Speak it.\nKeep moving.")
+                    VStack(alignment: .leading, spacing: isCompact ? 18 : 26) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Say it the way\nit comes out.")
                                 .font(.largeTitle.weight(.semibold))
-                                .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityAddTraits(.isHeader)
 
-                            Text("Say whatever is on your mind. Speak It turns it into the right task, reminder, idea, or note.")
+                            Text("Speak It turns it into reminders that go off on time, and notes you can find later.")
                                 .font(.body)
                                 .foregroundStyle(Color.speakMuted)
-                                .multilineTextAlignment(.center)
-                                .frame(maxWidth: 330)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
-                        VStack(spacing: 8) {
-                            HStack(spacing: 0) {
-                                welcomeBeat(icon: "hand.tap", title: "Tap it")
-                                connector
-                                welcomeBeat(icon: "waveform", title: "Speak it")
-                                connector
-                                welcomeBeat(icon: "checkmark", title: "Keep it")
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 14)
-                            .background(.black, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-                            Text("Speak It saves and organizes everything automatically.")
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(Color.speakMuted)
-                                .multilineTextAlignment(.center)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Tap it, speak it, keep it. Speak It saves and organizes everything automatically.")
+                        // The payoff, shown rather than described: one run-on
+                        // sentence and the two clean items it becomes.
+                        WelcomeExampleCard()
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared || reduceMotion ? 0 : 10)
                     }
 
-                    Spacer(minLength: isCompact ? 10 : 18)
+                    Spacer(minLength: isCompact ? 18 : 28)
 
                     VStack(spacing: isCompact ? 8 : 12) {
                         Button(action: onFirstCapture) {
@@ -88,9 +59,12 @@ struct WelcomeView: View {
                         .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .accessibilityIdentifier("welcome.tryItNow")
 
-                        Button("Explore first", action: onSkip)
+                        // Says what it does. "Explore first" promised something
+                        // to explore and opened an empty app.
+                        Button("Skip the tutorial", action: onSkip)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Color.speakMuted)
+                            .frame(minHeight: 44)
                             .buttonStyle(.speakIt)
                             .accessibilityIdentifier("welcome.exploreFirst")
 
@@ -134,30 +108,65 @@ struct WelcomeView: View {
             }
         }
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.82)) {
+            guard !reduceMotion else {
+                hasAppeared = true
+                return
+            }
+            withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
                 hasAppeared = true
             }
         }
     }
+}
 
-    private var connector: some View {
-        Rectangle()
-            .fill(.white.opacity(0.18))
-            .frame(height: 1)
-            .frame(maxWidth: .infinity)
+/// A worked example on the first screen: what someone says, and what Speak It
+/// keeps. Drawn with the theme's surface tokens so it reads in dark mode too.
+private struct WelcomeExampleCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("“uh, call the dentist Thursday morning, and ask Maya about the proposal”")
+                .font(.subheadline)
+                .foregroundStyle(Color.speakMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider().overlay(Color.speakDivider)
+
+            // Exactly what the app makes of the sentence above, checked in the
+            // simulator and with Tools/PipelineProbe. Keep them in step.
+            row(title: "Call the dentist Thursday morning", detail: "Thu 9:00 AM")
+            row(title: "Ask Maya about the proposal", detail: "When you have time")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.speakDivider, lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "Example. You say: call the dentist Thursday morning, and ask Maya about the proposal. "
+                + "Speak It keeps two things: Call the dentist Thursday morning, Thursday at 9 AM. "
+                + "Ask Maya about the proposal, when you have time."
+        )
     }
 
-    private func welcomeBeat(icon: String, title: String) -> some View {
-        VStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 34, height: 34)
-                .background(.white.opacity(0.11), in: Circle())
-
-            Text(title)
-                .font(.caption2.weight(.medium))
+    private func row(title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .stroke(Color.speakInk, lineWidth: 1.5)
+                .frame(width: 18, height: 18)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.speakInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(Color.speakMuted)
+            }
         }
-        .frame(width: 82)
     }
 }
 

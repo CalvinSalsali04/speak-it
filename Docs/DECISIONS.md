@@ -3220,3 +3220,46 @@ already shorter. A self-driving tour over the real Today and Memory screens
 would also depend on scripted scrolling and presentation timing that has broken
 the spotlight steps before.
 
+
+## 2026-09-29 — Show what a capture became before asking, and say the count only when it is low
+
+Calvin asked for a review of the app as a first-week user deciding whether to
+pay, setting aside whether the engine works. Of eight findings he kept the
+tutorial's ending as it is and the running-low and wall paywall as they are, and
+asked for the rest, with one change: the allowance is not shown from the start,
+only once it is low, on Today.
+
+- **The first-capture sheet opens on the capture.** The moment itself is kept
+  (see "Pro is offered twice before the wall"). What it showed was a stat block
+  reading "1 organized · 0 completed" above two plans, which is the weakest
+  number the app will ever show. It now shows the person's own words, the items
+  they became with where each went and when it will remind, and one line on
+  the allowance, with "Keep going" and a quieter "See Pro plans" that opens the
+  ordinary Pro screen in place. Nothing leaves the phone to build it: the newest
+  capture's `originalTranscription` and its items.
+- **Today says how many free captures remain only below three.** A light row
+  under the header, "2 free captures left · One capture can hold a whole list.
+  Pro removes the limit." It opens Pro. Above two the count stays where it was,
+  in Settings and on the last receipts. Nothing before this told a person that
+  one capture can hold several things, which is what the allowance is worth.
+- **Today shows at most one suggestion card, after the person's own work.**
+  Capture Anywhere first, Pro only when that is set up or dismissed and never
+  beside the low-captures row. The Capture Anywhere card is drawn with the
+  surface tokens rather than as a black block.
+- **The welcome screen shows the payoff.** One run-on sentence and the two
+  items it becomes replace the slogan, the three-beat black pill (fixed black
+  and white, so it vanished in dark mode) and the "NO ACCOUNT" label. "Explore
+  first" is "Skip the tutorial", because it opened an empty app.
+- **No season on the launch price.** The window runs to October 22, so
+  "SUMMER LAUNCH SALE" was read in autumn. It is "Launch price · half off
+  annual". A failed plan load said the App Store products were not yet
+  "connected", which is our wording for our problem; it now says the plans did
+  not load and to try again.
+- **Smaller wording.** Memory's eyebrow is a count instead of "Find · Recognize
+  · Reuse"; the Pro screen from Settings is titled "Capture without counting."
+  and uses the waveform instead of sparkles; the Settings plan row says the
+  count once; "Make Speak It ready" is "Setup checklist"; the example sentences
+  on Today, Memory and Capture are one set.
+
+Not changed: the practice idea sentence reads awkwardly, but routing tests pin
+it, so rewording it is its own change.

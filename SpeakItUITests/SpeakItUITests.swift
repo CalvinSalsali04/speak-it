@@ -529,7 +529,7 @@ final class SpeakItUITests: XCTestCase {
         app.buttons["welcome.exploreFirst"].tap()
         XCTAssertTrue(app.staticTexts["Your day is clear."].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["today.doubleTapSetup"].exists)
-        XCTAssertTrue(app.staticTexts["Try saying “Buy toothpaste” or “Call Mom tomorrow at 5.”"].exists)
+        XCTAssertTrue(app.staticTexts["Try saying “Buy milk, eggs, and toothpaste” or “Remind me to call Mom tomorrow at 6.”"].exists)
     }
 
     func testCaptureAnywhereShowsOneChoiceFirstAndKeepsAlternativesOptional() {
@@ -825,14 +825,14 @@ final class SpeakItUITests: XCTestCase {
         )
 
         let saleIsRunning = app.staticTexts
-            .containing(NSPredicate(format: "label CONTAINS 'SUMMER LAUNCH SALE'"))
+            .containing(NSPredicate(format: "label BEGINSWITH 'Launch price · half off annual'"))
             .firstMatch
             .exists
         if saleIsRunning {
             XCTAssertEqual(
                 annual.label,
-                "Annual, summer launch price \(currency(annualPrice)) per year, "
-                    + "standard annual price $29.99, 50 percent off, best value"
+                "Annual, launch price \(currency(annualPrice)) per year, "
+                    + "standard annual price $29.99, half off, best value"
             )
         } else {
             XCTAssertEqual(annual.label, "Annual, \(currency(annualPrice)) per year")
@@ -867,13 +867,15 @@ final class SpeakItUITests: XCTestCase {
         if saleIsRunning {
             // The offer cutoff is known; preservation of a subscriber's future
             // renewal price is not configured or verified in App Store Connect.
+            // The header above the plans also begins "Launch price ·", so the
+            // footnote is the one that states the renewal terms.
             let footnote = app.staticTexts.containing(
-                NSPredicate(format: "label BEGINSWITH 'Summer launch price'")
+                NSPredicate(format: "label BEGINSWITH 'Launch price ·' AND label CONTAINS 'Auto-renews'")
             ).firstMatch
             XCTAssertTrue(footnote.waitForExistence(timeout: 3))
             XCTAssertEqual(
                 footnote.label,
-                "Summer launch price · \(currency(annualPrice)) per year. "
+                "Launch price · \(currency(annualPrice)) per year. "
                     + "Offer ends October 22, 2026. Auto-renews until cancelled."
             )
             XCTAssertFalse(footnote.label.contains("stays that price"),
@@ -933,14 +935,25 @@ final class SpeakItUITests: XCTestCase {
 
         // The receipt dismisses itself a few seconds after a clean single-item
         // save, and the sheet may only arrive once the capture cover is gone.
-        let paywall = app.navigationBars["Speak It Pro"]
+        let proof = app.navigationBars["Your capture"]
         XCTAssertTrue(
-            paywall.waitForExistence(timeout: 20),
+            proof.waitForExistence(timeout: 20),
             "Pro is offered after the first capture that spends part of the allowance"
         )
         XCTAssertTrue(
-            app.staticTexts["Your thought is where it belongs."].exists,
-            "The first-capture sheet must open on what just happened, not on the free-limit wall"
+            app.staticTexts["Here’s what Speak It did."].exists,
+            "The first-capture sheet must open on what the capture became, not on a price list"
+        )
+        XCTAssertTrue(
+            app.otherElements["pro.captureProof.original"].firstMatch.exists
+                || app.staticTexts.containing(
+                    NSPredicate(format: "label CONTAINS 'The spare key is inside the blue kitchen drawer'")
+                ).firstMatch.exists,
+            "The person's own words are on the sheet"
+        )
+        XCTAssertFalse(
+            app.buttons["pro.purchase"].exists,
+            "Plans are one tap away, never the first thing on this sheet"
         )
         XCTAssertFalse(
             app.staticTexts.containing(
@@ -949,31 +962,19 @@ final class SpeakItUITests: XCTestCase {
             "Nothing has been used up, so the wall's wording must not appear"
         )
 
-        // The screen swaps its plan source once StoreKit answers, which
-        // rebuilds these controls. Wait for the purchase button — present in
-        // both sources — so the refusal below is read from a settled screen
-        // rather than from whichever one happened to be up first.
-        XCTAssertTrue(
-            app.buttons["pro.purchase"].waitForExistence(timeout: 10),
-            "The paywall must offer a purchase before it is asked to be refused"
-        )
+        // The plans are reachable from here, and lead to a real purchase.
+        let seePlans = app.buttons["pro.seePlans"]
+        XCTAssertTrue(seePlans.waitForExistence(timeout: 4))
+        assertMinimumTouchTarget(seePlans)
 
         // Refusing has to be a real answer, it has to be reachable, and it has
-        // to say what it does. An uninvited sheet offering only "Not now" reads
-        // as a delay, and this one is not a delay — free captures remain.
+        // to say what it does.
         let dismiss = app.buttons["pro.dismiss"]
         XCTAssertTrue(dismiss.waitForExistence(timeout: 6))
-        // Scrolled on `isHittable`, not `exists`. A SwiftUI ScrollView puts its
-        // whole content in the accessibility tree, so a control below the fold
-        // exists without being reachable — and reachable is the claim here.
         for _ in 0..<6 where !dismiss.isHittable {
             app.swipeUp()
         }
-        XCTAssertEqual(
-            dismiss.label,
-            "Continue using Speak It free",
-            "Away from the wall the refusal has to say that free capture continues"
-        )
+        XCTAssertEqual(dismiss.label, "Keep going")
         assertMinimumTouchTarget(dismiss)
         dismiss.tap()
         XCTAssertTrue(
@@ -984,8 +985,40 @@ final class SpeakItUITests: XCTestCase {
         // Capture still works, and the offer does not come back for it.
         saveTypedCapture("Buy oat milk.", in: app)
         XCTAssertFalse(
-            paywall.waitForExistence(timeout: 15),
+            proof.waitForExistence(timeout: 15),
             "Each moment is offered at most once for the life of the install"
+        )
+    }
+
+    /// Today says nothing about the allowance until fewer than three free
+    /// captures remain, and then says it once, near the top.
+    func testTodayShowsTheAllowanceOnlyWhenItIsLow() {
+        let plenty = launchApp(
+            "--ui-testing-skip-welcome",
+            "--ui-testing-pro-preview",
+            "--ui-testing-free-captures-used", "7"
+        )
+        XCTAssertTrue(plenty.buttons["dock.capture"].waitForExistence(timeout: 10))
+        XCTAssertFalse(
+            plenty.buttons["today.lowCaptures"].exists,
+            "Three left is not low yet, so Today stays quiet about the count"
+        )
+
+        let low = launchApp(
+            "--ui-testing-skip-welcome",
+            "--ui-testing-pro-preview",
+            "--ui-testing-free-captures-used", "8"
+        )
+        let notice = low.buttons["today.lowCaptures"]
+        XCTAssertTrue(notice.waitForExistence(timeout: 10))
+        XCTAssertTrue(notice.label.contains("2 free captures left"), notice.label)
+        XCTAssertTrue(notice.label.contains("One capture can hold a whole list"), notice.label)
+        assertMinimumTouchTarget(notice)
+
+        notice.tap()
+        XCTAssertTrue(
+            low.navigationBars["Speak It Pro"].waitForExistence(timeout: 6),
+            "The notice opens Pro"
         )
     }
 

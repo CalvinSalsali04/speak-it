@@ -273,6 +273,13 @@ final class SubscriptionStore: ObservableObject {
         if defaults.bool(forKey: Self.cachedProAccessKey) {
             accessLevel = .pro
         }
+#if DEBUG
+        // Puts a UI test (or a screenshot run) at a given point in the
+        // allowance without spending real captures to get there.
+        if let spent = Self.uiTestingFreeCapturesUsed {
+            setDeveloperFreeCapturesUsed(spent)
+        }
+#endif
         evaluateProMoments()
         updatesTask = observeTransactionUpdates()
         Task { await refreshEntitlements() }
@@ -416,6 +423,14 @@ final class SubscriptionStore: ObservableObject {
         setDeveloperAccessOverride(.free)
         setDeveloperFreeCapturesUsed(0)
         customerMessage = nil
+    }
+
+    /// `--ui-testing-free-captures-used N`, when present and numeric.
+    private static var uiTestingFreeCapturesUsed: Int? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flag = arguments.firstIndex(of: "--ui-testing-free-captures-used"),
+              arguments.indices.contains(flag + 1) else { return nil }
+        return Int(arguments[flag + 1])
     }
 
     func setDeveloperFreeCapturesUsed(_ captureCount: Int) {

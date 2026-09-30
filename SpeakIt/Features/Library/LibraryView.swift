@@ -621,6 +621,14 @@ struct LibraryView: View {
         return nil
     }
 
+    private var memoryEyebrow: String {
+        switch memoryItems.count {
+        case 0: "Nothing saved yet"
+        case 1: "1 thing remembered"
+        case let count: "\(count) things remembered"
+        }
+    }
+
     private var memoryItems: [CapturedItem] {
         let authorization = LocationReminderMonitor.shared.authorization
         return activeItems.filter { $0.belongsInMemory(authorization: authorization) }
@@ -769,7 +777,9 @@ struct LibraryView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Find · Recognize · Reuse")
+                // A count of what is kept, not a slogan. Always present so the
+                // title sits where Today's does when switching tabs.
+                Text(memoryEyebrow)
                     .font(SpeakItTypography.eyebrow)
                     .foregroundStyle(Color.speakMuted)
 
@@ -914,7 +924,7 @@ struct LibraryView: View {
                 .foregroundStyle(Color.speakInk)
             Text("Capture naturally. Speak It will keep actions in Today and place lasting details here.")
                 .foregroundStyle(Color.speakMuted)
-            Text("Try saying “Remember Catherine’s birthday is May 3.”")
+            Text("Try saying “Priya’s birthday is December 4th.”")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(Color.speakInk)
         }

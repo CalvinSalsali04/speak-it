@@ -7,6 +7,19 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased
 
+- The sheet after the first real capture shows what Speak It did with it (the
+  person's words and the items they became) with "Keep going" and "See Pro
+  plans", instead of opening on plans.
+- Today shows how many free captures are left once fewer than three remain,
+  and says that one capture can hold a whole list. It shows at most one
+  suggestion card, below the person's own sections.
+- The welcome screen shows a worked example instead of a slogan, drops the
+  "NO ACCOUNT" label, and "Explore first" is "Skip the tutorial".
+- The launch price no longer says "summer", and a failed plan load no longer
+  talks about App Store products being connected.
+- Memory's header shows a count, Settings' plan row says the count once,
+  "Make Speak It ready" is "Setup checklist", and the example sentences match
+  across screens.
 - The first-run tutorial is seven steps instead of eight. People and the
   person's page are one step, and the idea step shows where the idea went and
   continues without asking for a stage. The practice card now says before the
