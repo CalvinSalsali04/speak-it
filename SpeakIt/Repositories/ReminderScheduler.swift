@@ -30,7 +30,8 @@ struct ReminderScheduleRequest: Hashable, Sendable {
     init?(item: CapturedItem) {
         // A known clock does not resolve a missing action, person or object.
         // Keep that clock for editing, but never deliver an unresolved thought.
-        guard !item.needsClarification,
+        guard item.captureSession?.captureSource != .tutorial,
+              !item.needsClarification,
               let fireDate = item.reminderDate, fireDate > ReminderSchedulingClock.now else { return nil }
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these

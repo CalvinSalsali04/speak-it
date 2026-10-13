@@ -5,6 +5,22 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — everyday capture and tutorial readiness
+
+- Understand polite shopping/list requests, own physical-product needs with
+  store/date context, explicit list headers and coordinated product colours.
+- Keep metadata-only follow-ups with their one current shopping group; prevent
+  abstract needs and shared modifier-only fragments becoming purchases.
+- Separate common explicit packing objects into Today tasks without purchases
+  or invented contact actions. Broader unknown/ambiguous list forms still have
+  documented limits; no universal accuracy claim is made.
+- Let people reject a practice result and retry, preserve their own names, and
+  keep practice free through recovery and mode changes. Practice cannot send
+  real reminders or change real saved tasks.
+- Remove the manual snapshot/fade used for theme changes and keep result
+  receipts accessible with larger text.
+- Source fixes only; no new distribution build or App Store Connect upload.
+
 ## Unreleased — broader purchase-list coverage
 
 - Broaden explicit current purchase and named shopping-list frames, including

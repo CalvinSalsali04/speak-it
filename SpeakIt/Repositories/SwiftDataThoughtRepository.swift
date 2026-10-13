@@ -83,7 +83,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private func recoverOrganization(of session: CaptureSession) {
         let extraction = ThoughtExtractionEngine.extractWithRules(
             session.originalTranscription,
-            referenceDate: session.createdAt
+            referenceDate: session.createdAt,
+            permitsOperations: session.captureSource != .tutorial
         )
         // A capture that asked to cancel, complete or withdraw must not
         // be rebuilt into an item by recovery. Re-reading the operation
@@ -480,7 +481,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // non-actionable, which is a different and much larger change than
         // "stop watching this place".
         let live = items.filter {
-            !$0.isArchived && !$0.isCompleted && !$0.needsClarification
+            $0.captureSession?.captureSource != .tutorial
+                && !$0.isArchived && !$0.isCompleted && !$0.needsClarification
                 && $0.isLocationTriggered && !$0.constrainsBothPlaceAndTime
                 && $0.locationIntent?.isRetired != true
         }
@@ -979,7 +981,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
         let extraction = ThoughtExtractionEngine.extractWithRules(
             normalizedText,
-            referenceDate: createdAt
+            referenceDate: createdAt,
+            permitsOperations: source != .tutorial
         )
         var creating = extraction.reviewingMultipleOperations()
         if let request = extraction.pendingOperation {
@@ -1136,7 +1139,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 normalizedText,
                 referenceDate: createdAt,
                 permitsOnDeviceIntelligence: permitsOnDeviceIntelligence,
-                runtimeContext: !permitsOnDeviceIntelligence || RuntimeExampleConfiguration.current == nil ? .empty : RuntimeCaptureContext(savedItems:
+                permitsOperations: source != .tutorial,
+                runtimeContext: source == .tutorial || !permitsOnDeviceIntelligence || RuntimeExampleConfiguration.current == nil ? .empty : RuntimeCaptureContext(savedItems:
                     ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
                         .filter { $0.captureSession?.id != pending.session.id }
                         .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle, modifiedAt: $0.lastModifiedAt,
@@ -1248,6 +1252,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         preservingItemIDs: Set<UUID> = [],
         schedulesReminders: Bool = true
     ) throws -> CaptureOperationOutcome {
+        // Practice may demonstrate organization; it cannot mutate real saved
+        // thoughts, including model-proposed operations or recovered captures.
+        guard session.captureSource != .tutorial else {
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .needsConfirmation(operation: request.operation, candidateIDs: [])
+        }
         // A retraction withdraws the capture outright.
         if request.operation == .retract {
             if request.needsReview {
@@ -2282,6 +2292,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// it is removed once its request is resolved rather than left behind as
     /// a permanent row with nothing left to say. See Docs/FINAL_RELEASE_AUDIT.md F-1.
     func confirmPendingOperation(_ item: CapturedItem) throws {
+        guard item.captureSession?.captureSource != .tutorial else {
+            throw RepositoryError.saveFailed("Practice cannot change your saved thoughts.")
+        }
         guard let record = PendingOperationStore.record(for: item.id) else { return }
         if record.operation == .cancel {
             guard let session = item.captureSession else {
@@ -2373,6 +2386,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     private func choosePendingCaptureOperation(session: CaptureSession, reviewItemID: UUID, targetID: UUID) throws {
+        guard session.captureSource != .tutorial else {
+            throw RepositoryError.saveFailed("Practice cannot change your saved thoughts.")
+        }
         guard var state = CaptureOperationState.read(from: session.operationStateData),
               state.reviewItemID == reviewItemID else {
             throw RepositoryError.saveFailed("The saved-item question is no longer available.")

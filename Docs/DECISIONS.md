@@ -5488,3 +5488,121 @@ diagnostics again report failures rather than skipping when assets are absent;
 asset-dependent behavior tests retain their existing abstention policy. These
 are test/tooling corrections, outside the uploaded app binary. The full native
 unit suite and physical speech qualification remain unclaimed.
+
+
+## 2026-10-13 — Everyday list authority and free, correctable practice
+
+Polite explicit purchase/list requests and own nominal product needs are read
+before generic clause splitting. An explicit buy/order frame supplies purchase
+authority; noun coordination alone does not. “Help and advice” and “time and
+patience” previously became purchases. Own need/could-use/out-of/low-on frames
+now require positive physical-product evidence for every sibling. Bounded store,
+calendar and purpose context can be removed for that proof while the complete
+immutable capture and exact source occurrences remain owned. Unknown implicit
+objects stay whole; an unknown explicit purchase is not subjected to that gate.
+
+Explicit shopping headers and ordinal item markers supply a list frame.
+Coordinated colours modify a shared noun; bare colour rows are not invented.
+Explicit distributive tails such as “both blue” or “all size medium” keep the
+complete parent instead of creating a modifier-only product. This is a verified
+fallback, not complete modifier propagation or independently checkable coverage.
+
+A metadata-only second sentence (“Get it/them at … tomorrow”) may bind only to
+one resolved, undated current shopping group. It cannot cross another intention,
+replace an existing trigger, execute a saved-item operation, swallow a predicate,
+exclusion or condition, or invent a pronoun product. Date and reminder semantics
+remain the existing temporal parser's responsibility. Explicit packing objects
+with positive physical-item evidence use independently checkable Today tasks;
+they do not become purchases or contact actions. The frame/verb's occurrence
+belongs to the first row only; copied display verbs supply no source authority.
+This does not introduce a new grouped nonpurchase checklist interface.
+
+Claude Opus 5.5 High in the Speak It project provided a description-only review,
+fresh challenges and adverse contrasts. We rejected its suggestion that out-of
+wording alone authorizes shopping: abstract shortages disprove that rule. Advice
+was checked against actual outputs; agreement is not correctness evidence.
+No recordings, real captures or new private source files were shared in this
+review. The existing development bank and on-device model configuration remain
+unchanged; this adds bounded local mechanisms, not a training claim.
+
+Practice now offers a retry even when its result has the expected general type.
+Retry deletes only that attempt and resets the current mission; persistence
+failure keeps the result visible. Grouping/missing-content review cannot qualify
+merely by naming a person. The tutorial no longer replaces real names such as
+Mia with its canned Maya. Result receipts can scroll for larger text; at accessibility sizes the decorative
+wordmark yields header space to the exit action. Practice
+is explicitly free and sends no reminders. Its source marker survives mode
+changes and recovery; tutorial rows cannot enter notification/geofence
+reconciliation or mutate real saved thoughts through operation/confirmation
+paths. The allowance stays ten lifetime captures; nothing is spent and refunded.
+
+### Appearance follow-up supersedes the September snapshot treatment
+
+The user reported a shaking/moving transition under Light, Dark and System.
+The manual outgoing-window snapshot, forced layout and fade have been removed.
+One window-level override remains the source of truth; System releases it to
+`.unspecified`. Trait changes and the settings picker suppress animation without
+rebuilding the screen or inserting a second image of it. Geometry assertions and
+simulator screenshots/video cover the changed flow; final motion quality still
+requires iPhone QA. The September measurements above remain historical evidence
+for that earlier implementation, not proof of this follow-up.
+
+### Finite launch qualification criteria
+
+Freeze everyday purchase, store/time, quantity, compound, mixed-task, implicit
+need, packing and negative contrasts before reading their output. Inspect
+complete meaning and source ownership, not row count alone. Require supported
+families to produce the expected independently checkable content; no invented
+purchase/person/clock, swallowed action/condition, duplicate alert or wrong saved
+mutation is acceptable. Keep known unsupported forms explicit rather than
+relabeling them correct. Run failed/affected checks while iterating and one
+broad rules regression scan before integration; do not repeat the full unit
+suite merely to grow a test count. Physical speech recognition, endpointing,
+model behavior and latency on iPhone 13/16 remain a separate launch gate. These
+synthetic development checks cannot establish universal list accuracy or an
+opt-in real-user correction rate.
+
+
+The broad regression scan's sole blocker was an obsolete one-row expectation
+for a current eggs/milk/olive-oil need. The user now requires independently
+checkable products, so its contract was strengthened to three shopping rows with
+all three titles. No scoring threshold or severity was weakened. The original
+1,434-case failing result is retained; only the affected row is rerun after this
+adjudication. Adverse review also found that own declarative list descriptions
+could be rewritten into purchases. Such an “is” declaration now requires
+positive product contents, keeping list state/location descriptions in Memory.
+Recovered practice rows explicitly say “Practice · no alerts” even outside the
+active tutorial banner. Packing siblings retain their durable display titles and
+the complete original session after deleting the first row and repository
+recovery; extraction source IDs are transient and do not couple sibling storage.
+
+
+The everyday review also exposed the old blanket article exclusion for
+acquisition verbs: “grab a birthday card” could remain a generic task. An
+indefinite a/an object now supplies shopping only after positive physical-product
+evidence for every member. Definite/possessive collections, people, abstract
+objects and companion meals retain their existing paths. A trailing at/from
+retail adjunct can name Pharmacy or Hardware, while a bare generic trip cannot;
+the pre-existing pharmacy-trip-plus-products-plus-call contrast remains covered.
+
+
+Pipeline-stage diagnosis of the singular-store case showed that ordinary
+segmentation already produced the clean product title and Pharmacy group. The
+complete-source certificate then reconstructed a whole-source analysis and
+lost the group. Both direct certificate return paths now use the same shopping
+post-pass as runtime model results. This fixes the pipeline boundary instead of
+adding a separate singular-product shortcut. Tests compare product labels and
+metadata after the complete engine, with exact source coverage and a non-nil
+literal certificate for the proved case. Implicit product proof also checks the
+whole nominal object, so a known final noun cannot authorize “advice about
+towels” or “help with the curtains” as a purchase.
+
+
+Capture Anywhere practice had a separate hidden 30-minute cutoff in both the
+foreground route and background writer. An interrupted or slow genuine test
+could therefore become chargeable while the tutorial still described it as
+practice. Both routes now share the readiness-plus-explicit-test-marker policy;
+ending the tutorial/test clears eligibility, rather than elapsed time changing
+billing. A repository-backed outside-capture test verifies the practice source
+and unchanged usage defaults after an hour, with other phases/absent markers
+remaining ineligible.

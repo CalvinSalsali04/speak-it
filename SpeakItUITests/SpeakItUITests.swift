@@ -2330,6 +2330,89 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         add(capture)
     }
 
+
+    func testPracticeResultCanBeRejectedAndRetriedWithoutAdvancingOrSpendingCaptures() {
+        let app = launchApp("-SpeakIt.appearance", "dark")
+        app.buttons["welcome.tryItNow"].tap()
+        XCTAssertTrue(app.buttons["tutorial.useExample"].waitForExistence(timeout: 5))
+        app.buttons["tutorial.useExample"].tap()
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        let retry = app.buttons["tutorial.practiceRetry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Does this look right?"].exists)
+        captureFlowScreenshot("practice-result-dark-can-retry")
+        retry.tap()
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        assertTutorialStep(app, number: 1, title: "Practice a task")
+        editor.tap()
+        editor.typeText("hello testing")
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        XCTAssertTrue(app.staticTexts["Almost — one more go"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["tutorial.practiceUseExample"].isHittable)
+        captureFlowScreenshot("practice-miss-dark-free-retry")
+        app.buttons["tutorial.practiceUseExample"].tap()
+        XCTAssertTrue(app.buttons["capture.confirmationContinue"].waitForExistence(timeout: 8))
+        app.buttons["capture.confirmationContinue"].tap()
+        XCTAssertTrue(app.staticTexts["Ready for tomorrow"].waitForExistence(timeout: 8))
+        app.buttons["tutorial.exit"].tap()
+        XCTAssertTrue(app.buttons["today.account"].waitForExistence(timeout: 6))
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.staticTexts["10 of 10 free captures left"].waitForExistence(timeout: 5))
+    }
+
+    func testThemeChoicesKeepSettingsGeometryStableAndRemainUsable() {
+        let app = launchApp("--ui-testing-skip-welcome")
+        app.buttons["today.account"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        let light = app.buttons["Light"]
+        for _ in 0..<8 where !light.isHittable { app.swipeUp() }
+        XCTAssertTrue(light.isHittable)
+        let before = light.frame
+        for name in ["Dark", "Light", "System", "Dark", "System"] {
+            let choice = app.buttons[name]
+            choice.tap()
+            XCTAssertTrue(choice.isSelected)
+            XCTAssertEqual(light.frame.minY, before.minY, accuracy: 1)
+            XCTAssertEqual(light.frame.minX, before.minX, accuracy: 1)
+            XCTAssertEqual(light.frame.width, before.width, accuracy: 1)
+            XCTAssertTrue(app.navigationBars.buttons["Done"].isHittable)
+            captureFlowScreenshot("theme-stable-" + name.lowercased())
+        }
+        app.navigationBars.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["dock.capture"].waitForExistence(timeout: 5))
+    }
+
+
+    func testPracticeReceiptWithLargeTextCanShowFullResultAndRetry() {
+        // The scene trait override is required on current iOS simulators;
+        // the legacy launch default alone can silently leave normal text.
+        let app = launchApp("-SpeakIt.appearance", "dark", "--ui-testing-dynamic-type-axxxl")
+        app.buttons["welcome.tryItNow"].tap()
+        XCTAssertTrue(app.buttons["tutorial.useExample"].waitForExistence(timeout: 5))
+        app.buttons["tutorial.useExample"].tap()
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        let retry = app.buttons["tutorial.practiceRetry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 8))
+        let end = app.buttons["tutorial.capture.end"]
+        XCTAssertTrue(end.isHittable)
+        XCTAssertGreaterThanOrEqual(end.frame.minX, app.frame.minX)
+        XCTAssertLessThanOrEqual(end.frame.maxX, app.frame.maxX)
+        captureFlowScreenshot("practice-receipt-largest-text-top")
+        for _ in 0..<5 where !retry.isHittable { app.swipeUp() }
+        XCTAssertTrue(retry.isHittable)
+        assertMinimumTouchTarget(retry)
+        XCTAssertTrue(app.buttons["capture.confirmationContinue"].isHittable)
+        XCTAssertTrue(app.buttons["tutorial.capture.end"].isHittable)
+        captureFlowScreenshot("practice-receipt-large-text-dark")
+        retry.tap()
+        XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 5))
+        assertTutorialStep(app, number: 1, title: "Practice a task")
+    }
+
     func testColdLaunchPerformance() {
         let app = XCUIApplication()
         app.launchArguments = [

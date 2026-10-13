@@ -10981,3 +10981,173 @@ final class WideShoppingListCoverageTests: XCTestCase {
         XCTAssertTrue(result.items.allSatisfy { ShoppingGroupStore.group(for: $0.id) == "Pharmacy" })
     }
 }
+
+
+@MainActor
+final class EverydayShoppingReadinessTests: XCTestCase {
+    private let reference = ISO8601DateFormatter().date(from: "2026-08-03T14:00:00Z")!
+    private var calendar: Calendar {
+        var result = Calendar(identifier: .gregorian)
+        result.timeZone = TimeZone(identifier: "America/Toronto")!
+        return result
+    }
+    private func read(_ source: String) -> ThoughtExtractionResult {
+        ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+    }
+    private func check(_ source: String, _ products: [String], group: String? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+        let result = read(source)
+        XCTAssertEqual(result.items.count, products.count, source + "\n" + String(reflecting: result), file: file, line: line)
+        XCTAssertTrue(result.operations.isEmpty, source, file: file, line: line)
+        for (item, product) in zip(result.items, products) {
+            XCTAssertEqual(item.organization.itemType, .shopping, source, file: file, line: line)
+            XCTAssertFalse(item.needsReview, source, file: file, line: line)
+            let label = item.analysisText.replacingOccurrences(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#, with: "", options: .regularExpression)
+            XCTAssertEqual(label.lowercased(), product.lowercased(), source, file: file, line: line)
+            if let group { XCTAssertEqual(item.shoppingGroup, group, source, file: file, line: line) }
+        }
+        XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                       Set(SourceUnitLedger(source).words.indices), source, file: file, line: line)
+        XCTAssertEqual(result.items.reduce(0) { $0 + $1.sourceUnitIDs.count },
+                       SourceUnitLedger(source).words.count, source, file: file, line: line)
+    }
+    func testPoliteRequestsAndListHeadersSupplyPurchaseAuthority() {
+        check("Please buy milk and eggs.", ["milk", "eggs"])
+        check("Could you add apples, bananas and oranges to my grocery list?", ["apples", "bananas", "oranges"], group: "Groceries")
+        check("Can you make me a shopping list with batteries and light bulbs?", ["batteries", "light bulbs"])
+        check("My shopping list is apples, bread and coffee.", ["apples", "bread", "coffee"])
+        check("Things to buy: first a mop, second a broom, and third a dustpan.", ["a mop", "a broom", "a dustpan"])
+    }
+    func testOwnProductNeedsUseBoundedStoreCalendarAndPurposeContext() {
+        check("We could use paper towels and dish soap.", ["paper towels", "dish soap"])
+        check("I am running low on shampoo and conditioner.", ["shampoo", "conditioner"])
+        check("I need milk and bread at Costco.", ["milk", "bread"], group: "Costco")
+        check("We need eggs and butter tomorrow.", ["eggs", "butter"])
+        check("I need a paint roller and masking tape for the hallway.", ["a paint roller", "masking tape"])
+        let timed = read("We need eggs and butter tomorrow.")
+        XCTAssertTrue(timed.items.allSatisfy { $0.organization.temporalIntent.day == CalendarDay(year: 2026, month: 8, day: 4) && $0.organization.reminderDate == nil })
+    }
+    func testImplicitCoordinationCannotTurnAbstractNeedsIntoPurchases() {
+        for source in ["I need help and advice.", "I want peace and quiet.",
+                       "We are out of time and patience.", "We could use a break and a holiday.",
+                       "Maya needs milk and eggs.", "Sam said we need eggs."] {
+            let result = read(source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType == .shopping }, source + "\n" + String(reflecting: result))
+            XCTAssertTrue(result.operations.isEmpty, source)
+        }
+    }
+    func testExplicitPurchasesKeepUnknownNounsAndSeparateStores() {
+        check("Order Acme dish soap and Zeta laundry pods from Brightleaf Market.", ["Acme dish soap", "Zeta laundry pods"], group: "Brightleaf Market")
+        let result = read("Buy milk and eggs at Costco and get dog food at PetSmart.")
+        XCTAssertEqual(result.items.count, 3)
+        XCTAssertEqual(result.items.map(\.shoppingGroup), ["Costco", "Costco", "PetSmart"])
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .shopping && !$0.needsReview })
+    }
+    func testDistributiveModifiersStayVisibleWithoutBecomingProducts() {
+        for source in ["Buy two shirts and a jacket, all size medium.",
+                       "Buy a dog harness and a leash, both blue."] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 1, String(reflecting: result))
+            XCTAssertEqual(result.items.first?.rawQuote, source)
+            XCTAssertEqual(result.items.first?.organization.itemType, .shopping)
+        }
+        check("Buy organic milk and eggs.", ["organic milk", "eggs"])
+    }
+    func testOneUnprovedImplicitSiblingCannotBeSilentlyDropped() {
+        for source in ["We are out of milk and the good stuff.", "We could use eggs and some help."] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 1, source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType == .shopping }, source)
+            XCTAssertEqual(result.items.first?.rawQuote, source)
+        }
+    }
+    func testCoordinatedColoursNeverCreateABareColourProduct() {
+        check("Buy red and green peppers and onions.", ["red and green peppers", "onions"])
+        check("Buy red wine and white wine.", ["red wine", "white wine"])
+    }
+    func testMetadataOnlyPronounFollowupKeepsTheOneListAndDate() {
+        let source = "Add cat food to the list. Get it at PetSmart tomorrow."
+        check(source, ["cat food"], group: "PetSmart")
+        let result = read(source)
+        XCTAssertEqual(result.items.first?.organization.temporalIntent.day, CalendarDay(year: 2026, month: 8, day: 4))
+        XCTAssertNil(result.items.first?.organization.reminderDate)
+        check("Buy milk and eggs. Get them at Costco tomorrow.", ["milk", "eggs"], group: "Costco")
+    }
+    func testPackingObjectsBecomeTasksWithoutShoppingOrContactActions() {
+        for (source, labels) in [
+            ("Pack sunscreen, two towels and the beach umbrella for Saturday.", ["pack sunscreen", "pack two towels", "pack the beach umbrella"]),
+            ("Make a packing checklist for my weekend bag: toothbrush, pajamas and phone charger.", ["pack toothbrush", "pack pajamas", "pack phone charger"])
+        ] {
+            let result = read(source)
+            XCTAssertEqual(result.items.map { $0.analysisText.lowercased() }, labels, String(reflecting: result))
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .task && $0.organization.personName == nil && $0.shoppingGroup == nil && !$0.needsReview })
+            XCTAssertTrue(result.operations.isEmpty)
+            XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }, Set(SourceUnitLedger(source).words.indices))
+            XCTAssertEqual(result.items.reduce(0) { $0 + $1.sourceUnitIDs.count }, SourceUnitLedger(source).words.count)
+        }
+        let timed = read("Pack sunscreen, two towels and the beach umbrella for Saturday.")
+        XCTAssertTrue(timed.items.allSatisfy { $0.organization.temporalIntent.day == CalendarDay(year: 2026, month: 8, day: 8) && $0.organization.reminderDate == nil })
+        XCTAssertNil(RuleBasedThoughtExtractor.literalPackingPlan("Bring Maya and Jordan.", referenceDate: reference, calendar: calendar))
+        XCTAssertNil(RuleBasedThoughtExtractor.literalPackingPlan("Pack up and leave.", referenceDate: reference, calendar: calendar))
+    }
+
+    func testDescribingAListDoesNotCreateAPurchase() {
+        for source in ["My shopping list is empty.", "My shopping list is ready for tomorrow.",
+                       "Our shopping list is on the fridge."] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 1, source)
+            XCTAssertEqual(result.items.first?.organization.itemType, .note, source)
+            XCTAssertNil(result.items.first?.organization.reminderDate, source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+        }
+        check("My shopping list is milk and eggs.", ["milk", "eggs"])
+        check("we need eggs milk and olive oil for the meal prep", ["eggs", "milk", "olive oil"])
+    }
+    func testFollowupAndPackingPlansDeclineExtraActionsConditionsAndPeople() {
+        for source in ["Buy milk and eggs. Get them at Costco tomorrow and call Mom.",
+                       "Buy milk and eggs. Get them at Costco if it's open."] {
+            XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(source, referenceDate: reference, calendar: calendar))
+        }
+        for source in ["Bring Mia and her charger.", "Take out the trash and recycling.",
+                       "Bring back the drill and ladder."] {
+            XCTAssertNil(RuleBasedThoughtExtractor.literalPackingPlan(source, referenceDate: reference, calendar: calendar))
+        }
+    }
+    func testPackingSiblingsSurviveDeletingTheFirstRowAndRepositoryRecovery() async throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: PersistenceController.schema, migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext, requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        let source = "Make a packing checklist for my weekend bag: toothbrush, pajamas and phone charger."
+        let result = try await repository.createCaptureResult(text: source, source: .inAppText, createdAt: reference, schedulesReminders: false)
+        XCTAssertEqual(result.items.count, 3)
+        let sessionID = result.session.id
+        try repository.delete(try XCTUnwrap(result.items.first))
+        let context = ModelContext(container)
+        let reopened = SwiftDataThoughtRepository(modelContext: context, requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        reopened.recoverUnorganizedCaptures()
+        let items = try context.fetch(FetchDescriptor<CapturedItem>()).filter { $0.captureSession?.id == sessionID }
+        XCTAssertEqual(Set(items.map(\.displayTitle)), Set(["Pack pajamas", "Pack phone charger"]))
+        XCTAssertTrue(items.allSatisfy { $0.itemType == .task && $0.personName == nil })
+        XCTAssertEqual(items.first?.captureSession?.originalTranscription, source)
+    }
+
+    func testIndefinitePhysicalAcquisitionsDoNotBecomeGenericTasks() {
+        check("Grab a birthday card at the pharmacy.", ["a birthday card"], group: "Pharmacy")
+        let source = "Grab a birthday card at the pharmacy."
+        XCTAssertNotNil(RuntimeCompleteLiteralCertificate.interpret(source, referenceDate: reference,
+                        calendar: calendar, rules: read(source)), "A proved common purchase must not need model generation")
+        check("Get a winter hat and gloves for Maya.", ["a winter hat", "gloves"])
+        check("Pick up a charging cable and an adapter at Best Buy.", ["a charging cable", "an adapter"], group: "Best Buy")
+        for source in ["Pick up a friend at school.", "Get a break and some rest.",
+                       "Pick up the dry cleaning.", "Grab a coffee with Mom.",
+                       "Get a library card.", "Get a charger from Sam.", "Get a jacket at home.",
+                       "I need advice about towels.", "I need help with the curtains.",
+                       "We are out of room for new towels."] {
+            XCTAssertFalse(read(source).items.contains { $0.organization.itemType == .shopping }, source)
+        }
+        let trip = read("Go to the pharmacy and get advil and bandaids and then call mom")
+        XCTAssertEqual(trip.items.count, 4, String(reflecting: trip))
+        XCTAssertTrue(trip.items.contains { $0.organization.itemType == .task && $0.analysisText.localizedCaseInsensitiveContains("go to the pharmacy") })
+    }
+
+}

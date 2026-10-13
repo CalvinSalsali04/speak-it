@@ -929,7 +929,16 @@ struct RootView: View {
             tutorialMission: captureTutorialMission,
             onSaveSucceeded: markFirstCaptureSucceeded,
             onCancelled: handleCaptureCancelled,
-            onTutorialEnded: endTutorialEarly
+            onTutorialEnded: endTutorialEarly,
+            onTutorialRetry: {
+                if captureTutorialMission == .action {
+                    tutorialActionItemIDRawValue = ""
+                    setTutorialPhase(.captureAction)
+                } else if captureTutorialMission == .idea {
+                    tutorialIdeaItemIDRawValue = ""
+                    setTutorialPhase(.captureIdea)
+                }
+            }
         ) {
             let completedTutorialPhase = tutorialPhase
             if captureOpenedFromExternalSource {
@@ -1375,12 +1384,9 @@ struct RootView: View {
     }
 
     private var isActiveCaptureAnywhereTutorialTest: Bool {
-        guard tutorialPhase == .readiness else { return false }
-        let beganAt = UserDefaults.standard.double(
+        tutorialPhase.hasComplimentaryCaptureAnywhereTest(beganAt: UserDefaults.standard.double(
             forKey: "SpeakIt.captureSetupTestBeganAt"
-        )
-        guard beganAt > 0 else { return false }
-        return Date.now.timeIntervalSince1970 - beganAt < 30 * 60
+        ))
     }
 
     private func importBuild20Library() {

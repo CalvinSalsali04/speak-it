@@ -105,7 +105,8 @@ enum ShoppingGroupParser {
     static func isRecognizedStoreName(_ name: String) -> Bool {
         let value = normalizedName(name)
         let lowered = value.lowercased().replacingOccurrences(of: "’", with: "'")
-        if knownStores.contains(lowered) || genericGroceryPlaces.contains(lowered) { return true }
+        if knownStores.contains(lowered) || genericGroceryPlaces.contains(lowered)
+            || (businessHeads.contains(lowered) && !["store", "shop", "shops"].contains(lowered)) { return true }
         let words = value.split(whereSeparator: { $0.isWhitespace })
         guard words.count > 1, let head = words.last,
               businessHeads.contains(head.lowercased()) else { return false }
@@ -339,6 +340,13 @@ enum ShoppingGroupParser {
         if knownStores.contains(lowered) { return titleCased(candidate) }
         if genericGroceryPlaces.contains(lowered) {
             return lowered == "groceries" ? groceriesGroup : String(lowered.prefix(1)).uppercased() + lowered.dropFirst()
+        }
+        // A trailing at/from slot may name a generic retail destination.
+        // A bare trip still declines it, so “go to the pharmacy” remains an
+        // independent action rather than disappearing into unrelated goods.
+        if preposition != "to", businessHeads.contains(lowered),
+           !["store", "shop", "shops"].contains(lowered) {
+            return String(candidate.prefix(1)).uppercased() + candidate.dropFirst()
         }
         guard !genericPlaces.contains(lowered), !nonStorePlaces.contains(lowered),
               candidate.range(of: #"^[\p{L}\p{N}][\p{L}\p{M}\p{N}'’&. -]*$"#, options: .regularExpression) != nil,
@@ -590,7 +598,38 @@ enum ShoppingGroupParser {
     static func hasKnownProductCore(_ product: String) -> Bool {
         let words = product.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
         guard let offset = nominalCoreStart(words), let head = words.last else { return false }
-        return namesOneProduct(words[offset...].joined(separator: " ")) || namesProductHead(head)
+        let core = words[offset...].joined(separator: " ")
+        if namesOneProduct(core) { return true }
+        if protectedProductCoordination(core), namesProductHead(head) { return true }
+        var nominal = Array(words[offset...])
+        if nominal.count >= 3, nominal[0] == "no", nominal[1] == "name" { nominal.removeFirst(2) }
+        // A known final noun cannot certify “advice about towels” or “help
+        // with the curtains”. Every remaining word must fit the noun object.
+        guard !nominal.contains(where: { determiners.contains($0) || prepositions.contains($0)
+            || pronouns.contains($0) || conjunctions.contains($0) || auxiliaries.contains($0)
+            || ["not", "never", "without", "no"].contains($0)
+            || $0.range(of: temporalCue, options: .regularExpression) != nil }) else { return false }
+        // Obtaining a library/identity/bank card is an administrative task.
+        // A generic card head cannot certify a purchase in an implicit frame.
+        if ["card", "cards"].contains(head) {
+            return core.range(of: #"^(?:birthday|greeting|gift|playing|index|flash)\s+cards?$"#,
+                              options: .regularExpression) != nil
+        }
+        return namesOneProduct(core) || namesProductHead(head)
+    }
+
+    /// Own nominal needs are not purchase commands. Coordination alone also
+    /// describes “help and advice”; require positive product evidence.
+    static func implicitNeedBody(in text: String) -> String? {
+        let pattern = #"(?i)^\s*(?:(?:i|we)\s+(?:also\s+)?(?:do\s+)?(?:need|want|could\s+use)\s+(?!to\b)|(?:i|we)(?:['’]re|\s+are|\s+am)\s+(?:out\s+of|running\s+low\s+on)\s+|need\s+(?!to\b))"#
+        guard let lead = text.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(text[lead.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func certifiesImplicitProducts(_ body: String) -> Bool {
+        let value = body.trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
+        let entries = products(in: value, verb: "get") ?? [value]
+        return !entries.isEmpty && entries.allSatisfy(hasKnownProductCore)
     }
 
     private static let commonProductHeads: Set<String> = [
@@ -604,7 +643,9 @@ enum ShoppingGroupParser {
         "shirt", "shirts", "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
         "leash", "leashes", "harness", "harnesses", "bowl", "bowls", "tray", "trays",
         "bulb", "bulbs", "lamp", "lamps", "cushion", "cushions", "pillowcase", "pillowcases",
-        "curtain", "curtains", "sheet", "sheets", "towel", "towels"
+        "curtain", "curtains", "sheet", "sheets", "towel", "towels",
+        "roller", "rollers", "tape", "umbrella", "umbrellas", "pajamas", "goggles", "card", "cards",
+        "sunscreen", "toothbrush", "toothbrushes"
     ]
 
     /// Whether every significant word of a fragment names a grocery.
@@ -946,7 +987,10 @@ enum ShoppingGroupParser {
                 result.append(piece)
             }
         }
-        guard result.count > 1 else { return nil }
+        guard result.count > 1, result.allSatisfy({
+            $0.range(of: #"(?i)^(?:both|all|each|either|neither)\b|\bfor\s+all\s+of\s+them\b"#,
+                     options: .regularExpression) == nil
+        }) else { return nil }
         let sentence = "\(verb) \(scope)"
         let tokens = lexicalTokens(of: sentence)
         var slices: [ArraySlice<LexicalToken>] = []
@@ -969,6 +1013,13 @@ enum ShoppingGroupParser {
         guard let offset = nominalCoreStart(allWords) else { return false }
         let core = allWords[offset...].joined(separator: " ")
         if knownProductPhrases.contains(core) { return core.contains(" and ") }
+        // Coordinated colours modify one shared noun: “red and green peppers”.
+        // A bare colour must not become a product; “red wine and white wine”
+        // still names two complete noun phrases and does not match this frame.
+        let colour = #"(?:red|blue|green|black|white|yellow|orange|purple|pink|brown|grey|gray|navy|beige)"#
+        if core.range(of: #"(?i)^\#(colour)\s+and\s+\#(colour)\s+(?!(?:and|plus)\b)[\p{L}-]+(?:\s+(?!(?:and|plus)\b)[\p{L}-]+){0,2}$"#,
+                      options: .regularExpression) != nil,
+           let head = allWords.last, namesProductHead(head) { return true }
         let conjunctions = NSRegularExpression.speakItCached(#"(?i)\s+(?:and|plus)\s+"#)
         guard let matches = conjunctions?.matches(in: core, range: NSRange(core.startIndex..., in: core)),
               matches.count == 1, let connector = Range(matches[0].range, in: core) else { return false }

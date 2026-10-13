@@ -1,5 +1,25 @@
 # Known Issues
 
+## Everyday list and tutorial follow-up (unreleased)
+
+Polite explicit requests, own product needs with bounded store/date context,
+shopping headers, coordinated colours and one-group metadata follow-ups have
+focused regression coverage. Explicit packing objects can become separate Today
+tasks, without a new grouped checklist screen. Positive physical-product evidence
+is still bounded: an unfamiliar implicit need can remain a complete Memory row.
+Unknown undelimited products, arbitrary cross-sentence references, complex
+exclusions/beneficiaries, shared modifier propagation and general nonpurchase
+checklist semantics remain incomplete. An intact fallback is not successful
+independent item extraction. In particular, shared distributive details may keep
+one whole shopping row; some clear exclusions still create review friction.
+
+Tutorial attempts remain free through retries and draft recovery, cannot schedule
+real alerts or change real saved thoughts, and can be rejected when the displayed
+result looks wrong. Theme choices no longer use an outgoing-window snapshot/fade.
+Simulator checks do not establish physical microphone, Apple model, System theme
+motion or latency behavior on either supported test iPhone. No new distribution
+build is implied, and there is no universal or real-user accuracy percentage.
+
 ## Broad purchase-list coverage (unreleased)
 
 The broader list reader is bounded to proved current purchase/list intent.
@@ -515,7 +535,7 @@ wall-clock dependence at first (passed at 02:35, failed at 03:38); it was not.
 
 *The launch screen follows the phone, not the app (2026-09-18).* `UILaunchScreen` is drawn by the system before any app code runs, so it uses the device's appearance. Someone who has chosen Dark in Speak It while the iPhone is in Light still sees a light launch screen for the moment before the first frame. There is no API that lets an app's own choice reach it; a dark launch storyboard would only move the flash to the opposite pairing.
 
-*Appearance is applied by hand, not by `preferredColorScheme` (2026-09-10).* SwiftUI keeps the last non-nil value `preferredColorScheme` was given and re-asserts it whenever the traits change, so after the app had been in Light (the first-install default) choosing System left a light window that ignored the iPhone's own switch until relaunch; clearing the window, controller and view overrides did not help because SwiftUI wrote Light back on the next trait change. `SpeakItAppearanceSync` and `SpeakItSceneDelegate.sceneWillEnterForeground` now write `overrideUserInterfaceStyle` onto the window themselves and nothing passes a scheme to SwiftUI. Since 2026-09-18 the write is made under a snapshot of the outgoing appearance, which is then faded off the top, because the assignment alone reaches SwiftUI, `UINavigationBar` and `UISegmentedControl` on three different clocks (see `Docs/DECISIONS.md`). XCUITest cannot read the effective scheme, so the check is the gated probe `testSystemAppearanceHandsControlBackToIOS` (set `TEST_RUNNER_SPEAKIT_APPEARANCE_PROBE_DIR`, flip `xcrun simctl ui <udid> appearance` while it holds, and compare `simctl io screenshot` brightness; modes `system`, `control`, `explicit`).
+*Appearance is applied by hand, not by `preferredColorScheme` (2026-09-10).* SwiftUI keeps the last non-nil value `preferredColorScheme` was given and re-asserts it whenever the traits change, so after the app had been in Light (the first-install default) choosing System left a light window that ignored the iPhone's own switch until relaunch; clearing the window, controller and view overrides did not help because SwiftUI wrote Light back on the next trait change. `SpeakItAppearanceSync` and `SpeakItSceneDelegate.sceneWillEnterForeground` now write `overrideUserInterfaceStyle` onto the window themselves and nothing passes a scheme to SwiftUI. The September 18 outgoing-snapshot fade was removed in the October 13 source follow-up after a reported shaking transition. The window override and settings picker now suppress animation without a manual snapshot or forced layout (see `Docs/DECISIONS.md`). XCUITest cannot read the effective scheme, so the check is the gated probe `testSystemAppearanceHandsControlBackToIOS` (set `TEST_RUNNER_SPEAKIT_APPEARANCE_PROBE_DIR`, flip `xcrun simctl ui <udid> appearance` while it holds, and compare `simctl io screenshot` brightness; modes `system`, `control`, `explicit`).
 
 *Simulator-level defaults shadow `--ui-testing-reset` (2026-09-09).* A value seeded with `xcrun simctl spawn <udid> defaults write com.calvinwak.SpeakIt …` lands in the simulator-user plist outside the app container, and the reset flag only removes `UserDefaults.standard` keys inside it. The 2026-09-03 dark-mode walk left `SpeakIt.appearance = dark` on the stock iPhone 17 Pro simulator, which made `testFirstInstallAppearanceDefaultsToLight` fail deterministically until the key was deleted with `simctl spawn … defaults delete`. Delete seeded keys after hand QA, or use a dedicated simulator; `Tools/Screenshots/capture.sh` cleans up its own.
 

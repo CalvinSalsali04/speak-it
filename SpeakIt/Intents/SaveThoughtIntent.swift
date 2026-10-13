@@ -604,10 +604,8 @@ enum ExternalCaptureWriter {
         // Button) and cannot be assumed to be a reasonable length.
         let thought = CaptureTextLimit.clamp(thought)
         let tutorialBeganAt = defaults.double(forKey: "SpeakIt.captureSetupTestBeganAt")
-        let isTutorialTest = defaults.string(forKey: FirstRunTutorialKeys.phase)
-            == FirstRunTutorialPhase.readiness.rawValue
-            && tutorialBeganAt > 0
-            && createdAt.timeIntervalSince1970 - tutorialBeganAt < 30 * 60
+        let isTutorialTest = FirstRunTutorialPhase(rawValue: defaults.string(forKey: FirstRunTutorialKeys.phase) ?? "")?
+            .hasComplimentaryCaptureAnywhereTest(beganAt: tutorialBeganAt) == true
         guard isTutorialTest || SubscriptionStore.canCreateBackgroundCapture(defaults: defaults, now: createdAt) else {
             throw CaptureAccessError.freeLimitReached
         }
