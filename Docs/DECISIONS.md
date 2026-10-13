@@ -18,6 +18,13 @@ make it a grocery. The known-final-head fallback is limited to a two-token
 nominal form; it does not rescue a longer predicate merely because its final
 word is a known product. Ambiguous brand/finite homonyms remain a limitation.
 
+The purchase shortcut defers to the shared correction-junction grammar before
+expansion. Bare business categories such as pharmacy do not name a store or
+absorb an independent trip. A recognized bare action such as run retains its
+own task role. The old “milk and the newspaper” corpus expectation is revised
+from one row to two shopping rows: the article stays inside the second product,
+consistent with the explicitly requested independently checkable lists.
+
 A named list does not become a capture-wide fallback for independent purchases.
 Back-references need an antecedent resolver, and shared size/modifier-only
 instructions must not become extra products. These forms decline the new

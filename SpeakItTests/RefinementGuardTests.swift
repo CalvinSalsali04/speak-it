@@ -10929,6 +10929,21 @@ final class WideShoppingListCoverageTests: XCTestCase {
         XCTAssertEqual(eggs.first?.shoppingGroup, "Groceries", String(reflecting: result))
         XCTAssertFalse(result.items.contains { $0.analysisText.localizedCaseInsensitiveContains("buy eggs") && $0.shoppingGroup == "Camping" })
     }
+    func testCorrectionsGenericTripsAndIndependentActionsKeepTheirRoles() {
+        let correction = "Buy oat milk, sorry, almond milk"
+        XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(correction, referenceDate: reference, calendar: calendar))
+        let repaired = read(correction)
+        XCTAssertEqual(repaired.items.count, 1, String(reflecting: repaired))
+        XCTAssertTrue(repaired.items.first?.analysisText.localizedCaseInsensitiveContains("almond milk") == true)
+        XCTAssertFalse(repaired.items.first?.analysisText.localizedCaseInsensitiveContains("oat milk") == true)
+        let trip = read("Go to the pharmacy and get advil and bandaids and then call mom")
+        XCTAssertEqual(trip.items.map { $0.organization.itemType }, [.task, .shopping, .shopping, .personFollowUp])
+        XCTAssertNil(ShoppingGroupParser.storeName(in: "go to the pharmacy"))
+        let actions = read("buy milk and run")
+        XCTAssertEqual(actions.items.map { $0.organization.itemType }, [.shopping, .task], String(reflecting: actions))
+        check("Buy milk and the newspaper", products: ["milk", "the newspaper"], group: "Groceries")
+        check("Buy an iron and a steamer", products: ["an iron", "a steamer"], group: "Shopping")
+    }
     func testSharedModifiersNeverBecomePurchaseIdentities() {
         for source in [
             "Order a dog harness and a reflective leash, both size medium.",

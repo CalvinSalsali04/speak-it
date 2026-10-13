@@ -378,7 +378,8 @@ enum ShoppingGroupParser {
     /// Bare generics that are not names. "Go to the store" groups by product,
     /// not under a header called "Store".
     private static let genericPlaces: Set<String> = [
-        "store", "stores", "shop", "shops", "mall", "market", "place", "town"
+        "store", "stores", "shop", "shops", "mall", "market", "place", "town",
+        "pharmacy", "hardware", "supply", "supplies", "outlet", "boutique"
     ]
 
     /// Explicit grocery places retain the place wording as the list name.
@@ -859,6 +860,9 @@ enum ShoppingGroupParser {
         let phrase = words.map { $0.text.lowercased() }.joined(separator: " ")
         if knownProductPhrases.contains(phrase) { return .product }
         if words.count == 1, groceryWords.contains(phrase) { return .product }
+        if offset == 0, words.count == 1,
+           phrase.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)$"#,
+                        options: .regularExpression) != nil { return .refused }
         if words.contains(where: { looksPlural($0.text) }) { return .product }
 
         // Everything a bare noun phrase cannot contain has now been excluded.
@@ -867,7 +871,7 @@ enum ShoppingGroupParser {
         // "magnesium" and "turmeric" tag Adjective. A run of nothing but verbs
         // is the one shape that is not a noun phrase at all.
         guard words.allSatisfy({ effectiveTag($0) == .verb }) else { return .product }
-        return words.count == 1 ? .verbal : .refused
+        return words.count == 1 ? (offset > 0 ? .product : .verbal) : .refused
     }
 
     private static func readsAsProduct(_ tokens: ArraySlice<LexicalToken>) -> Bool {

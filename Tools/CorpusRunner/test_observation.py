@@ -906,7 +906,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         shopping context, arrival-envelope and people-errand regression fixtures.
         Recomputed
         from the same literal walk; both multi-word rules still agree.
-        9958 -> 10153 on 2026-10-12 after wide list grammar, store, quantity,
+        9958 -> 10157 on 2026-10-12 after wide list grammar, store, quantity,
         nominal proof and source-scope regressions. This remains the literal
         population, not independently reviewed captures or accuracy.
         """
@@ -918,7 +918,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 10153)
+        self.assertEqual(len(space), 10157)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

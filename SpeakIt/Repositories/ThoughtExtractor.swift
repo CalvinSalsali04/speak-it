@@ -10186,6 +10186,7 @@ enum RuleBasedThoughtExtractor {
         let boundarySource = source.replacingOccurrences(
             of: #"(?i)\b(dr|mr|mrs|ms|prof|st)\.(?=\s+[\p{L}])"#, with: "$1", options: .regularExpression)
         guard !Task.isCancelled, source.count <= 2_000,
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
               QuotedSpeechScope.ranges(in: source).isEmpty,
               !QuotedSpeechScope.hasUnclosedQuote(source),
               boundarySource.range(of: #"(?i)[\n]|[.!?]\s+[\p{L}]|\b(?:actually|instead|correction|never\s+mind|don.t|not|without|when|whenever|if|unless)\b"#,
@@ -10238,7 +10239,7 @@ enum RuleBasedThoughtExtractor {
                 && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then)\b"#,
                                        options: .regularExpression) == nil
                 && (ShoppingGroupParser.namesOneProduct(entry.product)
-                    || entry.product.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\s+"#,
+                    || entry.product.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))(?:\s+|$)"#,
                                            options: .regularExpression) == nil)
         }), ShoppingGroupParser.allReadAsProducts(entries.map(\.product),
             in: entries.map(\.product).joined(separator: ", "), purchaseCommand: explicitlyBuys ? command : nil) else { return nil }
