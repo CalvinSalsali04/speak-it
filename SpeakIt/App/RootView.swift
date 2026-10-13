@@ -86,7 +86,6 @@ struct RootView: View {
     @State private var popToRootSignal = 0
     @State private var destinationNavigationGeneration = 0
     @State private var showsSetupAfterFirstCapture = RootView.initialTutorialMission != nil
-    @State private var captureAutoStartsVoice = false
     @State private var captureShowsGuidedExamples = RootView.initialTutorialMission != nil
     @State private var captureTutorialMission = RootView.initialTutorialMission
     @State private var captureOpenedFromExternalSource = false
@@ -872,7 +871,6 @@ struct RootView: View {
 
     private func presentCapture(
         initialMode: CaptureInitialMode,
-        autoStartsVoiceCapture: Bool = false,
         fromExternalSource: Bool = false,
         initialText: String = "",
         entry: AnalyticsCaptureEntry = .dock
@@ -889,7 +887,6 @@ struct RootView: View {
             entry: entry
         ))
         isDockVisible = true
-        captureAutoStartsVoice = autoStartsVoiceCapture
         // The first capture is the tutorial: the person tapped "Try it now"
         // and deserves something concrete to try.
         captureShowsGuidedExamples = entry == .onboarding || captureTutorialMission != nil
@@ -925,7 +922,6 @@ struct RootView: View {
     private func captureView(initialMode: CaptureInitialMode) -> some View {
         CaptureView(
             initialMode: initialMode,
-            autoStartsVoiceCapture: captureAutoStartsVoice,
             initialText: captureInitialText,
             performance: capturePerformance,
             autoDismissesSingleItemConfirmation: !showsSetupAfterFirstCapture,
@@ -952,7 +948,6 @@ struct RootView: View {
                 selectedDestination = .today
             }
             isDockVisible = true
-            captureAutoStartsVoice = false
             captureShowsGuidedExamples = false
             captureOpenedFromExternalSource = false
             captureInitialText = ""
@@ -1295,7 +1290,6 @@ struct RootView: View {
         returnsToSetupAfterExternalCapture = isTutorialTest
         selectedDestination = .today
         isDockVisible = true
-        captureAutoStartsVoice = request.autoStartsVoiceCapture
         captureOpenedFromExternalSource = true
         capturePerformance = CapturePerformanceTrace(
             source: request.initialMode == .text ? .text : .voice,
@@ -1369,7 +1363,6 @@ struct RootView: View {
         returnsToSetupAfterExternalCapture = isReturningFromSetup
         selectedDestination = .today
         isDockVisible = true
-        captureAutoStartsVoice = true
         captureOpenedFromExternalSource = true
         capturePerformance = CapturePerformanceTrace(
             source: .voice,

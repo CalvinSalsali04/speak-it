@@ -1,5 +1,16 @@
 # Known Issues
 
+## Automatic capture follow-up (unreleased)
+
+Voice now starts on presentation with automatic endpointing and no mode
+selector. Timed shopping rows separate products, place grouping, and time
+metadata. Named-place lookup remains unsupported: an arrival destination is
+retained, with the existing options to use Home/Work or set a time. The app
+does not infer a specific Hamilton or silently create a geofence from its name.
+Real microphone endpointing and recognition on iPhone 13/16 still require
+physical-device QA. The source change does not update the installed Build 22.
+
+
 ## Build 22 list and voice behavior
 
 “Remind me to complete my scientific computation and real time systems

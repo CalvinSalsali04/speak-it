@@ -1,5 +1,33 @@
 # Decisions
 
+## 2026-10-12 — Automatic voice presentation and literal shopping context
+
+New voice presentations start listening directly and always use adaptive
+automatic endpointing. A default alone did not enforce this contract: the dock
+passed a false startup flag and the UI retained an override. Remove both UI
+choices and the per-presentation flag. Keep protected draft recovery intact.
+
+All runtime interpreter shopping proposals pass through the same exact-source
+product expansion as rules. Parse timing into metadata, remove only validated
+store adjuncts from product labels, and retain the spoken Grocery store or
+Supermarket as the list name. Product-only groceries retain the Groceries
+default. Every source word retains one owner and the original capture stays
+immutable. A due time alone does not invent a notification request.
+
+An empty reminder opener followed by an arrival condition is one reminder
+envelope. The condition names a place; the action body supplies any person.
+Unresolved named places retain the existing Home/Work-or-time blocker, rather
+than asking whether the reminder is two thoughts or inventing coordinates.
+Complete explicit purchase lists and own arrival reminder envelopes are
+certified locally before optional generation; independent predicates and
+third-party arrivals cannot use these proofs.
+
+Restore the shared-inbox inspection helper already used by the shipped source:
+its merged callers and readiness tests otherwise could not compile. Valid
+shares remain importable beside unreadable payloads, and unreadable bytes stay
+protected for retry.
+
+
 ## 2026-10-12 — Build 22 list entry, explicit grouping, and completion events
 
 List entry uses a single-line field whose Done action shares the synchronous,

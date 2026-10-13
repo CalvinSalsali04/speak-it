@@ -902,6 +902,9 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         integrated reading was 9905. Removing NaturalLanguageEnvironmentTests'
         abstaining helper removed its unique skip-message literal, yielding
         9904. Both multi-word rules still produce exactly the same set.
+        9904 -> 9956 on 2026-10-12 after adding the automatic-capture,
+        shopping context and arrival-envelope regression fixtures. Recomputed
+        from the same literal walk; both multi-word rules still agree.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -911,7 +914,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 9904)
+        self.assertEqual(len(space), 9956)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

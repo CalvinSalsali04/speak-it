@@ -1176,11 +1176,15 @@ enum ThoughtOrganizer {
         // One resolver answers "who is this about?" for every kind of thought,
         // so a follow-up on Today and a fact in Memory cannot disagree about
         // whether a sentence names somebody. See `PersonMention.swift`.
+        // A named arrival destination is context, not the recipient of the action.
+        let personSource = type.isActionable
+            ? (LocationIntentParser.actionBody(in: normalized) ?? normalized)
+            : normalized
         let personName: String?
         var missingFollowUpTarget = false
         var ambiguousFollowUpTarget = false
         if type == .personFollowUp {
-            switch PersonMentionResolver.followUpTarget(in: normalized) {
+            switch PersonMentionResolver.followUpTarget(in: personSource) {
             case let .person(mention):
                 personName = mention.label
             case .described:
@@ -1197,7 +1201,7 @@ enum ThoughtOrganizer {
                 missingFollowUpTarget = true
             }
         } else {
-            personName = PersonMentionResolver.primary(in: normalized)?.label
+            personName = PersonMentionResolver.primary(in: personSource)?.label
         }
         // "Pick up Alex from school" acquires nobody. The shopping reading
         // only sees a verb and an object; the resolver has just said the

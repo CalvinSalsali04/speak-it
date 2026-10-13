@@ -71,25 +71,60 @@ enum SharedCaptureInbox {
         return destination
     }
 
-    static func pending() -> [(url: URL, payload: SharedCapturePayload)] {
-        guard let directory = try? inboxDirectory(),
-              let urls = try? FileManager.default.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-              ) else {
-            return []
-        }
+    struct Inspection {
+        let pending: [(url: URL, payload: SharedCapturePayload)]
+        let unreadableCount: Int
+    }
 
-        return urls.compactMap { url in
-            guard url.pathExtension == "json",
-                  let data = try? Data(contentsOf: url),
-                  let payload = try? JSONDecoder().decode(SharedCapturePayload.self, from: data) else {
-                return nil
-            }
-            return (url, payload)
+    /// Missing inbox means no shares yet. Other read failures must stay visible;
+    /// unreadable payloads are retained beside any valid shares we can import.
+    static func inspect() throws -> Inspection {
+#if DEBUG
+        // Fault injection uses an isolated synthetic inbox, never the shared
+        // app-group queue. Available only to explicitly opted-in UI tests.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.environment["SPEAKIT_UI_QA_INBOX"] == "unreadable" {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SpeakItUnreadableInboxFixture", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("{interrupted synthetic payload".utf8)
+                .write(to: directory.appendingPathComponent("fixture.json"), options: .atomic)
+            return try inspect(directory: directory)
         }
-        .sorted { $0.payload.createdAt < $1.payload.createdAt }
+#endif
+        let current = try inspect(directory: inboxDirectory())
+        guard let legacy = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.calvinwak.SpeakItPreview"
+        ) else { return current }
+        let previous = try inspect(directory: legacy.appendingPathComponent(directoryName, isDirectory: true))
+        return Inspection(
+            pending: (current.pending + previous.pending).sorted { $0.payload.createdAt < $1.payload.createdAt },
+            unreadableCount: current.unreadableCount + previous.unreadableCount
+        )
+    }
+
+    static func inspect(directory: URL) throws -> Inspection {
+        let urls: [URL]
+        do {
+            urls = try FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            )
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return Inspection(pending: [], unreadableCount: 0)
+        }
+        var pending: [(url: URL, payload: SharedCapturePayload)] = []
+        var unreadableCount = 0
+        for url in urls where url.pathExtension == "json" {
+            do {
+                let data = try Data(contentsOf: url)
+                let payload = try JSONDecoder().decode(SharedCapturePayload.self, from: data)
+                pending.append((url, payload))
+            } catch {
+                unreadableCount += 1
+            }
+        }
+        return Inspection(pending: pending.sorted { $0.payload.createdAt < $1.payload.createdAt },
+                          unreadableCount: unreadableCount)
     }
 
     static func remove(at url: URL) {

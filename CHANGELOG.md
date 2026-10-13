@@ -5,6 +5,17 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — automatic voice and shopping regression fixes
+
+- Start listening when voice capture opens and always finish after an adaptive
+  pause. Remove the Auto finish/Continuous control; keep Type instead.
+- Split timed purchases into product-only rows under the spoken store name,
+  including Grocery store. Apply the same cleanup to runtime model proposals.
+- Keep comma-separated arrival reminder openers with their action and resolve
+  the recipient from the action rather than the destination.
+- Preserve original captures, time metadata, and protected draft recovery.
+- Source fixes only; no new distribution build is created for this change.
+
 ## Build 22 — prepared 2026-10-12
 
 - Saves list entries with keyboard Done and adds swipe-left X Remove through

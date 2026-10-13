@@ -662,7 +662,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
         XCTAssertEqual(
             ShoppingGroupParser.storeName(in: "go to the grocery store and buy milk"),
-            "Groceries"
+            "Grocery store"
         )
     }
 
@@ -3528,7 +3528,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertLessThan(completed, continuing)
     }
 
-    func testInAppDefaultAutomaticallyFinishesAndContinuousRemainsExplicit() {
+    func testNewInAppCaptureAutomaticallyFinishesAndOldLongDraftVerificationRemainsRequired() {
         let transcript = "Buy milk."
         XCTAssertEqual(SpeechTranscriber.inAppDefaultEndpointMode, .automatic)
         XCTAssertEqual(SpeechTranscriber.automaticPauseDecision(
