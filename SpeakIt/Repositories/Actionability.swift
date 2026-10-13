@@ -148,7 +148,7 @@ enum ActionabilityReader {
     /// tested **unanchored** (`isOutstanding`), so a bare entry would read "the
     /// weather is better tomorrow" as an errand. Only the forms carrying their
     /// subject or auxiliary are admitted.
-    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|got\s+ta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|(?:i|we)\s+mean\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+will|(?:i|we)['’]ll|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
+    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|(?:i|we)\s+mean\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+will|(?:i|we)['’]ll|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
 
     /// Past-tense verbs that report something already done.
     private static let completedVerb = #"(?:bought|got|took|made|created|scanned|printed|wrote|prepared|recorded|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#

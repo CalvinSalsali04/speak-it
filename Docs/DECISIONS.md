@@ -5389,3 +5389,12 @@ Two new assertions tested stronger tracking contracts that their entrypoints do 
 2026-10-12 frozen28 focused result: 177 passed, one failed and two skipped (180 total). The unchanged quoted-antecedent negative exposed a real rules-path safety gap: a stop immediately inside a closing ASCII quote did not expose the subsequent unproved field request to the review guard, and ordinary extraction created a resolved Today task. Only the conservative unproved-field scan now accepts balanced quoted-stop boundaries. Positive saved-field parsing and saved-item authority stay unchanged. Twelve quotation/stop controls, reported/conditional and unclosed-quote controls, plus a real-repository regression retain the entire uncertain capture, preserve saved rows and forbid a resolved Today edit. Frozen28 corpus/Release/host and signed archive succeeded, but the safety failure prevents qualification or delivery. The next source requires its own focused/full/corpus/Release checks before the declared normal330 comparison.
 
 The integration corpus check also exposed two inherited contrast-reminder splits. A separate “but remind me” thought is now allowed only after a knowledge clause or the existing complete perfect-fact proof, which also works when language tagging reports ambiguity. An existing action or deadline keeps its dependent reminder on the same item, including separate due and notification dates. Independent “and”, semicolon, and sentence boundaries remain separate. Two focused regressions cover both directions.
+
+Build 22 integration CI also exposed a restored `got ta` router alternative
+without its corresponding boundary protection. Remove that dead alternative
+again, preserving the earlier documented policy above; ordinary `gotta`
+remains supported. An exact-pair guard experiment failed the end-to-end action
+routing check and was reverted before upload. The obligation scanner now
+expands its summarized `i/we'll` into the actual contraction tokens, and its
+counts are pinned to the intentionally expanded Build 21 vocabularies. No
+broader obligation-list convergence or corpus campaign is introduced.

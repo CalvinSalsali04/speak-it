@@ -70,7 +70,14 @@ BETTER_SUBJECTS = {
 #: What each list held when this suite was written. Pinned so that a list
 #: quietly losing an entry fails here; a deliberate change re-pins it and says
 #: why in the commit, exactly as `test_observation.py`'s census does.
-SIZES = {"split": 144, "route": 22, "whose": 9, "title": 24, "glue": 10}
+# Build 21 expanded noun protection with each/every/no/all/both/either/neither/
+# several/few/many/much/whose/which/what, and added the explicit own frames
+# `i/we mean to`, `i/we will` and `i/we'll` to the router. The stale
+# `got ta` entry is removed under the documented no-unprotected-tail policy;
+# the supported single-token `gotta` remains unchanged.
+# These are source-form counts: `i/we'll` remains one regex alternative here;
+# exposed_tail expands its two concrete tokens only for the boundary invariant.
+SIZES = {"split": 158, "route": 25, "whose": 9, "title": 24, "glue": 10}
 
 #: Forms all four claimants agree are obligations.
 #:
@@ -282,6 +289,13 @@ class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
             "holds them, so those sentences are cut at `better` after all."
         )
 
+    def test_speaker_contractions_expand_to_actual_splitter_tokens(self):
+        forms = pv._alternatives(r"(?:i|we)['’]ll|(?:i|we)\s+will|have\s+to")
+        self.assertEqual(forms, {"i/we'll", "i/we will", "have to"})
+        self.assertEqual(pv.exposed_tail(forms), {"i'll", "we'll", "will", "to"})
+        self.assertFalse(pv.exposed_tail(forms) - {"i'll", "we'll", "will", "to"})
+        self.assertEqual(pv.exposed_tail(forms) - {"i'll", "will", "to"}, {"we'll"})
+
     def test_the_check_notices_a_single_word_that_slips_through(self):
         """The mutation the invariant exists for, run against it."""
         lists = copy.deepcopy(self.lists)
@@ -344,7 +358,7 @@ class WhatTheListsAgreeOn(unittest.TestCase):
         lists = pv.read_all()
         whole = pv.union(lists)
         self.assertLess(len(AGREED), len(whole) / 2)
-        self.assertEqual(len(whole), 37)
+        self.assertEqual(len(whole), 40)
 
 
 #: Every subject in the gating corpus that `obligationBelongsToAnotherPerson`

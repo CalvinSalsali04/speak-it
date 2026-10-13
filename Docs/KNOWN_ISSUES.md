@@ -941,9 +941,12 @@ was a second spelling of `gotta` in `obligationLead` alone — in no other
 vocabulary, no test, and none of the seven development sets — and it could not
 have worked where it matched, because clause splitting runs first and does not
 hold `ta`, so "I got ta call Dave" was severed into a Memory row titled **"I
-got ta"** and an errand. It has been removed rather than rescued: adding `ta`
-to `clauseInternalLead` would suppress a real boundary ("email the TA send the
-form") to protect a spelling with no observed instance.
+got ta"** and an errand. Build 21 restored that router-only spelling without
+its boundary protection. Build 22 removes the dead router alternative again,
+preserving the documented policy: `gotta` remains supported, and bare `ta`
+never enters `clauseInternalLead`. A trial exact-pair guard was rejected after
+an end-to-end check still failed to route the spelling as an action; it is not
+part of the shipped source.
 
 **The structural problem is not closed.** The lists are still five lists.
 `thirdPersonObligation` is the smallest on purpose and declines `gotta` and

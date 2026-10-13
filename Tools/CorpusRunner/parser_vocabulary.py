@@ -234,7 +234,13 @@ def exposed_tail(forms):
     after. One of them, `got ta`, had no protection at all. Filtering on the
     position the mechanism actually reads makes the check say what it means.
     """
-    return {f.split()[-1] for f in forms}
+    tails = {f.split()[-1] for f in forms}
+    # `_normalise` summarizes the regex's speaker alternatives as `i/we`.
+    # The splitter sees the actual contraction token, never that summary.
+    if "i/we'll" in tails:
+        tails.remove("i/we'll")
+        tails.update({"i'll", "we'll"})
+    return tails
 
 
 def third_person_subjects(utterances=None):
