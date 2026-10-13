@@ -666,6 +666,192 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
+    func testFullStoreNamesKeepActionWordsConjunctionsAndDigits() {
+        let cases: [(String, String)] = [
+            ("Go to Best Buy and buy a charger", "Best Buy"),
+            ("Buy a cable at Best Buy", "Best Buy"),
+            ("Buy kibble from Paws and Claws", "Paws and Claws"),
+            ("At Bath & Body Works, buy soap and candles", "Bath & Body Works"),
+            ("At 7-Eleven, buy chips and water at 9 AM", "7-Eleven"),
+            ("Buy chips at 7-Eleven at 9 AM", "7-Eleven")
+        ]
+        for (source, name) in cases {
+            XCTAssertEqual(ShoppingGroupParser.storeName(in: source), name, source)
+        }
+    }
+
+    func testUnknownLowercaseStoresUseThePurchaseSlotWithoutAStoreWhitelist() {
+        for (source, expected) in [
+            ("Buy feta, olives and pita from cedar valley market.", "Cedar valley market"),
+            ("Buy Nuvella wipes and Zorbix pods at nova supply.", "Nova supply"),
+            ("I need dog biscuits and a leash from pets at home.", "Pets at home"),
+            ("At moonstone outlet, buy a notebook and a pen.", "Moonstone outlet"),
+            ("Buy a notebook from green hill supply.", "Green hill supply")
+        ] {
+            XCTAssertEqual(ShoppingGroupParser.storeName(in: source), expected, source)
+        }
+        for source in ["Nora works at nova supply.", "The sign is from cedar valley market.",
+                       "Buy eggs from happy hens.", "Buy milk at room temperature.",
+                       "Buy cake from scratch.", "Buy rice and beans for dinner."] {
+            XCTAssertNil(ShoppingGroupParser.storeName(in: source), source)
+            XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: source), source)
+        }
+    }
+
+    func testStoreRemovalPreservesEveryLeadingAndTrailingTimingWord() {
+        let cases: [(String, String)] = [
+            ("Buy chips at 7-Eleven at 9 AM.", "Buy chips at 9 AM."),
+            ("At 7-Eleven, buy chips and water at 9 AM.", "buy chips and water at 9 AM."),
+            ("At 9 AM, buy a cable at Best Buy.", "At 9 AM, buy a cable."),
+            ("Buy a cable at 9 AM at Best Buy.", "Buy a cable at 9 AM."),
+            ("Buy milk from cedar valley market tomorrow at 9 AM.", "Buy milk tomorrow at 9 AM."),
+            ("At the grocery store, buy milk, eggs.", "buy milk, eggs."),
+            ("Buy milk, eggs at Costco", "Buy milk, eggs")
+        ]
+        for (source, expected) in cases {
+            XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: source), expected, source)
+        }
+    }
+
+    func testStoreRemovalDeclinesArrivalScopeOtherStoresAndIndependentPredicates() {
+        for source in [
+            "When I get to Costco, remind me to buy milk.",
+            "If I go to nova supply, buy a cable.",
+            "Buy milk at Costco and bread at Walmart.",
+            "At Costco, buy milk and get bread at Walmart.",
+            "Buy milk and call Nora at Costco.",
+            "Buy eggs and scrub the brushes at nova supply.",
+            "Buy At Home cookies and chocolate.",
+            "Buy milk at Costco bakery department.",
+            "Nora said 'Buy milk at Costco'.",
+            "Buy milk at 'Costco",
+            "Buy eggs at Costco. Call Nora.",
+            "Buy eggs from scratch at 9 AM."
+        ] {
+            XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: source), source, source)
+        }
+    }
+
+    func testFutureUnnamedShoppingUsesShoppingWithoutRenamingSavedLabels() throws {
+        XCTAssertEqual(ShoppingGroupStore.fallbackGroup, "Shopping")
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts: ["wall anchors", "masking tape"]), "Shopping")
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts: ["milk", "eggs"]), "Groceries")
+        let previous = try repository.addShoppingItems(["spare clips"], group: "Other", createdAt: .now)
+        let custom = try repository.addShoppingItems(["tent pegs"], group: "Camping", createdAt: .now)
+        let future = try repository.addShoppingItems(["wall anchors"], group: ShoppingGroupStore.fallbackGroup, createdAt: .now)
+        XCTAssertEqual(ShoppingGroupStore.group(for: try XCTUnwrap(previous.first).id), "Other")
+        XCTAssertEqual(ShoppingGroupStore.group(for: try XCTUnwrap(custom.first).id), "Camping")
+        XCTAssertEqual(ShoppingGroupStore.group(for: try XCTUnwrap(future.first).id), "Shopping")
+        XCTAssertEqual(previous.first?.captureSession?.originalTranscription, "spare clips")
+        XCTAssertEqual(custom.first?.captureSession?.originalTranscription, "tent pegs")
+        XCTAssertEqual(future.first?.captureSession?.originalTranscription, "wall anchors")
+    }
+
+    func testRecognizedStoreCueDoesNotPromoteArbitraryHeadings() {
+        for name in ["Costco", "Best Buy", "the grocery store", "cedar valley market", "nova supply"] {
+            XCTAssertTrue(ShoppingGroupParser.isRecognizedStoreName(name), name)
+        }
+        for name in ["Picnic", "the picnic", "Garden 2027", "a dinner", "Nora", "room temperature"] {
+            XCTAssertFalse(ShoppingGroupParser.isRecognizedStoreName(name), name)
+        }
+    }
+
+    func testProductBoundariesProtectKnownCompoundsAndKeepEstablishedAdjacency() {
+        let cases: [(String, [String])] = [
+            ("honey mustard and bread", ["honey mustard", "bread"]),
+            ("milk chocolate and eggs", ["milk chocolate", "eggs"]),
+            ("milk bread and eggs", ["milk", "bread", "eggs"]),
+            ("chicken eggs and milk", ["chicken", "eggs", "milk"]),
+            ("Nuvella wipes and Zorbix pods", ["Nuvella wipes", "Zorbix pods"]),
+            ("bread and butter pickles and salt and pepper grinder set", ["bread and butter pickles", "salt and pepper grinder set"]),
+            ("shampoo and conditioner set and cotton pads", ["shampoo and conditioner set", "cotton pads"])
+        ]
+        for (source, expected) in cases {
+            XCTAssertEqual(ShoppingGroupParser.products(in: source, verb: "buy"), expected, source)
+        }
+        XCTAssertNil(ShoppingGroupParser.products(in: "Nuvella Zorbix pods", verb: "buy"),
+                     "Unknown undelimited noun runs must remain whole")
+    }
+
+    func testProductEnvelopesKeepArticlesQuantitiesMeasurementsAndUnknownHeads() {
+        let cases: [(String, [String])] = [
+            ("two tins of crushed tomatoes and a jar of capers and 500 g of pasta", ["two tins of crushed tomatoes", "a jar of capers", "500 g of pasta"]),
+            ("a USB-C cable and my winter gloves", ["a USB-C cable", "my winter gloves"]),
+            ("3M hooks and AA batteries", ["3M hooks", "AA batteries"]),
+            ("two dozen eggs and milk", ["two dozen eggs", "milk"])
+        ]
+        for (source, expected) in cases {
+            XCTAssertEqual(ShoppingGroupParser.products(in: source, verb: "buy"), expected, source)
+        }
+    }
+
+    func testProductEnvelopesCannotConsumeInternalPredicatesOrWithdrawals() {
+        for source in ["milk and she needs boots", "eggs and wash the windows",
+                       "a jar of sauce and call my mother", "milk and eggs if Nora approves",
+                       "milk and not eggs", "milk and never buy eggs",
+                       "shampoo and conditioner set is broken and eggs"] {
+            XCTAssertNil(ShoppingGroupParser.products(in: source, verb: "buy"), source)
+        }
+    }
+
+    func testGroceryGroupingUsesTheProductHeadRatherThanFoodModifiers() {
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts:
+            ["a salt and pepper grinder set", "dinner plates", "napkins"]), "Shopping")
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts:
+            ["pet food bowls", "a leash"]), "Shopping")
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts:
+            ["two tins of crushed tomatoes", "a jar of capers", "500 g of pasta"]), "Groceries")
+        XCTAssertEqual(ShoppingGroupParser.defaultGroup(forProducts:
+            ["Nuvella milk chocolate", "eggs"]), "Groceries")
+    }
+
+    func testPurchaseObjectNominalProofUsesTheActualCommandContext() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = false
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        guard SentenceContext.englishTaggingResponds() else {
+            throw XCTSkip("Positive unknown-brand nominal proof requires installed English lexical assets")
+        }
+        let command = "Buy Nuvella wipes and Zorbix pods"
+        for product in ["Nuvella wipes", "Zorbix pods"] {
+            XCTAssertTrue(ShoppingGroupParser.provesNominalPurchaseObject(product, in: command), product)
+        }
+        XCTAssertTrue(ShoppingGroupParser.allReadAsProducts(["Nuvella wipes", "Zorbix pods"],
+            in: "Nuvella wipes, Zorbix pods", purchaseCommand: command))
+        for command in ["Buy Nora sleeps and milk", "Buy Nora washes plates and milk",
+                        "Buy Nora is tired and milk", "Maya said buy Nuvella wipes and Zorbix pods"] {
+            let product = command.contains("Nora")
+                ? String(command.dropFirst(4).components(separatedBy: " and ")[0]) : "Nuvella wipes"
+            XCTAssertFalse(ShoppingGroupParser.provesNominalPurchaseObject(product, in: command), command)
+        }
+        XCTAssertFalse(ShoppingGroupParser.allReadAsProducts(["Nora sleeps", "milk"],
+            in: "Nora sleeps, milk", purchaseCommand: "Buy Nora sleeps and milk"))
+        XCTAssertFalse(ShoppingGroupParser.allReadAsProducts(["Nora sleeps", "milk"], in: "Nora sleeps, milk"),
+                       "A bare fact list must not acquire an inferred purchase frame")
+    }
+
+    func testPurchaseObjectNominalOverrideAbstainsWhenTaggingIsDisabled() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        for (product, command) in [("Nuvella wipes", "Buy Nuvella wipes and Zorbix pods"),
+                                   ("Zorbix pods", "Buy Nuvella wipes and Zorbix pods"),
+                                   ("Nora sleeps", "Buy Nora sleeps and milk")] {
+            XCTAssertFalse(ShoppingGroupParser.provesNominalPurchaseObject(product, in: command), command)
+        }
+        XCTAssertTrue(ShoppingGroupParser.allReadAsProducts(["Nuvella wipes", "Zorbix pods"],
+            in: "Nuvella wipes, Zorbix pods", purchaseCommand: "Buy Nuvella wipes and Zorbix pods"),
+                      "Known concrete noun heads preserve an ordinary purchase without local tagging assets")
+        XCTAssertFalse(ShoppingGroupParser.allReadAsProducts(["Nuvella zorbixs", "milk"],
+            in: "Nuvella zorbixs, milk", purchaseCommand: "Buy Nuvella zorbixs and milk"),
+                       "A completely unknown inflected head still needs lexical evidence")
+        XCTAssertFalse(ShoppingGroupParser.allReadAsProducts(["Nora sleeps", "milk"],
+            in: "Nora sleeps, milk", purchaseCommand: "Buy Nora sleeps and milk"))
+        XCTAssertTrue(ShoppingGroupParser.allReadAsProducts(["milk", "eggs"],
+            in: "milk, eggs", purchaseCommand: "Buy milk and eggs"),
+                      "Existing exact product knowledge does not require the optional override")
+    }
+
     func testCreatingCapturePersistsSessionAndItem() throws {
         let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
 

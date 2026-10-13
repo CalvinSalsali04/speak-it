@@ -10183,18 +10183,30 @@ enum RuleBasedThoughtExtractor {
     /// predicates, quotation, corrections and location triggers decline.
     static func literalPurchasePlan(_ source: String, referenceDate: Date,
                                     calendar: Calendar) -> ThoughtExtractionResult? {
+        let boundarySource = source.replacingOccurrences(
+            of: #"(?i)\b(dr|mr|mrs|ms|prof|st)\.(?=\s+[\p{L}])"#, with: "$1", options: .regularExpression)
         guard !Task.isCancelled, source.count <= 2_000,
               QuotedSpeechScope.ranges(in: source).isEmpty,
               !QuotedSpeechScope.hasUnclosedQuote(source),
-              source.range(of: #"(?i)[;\n]|[.!?]\s+[\p{L}]|\b(?:actually|instead|correction|never\s+mind|don.t|not|without|when|whenever|if|unless)\b"#,
+              boundarySource.range(of: #"(?i)[\n]|[.!?]\s+[\p{L}]|\b(?:actually|instead|correction|never\s+mind|don.t|not|without|when|whenever|if|unless)\b"#,
                            options: .regularExpression) == nil else { return nil }
         let normalized = normalize(source)
-        var command = withoutLeadingTemporalContext(normalized)
-        command = ShoppingGroupParser.withoutStoreContext(in: command)
+        let unframedTime = withoutLeadingTemporalContext(normalized)
+        let framed = canonicalizedListCommand(unframedTime, namingStore: true)
+        var command = ShoppingGroupParser.withoutStoreContext(in: canonicalizedListCommand(unframedTime))
         command = ReminderCopy.action(from: command)
-        guard command.range(of: #"(?i)^(?:buy|order|get|grab|pick\s+up)\s+"#,
-                            options: .regularExpression) != nil else { return nil }
-        let reading = ThoughtOrganizer.organize(normalized, referenceDate: referenceDate, calendar: calendar)
+        command = command.replacingOccurrences(of: ";", with: ",")
+        guard command.range(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
+                            options: .regularExpression) != nil,
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        // A validated store owns any digits in its name; they are not clocks.
+        // A declared list name is identity, not timing (“Craft night”). The
+        // same proved frame supplies calendar parsing without its name; a
+        // fronted calendar lead and all product words remain in that reading.
+        let timingCommand = canonicalizedListCommand(unframedTime)
+        let timingFrame = leadingTemporalContext(in: normalized).map { $0 + " " + timingCommand } ?? timingCommand
+        let timingSource = ShoppingGroupParser.withoutStoreContext(in: timingFrame)
+        let reading = ThoughtOrganizer.organize(timingSource, referenceDate: referenceDate, calendar: calendar)
         guard reading.locationIntent == nil, reading.recurrenceRule == nil,
               !reading.needsClarification, reading.state == .resolved,
               ActionabilityReader.read(command).belongsOnToday else { return nil }
@@ -10204,27 +10216,32 @@ enum RuleBasedThoughtExtractor {
             recurrenceRule: nil, needsClarification: false,
             temporalIntent: reading.temporalIntent, state: reading.state)
         let parent = ExtractedThought(sourceQuote: source, rawQuote: source,
-            wasRepaired: false, analysisText: normalized, suggestedTitle: nil,
+            wasRepaired: false, analysisText: command, suggestedTitle: nil,
             organization: organization, confidence: 1, needsReview: false,
-            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices))
+            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices),
+            shoppingGroup: declaredShoppingListName(in: unframedTime) ?? ShoppingGroupParser.storeName(in: framed))
         let entries = plainShoppingEntries(in: parent)
         // Acquisition verbs also collect people. Without an explicit purchase
         // verb, each object needs a known product head before this shortcut
         // can authorize shopping; nominal coordination alone is insufficient.
-        let explicitlyBuys = command.range(of: #"(?i)^(?:buy|order)\s+"#,
+        let explicitlyBuys = command.range(of: #"(?i)^(?:buy|purchase|order)\s+"#,
                                            options: .regularExpression) != nil
         guard explicitlyBuys || entries.allSatisfy({
-            ShoppingGroupParser.namesOneProduct($0.product)
-                || ShoppingGroupParser.namesOneProduct(String($0.product.split(separator: " ").last ?? ""))
+            ShoppingGroupParser.hasKnownProductCore($0.product)
         }) else { return nil }
         guard entries.count > 1, entries.allSatisfy({ entry in
             namesSomethingToBuy(entry.product)
                 && (!hasExplicitFinitePredicate(entry.product)
-                    || ShoppingGroupParser.namesOneProduct(String(entry.product.split(separator: " ").last ?? "")))
-                && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then|call|email|text|remind|send|finish|water|clean|pay|book)\b"#,
+                    || (entry.product.split(separator: " ").count == 2
+                        && ShoppingGroupParser.namesProductHead(String(entry.product.split(separator: " ").last ?? "")))
+                    || (explicitlyBuys && ShoppingGroupParser.provesNominalPurchaseObject(entry.product, in: command)))
+                && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then)\b"#,
                                        options: .regularExpression) == nil
+                && (ShoppingGroupParser.namesOneProduct(entry.product)
+                    || entry.product.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\s+"#,
+                                           options: .regularExpression) == nil)
         }), ShoppingGroupParser.allReadAsProducts(entries.map(\.product),
-            in: entries.map(\.product).joined(separator: ", ")) else { return nil }
+            in: entries.map(\.product).joined(separator: ", "), purchaseCommand: explicitlyBuys ? command : nil) else { return nil }
         let items = shapingShoppingLists([parent], capture: source, sourceForOwnership: source)
         guard items.count == entries.count,
               items.allSatisfy({ $0.organization.itemType == .shopping }),
@@ -10309,19 +10326,53 @@ enum RuleBasedThoughtExtractor {
 
         let store = ShoppingGroupParser.storeName(in: capture)
         let defaultGroup = ShoppingGroupParser.defaultGroup(
-            forProducts: shoppingIndices.map { items[$0].sourceQuote }
+            forProducts: shoppingIndices.flatMap { index -> [String] in
+                let item = items[index]
+                let organization = item.organization
+                // Category voting may read the products of an intact recurring
+                // list. It never expands that list or changes its one trigger.
+                let grouping = OrganizedThought(itemType: .shopping, category: .shopping,
+                    priority: organization.priority, personName: organization.personName,
+                    dueDate: organization.dueDate, reminderDate: organization.reminderDate,
+                    reminderDelivery: organization.reminderDelivery, recurrenceRule: nil,
+                    needsClarification: organization.needsClarification,
+                    temporalIntent: organization.temporalIntent, state: organization.state)
+                var groupAnalysis = item.analysisText
+                if organization.recurrenceRule != nil,
+                   let tail = groupAnalysis.range(of: #"(?i)\s+(?:every|each)\s+.+$"#, options: .regularExpression),
+                   let context = leadingTemporalContext(in: String(groupAnalysis[tail]).trimmingCharacters(in: .whitespaces)),
+                   normalize(context).caseInsensitiveCompare(normalize(String(groupAnalysis[tail]))) == .orderedSame {
+                    groupAnalysis = String(groupAnalysis[..<tail.lowerBound])
+                }
+                let projection = ExtractedThought(sourceQuote: item.sourceQuote, rawQuote: item.rawQuote,
+                    wasRepaired: item.wasRepaired, analysisText: groupAnalysis,
+                    suggestedTitle: item.suggestedTitle, organization: grouping,
+                    confidence: item.confidence, needsReview: item.needsReview,
+                    sourceUnitIDs: item.sourceUnitIDs, shoppingGroup: item.shoppingGroup)
+                let entries = plainShoppingEntries(in: projection)
+                return entries.isEmpty ? [item.sourceQuote] : entries.map(\.product)
+            }
         )
 
         var result = items
         for index in shoppingIndices {
+            // A parsed arrival trigger owns its named destination even though
+            // that condition must never be removed from the purchase text.
+            let arrivalStore: String?
+            if case let .named(name) = items[index].organization.locationIntent?.place,
+               ShoppingGroupParser.isRecognizedStoreName(name) {
+                arrivalStore = ShoppingGroupParser.storeName(in: "go to " + name)
+            } else { arrivalStore = nil }
             // A store mentioned elsewhere in a long capture cannot silently
             // own every product. The row's own original span is the strongest
             // evidence; a bare trip can supply the group only when it folds
             // into an adjacent list below.
-            result[index].shoppingGroup = ShoppingGroupParser.storeName(
+            result[index].shoppingGroup = items[index].shoppingGroup
+                ?? declaredShoppingListName(in: items[index].rawQuote) ?? ShoppingGroupParser.storeName(
                 in: items[index].rawQuote
             ) ?? ShoppingGroupParser.storeName(in: items[index].sourceQuote)
                 ?? pastTripShoppingContext(in: items[index].rawQuote)?.store
+                ?? arrivalStore
                 ?? defaultGroup
         }
 
@@ -10546,7 +10597,8 @@ enum RuleBasedThoughtExtractor {
                     organization: item.organization,
                     confidence: min(item.confidence, 0.94),
                     needsReview: item.needsReview,
-                    sourceUnitIDs: product.ids.union(index == 0 ? framingIDs : [])
+                    sourceUnitIDs: product.ids.union(index == 0 ? framingIDs : []),
+                    shoppingGroup: item.shoppingGroup
                 )
             })
             if let exclusionRange {
@@ -10598,7 +10650,7 @@ enum RuleBasedThoughtExtractor {
         // `isBareTripPhrase` in `assigningShoppingGroups`; it is one bug
         // wearing two hats.
         var title = withoutLeadingTemporalContext(
-            ThoughtTitleFormatter.polished(item.analysisText, itemType: .shopping)
+            ThoughtTitleFormatter.polished(canonicalizedListCommand(item.analysisText), itemType: .shopping)
         )
             .replacingOccurrences(
                 of: #"(?i)^(?:please\s+)?(?:go(?:ing)?\s+to|head(?:ing)?\s+(?:over\s+)?to|stop(?:ping)?\s+(?:by|at)|swing(?:ing)?\s+by|run(?:ning)?\s+to|drive\s+to|driving\s+to)\s+(?:the\s+)?[\w'&.-]+(?:\s+[\w'&.-]+){0,2}?\s+(?:and\s+)?(?=(?:buy|order|get|grab|pick)\b)"#,
@@ -10622,9 +10674,12 @@ enum RuleBasedThoughtExtractor {
         if organization.reminderDate != nil || organization.dueDate != nil {
             title = ReminderCopy.withoutTrailingTiming(title)
         }
+        if organization.reminderDate != nil || organization.dueDate != nil {
+            title = withoutShoppingCalendarTail(title)
+        }
         let removedStore = title != beforeStore && ShoppingGroupParser.storeName(in: item.rawQuote) != nil
         guard let regex = NSRegularExpression.speakItCached(
-            #"^(buy|order|get|grab|pick\s+up)\s+(.+)$"#,
+            #"^(buy|purchase|order|get|grab|pick\s+up)\s+(.+)$"#,
             options: [.caseInsensitive]
         ) else { return [] }
         let range = NSRange(title.startIndex..., in: title)
@@ -10649,11 +10704,8 @@ enum RuleBasedThoughtExtractor {
             // Speech transcription often drops the commas the person spoke.
             // A comma-less body still splits when every word is a recognized
             // grocery — "chicken eggs and milk" — and stays whole otherwise.
-            if let recognized = ShoppingGroupParser.recognizedProducts(in: body) {
-                return recognized.map { (verb, $0) }
-            }
-            if let structural = ShoppingGroupParser.structuralProducts(in: body, verb: verb) {
-                return structural.map { (verb, $0) }
+            if let products = ShoppingGroupParser.products(in: body, verb: verb) {
+                return products.map { (verb, $0) }
             }
             if removedStore, !body.localizedCaseInsensitiveContains(" and "), namesSomethingToBuy(body) {
                 return [(verb, body)]
@@ -10683,22 +10735,51 @@ enum RuleBasedThoughtExtractor {
               // "Buy we're almost out". One unreadable group abandons the
               // expansion rather than dropping words: the capture stays one
               // row, which is recoverable, instead of becoming junk.
-              products.allSatisfy(namesSomethingToBuy) else { return [] }
+              products.allSatisfy(namesSomethingToBuy),
+              products.allSatisfy({ product in
+                  !hasExplicitFinitePredicate(product)
+                    || ShoppingGroupParser.namesOneProduct(product)
+                    || (product.split(separator: " ").count == 2
+                        && ShoppingGroupParser.namesProductHead(String(product.split(separator: " ").last ?? "")))
+                    || ShoppingGroupParser.provesNominalPurchaseObject(product, in: title)
+              }),
+              products.allSatisfy({ product in
+                  product.range(of: #"(?i)^(?:both|all|each|either|neither)\b|\bfor\s+all\s+of\s+them\b"#,
+                                options: .regularExpression) == nil
+              }) else { return [] }
         return products.map { (verb, $0) }
+    }
+
+    /// Display-only removal after the actual organization resolved a calendar.
+    /// Reuse the shared calendar-context grammar, including an adjacent bound
+    /// preposition; an unresolved condition cannot enter this path.
+    private static func withoutShoppingCalendarTail(_ source: String) -> String {
+        var result = source.trimmingCharacters(in: CharacterSet(charactersIn: " .;!?"))
+        while let tail = trailingTemporalContext(in: result),
+              let range = result.range(of: NSRegularExpression.escapedPattern(for: tail) + "$",
+                                       options: [.regularExpression, .caseInsensitive]) {
+            var lower = range.lowerBound
+            if let preposition = result[..<lower].range(of: #"(?i)\b(?:on|by|before|after)\s+$"#,
+                                                       options: .regularExpression) {
+                lower = preposition.lowerBound
+            }
+            result = normalize(String(result[..<lower]))
+        }
+        return result
     }
 
     /// Whether a comma group reads as a product rather than as a comment about
     /// the list.
     private static func namesSomethingToBuy(_ product: String) -> Bool {
         let words = product.split(separator: " ")
-        guard (1...5).contains(words.count) else { return false }
+        guard (1...12).contains(words.count) else { return false }
         if words.count <= 2,
            product.range(of: #"(?i)^no\b"#, options: .regularExpression) != nil {
             return false
         }
         // A predicate or a stated subject means this is a clause, not an item.
         return product.range(
-            of: #"(?i)\b(?:is|are|was|were|has|have|had|does|did|'?s|'?re|i|we|you|they|he|she|it|which|who|whose|don'?t|not|never|without|need|because|since|when|while|before|after)\b"#,
+            of: #"(?i)\b(?:is|are|was|were|has|have|had|does|did|i|we|you|they|he|she|it|which|who|whose|don'?t|not|never|without|need|because|since|when|while|before|after)\b"#,
             options: .regularExpression
         ) == nil
     }
@@ -10729,9 +10810,7 @@ enum RuleBasedThoughtExtractor {
             }
             products = groups
         } else {
-            products = ShoppingGroupParser.recognizedProducts(in: body)
-                ?? ShoppingGroupParser.structuralProducts(in: body, verb: "buy")
-                ?? []
+            products = ShoppingGroupParser.products(in: body, verb: "buy") ?? []
         }
 
         // A capture that names an action or a place is not a bare list, whatever
@@ -14251,7 +14330,7 @@ enum RuleBasedThoughtExtractor {
             // adjunct. Its comma fronts the following command; it cannot
             // authorize a standalone event while that command loses its hour.
             if let daypart = tail.range(
-                of: #"(?i)^\s+this\s+(?:morning|afternoon|evening)\b"#,
+                of: #"(?i)^\s+(?:this\s+(?:morning|afternoon|evening)|today|tonight|tomorrow)\b"#,
                 options: .regularExpression) {
                 return normalize(String(text[clock]) + String(tail[daypart]))
             }
@@ -14455,24 +14534,132 @@ enum RuleBasedThoughtExtractor {
         _ text: String,
         namingStore: Bool = false
     ) -> String {
+        if text.range(of: #"(?i)\b(?:packing|reading|wish|guest|inventory|swimming|to[- ]?do|action|task)\s+(?:check)?list\b"#,
+                      options: .regularExpression) != nil { return text }
         // Placing an existing task on a dated list supplies metadata. Its
         // deictic object must not be rewritten into a purchase of “this one”.
-        if text.range(of: datedTaskListReferencePattern, options: .regularExpression) != nil {
+        if text.range(of: datedTaskListReferencePattern, options: .regularExpression) != nil
+            || text.range(of: #"(?i)^(?:put|place|keep|add)\s+(?:this|that)\s+(?:one|task|action|reminder)\s+(?:on|in)\b.+\blist[.!?]*$"#,
+                          options: .regularExpression) != nil {
             return text
         }
-        let addition = #"(?i)^\s*(?:please\s+)?(?:add|put|throw)\s+(.+?)\s+(?:to|on|onto|in)\s+(?:my\s+|the\s+|our\s+)?(?:\p{L}[\p{L}'-]*\s+)?list\s*[.!]?\s*$"#
-        if let regex = NSRegularExpression.speakItCached(addition),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            let contents = normalize(String(text[range]))
-            // A list can contain an action clause, not just products. The
-            // gerund's explicit object distinguishes "washing the windows"
-            // from nominal compounds such as "washing powder". Read the
-            // known verb vocabulary; an -ing suffix alone has no authority.
+        func listCommand(_ contents: String, name: String? = nil) -> String {
+            // A back-reference needs an antecedent resolver. It is not a new
+            // product named “both” or “them”; preserve the request verbatim.
+            if contents.range(of: #"(?i)^\s*(?:both|them|those|these|it|that|this|all\s+(?:of\s+)?(?:them|those|these))[.!?]*\s*$"#,
+                              options: .regularExpression) != nil { return text }
             if let action = listContentAction(contents) { return action }
-            return "buy \(contents)"
+            var command = "buy \(normalize(contents))"
+            if namingStore, let name = name.flatMap(shoppingListName) { command += " at \(name)" }
+            return command
+        }
+        // Explicit list frames supply the role of an unfamiliar noun. The
+        // contents still have to pass product, condition and ownership guards.
+        let frames = [
+            #"(?i)^\s*(?:please\s+)?(?:add|put|throw)\s+(.+?)\s+(?:to|on|onto|in)\s+(?:my\s+|the\s+|our\s+)?((?:[\p{L}\p{N}'’&.-]+\s+){0,6})list\s*[.!]?\s*$"#,
+            #"(?i)^\s*(?:please\s+)?(?:add|put|throw)\s+(.+?)\s+(?:to|on|onto|in)\s+(?:my\s+|the\s+|our\s+)?(shopping|groceries)\s*[.!]?\s*$"#
+        ]
+        for pattern in frames {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let contents = Range(match.range(at: 1), in: text),
+                  let name = Range(match.range(at: 2), in: text) else { continue }
+            return listCommand(String(text[contents]), name: String(text[name]))
+        }
+        let namedFrames: [(String, Int, Int)] = [
+            (#"(?i)^\s*(?:my|our)\s+(.+?)\s+shopping\s+list\s+needs\s+(.+)$"#, 2, 1),
+            (#"(?i)^\s*for\s+the\s+list\s+(?:named|called)\s+(.+?)\s*,\s*(?:buy|purchase|order)\s+(.+)$"#, 2, 1),
+            (#"(?i)^\s*(?:buy|purchase|order)\s+(.+?)\s+for\s+(?:the|my|our)\s+shopping\s+list\s+(?:named|called)\s+(.+?)[.!?]*$"#, 1, 2),
+            (#"(?i)^\s*(?:buy|purchase|order)\s+(.+?)\s*,?\s+and\s+put\s+(?:those|these|the)\s+(?:purchases|items|products)\s+(?:on|in)\s+(?:my|the|our)\s+(.+?)\s+list[.!?]*$"#, 1, 2),
+            (#"(?i)^\s*on\s+(.+?\s+purchases)\s+put\s+(.+)$"#, 2, 1)
+        ]
+        for (pattern, contentsIndex, nameIndex) in namedFrames {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let contents = Range(match.range(at: contentsIndex), in: text),
+                  let name = Range(match.range(at: nameIndex), in: text),
+                  text[name].split(separator: " ").count <= 8 else { continue }
+            return listCommand(String(text[contents]), name: String(text[name]))
+        }
+        let fronted = #"(?i)^\s*(?:on|in)\s+(?:my\s+|the\s+|our\s+)?((?:[\p{L}\p{N}'’&.-]+\s+){0,6})list\s*[:,]?\s+(?:put|add|(?:i|we)\s+need)\s+(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(fronted),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let name = Range(match.range(at: 1), in: text),
+           let contents = Range(match.range(at: 2), in: text) {
+            return listCommand(String(text[contents]), name: String(text[name]))
+        }
+        let header = #"(?i)^\s*((?:grocery|shopping)\s+list|groceries)\s*[:,]?\s+(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(header),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let name = Range(match.range(at: 1), in: text),
+           let contents = Range(match.range(at: 2), in: text) {
+            return listCommand(String(text[contents]), name: String(text[name]).replacingOccurrences(of: #"(?i)\s+list$"#, with: "", options: .regularExpression))
+        }
+        // A fronted store plus a current noun need is a purchase envelope;
+        // requiring the need frame avoids treating a purpose as a store.
+        let storeNeed = #"(?i)^\s*for\s+(?:the\s+)?([\p{L}\p{N}'’&.-]+(?:\s+[\p{L}\p{N}'’&.-]+){0,5}?)\s*,?\s+(?:i|we)\s+need\s+(?!to\b)(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(storeNeed),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let name = Range(match.range(at: 1), in: text),
+           let contents = Range(match.range(at: 2), in: text) {
+            let proposed = "buy \(text[contents]) at \(text[name])"
+            if ShoppingGroupParser.isRecognizedStoreName(String(text[name])) {
+                return namingStore ? proposed : listCommand(String(text[contents]))
+            }
+        }
+        if let lead = text.range(of: #"(?i)^\s*(for\s+.+?)\s*,\s*(?=(?:buy|purchase|order)\s+)"#, options: .regularExpression) {
+            let purpose = String(text[lead]).trimmingCharacters(in: CharacterSet(charactersIn: " ,"))
+            if leadingPurposeContext(in: purpose) != nil { return normalize(String(text[lead.upperBound...])) }
+        }
+        if let lead = text.range(of: #"(?i)^\s*(?:i|we)\s+need\s+(?!to\b)"#, options: .regularExpression) {
+            let contents = normalize(String(text[lead.upperBound...])).trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            if let products = ShoppingGroupParser.products(in: contents, verb: "get"),
+               products.allSatisfy(ShoppingGroupParser.hasKnownProductCore) {
+                return "get " + contents
+            }
+        }
+        let nominalAddition = #"(?i)^\s*(?:please\s+)?add\s+(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(nominalAddition),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let contents = Range(match.range(at: 1), in: text),
+           let products = ShoppingGroupParser.products(in: String(text[contents]), verb: "buy"),
+           products.count > 1,
+           products.allSatisfy({ product in
+               ShoppingGroupParser.namesOneProduct(String(product.split(separator: " ").last ?? ""))
+           }) {
+            return listCommand(String(text[contents]))
         }
         return canonicalizedListCreation(text, namingStore: namingStore) ?? text
+    }
+
+    private static func declaredShoppingListName(in source: String) -> String? {
+        let boundarySource = source.replacingOccurrences(
+            of: #"(?i)\b(dr|mr|mrs|ms|prof|st)\.(?=\s+[\p{L}])"#, with: "$1", options: .regularExpression)
+        guard boundarySource.range(of: #"[.!?]\s+[\p{L}]|[\n]"#,
+                                   options: .regularExpression) == nil else { return nil }
+        let plain = Array(canonicalizedListCommand(source))
+        let grouped = Array(canonicalizedListCommand(source, namingStore: true))
+        guard grouped != plain else { return nil }
+        var prefix = 0
+        while prefix < min(plain.count, grouped.count), plain[prefix] == grouped[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < plain.count - prefix, suffix < grouped.count - prefix,
+              plain[plain.count - suffix - 1] == grouped[grouped.count - suffix - 1] { suffix += 1 }
+        // Both projections differ only by the explicitly named group insertion.
+        guard prefix + suffix == plain.count else { return nil }
+        let insertion = String(grouped[prefix..<(grouped.count - suffix)]).trimmingCharacters(in: .whitespaces)
+        guard insertion.lowercased().hasPrefix("at ") else { return nil }
+        return shoppingListName(String(insertion.dropFirst(3)))
+    }
+
+    private static func shoppingListName(_ value: String) -> String? {
+        var name = normalize(value).trimmingCharacters(in: CharacterSet(charactersIn: " ,:;.!?"))
+        let lower = name.lowercased()
+        if ["", "shopping", "store", "food"].contains(lower) { return nil }
+        if ["grocery", "groceries"].contains(lower) { return ShoppingGroupParser.groceriesGroup }
+        name = name.replacingOccurrences(of: #"(?i)\s+shopping$"#, with: "", options: .regularExpression)
+        guard !name.isEmpty, name.count <= 80 else { return nil }
+        return String(name.prefix(1)).uppercased() + name.dropFirst()
     }
 
     private static func listContentAction(_ contents: String) -> String? {
@@ -14507,7 +14694,7 @@ enum RuleBasedThoughtExtractor {
         // name in front of it ("a Costco list", "the hardware list").
         let head = #"(?i)^\s*(?:please\s+)?(?:create|make|start|begin|set\s+up|build)\s+"#
             + #"(?:me\s+)?(?:a|an|my|the|our)?\s*"#
-            + #"((?:\p{L}[\p{L}'-]*\s+){0,2}?)list\b"#
+            + #"((?:[\p{L}\p{N}][\p{L}\p{N}'’&.-]*\s+){0,6}?)list\b"#
         guard let regex = NSRegularExpression.speakItCached(head),
               let match = regex.firstMatch(
                 in: text,
@@ -14524,6 +14711,16 @@ enum RuleBasedThoughtExtractor {
         let namedBeforeNoun = Range(match.range(at: 1), in: text)
             .map { normalize(String(text[$0])) } ?? ""
         var rest = normalize(String(text[headRange.upperBound...]))
+        if let named = rest.range(of: #"(?i)^(?:called|named)\s+(.+?)(?=\s+(?:with|containing|including)\b|\s*:)"#, options: .regularExpression) {
+            let label = String(rest[named]).replacingOccurrences(of: #"(?i)^(?:called|named)\s+"#, with: "", options: .regularExpression)
+            let remainder = normalize(String(rest[named.upperBound...]))
+            if let contentsLead = remainder.range(of: #"(?i)^(?:with|containing|including|:)\s*"#, options: .regularExpression),
+               let group = shoppingListName(label) {
+                let contents = normalize(String(remainder[contentsLead.upperBound...]))
+                guard !contents.isEmpty else { return nil }
+                return "buy \(contents)" + (namingStore ? " at \(group)" : "")
+            }
+        }
 
         // "for <store>" names the list; it is lifted out and re-attached as the
         // trailing "at <store>" the store detector already reads.
@@ -14575,7 +14772,7 @@ enum RuleBasedThoughtExtractor {
         if store == nil {
             let candidate = normalize(namedBeforeNoun).lowercased()
             if !candidate.isEmpty, !genericFlavours.contains(candidate) {
-                store = normalize(namedBeforeNoun)
+                store = shoppingListName(namedBeforeNoun)
             }
         }
 

@@ -5,6 +5,19 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — broader purchase-list coverage
+
+- Broaden explicit current purchase and named shopping-list frames, including
+  own list needs, while keeping quantities, packages and compound product names.
+- Keep list/store ownership local to its purchase frame, preserve arrival-store
+  names, and categorize recurring groceries without splitting their series.
+- Separate product-head evidence from grocery category; refuse unsupported
+  back-references and shared modifier-only purchases instead of inventing items.
+- Unknown undelimited runs, cross-sentence references, modifier propagation,
+  exclusions, some polite/implicit needs and nonpurchase checklists remain
+  incomplete. This is a source change, with no new distribution build or global
+  accuracy claim; exact verification is recorded with the pull request.
+
 ## Unreleased — automatic voice and shopping regression fixes
 
 - Start listening when voice capture opens and always finish after an adaptive
