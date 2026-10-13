@@ -9,6 +9,11 @@ The matched alternate-recognizer experiment did not justify changing engines.
 Explicit local name/term hints are available after editing a real saved item;
 recognition bias may help a familiar term but can also influence similar names.
 They are removable, bounded, and do not guarantee spelling or rewrite originals.
+Complex runtime interpretation can still take several seconds: its current
+work is cancelled cooperatively after 20 seconds, separately from the legacy
+refiner's two-second race. Neither is a guarantee of two-second full capture
+latency. The Mac startup diagnostic bypasses early certificates and does not
+qualify last-word-to-persisted-visible-row timing or a prewarm benefit.
 Synthetic file/noise replay does not qualify phone microphones, routes, competing
 speakers, human prosody, or physical stop-to-visible-row latency.
 

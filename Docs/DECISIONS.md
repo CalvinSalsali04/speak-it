@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-10-13 — Measure startup without guessing a phone optimization
+
+Tools/CaptureStartup executes two fixed synthetic cases through live production
+functions in an unoptimized Mac DEBUG harness. It separates the ordinary literal
+path from a deliberately forced model stage, records first/second requests within
+one process, and neither controls model eviction nor measures microphone,
+SwiftData, UI, bank retrieval, battery or iPhone latency. It never starts a mic or
+reads saved user thoughts. The two model results remained review items; returned
+output is not successful semantic accuracy. Exact timing and commands are in the
+tool README and retained local evidence.
+
+Claude Opus 5.5 agreed that Mac timing alone cannot justify phone prewarming.
+Keep startup behavior unchanged: certified ordinary captures avoid a generative
+wait, while complex model interpretation retains its current cancellation and
+recovery. The runtime path precedes legacy refinement and has a separate
+20-second cooperative cancellation timer; the legacy two-second race does not
+bound an accepted runtime result. Complex captures can still take seconds.
+A warmup proposal must demonstrate an improvement in real-phone
+last-word-to-persisted-visible-row latency without worsening microphone readiness
+or routes. iPhone 13 has no Foundation Models path to prewarm. Apple documents
+LanguageModelSession.prewarm(promptPrefix:), but merely calling it would not
+establish a product benefit, especially when generation uses new sessions.
+
 ## 2026-10-13 — Confirm recognition hints while correcting a saved item
 
 After editing a real item's title or person, Help recognize a word offers a
@@ -20,8 +43,10 @@ also clears that key.
 
 Claude Opus 5.5 reviewed and agreed to user-initiated hints rather than guessed
 sound-alike detection. A single existing exposed synthetic recording improved
-from “Namdi” to “Nnamdi” with identical audio and explicit context; this is one
-mechanism check, not a new accuracy rate or a guarantee for similar real names.
+from “Namdi” to “Nnamdi” with identical audio and explicit context. Other
+words stayed the same; punctuation changed. The no-hint trace came from the
+earlier cohort rather than a matched repeat, so this is illustrative mechanism
+evidence, not causal qualification, a new accuracy rate or a spelling guarantee.
 
 ## 2026-10-13 — Keep shared shopping details explicit and capture-scoped
 
