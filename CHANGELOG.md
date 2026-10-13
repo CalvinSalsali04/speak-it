@@ -5,6 +5,13 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — durable capture confirmation
+
+- Show saved original words during longer organization, then the final result.
+- Avoid a second receipt for quick local captures and keep processing read-only.
+- Preserve existing tutorial, allowance, retry and reminder handling.
+- Source changes only; physical microphone and device latency remain unqualified.
+
 ## Unreleased — capture confidence follow-up
 
 - Preserve unfinished negative speech across a pause; qualify actual endpoint

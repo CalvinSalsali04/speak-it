@@ -1199,12 +1199,14 @@ final class StorageFailureDurabilityTests: XCTestCase {
     }
 
     func testAFailedSaveReportsFailureRatherThanSuccess() async throws {
+        var acknowledged = false
         do {
             _ = try await repository.createCaptureResult(
                 text: "Move the standing meeting to Thursday",
                 source: .inAppVoice,
                 createdAt: .now,
-                schedulesReminders: false
+                schedulesReminders: false,
+                onDurablySaved: { _ in acknowledged = true }
             )
             XCTFail("A store that cannot save must not report a saved thought")
         } catch let error as RepositoryError {
@@ -1212,6 +1214,7 @@ final class StorageFailureDurabilityTests: XCTestCase {
                 return XCTFail("Expected a save failure, got \(error)")
             }
         }
+        XCTAssertFalse(acknowledged, "A failed raw transaction must never announce Saved")
     }
 
     func testAFailedSaveWritesNothingDurable() async throws {
@@ -1683,5 +1686,91 @@ final class CaptureRecoveryEscapeTests: XCTestCase {
             userInfo: [NSLocalizedDescriptionKey: "No speech detected"]
         )
         XCTAssertEqual(CaptureRecoveryFailureKind(error: opaque), .noSpeechDetected)
+    }
+}
+
+
+/// Verifies the real commit boundary using a separately opened file-backed store.
+@MainActor
+final class DurableCaptureProgressTests: XCTestCase {
+    private var container: ModelContainer!
+    private var repository: SwiftDataThoughtRepository!
+    private var storeURL: URL!
+
+    override func setUpWithError() throws {
+        storeURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SpeakItProgress-\(UUID().uuidString).store")
+        container = try openContainer()
+        repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+    }
+
+    override func tearDownWithError() throws {
+        repository = nil
+        container = nil
+        for suffix in ["", "-shm", "-wal"] {
+            try? FileManager.default.removeItem(atPath: storeURL.path + suffix)
+        }
+    }
+
+    private func openContainer() throws -> ModelContainer {
+        try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: PersistenceController.schema, url: storeURL)])
+    }
+
+    func testProgressAcknowledgesCommittedOriginalBeforeFinalRowsExist() async throws {
+        let text = "Buy ham, cheese and eggs at Costco tomorrow at 9 a.m."
+        var receipts: [DurableCaptureReceipt] = []
+        let result = try await repository.createCaptureResult(text: text, source: .inAppText,
+            createdAt: .now, schedulesReminders: false, onDurablySaved: { receipt in
+                receipts.append(receipt)
+                do {
+                    let reopened = try self.openContainer()
+                    let sessions = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+                    let rows = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+                    XCTAssertEqual(sessions.count, 1)
+                    XCTAssertEqual(sessions.first?.id, receipt.sessionID)
+                    XCTAssertEqual(sessions.first?.originalTranscription, text)
+                    XCTAssertEqual(sessions.first?.processingStatus, .pending)
+                    XCTAssertEqual(rows.count, 1, "No inferred split is acknowledged as final")
+                    XCTAssertEqual(rows.first?.originalTextSegment, text)
+                    XCTAssertNil(rows.first?.reminderDate, "The acknowledgement must not schedule an alert")
+                } catch { XCTFail("Receipt preceded durable persistence: \(error)") }
+            })
+        XCTAssertEqual(receipts.count, 1)
+        XCTAssertEqual(receipts.first?.sessionID, result.session.id)
+        XCTAssertEqual(receipts.first?.originalTranscription, text)
+        XCTAssertEqual(receipts.first?.isPractice, false)
+        XCTAssertEqual(result.items.count, 3)
+        XCTAssertEqual(result.session.processingStatus, .complete)
+        XCTAssertTrue(result.consumesFreeCapture)
+        let reopened = try openContainer()
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 1)
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 3)
+    }
+
+    func testDuplicateReturnsExistingResultWithoutAnotherSaveAcknowledgement() async throws {
+        let time = Date.now
+        var receiptCount = 0
+        let first = try await repository.createCaptureResult(text: "Buy toothpaste", source: .inAppText,
+            createdAt: time, schedulesReminders: false, onDurablySaved: { _ in receiptCount += 1 })
+        let second = try await repository.createCaptureResult(text: "Buy toothpaste", source: .inAppText,
+            createdAt: time.addingTimeInterval(1), schedulesReminders: false,
+            onDurablySaved: { _ in receiptCount += 1 })
+        XCTAssertEqual(receiptCount, 1)
+        XCTAssertEqual(first.session.id, second.session.id)
+        XCTAssertFalse(second.createdNewCapture)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 1)
+    }
+
+    func testPracticeAcknowledgementDoesNotChangeComplimentaryResult() async throws {
+        var receipt: DurableCaptureReceipt?
+        let result = try await repository.createCaptureResult(text: "Buy milk", source: .tutorial,
+            createdAt: .now, schedulesReminders: false, onDurablySaved: { receipt = $0 })
+        XCTAssertEqual(receipt?.isPractice, true)
+        XCTAssertEqual(receipt?.sessionID, result.session.id)
+        XCTAssertFalse(result.consumesFreeCapture)
+        XCTAssertEqual(result.session.captureSource, .tutorial)
     }
 }

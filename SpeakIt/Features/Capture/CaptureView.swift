@@ -188,6 +188,9 @@ struct CaptureView: View {
     @State private var captureNotice: String?
     @State private var voiceNotice: String?
     @State private var isSaving = false
+    @State private var durableReceipt: DurableCaptureReceipt?
+    @State private var showsOrganizingReceipt = false
+    @State private var organizingReceiptTask: Task<Void, Never>?
     @State private var showsSavedConfirmation = false
     @State private var savedConfirmationTitle = "Remembered"
     @State private var savedConfirmationSymbol = "checkmark"
@@ -289,6 +292,8 @@ struct CaptureView: View {
                         if showsSavedConfirmation {
                             savedView
                                 .transition(.scale(scale: 0.88).combined(with: .opacity))
+                        } else if showsOrganizingReceipt, let durableReceipt {
+                            organizingView(durableReceipt)
                         } else if mode == .voice {
                             voiceView
                                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -745,6 +750,59 @@ struct CaptureView: View {
             Spacer()
         }
         .padding(.horizontal, 22)
+    }
+
+    private func organizingView(_ receipt: DurableCaptureReceipt) -> some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                SavedCaptureSeal(symbol: "checkmark", celebratesSave: false)
+                Text(receipt.isPractice ? "Practice saved" : "Saved on this iPhone")
+                    .font(.largeTitle.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("capture.durableSaved")
+                Text("Organizing your thought…")
+                    .foregroundStyle(Color.speakMuted)
+                    .accessibilityIdentifier("capture.organizing")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Your words")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.speakMuted)
+                    Text(receipt.originalTranscription)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("capture.durableTranscript")
+                }
+                .padding(18)
+                .background(Color.speakSurface, in: RoundedRectangle(cornerRadius: 20))
+                if receipt.isPractice {
+                    Text("Practice · no alerts · doesn’t use a free capture")
+                        .font(.footnote)
+                        .foregroundStyle(Color.speakMuted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 30)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private func acknowledgeDurableCapture(_ receipt: DurableCaptureReceipt) {
+        durableReceipt = receipt
+        organizingReceiptTask?.cancel()
+        organizingReceiptTask = Task { @MainActor in
+            // Avoid flashing a second receipt for quick local captures.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, isSaving,
+                  durableReceipt?.sessionID == receipt.sessionID else { return }
+            isTextFocused = false
+            showsOrganizingReceipt = true
+            if accessibilityVoiceOverEnabled {
+                UIAccessibility.post(notification: .announcement,
+                    argument: receipt.isPractice ? "Practice saved. Organizing." : "Saved on this iPhone. Organizing.")
+            }
+        }
     }
 
     private var savedView: some View {
@@ -1403,6 +1461,7 @@ struct CaptureView: View {
     }
 
     private func save(_ text: String, source: CaptureSource) {
+        guard !isSaving else { return }
         let repairedText = source == .inAppVoice
             ? tutorialMission?.repairVoiceTranscript(text) ?? text
             : text
@@ -1467,8 +1526,16 @@ struct CaptureView: View {
         if let activeDraftID {
             CaptureDraftStore.update(id: activeDraftID, transcript: normalizedText)
         }
+        durableReceipt = nil
+        showsOrganizingReceipt = false
         isSaving = true
         Task { @MainActor in
+            defer {
+                organizingReceiptTask?.cancel()
+                organizingReceiptTask = nil
+                showsOrganizingReceipt = false
+                isSaving = false
+            }
             do {
                 let persistenceSource: CaptureSource = tutorialMission != nil || activeDraft?.captureSource == .tutorial
                     ? .tutorial
@@ -1478,7 +1545,8 @@ struct CaptureView: View {
                     source: persistenceSource,
                     createdAt: captureStartedAt ?? .now,
                     schedulesReminders: persistenceSource != .tutorial,
-                    performance: performance
+                    performance: performance,
+                    onDurablySaved: acknowledgeDurableCapture
                 )
                 let retrySource = retryingUnclearResult
                 let replacesRetrySource = retrySource.map {
@@ -1607,7 +1675,9 @@ struct CaptureView: View {
                     source: source == .inAppVoice ? .voice : .text,
                     category: "organization"
                 ))
-                errorMessage = error.localizedDescription
+                errorMessage = durableReceipt == nil
+                    ? error.localizedDescription
+                    : "Your original words were saved on this iPhone, but organization couldn’t finish. They are safe in Capture history. " + error.localizedDescription
             }
         }
     }

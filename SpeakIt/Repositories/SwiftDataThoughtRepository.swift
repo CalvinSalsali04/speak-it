@@ -1113,7 +1113,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         source: CaptureSource,
         createdAt: Date,
         schedulesReminders: Bool = true,
-        performance: CapturePerformanceTrace? = nil
+        performance: CapturePerformanceTrace? = nil,
+        onDurablySaved: (@MainActor (DurableCaptureReceipt) -> Void)? = nil
     ) async throws -> CaptureCreationResult {
         let normalizedText = try normalizedCaptureText(text)
         if let duplicate = try recentDuplicate(
@@ -1130,6 +1131,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             source: source,
             createdAt: createdAt
         )
+
+        onDurablySaved?(DurableCaptureReceipt(
+            sessionID: pending.session.id,
+            originalTranscription: pending.session.originalTranscription,
+            isPractice: pending.session.captureSource == .tutorial
+        ))
+#if DEBUG
+        // Hold the real persisted-to-organized boundary for deterministic UI QA.
+        // A release build has neither this argument nor a delayed save path.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.arguments.contains("--ui-testing-delay-organization") {
+            try await Task.sleep(for: .seconds(4))
+        }
+#endif
 
         performance?.beginSemanticParsing()
         let extraction = await CapturePerformanceContext.$stageRecorder.withValue(

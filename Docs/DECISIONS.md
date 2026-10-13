@@ -1,5 +1,26 @@
 # Decisions
 
+## 2026-10-13 — Acknowledge durable words before organization
+
+The capture view previously waited for semantic completion before showing any
+saved result, despite the repository already committing the immutable original
+and fallback first. A scoped callback now publishes a value-only receipt after
+that commit, never a mutable placeholder. After 250 ms of continued processing
+the screen shows the words as saved and organization as unfinished; quick
+results retain one receipt. The intermediate state is read-only, with existing
+close/save exclusion and final-result quota/reminder behavior unchanged. No
+early dismissal or cancellation-on-disappearance was introduced. Raw-save
+failure cannot publish the receipt; a later thrown failure distinguishes saved
+words from unfinished organization. This improves feedback, not model latency.
+
+File-backed native checks reopen the store during the callback, verify pending
+original/no alert before final rows, duplicate suppression and free practice.
+The storage-failure class verifies no acknowledgement on a read-only store. Two
+actual UI journeys cover intermediate/final states and relaunch in light and
+dark largest text. Physical microphone, hardware latency and app/service
+integration remain separate qualification gates. Claude Opus 5.5 reviewed the
+design descriptions and risks; no source files or real captures were sent.
+
 ## 2026-10-13 — Keep compact navigation usable at accessibility text sizes
 
 Passing interaction checks did not reveal that list group names truncated while
