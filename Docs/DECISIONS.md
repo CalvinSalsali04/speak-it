@@ -1,5 +1,57 @@
 # Decisions
 
+## 2026-10-12 — Broader bounded purchase-list interpretation (unreleased)
+
+Explicit current purchase commands, shopping-list headers and named-list
+commands can establish a purchase frame for unfamiliar products. A declarative
+list need requires current own wording such as “my/our … shopping list needs”.
+An arbitrary list that “contains” something, a historical report, a quotation or
+another person's list does not establish that intent. Normalizing this frame
+never changes the immutable capture or grants authority over saved items.
+
+Keep compounds, quantities and package descriptions together within each
+product. A recognized arrival store remains the list name and its unresolved
+location remains protected. A recurring grocery purchase can receive the
+Groceries category without splitting the series. Product-head noun evidence
+is separate from category evidence: recognizing a cable or filter does not
+make it a grocery. The known-final-head fallback is limited to a two-token
+nominal form; it does not rescue a longer predicate merely because its final
+word is a known product. Ambiguous brand/finite homonyms remain a limitation.
+
+The purchase shortcut defers to the shared correction-junction grammar before
+expansion. Bare business categories such as pharmacy do not name a store or
+absorb an independent trip. A recognized bare action such as run retains its
+own task role. The old “milk and the newspaper” corpus expectation is revised
+from one row to two shopping rows: the article stays inside the second product,
+consistent with the explicitly requested independently checkable lists.
+
+A named list does not become a capture-wide fallback for independent purchases.
+Back-references need an antecedent resolver, and shared size/modifier-only
+instructions must not become extra products. These forms decline the new
+purchase proof and retain the normal interpretation/review path. Unknown
+undelimited runs, cross-sentence references, modifier propagation, exclusions,
+some polite or implicit needs, and nonpurchase checklists remain incomplete.
+
+The design draws on [Universal Dependencies compound](https://universaldependencies.org/u/dep/compound.html)
+and [coordination](https://universaldependencies.org/u/dep/conj.html) descriptions:
+a noun phrase can contain several words, while a conjunction can connect
+clauses as well as products. Applying those distinctions to this bounded parser
+is an engineering inference, not adoption of a complete dependency parser.
+[Apple's available tag schemes](https://developer.apple.com/documentation/naturallanguage/nltagger/availabletagschemes%28for%3Alanguage%3A%29)
+guide availability checks; absent lexical evidence is not positive noun proof.
+[Guided generation](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation)
+constrains a response's structure, not its semantic accuracy.
+
+Following [CheckList](https://aclanthology.org/2020.acl-main.442/), verify minimum
+functionality, rendering invariance and meaningful negative cases separately.
+An earlier frozen 120-case snapshot had 25 baseline and 61 candidate strict
+passes. Those exposed synthetic development cases informed these changes;
+they are not a population accuracy estimate or qualification of the consolidated
+source. Exact final verification belongs in the pull request; physical iPhone qualification remains outstanding.
+Claude's broad-list feedback reviewed a description of the approach, not the
+source or a running app. It supplies no execution or accuracy evidence. This
+work does not claim support for any list or create a distribution build.
+
 ## 2026-10-12 — Automatic voice presentation and literal shopping context
 
 New voice presentations start listening directly and always use adaptive

@@ -10750,12 +10750,15 @@ final class AutomaticCaptureShoppingRegressionTests: XCTestCase {
         for text in [
             "Get Alice and Bob at 9 AM.",
             "Buy milk, eggs, Nora sleeps.",
+            "Buy Nora cooks rice and milk.",
             "Buy milk and eggs at Costco. Call Nora at 3 PM.",
             "Buy milk and eggs when I get to Costco.",
             "Remind Minnie, when she gets to Hamilton, to call me."
         ] {
             XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(text, referenceDate: reference, calendar: calendar), text)
         }
+        let factList = read("Buy milk, eggs, Nora sleeps.")
+        XCTAssertFalse(factList.items.contains { $0.analysisText.caseInsensitiveCompare("buy Nora sleeps") == .orderedSame })
         let people = read("Get Alice and Bob at 9 AM.")
         XCTAssertEqual(people.items.count, 1, String(reflecting: people))
         XCTAssertEqual(people.items.first?.organization.itemType, .task)
@@ -10792,5 +10795,189 @@ final class AutomaticCaptureShoppingRegressionTests: XCTestCase {
         XCTAssertEqual(item.locationBlocker(authorization: authorization), .ambiguousPlace)
         XCTAssertNotEqual(item.clarificationRequirement, .splitDecision)
         XCTAssertEqual(item.personName, "Minnie")
+    }
+}
+
+
+@MainActor
+final class WideShoppingListCoverageTests: XCTestCase {
+    private var oldGroups: [String: String] = [:]
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        oldGroups = ShoppingGroupStore.snapshot()
+        ShoppingGroupStore.restore([:])
+    }
+    override func tearDownWithError() throws {
+        ShoppingGroupStore.restore(oldGroups)
+        try super.tearDownWithError()
+    }
+    private let reference = ISO8601DateFormatter().date(from: "2026-08-03T14:00:00Z")!
+    private var calendar: Calendar {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = TimeZone(identifier: "America/Toronto")!
+        return value
+    }
+    private func read(_ text: String) -> ThoughtExtractionResult {
+        ThoughtExtractionEngine.extractWithRules(text, referenceDate: reference, calendar: calendar)
+    }
+    private func check(_ text: String, products: [String], group: String,
+                       file: StaticString = #filePath, line: UInt = #line) {
+        let result = read(text)
+        let actual = result.items.map { $0.analysisText.replacingOccurrences(
+            of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
+            with: "", options: .regularExpression).lowercased() }
+        XCTAssertEqual(actual, products.map { $0.lowercased() }, text + String(reflecting: result), file: file, line: line)
+        XCTAssertTrue(result.operations.isEmpty, text, file: file, line: line)
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .shopping && !$0.needsReview }, text, file: file, line: line)
+        XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == group }, text, file: file, line: line)
+        let owned = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+        XCTAssertEqual(owned, Set(SourceUnitLedger(text).words.indices), text, file: file, line: line)
+        XCTAssertEqual(result.items.reduce(0) { $0 + $1.sourceUnitIDs.count }, owned.count, text, file: file, line: line)
+    }
+    func testExplicitListIntroductionsAndNamedAdditions() {
+        check("Shopping list: light bulbs, printer ink, and envelopes.", products: ["light bulbs", "printer ink", "envelopes"], group: "Shopping")
+        check("Grocery list: oat milk, apples, eggs.", products: ["oat milk", "apples", "eggs"], group: "Groceries")
+        check("We need rice and lentils, plus a jar of tomato sauce.", products: ["rice", "lentils", "a jar of tomato sauce"], group: "Groceries")
+        check("I need two cartons of eggs and three tins of chickpeas.", products: ["two cartons of eggs", "three tins of chickpeas"], group: "Groceries")
+        check("Please add milk and eggs to my Costco list.", products: ["milk", "eggs"], group: "Costco")
+        check("Add ribbon, glue sticks and coloured card to my Craft night shopping list.", products: ["ribbon", "glue sticks", "coloured card"], group: "Craft night")
+        check("Put Purriva kitten mousse, Fenlo dental chews and TernNest bedding on the Pet supplies list.", products: ["Purriva kitten mousse", "Fenlo dental chews", "TernNest bedding"], group: "Pet supplies")
+        check("On my shopping list put potting soil, seed trays and gardening gloves.", products: ["potting soil", "seed trays", "gardening gloves"], group: "Shopping")
+        check("Add a solder spool and heat-shrink tubing to my Circuit drawer shopping list.", products: ["a solder spool", "heat-shrink tubing"], group: "Circuit drawer")
+        check("Buy a teapot and a tea strainer for my shopping list named Tea corner.", products: ["a teapot", "a tea strainer"], group: "Tea corner")
+    }
+    func testDeclaredListCreationRetainsAnOpenName() {
+        check("Create a shopping list called Cabin supplies with lantern batteries, rope and waterproof matches.", products: ["lantern batteries", "rope", "waterproof matches"], group: "Cabin supplies")
+        check("Make a shopping list named Bridge club snacks: olives, hummus and flatbread.", products: ["olives", "hummus", "flatbread"], group: "Bridge club snacks")
+        check("Start my Winter kit shopping list with boot liners and a compact umbrella.", products: ["boot liners", "a compact umbrella"], group: "Winter kit")
+        check("For Costco I need ham, cheese and eggs.", products: ["ham", "cheese", "eggs"], group: "Costco")
+        check("Create a shopping list named Garden 2027 with soil, mulch and grass seed.", products: ["soil", "mulch", "grass seed"], group: "Garden 2027")
+        check("Create a shopping list named Other with screws and wall anchors.", products: ["screws", "wall anchors"], group: "Other")
+    }
+    func testUnknownBrandsAndHardwareKeepTheirWholeNounPhrases() {
+        check("Buy Nuvella wipes and Zorbix pods at nova supply.", products: ["Nuvella wipes", "Zorbix pods"], group: "Nova supply")
+        check("Buy a USB-C cable, an HDMI adapter, and a 65 W charger at Best Buy.", products: ["a USB-C cable", "an HDMI adapter", "a 65 W charger"], group: "Best Buy")
+        check("Purchase a Zephrox coupling, a NomaFlex gasket and an Aurin spacer.", products: ["a Zephrox coupling", "a NomaFlex gasket", "an Aurin spacer"], group: "Shopping")
+        check("Buy AA batteries and 3M hooks at Home Depot tomorrow at 9 AM.", products: ["AA batteries", "3M hooks"], group: "Home Depot")
+    }
+    func testQuantityAndPackagePrefixesRemainInsideProducts() {
+        check("Buy two tins of crushed tomatoes, a jar of capers, and 500 g of pasta.", products: ["two tins of crushed tomatoes", "a jar of capers", "500 g of pasta"], group: "Groceries")
+        check("Order one kilogram of brown rice and half a kilogram of walnuts.", products: ["one kilogram of brown rice", "half a kilogram of walnuts"], group: "Groceries")
+        check("Buy a pack of eight AA batteries, two extension cords and a desk lamp.", products: ["a pack of eight AA batteries", "two extension cords", "a desk lamp"], group: "Shopping")
+        check("Order one two-litre bottle of grapeseed oil and two bags of cassava flour.", products: ["one two-litre bottle of grapeseed oil", "two bags of cassava flour"], group: "Groceries")
+        check("Buy a black-and-white striped apron and a set of nesting bowls.", products: ["a black-and-white striped apron", "a set of nesting bowls"], group: "Shopping")
+    }
+    func testCompoundsSurviveBeforeGreedyDictionarySplitting() {
+        check("Buy honey mustard and bread.", products: ["honey mustard", "bread"], group: "Groceries")
+        check("Buy milk chocolate and eggs.", products: ["milk chocolate", "eggs"], group: "Groceries")
+        check("Buy bread and butter pickles, and a bag of pretzels.", products: ["bread and butter pickles", "a bag of pretzels"], group: "Groceries")
+        check("Buy a salt and pepper grinder set, dinner plates and napkins.", products: ["a salt and pepper grinder set", "dinner plates", "napkins"], group: "Shopping")
+        check("Buy milk bread and eggs.", products: ["milk", "bread", "eggs"], group: "Groceries")
+    }
+    func testStoreDigitsDoNotBecomeClockHours() {
+        let source = "At 7-Eleven, buy chips and water at 9 AM."
+        check(source, products: ["chips", "water"], group: "7-Eleven")
+        let nine = ISO8601DateFormatter().date(from: "2026-08-04T13:00:00Z")!
+        XCTAssertTrue(read(source).items.allSatisfy { $0.organization.dueDate == nine && $0.organization.reminderDate == nil })
+        let tonight = read("At 6:30 tonight, remind me to buy pizza dough and mozzarella.")
+        XCTAssertEqual(tonight.items.count, 2, String(reflecting: tonight))
+        let evening = ISO8601DateFormatter().date(from: "2026-08-03T22:30:00Z")!
+        XCTAssertTrue(tonight.items.allSatisfy { $0.organization.reminderDate == evening && $0.organization.reminderDelivery == .notification })
+        let arrival = read("When I arrive at Costco, remind me to buy detergent and rice.")
+        XCTAssertTrue(arrival.items.allSatisfy { $0.shoppingGroup == "Costco" && $0.organization.locationIntent != nil })
+        let recurring = read("Buy cereal and milk every Monday.")
+        XCTAssertEqual(recurring.items.count, 1)
+        XCTAssertEqual(recurring.items.first?.shoppingGroup, "Groceries")
+        XCTAssertNotNil(recurring.items.first?.organization.recurrenceRule)
+        let noClock = read("Buy chips and water at 7-Eleven.")
+        XCTAssertEqual(noClock.items.count, 2)
+        XCTAssertTrue(noClock.items.allSatisfy { $0.organization.dueDate == nil && $0.organization.reminderDate == nil })
+    }
+    func testNewListFramesCannotClaimExistingActionsOrQuotedPurchases() {
+        for source in [
+            "Put this task on tomorrow's list.",
+            "Add that reminder to my Costco list.",
+            "Create a packing list named Trip with socks, sandals and mittens.",
+            "Create a reading list named Summer with novels and essays.",
+            "The neighbour's shopping list contains milk and eggs.",
+            "The archived shopping list contains milk and eggs.",
+            "For the picnic I need ham, cheese and eggs.",
+            "We need time and help.",
+            "We need Alice and Bob.",
+            "Shopping list: oats; rinse bottles.",
+            "Add oats and arrange chairs to my shopping list.",
+            "Add washing the windows to my weekend list.",
+            "Maya said 'Buy flour and eggs'. Save her message.",
+            "Do not add dog food and treats to Shopping.",
+            "Buy milk and eggs when I get to Costco.",
+            "Buy milk and eggs, then call Nora.",
+            "Get Alice and Bob at 9 AM."
+        ] {
+            XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(source, referenceDate: reference, calendar: calendar), source)
+        }
+        for text in ["Add both to Groceries.", "Put them on my Costco list.", "Add those to Shopping."] {
+            XCTAssertEqual(RuleBasedThoughtExtractor.canonicalizedListCommand(text), text)
+        }
+        XCTAssertEqual(RuleBasedThoughtExtractor.canonicalizedListCommand("Put this task on tomorrow's list."), "Put this task on tomorrow's list.")
+        XCTAssertEqual(RuleBasedThoughtExtractor.canonicalizedListCommand("Add washing the windows to my weekend list."), "wash the windows")
+    }
+    func testNamedListDoesNotOwnAnIndependentPurchase() {
+        let source = "My Camping shopping list needs rope. Separately buy eggs."
+        let result = read(source)
+        let eggs = result.items.filter { $0.analysisText.localizedCaseInsensitiveContains("buy eggs") }
+        XCTAssertEqual(eggs.count, 1, String(reflecting: result))
+        XCTAssertEqual(eggs.first?.shoppingGroup, "Groceries", String(reflecting: result))
+        XCTAssertFalse(result.items.contains { $0.analysisText.localizedCaseInsensitiveContains("buy eggs") && $0.shoppingGroup == "Camping" })
+    }
+    func testCorrectionsGenericTripsAndIndependentActionsKeepTheirRoles() {
+        let correction = "Buy oat milk, sorry, almond milk"
+        XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(correction, referenceDate: reference, calendar: calendar))
+        let repaired = read(correction)
+        XCTAssertEqual(repaired.items.count, 1, String(reflecting: repaired))
+        XCTAssertTrue(repaired.items.first?.analysisText.localizedCaseInsensitiveContains("almond milk") == true)
+        XCTAssertFalse(repaired.items.first?.analysisText.localizedCaseInsensitiveContains("oat milk") == true)
+        let trip = read("Go to the pharmacy and get advil and bandaids and then call mom")
+        XCTAssertEqual(trip.items.map { $0.organization.itemType }, [.task, .shopping, .shopping, .personFollowUp])
+        XCTAssertNil(ShoppingGroupParser.storeName(in: "go to the pharmacy"))
+        let actions = read("buy milk and run")
+        XCTAssertEqual(actions.items.map { $0.organization.itemType }, [.shopping, .task], String(reflecting: actions))
+        check("Buy milk and the newspaper", products: ["milk", "the newspaper"], group: "Groceries")
+        check("Buy an iron and a steamer", products: ["an iron", "a steamer"], group: "Shopping")
+    }
+    func testSharedModifiersNeverBecomePurchaseIdentities() {
+        for source in [
+            "Order a dog harness and a reflective leash, both size medium.",
+            "Order two cotton pillowcases and one fitted sheet, queen size for all of them."
+        ] {
+            let result = read(source)
+            XCTAssertFalse(result.items.contains { item in
+                item.organization.itemType == .shopping && item.analysisText.range(
+                    of: #"(?i)^(?:buy|order|purchase)\s+(?:both|queen\s+size)\b"#,
+                    options: .regularExpression) != nil
+            }, source + String(reflecting: result))
+            XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }, Set(SourceUnitLedger(source).words.indices))
+        }
+    }
+    func testNamedRuntimeProposalAndOriginalCapturePersistTogether() async throws {
+        let source = "Add Q-17 brush heads and Lumora dental tabs to my Pharmacy list."
+        let parent = ExtractedThought(sourceQuote: source, rawQuote: source, wasRepaired: false,
+            analysisText: source, suggestedTitle: source,
+            organization: OrganizedThought(itemType: .shopping, category: .shopping, priority: .normal,
+                personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: false), confidence: 1, needsReview: false,
+            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices))
+        let proposal = ThoughtExtractionResult(items: [parent], method: .appleIntelligence)
+        let configuration = RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-synthetic-library.json"), allowProposed: false, retrievalEnabled: true)
+        let container = try ModelContainer(for: PersistenceController.schema, migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext, requestsReminderAuthorization: false)
+        let result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await RuntimeExampleTestFixtures.withInterpretation(proposal) {
+                try await repository.createCaptureResult(text: source, source: .inAppText, createdAt: reference, schedulesReminders: false)
+            }
+        }
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertEqual(result.items.first?.captureSession?.originalTranscription, source)
+        XCTAssertTrue(result.items.allSatisfy { ShoppingGroupStore.group(for: $0.id) == "Pharmacy" })
     }
 }

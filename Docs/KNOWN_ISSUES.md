@@ -1,5 +1,26 @@
 # Known Issues
 
+## Broad purchase-list coverage (unreleased)
+
+The broader list reader is bounded to proved current purchase/list intent.
+Explicit named-list commands and own “my/our … shopping list needs” wording
+can supply that frame; an arbitrary list description cannot. Familiar product
+heads help recognize some unfamiliar brands without defining their category.
+Missing lexical assets can still leave a brand or predicate ambiguous.
+
+Unknown products spoken without reliable separators, cross-sentence references
+such as “buy both”, shared size/quantity propagation, exclusions, some polite
+or implicit needs, and packing/reading/other nonpurchase checklists remain
+incomplete. Back-references and modifier-only instructions decline the new
+purchase proof rather than becoming products. The normal path may still need
+review or fail to organize every intended item. Retaining the original words
+alone is not successful extraction.
+
+The earlier frozen 120-case replay is exposed synthetic development evidence,
+not a claim about any list or production accuracy. Consolidated-source targeted
+checks and fresh positive/negative challenges are recorded in the pull request. No new build or
+physical iPhone qualification is implied by these source changes.
+
 ## Automatic capture follow-up (unreleased)
 
 Voice now starts on presentation with automatic endpointing and no mode

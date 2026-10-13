@@ -1229,6 +1229,12 @@ enum SelfCorrectionResolver {
         return #"(?i)(?:\#(punctuated)|\#(unpunctuated))(?=\S)"#
     }
 
+    /// A purchase shortcut must defer to the same correction grammar that
+    /// owns repairs, rather than maintaining a smaller cue list of its own.
+    static func hasCorrectionJunction(in text: String) -> Bool {
+        text.range(of: correctionPattern, options: .regularExpression) != nil
+    }
+
     /// An ordinal item reference addresses a prior clause, not a calendar day.
     /// Until that reference can be bound, preserve the complete capture.
     static func hasUnresolvedOrdinalReference(_ text: String) -> Bool {

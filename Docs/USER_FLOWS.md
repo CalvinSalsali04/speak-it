@@ -151,6 +151,28 @@ clarification dialogue.
 3. Confirm the destructive action.
 4. Delete the item. If its capture session has no other items, delete that session too.
 
+## Spoken purchase lists — unreleased follow-up
+
+- State the current purchase intent and separate products clearly, for example
+  “Add drill bits and paint rollers to my Weekend shopping list.” Explicit
+  shopping-list headers and current own list needs also have bounded support.
+- A stated store or custom list name takes priority. Product-only groceries use
+  Groceries; other unnamed lists use Shopping. Saved explicit Other labels stay
+  intact. A bounded current “I/we need” list requires positive product evidence.
+- Supported compounds, quantities and packages stay with their product. An
+  explicit list name applies to its own purchase frame; a separate purchase
+  does not inherit that name merely because it appeared earlier.
+- A recognized store in an arrival reminder remains the list name. An unresolved
+  arrival location still needs Home/Work or a time; the app does not invent a
+  geofence. Recurring grocery purchases retain their series when categorized.
+- Check the individual products, group, timing and review state after capture.
+  “Buy both” across sentences and “size medium for all of them” are not reliably
+  resolved. Modifier-only instructions must not appear as additional products.
+  Unknown undelimited lists, exclusions, some polite/implicit needs and
+  nonpurchase checklists can still require correction or remain incomplete.
+- The original capture remains available for correction. These unreleased
+  changes retain physical microphone and on-device model qualification as separate checks.
+
 ## List entry and grouping review — Build 22
 
 - Keyboard Done saves comma-separated list entries and dismisses the entry

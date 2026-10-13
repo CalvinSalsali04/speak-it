@@ -648,8 +648,11 @@ enum SemanticCorpusR {
                    count: 1, person: ["Priya"]),
         corpusCase(.coordinationContext, "Email the landlord about the lease and the deposit",
                    count: 1, type: [.task]),
+        // An article belongs inside its product. Both physical products are
+        // independently checkable under the broadened list contract.
         corpusCase(.coordinationContext, "Buy milk and the newspaper",
-                   count: 1, type: [.shopping]),
+                   count: 2, type: [.shopping, .shopping],
+                   title: ["Buy milk", "Buy the newspaper"]),
         // "And then" is the same boundary with a step marker on it, and the
         // marker is not part of the next item or recipient.
         corpusCase(.coordinationContext, "Buy milk and then bread",
