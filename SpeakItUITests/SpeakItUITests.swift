@@ -340,6 +340,67 @@ final class SpeakItUITests: XCTestCase {
         return app
     }
 
+    func testRecognitionHintRequiresSavingEditAndCanBeRemoved() {
+        let app = launchAppForShoppingDetail(["--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark"])
+        saveTypedCapture("Call John.", in: app)
+        let receiptClose = app.buttons["capture.close"]
+        if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
+        let edit = app.buttons["item.edit.Call John"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 8), app.debugDescription)
+        edit.tap()
+        XCTAssertFalse(app.buttons["editor.recognitionHint"].exists)
+        func prepareHint() {
+            let title = app.textFields["editor.title"]
+            XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
+            title.tap()
+            title.press(forDuration: 1.2)
+            let selectAll = app.buttons["Select All"]
+            let compact = app.menuItems["Select All"]
+            for _ in 0..<3 where !selectAll.exists && !compact.exists {
+                let forward = app.buttons["Forward"]
+                guard forward.waitForExistence(timeout: 2) else { break }
+                forward.tap()
+            }
+            XCTAssertTrue(selectAll.exists || compact.exists, app.debugDescription)
+            (selectAll.exists ? selectAll : compact).tap()
+            title.typeText("Call Joan")
+            XCTAssertEqual(title.value as? String, "Call Joan")
+            let hint = app.buttons["editor.recognitionHint"]
+            XCTAssertTrue(hint.waitForExistence(timeout: 4), app.debugDescription)
+            hint.tap()
+            let field = app.textFields["speechHint.phrase"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap(); field.typeText("Joan")
+            app.buttons["speechHint.confirm"].tap()
+            XCTAssertTrue(app.staticTexts["Voice hint: Joan. Remembered when you save."].waitForExistence(timeout: 5))
+        }
+        prepareHint()
+        app.navigationBars["Edit Thought"].buttons["Cancel"].tap()
+        app.buttons["today.account"].tap()
+        app.buttons["Names & phrases"].tap()
+        XCTAssertFalse(app.staticTexts["speechHint.Joan"].exists, "Cancelling the edit must discard its pending hint")
+        app.navigationBars["Names & phrases"].buttons["Done"].tap()
+        app.navigationBars.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
+        prepareHint()
+        app.navigationBars["Edit Thought"].buttons["Save"].tap()
+        let corrected = app.buttons["item.edit.Call Joan"]
+        XCTAssertTrue(corrected.waitForExistence(timeout: 6), app.debugDescription)
+        corrected.tap()
+        let original = app.staticTexts["Original thought. Call John."]
+        for _ in 0..<6 where !original.isHittable { app.swipeUp() }
+        XCTAssertTrue(original.exists, app.debugDescription)
+        app.navigationBars["Edit Thought"].buttons["Cancel"].tap()
+        app.buttons["today.account"].tap()
+        app.buttons["Names & phrases"].tap()
+        let savedHint = app.staticTexts["speechHint.Joan"]
+        XCTAssertTrue(savedHint.waitForExistence(timeout: 5), app.debugDescription)
+        captureFlowScreenshot("local-recognition-hint-dark")
+        savedHint.swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(savedHint.waitForNonExistence(timeout: 4))
+    }
+
     func testShoppingAddDoneCommitsAndDismissesWithoutNewline() {
         let app = launchApp("--ui-testing-skip-welcome", "--load-today-examples", "--expand-today-upcoming")
         let list = app.buttons["today.shoppingListCard.Groceries"]

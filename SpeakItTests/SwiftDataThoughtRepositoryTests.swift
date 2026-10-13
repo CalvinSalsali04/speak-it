@@ -9719,3 +9719,65 @@ final class RecordedPartialEndpointReplayTests: XCTestCase {
         XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).count, 1)
     }
 }
+
+
+@MainActor
+final class ConfirmedSpeechHintTests: XCTestCase {
+    private func isolatedDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "SpeakIt.ConfirmedHintTest." + UUID().uuidString)!
+    }
+
+    func testHintsAreRankedDeduplicatedBoundedAndRemovable() {
+        let defaults = isolatedDefaults()
+        SpeechVocabularyStore.save([.init(heardPhrase: "Gene", preferredPhrase: "Jean")], defaults: defaults)
+        SpeechVocabularyStore.rememberContextualPhrases(["Learned Person"], defaults: defaults)
+        XCTAssertTrue(SpeechVocabularyStore.confirmRecognitionPhrase("  Joan  ", defaults: defaults))
+        XCTAssertTrue(SpeechVocabularyStore.confirmRecognitionPhrase("joan", defaults: defaults))
+        XCTAssertEqual(SpeechVocabularyStore.confirmedRecognitionPhrases(in: defaults), ["joan"])
+        XCTAssertEqual(SpeechVocabularyStore.recognitionContext(additional: ["Current Person"], defaults: defaults),
+                       ["Current Person", "Jean", "joan", "Learned Person"])
+        for i in 0..<90 { XCTAssertTrue(SpeechVocabularyStore.confirmRecognitionPhrase("Brand \(i)", defaults: defaults)) }
+        XCTAssertEqual(SpeechVocabularyStore.confirmedRecognitionPhrases(in: defaults).count, 80)
+        let context = SpeechVocabularyStore.recognitionContext(additional: (0..<30).map { "Current \($0)" }, defaults: defaults)
+        XCTAssertEqual(context.count, 100)
+        XCTAssertFalse(context.contains("Gene"))
+        SpeechVocabularyStore.removeRecognitionPhrase("Brand 89", defaults: defaults)
+        XCTAssertFalse(SpeechVocabularyStore.confirmedRecognitionPhrases(in: defaults).contains("Brand 89"))
+        SpeechVocabularyStore.clearConfirmedRecognitionPhrases(defaults: defaults)
+        XCTAssertTrue(SpeechVocabularyStore.confirmedRecognitionPhrases(in: defaults).isEmpty)
+    }
+
+    func testHintsCannotRewriteWordsOrIntroduceNegationAndCommands() {
+        let defaults = isolatedDefaults()
+        XCTAssertTrue(SpeechVocabularyStore.confirmRecognitionPhrase("Joan", defaults: defaults))
+        XCTAssertEqual(SpeechVocabularyStore.apply([], to: "Call John and Joan"), "Call John and Joan")
+        XCTAssertEqual(defaults.dictionaryRepresentation()["SpeakIt.speechCorrections"] as? Data, nil)
+        for invalid in ["", "a", String(repeating: "x", count: 81), "don't", "not", "cancel", "do not",
+                        "no.", "do-not", "without milk", "stop", "1234", "A name. Another sentence."] {
+            XCTAssertFalse(SpeechVocabularyStore.confirmRecognitionPhrase(invalid, defaults: defaults), invalid)
+        }
+        XCTAssertEqual(SpeechVocabularyStore.confirmedRecognitionPhrases(in: defaults), ["Joan"])
+    }
+
+    func testTutorialPersonEditDoesNotTeachRecognitionContext() throws {
+        let old = UserDefaults.standard.stringArray(forKey: "SpeakIt.learnedSpeechContext")
+        defer { UserDefaults.standard.set(old, forKey: "SpeakIt.learnedSpeechContext") }
+        SpeechVocabularyStore.clearLearnedContextualPhrases()
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [config])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        let original = "Call John."
+        let session = CaptureSession(originalTranscription: original, captureSource: .tutorial)
+        let item = CapturedItem(originalTextSegment: original, displayTitle: "Call John", itemType: .task,
+                                category: .people, personName: "John", captureSession: session)
+        container.mainContext.insert(session)
+        container.mainContext.insert(item)
+        try container.mainContext.save()
+        try repository.update(item, with: ItemEdits(title: "Call Joan", itemType: .task, category: .people,
+            dueDate: nil, reminderDate: nil, priority: .normal, personName: "Joan", needsClarification: false))
+        XCTAssertEqual(session.originalTranscription, original)
+        XCTAssertFalse(SpeechVocabularyStore.contextualPhrases.contains("Joan"))
+    }
+}

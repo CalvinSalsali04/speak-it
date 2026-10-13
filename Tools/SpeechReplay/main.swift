@@ -54,7 +54,12 @@ struct SpeechReplay {
         var appendedAudioSeconds = 0.0
         var final = false
         var failure: String?
-        try await backend.start(contextualPhrases: [], onTranscript: { text, isFinal in
+        let contextualPhrases = args.indices.compactMap { index -> String? in
+            guard args[index] == "--context", index + 1 < args.count else { return nil }
+            return args[index + 1]
+        }
+        guard contextualPhrases.count <= 100 else { throw SpeechRecognitionBackendError.unexpectedFinalization }
+        try await backend.start(contextualPhrases: contextualPhrases, onTranscript: { text, isFinal in
             events.append(["atSeconds": seconds(), "inputAudioSeconds": appendedAudioSeconds, "kind": "transcript", "text": text, "final": isFinal])
             if isFinal { final = true }
         }, onVoiceActivity: {
@@ -83,6 +88,7 @@ struct SpeechReplay {
         let trace: [String: Any] = ["schemaVersion": 1, "syntheticDevelopmentOnly": true,
             "platform": "macOS", "engine": backend.engine.rawValue,
             "mode": args.contains("--realtime") ? "stream_realtime" : "file_forwarding",
+            "contextualPhraseCount": contextualPhrases.count,
             "setupSeconds": setupSeconds, "endAudioSeconds": endAudioSeconds,
             "finishedSeconds": seconds(), "receivedFinal": final,
             "error": failure as Any? ?? NSNull(), "events": events]

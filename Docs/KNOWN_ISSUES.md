@@ -6,6 +6,9 @@ A reproduced unfinished “Don’t …” cutoff is repaired with focused real-t
 and repository replay. Generated voices still expose recognition errors in names
 and some products. Completing an ASR stream is not successful capture accuracy.
 The matched alternate-recognizer experiment did not justify changing engines.
+Explicit local name/term hints are available after editing a real saved item;
+recognition bias may help a familiar term but can also influence similar names.
+They are removable, bounded, and do not guarantee spelling or rewrite originals.
 Synthetic file/noise replay does not qualify phone microphones, routes, competing
 speakers, human prosody, or physical stop-to-visible-row latency.
 

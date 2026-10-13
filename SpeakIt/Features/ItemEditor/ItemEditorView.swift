@@ -68,6 +68,8 @@ struct ItemEditorView: View {
     @State private var choseTimeInstead = false
     @State private var needsClarification: Bool
     @State private var errorMessage: String?
+    @State private var showsRecognitionHint = false
+    @State private var pendingRecognitionPhrase: String?
     @State private var showsDeleteConfirmation = false
     @State private var showsCalendarComposer = false
     @State private var showsMessageComposer = false
@@ -122,7 +124,7 @@ struct ItemEditorView: View {
     /// field at the very top — used to dismiss it and throw all of that away
     /// with no warning at all.
     private var hasUnsavedChanges: Bool {
-        openingValues != OpeningValues(
+        pendingRecognitionPhrase != nil || openingValues != OpeningValues(
             title: title,
             itemType: itemType,
             category: category,
@@ -496,6 +498,21 @@ struct ItemEditorView: View {
                             showsTutorialGuidance ? "tutorial.editor.title" : "editor.title"
                         )
 
+                    if tutorialStep == nil, item.captureSession?.captureSource != .tutorial,
+                       title != openingValues.title || personName != openingValues.personName {
+                        Button { showsRecognitionHint = true } label: {
+                            Label("Help recognize a word", systemImage: "textformat.abc")
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("editor.recognitionHint")
+                        if let pendingRecognitionPhrase {
+                            Text("Voice hint: \(pendingRecognitionPhrase). Remembered when you save.")
+                                .font(.footnote)
+                                .foregroundStyle(Color.speakMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
                     Picker(selection: $itemType) {
                         ForEach(ItemType.allCases) { type in
                             Label(type.displayName, systemImage: type.systemImage)
@@ -744,6 +761,9 @@ struct ItemEditorView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This removes the item and its original capture when no other items use it. This cannot be undone.")
+            }
+            .sheet(isPresented: $showsRecognitionHint) {
+                RecognitionHintView { pendingRecognitionPhrase = $0 }
             }
             .sheet(isPresented: $showsCalendarComposer) {
                 CalendarEventComposer(
@@ -1341,6 +1361,10 @@ struct ItemEditorView: View {
                     clarifiedGap: isRequirementSatisfied ? item.semanticGapRawValue.flatMap(SemanticGap.init(rawValue:)) : nil
                 )
             )
+            if tutorialStep == nil, item.captureSession?.captureSource != .tutorial,
+               let pendingRecognitionPhrase {
+                SpeechVocabularyStore.confirmRecognitionPhrase(pendingRecognitionPhrase)
+            }
         }
     }
 

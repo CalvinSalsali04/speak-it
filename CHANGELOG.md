@@ -13,6 +13,8 @@ Entries before September 2026 were reconstructed from the commit history and
   with their original capture; keep quantity, store and timing ownership intact.
 - Keep singular scheduled food purchases in Groceries and allow scrolling of
   voice/typing screens at accessibility text sizes.
+- Offer explicit removable local voice hints after saved-item corrections,
+  without automatic word replacement or learning from tutorial edits.
 - Source changes only; no distribution build or upload.
 
 ## Unreleased — everyday capture and tutorial readiness

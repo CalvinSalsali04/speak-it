@@ -20,12 +20,15 @@ struct SpeechCorrection: Codable, Hashable, Identifiable, Sendable {
 enum SpeechVocabularyStore {
     private static let storageKey = "SpeakIt.speechCorrections"
     private static let learnedPhrasesKey = "SpeakIt.learnedSpeechContext"
+    private static let confirmedPhrasesKey = "SpeakIt.confirmedSpeechContext"
     private static let maximumEntries = 60
     private static let maximumLearnedPhrases = 80
     private static let maximumRecognitionPhrases = 100
 
-    static var corrections: [SpeechCorrection] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+    static var corrections: [SpeechCorrection] { corrections(in: .standard) }
+
+    private static func corrections(in defaults: UserDefaults) -> [SpeechCorrection] {
+        guard let data = defaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([SpeechCorrection].self, from: data) else {
             return []
         }
@@ -36,36 +39,78 @@ enum SpeechVocabularyStore {
         recognitionContext()
     }
 
-    static func recognitionContext(additional: [String] = []) -> [String] {
+    static func recognitionContext(additional: [String] = [], defaults: UserDefaults = .standard) -> [String] {
         let ranked = uniquePhrases(
             additional
                 // A correction means the heard form is known-wrong. Boosting
                 // it alongside the preferred form teaches the recognizer both
                 // spellings and can increase the very error the person fixed.
-                + corrections.map(\.preferredPhrase)
-                + learnedPhrases
+                + corrections(in: defaults).map(\.preferredPhrase)
+                + confirmedRecognitionPhrases(in: defaults)
+                + learnedPhrases(in: defaults)
         )
         // Apple's contextual-strings contract accepts at most 100 phrases in
         // total. Screen-specific phrases rank first, followed by explicit user
-        // corrections and then names learned from prior captures.
+        // corrections, confirmed hints and then names learned from captures.
         return Array(ranked.prefix(maximumRecognitionPhrases))
     }
 
-    static func rememberContextualPhrases(_ phrases: [String]) {
-        let merged = uniquePhrases(phrases + learnedPhrases)
+    static func rememberContextualPhrases(_ phrases: [String], defaults: UserDefaults = .standard) {
+        let merged = uniquePhrases(phrases + learnedPhrases(in: defaults))
         let retained = Array(merged.prefix(maximumLearnedPhrases))
         if retained.isEmpty {
-            UserDefaults.standard.removeObject(forKey: learnedPhrasesKey)
+            defaults.removeObject(forKey: learnedPhrasesKey)
         } else {
-            UserDefaults.standard.set(retained, forKey: learnedPhrasesKey)
+            defaults.set(retained, forKey: learnedPhrasesKey)
         }
     }
 
-    static func clearLearnedContextualPhrases() {
-        UserDefaults.standard.removeObject(forKey: learnedPhrasesKey)
+    static func clearLearnedContextualPhrases(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: learnedPhrasesKey)
     }
 
-    static func save(_ corrections: [SpeechCorrection]) {
+    static func confirmedRecognitionPhrases(in defaults: UserDefaults = .standard) -> [String] {
+        Array(uniquePhrases((defaults.stringArray(forKey: confirmedPhrasesKey) ?? [])
+            .compactMap(normalizedRecognitionHint)).prefix(maximumLearnedPhrases))
+    }
+
+    /// Hints bias recognition only. They never supply transcript replacements.
+    @discardableResult
+    static func confirmRecognitionPhrase(_ phrase: String, defaults: UserDefaults = .standard) -> Bool {
+        guard let value = normalizedRecognitionHint(phrase) else { return false }
+        let values = uniquePhrases([value] + confirmedRecognitionPhrases(in: defaults))
+        defaults.set(Array(values.prefix(maximumLearnedPhrases)), forKey: confirmedPhrasesKey)
+        return true
+    }
+
+    static func removeRecognitionPhrase(_ phrase: String, defaults: UserDefaults = .standard) {
+        let retained = confirmedRecognitionPhrases(in: defaults).filter { $0 != phrase }
+        if retained.isEmpty { defaults.removeObject(forKey: confirmedPhrasesKey) }
+        else { defaults.set(retained, forKey: confirmedPhrasesKey) }
+    }
+
+    static func clearConfirmedRecognitionPhrases(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: confirmedPhrasesKey)
+    }
+
+    static func normalizedRecognitionHint(_ phrase: String) -> String? {
+        let value = phrase.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (2...80).contains(value.count),
+              value.range(of: #"^[\p{L}\p{N}][\p{L}\p{N} '&’/-]*$"#, options: .regularExpression) != nil else { return nil }
+        let words = value.lowercased().split(whereSeparator: {
+            !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’"
+        }).map(String.init)
+        // A hint is a name/term, never authority over negation or commands.
+        let reserved: Set<String> = ["no", "not", "never", "don't", "don’t", "dont", "do", "cannot", "can't", "can’t",
+            "won't", "won’t", "wont", "without", "except", "excluding", "cancel",
+            "delete", "remove", "complete", "done", "stop", "yes", "and", "or", "but", "if", "unless", "then"]
+        guard words.count <= 6, words.allSatisfy({ !reserved.contains($0) }),
+              value.contains(where: \.isLetter) else { return nil }
+        return value
+    }
+
+    static func save(_ corrections: [SpeechCorrection], defaults: UserDefaults = .standard) {
         let normalized = corrections
             .compactMap(normalize)
             .reduce(into: [SpeechCorrection]()) { result, correction in
@@ -78,13 +123,13 @@ enum SpeechVocabularyStore {
                 if !alreadyExists { result.append(correction) }
             }
         guard !normalized.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: storageKey)
+            defaults.removeObject(forKey: storageKey)
             return
         }
         guard let data = try? JSONEncoder().encode(Array(normalized.prefix(maximumEntries))) else {
             return
         }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        defaults.set(data, forKey: storageKey)
     }
 
     static func apply(to transcript: String) -> String {
@@ -100,8 +145,8 @@ enum SpeechVocabularyStore {
             }
     }
 
-    private static var learnedPhrases: [String] {
-        UserDefaults.standard.stringArray(forKey: learnedPhrasesKey) ?? []
+    private static func learnedPhrases(in defaults: UserDefaults) -> [String] {
+        defaults.stringArray(forKey: learnedPhrasesKey) ?? []
     }
 
     private static func uniquePhrases(_ phrases: [String]) -> [String] {
@@ -170,10 +215,23 @@ struct SpeechVocabularyView: View {
 
     @State private var corrections = SpeechVocabularyStore.corrections
     @State private var showsAddCorrection = false
+    @State private var recognitionHints = SpeechVocabularyStore.confirmedRecognitionPhrases()
 
     var body: some View {
         NavigationStack {
             List {
+                if !recognitionHints.isEmpty {
+                    Section {
+                        ForEach(recognitionHints, id: \.self) { phrase in
+                            Text(phrase).accessibilityIdentifier("speechHint." + phrase)
+                        }
+                        .onDelete { offsets in
+                            for index in offsets { SpeechVocabularyStore.removeRecognitionPhrase(recognitionHints[index]) }
+                            recognitionHints = SpeechVocabularyStore.confirmedRecognitionPhrases()
+                        }
+                    } header: { Text("Voice hints") }
+                    footer: { Text("These words can influence similar-sounding names. Swipe to remove a hint. Hints stay on this iPhone and never automatically replace words.") }
+                }
                 Section {
                     if corrections.isEmpty {
                         ContentUnavailableView {
@@ -289,5 +347,51 @@ private struct AddSpeechCorrectionView: View {
             )
         )
         dismiss()
+    }
+}
+
+
+/// Confirmation stays in the item editor until its persistence succeeds.
+struct RecognitionHintView: View {
+    @Environment(\.dismiss) private var dismiss
+    let onConfirm: (String) -> Void
+    @State private var phrase = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Name or term", text: $phrase)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .focused($isFocused)
+                        .accessibilityIdentifier("speechHint.phrase")
+                } footer: {
+                    Text("Enter one name or term that voice capture misheard. This is a recognition hint, so it can influence similar-sounding words. It stays on this iPhone and can be removed in Settings → Names & phrases. Your original capture stays unchanged.")
+                }
+                if !phrase.isEmpty, SpeechVocabularyStore.normalizedRecognitionHint(phrase) == nil {
+                    Text("Use a short name or term, without commands or negation words.")
+                        .foregroundStyle(Color.speakMuted)
+                }
+            }
+            .navigationTitle("Voice hint")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Use hint") {
+                        guard let normalized = SpeechVocabularyStore.normalizedRecognitionHint(phrase) else { return }
+                        onConfirm(normalized)
+                        dismiss()
+                    }
+                    .disabled(SpeechVocabularyStore.normalizedRecognitionHint(phrase) == nil)
+                    .accessibilityIdentifier("speechHint.confirm")
+                }
+            }
+            .task { isFocused = true }
+        }
     }
 }

@@ -1,5 +1,28 @@
 # Decisions
 
+## 2026-10-13 — Confirm recognition hints while correcting a saved item
+
+After editing a real item's title or person, Help recognize a word offers a
+separate, explicit local name/term hint. It remains pending until the repository
+successfully saves the edit; Cancel and failed persistence cannot teach it.
+Tutorial captures hide this action, and manual tutorial person edits no longer
+enter learned recognition context. The immutable original is never changed.
+
+Hints bias Apple's contextual strings; they do not create heard-to-preferred
+replacement rules. Existing explicit correction mappings keep their existing
+behavior. Confirmed hints rank after those mappings and before automatically
+learned names, deduplicate by folded spelling, retain at most 80 terms, and share
+the existing total 100-phrase recognition cap. Negation/command/function terms
+are refused. Hints are visible and removable in Names & phrases, use an app-local
+UserDefaults key, and never enter analytics. No data-erasure UI is introduced;
+the store exposes complete hint clearing and the existing test-only app reset
+also clears that key.
+
+Claude Opus 5.5 reviewed and agreed to user-initiated hints rather than guessed
+sound-alike detection. A single existing exposed synthetic recording improved
+from “Namdi” to “Nnamdi” with identical audio and explicit context; this is one
+mechanism check, not a new accuracy rate or a guarantee for similar real names.
+
 ## 2026-10-13 — Keep shared shopping details explicit and capture-scoped
 
 A bounded current-purchase reader now distributes explicit all/both/each size or

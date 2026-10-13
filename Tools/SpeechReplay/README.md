@@ -39,3 +39,11 @@ raw word identity was 16/36. With the same accent/punctuation normalization on
 both sides, DictationTranscriber and the alternate module each matched 18/36;
 the alternate lost one existing match. Those are lexical comparisons of twelve
 synthetic scripts, not semantic capture accuracy. The recognizer was not switched.
+
+### Local recognition hints
+
+The shipping-backend mode accepts repeated `--context 'Synthetic name'` arguments
+(up to Apple's 100-phrase limit). With no flags its context remains empty, so
+historical comparisons retain the same condition. The experimental `--modern`
+comparator is context-free. Use only synthetic terms here. A hint is recognition
+bias, never a guaranteed spelling or an automatic transcript replacement.
