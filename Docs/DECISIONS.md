@@ -21,6 +21,9 @@ than asking whether the reminder is two thoughts or inventing coordinates.
 Complete explicit purchase lists and own arrival reminder envelopes are
 certified locally before optional generation; independent predicates and
 third-party arrivals cannot use these proofs.
+Ambiguous acquisition verbs require known product heads in the purchase proof.
+Coordinated names corroborated by the existing human-name reader identify a
+collection task; product-name homonyms cannot provide that role cue.
 
 Restore the shared-inbox inspection helper already used by the shipped source:
 its merged callers and readiness tests otherwise could not compile. Valid

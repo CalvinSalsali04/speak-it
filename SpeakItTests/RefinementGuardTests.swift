@@ -10748,6 +10748,7 @@ final class AutomaticCaptureShoppingRegressionTests: XCTestCase {
     }
     func testPurchaseCertificateCannotConsumeAnIndependentPredicateOrCondition() {
         for text in [
+            "Get Alice and Bob at 9 AM.",
             "Buy milk, eggs, Nora sleeps.",
             "Buy milk and eggs at Costco. Call Nora at 3 PM.",
             "Buy milk and eggs when I get to Costco.",
@@ -10755,6 +10756,12 @@ final class AutomaticCaptureShoppingRegressionTests: XCTestCase {
         ] {
             XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(text, referenceDate: reference, calendar: calendar), text)
         }
+        let people = read("Get Alice and Bob at 9 AM.")
+        XCTAssertEqual(people.items.count, 1, String(reflecting: people))
+        XCTAssertEqual(people.items.first?.organization.itemType, .task)
+        let herbs = read("Get Rosemary and Basil at 9 AM.")
+        XCTAssertEqual(herbs.items.count, 2)
+        XCTAssertTrue(herbs.items.allSatisfy { $0.organization.itemType == .shopping })
         let condition = read("Remind me when I get to Costco to buy milk and eggs.")
         XCTAssertEqual(condition.items.count, 1, String(reflecting: condition))
         XCTAssertNotNil(condition.items.first?.organization.locationIntent)

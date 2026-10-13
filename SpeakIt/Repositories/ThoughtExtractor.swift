@@ -10208,6 +10208,15 @@ enum RuleBasedThoughtExtractor {
             organization: organization, confidence: 1, needsReview: false,
             sourceUnitIDs: Set(SourceUnitLedger(source).words.indices))
         let entries = plainShoppingEntries(in: parent)
+        // Acquisition verbs also collect people. Without an explicit purchase
+        // verb, each object needs a known product head before this shortcut
+        // can authorize shopping; nominal coordination alone is insufficient.
+        let explicitlyBuys = command.range(of: #"(?i)^(?:buy|order)\s+"#,
+                                           options: .regularExpression) != nil
+        guard explicitlyBuys || entries.allSatisfy({
+            ShoppingGroupParser.namesOneProduct($0.product)
+                || ShoppingGroupParser.namesOneProduct(String($0.product.split(separator: " ").last ?? ""))
+        }) else { return nil }
         guard entries.count > 1, entries.allSatisfy({ entry in
             namesSomethingToBuy(entry.product)
                 && (!hasExplicitFinitePredicate(entry.product)
