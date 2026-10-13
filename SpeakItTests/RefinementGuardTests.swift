@@ -50,6 +50,7 @@ final class Build22ListAndAssignmentTests: XCTestCase {
 
     func testKnowledgeContrastAndExplicitIndependentRemindersKeepSeparateRows() throws {
         let fact = "The cleaner has already taken the rugs, but remind me tomorrow to ask when they will be ready."
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(fact).count, 2)
         let factResult = ThoughtExtractionEngine.extractWithRules(fact,
             referenceDate: reference, calendar: calendar)
         XCTAssertEqual(factResult.items.count, 2, String(reflecting: factResult))

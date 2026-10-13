@@ -8815,22 +8815,8 @@ enum RuleBasedThoughtExtractor {
                   !organized[index].needsClarification,
                   organized[index].state == .resolved,
                   organized[index].dueDate == nil,
-                  organized[index].reminderDate == nil,
-                  let regex = NSRegularExpression.speakItCached(
-                    #"^(?:[a-z][a-z'’-]*|the\s+[a-z]+)\s+(?:has|have)\s+(?:already\s+)?[a-z]+(?:ed|en)\s+(.+?)[.!?]*$"#),
-                  let match = regex.firstMatch(in: text(index),
-                    range: NSRange(text(index).startIndex..., in: text(index))),
-                  let object = Range(match.range(at: 1), in: text(index)) else { return false }
-            let literalObject = String(text(index)[object])
-            if RuntimeCurrentNominalProof.read(literalObject) { return true }
-            // An explicit determiner followed by exactly one lexical word
-            // occupies this complete past verb's object slot even without
-            // installed POS assets. No second predicate, residual token or
-            // separator can fit. This only retains already non-actionable
-            // factual evidence; it supplies no action or operation authority.
-            return literalObject.range(
-                of: #"^(?:the|a|an|my|our|his|her|their)\s+[\p{L}\p{M}][\p{L}\p{M}'’-]*$"#,
-                options: .regularExpression) != nil
+                  organized[index].reminderDate == nil else { return false }
+            return hasCompletePerfectFact(text(index))
         }
         let revisionCue = #"^(?:no|actually|sorry|wait)\b|\bactually\b"#
         let revisionPattern = #"(\p{L}[\p{L}\p{M}'’-]*)\s*,?\s+not\s+(\p{L}[\p{L}\p{M}'’-]*)\b"#
@@ -12164,6 +12150,25 @@ enum RuleBasedThoughtExtractor {
         ) != nil
     }
 
+    /// The same complete perfect-fact grammar used when retaining shared
+    /// discourse context. It proves a finished predicate and its whole nominal
+    /// object without depending on installed POS assets. It grants no action,
+    /// saved-operation or timing authority.
+    private static func hasCompletePerfectFact(_ source: String) -> Bool {
+        let text = normalize(source).lowercased()
+        guard let regex = NSRegularExpression.speakItCached(
+            #"^(?:[a-z][a-z'’-]*|the\s+[a-z]+)\s+(?:has|have)\s+(?:already\s+)?[a-z]+(?:ed|en)\s+(.+?)[.!?]*$"#),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let object = Range(match.range(at: 1), in: text) else { return false }
+        let literalObject = String(text[object])
+        if RuntimeCurrentNominalProof.read(literalObject) { return true }
+        // Determiner plus exactly one lexical word occupies the completed
+        // verb's object slot; no residual action or coordinator can fit.
+        return literalObject.range(
+            of: #"^(?:the|a|an|my|our|his|her|their)\s+[\p{L}\p{M}][\p{L}\p{M}'’-]*$"#,
+            options: .regularExpression) != nil
+    }
+
     static func splitClauses(_ text: String) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
         let pattern = #"(?:\n+|;\s*|(?:,\s*|\s+)but\s+(?=(?:i|we)\s+(?:will|should|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b|(?:please\s+)?remind\s+me\b|\#(actionLeadPattern))|,\s*(?:\#(connectorRun)\s+)?(?=(?:actually\s+)?\#(actionLeadPattern))|,\s*(?=actually\s+(?:i|we)\s+(?:also\s+)?(?:need|have|want)\s+to\s+\#(ActionabilityReader.actionVerb)\b)|,\s*(?=actually\s+(?:(?:on|by|before|at)\s+)?\#(SelfCorrectionResolver.datePattern)\s+\#(actionLeadPattern)\b)|,\s*(?=\#(pivotIntentPattern))|\s+and\s+(?=\#(pivotIntentPattern))|\s+and\s+(?=\#(frontedCommittedActionPattern))|\s+\#(connectorRun)\s*,?\s+(?=(?:actually\s+)?\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+and\s+(?=(?:i|we)\s+(?:(?:still|also|really|probably)\s+)*(?:need|have|want)\s+to\s+\#(ActionabilityReader.actionVerb)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|\s+(?:\#(connectorRun)\s+)?\#(strongEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?(?<!\#(locatingNumberContext))(?<!\#(equatingNumberContext))\#(numberedEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?(?<!\#(locatingNumberContext))\#(numberedEnumerator)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
@@ -12305,7 +12310,8 @@ enum RuleBasedThoughtExtractor {
                         && (reminderAct == .direct || reminderAct == .reminding)
                         && ReminderPhrasing.requestsReminder(tail)
                         && ActionabilityReader.read(tail).belongsOnToday
-                        && ActionabilityReader.read(head) == .knowledge
+                        && (ActionabilityReader.read(head) == .knowledge
+                            || hasCompletePerfectFact(head))
                     let unresolvedSelection = ActionabilityReader.SelectionState
                         .read(head.lowercased()) == .unresolved
                     let unadoptedAction = ActionabilityReader.isUnadoptedAction(head)

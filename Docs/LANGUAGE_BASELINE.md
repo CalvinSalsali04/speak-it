@@ -1100,22 +1100,18 @@ plus a declared SpeechLab list checked against `corpus_paths.sealed()` at the
 point of use, and it refuses to run rather than score a zero if any source
 stops yielding rows.
 
-Run it for the figures rather than reading them here. The load-bearing result
-is the one this document does state, because a test recomputes it: **`which
-means`, `that means`, `because of that` and `therefore` appear in no readable
-row at all**, while `and` and `so` appear in hundreds.
-<!-- recomputed: absent-connectives which means, that means, because of that, therefore -->
+Run it for the figures rather than reading them here. The claim recomputed
+for the Build 22 integration on October 12, 2026 is: **`that means`,
+`because of that` and `therefore` appear in no readable row at all**.
+`which means` is now attested in readable development material. This census
+measures attestation, not parser accuracy or the frequency of real speech.
+<!-- recomputed: absent-connectives that means, because of that, therefore -->
 
-**The two lists are the same list.** Every connective the splitter handles is
-attested in readable material — including `also` and `plus`, which the census
-found only because reading `connectorRun` turned them up and which the
-consequence rotation never used — and every
-connective it does not handle is attested in none. That correspondence is not a
-coincidence and it is not a compliment to the parser: the corpora and the rules
-were written by the same hands, working from the same intuitions about how a
-sentence goes. The parser handles what we thought to write down. A census over
-our own material can therefore confirm that a family is unsizeable and can
-never establish that one is rare.
+The earlier exact correspondence between readable attestation and handled
+connectives is historical; `which means` no longer belongs to the absent list.
+The corpora and rules were authored within the same project, so this census
+cannot establish how rare any family is in real speech or prove that an
+attested connective is handled correctly.
 
 **Read that in both directions, and the second one matters more.** A zero is
 not evidence that people do not say these things. Every row counted was

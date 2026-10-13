@@ -164,6 +164,66 @@ class EveryListCanBeRead(unittest.TestCase):
         self.assertTrue(pv.obligation_lead())
 
 
+class DanglingAuxiliaryScope(unittest.TestCase):
+    """The reader owns one declaration, not a regex-shaped file-wide match."""
+
+    @staticmethod
+    def function(regexes):
+        return (
+            "    private static func isFragment(_ value: String) -> Bool {\n"
+            + "\n".join(
+                "        if text.range(\n            " + regex
+                + ",\n            options: .regularExpression\n"
+                "        ) != nil { return true }"
+                for regex in regexes
+            )
+            + "\n        return false\n    }\n"
+        )
+
+    def read(self, source):
+        original = pv.REPOS
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = pathlib.Path(tmp)
+            (tree / "ThoughtExtractor.swift").write_text(source, encoding="utf-8")
+            pv.REPOS = tree
+            try:
+                return pv.dangling_auxiliary()
+            finally:
+                pv.REPOS = original
+
+    def test_unrelated_matching_regexes_do_not_enter_the_function_vocabulary(self):
+        vocabulary = r'of: #"^(?:i\s+)?(?:should|must)$"#'
+        unrelated = r'of: #"^(?:i\s+)?(?:will|can)$"#'
+        source = (
+            "    private static func unrelatedBefore() -> Bool {\n"
+            "        " + unrelated + "\n    }\n"
+            + self.function([vocabulary])
+            + "    private static func unrelatedAfter() -> Bool {\n"
+            "        " + unrelated + "\n    }\n"
+        )
+        self.assertEqual(self.read(source), {"should", "must"})
+
+    def test_duplicate_vocabulary_inside_the_function_refuses(self):
+        vocabulary = r'of: #"^(?:i\s+)?(?:should|must)$"#'
+        with self.assertRaisesRegex(pv.Refused, "dangling auxiliary: expected exactly one match, found 2"):
+            self.read(self.function([vocabulary, vocabulary]))
+
+    def test_duplicate_function_declarations_refuse(self):
+        function = self.function([r'of: #"^(?:i\s+)?(?:should|must)$"#'])
+        with self.assertRaisesRegex(pv.Refused, "isFragment declaration: expected exactly one match, found 2"):
+            self.read(function + function)
+
+    def test_missing_declaration_or_vocabulary_refuses(self):
+        function = self.function([r'of: #"^(?:i\s+)?(?:should|must)$"#'])
+        for source in [function.replace("func isFragment", "func renamedFragment"), self.function([])]:
+            with self.subTest(source=source), self.assertRaises(pv.Refused):
+                self.read(source)
+
+    def test_empty_vocabulary_refuses(self):
+        with self.assertRaisesRegex(pv.Refused, "vocabulary is empty"):
+            self.read(self.function([r'of: #"^(?:i\s+)?(?:)$"#']))
+
+
 class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
 
     def setUp(self):

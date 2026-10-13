@@ -150,12 +150,24 @@ def dangling_auxiliary():
     one is about a sentence that stopped rather than about what it was going to
     say.
     """
+    # The signature and same-indent closing brace delimit this declaration.
+    # A similar regex elsewhere must not become a second vocabulary; a missing
+    # or duplicated declaration still refuses rather than choosing the first.
+    body = _one(
+        r'^    private static func isFragment\(_ value: String\) -> Bool \{\n(.*?)^    \}',
+        _source("ThoughtExtractor.swift"),
+        "isFragment declaration",
+        flags=re.S | re.M,
+    )
     blob = _one(
         r'of: #"\^\(\?:i\\s\+\)\?\(\?:(.*?)\)\$"#',
-        _source("ThoughtExtractor.swift"),
+        body,
         "isFragment's dangling auxiliary",
     )
-    return _alternatives(blob)
+    forms = _alternatives(blob)
+    if not forms:
+        raise Refused("isFragment's dangling auxiliary: the vocabulary is empty")
+    return forms
 
 
 def deontic_better_subject():
